@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "HIKARI",
+      "hasCanvas": false,
+      "bodyTextLen": 5332,
+      "bodyTextHash": "639b63581cf1af175d443df39810f058e2aba897ca0ee2d5cfae21523cf14b09",
+      "bodyTextPrefix": "光 HIKARI Início Buscar Lista Admin EM DESTAQUE ONE PIECE 8.7 199",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "HIKARI",
+      "hasCanvas": false,
+      "bodyTextLen": 5232,
+      "bodyTextHash": "c80c745ff1c1d0924dac9c73a39d9044df8017a6276284855a0946cccc63883e",
+      "bodyTextPrefix": "光 HIKARI EM DESTAQUE ONE PIECE 8.7 1999 Ação Aventura Comédia Go",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
