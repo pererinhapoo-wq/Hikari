@@ -1,6 +1,7 @@
 name: Instalar HIKARI
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "HIKARI-Cloudinary-Pronto.zip"
@@ -11,6 +12,7 @@ permissions:
 jobs:
   instalar:
     runs-on: ubuntu-latest
+
     steps:
       - name: Baixar repositorio
         uses: actions/checkout@v4
