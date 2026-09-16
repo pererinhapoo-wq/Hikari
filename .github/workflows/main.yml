@@ -1,10 +1,10 @@
-name: Instalar HIKARI
+name: Instalar HIKARI Compacto
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "HIKARI-Cloudinary-Pronto.zip"
+      - "HIKARI-Mobile-Compacto.zip"
 
 permissions:
   contents: write
@@ -19,13 +19,13 @@ jobs:
 
       - name: Descompactar HIKARI
         run: |
-          unzip -o HIKARI-Cloudinary-Pronto.zip -d .
-          rm HIKARI-Cloudinary-Pronto.zip
+          unzip -o HIKARI-Mobile-Compacto.zip -d .
+          rm HIKARI-Mobile-Compacto.zip
 
       - name: Salvar arquivos
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Instalar HIKARI Cloudinary"
+          git commit -m "Aplicar HIKARI Mobile Compacto"
           git push
