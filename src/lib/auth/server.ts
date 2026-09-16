@@ -167,9 +167,8 @@ const grokOAuthPlugin = authConfigured
         // broker session. Combined with the broker sending Google
         // `prompt=select_account`, the user always gets the account chooser
         // and can pick (or switch) which account to sign in with.
-        authorizationUrlParams: { idp, prompt: "login" },
-      })),
-    })
+
+
   : null;
 
 export const auth = betterAuth({
@@ -183,7 +182,13 @@ export const auth = betterAuth({
   // See `trustedOrigins` construction above — must cover live preview hosts AND
   // local loopback variants, or clients get "Invalid origin".
   trustedOrigins,
-
+  socialProviders: {
+    google: {
+      clientId: env("GOOGLE_CLIENT_ID") as string,
+      clientSecret: env("GOOGLE_CLIENT_SECRET") as string,
+      prompt: "select_account",
+    },
+  },
   // Encrypt broker-issued OAuth tokens at rest, and treat the broker's upstreams
   // as trusted first-party identities. The broker owns identity and X emails are
   // synthetic/unverified, so WITHOUT this a login can fail with
