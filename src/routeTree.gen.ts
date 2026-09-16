@@ -18,6 +18,9 @@ import { Route as AdminIdRouteImport } from './routes/admin.$id'
 import { Route as AnimeIdRouteImport } from './routes/anime.$id'
 import { Route as BrowseSectionRouteImport } from './routes/browse.$section'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AccountRouteImport } from './routes/account'
+import { Route as ApiAuthRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -64,6 +67,9 @@ const WatchIdRoute = WatchIdRouteImport.update({
   path: '/watch/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({ id: '/login', path: '/login', getParentRoute: () => rootRouteImport } as any)
+const AccountRoute = AccountRouteImport.update({ id: '/account', path: '/account', getParentRoute: () => rootRouteImport } as any)
+const ApiAuthRoute = ApiAuthRouteImport.update({ id: '/api/auth/$', path: '/api/auth/$', getParentRoute: () => rootRouteImport } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -74,6 +80,9 @@ export interface FileRoutesByFullPath {
   '/anime/$id': typeof AnimeIdRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/watch/$id': typeof WatchIdRoute
+  '/login': typeof LoginRoute
+  '/account': typeof AccountRoute
+  '/api/auth/$': typeof ApiAuthRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
@@ -84,6 +93,9 @@ export interface FileRoutesByTo {
   '/anime/$id': typeof AnimeIdRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/watch/$id': typeof WatchIdRoute
+  '/login': typeof LoginRoute
+  '/account': typeof AccountRoute
+  '/api/auth/$': typeof ApiAuthRoute
   '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
@@ -96,6 +108,9 @@ export interface FileRoutesById {
   '/anime/$id': typeof AnimeIdRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/watch/$id': typeof WatchIdRoute
+  '/login': typeof LoginRoute
+  '/account': typeof AccountRoute
+  '/api/auth/$': typeof ApiAuthRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -109,6 +124,9 @@ export interface FileRouteTypes {
     | '/anime/$id'
     | '/browse/$section'
     | '/watch/$id'
+    | '/login'
+    | '/account'
+    | '/api/auth/$'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -119,6 +137,9 @@ export interface FileRouteTypes {
     | '/anime/$id'
     | '/browse/$section'
     | '/watch/$id'
+    | '/login'
+    | '/account'
+    | '/api/auth/$'
     | '/admin'
   id:
     | '__root__'
@@ -130,6 +151,9 @@ export interface FileRouteTypes {
     | '/anime/$id'
     | '/browse/$section'
     | '/watch/$id'
+    | '/login'
+    | '/account'
+    | '/api/auth/$'
     | '/admin/'
   fileRoutesById: FileRoutesById
 }
@@ -208,6 +232,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -231,6 +276,9 @@ const rootRouteChildren: RootRouteChildren = {
   AnimeIdRoute: AnimeIdRoute,
   BrowseSectionRoute: BrowseSectionRoute,
   WatchIdRoute: WatchIdRoute,
+  LoginRoute: LoginRoute,
+  AccountRoute: AccountRoute,
+  ApiAuthRoute: ApiAuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

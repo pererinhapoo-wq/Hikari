@@ -90,8 +90,7 @@ function AdminIndex() {
           <p className="text-[11px] tracking-[0.28em] text-muted uppercase">Painel</p>
           <h1 className="font-display text-3xl tracking-tight">Admin</h1>
           <p className="mt-1 max-w-xl text-sm text-muted">
-            Adicione, edite e exclua animes, temporadas e episódios. Tudo fica neste dispositivo —
-            sem conta.
+            Adicione, edite e exclua animes, temporadas e episódios. Este painel é exclusivo do administrador.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
