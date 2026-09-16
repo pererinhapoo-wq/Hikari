@@ -1,10 +1,10 @@
-name: Instalar HIKARI Compacto
+name: Instalar HIKARI Banner
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "HIKARI-Mobile-Compacto.zip"
+      - "HIKARI-Banner-Automatico.zip"
 
 permissions:
   contents: write
@@ -19,13 +19,13 @@ jobs:
 
       - name: Descompactar HIKARI
         run: |
-          unzip -o HIKARI-Mobile-Compacto.zip -d .
-          rm HIKARI-Mobile-Compacto.zip
+          unzip -o HIKARI-Banner-Automatico.zip -d .
+          rm HIKARI-Banner-Automatico.zip
 
       - name: Salvar arquivos
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Aplicar HIKARI Mobile Compacto"
+          git commit -m "Aplicar HIKARI Banner"
           git push
