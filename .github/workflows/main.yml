@@ -19,7 +19,7 @@ jobs:
 
       - name: Descompactar HIKARI
         run: |
-          unzip -o HIKARI-Banner-Automatico.zip -d .
+          unzip -o HIKARI-Banner-Sem-Gap.zip -d .
           rm HIKARI-Banner-Sem-Gap.zip
 
       - name: Salvar arquivos
