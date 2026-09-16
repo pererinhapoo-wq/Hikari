@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "HIKARI-Conta-Admin.zip"
+      - "HIKARI-Conta-Admin-v2.zip"
 
 permissions:
   contents: write
@@ -19,8 +19,8 @@ jobs:
 
       - name: Descompactar HIKARI
         run: |
-          unzip -o HIKARI-Conta-Admin.zip -d .
-          rm HIKARI-Conta-Admin.zip
+          unzip -o HIKARI-Conta-Admin-v2.zip -d .
+          rm HIKARI-Conta-Admin-v2.zip
 
       - name: Salvar arquivos
         run: |
