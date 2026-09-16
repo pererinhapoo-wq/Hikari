@@ -15,7 +15,7 @@ export function AnimeCard({
   const inList = useHikariStore((s) => s.myList.includes(anime.id));
   const toggleList = useHikariStore((s) => s.toggleList);
   const title = displayTitle(anime);
-  const width = size === "sm" ? "w-28" : size === "lg" ? "w-40 sm:w-44" : "w-32 sm:w-36";
+  const width = size === "sm" ? "w-24" : size === "lg" ? "w-36 sm:w-40" : "w-28 sm:w-32";
 
   return (
     <article className={cn("group relative", width)}>
@@ -38,14 +38,14 @@ export function AnimeCard({
             </div>
           )}
           {anime.score != null && (
-            <span className="absolute top-2 left-2 rounded-sm bg-bg/80 px-1.5 py-0.5 font-medium text-xs tabular-nums text-score backdrop-blur-sm">
+            <span className="absolute top-1.5 left-1.5 rounded-sm bg-bg/80 px-1 py-0.5 font-medium text-xs tabular-nums text-score backdrop-blur-sm">
               {scoreLabel(anime.score)}
             </span>
           )}
         </div>
-        <div className="px-2 py-2">
-          <h3 className="line-clamp-2 text-sm leading-snug text-fg">{title}</h3>
-          <p className="mt-0.5 truncate text-[11px] text-subtle">
+        <div className="px-1.5 py-1.5">
+          <h3 className="line-clamp-2 text-xs leading-snug text-fg">{title}</h3>
+          <p className="mt-0.5 truncate text-[10px] text-subtle">
             {anime.year ?? ""}
             {anime.year && anime.format ? " · " : ""}
             {anime.format === "TV" ? "Série" : anime.format === "MOVIE" ? "Filme" : ""}
@@ -60,7 +60,7 @@ export function AnimeCard({
           e.stopPropagation();
           toggleList(anime);
         }}
-        className="absolute top-2 right-2 flex size-9 items-center justify-center rounded-md bg-bg/70 text-fg opacity-100 backdrop-blur-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+        className="absolute top-1.5 right-1.5 flex size-8 items-center justify-center rounded-md bg-bg/70 text-fg opacity-100 backdrop-blur-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
       >
         {inList ? <BookmarkCheck className="size-4" /> : <Bookmark className="size-4" />}
       </button>
@@ -69,7 +69,7 @@ export function AnimeCard({
 }
 
 export function AnimeCardSkeleton({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
-  const width = size === "sm" ? "w-28" : size === "lg" ? "w-40 sm:w-44" : "w-32 sm:w-36";
+  const width = size === "sm" ? "w-24" : size === "lg" ? "w-36 sm:w-40" : "w-28 sm:w-32";
   return (
     <div className={cn(width, "shrink-0")}>
       <div className="aspect-2/3 animate-pulse rounded-lg bg-elevated" />

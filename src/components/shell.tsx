@@ -19,7 +19,7 @@ export function Shell() {
   return (
     <div className="min-h-dvh bg-bg text-fg">
       <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
+        <div className="mx-auto flex h-12 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
           <Logo />
           <nav className="hidden items-center gap-1 md:flex">
             {NAV.map((item) => {
@@ -40,7 +40,7 @@ export function Shell() {
           </nav>
           <Link
             to="/search"
-            className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
+            className="flex size-10 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
             aria-label="Buscar"
           >
             <Search className="size-5" />
@@ -70,11 +70,11 @@ export function Shell() {
                 <Link
                   to={item.to}
                   className={cn(
-                    "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] tracking-wide uppercase",
+                    "flex min-h-12 flex-col items-center justify-center gap-0.5 text-[10px] tracking-wide uppercase",
                     active ? "text-fg" : "text-subtle",
                   )}
                 >
-                  <Icon className="size-5" />
+                  <Icon className="size-[18px]" />
                   {item.label}
                 </Link>
               </li>

@@ -16,13 +16,13 @@ export function AnimeRow({
 }) {
   if (!loading && items.length === 0) return null;
   return (
-    <section className="space-y-3">
+    <section className="space-y-2">
       <div className="flex items-end justify-between gap-3 px-1">
-        <h2 className="font-display text-xl tracking-tight text-fg sm:text-2xl">{title}</h2>
+        <h2 className="font-display text-base tracking-tight text-fg sm:text-2xl">{title}</h2>
         {href && (
           <Link
             to={href}
-            className="inline-flex min-h-11 items-center gap-0.5 text-xs font-medium tracking-wide text-muted uppercase hover:text-fg"
+            className="inline-flex min-h-9 items-center gap-0.5 text-xs font-medium tracking-wide text-muted uppercase hover:text-fg"
           >
             Ver tudo
             <ChevronRight className="size-3.5" />

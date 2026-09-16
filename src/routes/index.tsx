@@ -16,8 +16,8 @@ export const Route = createFileRoute("/")({
 
 function HomePending() {
   return (
-    <div className="space-y-10 pt-4">
-      <div className="-mx-4 h-[28rem] animate-pulse bg-elevated sm:-mx-6 sm:h-[34rem]" />
+    <div className="space-y-6 pt-3">
+      <div className="-mx-4 h-[20rem] animate-pulse bg-elevated sm:-mx-6 sm:h-[27rem]" />
       <div className="rail">
         {Array.from({ length: 8 }, (_, i) => (
           <AnimeCardSkeleton key={i} />
@@ -52,15 +52,16 @@ function Home() {
   const top = overlayList(data.top, locals);
   const season = overlayList(data.season, locals);
   const featured = trending[0] ?? popular[0];
+  const featuredItems = [...trending, ...popular.filter((a) => !trending.some((t) => t.id === a.id))].slice(0, 6);
   const added = locals.filter((a) => !a.hidden && !a.anilistId).map(localToAnime);
 
   return (
-    <div className="space-y-10 pb-6">
-      {featured ? <Hero anime={featured} /> : <HomePending />}
+    <div className="space-y-5 pb-5 sm:space-y-8">
+      {featured ? <Hero anime={featured} animes={featuredItems} /> : <HomePending />}
 
       {continueWatching.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="font-display text-xl tracking-tight sm:text-2xl">Continuar assistindo</h2>
+        <section className="space-y-2">
+          <h2 className="font-display text-base tracking-tight sm:text-2xl">Continuar assistindo</h2>
           <div className="rail -mx-4 px-4 sm:-mx-6 sm:px-6">
             {continueWatching.map((c) => (
               <Link
@@ -68,14 +69,14 @@ function Home() {
                 to="/watch/$id"
                 params={{ id: c.animeId }}
                 search={{ ep: c.episodeId }}
-                className="w-56 shrink-0 overflow-hidden rounded-lg bg-elevated shadow-[var(--shadow-border)]"
+                className="w-40 shrink-0 overflow-hidden rounded-lg bg-elevated shadow-[var(--shadow-border)] sm:w-52"
               >
                 <div className="aspect-video bg-surface">
                   {c.cover && <img src={c.cover} alt="" className="size-full object-cover" />}
                 </div>
-                <div className="px-3 py-2">
-                  <p className="truncate text-sm text-fg">{c.title}</p>
-                  <p className="truncate text-xs text-muted">
+                <div className="px-2.5 py-1.5">
+                  <p className="truncate text-xs text-fg">{c.title}</p>
+                  <p className="truncate text-[11px] text-muted">
                     Ep. {c.episodeNumber} · {c.episodeTitle}
                   </p>
                 </div>

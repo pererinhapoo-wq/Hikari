@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { Bookmark, BookmarkCheck, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,16 +7,27 @@ import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel } from "@/lib/labels";
 import { useHikariStore } from "@/lib/store";
 
-export function Hero({ anime }: { anime: SlimAnime }) {
+export function Hero({ anime, animes = [anime] }: { anime: SlimAnime; animes?: SlimAnime[] }) {
+  const [index, setIndex] = useState(0);
+  const current = animes[index] ?? anime;
   const title = displayTitle(anime);
-  const inList = useHikariStore((s) => s.myList.includes(anime.id));
+  const inList = useHikariStore((s) => s.myList.includes(current.id));
   const toggleList = useHikariStore((s) => s.toggleList);
-  const backdrop = anime.banner || anime.cover;
+  const backdrop = current.banner || current.cover;
+
+  useEffect(() => {
+    if (animes.length < 2) return;
+    const timer = window.setInterval(() => {
+      setIndex((i) => (i + 1) % animes.length);
+    }, 6000);
+    return () => window.clearInterval(timer);
+  }, [animes.length]);
 
   return (
-    <section className="relative -mx-4 min-h-[28rem] overflow-hidden sm:-mx-6 sm:min-h-[34rem] lg:min-h-[38rem]">
+    <section className="relative -mx-4 h-[8rem] overflow-hidden sm:-mx-6 sm:h-[22rem] lg:h-[27rem]">
       {backdrop && (
         <img
+          key={current.id}
           src={backdrop}
           alt=""
           className="absolute inset-0 size-full object-cover"
@@ -23,33 +35,33 @@ export function Hero({ anime }: { anime: SlimAnime }) {
       )}
       <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/70 to-bg/20" />
       <div className="absolute inset-0 bg-linear-to-r from-bg/90 via-bg/40 to-transparent" />
-      <div className="relative z-10 flex min-h-[28rem] flex-col justify-end px-4 pb-8 sm:min-h-[34rem] sm:px-6 sm:pb-10 lg:min-h-[38rem]">
-        <p className="text-[11px] font-medium tracking-[0.28em] text-muted uppercase">Em destaque</p>
-        <h1 className="mt-2 max-w-2xl font-display text-4xl leading-tight tracking-tight text-fg sm:text-5xl lg:text-6xl">
+      <div className="relative z-10 flex h-full flex-col justify-end px-4 pb-3 sm:px-6 sm:pb-6">
+        <p className="text-[9px] font-medium tracking-[0.22em] text-muted uppercase">Em destaque</p>
+        <h1 className="mt-0.5 max-w-2xl line-clamp-2 font-display text-base leading-tight tracking-tight text-fg sm:text-4xl lg:text-5xl">
           {title}
         </h1>
-        {anime.titles.native && anime.titles.native !== title && (
-          <p className="mt-1 font-display text-sm text-muted">{anime.titles.native}</p>
+        {current.titles.native && current.titles.native !== title && (
+          <p className="mt-1 hidden font-display text-sm text-muted sm:block">{current.titles.native}</p>
         )}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {anime.score != null && (
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          {current.score != null && (
             <span className="text-sm font-medium tabular-nums text-score">
-              {scoreLabel(anime.score)}
+              {scoreLabel(current.score)}
             </span>
           )}
-          {anime.year && <span className="text-sm text-muted">{anime.year}</span>}
-          {anime.genres.slice(0, 3).map((g) => (
+          {current.year && <span className="text-sm text-muted">{current.year}</span>}
+          {current.genres.slice(0, 3).map((g) => (
             <Badge key={g}>{genreLabel(g)}</Badge>
           ))}
         </div>
-        {anime.synopsis && (
-          <p className="mt-4 max-w-xl line-clamp-3 text-sm leading-relaxed text-muted">
+        {current.synopsis && (
+          <p className="mt-1 max-w-xl line-clamp-1 text-[11px] leading-snug text-muted sm:mt-4 sm:line-clamp-3 sm:text-sm">
             {anime.synopsis}
           </p>
         )}
-        <div className="mt-6 flex flex-wrap gap-2">
-          <Button asChild size="lg">
-            <Link to="/watch/$id" params={{ id: anime.id }}>
+        <div className="mt-1 flex flex-wrap gap-1 sm:mt-4">
+          <Button asChild size="sm">
+            <Link to="/watch/$id" params={{ id: current.id }}>
               <Play className="size-4" />
               Assistir
             </Link>
@@ -57,18 +69,31 @@ export function Hero({ anime }: { anime: SlimAnime }) {
           <Button
             type="button"
             variant="outline"
-            size="lg"
-            onClick={() => toggleList(anime)}
+            size="sm"
+            onClick={() => toggleList(current)}
           >
             {inList ? <BookmarkCheck className="size-4" /> : <Bookmark className="size-4" />}
             {inList ? "Na lista" : "Minha Lista"}
           </Button>
-          <Button asChild variant="ghost" size="lg">
-            <Link to="/anime/$id" params={{ id: anime.id }}>
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/anime/$id" params={{ id: current.id }}>
               Detalhes
             </Link>
           </Button>
         </div>
+        {animes.length > 1 && (
+          <div className="mt-1.5 flex items-center gap-1.5" aria-label="Destaques">
+            {animes.map((item, i) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-label={`Mostrar destaque ${i + 1}`}
+                onClick={() => setIndex(i)}
+                className={`h-1.5 rounded-full transition-all ${i === index ? "w-5 bg-fg" : "w-1.5 bg-fg/40"}`}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
