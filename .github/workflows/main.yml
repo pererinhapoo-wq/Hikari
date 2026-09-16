@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "HIKARI-Banner-Automatico.zip"
+      - "HIKARI-Banner-Medio.zip"
 
 permissions:
   contents: write
@@ -19,8 +19,8 @@ jobs:
 
       - name: Descompactar HIKARI
         run: |
-          unzip -o HIKARI-Banner-Automatico.zip -d .
-          rm HIKARI-Banner-Automatico.zip
+          unzip -o HIKARI-Banner-Medio.zip -d .
+          rm HIKARI-Banner-Medio.zip
 
       - name: Salvar arquivos
         run: |
