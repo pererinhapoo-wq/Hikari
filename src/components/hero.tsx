@@ -10,7 +10,7 @@ import { useHikariStore } from "@/lib/store";
 export function Hero({ anime, animes = [anime] }: { anime: SlimAnime; animes?: SlimAnime[] }) {
   const [index, setIndex] = useState(0);
   const current = animes[index] ?? anime;
-  const title = displayTitle(anime);
+  const title = displayTitle(current);
   const inList = useHikariStore((s) => s.myList.includes(current.id));
   const toggleList = useHikariStore((s) => s.toggleList);
   const backdrop = current.banner || current.cover;
@@ -24,13 +24,13 @@ export function Hero({ anime, animes = [anime] }: { anime: SlimAnime; animes?: S
   }, [animes.length]);
 
   return (
-    <section className="relative -mx-4 h-[8rem] overflow-hidden sm:-mx-6 sm:h-[22rem] lg:h-[27rem]">
+    <section className="relative -mx-4 h-[12rem] overflow-hidden sm:-mx-6 sm:h-[20rem] lg:h-[24rem]">
       {backdrop && (
         <img
           key={current.id}
           src={backdrop}
           alt=""
-          className="absolute inset-0 size-full object-cover"
+          className="absolute inset-0 size-full object-cover object-center"
         />
       )}
       <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/70 to-bg/20" />
@@ -56,7 +56,7 @@ export function Hero({ anime, animes = [anime] }: { anime: SlimAnime; animes?: S
         </div>
         {current.synopsis && (
           <p className="mt-1 max-w-xl line-clamp-1 text-[11px] leading-snug text-muted sm:mt-4 sm:line-clamp-3 sm:text-sm">
-            {anime.synopsis}
+            {current.synopsis}
           </p>
         )}
         <div className="mt-1 flex flex-wrap gap-1 sm:mt-4">
