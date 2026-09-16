@@ -24,7 +24,7 @@ export function Hero({ anime, animes = [anime] }: { anime: SlimAnime; animes?: S
   }, [animes.length]);
 
   return (
-    <section className="relative -mx-4 h-[8rem] overflow-hidden sm:-mx-6 sm:h-[22rem] lg:h-[27rem]">
+    <section className="relative -mx-4 h-[14rem] overflow-hidden sm:-mx-6 sm:h-[22rem] lg:h-[27rem]">
       {backdrop && (
         <img
           key={current.id}
