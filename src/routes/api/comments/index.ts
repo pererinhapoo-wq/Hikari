@@ -5,7 +5,9 @@ import { auth } from "@/lib/auth/server";
 export const Route = createFileRoute("/api/comments/")({
   server: {
     handlers: {
-      // LISTAR COMENTÁRIOS DE UM EPISÓDIO
+      // =========================================================
+      // LISTAR COMENTÁRIOS
+      // =========================================================
       GET: async ({ request }) => {
         try {
           const url = new URL(request.url);
@@ -52,7 +54,7 @@ export const Route = createFileRoute("/api/comments/")({
             comments: result.rows,
           });
         } catch (error) {
-          console.error("Erro ao buscar comentários:", error);
+          console.error("ERRO AO BUSCAR COMENTÁRIOS:", error);
 
           return Response.json(
             {
@@ -63,45 +65,90 @@ export const Route = createFileRoute("/api/comments/")({
         }
       },
 
+      // =========================================================
       // CRIAR COMENTÁRIO
+      // =========================================================
       POST: async ({ request }) => {
         try {
+          // -----------------------------------------------------
+          // 1. Verificar usuário logado
+          // -----------------------------------------------------
           const session = await auth.api.getSession({
             headers: request.headers,
           });
+
+          console.log(
+            "SESSÃO DO COMENTÁRIO:",
+            session
+              ? {
+                  userId: session.user?.id,
+                  userName: session.user?.name,
+                }
+              : null,
+          );
 
           if (!session?.user?.id) {
             return Response.json(
               {
                 error: "Você precisa estar logado para comentar.",
+                code: "NOT_AUTHENTICATED",
               },
               { status: 401 },
             );
           }
 
-          const body = await request.json();
+          // -----------------------------------------------------
+          // 2. Ler corpo da requisição
+          // -----------------------------------------------------
+          let body: Record<string, unknown>;
 
+          try {
+            body = await request.json();
+          } catch {
+            return Response.json(
+              {
+                error: "O corpo da requisição não é um JSON válido.",
+                code: "INVALID_JSON",
+              },
+              { status: 400 },
+            );
+          }
+
+          // -----------------------------------------------------
+          // 3. Validar dados
+          // -----------------------------------------------------
           const animeId =
-            typeof body.animeId === "string" ? body.animeId.trim() : "";
+            typeof body.animeId === "string"
+              ? body.animeId.trim()
+              : "";
 
           const episodeId =
-            typeof body.episodeId === "string" ? body.episodeId.trim() : "";
+            typeof body.episodeId === "string"
+              ? body.episodeId.trim()
+              : "";
 
           const content =
-            typeof body.content === "string" ? body.content.trim() : "";
+            typeof body.content === "string"
+              ? body.content.trim()
+              : "";
 
           const parentId =
-            typeof body.parentId === "string" && body.parentId.trim()
+            typeof body.parentId === "string" &&
+            body.parentId.trim()
               ? body.parentId.trim()
               : null;
 
           const isSpoiler =
-            typeof body.isSpoiler === "boolean" ? body.isSpoiler : false;
+            typeof body.isSpoiler === "boolean"
+              ? body.isSpoiler
+              : false;
 
           if (!animeId || !episodeId || !content) {
             return Response.json(
               {
-                error: "animeId, episodeId e content são obrigatórios.",
+                error:
+                  "animeId, episodeId e content são obrigatórios.",
+                code: "INVALID_DATA",
               },
               { status: 400 },
             );
@@ -110,15 +157,22 @@ export const Route = createFileRoute("/api/comments/")({
           if (content.length > 2000) {
             return Response.json(
               {
-                error: "O comentário pode ter no máximo 2000 caracteres.",
+                error:
+                  "O comentário pode ter no máximo 2000 caracteres.",
+                code: "CONTENT_TOO_LONG",
               },
               { status: 400 },
             );
           }
 
+          // -----------------------------------------------------
+          // 4. Conectar ao banco
+          // -----------------------------------------------------
           const sql = await getSql();
 
-          // Verifica o comentário pai quando for uma resposta.
+          // -----------------------------------------------------
+          // 5. Verificar comentário pai
+          // -----------------------------------------------------
           if (parentId) {
             const parent = await sql.query(
               `
@@ -136,14 +190,21 @@ export const Route = createFileRoute("/api/comments/")({
               return Response.json(
                 {
                   error: "Comentário original não encontrado.",
+                  code: "PARENT_NOT_FOUND",
                 },
                 { status: 400 },
               );
             }
           }
 
+          // -----------------------------------------------------
+          // 6. Criar ID
+          // -----------------------------------------------------
           const id = crypto.randomUUID();
 
+          // -----------------------------------------------------
+          // 7. Inserir comentário
+          // -----------------------------------------------------
           const result = await sql.query(
             `
               insert into "comment" (
@@ -178,22 +239,47 @@ export const Route = createFileRoute("/api/comments/")({
             ],
           );
 
+          // -----------------------------------------------------
+          // 8. Retornar comentário criado
+          // -----------------------------------------------------
+          const createdComment = result.rows[0];
+
+          console.log(
+            "COMENTÁRIO CRIADO COM SUCESSO:",
+            createdComment,
+          );
+
           return Response.json(
             {
               comment: {
-                ...result.rows[0],
-                userName: session.user.name || "Usuário",
-                userImage: session.user.image || null,
+                ...createdComment,
+                userName:
+                  session.user.name || "Usuário",
+                userImage:
+                  session.user.image || null,
               },
             },
             { status: 201 },
           );
         } catch (error) {
-          console.error("Erro ao criar comentário:", error);
+          console.error(
+            "ERRO REAL AO CRIAR COMENTÁRIO:",
+            error,
+          );
+
+          const message =
+            error instanceof Error
+              ? error.message
+              : String(error);
 
           return Response.json(
             {
               error: "Não foi possível criar o comentário.",
+              code: "COMMENT_CREATE_ERROR",
+              details:
+                process.env.NODE_ENV === "production"
+                  ? undefined
+                  : message,
             },
             { status: 500 },
           );
