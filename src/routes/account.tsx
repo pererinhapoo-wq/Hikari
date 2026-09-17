@@ -329,4 +329,4 @@ function Account() {
       </section>
     </main>
   );
-  }
+}
