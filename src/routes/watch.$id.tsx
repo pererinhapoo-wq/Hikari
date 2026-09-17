@@ -480,6 +480,9 @@ function CommentsSection({
   const [text, setText] =
     useState("");
 
+  const [isSpoiler, setIsSpoiler] =
+    useState(false);
+
   const [comments, setComments] =
     useState<Comment[]>([]);
 
@@ -497,6 +500,9 @@ function CommentsSection({
 
   const [replyText, setReplyText] =
     useState("");
+
+  const [replyIsSpoiler, setReplyIsSpoiler] =
+    useState(false);
 
   const [replySending, setReplySending] =
     useState(false);
@@ -618,7 +624,7 @@ function CommentsSection({
                 episodeId,
                 content: value,
                 parentId: null,
-                isSpoiler: false,
+                isSpoiler,
               }),
             },
           );
@@ -643,6 +649,7 @@ function CommentsSection({
         }
 
         setText("");
+        setIsSpoiler(false);
       } catch (err) {
         console.error(err);
 
@@ -696,7 +703,8 @@ function CommentsSection({
                 episodeId,
                 content: value,
                 parentId,
-                isSpoiler: false,
+                isSpoiler:
+                  replyIsSpoiler,
               }),
             },
           );
@@ -721,6 +729,7 @@ function CommentsSection({
         }
 
         setReplyText("");
+        setReplyIsSpoiler(false);
         setReplyingId(null);
       } catch (err) {
         console.error(err);
@@ -936,6 +945,32 @@ function CommentsSection({
           className="w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
         />
 
+        {/* ================================================= */}
+        {/* OPÇÃO DE SPOILER                                  */}
+        {/* ================================================= */}
+
+        <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
+
+          <input
+            type="checkbox"
+            checked={isSpoiler}
+            onChange={(
+              event,
+            ) => {
+              setIsSpoiler(
+                event.target
+                  .checked,
+              );
+            }}
+            className="size-4 accent-current"
+          />
+
+          <span>
+            Marcar como spoiler
+          </span>
+
+        </label>
+
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
           <p className="text-xs text-subtle">
@@ -1023,6 +1058,9 @@ function CommentsSection({
                     replyText={
                       replyText
                     }
+                    replyIsSpoiler={
+                      replyIsSpoiler
+                    }
                     replySending={
                       replySending
                     }
@@ -1035,12 +1073,18 @@ function CommentsSection({
                     onReplyChange={
                       setReplyText
                     }
+                    onReplySpoilerChange={
+                      setReplyIsSpoiler
+                    }
                     onStartReply={() => {
                       setReplyingId(
                         comment.id,
                       );
                       setReplyText(
                         "",
+                      );
+                      setReplyIsSpoiler(
+                        false,
                       );
                     }}
                     onCancelReply={() => {
@@ -1049,6 +1093,9 @@ function CommentsSection({
                       );
                       setReplyText(
                         "",
+                      );
+                      setReplyIsSpoiler(
+                        false,
                       );
                     }}
                     onSendReply={() => {
@@ -1091,6 +1138,9 @@ function CommentsSection({
                               null
                             }
                             replyText=""
+                            replyIsSpoiler={
+                              false
+                            }
                             replySending={
                               false
                             }
@@ -1101,6 +1151,7 @@ function CommentsSection({
                               handleLike
                             }
                             onReplyChange={() => {}}
+                            onReplySpoilerChange={() => {}}
                             onStartReply={() => {}}
                             onCancelReply={() => {}}
                             onSendReply={() => {}}
@@ -1135,10 +1186,12 @@ function CommentCard({
   likingId,
   replyingId,
   replyText,
+  replyIsSpoiler,
   replySending,
   formatDate,
   onLike,
   onReplyChange,
+  onReplySpoilerChange,
   onStartReply,
   onCancelReply,
   onSendReply,
@@ -1150,6 +1203,7 @@ function CommentCard({
   likingId: string | null;
   replyingId: string | null;
   replyText: string;
+  replyIsSpoiler: boolean;
   replySending: boolean;
   formatDate: (
     value: string,
@@ -1159,6 +1213,9 @@ function CommentCard({
   ) => void;
   onReplyChange: (
     value: string,
+  ) => void;
+  onReplySpoilerChange: (
+    value: boolean,
   ) => void;
   onStartReply: () => void;
   onCancelReply: () => void;
@@ -1245,14 +1302,14 @@ function CommentCard({
           </div>
 
           {/* =============================================== */}
-          {/* SPOILER                                         */}
+          {/* SPOILER                                          */}
           {/* =============================================== */}
 
           {comment.isSpoiler ? (
-            <details className="mt-2">
+            <details className="mt-2 rounded-lg border border-white/5 bg-bg/50 px-3 py-2">
 
-              <summary className="cursor-pointer text-sm text-fg">
-                Mostrar spoiler
+              <summary className="cursor-pointer text-sm font-medium text-fg">
+                ⚠️ Mostrar spoiler
               </summary>
 
               <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
@@ -1267,7 +1324,7 @@ function CommentCard({
           )}
 
           {/* =============================================== */}
-          {/* AÇÕES                                           */}
+          {/* AÇÕES                                            */}
           {/* =============================================== */}
 
           <div className="mt-3 flex flex-wrap items-center gap-4">
@@ -1374,7 +1431,35 @@ function CommentCard({
                 className="w-full resize-none rounded-lg border border-white/5 bg-surface px-3 py-2 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
               />
 
-              <div className="mt-2 flex items-center justify-end gap-2">
+              {/* ========================================= */}
+              {/* SPOILER DA RESPOSTA                        */}
+              {/* ========================================= */}
+
+              <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-muted select-none">
+
+                <input
+                  type="checkbox"
+                  checked={
+                    replyIsSpoiler
+                  }
+                  onChange={(
+                    event,
+                  ) => {
+                    onReplySpoilerChange(
+                      event.target
+                        .checked,
+                    );
+                  }}
+                  className="size-4 accent-current"
+                />
+
+                <span>
+                  Marcar como spoiler
+                </span>
+
+              </label>
+
+              <div className="mt-3 flex items-center justify-end gap-2">
 
                 <Button
                   type="button"
@@ -1419,4 +1504,4 @@ function CommentCard({
 
     </article>
   );
-}
+                 }
