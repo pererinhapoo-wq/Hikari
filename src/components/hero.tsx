@@ -15,17 +15,12 @@ export function Hero({
   animes?: SlimAnime[];
 }) {
   const [index, setIndex] = useState(0);
-  const [imageRatio, setImageRatio] = useState(16 / 9);
 
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
   const inList = useHikariStore((s) => s.myList.includes(current.id));
   const toggleList = useHikariStore((s) => s.toggleList);
   const backdrop = current.banner || current.cover;
-
-  useEffect(() => {
-    setImageRatio(16 / 9);
-  }, [current.id]);
 
   useEffect(() => {
     if (animes.length < 2) return;
@@ -38,116 +33,106 @@ export function Hero({
   }, [animes.length]);
 
   return (
-    <section
-      className="relative -mx-4 overflow-hidden bg-bg md:-mx-6"
-      style={{
-        aspectRatio: `${imageRatio}`,
-      }}
-    >
-      {backdrop && (
-        <img
-          key={current.id}
-          src={backdrop}
-          alt=""
-          onLoad={(event) => {
-            const image = event.currentTarget;
-
-            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-              setImageRatio(image.naturalWidth / image.naturalHeight);
-            }
-          }}
-          className="absolute inset-0 size-full object-contain object-center"
-        />
-      )}
-
-      <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/45 to-transparent" />
-      <div className="absolute inset-0 bg-linear-to-r from-bg/90 via-bg/30 to-transparent" />
-
-      <div className="absolute inset-x-0 bottom-0 z-10 px-4 pb-4 md:px-6 md:pb-6">
-        <p className="text-[9px] font-medium tracking-[0.22em] text-muted uppercase">
-          Em destaque
-        </p>
-
-        <h1 className="mt-0.5 max-w-2xl line-clamp-2 font-display text-xl leading-tight tracking-tight text-fg md:text-4xl lg:text-5xl">
-          {title}
-        </h1>
-
-        {current.titles.native && current.titles.native !== title && (
-          <p className="mt-1 hidden font-display text-sm text-muted md:block">
-            {current.titles.native}
-          </p>
+    <section className="relative -mx-4 overflow-hidden bg-bg md:-mx-6">
+      <div className="relative aspect-video w-full overflow-hidden bg-bg">
+        {backdrop && (
+          <img
+            key={current.id}
+            src={backdrop}
+            alt=""
+            className="absolute inset-0 size-full object-contain object-center"
+          />
         )}
 
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          {current.score != null && (
-            <span className="text-sm font-medium tabular-nums text-score">
-              {scoreLabel(current.score)}
-            </span>
-          )}
+        <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/35 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-r from-bg/85 via-bg/30 to-transparent" />
 
-          {current.year && (
-            <span className="text-sm text-muted">{current.year}</span>
-          )}
-
-          {current.genres.slice(0, 3).map((g) => (
-            <Badge key={g}>{genreLabel(g)}</Badge>
-          ))}
-        </div>
-
-        {current.synopsis && (
-          <p className="mt-1 max-w-xl line-clamp-2 text-[11px] leading-snug text-muted md:mt-4 md:line-clamp-3 md:text-sm">
-            {current.synopsis}
+        <div className="absolute inset-x-0 bottom-0 z-10 px-4 pb-3 md:px-6 md:pb-6">
+          <p className="text-[9px] font-medium tracking-[0.22em] text-muted uppercase">
+            Em destaque
           </p>
-        )}
 
-        <div className="mt-2 flex flex-wrap gap-1.5 md:mt-4">
-          <Button asChild size="sm">
-            <Link to="/watch/$id" params={{ id: current.id }}>
-              <Play className="size-4" />
-              Assistir
-            </Link>
-          </Button>
+          <h1 className="mt-0.5 max-w-2xl line-clamp-2 font-display text-xl leading-tight tracking-tight text-fg md:text-4xl lg:text-5xl">
+            {title}
+          </h1>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => toggleList(current)}
-          >
-            {inList ? (
-              <BookmarkCheck className="size-4" />
-            ) : (
-              <Bookmark className="size-4" />
+          {current.titles.native && current.titles.native !== title && (
+            <p className="mt-1 hidden font-display text-sm text-muted md:block">
+              {current.titles.native}
+            </p>
+          )}
+
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {current.score != null && (
+              <span className="text-sm font-medium tabular-nums text-score">
+                {scoreLabel(current.score)}
+              </span>
             )}
-            {inList ? "Na lista" : "Minha Lista"}
-          </Button>
 
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/anime/$id" params={{ id: current.id }}>
-              Detalhes
-            </Link>
-          </Button>
-        </div>
+            {current.year && (
+              <span className="text-sm text-muted">{current.year}</span>
+            )}
 
-        {animes.length > 1 && (
-          <div
-            className="mt-2 flex items-center gap-1.5"
-            aria-label="Destaques"
-          >
-            {animes.map((item, i) => (
-              <button
-                key={item.id}
-                type="button"
-                aria-label={`Mostrar destaque ${i + 1}`}
-                onClick={() => setIndex(i)}
-                className={`h-1.5 rounded-full transition-all ${
-                  i === index ? "w-5 bg-fg" : "w-1.5 bg-fg/40"
-                }`}
-              />
+            {current.genres.slice(0, 3).map((g) => (
+              <Badge key={g}>{genreLabel(g)}</Badge>
             ))}
           </div>
-        )}
+
+          {current.synopsis && (
+            <p className="mt-1 max-w-xl line-clamp-2 text-[11px] leading-snug text-muted md:mt-4 md:line-clamp-3 md:text-sm">
+              {current.synopsis}
+            </p>
+          )}
+
+          <div className="mt-2 flex flex-wrap gap-1.5 md:mt-4">
+            <Button asChild size="sm">
+              <Link to="/watch/$id" params={{ id: current.id }}>
+                <Play className="size-4" />
+                Assistir
+              </Link>
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => toggleList(current)}
+            >
+              {inList ? (
+                <BookmarkCheck className="size-4" />
+              ) : (
+                <Bookmark className="size-4" />
+              )}
+              {inList ? "Na lista" : "Minha Lista"}
+            </Button>
+
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/anime/$id" params={{ id: current.id }}>
+                Detalhes
+              </Link>
+            </Button>
+          </div>
+
+          {animes.length > 1 && (
+            <div
+              className="mt-2 flex items-center gap-1.5"
+              aria-label="Destaques"
+            >
+              {animes.map((item, i) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-label={`Mostrar destaque ${i + 1}`}
+                  onClick={() => setIndex(i)}
+                  className={`h-1.5 rounded-full transition-all ${
+                    i === index ? "w-5 bg-fg" : "w-1.5 bg-fg/40"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
-}
+    }
