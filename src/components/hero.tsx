@@ -38,24 +38,24 @@ export function Hero({
           key={current.id}
           src={backdrop}
           alt=""
-          className="absolute inset-0 size-full object-cover object-[center_35%] md:object-center
+          className="absolute inset-0 size-full object-cover object-[center_35%] md:object-center"
         />
       )}
 
       <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
       <div className="absolute inset-0 bg-linear-to-r from-bg/90 via-bg/40 to-transparent" />
 
-      <div className="relative z-10 flex h-full flex-col justify-end px-4 pb-4 sm:px-6 sm:pb-6">
+      <div className="relative z-10 flex h-full flex-col justify-end px-4 pb-4 md:px-6 md:pb-6">
         <p className="text-[9px] font-medium tracking-[0.22em] text-muted uppercase">
           Em destaque
         </p>
 
-        <h1 className="mt-0.5 max-w-2xl line-clamp-2 font-display text-xl leading-tight tracking-tight text-fg sm:text-4xl lg:text-5xl">
+        <h1 className="mt-0.5 max-w-2xl line-clamp-2 font-display text-xl leading-tight tracking-tight text-fg md:text-4xl lg:text-5xl">
           {title}
         </h1>
 
         {current.titles.native && current.titles.native !== title && (
-          <p className="mt-1 hidden font-display text-sm text-muted sm:block">
+          <p className="mt-1 hidden font-display text-sm text-muted md:block">
             {current.titles.native}
           </p>
         )}
@@ -77,12 +77,12 @@ export function Hero({
         </div>
 
         {current.synopsis && (
-          <p className="mt-1 max-w-xl line-clamp-2 text-[11px] leading-snug text-muted sm:mt-4 sm:line-clamp-3 sm:text-sm">
+          <p className="mt-1 max-w-xl line-clamp-2 text-[11px] leading-snug text-muted md:mt-4 md:line-clamp-3 md:text-sm">
             {current.synopsis}
           </p>
         )}
 
-        <div className="mt-2 flex flex-wrap gap-1.5 sm:mt-4">
+        <div className="mt-2 flex flex-wrap gap-1.5 md:mt-4">
           <Button asChild size="sm">
             <Link to="/watch/$id" params={{ id: current.id }}>
               <Play className="size-4" />
@@ -123,9 +123,7 @@ export function Hero({
                 aria-label={`Mostrar destaque ${i + 1}`}
                 onClick={() => setIndex(i)}
                 className={`h-1.5 rounded-full transition-all ${
-                  i === index
-                    ? "w-5 bg-fg"
-                    : "w-1.5 bg-fg/40"
+                  i === index ? "w-5 bg-fg" : "w-1.5 bg-fg/40"
                 }`}
               />
             ))}
