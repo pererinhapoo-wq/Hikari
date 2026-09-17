@@ -1,10 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Flag,
   Heart,
   MessageCircle,
+  MoreVertical,
   Send,
   X,
 } from "lucide-react";
@@ -475,6 +478,18 @@ type SortBy =
   | "spoiler";
 
 /* ========================================================= */
+/* TIPO DO MOTIVO DA DENÚNCIA                                */
+/* ========================================================= */
+
+type ReportReason =
+  | "spam"
+  | "hate"
+  | "spoiler"
+  | "sexual"
+  | "harassment"
+  | "other";
+
+/* ========================================================= */
 /* COMENTÁRIOS                                               */
 /* ========================================================= */
 
@@ -531,6 +546,31 @@ function CommentsSection({
 
   const [sortOpen, setSortOpen] =
     useState(false);
+
+  /* ====================================================== */
+  /* MODERAÇÃO                                               */
+  /* ====================================================== */
+
+  const [openMenuId, setOpenMenuId] =
+    useState<string | null>(null);
+
+  const [reportingComment, setReportingComment] =
+    useState<Comment | null>(null);
+
+  const [reportReason, setReportReason] =
+    useState<ReportReason | "">("");
+
+  const [reportSending, setReportSending] =
+    useState(false);
+
+  const [spamConfirmComment, setSpamConfirmComment] =
+    useState<Comment | null>(null);
+
+  const [moderatingId, setModeratingId] =
+    useState<string | null>(null);
+
+  const [moderationMessage, setModerationMessage] =
+    useState("");
 
   /* ====================================================== */
   /* CARREGAR COMENTÁRIOS                                   */
@@ -848,6 +888,272 @@ function CommentsSection({
     };
 
   /* ====================================================== */
+  /* MARCAR COMO SPOILER                                    */
+  /* ====================================================== */
+
+  const handleMarkSpoiler =
+    async (
+      commentId: string,
+    ) => {
+      if (moderatingId) {
+        return;
+      }
+
+      try {
+        setModeratingId(
+          commentId,
+        );
+
+        setError("");
+        setOpenMenuId(null);
+
+        const response =
+          await fetch(
+            "/api/comments/moderation",
+            {
+              method: "POST",
+              credentials:
+                "include",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                commentId,
+                action: "spoiler",
+              }),
+            },
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              "Não foi possível marcar o comentário como spoiler.",
+          );
+        }
+
+        if (data.isSpoiler) {
+          setComments(
+            (current) =>
+              current.map(
+                (comment) =>
+                  comment.id ===
+                  commentId
+                    ? {
+                        ...comment,
+                        isSpoiler:
+                          true,
+                      }
+                    : comment,
+              ),
+          );
+        }
+
+        setModerationMessage(
+          "Comentário marcado como spoiler.",
+        );
+
+        window.setTimeout(() => {
+          setModerationMessage("");
+        }, 3000);
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível marcar o comentário como spoiler.",
+        );
+      } finally {
+        setModeratingId(
+          null,
+        );
+      }
+    };
+
+  /* ====================================================== */
+  /* ABRIR DENÚNCIA                                         */
+  /* ====================================================== */
+
+  const handleOpenReport =
+    (comment: Comment) => {
+      setOpenMenuId(null);
+      setReportingComment(
+        comment,
+      );
+      setReportReason("");
+    };
+
+  /* ====================================================== */
+  /* ENVIAR DENÚNCIA                                        */
+  /* ====================================================== */
+
+  const handleReport =
+    async () => {
+      if (
+        !reportingComment ||
+        !reportReason ||
+        reportSending
+      ) {
+        return;
+      }
+
+      try {
+        setReportSending(
+          true,
+        );
+        setError("");
+
+        const response =
+          await fetch(
+            "/api/comments/moderation",
+            {
+              method: "POST",
+              credentials:
+                "include",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                commentId:
+                  reportingComment.id,
+                action: "report",
+                reason:
+                  reportReason,
+              }),
+            },
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              "Não foi possível enviar a denúncia.",
+          );
+        }
+
+        setReportingComment(
+          null,
+        );
+        setReportReason("");
+
+        setModerationMessage(
+          "Denúncia enviada. Obrigado por ajudar a manter a comunidade segura.",
+        );
+
+        window.setTimeout(() => {
+          setModerationMessage("");
+        }, 4000);
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível enviar a denúncia.",
+        );
+      } finally {
+        setReportSending(
+          false,
+        );
+      }
+    };
+
+  /* ====================================================== */
+  /* ABRIR CONFIRMAÇÃO DE SPAM                              */
+  /* ====================================================== */
+
+  const handleOpenSpam =
+    (comment: Comment) => {
+      setOpenMenuId(null);
+      setSpamConfirmComment(
+        comment,
+      );
+    };
+
+  /* ====================================================== */
+  /* CONFIRMAR SPAM                                         */
+  /* ====================================================== */
+
+  const handleConfirmSpam =
+    async () => {
+      if (
+        !spamConfirmComment ||
+        moderatingId
+      ) {
+        return;
+      }
+
+      const commentId =
+        spamConfirmComment.id;
+
+      try {
+        setModeratingId(
+          commentId,
+        );
+        setError("");
+
+        const response =
+          await fetch(
+            "/api/comments/moderation",
+            {
+              method: "POST",
+              credentials:
+                "include",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                commentId,
+                action: "spam",
+              }),
+            },
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              "Não foi possível marcar o comentário como spam.",
+          );
+        }
+
+        setSpamConfirmComment(
+          null,
+        );
+
+        setModerationMessage(
+          "Comentário marcado como spam e enviado para análise da moderação.",
+        );
+
+        window.setTimeout(() => {
+          setModerationMessage("");
+        }, 4000);
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível marcar o comentário como spam.",
+        );
+      } finally {
+        setModeratingId(
+          null,
+        );
+      }
+    };
+
+  /* ====================================================== */
   /* DATA                                                    */
   /* ====================================================== */
 
@@ -991,7 +1297,7 @@ function CommentsSection({
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px]">
 
         {/* ================================================= */}
-        {/* ÁREA PRINCIPAL DOS COMENTÁRIOS                    */}
+        {/* ÁREA PRINCIPAL                                     */}
         {/* ================================================= */}
 
         <div className="min-w-0">
@@ -1254,6 +1560,14 @@ function CommentsSection({
           </div>
 
           {/* =============================================== */}
+          {/* REGRAS — MOBILE                                  */}
+          {/* =============================================== */}
+
+          <div className="mt-5 lg:hidden">
+            <CommunityRules />
+          </div>
+
+          {/* =============================================== */}
           {/* INDICADOR DO FILTRO                             */}
           {/* =============================================== */}
 
@@ -1371,6 +1685,36 @@ function CommentsSection({
                             comment.id,
                           );
                         }}
+                        openMenuId={
+                          openMenuId
+                        }
+                        onToggleMenu={() => {
+                          setOpenMenuId(
+                            (current) =>
+                              current ===
+                              comment.id
+                                ? null
+                                : comment.id,
+                          );
+                        }}
+                        onMarkSpoiler={() =>
+                          void handleMarkSpoiler(
+                            comment.id,
+                          )
+                        }
+                        onReport={() =>
+                          handleOpenReport(
+                            comment,
+                          )
+                        }
+                        onSpam={() =>
+                          handleOpenSpam(
+                            comment,
+                          )
+                        }
+                        moderatingId={
+                          moderatingId
+                        }
                       />
 
                       {replies.length >
@@ -1419,6 +1763,36 @@ function CommentsSection({
                                 onStartReply={() => {}}
                                 onCancelReply={() => {}}
                                 onSendReply={() => {}}
+                                openMenuId={
+                                  openMenuId
+                                }
+                                onToggleMenu={() => {
+                                  setOpenMenuId(
+                                    (current) =>
+                                      current ===
+                                      reply.id
+                                        ? null
+                                        : reply.id,
+                                  );
+                                }}
+                                onMarkSpoiler={() =>
+                                  void handleMarkSpoiler(
+                                    reply.id,
+                                  )
+                                }
+                                onReport={() =>
+                                  handleOpenReport(
+                                    reply,
+                                  )
+                                }
+                                onSpam={() =>
+                                  handleOpenSpam(
+                                    reply,
+                                  )
+                                }
+                                moderatingId={
+                                  moderatingId
+                                }
                                 isReply
                               />
                             ),
@@ -1438,14 +1812,357 @@ function CommentsSection({
         </div>
 
         {/* ================================================= */}
-        {/* REGRAS DA COMUNIDADE                              */}
+        {/* REGRAS — DESKTOP                                  */}
         {/* ================================================= */}
 
-        <CommunityRules />
+        <div className="hidden lg:block">
+          <CommunityRules />
+        </div>
 
       </div>
 
+      {/* =================================================== */}
+      {/* MENSAGEM DE MODERAÇÃO                               */}
+      {/* =================================================== */}
+
+      {moderationMessage && (
+        <div className="fixed inset-x-3 bottom-4 z-[100] flex justify-center pointer-events-none">
+          <div className="rounded-xl border border-white/10 bg-[#17171a] px-4 py-3 text-center text-sm text-fg shadow-2xl">
+            {moderationMessage}
+          </div>
+        </div>
+      )}
+
+      {/* =================================================== */}
+      {/* MODAL DE DENÚNCIA                                   */}
+      {/* =================================================== */}
+
+      {reportingComment && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (
+              event.target ===
+              event.currentTarget
+            ) {
+              if (!reportSending) {
+                setReportingComment(
+                  null,
+                );
+                setReportReason(
+                  "",
+                );
+              }
+            }
+          }}
+        >
+
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl sm:p-6">
+
+            <div className="flex items-start gap-3">
+
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated">
+                <Flag className="size-5" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+
+                <h3 className="font-display text-xl">
+                  Denunciar comentário
+                </h3>
+
+                <p className="mt-1 text-sm text-muted">
+                  Por que você está denunciando este comentário?
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    !reportSending
+                  ) {
+                    setReportingComment(
+                      null,
+                    );
+                    setReportReason(
+                      "",
+                    );
+                  }
+                }}
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated hover:text-fg"
+                aria-label="Fechar"
+              >
+                <X className="size-5" />
+              </button>
+
+            </div>
+
+            <div className="mt-5 space-y-2">
+
+              <ReportOption
+                value="spam"
+                label="Spam ou propaganda"
+                selected={
+                  reportReason ===
+                  "spam"
+                }
+                onChange={
+                  setReportReason
+                }
+              />
+
+              <ReportOption
+                value="hate"
+                label="Discurso de ódio ou ofensa"
+                selected={
+                  reportReason ===
+                  "hate"
+                }
+                onChange={
+                  setReportReason
+                }
+              />
+
+              <ReportOption
+                value="spoiler"
+                label="Spoiler não marcado"
+                selected={
+                  reportReason ===
+                  "spoiler"
+                }
+                onChange={
+                  setReportReason
+                }
+              />
+
+              <ReportOption
+                value="sexual"
+                label="Conteúdo sexual ou impróprio"
+                selected={
+                  reportReason ===
+                  "sexual"
+                }
+                onChange={
+                  setReportReason
+                }
+              />
+
+              <ReportOption
+                value="harassment"
+                label="Assédio ou ameaça"
+                selected={
+                  reportReason ===
+                  "harassment"
+                }
+                onChange={
+                  setReportReason
+                }
+              />
+
+              <ReportOption
+                value="other"
+                label="Outro motivo"
+                selected={
+                  reportReason ===
+                  "other"
+                }
+                onChange={
+                  setReportReason
+                }
+              />
+
+            </div>
+
+            <p className="mt-4 text-xs leading-5 text-subtle">
+              Sua denúncia será analisada pela equipe de moderação.
+            </p>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (
+                    !reportSending
+                  ) {
+                    setReportingComment(
+                      null,
+                    );
+                    setReportReason(
+                      "",
+                    );
+                  }
+                }}
+                disabled={
+                  reportSending
+                }
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() =>
+                  void handleReport()
+                }
+                disabled={
+                  !reportReason ||
+                  reportSending
+                }
+              >
+                <Flag className="size-4" />
+
+                {reportSending
+                  ? "Enviando..."
+                  : "Enviar denúncia"}
+              </Button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* =================================================== */}
+      {/* MODAL DE SPAM                                       */}
+      {/* =================================================== */}
+
+      {spamConfirmComment && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (
+              event.target ===
+              event.currentTarget
+            ) {
+              if (
+                !moderatingId
+              ) {
+                setSpamConfirmComment(
+                  null,
+                );
+              }
+            }
+          }}
+        >
+
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl sm:p-6">
+
+            <div className="flex items-start gap-3">
+
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated">
+                <AlertTriangle className="size-5" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+
+                <h3 className="font-display text-xl">
+                  Marcar como spam?
+                </h3>
+
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  Este comentário será sinalizado para análise da moderação.
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setSpamConfirmComment(
+                    null,
+                  )
+                }
+                disabled={
+                  Boolean(
+                    moderatingId,
+                  )
+                }
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() =>
+                  void handleConfirmSpam()
+                }
+                disabled={
+                  Boolean(
+                    moderatingId,
+                  )
+                }
+              >
+                <AlertTriangle className="size-4" />
+
+                {moderatingId
+                  ? "Enviando..."
+                  : "Marcar como spam"}
+              </Button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
     </section>
+  );
+}
+
+/* ========================================================= */
+/* OPÇÃO DE DENÚNCIA                                         */
+/* ========================================================= */
+
+function ReportOption({
+  value,
+  label,
+  selected,
+  onChange,
+}: {
+  value: ReportReason;
+  label: string;
+  selected: boolean;
+  onChange: (
+    value: ReportReason,
+  ) => void;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 text-sm transition-colors",
+        selected
+          ? "border-white/15 bg-elevated text-fg"
+          : "border-white/5 bg-bg/40 text-muted hover:border-white/10 hover:bg-elevated hover:text-fg",
+      )}
+    >
+
+      <input
+        type="radio"
+        name="comment-report-reason"
+        value={value}
+        checked={selected}
+        onChange={() =>
+          onChange(value)
+        }
+        className="size-4 accent-current"
+      />
+
+      <span>
+        {label}
+      </span>
+
+    </label>
   );
 }
 
@@ -1504,14 +2221,6 @@ function CommunityRules() {
 
       </div>
 
-      <div className="mt-5 border-t border-white/5 pt-4">
-
-        <p className="text-xs leading-5 text-subtle">
-          Comentários que desrespeitarem as regras poderão ser moderados.
-        </p>
-
-      </div>
-
     </aside>
   );
 }
@@ -1562,6 +2271,12 @@ function CommentCard({
   onStartReply,
   onCancelReply,
   onSendReply,
+  openMenuId,
+  onToggleMenu,
+  onMarkSpoiler,
+  onReport,
+  onSpam,
+  moderatingId,
   isReply = false,
 }: {
   comment: Comment;
@@ -1587,16 +2302,30 @@ function CommentCard({
   onStartReply: () => void;
   onCancelReply: () => void;
   onSendReply: () => void;
+  openMenuId: string | null;
+  onToggleMenu: () => void;
+  onMarkSpoiler: () => void;
+  onReport: () => void;
+  onSpam: () => void;
+  moderatingId: string | null;
   isReply?: boolean;
 }) {
   const isReplying =
     replyingId ===
     comment.id;
 
+  const menuOpen =
+    openMenuId ===
+    comment.id;
+
+  const isModerating =
+    moderatingId ===
+    comment.id;
+
   return (
     <article
       className={cn(
-        "rounded-xl border border-white/5 bg-surface p-4 sm:p-5",
+        "relative rounded-xl border border-white/5 bg-surface p-4 sm:p-5",
         isReply &&
           "bg-surface/80",
       )}
@@ -1635,32 +2364,148 @@ function CommentCard({
 
         <div className="min-w-0 flex-1">
 
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="flex items-start justify-between gap-3">
 
-            <span className="text-sm font-semibold">
-              {comment.userName ||
-                "Usuário"}
-            </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 
-            {isReply &&
-              replyToName && (
-                <>
-                  <span className="text-sm text-subtle">
-                    →
-                  </span>
+              <span className="text-sm font-semibold">
+                {comment.userName ||
+                  "Usuário"}
+              </span>
 
-                  <span className="text-sm font-semibold text-muted">
-                    {replyToName}
-                  </span>
-                </>
+              {isReply &&
+                replyToName && (
+                  <>
+                    <span className="text-sm text-subtle">
+                      →
+                    </span>
+
+                    <span className="text-sm font-semibold text-muted">
+                      {replyToName}
+                    </span>
+                  </>
+                )}
+
+              <span className="text-xs text-subtle">
+                ·{" "}
+                {formatDate(
+                  comment.createdAt,
+                )}
+              </span>
+
+            </div>
+
+            {/* ============================================= */}
+            {/* MENU DE TRÊS PONTOS                           */}
+            {/* ============================================= */}
+
+            <div className="relative shrink-0">
+
+              <button
+                type="button"
+                onClick={
+                  onToggleMenu
+                }
+                aria-label="Mais opções"
+                aria-haspopup="menu"
+                aria-expanded={
+                  menuOpen
+                }
+                className="flex size-9 items-center justify-center rounded-lg text-subtle transition-colors hover:bg-elevated hover:text-fg"
+              >
+
+                <MoreVertical className="size-5" />
+
+              </button>
+
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+6px)] z-50 w-56 overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
+                >
+
+                  {/* MARCAR SPOILER */}
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={
+                      comment.isSpoiler ||
+                      isModerating
+                    }
+                    onClick={
+                      onMarkSpoiler
+                    }
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                      comment.isSpoiler
+                        ? "cursor-not-allowed text-subtle"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+
+                    <span>
+                      ⚠️
+                    </span>
+
+                    <span>
+                      {comment.isSpoiler
+                        ? "Já marcado como spoiler"
+                        : "Marcar como spoiler"}
+                    </span>
+
+                  </button>
+
+                  {/* DENUNCIAR */}
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={
+                      isModerating
+                    }
+                    onClick={
+                      onReport
+                    }
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  >
+
+                    <Flag className="size-4" />
+
+                    <span>
+                      Denunciar comentário
+                    </span>
+
+                  </button>
+
+                  {/* SPAM */}
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={
+                      isModerating
+                    }
+                    onClick={
+                      onSpam
+                    }
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  >
+
+                    <span>
+                      🚫
+                    </span>
+
+                    <span>
+                      Marcar como spam
+                    </span>
+
+                  </button>
+
+                </div>
               )}
 
-            <span className="text-xs text-subtle">
-              ·{" "}
-              {formatDate(
-                comment.createdAt,
-              )}
-            </span>
+            </div>
 
           </div>
 
@@ -1857,4 +2702,4 @@ function CommentCard({
 
     </article>
   );
-  }
+      }
