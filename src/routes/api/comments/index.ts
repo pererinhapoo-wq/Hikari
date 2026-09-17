@@ -5,9 +5,10 @@ import { auth } from "@/lib/auth/server";
 export const Route = createFileRoute("/api/comments/")({
   server: {
     handlers: {
-      // =========================================================
-      // LISTAR COMENTÁRIOS DE UM EPISÓDIO
-      // =========================================================
+      // =====================================================
+      // LISTAR COMENTÁRIOS
+      // =====================================================
+
       GET: async ({ request }) => {
         try {
           const url = new URL(request.url);
@@ -24,19 +25,6 @@ export const Route = createFileRoute("/api/comments/")({
             );
           }
 
-          // Usuário logado é opcional para visualizar comentários.
-          let userId: string | null = null;
-
-          try {
-            const session = await auth.api.getSession({
-              headers: request.headers,
-            });
-
-            userId = session?.user?.id ?? null;
-          } catch {
-            userId = null;
-          }
-
           const sql = await getSql();
 
           const result = await sql.query(
@@ -51,46 +39,24 @@ export const Route = createFileRoute("/api/comments/")({
                 c."createdAt",
                 c."updatedAt",
                 c."userId",
-
-                coalesce(
-                  u."name",
-                  'Usuário'
-                ) as "userName",
-
-                u."image" as "userImage",
-
-                (
-                  select count(*)::int
-                  from "comment_like" cl
-                  where cl."commentId" = c."id"
-                ) as "likes",
-
-                exists (
-                  select 1
-                  from "comment_like" cl2
-                  where cl2."commentId" = c."id"
-                    and cl2."userId" = $3
-                ) as "liked"
-
+                coalesce(u."name", 'Usuário') as "userName",
+                u."image" as "userImage"
               from "comment" c
-
               left join "user" u
                 on u."id" = c."userId"
-
               where c."animeId" = $1
                 and c."episodeId" = $2
-
               order by c."createdAt" desc
             `,
-            [animeId, episodeId, userId],
+            [animeId, episodeId],
           );
 
           return Response.json({
-            comments: result.rows,
+            comments: result.rows ?? [],
           });
         } catch (error) {
           console.error(
-            "Erro ao buscar comentários:",
+            "ERRO REAL AO BUSCAR COMENTÁRIOS:",
             error,
           );
 
@@ -104,11 +70,16 @@ export const Route = createFileRoute("/api/comments/")({
         }
       },
 
-      // =========================================================
+      // =====================================================
       // CRIAR COMENTÁRIO
-      // =========================================================
+      // =====================================================
+
       POST: async ({ request }) => {
         try {
+          // -------------------------------------------------
+          // AUTENTICAÇÃO
+          // -------------------------------------------------
+
           const session = await auth.api.getSession({
             headers: request.headers,
           });
@@ -122,6 +93,15 @@ export const Route = createFileRoute("/api/comments/")({
               { status: 401 },
             );
           }
+
+          console.log("SESSÃO DO COMENTÁRIO:", {
+            userId: session.user.id,
+            userName: session.user.name,
+          });
+
+          // -------------------------------------------------
+          // BODY
+          // -------------------------------------------------
 
           const body = await request.json();
 
@@ -151,6 +131,10 @@ export const Route = createFileRoute("/api/comments/")({
               ? body.isSpoiler
               : false;
 
+          // -------------------------------------------------
+          // VALIDAÇÃO
+          // -------------------------------------------------
+
           if (!animeId || !episodeId || !content) {
             return Response.json(
               {
@@ -171,11 +155,16 @@ export const Route = createFileRoute("/api/comments/")({
             );
           }
 
+          // -------------------------------------------------
+          // BANCO
+          // -------------------------------------------------
+
           const sql = await getSql();
 
-          // =====================================================
+          // -------------------------------------------------
           // VERIFICAR COMENTÁRIO PAI
-          // =====================================================
+          // -------------------------------------------------
+
           if (parentId) {
             const parent = await sql.query(
               `
@@ -186,17 +175,10 @@ export const Route = createFileRoute("/api/comments/")({
                   and "episodeId" = $3
                 limit 1
               `,
-              [
-                parentId,
-                animeId,
-                episodeId,
-              ],
+              [parentId, animeId, episodeId],
             );
 
-            if (
-              !parent.rows ||
-              parent.rows.length === 0
-            ) {
+            if (!parent.rows?.length) {
               return Response.json(
                 {
                   error:
@@ -207,12 +189,17 @@ export const Route = createFileRoute("/api/comments/")({
             }
           }
 
-          // =====================================================
-          // CRIAR COMENTÁRIO
-          // =====================================================
+          // -------------------------------------------------
+          // ID
+          // -------------------------------------------------
+
           const id = crypto.randomUUID();
 
-          const result = await sql.query(
+          // -------------------------------------------------
+          // INSERT
+          // -------------------------------------------------
+
+          await sql.query(
             `
               insert into "comment" (
                 "id",
@@ -224,17 +211,6 @@ export const Route = createFileRoute("/api/comments/")({
                 "isSpoiler"
               )
               values ($1, $2, $3, $4, $5, $6, $7)
-
-              returning
-                "id",
-                "animeId",
-                "episodeId",
-                "content",
-                "parentId",
-                "isSpoiler",
-                "createdAt",
-                "updatedAt",
-                "userId"
             `,
             [
               id,
@@ -247,17 +223,60 @@ export const Route = createFileRoute("/api/comments/")({
             ],
           );
 
+          // -------------------------------------------------
+          // BUSCAR O COMENTÁRIO CRIADO
+          //
+          // Em vez de depender de result.rows[0] do INSERT,
+          // fazemos uma nova consulta pelo ID.
+          // -------------------------------------------------
+
+          const created = await sql.query(
+            `
+              select
+                c."id",
+                c."animeId",
+                c."episodeId",
+                c."content",
+                c."parentId",
+                c."isSpoiler",
+                c."createdAt",
+                c."updatedAt",
+                c."userId",
+                coalesce(u."name", 'Usuário') as "userName",
+                u."image" as "userImage"
+              from "comment" c
+              left join "user" u
+                on u."id" = c."userId"
+              where c."id" = $1
+              limit 1
+            `,
+            [id],
+          );
+
+          const comment = created.rows?.[0];
+
+          if (!comment) {
+            console.error(
+              "COMENTÁRIO FOI INSERIDO, MAS NÃO FOI ENCONTRADO:",
+              id,
+            );
+
+            return Response.json(
+              {
+                error:
+                  "O comentário foi salvo, mas não foi possível recuperá-lo.",
+              },
+              { status: 500 },
+            );
+          }
+
+          // -------------------------------------------------
+          // RESPOSTA
+          // -------------------------------------------------
+
           return Response.json(
             {
-              comment: {
-                ...result.rows[0],
-                userName:
-                  session.user.name || "Usuário",
-                userImage:
-                  session.user.image || null,
-                likes: 0,
-                liked: false,
-              },
+              comment,
             },
             { status: 201 },
           );
