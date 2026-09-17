@@ -15,7 +15,10 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import { signOut } from "@/lib/auth/client";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { getProfile, updateProfile } from "@/lib/profile.server";
+import {
+  getProfile,
+  updateProfile,
+} from "@/lib/profile.functions";
 import { useHikariStore } from "@/lib/store";
 
 export const Route = createFileRoute("/account")({
@@ -142,7 +145,9 @@ function Account() {
 
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-elevated p-3">
-              <p className="text-xs text-muted">Minha Lista</p>
+              <p className="text-xs text-muted">
+                Minha Lista
+              </p>
 
               <p className="mt-1 text-xl font-medium tabular-nums">
                 {myList.length}
@@ -150,7 +155,9 @@ function Account() {
             </div>
 
             <div className="rounded-xl bg-elevated p-3">
-              <p className="text-xs text-muted">Favoritos</p>
+              <p className="text-xs text-muted">
+                Favoritos
+              </p>
 
               <p className="mt-1 text-xl font-medium tabular-nums">
                 {favorites
@@ -212,7 +219,9 @@ function Account() {
                 >
                   <Save className="size-4" />
 
-                  {saving ? "Salvando..." : "Salvar"}
+                  {saving
+                    ? "Salvando..."
+                    : "Salvar"}
                 </Button>
 
                 <Button
@@ -222,7 +231,6 @@ function Account() {
                   disabled={saving}
                 >
                   <X className="size-4" />
-
                   Cancelar
                 </Button>
               </div>
@@ -235,7 +243,8 @@ function Account() {
                 </p>
 
                 <p className="mt-2 text-sm leading-relaxed text-fg">
-                  {bio || "Você ainda não adicionou uma bio."}
+                  {bio ||
+                    "Você ainda não adicionou uma bio."}
                 </p>
               </div>
 
@@ -298,7 +307,9 @@ function Account() {
           </p>
 
           <Button asChild className="mt-4">
-            <Link to="/admin">Abrir Admin</Link>
+            <Link to="/admin">
+              Abrir Admin
+            </Link>
           </Button>
         </section>
       )}
@@ -314,7 +325,9 @@ function Account() {
         </Button>
 
         <Button asChild variant="ghost">
-          <Link to="/">Voltar ao início</Link>
+          <Link to="/">
+            Voltar ao início
+          </Link>
         </Button>
       </section>
     </main>
