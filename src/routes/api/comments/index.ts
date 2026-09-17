@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { requireUserId } from "@/lib/auth/verify.server";
+import { auth } from "@/lib/auth/server";
 
 export const Route = createFileRoute("/api/comments/")({
   server: {
@@ -66,13 +66,18 @@ export const Route = createFileRoute("/api/comments/")({
       // CRIAR COMENTÁRIO
       POST: async ({ request }) => {
         try {
-          const authorization = request.headers.get("authorization");
+          const session = await auth.api.getSession({
+            headers: request.headers,
+          });
 
-          const token = authorization?.startsWith("Bearer ")
-            ? authorization.slice(7)
-            : undefined;
-
-          const user = await requireUserId(token);
+          if (!session?.user?.id) {
+            return Response.json(
+              {
+                error: "Você precisa estar logado para comentar.",
+              },
+              { status: 401 },
+            );
+          }
 
           const body = await request.json();
 
@@ -113,8 +118,7 @@ export const Route = createFileRoute("/api/comments/")({
 
           const sql = await getSql();
 
-          // Se for uma resposta, verifica se o comentário pai
-          // pertence ao mesmo anime e episódio.
+          // Verifica o comentário pai quando for uma resposta.
           if (parentId) {
             const parent = await sql.query(
               `
@@ -165,7 +169,7 @@ export const Route = createFileRoute("/api/comments/")({
             `,
             [
               id,
-              user.id,
+              session.user.id,
               animeId,
               episodeId,
               content,
@@ -176,7 +180,11 @@ export const Route = createFileRoute("/api/comments/")({
 
           return Response.json(
             {
-              comment: result.rows[0],
+              comment: {
+                ...result.rows[0],
+                userName: session.user.name || "Usuário",
+                userImage: session.user.image || null,
+              },
             },
             { status: 201 },
           );
