@@ -318,7 +318,7 @@ function Account() {
         </section>
       )}
 
-      <section className="flex flex-wrap gap-2 px-1">
+      <section className="flex flex-wrap gap-2 px-1 pb-24">
         <Button
           type="button"
           variant="outline"
