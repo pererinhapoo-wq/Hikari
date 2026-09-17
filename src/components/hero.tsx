@@ -33,29 +33,18 @@ export function Hero({
   }, [animes.length]);
 
   return (
-    <section className="relative -mx-4 h-[14rem] overflow-hidden bg-bg md:-mx-6 md:h-[20rem] lg:h-[24rem]">
+    <section className="relative -mx-4 h-[18rem] overflow-hidden bg-bg md:-mx-6 md:h-[20rem] lg:h-[24rem]">
       {backdrop && (
-        <>
-          <img
-            src={backdrop}
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 size-full scale-110 object-cover object-center opacity-40 blur-xl"
-          />
-
-          <div className="absolute inset-0 bg-black/30" />
-
-          <img
-            key={current.id}
-            src={backdrop}
-            alt=""
-            className="absolute inset-0 size-full object-contain object-center"
-          />
-        </>
+        <img
+          key={current.id}
+          src={backdrop}
+          alt=""
+          className="absolute inset-0 size-full object-cover object-center"
+        />
       )}
 
-      <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
-      <div className="absolute inset-0 bg-linear-to-r from-bg/90 via-bg/40 to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/55 to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-r from-bg/90 via-bg/35 to-transparent" />
 
       <div className="relative z-10 flex h-full flex-col justify-end px-4 pb-4 md:px-6 md:pb-6">
         <p className="text-[9px] font-medium tracking-[0.22em] text-muted uppercase">
@@ -144,4 +133,4 @@ export function Hero({
       </div>
     </section>
   );
-      }
+}
