@@ -63,6 +63,8 @@ export function Shell() {
         ]
       : BASE_NAV;
 
+  const bottomNav = BASE_NAV;
+
   if (cinema) return <Outlet />;
 
   return (
@@ -147,7 +149,7 @@ export function Shell() {
                       to={item.to}
                       onClick={() => setMenuOpen(false)}
                       className={cn(
-                        ""flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                        "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
                         active
                           ? "bg-elevated text-fg"
                           : "text-muted hover:bg-elevated hover:text-fg"
@@ -164,7 +166,7 @@ export function Shell() {
         </>
       )}
 
-      <main className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 sm:pb-16">
+      <main className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6 sm:pb-16">
         <Outlet />
       </main>
 
@@ -180,8 +182,8 @@ export function Shell() {
       </footer>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 backdrop-blur-md md:hidden">
-        <ul className="grid grid-cols-5">
-          {nav.map((item) => {
+        <ul className="grid grid-cols-4">
+          {bottomNav.map((item) => {
             const active = item.match(pathname);
             const Icon = item.icon;
 
