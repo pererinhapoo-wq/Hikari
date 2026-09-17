@@ -40,7 +40,7 @@ export function Hero({
       className="
         relative
         -mx-4
-        h-[22rem]
+        h-[23rem]
         overflow-hidden
         sm:-mx-6
         sm:h-[31rem]
@@ -49,29 +49,30 @@ export function Hero({
     >
       {backdrop && (
         <>
-          {/* Fundo desfocado para preencher toda a área */}
-          <img
-            src={backdrop}
-            alt=""
-            aria-hidden="true"
-            className="
-              absolute inset-0
-              size-full
-              scale-110
-              object-cover
-              opacity-45
-              blur-2xl
-            "
-          />
+          {/* Fundo da imagem: elimina as faixas pretas */}
+          <div className="absolute inset-0 overflow-hidden bg-bg">
+            <img
+              src={backdrop}
+              alt=""
+              aria-hidden="true"
+              className="
+                absolute inset-0
+                size-full
+                scale-125
+                object-cover
+                opacity-65
+                blur-2xl
+              "
+            />
 
-          {/* Escurece o fundo */}
-          <div className="absolute inset-0 bg-black/45" />
+            <div className="absolute inset-0 bg-black/35" />
+          </div>
 
-          {/* Banner principal */}
+          {/* Imagem principal sem distorção */}
           <div
             className="
               absolute inset-x-0 top-0
-              h-[13rem]
+              h-[14rem]
               overflow-hidden
               sm:h-[20rem]
               lg:h-[23rem]
@@ -84,7 +85,7 @@ export function Hero({
               className="
                 absolute inset-0
                 size-full
-                object-cover
+                object-contain
                 object-center
               "
             />
@@ -92,14 +93,15 @@ export function Hero({
             {/* Escurecimento suave */}
             <div className="absolute inset-0 bg-black/10" />
 
-            {/* Gradiente para o conteúdo */}
+            {/* Transição para o conteúdo */}
             <div
               className="
-                absolute inset-0
-                bg-linear-to-b
-                from-transparent
-                via-transparent
-                to-bg
+                absolute inset-x-0 bottom-0
+                h-1/2
+                bg-linear-to-t
+                from-bg
+                via-bg/45
+                to-transparent
               "
             />
           </div>
