@@ -1,5 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Bookmark, Clapperboard, House, Search, Settings2, UserCircle } from "lucide-react";
+import { Bookmark, Clapperboard, House, Menu, Search, Settings2, UserCircle } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -26,7 +26,24 @@ export function Shell() {
     <div className="min-h-dvh bg-bg text-fg">
       <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
-          <Logo />
+          <details className="relative">
+  <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-md">
+    <Menu size={24} />
+  </summary>
+
+  {user && isHikariAdmin(user.primaryEmail) && (
+    <div className="absolute left-0 top-12 z-50 w-44 rounded-md border bg-bg p-2 shadow-lg">
+      <Link
+        to="/admin"
+        className="block rounded-md px-3 py-2 text-sm hover:bg-white/10"
+      >
+        Admin
+      </Link>
+    </div>
+  )}
+</details>
+
+<Logo />
           <nav className="hidden items-center gap-1 md:flex">
             {nav.map((item) => {
               const active = item.match(pathname);
