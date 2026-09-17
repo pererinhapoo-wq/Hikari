@@ -1080,6 +1080,10 @@ function CommentsSection({
                             replyCount={
                               0
                             }
+                            replyToName={
+                              comment.userName ||
+                              "Usuário"
+                            }
                             likingId={
                               likingId
                             }
@@ -1127,6 +1131,7 @@ function CommentsSection({
 function CommentCard({
   comment,
   replyCount,
+  replyToName,
   likingId,
   replyingId,
   replyText,
@@ -1141,6 +1146,7 @@ function CommentCard({
 }: {
   comment: Comment;
   replyCount: number;
+  replyToName?: string;
   likingId: string | null;
   replyingId: string | null;
   replyText: string;
@@ -1211,6 +1217,23 @@ function CommentCard({
               {comment.userName ||
                 "Usuário"}
             </span>
+
+            {/* ============================================= */}
+            {/* DESTINATÁRIO DA RESPOSTA                      */}
+            {/* ============================================= */}
+
+            {isReply &&
+              replyToName && (
+                <>
+                  <span className="text-sm text-subtle">
+                    →
+                  </span>
+
+                  <span className="text-sm font-semibold text-muted">
+                    {replyToName}
+                  </span>
+                </>
+              )}
 
             <span className="text-xs text-subtle">
               ·{" "}
@@ -1287,7 +1310,7 @@ function CommentCard({
 
             </button>
 
-            {/* RESPOSTA */}
+            {/* RESPONDER */}
 
             {!isReply && (
               <button
@@ -1396,4 +1419,4 @@ function CommentCard({
 
     </article>
   );
-    }
+}
