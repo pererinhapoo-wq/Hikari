@@ -11,11 +11,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchAnimeDetail } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, isDirectVideo, youtubeIdFrom } from "@/lib/utils";
 import { mergeDetail } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
 import { displayTitle, type Episode } from "@/lib/types";
-import { isDirectVideo, youtubeIdFrom } from "@/lib/utils";
 
 export const Route = createFileRoute("/watch/$id")({
   validateSearch: (raw: Record<string, unknown>): { ep?: string } => ({
@@ -23,7 +22,9 @@ export const Route = createFileRoute("/watch/$id")({
   }),
 
   loader: async ({ params }) => {
-    if (params.id.startsWith("local-")) return { remote: null };
+    if (params.id.startsWith("local-")) {
+      return { remote: null };
+    }
 
     const remote = await fetchAnimeDetail({
       data: { id: params.id },
@@ -46,13 +47,17 @@ function WatchPage() {
   const anime = mergeDetail(remote, id, locals);
 
   const episodes = useMemo(() => {
-    if (!anime) return [] as Episode[];
+    if (!anime) {
+      return [] as Episode[];
+    }
 
     return anime.seasons.flatMap((s) => s.episodes);
   }, [anime]);
 
   const current = useMemo(() => {
-    if (!episodes.length) return null;
+    if (!episodes.length) {
+      return null;
+    }
 
     return episodes.find((e) => e.id === epQuery) ?? episodes[0];
   }, [episodes, epQuery]);
@@ -69,7 +74,9 @@ function WatchPage() {
       : null;
 
   useEffect(() => {
-    if (!anime || !current) return;
+    if (!anime || !current) {
+      return;
+    }
 
     markContinue({
       animeId: anime.id,
@@ -311,11 +318,10 @@ function WatchPage() {
           </section>
         )}
 
-        {/* ================================================== */}
         {/* COMENTÁRIOS */}
-        {/* ================================================== */}
-
         <CommentsSection
+          animeId={anime.id}
+          episodeId={current?.id ?? ""}
           animeTitle={title}
           episodeNumber={current?.number ?? 1}
         />
@@ -328,60 +334,159 @@ function WatchPage() {
 /* COMENTÁRIOS                                               */
 /* ========================================================= */
 
-type Comment = {
-  id: number;
-  name: string;
-  text: string;
+type ApiComment = {
+  id: string;
+  animeId: string;
+  episodeId: string;
+  content: string;
+  parentId: string | null;
+  isSpoiler: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  userName: string | null;
+  userImage: string | null;
+};
+
+type Comment = ApiComment & {
   likes: number;
-  time: string;
 };
 
 function CommentsSection({
+  animeId,
+  episodeId,
   animeTitle,
   episodeNumber,
 }: {
+  animeId: string;
+  episodeId: string;
   animeTitle: string;
   episodeNumber: number;
 }) {
   const [text, setText] = useState("");
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
 
-  const [comments, setComments] = useState<Comment[]>([
-    {
-      id: 1,
-      name: "Hikari",
-      text: "O que vocês acharam desse episódio?",
-      likes: 12,
-      time: "agora",
-    },
-    {
-      id: 2,
-      name: "Otaku",
-      text: "Esse episódio é muito bom! 🔥",
-      likes: 8,
-      time: "5 min",
-    },
-  ]);
+  const loadComments = async () => {
+    if (!animeId || !episodeId) {
+      setComments([]);
+      setLoading(false);
+      return;
+    }
 
-  const handleComment = () => {
-    const value = text.trim();
+    try {
+      setLoading(true);
+      setError("");
 
-    if (!value) return;
+      const response = await fetch(
+        `/api/comments?animeId=${encodeURIComponent(
+          animeId,
+        )}&episodeId=${encodeURIComponent(episodeId)}`,
+      );
 
-    setComments((current) => [
-      {
-        id: Date.now(),
-        name: "Você",
-        text: value,
-        likes: 0,
-        time: "agora",
-      },
-      ...current,
-    ]);
+      const data = await response.json();
 
-    setText("");
+      if (!response.ok) {
+        throw new Error(
+          data?.error || "Não foi possível carregar os comentários.",
+        );
+      }
+
+      const list = Array.isArray(data?.comments)
+        ? data.comments
+        : [];
+
+      setComments(
+        list.map((comment: ApiComment) => ({
+          ...comment,
+          likes: 0,
+        })),
+      );
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        "Não foi possível carregar os comentários.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleLike = (id: number) => {
+  useEffect(() => {
+    loadComments();
+  }, [animeId, episodeId]);
+
+  const handleComment = async () => {
+    const value = text.trim();
+
+    if (!value || sending || !episodeId) {
+      return;
+    }
+
+    try {
+      setSending(true);
+      setError("");
+
+      const response = await fetch("/api/comments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          animeId,
+          episodeId,
+          content: value,
+          parentId: null,
+          isSpoiler: false,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setError(
+            "Você precisa entrar na sua conta para comentar.",
+          );
+        } else {
+          setError(
+            data?.error ||
+              "Não foi possível publicar o comentário.",
+          );
+        }
+
+        return;
+      }
+
+      if (data?.comment) {
+        setComments((current) => [
+          {
+            ...data.comment,
+            likes: 0,
+          },
+          ...current,
+        ]);
+      } else {
+        await loadComments();
+      }
+
+      setText("");
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        "Não foi possível publicar o comentário.",
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleLike = (id: string) => {
     setComments((current) =>
       current.map((comment) =>
         comment.id === id
@@ -392,6 +497,20 @@ function CommentsSection({
           : comment,
       ),
     );
+  };
+
+  const formatDate = (date: string) => {
+    const parsed = new Date(date);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return "";
+    }
+
+    return parsed.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
   };
 
   return (
@@ -419,7 +538,9 @@ function CommentsSection({
       <div className="mt-5 rounded-xl border border-white/5 bg-surface p-4 sm:p-5">
         <textarea
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) =>
+            setText(event.target.value)
+          }
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
@@ -431,78 +552,135 @@ function CommentsSection({
           }}
           placeholder="Escreva um comentário..."
           rows={3}
-          className="w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
+          disabled={sending}
+          className="w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15 disabled:opacity-60"
         />
+
+        {error && (
+          <p className="mt-3 text-sm text-red-400">
+            {error}
+          </p>
+        )}
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <p className="text-xs text-subtle">
-            Enter para enviar · Shift + Enter para quebrar linha
+            Enter para enviar · Shift + Enter para quebrar
+            linha
           </p>
 
           <Button
             type="button"
             size="sm"
             onClick={handleComment}
-            disabled={!text.trim()}
+            disabled={!text.trim() || sending}
           >
             <Send className="size-4" />
-            Comentar
+
+            {sending
+              ? "Enviando..."
+              : "Comentar"}
           </Button>
         </div>
       </div>
 
       {/* LISTA */}
       <div className="mt-5 space-y-3">
-        {comments.map((comment) => (
-          <article
-            key={comment.id}
-            className="rounded-xl border border-white/5 bg-surface p-4 sm:p-5"
-          >
-            <div className="flex gap-3">
-              {/* AVATAR */}
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-sm font-semibold">
-                {comment.name.charAt(0).toUpperCase()}
-              </div>
-
-              {/* CONTEÚDO */}
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="text-sm font-semibold">
-                    {comment.name}
-                  </span>
-
-                  <span className="text-xs text-subtle">
-                    · {comment.time}
-                  </span>
+        {loading ? (
+          <div className="rounded-xl border border-white/5 bg-surface p-5 text-sm text-muted">
+            Carregando comentários...
+          </div>
+        ) : comments.length === 0 ? (
+          <div className="rounded-xl border border-white/5 bg-surface p-5 text-sm text-muted">
+            Ainda não há comentários neste episódio.
+            Seja o primeiro a comentar!
+          </div>
+        ) : (
+          comments.map((comment) => (
+            <article
+              key={comment.id}
+              className="rounded-xl border border-white/5 bg-surface p-4 sm:p-5"
+            >
+              <div className="flex gap-3">
+                {/* AVATAR */}
+                <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated text-sm font-semibold">
+                  {comment.userImage ? (
+                    <img
+                      src={comment.userImage}
+                      alt={
+                        comment.userName ||
+                        "Usuário"
+                      }
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    (
+                      comment.userName ||
+                      "Usuário"
+                    )
+                      .charAt(0)
+                      .toUpperCase()
+                  )}
                 </div>
 
-                <p className="mt-2 text-sm leading-6 text-muted">
-                  {comment.text}
-                </p>
+                {/* CONTEÚDO */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="text-sm font-semibold">
+                      {comment.userName ||
+                        "Usuário"}
+                    </span>
 
-                <div className="mt-3 flex items-center gap-4">
-                  <button
-                    type="button"
-                    onClick={() => handleLike(comment.id)}
-                    className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
-                  >
-                    <Heart className="size-4" />
-                    {comment.likes}
-                  </button>
+                    <span className="text-xs text-subtle">
+                      · {formatDate(
+                        comment.createdAt,
+                      )}
+                    </span>
+                  </div>
 
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
-                  >
-                    <MessageCircle className="size-4" />
-                    Responder
-                  </button>
+                  {/* SPOILER */}
+                  {comment.isSpoiler ? (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-sm text-primary">
+                        Mostrar spoiler
+                      </summary>
+
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
+                        {comment.content}
+                      </p>
+                    </details>
+                  ) : (
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
+                      {comment.content}
+                    </p>
+                  )}
+
+                  {/* AÇÕES */}
+                  <div className="mt-3 flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleLike(comment.id)
+                      }
+                      className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
+                    >
+                      <Heart className="size-4" />
+                      {comment.likes}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
+                    >
+                      <MessageCircle className="size-4" />
+                      Responder
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          ))
+        )}
       </div>
     </section>
   );
-            }
+  }
