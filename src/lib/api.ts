@@ -1,7 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { currentAnimeSeason, stripHtml, youtubeIdFrom } from "@/lib/utils";
+
+import {
+  currentAnimeSeason,
+  stripHtml,
+  youtubeIdFrom,
+} from "@/lib/utils";
+
 import { seasonLabel } from "@/lib/labels";
+
 import type {
   Anime,
   Episode,
@@ -20,8 +27,16 @@ const CARD_FIELDS = `
   id
   idMal
   isAdult
-  title { romaji english native }
-  coverImage { extraLarge large color }
+  title {
+    romaji
+    english
+    native
+  }
+  coverImage {
+    extraLarge
+    large
+    color
+  }
   bannerImage
   averageScore
   genres
@@ -31,7 +46,11 @@ const CARD_FIELDS = `
   season
   seasonYear
   description(asHtml: false)
-  trailer { id site thumbnail }
+  trailer {
+    id
+    site
+    thumbnail
+  }
 `;
 
 type AniTitle = {
@@ -44,38 +63,59 @@ type AniMedia = {
   id: number;
   idMal?: number | null;
   isAdult?: boolean;
+
   title?: AniTitle | null;
+
   coverImage?: {
     extraLarge?: string | null;
     large?: string | null;
     color?: string | null;
   } | null;
+
   bannerImage?: string | null;
+
   averageScore?: number | null;
+
   genres?: string[] | null;
+
   format?: string | null;
+
   status?: string | null;
+
   episodes?: number | null;
+
   duration?: number | null;
+
   season?: string | null;
+
   seasonYear?: number | null;
+
   description?: string | null;
+
   trailer?: {
     id?: string | null;
     site?: string | null;
     thumbnail?: string | null;
   } | null;
-  studios?: { nodes?: { name: string }[] | null } | null;
+
+  studios?: {
+    nodes?: {
+      name: string;
+    }[] | null;
+  } | null;
+
   nextAiringEpisode?: {
     episode: number;
     airingAt: number;
   } | null;
+
   streamingEpisodes?: {
     title?: string;
     thumbnail?: string;
     url?: string;
     site?: string;
   }[] | null;
+
   recommendations?: {
     nodes?: {
       mediaRecommendation?: AniMedia | null;
@@ -93,12 +133,19 @@ const cache = new Map<
 
 const TTL = 5 * 60 * 1000;
 
-function fromCache<T>(key: string): T | null {
+function fromCache<T>(
+  key: string,
+): T | null {
   const hit = cache.get(key);
 
-  if (!hit) return null;
+  if (!hit) {
+    return null;
+  }
 
-  if (Date.now() - hit.at > TTL) {
+  if (
+    Date.now() - hit.at >
+    TTL
+  ) {
     cache.delete(key);
     return null;
   }
@@ -106,7 +153,10 @@ function fromCache<T>(key: string): T | null {
   return hit.data as T;
 }
 
-function toCache<T>(key: string, data: T): T {
+function toCache<T>(
+  key: string,
+  data: T,
+): T {
   cache.set(key, {
     at: Date.now(),
     data,
@@ -117,20 +167,31 @@ function toCache<T>(key: string, data: T): T {
 
 async function anilistGraphQL<T>(
   query: string,
-  variables?: Record<string, unknown>,
+  variables?: Record<
+    string,
+    unknown
+  >,
 ): Promise<T> {
-  const res = await fetch(ANILIST, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
+  const res = await fetch(
+    ANILIST,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+        Accept:
+          "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        variables,
+      }),
+      signal:
+        AbortSignal.timeout(
+          12000,
+        ),
     },
-    body: JSON.stringify({
-      query,
-      variables,
-    }),
-    signal: AbortSignal.timeout(12000),
-  });
+  );
 
   if (!res.ok) {
     throw new Error(
@@ -138,14 +199,17 @@ async function anilistGraphQL<T>(
     );
   }
 
-  const json = (await res.json()) as {
-    data?: T;
-    errors?: {
-      message: string;
-    }[];
-  };
+  const json =
+    (await res.json()) as {
+      data?: T;
+      errors?: {
+        message: string;
+      }[];
+    };
 
-  if (json.errors?.length) {
+  if (
+    json.errors?.length
+  ) {
     throw new Error(
       json.errors[0]?.message ??
         "AniList error",
@@ -153,7 +217,9 @@ async function anilistGraphQL<T>(
   }
 
   if (!json.data) {
-    throw new Error("AniList sem dados");
+    throw new Error(
+      "AniList sem dados",
+    );
   }
 
   return json.data;
@@ -167,11 +233,15 @@ async function jikanFetch<T>(
     `${JIKAN}${path}`,
     {
       headers: {
-        Accept: "application/json",
+        Accept:
+          "application/json",
         "User-Agent":
           "Hikari/1.0 (anime catalog)",
       },
-      signal: AbortSignal.timeout(12000),
+      signal:
+        AbortSignal.timeout(
+          12000,
+        ),
     },
   );
 
@@ -179,11 +249,13 @@ async function jikanFetch<T>(
     res.status === 429 &&
     attempt < 2
   ) {
-    await new Promise((r) =>
-      setTimeout(
-        r,
-        900 * (attempt + 1),
-      ),
+    await new Promise(
+      (resolve) =>
+        setTimeout(
+          resolve,
+          900 *
+            (attempt + 1),
+        ),
     );
 
     return jikanFetch<T>(
@@ -210,18 +282,26 @@ function isAdultAnime(
 function trailerFromAni(
   media: AniMedia,
 ): string | null {
-  const t = media.trailer;
+  const trailer =
+    media.trailer;
 
-  if (!t?.id) return null;
-
-  if (
-    (t.site ?? "youtube").toLowerCase() ===
-    "youtube"
-  ) {
-    return t.id;
+  if (!trailer?.id) {
+    return null;
   }
 
-  return youtubeIdFrom(t.id);
+  if (
+    (
+      trailer.site ??
+      "youtube"
+    ).toLowerCase() ===
+    "youtube"
+  ) {
+    return trailer.id;
+  }
+
+  return youtubeIdFrom(
+    trailer.id,
+  );
 }
 
 function mapAniSlim(
@@ -229,186 +309,318 @@ function mapAniSlim(
 ): SlimAnime {
   return {
     id: String(media.id),
+
     anilistId: media.id,
+
     malId:
-      media.idMal ?? undefined,
+      media.idMal ??
+      undefined,
+
     titles: {
       romaji:
-        media.title?.romaji ?? "",
+        media.title?.romaji ??
+        "",
       english:
-        media.title?.english ?? "",
+        media.title?.english ??
+        "",
       native:
-        media.title?.native ?? "",
+        media.title?.native ??
+        "",
     },
+
     cover:
-      media.coverImage?.extraLarge ||
-      media.coverImage?.large ||
+      media.coverImage
+        ?.extraLarge ||
+      media.coverImage
+        ?.large ||
       "",
+
     banner:
-      media.bannerImage || "",
+      media.bannerImage ||
+      "",
+
     synopsis: stripHtml(
       media.description,
     ),
+
     score:
-      media.averageScore ?? null,
+      media.averageScore ??
+      null,
+
     genres:
       media.genres ?? [],
+
     format:
       media.format ?? "",
+
     status:
       media.status ?? "",
+
     episodesCount:
       media.episodes ?? null,
+
     season:
       media.season ?? null,
+
     year:
       media.seasonYear ?? null,
+
     trailerId:
-      trailerFromAni(media),
+      trailerFromAni(
+        media,
+      ),
+
     color:
-      media.coverImage?.color ??
+      media.coverImage
+        ?.color ??
       undefined,
+
     source: "anilist",
   };
 }
 
 type JikanAnime = {
   mal_id: number;
+
   title?: string;
-  title_english?: string | null;
-  title_japanese?: string | null;
-  synopsis?: string | null;
-  score?: number | null;
-  episodes?: number | null;
-  status?: string | null;
-  type?: string | null;
-  year?: number | null;
-  season?: string | null;
+
+  title_english?:
+    | string
+    | null;
+
+  title_japanese?:
+    | string
+    | null;
+
+  synopsis?:
+    | string
+    | null;
+
+  score?:
+    | number
+    | null;
+
+  episodes?:
+    | number
+    | null;
+
+  status?:
+    | string
+    | null;
+
+  type?:
+    | string
+    | null;
+
+  year?:
+    | number
+    | null;
+
+  season?:
+    | string
+    | null;
+
   genres?: {
     name: string;
   }[];
+
   images?: {
     jpg?: {
       large_image_url?: string;
       image_url?: string;
     };
   };
+
   trailer?: {
-    youtube_id?: string | null;
+    youtube_id?:
+      | string
+      | null;
+
     images?: {
       maximum_image_url?: string;
     };
   };
+
   studios?: {
     name: string;
   }[];
-  duration?: string | null;
+
+  duration?:
+    | string
+    | null;
 };
 
 function jikanStatus(
   status?: string | null,
 ): string {
-  const s =
+  const value =
     (status ?? "").toLowerCase();
 
-  if (s.includes("air")) {
+  if (
+    value.includes("air")
+  ) {
     return "RELEASING";
   }
 
   if (
-    s.includes("finish") ||
-    s.includes("complete")
+    value.includes(
+      "finish",
+    ) ||
+    value.includes(
+      "complete",
+    )
   ) {
     return "FINISHED";
   }
 
   if (
-    s.includes("not yet") ||
-    s.includes("upcoming")
+    value.includes(
+      "not yet",
+    ) ||
+    value.includes(
+      "upcoming",
+    )
   ) {
     return "NOT_YET_RELEASED";
   }
 
-  if (s.includes("hiatus")) {
+  if (
+    value.includes(
+      "hiatus",
+    )
+  ) {
     return "HIATUS";
   }
 
   return (
     status
       ?.toUpperCase()
-      .replace(/\s+/g, "_") ?? ""
+      .replace(
+        /\s+/g,
+        "_",
+      ) ?? ""
   );
 }
 
 function jikanFormat(
   type?: string | null,
 ): string {
-  const t =
-    (type ?? "").toUpperCase();
+  const value =
+    (
+      type ?? ""
+    ).toUpperCase();
 
-  if (t === "TV") return "TV";
-  if (t === "MOVIE") return "MOVIE";
-  if (t === "OVA") return "OVA";
-  if (t === "ONA") return "ONA";
-  if (t === "SPECIAL") {
+  if (value === "TV") {
+    return "TV";
+  }
+
+  if (
+    value === "MOVIE"
+  ) {
+    return "MOVIE";
+  }
+
+  if (value === "OVA") {
+    return "OVA";
+  }
+
+  if (value === "ONA") {
+    return "ONA";
+  }
+
+  if (
+    value === "SPECIAL"
+  ) {
     return "SPECIAL";
   }
-  if (t === "MUSIC") return "MUSIC";
 
-  return t;
+  if (
+    value === "MUSIC"
+  ) {
+    return "MUSIC";
+  }
+
+  return value;
 }
 
 function mapJikanSlim(
-  a: JikanAnime,
+  anime: JikanAnime,
 ): SlimAnime {
   return {
-    id: `mal-${a.mal_id}`,
-    malId: a.mal_id,
+    id: `mal-${anime.mal_id}`,
+
+    malId:
+      anime.mal_id,
+
     titles: {
-      romaji: a.title ?? "",
+      romaji:
+        anime.title ?? "",
       english:
-        a.title_english ?? "",
+        anime.title_english ??
+        "",
       native:
-        a.title_japanese ?? "",
+        anime.title_japanese ??
+        "",
     },
+
     cover:
-      a.images?.jpg
+      anime.images?.jpg
         ?.large_image_url ||
-      a.images?.jpg
+      anime.images?.jpg
         ?.image_url ||
       "",
+
     banner:
-      a.trailer?.images
+      anime.trailer?.images
         ?.maximum_image_url ||
       "",
+
     synopsis: stripHtml(
-      a.synopsis,
+      anime.synopsis,
     ),
+
     score:
-      a.score != null
+      anime.score != null
         ? Math.round(
-            a.score * 10,
+            anime.score * 10,
           )
         : null,
+
     genres:
-      (a.genres ?? []).map(
-        (g) => g.name,
+      (
+        anime.genres ?? []
+      ).map(
+        (genre) =>
+          genre.name,
       ),
+
     format:
-      jikanFormat(a.type),
+      jikanFormat(
+        anime.type,
+      ),
+
     status:
-      jikanStatus(a.status),
+      jikanStatus(
+        anime.status,
+      ),
+
     episodesCount:
-      a.episodes ?? null,
-    season:
-      a.season
-        ? a.season.toUpperCase()
-        : null,
-    year:
-      a.year ?? null,
-    trailerId:
-      a.trailer?.youtube_id ??
+      anime.episodes ??
       null,
+
+    season:
+      anime.season
+        ? anime.season.toUpperCase()
+        : null,
+
+    year:
+      anime.year ?? null,
+
+    trailerId:
+      anime.trailer
+        ?.youtube_id ??
+      null,
+
     source: "jikan",
   };
 }
@@ -416,7 +628,8 @@ function mapJikanSlim(
 async function jikanEpisodes(
   malId: number,
 ): Promise<Season[]> {
-  const episodes: Episode[] = [];
+  const episodes: Episode[] =
+    [];
 
   let page = 1;
   let hasNext = true;
@@ -425,10 +638,11 @@ async function jikanEpisodes(
     hasNext &&
     page <= 8
   ) {
-    type EpPage = {
+    type EpisodePage = {
       pagination?: {
         has_next_page?: boolean;
       };
+
       data?: {
         mal_id: number;
         title?: string;
@@ -440,23 +654,28 @@ async function jikanEpisodes(
     };
 
     const json =
-      await jikanFetch<EpPage>(
+      await jikanFetch<EpisodePage>(
         `/anime/${malId}/episodes?page=${page}`,
       );
 
     for (
-      const ep of
+      const episode of
         json.data ?? []
     ) {
       episodes.push({
-        id: `mal-ep-${malId}-${ep.mal_id}`,
-        number: ep.mal_id,
+        id: `mal-ep-${malId}-${episode.mal_id}`,
+
+        number:
+          episode.mal_id,
+
         title:
-          ep.title ||
-          ep.title_japanese ||
-          `Episódio ${ep.mal_id}`,
+          episode.title ||
+          episode.title_japanese ||
+          `Episódio ${episode.mal_id}`,
+
         aired:
-          ep.aired ?? undefined,
+          episode.aired ??
+          undefined,
       });
     }
 
@@ -475,8 +694,12 @@ async function jikanEpisodes(
   return [
     {
       id: `mal-s1-${malId}`,
+
       number: 1,
-      title: "Temporada 1",
+
+      title:
+        "Temporada 1",
+
       episodes,
     },
   ];
@@ -489,17 +712,29 @@ function streamingFromAni(
     media.streamingEpisodes ??
     []
   )
-    .filter((e) => e.url)
-    .map((e) => ({
-      title:
-        e.title ?? "Episódio",
-      thumbnail:
-        e.thumbnail ?? "",
-      url:
-        e.url ?? "",
-      site:
-        e.site ?? "",
-    }));
+    .filter(
+      (episode) =>
+        Boolean(
+          episode.url,
+        ),
+    )
+    .map(
+      (episode) => ({
+        title:
+          episode.title ??
+          "Episódio",
+
+        thumbnail:
+          episode.thumbnail ??
+          "",
+
+        url:
+          episode.url ?? "",
+
+        site:
+          episode.site ?? "",
+      }),
+    );
 }
 
 function mapAniFull(
@@ -511,31 +746,43 @@ function mapAniFull(
 
   return {
     ...slim,
+
     duration:
-      media.duration ?? null,
+      media.duration ??
+      null,
+
     studios: (
-      media.studios?.nodes ??
-      []
+      media.studios
+        ?.nodes ?? []
     ).map(
-      (n) => n.name,
+      (studio) =>
+        studio.name,
     ),
+
     nextEpisode:
       media.nextAiringEpisode ??
       undefined,
+
     streamingEpisodes:
-      streamingFromAni(media),
+      streamingFromAni(
+        media,
+      ),
+
     seasons,
+
     recommendations: (
       media.recommendations
         ?.nodes ?? []
     )
       .map(
-        (n) =>
-          n.mediaRecommendation,
+        (node) =>
+          node.mediaRecommendation,
       )
       .filter(
-        (m): m is AniMedia =>
-          Boolean(m?.id),
+        (
+          item,
+        ): item is AniMedia =>
+          Boolean(item?.id),
       )
       .slice(0, 12)
       .map(mapAniSlim),
@@ -586,10 +833,11 @@ async function fetchRecentReleasesFromAni(): Promise<
           }
         }
       }
-    `,
+      `,
       {
         airingAtGreater:
           weekAgo,
+
         airingAtLesser:
           now,
       },
@@ -613,11 +861,15 @@ async function fetchRecentReleasesFromAni(): Promise<
       continue;
     }
 
-    if (isAdultAnime(media)) {
+    if (
+      isAdultAnime(media)
+    ) {
       continue;
     }
 
-    if (seen.has(media.id)) {
+    if (
+      seen.has(media.id)
+    ) {
       continue;
     }
 
@@ -648,15 +900,19 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
       trending: {
         media: AniMedia[];
       };
+
       popular: {
         media: AniMedia[];
       };
+
       top: {
         media: AniMedia[];
       };
+
       season: {
         media: AniMedia[];
       };
+
       genres: string[];
     }>(
       `
@@ -716,7 +972,7 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
 
         genres: GenreCollection
       }
-    `,
+      `,
       {
         season,
         year,
@@ -728,38 +984,45 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
 
   const trending =
     (
-      data.trending.media ??
-      []
+      data.trending
+        .media ?? []
     ).filter(
       (anime) =>
-        !isAdultAnime(anime),
+        !isAdultAnime(
+          anime,
+        ),
     );
 
   const popular =
     (
-      data.popular.media ??
-      []
+      data.popular
+        .media ?? []
     ).filter(
       (anime) =>
-        !isAdultAnime(anime),
+        !isAdultAnime(
+          anime,
+        ),
     );
 
   const top =
     (
-      data.top.media ??
-      []
+      data.top.media ?? []
     ).filter(
       (anime) =>
-        !isAdultAnime(anime),
+        !isAdultAnime(
+          anime,
+        ),
     );
 
   const seasonItems =
     (
-      data.season.media ??
-      []
+      data.season
+        .media ?? []
     ).filter(
       (anime) =>
-        !isAdultAnime(anime),
+        !isAdultAnime(
+          anime,
+        ),
     );
 
   return {
@@ -767,31 +1030,41 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
       trending.map(
         mapAniSlim,
       ),
+
     popular:
       popular.map(
         mapAniSlim,
       ),
+
     top:
       top.map(
         mapAniSlim,
       ),
+
     season:
       seasonItems.map(
         mapAniSlim,
       ),
+
     releases,
+
     seasonName:
       seasonLabel(season),
+
     seasonYear:
       year,
+
     source: "anilist",
+
     genres:
-      (data.genres ?? [])
-        .filter(
-          (g) =>
-            g &&
-            g !== "Hentai",
-        ),
+      (
+        data.genres ?? []
+      ).filter(
+        (genre) =>
+          genre &&
+          genre !==
+            "Hentai",
+      ),
   };
 }
 
@@ -813,48 +1086,64 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
     jikanFetch<List>(
       "/seasons/now?limit=18",
     ),
+
     jikanFetch<List>(
       "/top/anime?filter=bypopularity&limit=18",
     ),
+
     jikanFetch<List>(
       "/top/anime?limit=18",
     ),
   ]);
 
   const seasonItems =
-    (now.data ?? []).map(
+    (
+      now.data ?? []
+    ).map(
       mapJikanSlim,
     );
 
   const popularItems =
-    (top.data ?? []).map(
+    (
+      top.data ?? []
+    ).map(
       mapJikanSlim,
     );
 
   const topItems =
-    (popular.data ?? []).map(
+    (
+      popular.data ?? []
+    ).map(
       mapJikanSlim,
     );
 
   return {
     trending:
       seasonItems,
+
     popular:
       popularItems,
+
     top:
       topItems,
+
     season:
       seasonItems,
+
     releases:
       seasonItems.slice(
         0,
         18,
       ),
+
     seasonName:
       seasonLabel(season),
+
     seasonYear:
       year,
+
     source: "jikan",
+
     genres: [
       "Action",
       "Adventure",
@@ -877,40 +1166,49 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
 export const fetchHomeCatalog =
   createServerFn({
     method: "GET",
-  }).handler(async () => {
-    const key = "home";
+  }).handler(
+    async () => {
+      const key =
+        "home";
 
-    const cached =
-      fromCache<HomeCatalog>(
-        key,
-      );
+      const cached =
+        fromCache<HomeCatalog>(
+          key,
+        );
 
-    if (cached) {
-      return cached;
-    }
+      if (cached) {
+        return cached;
+      }
 
-    try {
-      return toCache(
-        key,
-        await fetchHomeFromAni(),
-      );
-    } catch {
-      return toCache(
-        key,
-        await fetchHomeFromJikan(),
-      );
-    }
-  });
+      try {
+        return toCache(
+          key,
+          await fetchHomeFromAni(),
+        );
+      } catch {
+        return toCache(
+          key,
+          await fetchHomeFromJikan(),
+        );
+      }
+    },
+  );
 
 const searchSchema =
   z.object({
     q: z.string().optional(),
-    genre: z.string().optional(),
-    year: z.string().optional(),
-    format: z.string().optional(),
-    status: z.string().optional(),
-    sort: z.string().optional(),
-    page: z.number().optional(),
+    genre:
+      z.string().optional(),
+    year:
+      z.string().optional(),
+    format:
+      z.string().optional(),
+    status:
+      z.string().optional(),
+    sort:
+      z.string().optional(),
+    page:
+      z.number().optional(),
   });
 
 async function searchAni(
@@ -938,6 +1236,7 @@ async function searchAni(
         pageInfo: {
           hasNextPage: boolean;
         };
+
         media: AniMedia[];
       };
     }>(
@@ -960,52 +1259,73 @@ async function searchAni(
           }
 
           media(
-            type: ANIME
-            search: $search
-            genre: $genre
-            seasonYear: $year
-            format: $format
-            status: $status
+            type: ANIME,
+            search: $search,
+            genre: $genre,
+            seasonYear: $year,
+            format: $format,
+            status: $status,
             sort: $sort
           ) {
             ${CARD_FIELDS}
           }
         }
       }
-    `,
+      `,
       {
         page,
+
         search:
-          params.q || undefined,
+          params.q ||
+          undefined,
+
         genre:
           params.genre ||
           undefined,
+
         year:
           year &&
-          Number.isFinite(year)
+          Number.isFinite(
+            year,
+          )
             ? year
             : undefined,
+
         format:
           params.format ||
           undefined,
+
         status:
           params.status ||
           undefined,
+
         sort: [sort],
       },
     );
 
   return {
-    items:
-      (
-        data.Page.media ??
-        []
-      ).map(mapAniSlim),
+    items: (
+      data.Page.media ??
+      []
+    )
+      .filter(
+        (anime) =>
+          !isAdultAnime(
+            anime,
+          ),
+      )
+      .map(
+        mapAniSlim,
+      ),
+
     page,
-    hasNext: Boolean(
-      data.Page.pageInfo
-        ?.hasNextPage,
-    ),
+
+    hasNext:
+      Boolean(
+        data.Page.pageInfo
+          ?.hasNextPage,
+      ),
+
     source: "anilist",
   };
 }
@@ -1016,33 +1336,33 @@ async function searchJikan(
   const page =
     params.page ?? 1;
 
-  const qs =
+  const query =
     new URLSearchParams();
 
   if (params.q) {
-    qs.set(
+    query.set(
       "q",
       params.q,
     );
   }
 
-  qs.set(
+  query.set(
     "page",
     String(page),
   );
 
-  qs.set(
+  query.set(
     "limit",
     "24",
   );
 
-  qs.set(
+  query.set(
     "sfw",
     "true",
   );
 
   if (params.genre) {
-    qs.set(
+    query.set(
       "genres",
       params.genre,
     );
@@ -1053,21 +1373,27 @@ async function searchJikan(
       pagination?: {
         has_next_page?: boolean;
       };
+
       data?: JikanAnime[];
     }>(
-      `/anime?${qs.toString()}`,
+      `/anime?${query.toString()}`,
     );
 
   return {
-    items:
-      (
-        json.data ?? []
-      ).map(mapJikanSlim),
-    page,
-    hasNext: Boolean(
-      json.pagination
-        ?.has_next_page,
+    items: (
+      json.data ?? []
+    ).map(
+      mapJikanSlim,
     ),
+
+    page,
+
+    hasNext:
+      Boolean(
+        json.pagination
+          ?.has_next_page,
+      ),
+
     source: "jikan",
   };
 }
@@ -1076,9 +1402,13 @@ export const searchCatalog =
   createServerFn({
     method: "GET",
   })
-    .validator(searchSchema)
+    .validator(
+      searchSchema,
+    )
     .handler(
-      async ({ data }) => {
+      async ({
+        data,
+      }) => {
         const key =
           `search:${JSON.stringify(data)}`;
 
@@ -1109,6 +1439,98 @@ export const searchCatalog =
       },
     );
 
+/*
+ * 🔞 CATÁLOGO +18
+ *
+ * Este catálogo é separado
+ * do conteúdo normal da Home,
+ * busca e categorias.
+ */
+export const fetchAdultCatalog =
+  createServerFn({
+    method: "GET",
+  }).handler(
+    async () => {
+      const key =
+        "adult-catalog";
+
+      const cached =
+        fromCache<SearchResult>(
+          key,
+        );
+
+      if (cached) {
+        return cached;
+      }
+
+      const data =
+        await anilistGraphQL<{
+          Page: {
+            pageInfo: {
+              hasNextPage: boolean;
+            };
+
+            media: AniMedia[];
+          };
+        }>(
+          `
+          query AdultCatalog {
+            Page(
+              page: 1,
+              perPage: 30
+            ) {
+              pageInfo {
+                hasNextPage
+              }
+
+              media(
+                type: ANIME,
+                isAdult: true,
+                sort: TRENDING_DESC
+              ) {
+                ${CARD_FIELDS}
+              }
+            }
+          }
+          `,
+        );
+
+      const items =
+        (
+          data.Page.media ??
+          []
+        )
+          .filter(
+            (anime) =>
+              isAdultAnime(
+                anime,
+              ),
+          )
+          .map(
+            mapAniSlim,
+          );
+
+      return toCache(
+        key,
+        {
+          items,
+
+          page: 1,
+
+          hasNext:
+            Boolean(
+              data.Page
+                .pageInfo
+                ?.hasNextPage,
+            ),
+
+          source:
+            "anilist" as const,
+        },
+      );
+    },
+  );
+
 const idSchema =
   z.object({
     id: z.string(),
@@ -1120,7 +1542,9 @@ export const fetchAnimeDetail =
   })
     .validator(idSchema)
     .handler(
-      async ({ data }) => {
+      async ({
+        data,
+      }) => {
         const { id } =
           data;
 
@@ -1184,15 +1608,20 @@ export const fetchAnimeDetail =
           const anime: Anime =
             {
               ...slim,
+
               studios: (
                 json.data
                   .studios ?? []
               ).map(
-                (s) => s.name,
+                (studio) =>
+                  studio.name,
               ),
+
               streamingEpisodes:
                 [],
+
               seasons,
+
               recommendations:
                 [],
             };
@@ -1290,7 +1719,7 @@ export const fetchAnimeDetail =
                   }
                 }
               }
-            `,
+              `,
               {
                 id: anilistId,
               },
@@ -1320,7 +1749,8 @@ export const fetchAnimeDetail =
           if (
             !seasons.length &&
             (
-              media.streamingEpisodes
+              media
+                .streamingEpisodes
                 ?.length ||
               media.episodes
             )
@@ -1328,19 +1758,28 @@ export const fetchAnimeDetail =
             const fromStream:
               Episode[] =
               (
-                media.streamingEpisodes ??
+                media
+                  .streamingEpisodes ??
                 []
               ).map(
-                (e, i) => ({
-                  id: `stream-${media.id}-${i}`,
-                  number: i + 1,
+                (
+                  episode,
+                  index,
+                ) => ({
+                  id: `stream-${media.id}-${index}`,
+
+                  number:
+                    index + 1,
+
                   title:
-                    e.title ??
-                    `Episódio ${i + 1}`,
+                    episode.title ??
+                    `Episódio ${index + 1}`,
+
                   thumbnail:
-                    e.thumbnail,
+                    episode.thumbnail,
+
                   videoUrl:
-                    e.url,
+                    episode.url,
                 }),
               );
 
@@ -1357,19 +1796,24 @@ export const fetchAnimeDetail =
                       length:
                         count,
                     },
-                    (_, i) => {
+                    (
+                      _,
+                      index,
+                    ) => {
                       const found =
                         fromStream[
-                          i
+                          index
                         ];
 
                       return (
                         found ?? {
-                          id: `ep-${media.id}-${i + 1}`,
+                          id: `ep-${media.id}-${index + 1}`,
+
                           number:
-                            i + 1,
+                            index + 1,
+
                           title:
-                            `Episódio ${i + 1}`,
+                            `Episódio ${index + 1}`,
                         }
                       );
                     },
@@ -1378,9 +1822,12 @@ export const fetchAnimeDetail =
             seasons = [
               {
                 id: `s1-${media.id}`,
+
                 number: 1,
+
                 title:
                   "Temporada 1",
+
                 episodes,
               },
             ];
@@ -1423,15 +1870,20 @@ export const fetchAnimeDetail =
               key,
               {
                 ...slim,
+
                 studios: (
                   json.data
                     .studios ?? []
                 ).map(
-                  (s) => s.name,
+                  (studio) =>
+                    studio.name,
                 ),
+
                 streamingEpisodes:
                   [],
+
                 seasons,
+
                 recommendations:
                   [],
               },
@@ -1451,16 +1903,22 @@ const browseSchema =
       "top",
       "trending",
     ]),
-    page: z.number().optional(),
+
+    page:
+      z.number().optional(),
   });
 
 export const fetchBrowse =
   createServerFn({
     method: "GET",
   })
-    .validator(browseSchema)
+    .validator(
+      browseSchema,
+    )
     .handler(
-      async ({ data }) => {
+      async ({
+        data,
+      }) => {
         const page =
           data.page ?? 1;
 
@@ -1485,10 +1943,13 @@ export const fetchBrowse =
         const sortMap = {
           popular:
             "POPULARITY_DESC",
+
           top:
             "SCORE_DESC",
+
           trending:
             "TRENDING_DESC",
+
           season:
             "POPULARITY_DESC",
         } as const;
@@ -1504,6 +1965,7 @@ export const fetchBrowse =
                 pageInfo: {
                   hasNextPage: boolean;
                 };
+
                 media: AniMedia[];
               };
             }>(
@@ -1533,7 +1995,7 @@ export const fetchBrowse =
                 }
               }
             }
-          `
+            `
                 : `
             query Browse(
               $page: Int,
@@ -1555,18 +2017,22 @@ export const fetchBrowse =
                 }
               }
             }
-          `,
+            `,
               isSeason
                 ? {
                     page,
+
                     sort: [
                       sortMap.season,
                     ],
+
                     season,
+
                     year,
                   }
                 : {
                     page,
+
                     sort: [
                       sortMap[
                         data.section
@@ -1591,12 +2057,16 @@ export const fetchBrowse =
                 .map(
                   mapAniSlim,
                 ),
+
               page,
-              hasNext: Boolean(
-                result.Page
-                  .pageInfo
-                  ?.hasNextPage,
-              ),
+
+              hasNext:
+                Boolean(
+                  result.Page
+                    .pageInfo
+                    ?.hasNextPage,
+                ),
+
               source:
                 "anilist" as const,
             },
@@ -1616,6 +2086,7 @@ export const fetchBrowse =
               pagination?: {
                 has_next_page?: boolean;
               };
+
               data?: JikanAnime[];
             }>(path);
 
@@ -1628,11 +2099,15 @@ export const fetchBrowse =
               ).map(
                 mapJikanSlim,
               ),
+
               page,
-              hasNext: Boolean(
-                json.pagination
-                  ?.has_next_page,
-              ),
+
+              hasNext:
+                Boolean(
+                  json.pagination
+                    ?.has_next_page,
+                ),
+
               source:
                 "jikan" as const,
             },
