@@ -10,7 +10,7 @@ type ModerationAction =
 const REPORT_REASONS = [
   "spam",
   "hate",
-  "unmarked_spoiler",
+  "spoiler",
   "sexual",
   "harassment",
   "other",
@@ -56,8 +56,7 @@ export const Route = createFileRoute(
           } catch {
             return Response.json(
               {
-                error:
-                  "JSON inválido.",
+                error: "JSON inválido.",
               },
               { status: 400 },
             );
@@ -239,35 +238,19 @@ export const Route = createFileRoute(
           }
 
           /* ============================================ */
-          /* DENÚNCIA                                    */
+          /* DENUNCIAR COMENTÁRIO                          */
           /* ============================================ */
 
           if (
             action === "report"
           ) {
             /* ========================================== */
-            /* NORMALIZAR MOTIVO                           */
-            /* ========================================== */
-
-            const normalizedReason =
-              reason ===
-                "Spoiler não marcado" ||
-              reason ===
-                "spoiler_nao_marcado" ||
-              reason ===
-                "spoiler-nao-marcado" ||
-              reason ===
-                "unmarked-spoiler"
-                ? "unmarked_spoiler"
-                : reason;
-
-            /* ========================================== */
             /* VALIDAR MOTIVO                              */
             /* ========================================== */
 
             if (
               !REPORT_REASONS.includes(
-                normalizedReason as
+                reason as
                   (typeof REPORT_REASONS)[number],
               )
             ) {
@@ -309,7 +292,7 @@ export const Route = createFileRoute(
                   [];
 
             /* ========================================== */
-            /* JÁ DENUNCIOU                                */
+            /* SE JÁ DENUNCIOU                              */
             /* ========================================== */
 
             if (
@@ -325,7 +308,7 @@ export const Route = createFileRoute(
             }
 
             /* ========================================== */
-            /* CRIAR DENÚNCIA                              */
+            /* SALVAR DENÚNCIA                              */
             /* ========================================== */
 
             await sql.query(
@@ -347,7 +330,7 @@ export const Route = createFileRoute(
                 crypto.randomUUID(),
                 commentId,
                 session.user.id,
-                normalizedReason,
+                reason,
               ],
             );
 
