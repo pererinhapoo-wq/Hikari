@@ -133,7 +133,11 @@ function WatchPage() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
+
+      {/* ================================================== */}
       {/* CABEÇALHO */}
+      {/* ================================================== */}
+
       <header className="flex h-14 items-center gap-2 px-3 sm:px-5">
         <Link
           to="/anime/$id"
@@ -158,7 +162,11 @@ function WatchPage() {
       </header>
 
       <div className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 sm:px-5">
+
+        {/* ================================================== */}
         {/* PLAYERS */}
+        {/* ================================================== */}
+
         {playerUrls.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
             {playerUrls.map((url, index) =>
@@ -181,8 +189,12 @@ function WatchPage() {
           </div>
         )}
 
+        {/* ================================================== */}
         {/* PLAYER */}
+        {/* ================================================== */}
+
         <div className="aspect-video overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-border)]">
+
           {yt ? (
             <iframe
               title={`${title} — player`}
@@ -200,6 +212,7 @@ function WatchPage() {
             />
           ) : external ? (
             <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
+
               <p className="font-display text-2xl">
                 Este episódio abre no site oficial
               </p>
@@ -219,9 +232,11 @@ function WatchPage() {
                   Abrir episódio
                 </a>
               </Button>
+
             </div>
           ) : (
             <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
+
               <p className="font-display text-2xl">
                 Sem vídeo neste episódio
               </p>
@@ -244,12 +259,18 @@ function WatchPage() {
                   Abrir Admin
                 </Link>
               </Button>
+
             </div>
           )}
+
         </div>
 
+        {/* ================================================== */}
         {/* ANTERIOR / PRÓXIMO */}
+        {/* ================================================== */}
+
         <div className="mt-4 flex items-center justify-between gap-3">
+
           {prev ? (
             <Button
               asChild
@@ -270,7 +291,10 @@ function WatchPage() {
           )}
 
           {next && (
-            <Button asChild size="sm">
+            <Button
+              asChild
+              size="sm"
+            >
               <Link
                 to="/watch/$id"
                 params={{ id: anime.id }}
@@ -281,18 +305,25 @@ function WatchPage() {
               </Link>
             </Button>
           )}
+
         </div>
 
+        {/* ================================================== */}
         {/* LISTA DE EPISÓDIOS */}
+        {/* ================================================== */}
+
         {episodes.length > 0 && (
           <section className="mt-6">
+
             <h2 className="mb-3 font-display text-xl">
               Episódios
             </h2>
 
             <ol className="grid max-h-[40vh] gap-1 overflow-y-auto sm:grid-cols-2">
+
               {episodes.map((ep) => (
                 <li key={ep.id}>
+
                   <Link
                     to="/watch/$id"
                     params={{ id: anime.id }}
@@ -304,6 +335,7 @@ function WatchPage() {
                         : "text-muted hover:bg-surface hover:text-fg",
                     )}
                   >
+
                     <span className="w-8 tabular-nums text-xs text-subtle">
                       {ep.number}
                     </span>
@@ -311,30 +343,38 @@ function WatchPage() {
                     <span className="truncate">
                       {ep.title}
                     </span>
+
                   </Link>
+
                 </li>
               ))}
+
             </ol>
+
           </section>
         )}
 
+        {/* ================================================== */}
         {/* COMENTÁRIOS */}
+        {/* ================================================== */}
+
         <CommentsSection
           animeId={anime.id}
           episodeId={current?.id ?? ""}
           animeTitle={title}
           episodeNumber={current?.number ?? 1}
         />
+
       </div>
     </div>
   );
 }
 
 /* ========================================================= */
-/* COMENTÁRIOS                                               */
+/* TIPOS DOS COMENTÁRIOS                                     */
 /* ========================================================= */
 
-type ApiComment = {
+type Comment = {
   id: string;
   animeId: string;
   episodeId: string;
@@ -348,9 +388,9 @@ type ApiComment = {
   userImage: string | null;
 };
 
-type Comment = ApiComment & {
-  likes: number;
-};
+/* ========================================================= */
+/* COMENTÁRIOS                                               */
+/* ========================================================= */
 
 function CommentsSection({
   animeId,
@@ -369,60 +409,77 @@ function CommentsSection({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  const loadComments = async () => {
+  /* ====================================================== */
+  /* CARREGAR COMENTÁRIOS                                   */
+  /* ====================================================== */
+
+  useEffect(() => {
     if (!animeId || !episodeId) {
-      setComments([]);
-      setLoading(false);
       return;
     }
 
-    try {
-      setLoading(true);
-      setError("");
+    let cancelled = false;
 
-      const response = await fetch(
-        `/api/comments?animeId=${encodeURIComponent(
-          animeId,
-        )}&episodeId=${encodeURIComponent(episodeId)}`,
-      );
+    async function loadComments() {
+      try {
+        setLoading(true);
+        setError("");
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data?.error || "Não foi possível carregar os comentários.",
+        const response = await fetch(
+          `/api/comments?animeId=${encodeURIComponent(
+            animeId,
+          )}&episodeId=${encodeURIComponent(episodeId)}`,
+          {
+            method: "GET",
+            credentials: "include",
+          },
         );
+
+        if (!response.ok) {
+          throw new Error(
+            "Não foi possível carregar os comentários.",
+          );
+        }
+
+        const data = await response.json();
+
+        if (!cancelled) {
+          setComments(
+            Array.isArray(data.comments)
+              ? data.comments
+              : [],
+          );
+        }
+      } catch (err) {
+        console.error(err);
+
+        if (!cancelled) {
+          setError(
+            "Não foi possível carregar os comentários.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-
-      const list = Array.isArray(data?.comments)
-        ? data.comments
-        : [];
-
-      setComments(
-        list.map((comment: ApiComment) => ({
-          ...comment,
-          likes: 0,
-        })),
-      );
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        "Não foi possível carregar os comentários.",
-      );
-    } finally {
-      setLoading(false);
     }
-  };
 
-  useEffect(() => {
     loadComments();
+
+    return () => {
+      cancelled = true;
+    };
   }, [animeId, episodeId]);
+
+  /* ====================================================== */
+  /* ENVIAR COMENTÁRIO                                      */
+  /* ====================================================== */
 
   const handleComment = async () => {
     const value = text.trim();
 
-    if (!value || sending || !episodeId) {
+    if (!value || !animeId || !episodeId || sending) {
       return;
     }
 
@@ -432,10 +489,10 @@ function CommentsSection({
 
       const response = await fetch("/api/comments", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include",
         body: JSON.stringify({
           animeId,
           episodeId,
@@ -448,30 +505,17 @@ function CommentsSection({
       const data = await response.json();
 
       if (!response.ok) {
-        if (response.status === 401) {
-          setError(
-            "Você precisa entrar na sua conta para comentar.",
-          );
-        } else {
-          setError(
-            data?.error ||
-              "Não foi possível publicar o comentário.",
-          );
-        }
-
-        return;
+        throw new Error(
+          data?.error ||
+            "Não foi possível publicar o comentário.",
+        );
       }
 
-      if (data?.comment) {
+      if (data.comment) {
         setComments((current) => [
-          {
-            ...data.comment,
-            likes: 0,
-          },
+          data.comment,
           ...current,
         ]);
-      } else {
-        await loadComments();
       }
 
       setText("");
@@ -479,34 +523,41 @@ function CommentsSection({
       console.error(err);
 
       setError(
-        "Não foi possível publicar o comentário.",
+        err instanceof Error
+          ? err.message
+          : "Não foi possível publicar o comentário.",
       );
     } finally {
       setSending(false);
     }
   };
 
+  /* ====================================================== */
+  /* LIKE LOCAL                                             */
+  /* ====================================================== */
+
   const handleLike = (id: string) => {
     setComments((current) =>
       current.map((comment) =>
         comment.id === id
-          ? {
-              ...comment,
-              likes: comment.likes + 1,
-            }
+          ? comment
           : comment,
       ),
     );
   };
 
-  const formatDate = (date: string) => {
-    const parsed = new Date(date);
+  /* ====================================================== */
+  /* DATA                                                    */
+  /* ====================================================== */
 
-    if (Number.isNaN(parsed.getTime())) {
+  const formatDate = (value: string) => {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
       return "";
     }
 
-    return parsed.toLocaleDateString("pt-BR", {
+    return date.toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -515,9 +566,15 @@ function CommentsSection({
 
   return (
     <section className="mt-12 border-t border-white/5 pt-10">
+
+      {/* ================================================== */}
       {/* TÍTULO */}
+      {/* ================================================== */}
+
       <div className="flex items-center justify-between gap-4">
+
         <div>
+
           <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
             Comentários
           </h2>
@@ -526,52 +583,55 @@ function CommentsSection({
             Comentários do episódio {episodeNumber} de{" "}
             {animeTitle}
           </p>
+
         </div>
 
         <div className="hidden items-center gap-2 text-sm text-muted sm:flex">
+
           <MessageCircle className="size-4" />
+
           {comments.length}
+
         </div>
+
       </div>
 
-      {/* CAMPO DE COMENTÁRIO */}
+      {/* ================================================== */}
+      {/* CAMPO DE COMENTÁRIO                                 */}
+      {/* ================================================== */}
+
       <div className="mt-5 rounded-xl border border-white/5 bg-surface p-4 sm:p-5">
+
         <textarea
           value={text}
-          onChange={(event) =>
-            setText(event.target.value)
-          }
+          onChange={(event) => {
+            setText(event.target.value);
+          }}
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
               !event.shiftKey
             ) {
               event.preventDefault();
-              handleComment();
+              void handleComment();
             }
           }}
           placeholder="Escreva um comentário..."
           rows={3}
-          disabled={sending}
-          className="w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15 disabled:opacity-60"
+          maxLength={2000}
+          className="w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
         />
 
-        {error && (
-          <p className="mt-3 text-sm text-red-400">
-            {error}
-          </p>
-        )}
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
-        <div className="mt-3 flex items-center justify-between gap-3">
           <p className="text-xs text-subtle">
-            Enter para enviar · Shift + Enter para quebrar
-            linha
+            Enter para enviar · Shift + Enter para quebrar linha
           </p>
 
           <Button
             type="button"
             size="sm"
-            onClick={handleComment}
+            onClick={() => void handleComment()}
             disabled={!text.trim() || sending}
           >
             <Send className="size-4" />
@@ -580,51 +640,74 @@ function CommentsSection({
               ? "Enviando..."
               : "Comentar"}
           </Button>
+
         </div>
+
+        {error && (
+          <p className="mt-3 text-sm text-red-400">
+            {error}
+          </p>
+        )}
+
       </div>
 
-      {/* LISTA */}
+      {/* ================================================== */}
+      {/* LISTA                                               */}
+      {/* ================================================== */}
+
       <div className="mt-5 space-y-3">
+
         {loading ? (
           <div className="rounded-xl border border-white/5 bg-surface p-5 text-sm text-muted">
             Carregando comentários...
           </div>
         ) : comments.length === 0 ? (
-          <div className="rounded-xl border border-white/5 bg-surface p-5 text-sm text-muted">
+          <div className="rounded-xl border border-white/5 bg-surface p-5 text-center text-sm text-muted">
             Ainda não há comentários neste episódio.
-            Seja o primeiro a comentar!
+            <br />
+            Seja o primeiro a comentar.
           </div>
         ) : (
           comments.map((comment) => (
+
             <article
               key={comment.id}
               className="rounded-xl border border-white/5 bg-surface p-4 sm:p-5"
             >
+
               <div className="flex gap-3">
-                {/* AVATAR */}
+
+                {/* ======================================== */}
+                {/* AVATAR                                   */}
+                {/* ======================================== */}
+
                 <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated text-sm font-semibold">
+
                   {comment.userImage ? (
                     <img
                       src={comment.userImage}
-                      alt={
-                        comment.userName ||
-                        "Usuário"
-                      }
+                      alt=""
                       className="size-full object-cover"
                     />
                   ) : (
                     (
                       comment.userName ||
-                      "Usuário"
+                      "U"
                     )
                       .charAt(0)
                       .toUpperCase()
                   )}
+
                 </div>
 
-                {/* CONTEÚDO */}
+                {/* ======================================== */}
+                {/* CONTEÚDO                                 */}
+                {/* ======================================== */}
+
                 <div className="min-w-0 flex-1">
+
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+
                     <span className="text-sm font-semibold">
                       {comment.userName ||
                         "Usuário"}
@@ -635,18 +718,24 @@ function CommentsSection({
                         comment.createdAt,
                       )}
                     </span>
+
                   </div>
 
-                  {/* SPOILER */}
+                  {/* ==================================== */}
+                  {/* SPOILER                               */}
+                  {/* ==================================== */}
+
                   {comment.isSpoiler ? (
                     <details className="mt-2">
-                      <summary className="cursor-pointer text-sm text-primary">
+
+                      <summary className="cursor-pointer text-sm text-fg">
                         Mostrar spoiler
                       </summary>
 
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
                         {comment.content}
                       </p>
+
                     </details>
                   ) : (
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
@@ -654,8 +743,12 @@ function CommentsSection({
                     </p>
                   )}
 
-                  {/* AÇÕES */}
+                  {/* ==================================== */}
+                  {/* AÇÕES                                 */}
+                  {/* ==================================== */}
+
                   <div className="mt-3 flex items-center gap-4">
+
                     <button
                       type="button"
                       onClick={() =>
@@ -664,7 +757,7 @@ function CommentsSection({
                       className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
                     >
                       <Heart className="size-4" />
-                      {comment.likes}
+                      0
                     </button>
 
                     <button
@@ -674,13 +767,20 @@ function CommentsSection({
                       <MessageCircle className="size-4" />
                       Responder
                     </button>
+
                   </div>
+
                 </div>
+
               </div>
+
             </article>
+
           ))
         )}
+
       </div>
+
     </section>
   );
-  }
+}
