@@ -2,16 +2,19 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { auth } from "@/lib/auth/server";
 
+type ModerationAction =
+  | "spoiler"
+  | "report"
+  | "spam";
+
 const REPORT_REASONS = [
   "spam",
   "hate",
-  "spoiler",
+  "unmarked_spoiler",
   "sexual",
   "harassment",
   "other",
 ] as const;
-
-type ReportReason = (typeof REPORT_REASONS)[number];
 
 export const Route = createFileRoute(
   "/api/comments/moderation",
@@ -20,9 +23,14 @@ export const Route = createFileRoute(
     handlers: {
       POST: async ({ request }) => {
         try {
-          const session = await auth.api.getSession({
-            headers: request.headers,
-          });
+          /* ============================================ */
+          /* AUTENTICAÇÃO                                 */
+          /* ============================================ */
+
+          const session =
+            await auth.api.getSession({
+              headers: request.headers,
+            });
 
           if (!session?.user?.id) {
             return Response.json(
@@ -34,39 +42,54 @@ export const Route = createFileRoute(
             );
           }
 
-          let body: Record<string, unknown>;
+          /* ============================================ */
+          /* LER JSON                                     */
+          /* ============================================ */
+
+          let body: Record<
+            string,
+            unknown
+          >;
 
           try {
             body = await request.json();
           } catch {
             return Response.json(
               {
-                error: "JSON inválido.",
+                error:
+                  "JSON inválido.",
               },
               { status: 400 },
             );
           }
 
           const commentId =
-            typeof body.commentId === "string"
+            typeof body.commentId ===
+            "string"
               ? body.commentId.trim()
               : "";
 
           const action =
-            typeof body.action === "string"
+            typeof body.action ===
+            "string"
               ? body.action.trim()
               : "";
 
           const reason =
-            typeof body.reason === "string"
+            typeof body.reason ===
+            "string"
               ? body.reason.trim()
               : "";
 
-          if (!commentId || !action) {
+          /* ============================================ */
+          /* VALIDAÇÃO                                    */
+          /* ============================================ */
+
+          if (!commentId) {
             return Response.json(
               {
                 error:
-                  "commentId e action são obrigatórios.",
+                  "commentId é obrigatório.",
               },
               { status: 400 },
             );
@@ -86,27 +109,37 @@ export const Route = createFileRoute(
             );
           }
 
-          const sql = await getSql();
+          const sql =
+            await getSql();
 
-          const commentResult = await sql.query(
-            `
-              select
-                "id",
-                "isSpoiler"
-              from "comment"
-              where "id" = $1
-              limit 1
-            `,
-            [commentId],
-          );
+          /* ============================================ */
+          /* VERIFICAR COMENTÁRIO                          */
+          /* ============================================ */
 
-          const commentRows = Array.isArray(
-            commentResult,
-          )
-            ? commentResult
-            : commentResult?.rows ?? [];
+          const commentResult =
+            await sql.query(
+              `
+                select
+                  "id"
+                from "comment"
+                where "id" = $1
+                limit 1
+              `,
+              [commentId],
+            );
 
-          if (commentRows.length === 0) {
+          const commentRows =
+            Array.isArray(
+              commentResult,
+            )
+              ? commentResult
+              : commentResult?.rows ??
+                [];
+
+          if (
+            commentRows.length ===
+            0
+          ) {
             return Response.json(
               {
                 error:
@@ -116,13 +149,13 @@ export const Route = createFileRoute(
             );
           }
 
-          /*
-           * MARCAR COMO SPOILER
-           *
-           * Qualquer usuário logado pode sinalizar
-           * um comentário que contém spoiler.
-           */
-          if (action === "spoiler") {
+          /* ============================================ */
+          /* MARCAR COMO SPOILER                           */
+          /* ============================================ */
+
+          if (
+            action === "spoiler"
+          ) {
             await sql.query(
               `
                 update "comment"
@@ -134,63 +167,70 @@ export const Route = createFileRoute(
               [commentId],
             );
 
-            console.log(
-              "COMENTÁRIO MARCADO COMO SPOILER:",
-              commentId,
-              session.user.id,
-            );
-
             return Response.json({
               success: true,
               action: "spoiler",
-              isSpoiler: true,
             });
           }
 
-          /*
-           * MARCAR COMO SPAM
-           *
-           * Spam será enviado para a mesma tabela
-           * de denúncias para futura análise da moderação.
-           */
-          if (action === "spam") {
-            const reportId =
-              crypto.randomUUID();
+          /* ============================================ */
+          /* MARCAR COMO SPAM                              */
+          /* ============================================ */
 
-            await sql.query(
-              `
-                insert into "comment_report" (
-                  "id",
-                  "commentId",
-                  "userId",
-                  "reason"
-                )
-                values (
-                  $1,
-                  $2,
-                  $3,
-                  $4
-                )
-                on conflict (
-                  "commentId",
-                  "userId"
-                )
-                do update set
-                  "reason" = excluded."reason"
-              `,
-              [
-                reportId,
-                commentId,
-                session.user.id,
-                "spam",
-              ],
-            );
+          if (
+            action === "spam"
+          ) {
+            const existingResult =
+              await sql.query(
+                `
+                  select
+                    "id"
+                  from "comment_report"
+                  where "commentId" = $1
+                    and "userId" = $2
+                  limit 1
+                `,
+                [
+                  commentId,
+                  session.user.id,
+                ],
+              );
 
-            console.log(
-              "COMENTÁRIO MARCADO COMO SPAM:",
-              commentId,
-              session.user.id,
-            );
+            const existingRows =
+              Array.isArray(
+                existingResult,
+              )
+                ? existingResult
+                : existingResult?.rows ??
+                  [];
+
+            if (
+              existingRows.length ===
+              0
+            ) {
+              await sql.query(
+                `
+                  insert into "comment_report" (
+                    "id",
+                    "commentId",
+                    "userId",
+                    "reason"
+                  )
+                  values (
+                    $1,
+                    $2,
+                    $3,
+                    $4
+                  )
+                `,
+                [
+                  crypto.randomUUID(),
+                  commentId,
+                  session.user.id,
+                  "spam",
+                ],
+              );
+            }
 
             return Response.json({
               success: true,
@@ -198,26 +238,63 @@ export const Route = createFileRoute(
             });
           }
 
-          /*
-           * DENÚNCIA NORMAL
-           */
-          if (action === "report") {
+          /* ============================================ */
+          /* DENÚNCIA                                    */
+          /* ============================================ */
+
+          if (
+            action === "report"
+          ) {
             if (
               !REPORT_REASONS.includes(
-                reason as ReportReason,
+                reason as
+                  (typeof REPORT_REASONS)[number],
               )
             ) {
               return Response.json(
                 {
                   error:
-                    "Motivo de denúncia inválido.",
+                    "Motivo da denúncia inválido.",
                 },
                 { status: 400 },
               );
             }
 
-            const reportId =
-              crypto.randomUUID();
+            const existingResult =
+              await sql.query(
+                `
+                  select
+                    "id"
+                  from "comment_report"
+                  where "commentId" = $1
+                    and "userId" = $2
+                  limit 1
+                `,
+                [
+                  commentId,
+                  session.user.id,
+                ],
+              );
+
+            const existingRows =
+              Array.isArray(
+                existingResult,
+              )
+                ? existingResult
+                : existingResult?.rows ??
+                  [];
+
+            if (
+              existingRows.length >
+              0
+            ) {
+              return Response.json({
+                success: true,
+                action: "report",
+                alreadyReported:
+                  true,
+              });
+            }
 
             await sql.query(
               `
@@ -233,28 +310,13 @@ export const Route = createFileRoute(
                   $3,
                   $4
                 )
-                on conflict (
-                  "commentId",
-                  "userId"
-                )
-                do update set
-                  "reason" = excluded."reason"
               `,
               [
-                reportId,
+                crypto.randomUUID(),
                 commentId,
                 session.user.id,
                 reason,
               ],
-            );
-
-            console.log(
-              "DENÚNCIA DE COMENTÁRIO REGISTRADA:",
-              {
-                commentId,
-                userId: session.user.id,
-                reason,
-              },
             );
 
             return Response.json({
@@ -266,7 +328,7 @@ export const Route = createFileRoute(
           return Response.json(
             {
               error:
-                "Não foi possível realizar a ação.",
+                "Ação não processada.",
             },
             { status: 400 },
           );
