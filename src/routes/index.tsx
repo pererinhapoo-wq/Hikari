@@ -22,6 +22,7 @@ function HomePending() {
   return (
     <div className="space-y-6 pt-3">
       <div className="-mx-4 h-[20rem] animate-pulse bg-elevated sm:-mx-6 sm:h-[27rem]" />
+
       <div className="rail">
         {Array.from({ length: 8 }, (_, i) => (
           <AnimeCardSkeleton key={i} />
@@ -41,51 +42,104 @@ function HomeError({ error }: ErrorComponentProps) {
 
   return (
     <div className="mx-auto max-w-md py-24 text-center">
-      <p className="font-display text-2xl">Catálogo indisponível</p>
-      <p className="mt-2 text-sm text-muted">{message}</p>
+      <p className="font-display text-2xl">
+        Catálogo indisponível
+      </p>
+
+      <p className="mt-2 text-sm text-muted">
+        {message}
+      </p>
     </div>
   );
 }
 
 function Home() {
   const data = Route.useLoaderData();
-  const locals = useHikariStore((s) => s.animes);
 
-  const trending = overlayList(data.trending, locals);
-  const popular = overlayList(data.popular, locals);
-  const top = overlayList(data.top, locals);
-  const season = overlayList(data.season, locals);
+  const locals = useHikariStore(
+    (s) => s.animes,
+  );
+
+  const myListIds = useHikariStore(
+    (s) => s.myList,
+  );
+
+  const trending = overlayList(
+    data.trending,
+    locals,
+  );
+
+  const popular = overlayList(
+    data.popular,
+    locals,
+  );
+
+  const season = overlayList(
+    data.season,
+    locals,
+  );
+
+  const releases = overlayList(
+    data.releases,
+    locals,
+  );
+
+  const localAnimes = locals
+    .filter((a) => !a.hidden)
+    .map(localToAnime);
+
+  const allCatalog = [
+    ...releases,
+    ...season,
+    ...popular,
+    ...trending,
+    ...localAnimes,
+  ];
+
+  const myList = allCatalog
+    .filter((anime, index, list) => {
+      const alreadyIncluded =
+        list.findIndex(
+          (item) => item.id === anime.id,
+        ) === index;
+
+      return (
+        alreadyIncluded &&
+        myListIds.includes(anime.id)
+      );
+    })
+    .slice(0, 18);
 
   const featured = trending[0] ?? popular[0];
 
   const featuredItems = [
     ...trending,
     ...popular.filter(
-      (a) => !trending.some((t) => t.id === a.id),
+      (anime) =>
+        !trending.some(
+          (item) => item.id === anime.id,
+        ),
     ),
   ].slice(0, 6);
-
-  const added = locals
-    .filter((a) => !a.hidden && !a.anilistId)
-    .map(localToAnime);
 
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       {featured ? (
-        <Hero anime={featured} animes={featuredItems} />
+        <Hero
+          anime={featured}
+          animes={featuredItems}
+        />
       ) : (
         <HomePending />
       )}
 
-      {added.length > 0 && (
-        <AnimeRow
-          title="Últimos Lançamentos"
-          items={added}
-        />
-      )}
+      <AnimeRow
+        title="Últimos Lançamentos"
+        items={releases}
+      />
 
       <AnimeRow
-        title={`Temporada ${data.seasonName} ${data.seasonYear}`}
+        title={`Anime da Temporada · ${data.seasonName} ${data.seasonYear}`}
         href="/browse/season"
         items={season}
       />
@@ -96,17 +150,13 @@ function Home() {
         items={popular}
       />
 
-      <AnimeRow
-        title="Mais bem avaliados"
-        href="/browse/top"
-        items={top}
-      />
-
-      <AnimeRow
-        title="Em alta"
-        href="/browse/trending"
-        items={trending.slice(1)}
-      />
+      {myList.length > 0 && (
+        <AnimeRow
+          title="Minha Lista"
+          href="/list"
+          items={myList}
+        />
+      )}
 
       <p className="pt-4 text-center text-[11px] text-subtle">
         Fonte:{" "}
