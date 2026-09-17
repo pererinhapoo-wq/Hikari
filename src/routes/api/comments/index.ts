@@ -51,7 +51,7 @@ export const Route = createFileRoute("/api/comments/")({
           );
 
           return Response.json({
-            comments: result.rows ?? [],
+            comments: result?.rows ?? [],
           });
         } catch (error) {
           console.error("ERRO AO BUSCAR COMENTÁRIOS:", error);
@@ -189,7 +189,7 @@ export const Route = createFileRoute("/api/comments/")({
               [parentId, animeId, episodeId],
             );
 
-            if (!parent.rows || parent.rows.length === 0) {
+            if (!parent?.rows || parent.rows.length === 0) {
               return Response.json(
                 {
                   error: "Comentário original não encontrado.",
@@ -201,12 +201,13 @@ export const Route = createFileRoute("/api/comments/")({
           }
 
           // -----------------------------------------------------
-          // 7. Criar ID
+          // 7. Criar ID e data
           // -----------------------------------------------------
           const id = crypto.randomUUID();
+          const createdAt = new Date().toISOString();
 
           // -----------------------------------------------------
-          // 8. Inserir comentário
+          // 8. SALVAR COMENTÁRIO
           // -----------------------------------------------------
           await sql.query(
             `
@@ -233,7 +234,7 @@ export const Route = createFileRoute("/api/comments/")({
           );
 
           console.log(
-            "COMENTÁRIO INSERIDO:",
+            "COMENTÁRIO SALVO COM SUCESSO:",
             {
               id,
               userId: session.user.id,
@@ -243,55 +244,28 @@ export const Route = createFileRoute("/api/comments/")({
           );
 
           // -----------------------------------------------------
-          // 9. Buscar o comentário recém-criado
+          // 9. Montar resposta
           // -----------------------------------------------------
-          const created = await sql.query(
-            `
-              select
-                c."id",
-                c."animeId",
-                c."episodeId",
-                c."content",
-                c."parentId",
-                c."isSpoiler",
-                c."createdAt",
-                c."updatedAt",
-                c."userId",
-                coalesce(u."name", 'Usuário') as "userName",
-                u."image" as "userImage"
-              from "comment" c
-              left join "user" u
-                on u."id" = c."userId"
-              where c."id" = $1
-              limit 1
-            `,
-            [id],
-          );
-
-          const createdComment = created.rows?.[0];
-
-          if (!createdComment) {
-            return Response.json(
-              {
-                error:
-                  "O comentário foi salvo, mas não foi possível recuperá-lo.",
-                code: "COMMENT_CREATED_BUT_NOT_FOUND",
-              },
-              { status: 500 },
-            );
-          }
-
-          console.log(
-            "COMENTÁRIO CRIADO COM SUCESSO:",
-            createdComment,
-          );
+          const comment = {
+            id,
+            animeId,
+            episodeId,
+            content,
+            parentId,
+            isSpoiler,
+            createdAt,
+            updatedAt: createdAt,
+            userId: session.user.id,
+            userName: session.user.name || "Usuário",
+            userImage: session.user.image || null,
+          };
 
           // -----------------------------------------------------
-          // 10. Retornar
+          // 10. Retornar comentário criado
           // -----------------------------------------------------
           return Response.json(
             {
-              comment: createdComment,
+              comment,
             },
             { status: 201 },
           );
