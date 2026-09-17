@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, createFileRoute, useServerFn } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   LogOut,
   Pencil,
@@ -318,4 +319,4 @@ function Account() {
       </section>
     </main>
   );
-                      }
+  }
