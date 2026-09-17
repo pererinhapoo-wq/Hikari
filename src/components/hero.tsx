@@ -15,12 +15,17 @@ export function Hero({
   animes?: SlimAnime[];
 }) {
   const [index, setIndex] = useState(0);
+  const [imageRatio, setImageRatio] = useState(16 / 9);
 
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
   const inList = useHikariStore((s) => s.myList.includes(current.id));
   const toggleList = useHikariStore((s) => s.toggleList);
   const backdrop = current.banner || current.cover;
+
+  useEffect(() => {
+    setImageRatio(16 / 9);
+  }, [current.id]);
 
   useEffect(() => {
     if (animes.length < 2) return;
@@ -33,20 +38,32 @@ export function Hero({
   }, [animes.length]);
 
   return (
-    <section className="relative -mx-4 h-[18rem] overflow-hidden bg-bg md:-mx-6 md:h-[20rem] lg:h-[24rem]">
+    <section
+      className="relative -mx-4 overflow-hidden bg-bg md:-mx-6"
+      style={{
+        aspectRatio: `${imageRatio}`,
+      }}
+    >
       {backdrop && (
         <img
           key={current.id}
           src={backdrop}
           alt=""
-          className="absolute inset-0 size-full object-cover object-center"
+          onLoad={(event) => {
+            const image = event.currentTarget;
+
+            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+              setImageRatio(image.naturalWidth / image.naturalHeight);
+            }
+          }}
+          className="absolute inset-0 size-full object-contain object-center"
         />
       )}
 
-      <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/55 to-transparent" />
-      <div className="absolute inset-0 bg-linear-to-r from-bg/90 via-bg/35 to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/45 to-transparent" />
+      <div className="absolute inset-0 bg-linear-to-r from-bg/90 via-bg/30 to-transparent" />
 
-      <div className="relative z-10 flex h-full flex-col justify-end px-4 pb-4 md:px-6 md:pb-6">
+      <div className="absolute inset-x-0 bottom-0 z-10 px-4 pb-4 md:px-6 md:pb-6">
         <p className="text-[9px] font-medium tracking-[0.22em] text-muted uppercase">
           Em destaque
         </p>
