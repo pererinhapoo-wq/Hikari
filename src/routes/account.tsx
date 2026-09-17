@@ -64,7 +64,7 @@ function Account() {
     return () => {
       active = false;
     };
-  }, [user, getProfileFn]);
+  }, [user]);
 
   if (isPending) return null;
 
@@ -219,9 +219,7 @@ function Account() {
                 >
                   <Save className="size-4" />
 
-                  {saving
-                    ? "Salvando..."
-                    : "Salvar"}
+                  {saving ? "Salvando..." : "Salvar"}
                 </Button>
 
                 <Button
@@ -243,8 +241,7 @@ function Account() {
                 </p>
 
                 <p className="mt-2 text-sm leading-relaxed text-fg">
-                  {bio ||
-                    "Você ainda não adicionou uma bio."}
+                  {bio || "Você ainda não adicionou uma bio."}
                 </p>
               </div>
 
