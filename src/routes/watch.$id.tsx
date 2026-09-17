@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Heart,
@@ -519,6 +520,9 @@ function CommentsSection({
       "recent",
     );
 
+  const [sortOpen, setSortOpen] =
+    useState(false);
+
   /* ====================================================== */
   /* CARREGAR COMENTÁRIOS                                   */
   /* ====================================================== */
@@ -948,35 +952,97 @@ function CommentsSection({
 
           </div>
 
-          <select
-            value={sortBy}
-            onChange={(
-              event,
-            ) => {
-              setSortBy(
-                event.target
-                  .value as
-                  | "recent"
-                  | "liked",
-              );
-            }}
-            aria-label="Ordenar comentários"
-            className="rounded-lg border border-white/10 bg-surface px-3 py-2 text-sm text-fg outline-none transition-colors focus:border-white/20"
-          >
-            <option
-              value="recent"
-              className="bg-[#151515]"
-            >
-              Mais recentes
-            </option>
+          {/* ================================================= */}
+          {/* DROPDOWN PERSONALIZADO HIKARI                     */}
+          {/* ================================================= */}
 
-            <option
-              value="liked"
-              className="bg-[#151515]"
+          <div className="relative">
+
+            <button
+              type="button"
+              onClick={() =>
+                setSortOpen(
+                  (open) => !open,
+                )
+              }
+              aria-haspopup="menu"
+              aria-expanded={
+                sortOpen
+              }
+              className="flex min-h-11 items-center gap-2 rounded-lg border border-white/10 bg-surface px-3 text-sm text-fg outline-none transition-colors hover:border-white/20 hover:bg-elevated focus:border-white/20"
             >
-              Mais curtidos
-            </option>
-          </select>
+
+              <span>
+                {sortBy ===
+                "recent"
+                  ? "Mais recentes"
+                  : "Mais curtidos"}
+              </span>
+
+              <ChevronDown
+                className={cn(
+                  "size-4 text-muted transition-transform",
+                  sortOpen &&
+                    "rotate-180",
+                )}
+              />
+
+            </button>
+
+            {sortOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[180px] overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
+              >
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setSortBy(
+                      "recent",
+                    );
+                    setSortOpen(
+                      false,
+                    );
+                  }}
+                  className={cn(
+                    "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                    sortBy ===
+                      "recent"
+                      ? "bg-elevated text-fg"
+                      : "text-muted hover:bg-elevated hover:text-fg",
+                  )}
+                >
+                  Mais recentes
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setSortBy(
+                      "liked",
+                    );
+                    setSortOpen(
+                      false,
+                    );
+                  }}
+                  className={cn(
+                    "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                    sortBy ===
+                      "liked"
+                      ? "bg-elevated text-fg"
+                      : "text-muted hover:bg-elevated hover:text-fg",
+                  )}
+                >
+                  Mais curtidos
+                </button>
+
+              </div>
+            )}
+
+          </div>
 
         </div>
 
@@ -1575,4 +1641,4 @@ function CommentCard({
 
     </article>
   );
-    }
+      }
