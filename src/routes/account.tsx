@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useServerFn } from "@tanstack/react-router";
 import {
-  
   LogOut,
   Pencil,
   Save,
@@ -26,6 +25,9 @@ function Account() {
   const { user, isPending } = useCurrentUserState();
   const myList = useHikariStore((s) => s.myList);
 
+  const getProfileFn = useServerFn(getProfile);
+  const updateProfileFn = useServerFn(updateProfile);
+
   const [bio, setBio] = useState("");
   const [favorites, setFavorites] = useState("");
   const [editing, setEditing] = useState(false);
@@ -38,7 +40,7 @@ function Account() {
 
     let active = true;
 
-    void getProfile()
+    void getProfileFn()
       .then((profile) => {
         if (!active) return;
 
@@ -58,7 +60,7 @@ function Account() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, getProfileFn]);
 
   if (isPending) return null;
 
@@ -77,7 +79,7 @@ function Account() {
     setSaved(false);
 
     try {
-      await updateProfile({
+      await updateProfileFn({
         data: {
           bio,
           favorites: favorites
@@ -140,6 +142,7 @@ function Account() {
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-elevated p-3">
               <p className="text-xs text-muted">Minha Lista</p>
+
               <p className="mt-1 text-xl font-medium tabular-nums">
                 {myList.length}
               </p>
@@ -147,9 +150,12 @@ function Account() {
 
             <div className="rounded-xl bg-elevated p-3">
               <p className="text-xs text-muted">Favoritos</p>
+
               <p className="mt-1 text-xl font-medium tabular-nums">
                 {favorites
-                  ? favorites.split(",").filter((item) => item.trim()).length
+                  ? favorites
+                      .split(",")
+                      .filter((item) => item.trim()).length
                   : 0}
               </p>
             </div>
@@ -160,6 +166,7 @@ function Account() {
           {loadingProfile ? (
             <div className="space-y-2">
               <div className="h-3 w-20 animate-pulse rounded bg-elevated" />
+
               <div className="h-16 animate-pulse rounded-xl bg-elevated" />
             </div>
           ) : editing ? (
@@ -203,6 +210,7 @@ function Account() {
                   disabled={saving}
                 >
                   <Save className="size-4" />
+
                   {saving ? "Salvando..." : "Salvar"}
                 </Button>
 
@@ -213,6 +221,7 @@ function Account() {
                   disabled={saving}
                 >
                   <X className="size-4" />
+
                   Cancelar
                 </Button>
               </div>
@@ -309,4 +318,4 @@ function Account() {
       </section>
     </main>
   );
-                  }
+                      }
