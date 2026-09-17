@@ -40,7 +40,7 @@ function Account() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || editing) return;
 
     let active = true;
 
@@ -58,13 +58,15 @@ function Account() {
         setFavorites("");
       })
       .finally(() => {
-        if (active) setLoadingProfile(false);
+        if (active) {
+          setLoadingProfile(false);
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user, editing]);
 
   if (isPending) return null;
 
@@ -171,7 +173,7 @@ function Account() {
         </div>
 
         <div className="border-t border-border p-5">
-          {loadingProfile ? (
+          {loadingProfile && !editing ? (
             <div className="space-y-2">
               <div className="h-3 w-20 animate-pulse rounded bg-elevated" />
 
@@ -186,7 +188,9 @@ function Account() {
 
                 <textarea
                   value={bio}
-                  onChange={(e) => setBio(e.target.value)}
+                  onChange={(e) => {
+                    setBio(e.target.value);
+                  }}
                   maxLength={500}
                   rows={4}
                   placeholder="Conte um pouco sobre você..."
@@ -200,8 +204,11 @@ function Account() {
                 </label>
 
                 <input
+                  type="text"
                   value={favorites}
-                  onChange={(e) => setFavorites(e.target.value)}
+                  onChange={(e) => {
+                    setFavorites(e.target.value);
+                  }}
                   placeholder="One Piece, Naruto, Jujutsu Kaisen..."
                   className="mt-2 h-11 w-full rounded-xl border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-fg/30"
                 />
@@ -329,4 +336,4 @@ function Account() {
       </section>
     </main>
   );
-}
+          }
