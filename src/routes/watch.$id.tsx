@@ -17,8 +17,13 @@ import { useHikariStore } from "@/lib/store";
 import { displayTitle, type Episode } from "@/lib/types";
 
 export const Route = createFileRoute("/watch/$id")({
-  validateSearch: (raw: Record<string, unknown>): { ep?: string } => ({
-    ep: typeof raw.ep === "string" && raw.ep ? raw.ep : undefined,
+  validateSearch: (
+    raw: Record<string, unknown>,
+  ): { ep?: string } => ({
+    ep:
+      typeof raw.ep === "string" && raw.ep
+        ? raw.ep
+        : undefined,
   }),
 
   loader: async ({ params }) => {
@@ -42,16 +47,24 @@ function WatchPage() {
   const { remote } = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
-  const markContinue = useHikariStore((s) => s.markContinue);
+  const markContinue = useHikariStore(
+    (s) => s.markContinue,
+  );
 
-  const anime = mergeDetail(remote, id, locals);
+  const anime = mergeDetail(
+    remote,
+    id,
+    locals,
+  );
 
   const episodes = useMemo(() => {
     if (!anime) {
       return [] as Episode[];
     }
 
-    return anime.seasons.flatMap((s) => s.episodes);
+    return anime.seasons.flatMap(
+      (s) => s.episodes,
+    );
   }, [anime]);
 
   const current = useMemo(() => {
@@ -60,8 +73,9 @@ function WatchPage() {
     }
 
     return (
-      episodes.find((e) => e.id === epQuery) ??
-      episodes[0]
+      episodes.find(
+        (e) => e.id === epQuery,
+      ) ?? episodes[0]
     );
   }, [episodes, epQuery]);
 
@@ -71,12 +85,14 @@ function WatchPage() {
       )
     : -1;
 
-  const prev = idx > 0
-    ? episodes[idx - 1]
-    : null;
+  const prev =
+    idx > 0
+      ? episodes[idx - 1]
+      : null;
 
   const next =
-    idx >= 0 && idx < episodes.length - 1
+    idx >= 0 &&
+    idx < episodes.length - 1
       ? episodes[idx + 1]
       : null;
 
@@ -138,7 +154,9 @@ function WatchPage() {
   const yt =
     youtubeIdFrom(playUrl) ||
     (!playUrl
-      ? youtubeIdFrom(anime.trailerId)
+      ? youtubeIdFrom(
+          anime.trailerId,
+        )
       : null);
 
   const file =
@@ -164,7 +182,9 @@ function WatchPage() {
       <header className="flex h-14 items-center gap-2 px-3 sm:px-5">
         <Link
           to="/anime/$id"
-          params={{ id: anime.id }}
+          params={{
+            id: anime.id,
+          }}
           className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
           aria-label="Fechar player"
         >
@@ -272,11 +292,16 @@ function WatchPage() {
                 vídeo no Admin para reproduzir aqui.
               </p>
 
-              <Button asChild variant="outline">
+              <Button
+                asChild
+                variant="outline"
+              >
                 <Link
                   to="/admin/$id"
                   params={{
-                    id: anime.id.startsWith("local-")
+                    id: anime.id.startsWith(
+                      "local-",
+                    )
                       ? anime.id
                       : "new",
                   }}
@@ -307,8 +332,12 @@ function WatchPage() {
             >
               <Link
                 to="/watch/$id"
-                params={{ id: anime.id }}
-                search={{ ep: prev.id }}
+                params={{
+                  id: anime.id,
+                }}
+                search={{
+                  ep: prev.id,
+                }}
               >
                 <ChevronLeft className="size-4" />
                 Anterior
@@ -325,8 +354,12 @@ function WatchPage() {
             >
               <Link
                 to="/watch/$id"
-                params={{ id: anime.id }}
-                search={{ ep: next.id }}
+                params={{
+                  id: anime.id,
+                }}
+                search={{
+                  ep: next.id,
+                }}
               >
                 Próximo
                 <ChevronRight className="size-4" />
@@ -349,37 +382,40 @@ function WatchPage() {
 
             <ol className="grid max-h-[40vh] gap-1 overflow-y-auto sm:grid-cols-2">
 
-              {episodes.map((ep) => (
-                <li key={ep.id}>
+              {episodes.map(
+                (ep) => (
+                  <li key={ep.id}>
 
-                  <Link
-                    to="/watch/$id"
-                    params={{
-                      id: anime.id,
-                    }}
-                    search={{
-                      ep: ep.id,
-                    }}
-                    className={cn(
-                      "flex min-h-12 items-center gap-3 rounded-md px-3 text-sm",
-                      current?.id === ep.id
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-surface hover:text-fg",
-                    )}
-                  >
+                    <Link
+                      to="/watch/$id"
+                      params={{
+                        id: anime.id,
+                      }}
+                      search={{
+                        ep: ep.id,
+                      }}
+                      className={cn(
+                        "flex min-h-12 items-center gap-3 rounded-md px-3 text-sm",
+                        current?.id ===
+                          ep.id
+                          ? "bg-elevated text-fg"
+                          : "text-muted hover:bg-surface hover:text-fg",
+                      )}
+                    >
 
-                    <span className="w-8 tabular-nums text-xs text-subtle">
-                      {ep.number}
-                    </span>
+                      <span className="w-8 tabular-nums text-xs text-subtle">
+                        {ep.number}
+                      </span>
 
-                    <span className="truncate">
-                      {ep.title}
-                    </span>
+                      <span className="truncate">
+                        {ep.title}
+                      </span>
 
-                  </Link>
+                    </Link>
 
-                </li>
-              ))}
+                  </li>
+                ),
+              )}
 
             </ol>
 
@@ -392,7 +428,9 @@ function WatchPage() {
 
         <CommentsSection
           animeId={anime.id}
-          episodeId={current?.id ?? ""}
+          episodeId={
+            current?.id ?? ""
+          }
           animeTitle={title}
           episodeNumber={
             current?.number ?? 1
@@ -405,7 +443,7 @@ function WatchPage() {
 }
 
 /* ========================================================= */
-/* TIPOS DOS COMENTÁRIOS                                    */
+/* TIPO DO COMENTÁRIO                                        */
 /* ========================================================= */
 
 type Comment = {
@@ -425,7 +463,7 @@ type Comment = {
 };
 
 /* ========================================================= */
-/* COMENTÁRIOS                                              */
+/* COMENTÁRIOS                                               */
 /* ========================================================= */
 
 function CommentsSection({
@@ -454,6 +492,15 @@ function CommentsSection({
   const [likingId, setLikingId] =
     useState<string | null>(null);
 
+  const [replyingId, setReplyingId] =
+    useState<string | null>(null);
+
+  const [replyText, setReplyText] =
+    useState("");
+
+  const [replySending, setReplySending] =
+    useState(false);
+
   const [error, setError] =
     useState("");
 
@@ -462,7 +509,10 @@ function CommentsSection({
   /* ====================================================== */
 
   useEffect(() => {
-    if (!animeId || !episodeId) {
+    if (
+      !animeId ||
+      !episodeId
+    ) {
       return;
     }
 
@@ -482,7 +532,8 @@ function CommentsSection({
             )}`,
             {
               method: "GET",
-              credentials: "include",
+              credentials:
+                "include",
             },
           );
 
@@ -556,7 +607,8 @@ function CommentsSection({
             "/api/comments",
             {
               method: "POST",
-              credentials: "include",
+              credentials:
+                "include",
               headers: {
                 "Content-Type":
                   "application/json",
@@ -605,17 +657,101 @@ function CommentsSection({
     };
 
   /* ====================================================== */
-  /* CURTIR / DESCURTIR                                    */
+  /* ENVIAR RESPOSTA                                        */
+  /* ====================================================== */
+
+  const handleReply =
+    async (
+      parentId: string,
+    ) => {
+      const value =
+        replyText.trim();
+
+      if (
+        !value ||
+        !animeId ||
+        !episodeId ||
+        replySending
+      ) {
+        return;
+      }
+
+      try {
+        setReplySending(true);
+        setError("");
+
+        const response =
+          await fetch(
+            "/api/comments",
+            {
+              method: "POST",
+              credentials:
+                "include",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                animeId,
+                episodeId,
+                content: value,
+                parentId,
+                isSpoiler: false,
+              }),
+            },
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              "Não foi possível publicar a resposta.",
+          );
+        }
+
+        if (data.comment) {
+          setComments(
+            (current) => [
+              ...current,
+              data.comment,
+            ],
+          );
+        }
+
+        setReplyText("");
+        setReplyingId(null);
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível publicar a resposta.",
+        );
+      } finally {
+        setReplySending(false);
+      }
+    };
+
+  /* ====================================================== */
+  /* CURTIR / DESCURTIR                                     */
   /* ====================================================== */
 
   const handleLike =
-    async (commentId: string) => {
+    async (
+      commentId: string,
+    ) => {
       if (likingId) {
         return;
       }
 
       try {
-        setLikingId(commentId);
+        setLikingId(
+          commentId,
+        );
+
         setError("");
 
         const response =
@@ -623,7 +759,8 @@ function CommentsSection({
             "/api/comments/like",
             {
               method: "POST",
-              credentials: "include",
+              credentials:
+                "include",
               headers: {
                 "Content-Type":
                   "application/json",
@@ -673,12 +810,14 @@ function CommentsSection({
             : "Não foi possível alterar a curtida.",
         );
       } finally {
-        setLikingId(null);
+        setLikingId(
+          null,
+        );
       }
     };
 
   /* ====================================================== */
-  /* DATA                                                   */
+  /* DATA                                                    */
   /* ====================================================== */
 
   const formatDate =
@@ -703,6 +842,32 @@ function CommentsSection({
         },
       );
     };
+
+  /* ====================================================== */
+  /* COMENTÁRIOS PRINCIPAIS                                  */
+  /* ====================================================== */
+
+  const rootComments =
+    comments.filter(
+      (comment) =>
+        !comment.parentId,
+    );
+
+  /* ====================================================== */
+  /* RESPOSTAS                                               */
+  /* ====================================================== */
+
+  const repliesFor =
+    (parentId: string) =>
+      comments.filter(
+        (comment) =>
+          comment.parentId ===
+          parentId,
+      );
+
+  /* ====================================================== */
+  /* RENDER                                                   */
+  /* ====================================================== */
 
   return (
     <section className="mt-12 border-t border-white/5 pt-10">
@@ -738,21 +903,26 @@ function CommentsSection({
       </div>
 
       {/* ================================================== */}
-      {/* CAMPO DE COMENTÁRIO                                */}
+      {/* CAMPO DE COMENTÁRIO                                 */}
       {/* ================================================== */}
 
       <div className="mt-5 rounded-xl border border-white/5 bg-surface p-4 sm:p-5">
 
         <textarea
           value={text}
-          onChange={(event) => {
+          onChange={(
+            event,
+          ) => {
             setText(
               event.target.value,
             );
           }}
-          onKeyDown={(event) => {
+          onKeyDown={(
+            event,
+          ) => {
             if (
-              event.key === "Enter" &&
+              event.key ===
+                "Enter" &&
               !event.shiftKey
             ) {
               event.preventDefault();
@@ -801,7 +971,7 @@ function CommentsSection({
       </div>
 
       {/* ================================================== */}
-      {/* LISTA                                               */}
+      {/* LISTA DE COMENTÁRIOS                               */}
       {/* ================================================== */}
 
       <div className="mt-5 space-y-3">
@@ -810,153 +980,395 @@ function CommentsSection({
           <div className="rounded-xl border border-white/5 bg-surface p-5 text-sm text-muted">
             Carregando comentários...
           </div>
-        ) : comments.length === 0 ? (
+        ) : rootComments.length ===
+          0 ? (
           <div className="rounded-xl border border-white/5 bg-surface p-5 text-center text-sm text-muted">
             Ainda não há comentários neste episódio.
             <br />
             Seja o primeiro a comentar.
           </div>
         ) : (
-          comments.map(
-            (comment) => (
+          rootComments.map(
+            (comment) => {
+              const replies =
+                repliesFor(
+                  comment.id,
+                );
 
-              <article
-                key={comment.id}
-                className="rounded-xl border border-white/5 bg-surface p-4 sm:p-5"
-              >
-
-                <div className="flex gap-3">
-
-                  {/* ====================================== */}
-                  {/* AVATAR                                 */}
-                  {/* ====================================== */}
-
-                  <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated text-sm font-semibold">
-
-                    {comment.userImage ? (
-                      <img
-                        src={
-                          comment.userImage
-                        }
-                        alt=""
-                        className="size-full object-cover"
-                      />
-                    ) : (
-                      (
-                        comment.userName ||
-                        "U"
-                      )
-                        .charAt(0)
-                        .toUpperCase()
-                    )}
-
-                  </div>
+              return (
+                <div
+                  key={
+                    comment.id
+                  }
+                  className="space-y-2"
+                >
 
                   {/* ====================================== */}
-                  {/* CONTEÚDO                               */}
+                  {/* COMENTÁRIO PRINCIPAL                   */}
                   {/* ====================================== */}
 
-                  <div className="min-w-0 flex-1">
+                  <CommentCard
+                    comment={
+                      comment
+                    }
+                    likingId={
+                      likingId
+                    }
+                    replyingId={
+                      replyingId
+                    }
+                    replyText={
+                      replyText
+                    }
+                    replySending={
+                      replySending
+                    }
+                    formatDate={
+                      formatDate
+                    }
+                    onLike={
+                      handleLike
+                    }
+                    onReplyChange={
+                      setReplyText
+                    }
+                    onStartReply={() => {
+                      setReplyingId(
+                        comment.id,
+                      );
+                      setReplyText(
+                        "",
+                      );
+                    }}
+                    onCancelReply={() => {
+                      setReplyingId(
+                        null,
+                      );
+                      setReplyText(
+                        "",
+                      );
+                    }}
+                    onSendReply={() => {
+                      void handleReply(
+                        comment.id,
+                      );
+                    }}
+                  />
 
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {/* ====================================== */}
+                  {/* RESPOSTAS                               */}
+                  {/* ====================================== */}
 
-                      <span className="text-sm font-semibold">
-                        {comment.userName ||
-                          "Usuário"}
-                      </span>
+                  {replies.length >
+                    0 && (
+                    <div className="ml-5 space-y-2 border-l border-white/10 pl-3 sm:ml-8 sm:pl-4">
 
-                      <span className="text-xs text-subtle">
-                        ·{" "}
-                        {formatDate(
-                          comment.createdAt,
-                        )}
-                      </span>
+                      {replies.map(
+                        (
+                          reply,
+                        ) => (
+                          <CommentCard
+                            key={
+                              reply.id
+                            }
+                            comment={
+                              reply
+                            }
+                            likingId={
+                              likingId
+                            }
+                            replyingId={
+                              null
+                            }
+                            replyText=""
+                            replySending={
+                              false
+                            }
+                            formatDate={
+                              formatDate
+                            }
+                            onLike={
+                              handleLike
+                            }
+                            onReplyChange={() => {}}
+                            onStartReply={() => {
+                              setReplyingId(
+                                comment.id,
+                              );
+                              setReplyText(
+                                "",
+                              );
+                            }}
+                            onCancelReply={() => {}}
+                            onSendReply={() => {}}
+                            isReply
+                          />
+                        ),
+                      )}
 
                     </div>
-
-                    {/* ================================== */}
-                    {/* SPOILER                             */}
-                    {/* ================================== */}
-
-                    {comment.isSpoiler ? (
-                      <details className="mt-2">
-
-                        <summary className="cursor-pointer text-sm text-fg">
-                          Mostrar spoiler
-                        </summary>
-
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
-                          {comment.content}
-                        </p>
-
-                      </details>
-                    ) : (
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
-                        {comment.content}
-                      </p>
-                    )}
-
-                    {/* ================================== */}
-                    {/* AÇÕES                               */}
-                    {/* ================================== */}
-
-                    <div className="mt-3 flex items-center gap-4">
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void handleLike(
-                            comment.id,
-                          )
-                        }
-                        disabled={
-                          likingId ===
-                          comment.id
-                        }
-                        className={cn(
-                          "flex items-center gap-1.5 text-xs transition-colors",
-                          comment.liked
-                            ? "text-fg"
-                            : "text-subtle hover:text-fg",
-                        )}
-                        aria-label={
-                          comment.liked
-                            ? "Remover curtida"
-                            : "Curtir comentário"
-                        }
-                      >
-                        <Heart
-                          className={cn(
-                            "size-4",
-                            comment.liked &&
-                              "fill-current",
-                          )}
-                        />
-
-                        {comment.likes}
-                      </button>
-
-                      <button
-                        type="button"
-                        className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
-                      >
-                        <MessageCircle className="size-4" />
-                        Responder
-                      </button>
-
-                    </div>
-
-                  </div>
+                  )}
 
                 </div>
-
-              </article>
-            ),
+              );
+            },
           )
         )}
 
       </div>
 
     </section>
+  );
+}
+
+/* ========================================================= */
+/* CARD DO COMENTÁRIO                                        */
+/* ========================================================= */
+
+function CommentCard({
+  comment,
+  likingId,
+  replyingId,
+  replyText,
+  replySending,
+  formatDate,
+  onLike,
+  onReplyChange,
+  onStartReply,
+  onCancelReply,
+  onSendReply,
+  isReply = false,
+}: {
+  comment: Comment;
+  likingId: string | null;
+  replyingId: string | null;
+  replyText: string;
+  replySending: boolean;
+  formatDate: (
+    value: string,
+  ) => string;
+  onLike: (
+    id: string,
+  ) => void;
+  onReplyChange: (
+    value: string,
+  ) => void;
+  onStartReply: () => void;
+  onCancelReply: () => void;
+  onSendReply: () => void;
+  isReply?: boolean;
+}) {
+  const isReplying =
+    replyingId ===
+    comment.id;
+
+  return (
+    <article
+      className={cn(
+        "rounded-xl border border-white/5 bg-surface p-4 sm:p-5",
+        isReply &&
+          "bg-surface/80",
+      )}
+    >
+
+      <div className="flex gap-3">
+
+        {/* ================================================= */}
+        {/* AVATAR                                            */}
+        {/* ================================================= */}
+
+        <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated text-sm font-semibold">
+
+          {comment.userImage ? (
+            <img
+              src={
+                comment.userImage
+              }
+              alt=""
+              className="size-full object-cover"
+            />
+          ) : (
+            (
+              comment.userName ||
+              "U"
+            )
+              .charAt(0)
+              .toUpperCase()
+          )}
+
+        </div>
+
+        {/* ================================================= */}
+        {/* CONTEÚDO                                          */}
+        {/* ================================================= */}
+
+        <div className="min-w-0 flex-1">
+
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+
+            <span className="text-sm font-semibold">
+              {comment.userName ||
+                "Usuário"}
+            </span>
+
+            <span className="text-xs text-subtle">
+              ·{" "}
+              {formatDate(
+                comment.createdAt,
+              )}
+            </span>
+
+          </div>
+
+          {/* =============================================== */}
+          {/* SPOILER                                         */}
+          {/* =============================================== */}
+
+          {comment.isSpoiler ? (
+            <details className="mt-2">
+
+              <summary className="cursor-pointer text-sm text-fg">
+                Mostrar spoiler
+              </summary>
+
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
+                {comment.content}
+              </p>
+
+            </details>
+          ) : (
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
+              {comment.content}
+            </p>
+          )}
+
+          {/* =============================================== */}
+          {/* AÇÕES                                           */}
+          {/* =============================================== */}
+
+          <div className="mt-3 flex items-center gap-4">
+
+            <button
+              type="button"
+              onClick={() =>
+                void onLike(
+                  comment.id,
+                )
+              }
+              disabled={
+                likingId ===
+                comment.id
+              }
+              className={cn(
+                "flex items-center gap-1.5 text-xs transition-colors",
+                comment.liked
+                  ? "text-fg"
+                  : "text-subtle hover:text-fg",
+              )}
+              aria-label={
+                comment.liked
+                  ? "Remover curtida"
+                  : "Curtir comentário"
+              }
+            >
+
+              <Heart
+                className={cn(
+                  "size-4",
+                  comment.liked &&
+                    "fill-current",
+                )}
+              />
+
+              {comment.likes}
+
+            </button>
+
+            {!isReply && (
+              <button
+                type="button"
+                onClick={
+                  onStartReply
+                }
+                className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
+              >
+                <MessageCircle className="size-4" />
+                Responder
+              </button>
+            )}
+
+          </div>
+
+          {/* =============================================== */}
+          {/* CAIXA DE RESPOSTA                                */}
+          {/* =============================================== */}
+
+          {isReplying && (
+            <div className="mt-4 rounded-lg border border-white/5 bg-bg p-3">
+
+              <textarea
+                value={
+                  replyText
+                }
+                onChange={(
+                  event,
+                ) => {
+                  onReplyChange(
+                    event.target
+                      .value,
+                  );
+                }}
+                rows={3}
+                maxLength={
+                  2000
+                }
+                placeholder="Escreva uma resposta..."
+                className="w-full resize-none rounded-lg border border-white/5 bg-surface px-3 py-2 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
+              />
+
+              <div className="mt-2 flex items-center justify-end gap-2">
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={
+                    onCancelReply
+                  }
+                  disabled={
+                    replySending
+                  }
+                >
+                  Cancelar
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={
+                    onSendReply
+                  }
+                  disabled={
+                    !replyText.trim() ||
+                    replySending
+                  }
+                >
+                  <Send className="size-4" />
+
+                  {replySending
+                    ? "Enviando..."
+                    : "Responder"}
+                </Button>
+
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+      </div>
+
+    </article>
   );
     }
