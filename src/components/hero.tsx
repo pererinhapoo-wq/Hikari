@@ -32,13 +32,13 @@ export function Hero({
   }, [animes.length]);
 
   return (
-    <section className="relative -mx-4 h-[17rem] overflow-hidden sm:-mx-6 sm:h-[20rem] lg:h-[24rem]">
+    <section className="relative -mx-4 h-[17rem] overflow-hidden md:-mx-6 md:h-[20rem] lg:h-[24rem]">
       {backdrop && (
         <img
           key={current.id}
           src={backdrop}
           alt=""
-          className="absolute inset-0 size-full object-cover object-[center_35%] sm:object-center"
+          className="absolute inset-0 size-full object-cover object-[center_35%] md:object-center
         />
       )}
 
