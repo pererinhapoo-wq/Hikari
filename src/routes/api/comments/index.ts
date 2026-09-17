@@ -5,9 +5,9 @@ import { auth } from "@/lib/auth/server";
 export const Route = createFileRoute("/api/comments/")({
   server: {
     handlers: {
-      // =====================================================
-      // LISTAR COMENTÁRIOS
-      // =====================================================
+      // =========================================================
+      // LISTAR COMENTÁRIOS DE UM EPISÓDIO
+      // =========================================================
 
       GET: async ({ request }) => {
         try {
@@ -70,16 +70,12 @@ export const Route = createFileRoute("/api/comments/")({
         }
       },
 
-      // =====================================================
+      // =========================================================
       // CRIAR COMENTÁRIO
-      // =====================================================
+      // =========================================================
 
       POST: async ({ request }) => {
         try {
-          // -------------------------------------------------
-          // AUTENTICAÇÃO
-          // -------------------------------------------------
-
           const session = await auth.api.getSession({
             headers: request.headers,
           });
@@ -98,10 +94,6 @@ export const Route = createFileRoute("/api/comments/")({
             userId: session.user.id,
             userName: session.user.name,
           });
-
-          // -------------------------------------------------
-          // BODY
-          // -------------------------------------------------
 
           const body = await request.json();
 
@@ -131,9 +123,9 @@ export const Route = createFileRoute("/api/comments/")({
               ? body.isSpoiler
               : false;
 
-          // -------------------------------------------------
+          // =====================================================
           // VALIDAÇÃO
-          // -------------------------------------------------
+          // =====================================================
 
           if (!animeId || !episodeId || !content) {
             return Response.json(
@@ -155,15 +147,11 @@ export const Route = createFileRoute("/api/comments/")({
             );
           }
 
-          // -------------------------------------------------
-          // BANCO
-          // -------------------------------------------------
-
           const sql = await getSql();
 
-          // -------------------------------------------------
+          // =====================================================
           // VERIFICAR COMENTÁRIO PAI
-          // -------------------------------------------------
+          // =====================================================
 
           if (parentId) {
             const parent = await sql.query(
@@ -189,15 +177,15 @@ export const Route = createFileRoute("/api/comments/")({
             }
           }
 
-          // -------------------------------------------------
-          // ID
-          // -------------------------------------------------
+          // =====================================================
+          // GERAR ID DO COMENTÁRIO
+          // =====================================================
 
           const id = crypto.randomUUID();
 
-          // -------------------------------------------------
-          // INSERT
-          // -------------------------------------------------
+          // =====================================================
+          // SALVAR COMENTÁRIO
+          // =====================================================
 
           await sql.query(
             `
@@ -223,56 +211,33 @@ export const Route = createFileRoute("/api/comments/")({
             ],
           );
 
-          // -------------------------------------------------
-          // BUSCAR O COMENTÁRIO CRIADO
+          // =====================================================
+          // RETORNAR O COMENTÁRIO CRIADO
           //
-          // Em vez de depender de result.rows[0] do INSERT,
-          // fazemos uma nova consulta pelo ID.
-          // -------------------------------------------------
+          // Não fazemos outro SELECT aqui.
+          // O INSERT já foi aceito pelo banco.
+          // =====================================================
 
-          const created = await sql.query(
-            `
-              select
-                c."id",
-                c."animeId",
-                c."episodeId",
-                c."content",
-                c."parentId",
-                c."isSpoiler",
-                c."createdAt",
-                c."updatedAt",
-                c."userId",
-                coalesce(u."name", 'Usuário') as "userName",
-                u."image" as "userImage"
-              from "comment" c
-              left join "user" u
-                on u."id" = c."userId"
-              where c."id" = $1
-              limit 1
-            `,
-            [id],
+          const now = new Date().toISOString();
+
+          const comment = {
+            id,
+            animeId,
+            episodeId,
+            content,
+            parentId,
+            isSpoiler,
+            createdAt: now,
+            updatedAt: now,
+            userId: session.user.id,
+            userName: session.user.name || "Usuário",
+            userImage: session.user.image || null,
+          };
+
+          console.log(
+            "COMENTÁRIO CRIADO COM SUCESSO:",
+            comment.id,
           );
-
-          const comment = created.rows?.[0];
-
-          if (!comment) {
-            console.error(
-              "COMENTÁRIO FOI INSERIDO, MAS NÃO FOI ENCONTRADO:",
-              id,
-            );
-
-            return Response.json(
-              {
-                error:
-                  "O comentário foi salvo, mas não foi possível recuperá-lo.",
-              },
-              { status: 500 },
-            );
-          }
-
-          // -------------------------------------------------
-          // RESPOSTA
-          // -------------------------------------------------
 
           return Response.json(
             {
