@@ -147,7 +147,7 @@ export function Shell() {
                       to={item.to}
                       onClick={() => setMenuOpen(false)}
                       className={cn(
-                        "flex items-center gap-4 rounded-md px-4 py-3.5 text-base transition-colors",
+                        ""flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
                         active
                           ? "bg-elevated text-fg"
                           : "text-muted hover:bg-elevated hover:text-fg"
