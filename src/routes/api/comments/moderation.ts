@@ -245,9 +245,29 @@ export const Route = createFileRoute(
           if (
             action === "report"
           ) {
+            /* ========================================== */
+            /* NORMALIZAR MOTIVO                           */
+            /* ========================================== */
+
+            const normalizedReason =
+              reason ===
+                "Spoiler não marcado" ||
+              reason ===
+                "spoiler_nao_marcado" ||
+              reason ===
+                "spoiler-nao-marcado" ||
+              reason ===
+                "unmarked-spoiler"
+                ? "unmarked_spoiler"
+                : reason;
+
+            /* ========================================== */
+            /* VALIDAR MOTIVO                              */
+            /* ========================================== */
+
             if (
               !REPORT_REASONS.includes(
-                reason as
+                normalizedReason as
                   (typeof REPORT_REASONS)[number],
               )
             ) {
@@ -259,6 +279,10 @@ export const Route = createFileRoute(
                 { status: 400 },
               );
             }
+
+            /* ========================================== */
+            /* VERIFICAR DENÚNCIA EXISTENTE                */
+            /* ========================================== */
 
             const existingResult =
               await sql.query(
@@ -284,6 +308,10 @@ export const Route = createFileRoute(
                 : existingResult?.rows ??
                   [];
 
+            /* ========================================== */
+            /* JÁ DENUNCIOU                                */
+            /* ========================================== */
+
             if (
               existingRows.length >
               0
@@ -295,6 +323,10 @@ export const Route = createFileRoute(
                   true,
               });
             }
+
+            /* ========================================== */
+            /* CRIAR DENÚNCIA                              */
+            /* ========================================== */
 
             await sql.query(
               `
@@ -315,7 +347,7 @@ export const Route = createFileRoute(
                 crypto.randomUUID(),
                 commentId,
                 session.user.id,
-                reason,
+                normalizedReason,
               ],
             );
 
@@ -324,6 +356,10 @@ export const Route = createFileRoute(
               action: "report",
             });
           }
+
+          /* ============================================ */
+          /* AÇÃO NÃO PROCESSADA                           */
+          /* ============================================ */
 
           return Response.json(
             {
