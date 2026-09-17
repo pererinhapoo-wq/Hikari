@@ -4,6 +4,7 @@ import {
   BookmarkCheck,
   Pencil,
   Play,
+  Share2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -37,13 +38,15 @@ export const Route = createFileRoute("/anime/$id")({
 
     return { remote };
   },
+
   pendingComponent: () => (
     <div className="space-y-4 pt-4">
-      <div className="-mx-4 h-52 animate-pulse bg-elevated sm:-mx-6" />
+      <div className="-mx-4 h-64 animate-pulse bg-elevated sm:-mx-6 sm:h-80" />
       <div className="h-8 w-2/3 animate-pulse rounded bg-elevated" />
       <div className="h-24 animate-pulse rounded bg-elevated" />
     </div>
   ),
+
   component: AnimePage,
 });
 
@@ -70,6 +73,7 @@ function AnimePage() {
     return (
       <div className="py-24 text-center">
         <p className="font-display text-2xl">Anime não encontrado</p>
+
         <Link
           to="/"
           className="mt-3 inline-block text-sm text-muted underline"
@@ -96,145 +100,196 @@ function AnimePage() {
     anime.episodesCount ||
     0;
 
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title,
+          text: `Confira ${title} no Hikari`,
+          url: window.location.href,
+        });
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+      }
+    } catch {
+      // Usuário cancelou o compartilhamento.
+    }
+  };
+
   return (
-    <article className="pb-8">
-      <div className="relative -mx-4 h-48 overflow-hidden sm:-mx-6 sm:h-72">
-        {(anime.banner || anime.cover) && (
-          <img
-            src={anime.banner || anime.cover}
-            alt=""
-            className="size-full object-cover"
-          />
-        )}
-        <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/40 to-transparent" />
-      </div>
-
-      <div className="relative z-10 -mt-20 flex flex-col gap-5 sm:-mt-24 sm:flex-row">
-        <div className="mx-auto w-32 shrink-0 overflow-hidden rounded-lg bg-elevated shadow-[var(--shadow-border)] sm:mx-0 sm:w-40">
-          {anime.cover ? (
+    <article className="pb-12">
+      {/* HERO */}
+      <section className="relative -mx-4 overflow-hidden sm:-mx-6">
+        <div className="relative h-[22rem] sm:h-[30rem]">
+          {(anime.banner || anime.cover) && (
             <img
-              src={anime.cover}
+              src={anime.banner || anime.cover}
               alt=""
-              className="aspect-2/3 w-full object-cover"
+              className="size-full object-cover"
             />
-          ) : (
-            <div className="aspect-2/3" />
           )}
+
+          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
+          <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
         </div>
 
-        <div className="flex-1 space-y-3 sm:pt-16">
-          <p className="text-[11px] tracking-[0.28em] text-muted uppercase">
-            {formatLabel(anime.format)}
-            {anime.year ? ` · ${anime.year}` : ""}
-          </p>
-
-          <h1 className="font-display text-3xl leading-tight tracking-tight sm:text-4xl">
-            {title}
-          </h1>
-
-          {anime.titles.native && (
-            <p className="font-display text-sm text-muted">
-              {anime.titles.native}
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            {anime.score != null && (
-              <span className="text-sm font-medium tabular-nums text-score">
-                {scoreLabel(anime.score)}
-              </span>
-            )}
-
-            <span className="text-sm text-muted">
-              {statusLabel(anime.status)}
-            </span>
-
-            {episodeCount > 0 && (
-              <span className="text-sm text-muted">
-                {episodeCount} episódios
-              </span>
-            )}
-
-            {seasonLabel(anime.season, anime.year) && (
-              <span className="text-sm text-muted">
-                {seasonLabel(anime.season, anime.year)}
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            {anime.genres.map((g) => (
-              <Link
-                key={g}
-                to="/search"
-                search={{
-                  q: "",
-                  genre: g,
-                  year: "",
-                  format: "",
-                  status: "",
-                  sort: "TRENDING_DESC",
-                }}
-              >
-                <Badge>{genreLabel(g)}</Badge>
-              </Link>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Button asChild>
-              <Link to="/watch/$id" params={{ id: anime.id }}>
-                <Play className="size-4" />
-                Assistir
-              </Link>
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => toggleList(anime)}
-            >
-              {inList ? (
-                <BookmarkCheck className="size-4" />
+        <div className="relative z-10 -mt-28 px-4 sm:-mt-36 sm:px-6">
+          <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row">
+            {/* CAPA */}
+            <div className="mx-auto w-32 shrink-0 overflow-hidden rounded-xl bg-elevated shadow-2xl ring-1 ring-white/10 sm:mx-0 sm:w-44">
+              {anime.cover ? (
+                <img
+                  src={anime.cover}
+                  alt={title}
+                  className="aspect-2/3 w-full object-cover"
+                />
               ) : (
-                <Bookmark className="size-4" />
+                <div className="aspect-2/3 bg-elevated" />
               )}
-              {inList ? "Na lista" : "Minha Lista"}
-            </Button>
+            </div>
 
-            {canEdit && (
-              <Button asChild variant="ghost">
-                <Link
-                  to="/admin/$id"
-                  params={{ id: localRecord?.id ?? "new" }}
-                  search={{ importId: anime.id }}
+            {/* INFORMAÇÕES */}
+            <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:pb-2">
+              <div className="mb-2">
+                <span className="text-[11px] font-medium tracking-[0.3em] text-muted uppercase">
+                  Anime
+                </span>
+              </div>
+
+              <h1 className="font-display text-3xl leading-tight tracking-tight sm:text-5xl">
+                {title}
+              </h1>
+
+              {anime.titles.native && (
+                <p className="mt-1 font-display text-sm text-muted">
+                  {anime.titles.native}
+                </p>
+              )}
+
+              {/* METADADOS */}
+              <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+                {anime.score != null && (
+                  <span className="font-semibold tabular-nums text-score">
+                    ★ {scoreLabel(anime.score)}
+                  </span>
+                )}
+
+                {anime.year && (
+                  <span className="text-muted">{anime.year}</span>
+                )}
+
+                <span className="text-muted">
+                  {formatLabel(anime.format)}
+                </span>
+
+                {episodeCount > 0 && (
+                  <span className="text-muted">
+                    {episodeCount} episódios
+                  </span>
+                )}
+
+                {statusLabel(anime.status) && (
+                  <span className="text-muted">
+                    {statusLabel(anime.status)}
+                  </span>
+                )}
+              </div>
+
+              {/* GÊNEROS */}
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {anime.genres.map((g) => (
+                  <Link
+                    key={g}
+                    to="/search"
+                    search={{
+                      q: "",
+                      genre: g,
+                      year: "",
+                      format: "",
+                      status: "",
+                      sort: "TRENDING_DESC",
+                    }}
+                  >
+                    <Badge>{genreLabel(g)}</Badge>
+                  </Link>
+                ))}
+              </div>
+
+              {/* BOTÕES */}
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Button asChild size="lg">
+                  <Link to="/watch/$id" params={{ id: anime.id }}>
+                    <Play className="size-4 fill-current" />
+                    Assistir
+                  </Link>
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  onClick={() => toggleList(anime)}
                 >
-                  <Pencil className="size-4" />
-                  Editar
-                </Link>
-              </Button>
-            )}
+                  {inList ? (
+                    <BookmarkCheck className="size-4" />
+                  ) : (
+                    <Bookmark className="size-4" />
+                  )}
+
+                  {inList ? "Na lista" : "Minha Lista"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  onClick={handleShare}
+                >
+                  <Share2 className="size-4" />
+                  Compartilhar
+                </Button>
+
+                {canEdit && (
+                  <Button asChild variant="ghost">
+                    <Link
+                      to="/admin/$id"
+                      params={{ id: localRecord?.id ?? "new" }}
+                      search={{ importId: anime.id }}
+                    >
+                      <Pencil className="size-4" />
+                      Editar
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
+      {/* SINOPSE */}
       {anime.synopsis && (
-        <section className="mt-8 max-w-3xl">
-          <h2 className="text-[11px] tracking-[0.28em] text-muted uppercase">
+        <section className="mt-10 max-w-4xl">
+          <h2 className="font-display text-2xl tracking-tight">
             Sinopse
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
+
+          <p className="mt-3 text-sm leading-7 text-muted sm:text-base">
             {anime.synopsis}
           </p>
         </section>
       )}
 
+      {/* TRAILER */}
       {yt && (
-        <section className="mt-8">
-          <h2 className="text-[11px] tracking-[0.28em] text-muted uppercase">
-            Trailer
-          </h2>
-          <div className="mt-3 aspect-video overflow-hidden rounded-xl bg-elevated shadow-[var(--shadow-border)]">
+        <section className="mt-10">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-2xl tracking-tight">
+              Trailer
+            </h2>
+          </div>
+
+          <div className="mt-4 aspect-video overflow-hidden rounded-xl bg-elevated shadow-[var(--shadow-border)]">
             <iframe
               title={`Trailer de ${title}`}
               src={`https://www.youtube-nocookie.com/embed/${yt}`}
@@ -246,11 +301,22 @@ function AnimePage() {
         </section>
       )}
 
+      {/* EPISÓDIOS */}
       {seasons.length > 0 && (
-        <section className="mt-10">
-          <h2 className="font-display text-2xl tracking-tight">Episódios</h2>
+        <section className="mt-12">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
+                Episódios
+              </h2>
 
-          <div className="mt-4 space-y-8">
+              <p className="mt-1 text-sm text-muted">
+                {episodeCount} episódios disponíveis
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-8">
             {seasons.map((season) => (
               <div key={season.id}>
                 {seasons.length > 1 && (
@@ -270,17 +336,27 @@ function AnimePage() {
         </section>
       )}
 
+      {/* ESTÚDIO */}
       {anime.studios.length > 0 && (
-        <p className="mt-8 text-xs text-subtle">
-          Estúdio: {anime.studios.join(", ")}
-        </p>
+        <section className="mt-10 rounded-xl border border-white/5 bg-surface p-5">
+          <p className="text-xs tracking-[0.2em] text-subtle uppercase">
+            Estúdio
+          </p>
+
+          <p className="mt-2 text-sm text-fg">
+            {anime.studios.join(", ")}
+          </p>
+        </section>
       )}
 
+      {/* RELACIONADOS */}
       {anime.recommendations.length > 0 && (
-        <section className="mt-10 space-y-3">
-          <h2 className="font-display text-2xl tracking-tight">
-            Relacionados
-          </h2>
+        <section className="mt-12 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
+              Relacionados
+            </h2>
+          </div>
 
           <div className="rail -mx-4 px-4 sm:-mx-6 sm:px-6">
             {anime.recommendations.map((r) => (
@@ -289,6 +365,27 @@ function AnimePage() {
           </div>
         </section>
       )}
+
+      {/* COMENTÁRIOS — ESPAÇO RESERVADO PARA A PRÓXIMA ETAPA */}
+      <section className="mt-12 border-t border-white/5 pt-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
+              Comentários
+            </h2>
+
+            <p className="mt-1 text-sm text-muted">
+              A discussão deste anime ficará aqui.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-white/5 bg-surface p-6 text-center">
+          <p className="text-sm text-muted">
+            Os comentários do Hikari serão adicionados aqui.
+          </p>
+        </div>
+      </section>
     </article>
   );
 }
@@ -313,34 +410,48 @@ function EpisodeGrid({
 
   return (
     <>
-      <ol className="grid gap-2 sm:grid-cols-2">
+      <ol className="grid gap-3 sm:grid-cols-2">
         {visible.map((ep) => (
           <li key={ep.id}>
             <Link
               to="/watch/$id"
               params={{ id: animeId }}
               search={{ ep: ep.id }}
-              className="flex gap-3 rounded-lg bg-surface p-2 shadow-[var(--shadow-border)] transition-colors hover:bg-elevated"
+              className="group flex gap-3 rounded-xl border border-white/5 bg-surface p-2.5 shadow-[var(--shadow-border)] transition-all hover:-translate-y-0.5 hover:bg-elevated"
             >
-              <div className="h-[4.5rem] w-28 shrink-0 overflow-hidden rounded-md bg-elevated">
+              {/* THUMBNAIL */}
+              <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
                 {ep.thumbnail || cover ? (
                   <img
                     src={ep.thumbnail || cover}
                     alt=""
-                    className="size-full object-cover"
+                    className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : null}
+
+                <div className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/5" />
+
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="flex size-9 items-center justify-center rounded-full bg-white text-black shadow-lg">
+                    <Play className="ml-0.5 size-4 fill-current" />
+                  </div>
+                </div>
               </div>
 
-              <div className="min-w-0 py-0.5">
-                <p className="text-[11px] tabular-nums text-subtle">
-                  Ep. {ep.number}
+              {/* INFORMAÇÕES */}
+              <div className="min-w-0 flex-1 py-1">
+                <p className="text-[11px] font-medium tracking-wide text-subtle uppercase">
+                  Episódio {ep.number}
                 </p>
-                <p className="line-clamp-2 text-sm leading-snug text-fg">
+
+                <p className="mt-1 line-clamp-2 text-sm leading-snug text-fg">
                   {ep.title}
                 </p>
+
                 {ep.duration && (
-                  <p className="text-xs text-subtle">{ep.duration}</p>
+                  <p className="mt-1 text-xs text-subtle">
+                    {ep.duration}
+                  </p>
                 )}
               </div>
             </Link>
@@ -352,7 +463,7 @@ function EpisodeGrid({
         <Button
           type="button"
           variant="outline"
-          className="mt-3 w-full"
+          className="mt-4 w-full"
           onClick={() => setShown((n) => n + 24)}
         >
           Mais episódios ({episodes.length - shown} restantes)
@@ -360,4 +471,4 @@ function EpisodeGrid({
       )}
     </>
   );
-                }
+  }
