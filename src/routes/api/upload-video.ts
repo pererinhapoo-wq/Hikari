@@ -4,9 +4,18 @@ import { createAPIFileRoute } from "@tanstack/react-start/api";
 export const APIRoute = createAPIFileRoute("/api/upload-video")({
   POST: async ({ request }) => {
     const body = (await request.json()) as HandleUploadBody;
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+
+    if (!token) {
+      return Response.json(
+        { error: "BLOB_READ_WRITE_TOKEN não está disponível." },
+        { status: 500 },
+      );
+    }
 
     try {
       const jsonResponse = await handleUpload({
+        token,
         body,
         request,
         onBeforeGenerateToken: async () => ({
@@ -25,6 +34,8 @@ export const APIRoute = createAPIFileRoute("/api/upload-video")({
 
       return Response.json(jsonResponse);
     } catch (error) {
+      console.error("Erro no upload do Blob:", error);
+
       return Response.json(
         {
           error:
