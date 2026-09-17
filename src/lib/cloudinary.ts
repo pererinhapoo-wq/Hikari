@@ -1,62 +1,47 @@
-const SCRIPT_URL = "https://upload-widget.cloudinary.com/global/all.js";
+import { upload } from "@vercel/blob/client";
 
-type CloudinaryWidget = { open: () => void; destroy: () => void };
-type CloudinaryGlobal = {
-  createUploadWidget: (options: Record<string, unknown>, callback: (error: unknown, result: any) => void) => CloudinaryWidget;
-};
+export async function uploadVideoToCloudinary(
+  onDone: (url: string) => void,
+): Promise<void> {
+  if (typeof window === "undefined") {
+    throw new Error("Navegador necessário.");
+  }
 
-declare global {
-  interface Window { cloudinary?: CloudinaryGlobal; }
-}
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "video/mp4,video/webm,video/quicktime";
+  input.style.display = "none";
 
-function loadWidgetScript(): Promise<void> {
-  if (typeof window === "undefined") return Promise.reject(new Error("Navegador necessário."));
-  if (window.cloudinary) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT_URL}"]`);
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Não foi possível carregar o upload de vídeo.")), { once: true });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = SCRIPT_URL;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Não foi possível carregar o upload de vídeo."));
-    document.head.appendChild(script);
-  });
-}
+  document.body.appendChild(input);
 
-export async function uploadVideoToCloudinary(onDone: (url: string) => void): Promise<void> {
-  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME?.trim() || "emz91qt5";
-  const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET?.trim() || "vídeo hikari";
-  await loadWidgetScript();
-  if (!window.cloudinary) throw new Error("Upload de vídeo indisponível.");
+  try {
+    const file = await new Promise<File>((resolve, reject) => {
+      input.onchange = () => {
+        const selectedFile = input.files?.[0];
 
-  const widget = window.cloudinary.createUploadWidget(
-    {
-      cloudName,
-      uploadPreset,
-      resourceType: "video",
-      multiple: false,
-      clientAllowedFormats: ["mp4", "webm", "mov", "mkv"],
-      maxFileSize: 5_000_000_000,
-      sources: ["local"],
-      folder: "hikari/episodes",
-      showAdvancedOptions: false,
-      showPoweredBy: false,
-    },
-    (error, result) => {
-      if (error) {
-        widget.destroy();
-        return;
-      }
-      if (result?.event === "success" && result.info?.secure_url) {
-        onDone(result.info.secure_url);
-        widget.destroy();
-      }
-    },
-  );
-  widget.open();
+        if (!selectedFile) {
+          reject(new Error("Nenhum vídeo selecionado."));
+          return;
+        }
+
+        resolve(selectedFile);
+      };
+
+      input.click();
+    });
+
+    const blob = await upload(
+      `hikari/episodes/${file.name}`,
+      file,
+      {
+        access: "public",
+        handleUploadUrl: "/api/upload-video",
+        multipart: true,
+      },
+    );
+
+    onDone(blob.url);
+  } finally {
+    input.remove();
+  }
 }
