@@ -2,89 +2,176 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { auth } from "@/lib/auth/server";
 
-export const Route = createFileRoute("/api/comments/")({
+export const Route = createFileRoute(
+  "/api/comments/",
+)({
   server: {
     handlers: {
-      // =========================================================
-      // LISTAR COMENTÁRIOS DE UM EPISÓDIO
-      // =========================================================
+      /* ================================================== */
+      /* GET — CARREGAR COMENTÁRIOS                         */
+      /* ================================================== */
 
       GET: async ({ request }) => {
         try {
-          const url = new URL(request.url);
+          const url = new URL(
+            request.url,
+          );
 
           const animeId =
-            url.searchParams.get("animeId");
+            url.searchParams.get(
+              "animeId",
+            );
 
           const episodeId =
-            url.searchParams.get("episodeId");
+            url.searchParams.get(
+              "episodeId",
+            );
 
-          if (!animeId || !episodeId) {
+          if (
+            !animeId ||
+            !episodeId
+          ) {
             return Response.json(
               {
                 error:
                   "animeId e episodeId são obrigatórios.",
               },
-              { status: 400 },
+              {
+                status: 400,
+              },
             );
           }
 
-          const sql = await getSql();
+          const sql =
+            await getSql();
 
-          // =====================================================
-          // BUSCAR COMENTÁRIOS
-          // =====================================================
+          /* ============================================== */
+          /* USUÁRIO ATUAL                                   */
+          /* ============================================== */
 
-          const result = await sql.query(
-            `
-              select
-                c."id",
-                c."animeId",
-                c."episodeId",
-                c."content",
-                c."parentId",
-                c."isSpoiler",
-                c."createdAt",
-                c."updatedAt",
-                c."userId",
-                coalesce(
-                  u."name",
-                  'Usuário'
-                ) as "userName",
-                u."image" as "userImage"
-              from "comment" c
-              left join "user" u
-                on u."id" = c."userId"
-              where c."animeId" = $1
-                and c."episodeId" = $2
-              order by c."createdAt" desc
-            `,
-            [animeId, episodeId],
-          );
+          const session =
+            await auth.api.getSession(
+              {
+                headers:
+                  request.headers,
+              },
+            );
 
-          // =====================================================
-          // O BANCO PODE RETORNAR:
-          //
-          // 1. diretamente um array
-          //
-          // ou
-          //
-          // 2. { rows: [...] }
-          //
-          // Aceitamos os dois formatos.
-          // =====================================================
+          const currentUserId =
+            session?.user?.id ??
+            null;
 
-          const comments = Array.isArray(result)
-            ? result
-            : result?.rows ?? [];
+          /* ============================================== */
+          /* COMENTÁRIOS + CURTIDAS                         */
+          /* ============================================== */
+
+          const result =
+            await sql.query(
+              `
+                select
+                  c."id",
+                  c."animeId",
+                  c."episodeId",
+                  c."content",
+                  c."parentId",
+                  c."isSpoiler",
+                  c."createdAt",
+                  c."updatedAt",
+                  c."userId",
+
+                  coalesce(
+                    u."name",
+                    'Usuário'
+                  ) as "userName",
+
+                  u."image" as "userImage",
+
+                  (
+                    select count(*)::int
+                    from "comment_like" cl
+                    where cl."commentId" =
+                      c."id"
+                  ) as "likes",
+
+                  ${
+                    currentUserId
+                      ? `
+                        exists (
+                          select 1
+                          from "comment_like" cl2
+                          where cl2."commentId" =
+                            c."id"
+                            and cl2."userId" =
+                            $3
+                        ) as "liked"
+                      `
+                      : `
+                        false as "liked"
+                      `
+                  }
+
+                from "comment" c
+
+                left join "user" u
+                  on u."id" =
+                    c."userId"
+
+                where c."animeId" =
+                  $1
+
+                  and c."episodeId" =
+                  $2
+
+                order by
+                  c."createdAt" desc
+              `,
+              currentUserId
+                ? [
+                    animeId,
+                    episodeId,
+                    currentUserId,
+                  ]
+                : [
+                    animeId,
+                    episodeId,
+                  ],
+            );
+
+          const comments =
+            Array.isArray(result)
+              ? result
+              : result?.rows ?? [];
+
+          /* ============================================== */
+          /* NORMALIZAR DADOS                               */
+          /* ============================================== */
+
+          const normalizedComments =
+            comments.map(
+              (comment) => ({
+                ...comment,
+
+                likes:
+                  Number(
+                    comment.likes ??
+                      0,
+                  ) || 0,
+
+                liked:
+                  Boolean(
+                    comment.liked,
+                  ),
+              }),
+            );
 
           console.log(
             "COMENTÁRIOS ENCONTRADOS:",
-            comments.length,
+            normalizedComments.length,
           );
 
           return Response.json({
-            comments,
+            comments:
+              normalizedComments,
           });
         } catch (error) {
           console.error(
@@ -97,33 +184,40 @@ export const Route = createFileRoute("/api/comments/")({
               error:
                 "Não foi possível carregar os comentários.",
             },
-            { status: 500 },
+            {
+              status: 500,
+            },
           );
         }
       },
 
-      // =========================================================
-      // CRIAR COMENTÁRIO
-      // =========================================================
+      /* ================================================== */
+      /* POST — CRIAR COMENTÁRIO / RESPOSTA                */
+      /* ================================================== */
 
-      POST: async ({ request }) => {
+      POST: async ({
+        request,
+      }) => {
         try {
-          // =====================================================
-          // 1. VERIFICAR USUÁRIO
-          // =====================================================
-
           const session =
-            await auth.api.getSession({
-              headers: request.headers,
-            });
+            await auth.api.getSession(
+              {
+                headers:
+                  request.headers,
+              },
+            );
 
-          if (!session?.user?.id) {
+          if (
+            !session?.user?.id
+          ) {
             return Response.json(
               {
                 error:
                   "Você precisa estar logado para comentar.",
               },
-              { status: 401 },
+              {
+                status: 401,
+              },
             );
           }
 
@@ -132,14 +226,11 @@ export const Route = createFileRoute("/api/comments/")({
             {
               userId:
                 session.user.id,
+
               userName:
                 session.user.name,
             },
           );
-
-          // =====================================================
-          // 2. LER JSON
-          // =====================================================
 
           const body =
             await request.json();
@@ -175,10 +266,6 @@ export const Route = createFileRoute("/api/comments/")({
               ? body.isSpoiler
               : false;
 
-          // =====================================================
-          // 3. VALIDAR
-          // =====================================================
-
           if (
             !animeId ||
             !episodeId ||
@@ -189,36 +276,50 @@ export const Route = createFileRoute("/api/comments/")({
                 error:
                   "animeId, episodeId e content são obrigatórios.",
               },
-              { status: 400 },
+              {
+                status: 400,
+              },
             );
           }
 
-          if (content.length > 2000) {
+          if (
+            content.length >
+            2000
+          ) {
             return Response.json(
               {
                 error:
                   "O comentário pode ter no máximo 2000 caracteres.",
               },
-              { status: 400 },
+              {
+                status: 400,
+              },
             );
           }
 
           const sql =
             await getSql();
 
-          // =====================================================
-          // 4. VERIFICAR COMENTÁRIO PAI
-          // =====================================================
+          /* ============================================== */
+          /* VALIDAR COMENTÁRIO PAI                         */
+          /* ============================================== */
 
           if (parentId) {
             const parentResult =
               await sql.query(
                 `
-                  select "id"
+                  select
+                    "id"
                   from "comment"
-                  where "id" = $1
-                    and "animeId" = $2
-                    and "episodeId" = $3
+                  where "id" =
+                    $1
+
+                    and "animeId" =
+                    $2
+
+                    and "episodeId" =
+                    $3
+
                   limit 1
                 `,
                 [
@@ -245,21 +346,19 @@ export const Route = createFileRoute("/api/comments/")({
                   error:
                     "Comentário original não encontrado.",
                 },
-                { status: 400 },
+                {
+                  status: 400,
+                },
               );
             }
           }
 
-          // =====================================================
-          // 5. GERAR ID
-          // =====================================================
+          /* ============================================== */
+          /* CRIAR COMENTÁRIO                               */
+          /* ============================================== */
 
           const id =
             crypto.randomUUID();
-
-          // =====================================================
-          // 6. SALVAR COMENTÁRIO
-          // =====================================================
 
           await sql.query(
             `
@@ -272,6 +371,7 @@ export const Route = createFileRoute("/api/comments/")({
                 "parentId",
                 "isSpoiler"
               )
+
               values (
                 $1,
                 $2,
@@ -293,31 +393,39 @@ export const Route = createFileRoute("/api/comments/")({
             ],
           );
 
-          // =====================================================
-          // 7. RETORNAR COMENTÁRIO
-          // =====================================================
-
           const now =
             new Date().toISOString();
 
           const comment = {
             id,
+
             animeId,
+
             episodeId,
+
             content,
+
             parentId,
+
             isSpoiler,
+
             createdAt: now,
+
             updatedAt: now,
+
             userId:
               session.user.id,
+
             userName:
               session.user.name ||
               "Usuário",
+
             userImage:
               session.user.image ||
               null,
+
             likes: 0,
+
             liked: false,
           };
 
@@ -330,7 +438,9 @@ export const Route = createFileRoute("/api/comments/")({
             {
               comment,
             },
-            { status: 201 },
+            {
+              status: 201,
+            },
           );
         } catch (error) {
           console.error(
@@ -343,7 +453,9 @@ export const Route = createFileRoute("/api/comments/")({
               error:
                 "Não foi possível criar o comentário.",
             },
-            { status: 500 },
+            {
+              status: 500,
+            },
           );
         }
       },
