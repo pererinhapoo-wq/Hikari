@@ -511,6 +511,15 @@ function CommentsSection({
     useState("");
 
   /* ====================================================== */
+  /* ORDENAÇÃO                                               */
+  /* ====================================================== */
+
+  const [sortBy, setSortBy] =
+    useState<"recent" | "liked">(
+      "recent",
+    );
+
+  /* ====================================================== */
   /* CARREGAR COMENTÁRIOS                                   */
   /* ====================================================== */
 
@@ -863,6 +872,34 @@ function CommentsSection({
     );
 
   /* ====================================================== */
+  /* ORDENAÇÃO DOS COMENTÁRIOS                               */
+  /* ====================================================== */
+
+  const sortedRootComments =
+    [...rootComments].sort(
+      (a, b) => {
+        if (
+          sortBy ===
+          "liked"
+        ) {
+          return (
+            (b.likes ?? 0) -
+            (a.likes ?? 0)
+          );
+        }
+
+        return (
+          new Date(
+            b.createdAt,
+          ).getTime() -
+          new Date(
+            a.createdAt,
+          ).getTime()
+        );
+      },
+    );
+
+  /* ====================================================== */
   /* RESPOSTAS                                               */
   /* ====================================================== */
 
@@ -882,10 +919,10 @@ function CommentsSection({
     <section className="mt-12 border-t border-white/5 pt-10">
 
       {/* ================================================== */}
-      {/* TÍTULO */}
+      {/* TÍTULO + ORDENAÇÃO */}
       {/* ================================================== */}
 
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
         <div>
 
@@ -901,11 +938,45 @@ function CommentsSection({
 
         </div>
 
-        <div className="hidden items-center gap-2 text-sm text-muted sm:flex">
+        <div className="flex items-center justify-between gap-3 sm:justify-end">
 
-          <MessageCircle className="size-4" />
+          <div className="flex items-center gap-2 text-sm text-muted">
 
-          {comments.length}
+            <MessageCircle className="size-4" />
+
+            {comments.length}
+
+          </div>
+
+          <select
+            value={sortBy}
+            onChange={(
+              event,
+            ) => {
+              setSortBy(
+                event.target
+                  .value as
+                  | "recent"
+                  | "liked",
+              );
+            }}
+            aria-label="Ordenar comentários"
+            className="rounded-lg border border-white/10 bg-surface px-3 py-2 text-sm text-fg outline-none transition-colors focus:border-white/20"
+          >
+            <option
+              value="recent"
+              className="bg-[#151515]"
+            >
+              Mais recentes
+            </option>
+
+            <option
+              value="liked"
+              className="bg-[#151515]"
+            >
+              Mais curtidos
+            </option>
+          </select>
 
         </div>
 
@@ -1023,7 +1094,7 @@ function CommentsSection({
             Seja o primeiro a comentar.
           </div>
         ) : (
-          rootComments.map(
+          sortedRootComments.map(
             (comment) => {
               const replies =
                 repliesFor(
@@ -1504,4 +1575,4 @@ function CommentCard({
 
     </article>
   );
-                 }
+    }
