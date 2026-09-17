@@ -48,6 +48,7 @@ function WatchPage() {
   const { remote } = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
+
   const markContinue = useHikariStore(
     (s) => s.markContinue,
   );
@@ -905,10 +906,6 @@ function CommentsSection({
         ...rootComments,
       ];
 
-      /* ----------------------------------------------- */
-      /* SOMENTE COM SPOILER                              */
-      /* ----------------------------------------------- */
-
       if (
         sortBy ===
         "spoiler"
@@ -920,10 +917,6 @@ function CommentsSection({
           );
       }
 
-      /* ----------------------------------------------- */
-      /* MAIS CURTIDOS                                    */
-      /* ----------------------------------------------- */
-
       if (
         sortBy ===
         "liked"
@@ -934,10 +927,6 @@ function CommentsSection({
             (a.likes ?? 0),
         );
       }
-
-      /* ----------------------------------------------- */
-      /* MAIS RESPONDIDOS                                 */
-      /* ----------------------------------------------- */
 
       if (
         sortBy ===
@@ -953,10 +942,6 @@ function CommentsSection({
             ).length,
         );
       }
-
-      /* ----------------------------------------------- */
-      /* MAIS RECENTES                                    */
-      /* ----------------------------------------------- */
 
       if (
         sortBy ===
@@ -1003,474 +988,557 @@ function CommentsSection({
   return (
     <section className="mt-12 border-t border-white/5 pt-10">
 
-      {/* ================================================== */}
-      {/* TÍTULO + ORDENAÇÃO */}
-      {/* ================================================== */}
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px]">
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* ================================================= */}
+        {/* ÁREA PRINCIPAL DOS COMENTÁRIOS                    */}
+        {/* ================================================= */}
 
-        <div>
+        <div className="min-w-0">
 
-          <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
-            Comentários
-          </h2>
+          {/* =============================================== */}
+          {/* TÍTULO + ORDENAÇÃO                              */}
+          {/* =============================================== */}
 
-          <p className="mt-1 text-sm text-muted">
-            Comentários do episódio{" "}
-            {episodeNumber} de{" "}
-            {animeTitle}
-          </p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-        </div>
+            <div>
 
-        <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
+                Comentários
+              </h2>
 
-          <div className="flex items-center gap-2 text-sm text-muted">
+              <p className="mt-1 text-sm text-muted">
+                Comentários do episódio{" "}
+                {episodeNumber} de{" "}
+                {animeTitle}
+              </p>
 
-            <MessageCircle className="size-4" />
+            </div>
 
-            {comments.length}
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+
+              <div className="flex items-center gap-2 text-sm text-muted">
+
+                <MessageCircle className="size-4" />
+
+                {comments.length}
+
+              </div>
+
+              {/* ========================================= */}
+              {/* DROPDOWN                                  */}
+              {/* ========================================= */}
+
+              <div className="relative">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSortOpen(
+                      (open) => !open,
+                    )
+                  }
+                  aria-haspopup="menu"
+                  aria-expanded={
+                    sortOpen
+                  }
+                  className="flex min-h-11 items-center gap-2 rounded-lg border border-white/10 bg-surface px-3 text-sm text-fg outline-none transition-colors hover:border-white/20 hover:bg-elevated focus:border-white/20"
+                >
+
+                  <span>
+                    {sortLabel}
+                  </span>
+
+                  <ChevronDown
+                    className={cn(
+                      "size-4 text-muted transition-transform",
+                      sortOpen &&
+                        "rotate-180",
+                    )}
+                  />
+
+                </button>
+
+                {sortOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[190px] overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
+                  >
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setSortBy(
+                          "recent",
+                        );
+                        setSortOpen(
+                          false,
+                        );
+                      }}
+                      className={cn(
+                        "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                        sortBy ===
+                          "recent"
+                          ? "bg-elevated text-fg"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      Mais recentes
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setSortBy(
+                          "liked",
+                        );
+                        setSortOpen(
+                          false,
+                        );
+                      }}
+                      className={cn(
+                        "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                        sortBy ===
+                          "liked"
+                          ? "bg-elevated text-fg"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      Mais curtidos
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setSortBy(
+                          "replies",
+                        );
+                        setSortOpen(
+                          false,
+                        );
+                      }}
+                      className={cn(
+                        "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                        sortBy ===
+                          "replies"
+                          ? "bg-elevated text-fg"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      Mais respondidos
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setSortBy(
+                          "spoiler",
+                        );
+                        setSortOpen(
+                          false,
+                        );
+                      }}
+                      className={cn(
+                        "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                        sortBy ===
+                          "spoiler"
+                          ? "bg-elevated text-fg"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      Com spoiler
+                    </button>
+
+                  </div>
+                )}
+
+              </div>
+
+            </div>
 
           </div>
 
-          {/* ================================================= */}
-          {/* DROPDOWN PERSONALIZADO HIKARI                     */}
-          {/* ================================================= */}
+          {/* =============================================== */}
+          {/* CAMPO DE COMENTÁRIO                             */}
+          {/* =============================================== */}
 
-          <div className="relative">
+          <div className="mt-5 rounded-xl border border-white/5 bg-surface p-4 sm:p-5">
 
-            <button
-              type="button"
-              onClick={() =>
-                setSortOpen(
-                  (open) => !open,
-                )
-              }
-              aria-haspopup="menu"
-              aria-expanded={
-                sortOpen
-              }
-              className="flex min-h-11 items-center gap-2 rounded-lg border border-white/10 bg-surface px-3 text-sm text-fg outline-none transition-colors hover:border-white/20 hover:bg-elevated focus:border-white/20"
-            >
+            <textarea
+              value={text}
+              onChange={(
+                event,
+              ) => {
+                setText(
+                  event.target.value,
+                );
+              }}
+              onKeyDown={(
+                event,
+              ) => {
+                if (
+                  event.key ===
+                    "Enter" &&
+                  !event.shiftKey
+                ) {
+                  event.preventDefault();
 
-              <span>
-                {sortLabel}
-              </span>
+                  void handleComment();
+                }
+              }}
+              placeholder="Escreva um comentário..."
+              rows={3}
+              maxLength={2000}
+              className="w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
+            />
 
-              <ChevronDown
-                className={cn(
-                  "size-4 text-muted transition-transform",
-                  sortOpen &&
-                    "rotate-180",
-                )}
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
+
+              <input
+                type="checkbox"
+                checked={isSpoiler}
+                onChange={(
+                  event,
+                ) => {
+                  setIsSpoiler(
+                    event.target
+                      .checked,
+                  );
+                }}
+                className="size-4 accent-current"
               />
 
-            </button>
+              <span>
+                Marcar como spoiler
+              </span>
 
-            {sortOpen && (
-              <div
-                role="menu"
-                className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[190px] overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
+            </label>
+
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+              <p className="text-xs text-subtle">
+                Enter para enviar · Shift + Enter para quebrar linha
+              </p>
+
+              <Button
+                type="button"
+                size="sm"
+                onClick={() =>
+                  void handleComment()
+                }
+                disabled={
+                  !text.trim() ||
+                  sending
+                }
               >
+                <Send className="size-4" />
 
-                {/* ========================================= */}
-                {/* MAIS RECENTES                              */}
-                {/* ========================================= */}
+                {sending
+                  ? "Enviando..."
+                  : "Comentar"}
+              </Button>
 
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setSortBy(
-                      "recent",
-                    );
-                    setSortOpen(
-                      false,
-                    );
-                  }}
-                  className={cn(
-                    "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
-                    sortBy ===
-                      "recent"
-                      ? "bg-elevated text-fg"
-                      : "text-muted hover:bg-elevated hover:text-fg",
-                  )}
-                >
-                  Mais recentes
-                </button>
+            </div>
 
-                {/* ========================================= */}
-                {/* MAIS CURTIDOS                              */}
-                {/* ========================================= */}
+            {error && (
+              <p className="mt-3 text-sm text-red-400">
+                {error}
+              </p>
+            )}
 
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setSortBy(
-                      "liked",
-                    );
-                    setSortOpen(
-                      false,
-                    );
-                  }}
-                  className={cn(
-                    "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
-                    sortBy ===
-                      "liked"
-                      ? "bg-elevated text-fg"
-                      : "text-muted hover:bg-elevated hover:text-fg",
-                  )}
-                >
-                  Mais curtidos
-                </button>
+          </div>
 
-                {/* ========================================= */}
-                {/* MAIS RESPONDIDOS                           */}
-                {/* ========================================= */}
+          {/* =============================================== */}
+          {/* INDICADOR DO FILTRO                             */}
+          {/* =============================================== */}
 
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setSortBy(
-                      "replies",
-                    );
-                    setSortOpen(
-                      false,
-                    );
-                  }}
-                  className={cn(
-                    "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
-                    sortBy ===
-                      "replies"
-                      ? "bg-elevated text-fg"
-                      : "text-muted hover:bg-elevated hover:text-fg",
-                  )}
-                >
-                  Mais respondidos
-                </button>
+          {sortBy ===
+            "spoiler" && (
+            <div className="mt-4 rounded-lg border border-white/5 bg-surface px-4 py-3 text-sm text-muted">
+              Mostrando apenas comentários marcados como spoiler.
+            </div>
+          )}
 
-                {/* ========================================= */}
-                {/* COM SPOILER                                */}
-                {/* ========================================= */}
+          {/* =============================================== */}
+          {/* LISTA DE COMENTÁRIOS                            */}
+          {/* =============================================== */}
 
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setSortBy(
-                      "spoiler",
-                    );
-                    setSortOpen(
-                      false,
-                    );
-                  }}
-                  className={cn(
-                    "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
-                    sortBy ===
-                      "spoiler"
-                      ? "bg-elevated text-fg"
-                      : "text-muted hover:bg-elevated hover:text-fg",
-                  )}
-                >
-                  Com spoiler
-                </button>
+          <div className="mt-5 space-y-3">
 
+            {loading ? (
+              <div className="rounded-xl border border-white/5 bg-surface p-5 text-sm text-muted">
+                Carregando comentários...
               </div>
+            ) : displayedRootComments.length ===
+              0 ? (
+              <div className="rounded-xl border border-white/5 bg-surface p-5 text-center text-sm text-muted">
+                {sortBy ===
+                "spoiler"
+                  ? (
+                    <>
+                      Não há comentários com spoiler neste episódio.
+                      <br />
+                      Tente outro filtro.
+                    </>
+                  )
+                  : (
+                    <>
+                      Ainda não há comentários neste episódio.
+                      <br />
+                      Seja o primeiro a comentar.
+                    </>
+                  )}
+              </div>
+            ) : (
+              displayedRootComments.map(
+                (comment) => {
+                  const replies =
+                    repliesFor(
+                      comment.id,
+                    );
+
+                  return (
+                    <div
+                      key={
+                        comment.id
+                      }
+                      className="space-y-2"
+                    >
+
+                      <CommentCard
+                        comment={
+                          comment
+                        }
+                        replyCount={
+                          replies.length
+                        }
+                        likingId={
+                          likingId
+                        }
+                        replyingId={
+                          replyingId
+                        }
+                        replyText={
+                          replyText
+                        }
+                        replyIsSpoiler={
+                          replyIsSpoiler
+                        }
+                        replySending={
+                          replySending
+                        }
+                        formatDate={
+                          formatDate
+                        }
+                        onLike={
+                          handleLike
+                        }
+                        onReplyChange={
+                          setReplyText
+                        }
+                        onReplySpoilerChange={
+                          setReplyIsSpoiler
+                        }
+                        onStartReply={() => {
+                          setReplyingId(
+                            comment.id,
+                          );
+                          setReplyText(
+                            "",
+                          );
+                          setReplyIsSpoiler(
+                            false,
+                          );
+                        }}
+                        onCancelReply={() => {
+                          setReplyingId(
+                            null,
+                          );
+                          setReplyText(
+                            "",
+                          );
+                          setReplyIsSpoiler(
+                            false,
+                          );
+                        }}
+                        onSendReply={() => {
+                          void handleReply(
+                            comment.id,
+                          );
+                        }}
+                      />
+
+                      {replies.length >
+                        0 && (
+                        <div className="ml-5 space-y-2 border-l border-white/10 pl-3 sm:ml-8 sm:pl-4">
+
+                          {replies.map(
+                            (
+                              reply,
+                            ) => (
+                              <CommentCard
+                                key={
+                                  reply.id
+                                }
+                                comment={
+                                  reply
+                                }
+                                replyCount={
+                                  0
+                                }
+                                replyToName={
+                                  comment.userName ||
+                                  "Usuário"
+                                }
+                                likingId={
+                                  likingId
+                                }
+                                replyingId={
+                                  null
+                                }
+                                replyText=""
+                                replyIsSpoiler={
+                                  false
+                                }
+                                replySending={
+                                  false
+                                }
+                                formatDate={
+                                  formatDate
+                                }
+                                onLike={
+                                  handleLike
+                                }
+                                onReplyChange={() => {}}
+                                onReplySpoilerChange={() => {}}
+                                onStartReply={() => {}}
+                                onCancelReply={() => {}}
+                                onSendReply={() => {}}
+                                isReply
+                              />
+                            ),
+                          )}
+
+                        </div>
+                      )}
+
+                    </div>
+                  );
+                },
+              )
             )}
 
           </div>
 
         </div>
 
-      </div>
-
-      {/* ================================================== */}
-      {/* CAMPO DE COMENTÁRIO                                 */}
-      {/* ================================================== */}
-
-      <div className="mt-5 rounded-xl border border-white/5 bg-surface p-4 sm:p-5">
-
-        <textarea
-          value={text}
-          onChange={(
-            event,
-          ) => {
-            setText(
-              event.target.value,
-            );
-          }}
-          onKeyDown={(
-            event,
-          ) => {
-            if (
-              event.key ===
-                "Enter" &&
-              !event.shiftKey
-            ) {
-              event.preventDefault();
-
-              void handleComment();
-            }
-          }}
-          placeholder="Escreva um comentário..."
-          rows={3}
-          maxLength={2000}
-          className="w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
-        />
-
         {/* ================================================= */}
-        {/* OPÇÃO DE SPOILER                                  */}
+        {/* REGRAS DA COMUNIDADE                              */}
         {/* ================================================= */}
 
-        <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
-
-          <input
-            type="checkbox"
-            checked={isSpoiler}
-            onChange={(
-              event,
-            ) => {
-              setIsSpoiler(
-                event.target
-                  .checked,
-              );
-            }}
-            className="size-4 accent-current"
-          />
-
-          <span>
-            Marcar como spoiler
-          </span>
-
-        </label>
-
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
-          <p className="text-xs text-subtle">
-            Enter para enviar · Shift + Enter para quebrar linha
-          </p>
-
-          <Button
-            type="button"
-            size="sm"
-            onClick={() =>
-              void handleComment()
-            }
-            disabled={
-              !text.trim() ||
-              sending
-            }
-          >
-            <Send className="size-4" />
-
-            {sending
-              ? "Enviando..."
-              : "Comentar"}
-          </Button>
-
-        </div>
-
-        {error && (
-          <p className="mt-3 text-sm text-red-400">
-            {error}
-          </p>
-        )}
-
-      </div>
-
-      {/* ================================================== */}
-      {/* INDICADOR DO FILTRO COM SPOILER                    */}
-      {/* ================================================== */}
-
-      {sortBy ===
-        "spoiler" && (
-        <div className="mt-4 rounded-lg border border-white/5 bg-surface px-4 py-3 text-sm text-muted">
-          Mostrando apenas comentários marcados como spoiler.
-        </div>
-      )}
-
-      {/* ================================================== */}
-      {/* LISTA DE COMENTÁRIOS                               */}
-      {/* ================================================== */}
-
-      <div className="mt-5 space-y-3">
-
-        {loading ? (
-          <div className="rounded-xl border border-white/5 bg-surface p-5 text-sm text-muted">
-            Carregando comentários...
-          </div>
-        ) : displayedRootComments.length ===
-          0 ? (
-          <div className="rounded-xl border border-white/5 bg-surface p-5 text-center text-sm text-muted">
-            {sortBy ===
-            "spoiler"
-              ? (
-                <>
-                  Não há comentários com spoiler neste episódio.
-                  <br />
-                  Tente outro filtro.
-                </>
-              )
-              : (
-                <>
-                  Ainda não há comentários neste episódio.
-                  <br />
-                  Seja o primeiro a comentar.
-                </>
-              )}
-          </div>
-        ) : (
-          displayedRootComments.map(
-            (comment) => {
-              const replies =
-                repliesFor(
-                  comment.id,
-                );
-
-              return (
-                <div
-                  key={
-                    comment.id
-                  }
-                  className="space-y-2"
-                >
-
-                  {/* ====================================== */}
-                  {/* COMENTÁRIO PRINCIPAL                   */}
-                  {/* ====================================== */}
-
-                  <CommentCard
-                    comment={
-                      comment
-                    }
-                    replyCount={
-                      replies.length
-                    }
-                    likingId={
-                      likingId
-                    }
-                    replyingId={
-                      replyingId
-                    }
-                    replyText={
-                      replyText
-                    }
-                    replyIsSpoiler={
-                      replyIsSpoiler
-                    }
-                    replySending={
-                      replySending
-                    }
-                    formatDate={
-                      formatDate
-                    }
-                    onLike={
-                      handleLike
-                    }
-                    onReplyChange={
-                      setReplyText
-                    }
-                    onReplySpoilerChange={
-                      setReplyIsSpoiler
-                    }
-                    onStartReply={() => {
-                      setReplyingId(
-                        comment.id,
-                      );
-                      setReplyText(
-                        "",
-                      );
-                      setReplyIsSpoiler(
-                        false,
-                      );
-                    }}
-                    onCancelReply={() => {
-                      setReplyingId(
-                        null,
-                      );
-                      setReplyText(
-                        "",
-                      );
-                      setReplyIsSpoiler(
-                        false,
-                      );
-                    }}
-                    onSendReply={() => {
-                      void handleReply(
-                        comment.id,
-                      );
-                    }}
-                  />
-
-                  {/* ====================================== */}
-                  {/* RESPOSTAS                               */}
-                  {/* ====================================== */}
-
-                  {replies.length >
-                    0 && (
-                    <div className="ml-5 space-y-2 border-l border-white/10 pl-3 sm:ml-8 sm:pl-4">
-
-                      {replies.map(
-                        (
-                          reply,
-                        ) => (
-                          <CommentCard
-                            key={
-                              reply.id
-                            }
-                            comment={
-                              reply
-                            }
-                            replyCount={
-                              0
-                            }
-                            replyToName={
-                              comment.userName ||
-                              "Usuário"
-                            }
-                            likingId={
-                              likingId
-                            }
-                            replyingId={
-                              null
-                            }
-                            replyText=""
-                            replyIsSpoiler={
-                              false
-                            }
-                            replySending={
-                              false
-                            }
-                            formatDate={
-                              formatDate
-                            }
-                            onLike={
-                              handleLike
-                            }
-                            onReplyChange={() => {}}
-                            onReplySpoilerChange={() => {}}
-                            onStartReply={() => {}}
-                            onCancelReply={() => {}}
-                            onSendReply={() => {}}
-                            isReply
-                          />
-                        ),
-                      )}
-
-                    </div>
-                  )}
-
-                </div>
-              );
-            },
-          )
-        )}
+        <CommunityRules />
 
       </div>
 
     </section>
+  );
+}
+
+/* ========================================================= */
+/* REGRAS DA COMUNIDADE                                      */
+/* ========================================================= */
+
+function CommunityRules() {
+  return (
+    <aside className="h-fit rounded-xl border border-white/5 bg-surface p-5 lg:sticky lg:top-5">
+
+      <div className="flex items-start gap-3">
+
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-lg">
+          🛡️
+        </div>
+
+        <div>
+          <h3 className="font-display text-lg">
+            Regras da comunidade
+          </h3>
+
+          <p className="mt-1 text-xs leading-5 text-subtle">
+            Ajude a manter os comentários do Hikari agradáveis para todos.
+          </p>
+        </div>
+
+      </div>
+
+      <div className="mt-5 space-y-3">
+
+        <RuleItem
+          icon="🤝"
+          text="Seja respeitoso"
+        />
+
+        <RuleItem
+          icon="🚫"
+          text="Sem spoilers no título"
+        />
+
+        <RuleItem
+          icon="🛑"
+          text="Sem discurso de ódio"
+        />
+
+        <RuleItem
+          icon="📵"
+          text="Proibido spam"
+        />
+
+        <RuleItem
+          icon="⚠️"
+          text="Denuncie conteúdo impróprio"
+        />
+
+      </div>
+
+      <div className="mt-5 border-t border-white/5 pt-4">
+
+        <p className="text-xs leading-5 text-subtle">
+          Comentários que desrespeitarem as regras poderão ser moderados.
+        </p>
+
+      </div>
+
+    </aside>
+  );
+}
+
+/* ========================================================= */
+/* ITEM DE REGRA                                             */
+/* ========================================================= */
+
+function RuleItem({
+  icon,
+  text,
+}: {
+  icon: string;
+  text: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-bg/40 px-3 py-2.5">
+
+      <span className="flex size-7 shrink-0 items-center justify-center text-sm">
+        {icon}
+      </span>
+
+      <span className="text-sm text-muted">
+        {text}
+      </span>
+
+    </div>
   );
 }
 
@@ -1574,10 +1642,6 @@ function CommentCard({
                 "Usuário"}
             </span>
 
-            {/* ============================================= */}
-            {/* DESTINATÁRIO DA RESPOSTA                      */}
-            {/* ============================================= */}
-
             {isReply &&
               replyToName && (
                 <>
@@ -1628,8 +1692,6 @@ function CommentCard({
 
           <div className="mt-3 flex flex-wrap items-center gap-4">
 
-            {/* CURTIDA */}
-
             <button
               type="button"
               onClick={() =>
@@ -1666,8 +1728,6 @@ function CommentCard({
 
             </button>
 
-            {/* RESPONDER */}
-
             {!isReply && (
               <button
                 type="button"
@@ -1683,8 +1743,6 @@ function CommentCard({
 
               </button>
             )}
-
-            {/* CONTADOR DE RESPOSTAS */}
 
             {!isReply &&
               replyCount > 0 && (
@@ -1729,10 +1787,6 @@ function CommentCard({
                 placeholder="Escreva uma resposta..."
                 className="w-full resize-none rounded-lg border border-white/5 bg-surface px-3 py-2 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
               />
-
-              {/* ========================================= */}
-              {/* SPOILER DA RESPOSTA                        */}
-              {/* ========================================= */}
 
               <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-muted select-none">
 
@@ -1803,4 +1857,4 @@ function CommentCard({
 
     </article>
   );
-    }
+  }
