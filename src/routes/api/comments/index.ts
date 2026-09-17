@@ -51,7 +51,7 @@ export const Route = createFileRoute("/api/comments/")({
           );
 
           return Response.json({
-            comments: result.rows,
+            comments: result.rows ?? [],
           });
         } catch (error) {
           console.error("ERRO AO BUSCAR COMENTÁRIOS:", error);
@@ -71,7 +71,7 @@ export const Route = createFileRoute("/api/comments/")({
       POST: async ({ request }) => {
         try {
           // -----------------------------------------------------
-          // 1. Verificar usuário logado
+          // 1. Verificar sessão
           // -----------------------------------------------------
           const session = await auth.api.getSession({
             headers: request.headers,
@@ -98,7 +98,7 @@ export const Route = createFileRoute("/api/comments/")({
           }
 
           // -----------------------------------------------------
-          // 2. Ler corpo da requisição
+          // 2. Ler JSON
           // -----------------------------------------------------
           let body: Record<string, unknown>;
 
@@ -115,7 +115,7 @@ export const Route = createFileRoute("/api/comments/")({
           }
 
           // -----------------------------------------------------
-          // 3. Validar dados
+          // 3. Dados
           // -----------------------------------------------------
           const animeId =
             typeof body.animeId === "string"
@@ -143,6 +143,9 @@ export const Route = createFileRoute("/api/comments/")({
               ? body.isSpoiler
               : false;
 
+          // -----------------------------------------------------
+          // 4. Validação
+          // -----------------------------------------------------
           if (!animeId || !episodeId || !content) {
             return Response.json(
               {
@@ -166,12 +169,12 @@ export const Route = createFileRoute("/api/comments/")({
           }
 
           // -----------------------------------------------------
-          // 4. Conectar ao banco
+          // 5. Banco
           // -----------------------------------------------------
           const sql = await getSql();
 
           // -----------------------------------------------------
-          // 5. Verificar comentário pai
+          // 6. Verificar comentário pai
           // -----------------------------------------------------
           if (parentId) {
             const parent = await sql.query(
@@ -186,7 +189,7 @@ export const Route = createFileRoute("/api/comments/")({
               [parentId, animeId, episodeId],
             );
 
-            if (parent.rows.length === 0) {
+            if (!parent.rows || parent.rows.length === 0) {
               return Response.json(
                 {
                   error: "Comentário original não encontrado.",
@@ -198,14 +201,14 @@ export const Route = createFileRoute("/api/comments/")({
           }
 
           // -----------------------------------------------------
-          // 6. Criar ID
+          // 7. Criar ID
           // -----------------------------------------------------
           const id = crypto.randomUUID();
 
           // -----------------------------------------------------
-          // 7. Inserir comentário
+          // 8. Inserir comentário
           // -----------------------------------------------------
-          const result = await sql.query(
+          await sql.query(
             `
               insert into "comment" (
                 "id",
@@ -217,16 +220,6 @@ export const Route = createFileRoute("/api/comments/")({
                 "isSpoiler"
               )
               values ($1, $2, $3, $4, $5, $6, $7)
-              returning
-                "id",
-                "animeId",
-                "episodeId",
-                "content",
-                "parentId",
-                "isSpoiler",
-                "createdAt",
-                "updatedAt",
-                "userId"
             `,
             [
               id,
@@ -239,25 +232,66 @@ export const Route = createFileRoute("/api/comments/")({
             ],
           );
 
+          console.log(
+            "COMENTÁRIO INSERIDO:",
+            {
+              id,
+              userId: session.user.id,
+              animeId,
+              episodeId,
+            },
+          );
+
           // -----------------------------------------------------
-          // 8. Retornar comentário criado
+          // 9. Buscar o comentário recém-criado
           // -----------------------------------------------------
-          const createdComment = result.rows[0];
+          const created = await sql.query(
+            `
+              select
+                c."id",
+                c."animeId",
+                c."episodeId",
+                c."content",
+                c."parentId",
+                c."isSpoiler",
+                c."createdAt",
+                c."updatedAt",
+                c."userId",
+                coalesce(u."name", 'Usuário') as "userName",
+                u."image" as "userImage"
+              from "comment" c
+              left join "user" u
+                on u."id" = c."userId"
+              where c."id" = $1
+              limit 1
+            `,
+            [id],
+          );
+
+          const createdComment = created.rows?.[0];
+
+          if (!createdComment) {
+            return Response.json(
+              {
+                error:
+                  "O comentário foi salvo, mas não foi possível recuperá-lo.",
+                code: "COMMENT_CREATED_BUT_NOT_FOUND",
+              },
+              { status: 500 },
+            );
+          }
 
           console.log(
             "COMENTÁRIO CRIADO COM SUCESSO:",
             createdComment,
           );
 
+          // -----------------------------------------------------
+          // 10. Retornar
+          // -----------------------------------------------------
           return Response.json(
             {
-              comment: {
-                ...createdComment,
-                userName:
-                  session.user.name || "Usuário",
-                userImage:
-                  session.user.image || null,
-              },
+              comment: createdComment,
             },
             { status: 201 },
           );
@@ -276,10 +310,7 @@ export const Route = createFileRoute("/api/comments/")({
             {
               error: "Não foi possível criar o comentário.",
               code: "COMMENT_CREATE_ERROR",
-              details:
-                process.env.NODE_ENV === "production"
-                  ? undefined
-                  : message,
+              details: message,
             },
             { status: 500 },
           );
