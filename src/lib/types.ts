@@ -83,6 +83,7 @@ export type HomeCatalog = {
   popular: SlimAnime[];
   top: SlimAnime[];
   season: SlimAnime[];
+  releases: SlimAnime[];
   seasonName: string;
   seasonYear: number;
   source: "anilist" | "jikan";
@@ -106,7 +107,9 @@ export type SearchResult = {
   source: "anilist" | "jikan";
 };
 
-export function displayTitle(a: { titles: SlimAnime["titles"] } | SlimAnime): string {
+export function displayTitle(
+  a: { titles: SlimAnime["titles"] } | SlimAnime,
+): string {
   return a.titles.english || a.titles.romaji || a.titles.native || "Sem título";
 }
 
@@ -139,10 +142,18 @@ export function localToAnime(local: LocalAnime): Anime {
   };
 }
 
-export function animeToLocal(anime: Anime | SlimAnime, existing?: LocalAnime): LocalAnime {
+export function animeToLocal(
+  anime: Anime | SlimAnime,
+  existing?: LocalAnime,
+): LocalAnime {
   const now = Date.now();
+
   return {
-    id: existing?.id ?? (anime.source === "local" ? anime.id : `local-${crypto.randomUUID()}`),
+    id:
+      existing?.id ??
+      (anime.source === "local"
+        ? anime.id
+        : `local-${crypto.randomUUID()}`),
     anilistId: anime.anilistId,
     malId: anime.malId,
     titleRomaji: anime.titles.romaji,
@@ -164,4 +175,4 @@ export function animeToLocal(anime: Anime | SlimAnime, existing?: LocalAnime): L
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-}
+  }
