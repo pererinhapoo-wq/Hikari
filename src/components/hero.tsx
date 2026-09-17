@@ -1,8 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Bookmark, BookmarkCheck, Play } from "lucide-react";
-import { Button } from "@/components/ui/button";
+
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel } from "@/lib/labels";
 import { useHikariStore } from "@/lib/store";
@@ -18,8 +19,10 @@ export function Hero({
 
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
+
   const inList = useHikariStore((s) => s.myList.includes(current.id));
   const toggleList = useHikariStore((s) => s.toggleList);
+
   const backdrop = current.banner || current.cover;
 
   useEffect(() => {
@@ -33,105 +36,216 @@ export function Hero({
   }, [animes.length]);
 
   return (
-    <section className="relative -mx-4 overflow-hidden bg-bg md:-mx-6">
-      <div className="relative aspect-video w-full overflow-hidden bg-bg">
-        {backdrop && (
+    <section
+      className="
+        relative
+        -mx-4
+        h-[23rem]
+        overflow-hidden
+        sm:-mx-6
+        sm:h-[31rem]
+        lg:h-[34rem]
+      "
+    >
+      {backdrop && (
+        <>
+          {/* Fundo preenchendo o banner sem distorcer */}
           <img
-            key={current.id}
             src={backdrop}
             alt=""
-            className="absolute inset-0 size-full object-contain object-center"
+            aria-hidden="true"
+            className="
+              absolute inset-0
+              size-full
+              scale-110
+              object-cover
+              opacity-40
+              blur-2xl
+            "
           />
+
+          <div className="absolute inset-0 bg-black/50" />
+
+          {/* Imagem principal */}
+          <div
+            className="
+              absolute inset-x-0 top-0
+              h-[13rem]
+              overflow-hidden
+              sm:h-[20rem]
+              lg:h-[23rem]
+            "
+          >
+            <img
+              key={current.id}
+              src={backdrop}
+              alt=""
+              className="
+                absolute inset-0
+                size-full
+                object-contain
+                object-center
+              "
+            />
+
+            <div className="absolute inset-0 bg-linear-to-b from-black/10 via-transparent to-bg" />
+          </div>
+        </>
+      )}
+
+      {!backdrop && <div className="absolute inset-0 bg-bg" />}
+
+      {/* Escurecimento lateral */}
+      <div
+        className="
+          absolute inset-0
+          bg-linear-to-r
+          from-bg/80
+          via-bg/25
+          to-transparent
+        "
+      />
+
+      {/* Gradiente inferior */}
+      <div
+        className="
+          absolute inset-x-0 bottom-0
+          h-3/4
+          bg-linear-to-t
+          from-bg
+          via-bg/80
+          to-transparent
+        "
+      />
+
+      <div
+        className="
+          relative z-10
+          flex h-full flex-col justify-end
+          px-4 pb-3
+          sm:px-6 sm:pb-7
+        "
+      >
+        <p className="text-[8px] font-medium tracking-[0.2em] text-muted uppercase sm:text-[9px]">
+          Em destaque
+        </p>
+
+        <h1
+          className="
+            mt-0.5
+            max-w-2xl
+            line-clamp-2
+            font-display
+            text-[1.65rem]
+            leading-tight
+            tracking-tight
+            text-fg
+            sm:text-4xl
+            lg:text-5xl
+          "
+        >
+          {title}
+        </h1>
+
+        {current.titles.native && current.titles.native !== title && (
+          <p className="mt-0.5 hidden font-display text-sm text-muted sm:block">
+            {current.titles.native}
+          </p>
         )}
 
-        <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/35 to-transparent" />
-        <div className="absolute inset-0 bg-linear-to-r from-bg/85 via-bg/30 to-transparent" />
-
-        <div className="absolute inset-x-0 bottom-0 z-10 px-4 pb-3 md:px-6 md:pb-6">
-          <p className="text-[9px] font-medium tracking-[0.22em] text-muted uppercase">
-            Em destaque
-          </p>
-
-          <h1 className="mt-0.5 max-w-2xl line-clamp-2 font-display text-xl leading-tight tracking-tight text-fg md:text-4xl lg:text-5xl">
-            {title}
-          </h1>
-
-          {current.titles.native && current.titles.native !== title && (
-            <p className="mt-1 hidden font-display text-sm text-muted md:block">
-              {current.titles.native}
-            </p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {current.score != null && (
+            <span className="text-xs font-medium tabular-nums text-score sm:text-sm">
+              {scoreLabel(current.score)}
+            </span>
           )}
 
-          <div className="mt-1 flex flex-wrap items-center gap-1">
-            {current.score != null && (
-              <span className="text-sm font-medium tabular-nums text-score">
-                {scoreLabel(current.score)}
-              </span>
+          {current.year && (
+            <span className="text-xs text-muted sm:text-sm">
+              {current.year}
+            </span>
+          )}
+
+          {current.genres.slice(0, 2).map((genre) => (
+            <Badge key={genre} className="text-[9px] sm:text-xs">
+              {genreLabel(genre)}
+            </Badge>
+          ))}
+        </div>
+
+        {current.synopsis && (
+          <p
+            className="
+              mt-1.5
+              max-w-xl
+              line-clamp-2
+              text-[10px]
+              leading-snug
+              text-muted
+              sm:mt-4
+              sm:line-clamp-3
+              sm:text-sm
+            "
+          >
+            {current.synopsis}
+          </p>
+        )}
+
+        <div className="mt-2.5 flex flex-wrap gap-1.5 sm:mt-4 sm:gap-2">
+          <Button asChild size="sm">
+            <Link to="/watch/$id" params={{ id: current.id }}>
+              <Play className="size-3.5 sm:size-4" />
+              Assistir
+            </Link>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => toggleList(current)}
+          >
+            {inList ? (
+              <BookmarkCheck className="size-3.5 sm:size-4" />
+            ) : (
+              <Bookmark className="size-3.5 sm:size-4" />
             )}
 
-            {current.year && (
-              <span className="text-sm text-muted">{current.year}</span>
-            )}
+            <span className="hidden xs:inline sm:inline">
+              {inList ? "Na lista" : "Minha Lista"}
+            </span>
+          </Button>
 
-            {current.genres.slice(0, 3).map((g) => (
-              <Badge key={g}>{genreLabel(g)}</Badge>
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/anime/$id" params={{ id: current.id }}>
+              Detalhes
+            </Link>
+          </Button>
+        </div>
+
+        {animes.length > 1 && (
+          <div
+            className="mt-2.5 flex items-center gap-1.5 sm:mt-3"
+            aria-label="Destaques"
+          >
+            {animes.map((item, i) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-label={`Mostrar destaque ${i + 1}`}
+                onClick={() => setIndex(i)}
+                className={`
+                  h-1.5 rounded-full transition-all
+                  ${
+                    i === index
+                      ? "w-5 bg-fg"
+                      : "w-1.5 bg-fg/40"
+                  }
+                `}
+              />
             ))}
           </div>
-
-          {current.synopsis && (
-            <p className="mt-1 max-w-xl line-clamp-2 text-[11px] leading-snug text-muted md:mt-4 md:line-clamp-3 md:text-sm">
-              {current.synopsis}
-            </p>
-          )}
-
-          <div className="mt-2 flex flex-wrap gap-1.5 md:mt-4">
-            <Button asChild size="sm">
-              <Link to="/watch/$id" params={{ id: current.id }}>
-                <Play className="size-4" />
-                Assistir
-              </Link>
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => toggleList(current)}
-            >
-              {inList ? (
-                <BookmarkCheck className="size-4" />
-              ) : (
-                <Bookmark className="size-4" />
-              )}
-              {inList ? "Na lista" : "Minha Lista"}
-            </Button>
-
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/anime/$id" params={{ id: current.id }}>
-                Detalhes
-              </Link>
-            </Button>
-          </div>
-
-          {animes.length > 1 && (
-            <div
-              className="mt-2 flex items-center gap-1.5"
-              aria-label="Destaques"
-            >
-              {animes.map((item, i) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-label={`Mostrar destaque ${i + 1}`}
-                  onClick={() => setIndex(i)}
-                  className={`h-1.5 rounded-full transition-all ${
-                    i === index ? "w-5 bg-fg" : "w-1.5 bg-fg/40"
-                  }`}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </section>
   );
