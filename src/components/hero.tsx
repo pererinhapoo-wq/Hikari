@@ -40,7 +40,7 @@ export function Hero({
       className="
         relative
         -mx-4
-        h-[23rem]
+        h-[22rem]
         overflow-hidden
         sm:-mx-6
         sm:h-[31rem]
@@ -49,7 +49,7 @@ export function Hero({
     >
       {backdrop && (
         <>
-          {/* Fundo preenchendo o banner sem distorcer */}
+          {/* Fundo desfocado para preencher toda a área */}
           <img
             src={backdrop}
             alt=""
@@ -59,14 +59,15 @@ export function Hero({
               size-full
               scale-110
               object-cover
-              opacity-40
+              opacity-45
               blur-2xl
             "
           />
 
-          <div className="absolute inset-0 bg-black/50" />
+          {/* Escurece o fundo */}
+          <div className="absolute inset-0 bg-black/45" />
 
-          {/* Imagem principal */}
+          {/* Banner principal */}
           <div
             className="
               absolute inset-x-0 top-0
@@ -83,25 +84,37 @@ export function Hero({
               className="
                 absolute inset-0
                 size-full
-                object-contain
+                object-cover
                 object-center
               "
             />
 
-            <div className="absolute inset-0 bg-linear-to-b from-black/10 via-transparent to-bg" />
+            {/* Escurecimento suave */}
+            <div className="absolute inset-0 bg-black/10" />
+
+            {/* Gradiente para o conteúdo */}
+            <div
+              className="
+                absolute inset-0
+                bg-linear-to-b
+                from-transparent
+                via-transparent
+                to-bg
+              "
+            />
           </div>
         </>
       )}
 
       {!backdrop && <div className="absolute inset-0 bg-bg" />}
 
-      {/* Escurecimento lateral */}
+      {/* Gradiente lateral */}
       <div
         className="
           absolute inset-0
           bg-linear-to-r
-          from-bg/80
-          via-bg/25
+          from-bg/75
+          via-bg/20
           to-transparent
         "
       />
@@ -126,7 +139,16 @@ export function Hero({
           sm:px-6 sm:pb-7
         "
       >
-        <p className="text-[8px] font-medium tracking-[0.2em] text-muted uppercase sm:text-[9px]">
+        <p
+          className="
+            text-[8px]
+            font-medium
+            tracking-[0.2em]
+            text-muted
+            uppercase
+            sm:text-[9px]
+          "
+        >
           Em destaque
         </p>
 
@@ -167,7 +189,10 @@ export function Hero({
           )}
 
           {current.genres.slice(0, 2).map((genre) => (
-            <Badge key={genre} className="text-[9px] sm:text-xs">
+            <Badge
+              key={genre}
+              className="text-[9px] sm:text-xs"
+            >
               {genreLabel(genre)}
             </Badge>
           ))}
@@ -193,7 +218,10 @@ export function Hero({
 
         <div className="mt-2.5 flex flex-wrap gap-1.5 sm:mt-4 sm:gap-2">
           <Button asChild size="sm">
-            <Link to="/watch/$id" params={{ id: current.id }}>
+            <Link
+              to="/watch/$id"
+              params={{ id: current.id }}
+            >
               <Play className="size-3.5 sm:size-4" />
               Assistir
             </Link>
@@ -211,13 +239,20 @@ export function Hero({
               <Bookmark className="size-3.5 sm:size-4" />
             )}
 
-            <span className="hidden xs:inline sm:inline">
+            <span className="hidden sm:inline">
               {inList ? "Na lista" : "Minha Lista"}
             </span>
           </Button>
 
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/anime/$id" params={{ id: current.id }}>
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+          >
+            <Link
+              to="/anime/$id"
+              params={{ id: current.id }}
+            >
               Detalhes
             </Link>
           </Button>
@@ -225,7 +260,13 @@ export function Hero({
 
         {animes.length > 1 && (
           <div
-            className="mt-2.5 flex items-center gap-1.5 sm:mt-3"
+            className="
+              mt-2.5
+              flex
+              items-center
+              gap-1.5
+              sm:mt-3
+            "
             aria-label="Destaques"
           >
             {animes.map((item, i) => (
@@ -235,7 +276,9 @@ export function Hero({
                 aria-label={`Mostrar destaque ${i + 1}`}
                 onClick={() => setIndex(i)}
                 className={`
-                  h-1.5 rounded-full transition-all
+                  h-1.5
+                  rounded-full
+                  transition-all
                   ${
                     i === index
                       ? "w-5 bg-fg"
@@ -249,4 +292,4 @@ export function Hero({
       </div>
     </section>
   );
-        }
+}
