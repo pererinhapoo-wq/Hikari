@@ -1011,6 +1011,9 @@ function CommentsSection({
                     comment={
                       comment
                     }
+                    replyCount={
+                      replies.length
+                    }
                     likingId={
                       likingId
                     }
@@ -1074,6 +1077,9 @@ function CommentsSection({
                             comment={
                               reply
                             }
+                            replyCount={
+                              0
+                            }
                             likingId={
                               likingId
                             }
@@ -1091,14 +1097,7 @@ function CommentsSection({
                               handleLike
                             }
                             onReplyChange={() => {}}
-                            onStartReply={() => {
-                              setReplyingId(
-                                comment.id,
-                              );
-                              setReplyText(
-                                "",
-                              );
-                            }}
+                            onStartReply={() => {}}
                             onCancelReply={() => {}}
                             onSendReply={() => {}}
                             isReply
@@ -1127,6 +1126,7 @@ function CommentsSection({
 
 function CommentCard({
   comment,
+  replyCount,
   likingId,
   replyingId,
   replyText,
@@ -1140,6 +1140,7 @@ function CommentCard({
   isReply = false,
 }: {
   comment: Comment;
+  replyCount: number;
   likingId: string | null;
   replyingId: string | null;
   replyText: string;
@@ -1246,7 +1247,9 @@ function CommentCard({
           {/* AÇÕES                                           */}
           {/* =============================================== */}
 
-          <div className="mt-3 flex items-center gap-4">
+          <div className="mt-3 flex flex-wrap items-center gap-4">
+
+            {/* CURTIDA */}
 
             <button
               type="button"
@@ -1284,6 +1287,8 @@ function CommentCard({
 
             </button>
 
+            {/* RESPOSTA */}
+
             {!isReply && (
               <button
                 type="button"
@@ -1292,10 +1297,30 @@ function CommentCard({
                 }
                 className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
               >
+
                 <MessageCircle className="size-4" />
+
                 Responder
+
               </button>
             )}
+
+            {/* CONTADOR DE RESPOSTAS */}
+
+            {!isReply &&
+              replyCount > 0 && (
+                <span className="flex items-center gap-1.5 text-xs text-subtle">
+
+                  <MessageCircle className="size-4" />
+
+                  {replyCount}{" "}
+                  {replyCount ===
+                  1
+                    ? "Resposta"
+                    : "Respostas"}
+
+                </span>
+              )}
 
           </div>
 
