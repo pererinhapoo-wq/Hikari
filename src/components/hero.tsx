@@ -15,11 +15,17 @@ export function Hero({
   animes?: SlimAnime[];
 }) {
   const [index, setIndex] = useState(0);
+  const [isWide, setIsWide] = useState(false);
+
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
   const inList = useHikariStore((s) => s.myList.includes(current.id));
   const toggleList = useHikariStore((s) => s.toggleList);
   const backdrop = current.banner || current.cover;
+
+  useEffect(() => {
+    setIsWide(false);
+  }, [current.id]);
 
   useEffect(() => {
     if (animes.length < 2) return;
@@ -38,7 +44,15 @@ export function Hero({
           key={current.id}
           src={backdrop}
           alt=""
-          className="absolute inset-0 size-full object-cover object-[center_35%] md:object-center"
+          onLoad={(event) => {
+            const image = event.currentTarget;
+            setIsWide(image.naturalWidth / image.naturalHeight >= 1.5);
+          }}
+          className={`absolute inset-0 size-full ${
+            isWide
+              ? "object-cover object-center"
+              : "object-contain object-center"
+          }`}
         />
       )}
 
