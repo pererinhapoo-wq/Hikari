@@ -15,17 +15,12 @@ export function Hero({
   animes?: SlimAnime[];
 }) {
   const [index, setIndex] = useState(0);
-  const [isWide, setIsWide] = useState(false);
 
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
   const inList = useHikariStore((s) => s.myList.includes(current.id));
   const toggleList = useHikariStore((s) => s.toggleList);
   const backdrop = current.banner || current.cover;
-
-  useEffect(() => {
-    setIsWide(false);
-  }, [current.id]);
 
   useEffect(() => {
     if (animes.length < 2) return;
@@ -38,22 +33,25 @@ export function Hero({
   }, [animes.length]);
 
   return (
-    <section className="relative -mx-4 h-[14rem] overflow-hidden md:-mx-6 md:h-[20rem] lg:h-[24rem]">
+    <section className="relative -mx-4 h-[14rem] overflow-hidden bg-bg md:-mx-6 md:h-[20rem] lg:h-[24rem]">
       {backdrop && (
-        <img
-          key={current.id}
-          src={backdrop}
-          alt=""
-          onLoad={(event) => {
-            const image = event.currentTarget;
-            setIsWide(image.naturalWidth / image.naturalHeight >= 1.5);
-          }}
-          className={`absolute inset-0 size-full ${
-            isWide
-              ? "object-cover object-center"
-              : "object-contain object-center"
-          }`}
-        />
+        <>
+          <img
+            src={backdrop}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 size-full scale-110 object-cover object-center opacity-40 blur-xl"
+          />
+
+          <div className="absolute inset-0 bg-black/30" />
+
+          <img
+            key={current.id}
+            src={backdrop}
+            alt=""
+            className="absolute inset-0 size-full object-contain object-center"
+          />
+        </>
       )}
 
       <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
@@ -146,4 +144,4 @@ export function Hero({
       </div>
     </section>
   );
-    }
+      }
