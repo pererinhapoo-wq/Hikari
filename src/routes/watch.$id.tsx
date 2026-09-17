@@ -464,6 +464,16 @@ type Comment = {
 };
 
 /* ========================================================= */
+/* TIPO DA ORDENAÇÃO                                         */
+/* ========================================================= */
+
+type SortBy =
+  | "recent"
+  | "liked"
+  | "replies"
+  | "spoiler";
+
+/* ========================================================= */
 /* COMENTÁRIOS                                               */
 /* ========================================================= */
 
@@ -512,13 +522,11 @@ function CommentsSection({
     useState("");
 
   /* ====================================================== */
-  /* ORDENAÇÃO                                               */
+  /* ORDENAÇÃO / FILTRO                                      */
   /* ====================================================== */
 
   const [sortBy, setSortBy] =
-    useState<"recent" | "liked">(
-      "recent",
-    );
+    useState<SortBy>("recent");
 
   const [sortOpen, setSortOpen] =
     useState(false);
@@ -876,34 +884,6 @@ function CommentsSection({
     );
 
   /* ====================================================== */
-  /* ORDENAÇÃO DOS COMENTÁRIOS                               */
-  /* ====================================================== */
-
-  const sortedRootComments =
-    [...rootComments].sort(
-      (a, b) => {
-        if (
-          sortBy ===
-          "liked"
-        ) {
-          return (
-            (b.likes ?? 0) -
-            (a.likes ?? 0)
-          );
-        }
-
-        return (
-          new Date(
-            b.createdAt,
-          ).getTime() -
-          new Date(
-            a.createdAt,
-          ).getTime()
-        );
-      },
-    );
-
-  /* ====================================================== */
   /* RESPOSTAS                                               */
   /* ====================================================== */
 
@@ -914,6 +894,107 @@ function CommentsSection({
           comment.parentId ===
           parentId,
       );
+
+  /* ====================================================== */
+  /* COMENTÁRIOS FILTRADOS / ORDENADOS                       */
+  /* ====================================================== */
+
+  const displayedRootComments =
+    useMemo(() => {
+      let result = [
+        ...rootComments,
+      ];
+
+      /* ----------------------------------------------- */
+      /* SOMENTE COM SPOILER                              */
+      /* ----------------------------------------------- */
+
+      if (
+        sortBy ===
+        "spoiler"
+      ) {
+        result =
+          result.filter(
+            (comment) =>
+              comment.isSpoiler,
+          );
+      }
+
+      /* ----------------------------------------------- */
+      /* MAIS CURTIDOS                                    */
+      /* ----------------------------------------------- */
+
+      if (
+        sortBy ===
+        "liked"
+      ) {
+        result.sort(
+          (a, b) =>
+            (b.likes ?? 0) -
+            (a.likes ?? 0),
+        );
+      }
+
+      /* ----------------------------------------------- */
+      /* MAIS RESPONDIDOS                                 */
+      /* ----------------------------------------------- */
+
+      if (
+        sortBy ===
+        "replies"
+      ) {
+        result.sort(
+          (a, b) =>
+            repliesFor(
+              b.id,
+            ).length -
+            repliesFor(
+              a.id,
+            ).length,
+        );
+      }
+
+      /* ----------------------------------------------- */
+      /* MAIS RECENTES                                    */
+      /* ----------------------------------------------- */
+
+      if (
+        sortBy ===
+        "recent"
+      ) {
+        result.sort(
+          (a, b) =>
+            new Date(
+              b.createdAt,
+            ).getTime() -
+            new Date(
+              a.createdAt,
+            ).getTime(),
+        );
+      }
+
+      return result;
+    }, [
+      rootComments,
+      sortBy,
+      comments,
+    ]);
+
+  /* ====================================================== */
+  /* TEXTO DO FILTRO ATUAL                                  */
+  /* ====================================================== */
+
+  const sortLabel =
+    sortBy ===
+    "recent"
+      ? "Mais recentes"
+      : sortBy ===
+          "liked"
+        ? "Mais curtidos"
+        : sortBy ===
+            "replies"
+          ? "Mais respondidos"
+          : "Com spoiler";
 
   /* ====================================================== */
   /* RENDER                                                   */
@@ -973,10 +1054,7 @@ function CommentsSection({
             >
 
               <span>
-                {sortBy ===
-                "recent"
-                  ? "Mais recentes"
-                  : "Mais curtidos"}
+                {sortLabel}
               </span>
 
               <ChevronDown
@@ -992,8 +1070,12 @@ function CommentsSection({
             {sortOpen && (
               <div
                 role="menu"
-                className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[180px] overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
+                className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[190px] overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
               >
+
+                {/* ========================================= */}
+                {/* MAIS RECENTES                              */}
+                {/* ========================================= */}
 
                 <button
                   type="button"
@@ -1017,6 +1099,10 @@ function CommentsSection({
                   Mais recentes
                 </button>
 
+                {/* ========================================= */}
+                {/* MAIS CURTIDOS                              */}
+                {/* ========================================= */}
+
                 <button
                   type="button"
                   role="menuitem"
@@ -1037,6 +1123,58 @@ function CommentsSection({
                   )}
                 >
                   Mais curtidos
+                </button>
+
+                {/* ========================================= */}
+                {/* MAIS RESPONDIDOS                           */}
+                {/* ========================================= */}
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setSortBy(
+                      "replies",
+                    );
+                    setSortOpen(
+                      false,
+                    );
+                  }}
+                  className={cn(
+                    "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                    sortBy ===
+                      "replies"
+                      ? "bg-elevated text-fg"
+                      : "text-muted hover:bg-elevated hover:text-fg",
+                  )}
+                >
+                  Mais respondidos
+                </button>
+
+                {/* ========================================= */}
+                {/* COM SPOILER                                */}
+                {/* ========================================= */}
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setSortBy(
+                      "spoiler",
+                    );
+                    setSortOpen(
+                      false,
+                    );
+                  }}
+                  className={cn(
+                    "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                    sortBy ===
+                      "spoiler"
+                      ? "bg-elevated text-fg"
+                      : "text-muted hover:bg-elevated hover:text-fg",
+                  )}
+                >
+                  Com spoiler
                 </button>
 
               </div>
@@ -1143,6 +1281,17 @@ function CommentsSection({
       </div>
 
       {/* ================================================== */}
+      {/* INDICADOR DO FILTRO COM SPOILER                    */}
+      {/* ================================================== */}
+
+      {sortBy ===
+        "spoiler" && (
+        <div className="mt-4 rounded-lg border border-white/5 bg-surface px-4 py-3 text-sm text-muted">
+          Mostrando apenas comentários marcados como spoiler.
+        </div>
+      )}
+
+      {/* ================================================== */}
       {/* LISTA DE COMENTÁRIOS                               */}
       {/* ================================================== */}
 
@@ -1152,15 +1301,28 @@ function CommentsSection({
           <div className="rounded-xl border border-white/5 bg-surface p-5 text-sm text-muted">
             Carregando comentários...
           </div>
-        ) : rootComments.length ===
+        ) : displayedRootComments.length ===
           0 ? (
           <div className="rounded-xl border border-white/5 bg-surface p-5 text-center text-sm text-muted">
-            Ainda não há comentários neste episódio.
-            <br />
-            Seja o primeiro a comentar.
+            {sortBy ===
+            "spoiler"
+              ? (
+                <>
+                  Não há comentários com spoiler neste episódio.
+                  <br />
+                  Tente outro filtro.
+                </>
+              )
+              : (
+                <>
+                  Ainda não há comentários neste episódio.
+                  <br />
+                  Seja o primeiro a comentar.
+                </>
+              )}
           </div>
         ) : (
-          sortedRootComments.map(
+          displayedRootComments.map(
             (comment) => {
               const replies =
                 repliesFor(
@@ -1641,4 +1803,4 @@ function CommentCard({
 
     </article>
   );
-      }
+    }
