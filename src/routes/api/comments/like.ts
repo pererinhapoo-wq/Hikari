@@ -8,8 +8,9 @@ export const Route = createFileRoute("/api/comments/like")({
       POST: async ({ request }) => {
         try {
           // =====================================================
-          // 1. Verificar usuário logado
+          // 1. VERIFICAR USUÁRIO LOGADO
           // =====================================================
+
           const session = await auth.api.getSession({
             headers: request.headers,
           });
@@ -17,15 +18,22 @@ export const Route = createFileRoute("/api/comments/like")({
           if (!session?.user?.id) {
             return Response.json(
               {
-                error: "Você precisa estar logado para curtir.",
+                error:
+                  "Você precisa estar logado para curtir.",
               },
               { status: 401 },
             );
           }
 
+          console.log(
+            "USUÁRIO DA CURTIDA:",
+            session.user.id,
+          );
+
           // =====================================================
-          // 2. Ler comentário
+          // 2. LER JSON
           // =====================================================
+
           let body: Record<string, unknown>;
 
           try {
@@ -53,14 +61,21 @@ export const Route = createFileRoute("/api/comments/like")({
             );
           }
 
+          console.log(
+            "ID DO COMENTÁRIO PARA CURTIDA:",
+            commentId,
+          );
+
           const sql = await getSql();
 
           // =====================================================
-          // 3. Verificar se o comentário existe
+          // 3. VERIFICAR SE O COMENTÁRIO EXISTE
           // =====================================================
-          const comment = await sql.query(
+
+          const commentResult = await sql.query(
             `
-              select "id"
+              select
+                "id"
               from "comment"
               where "id" = $1
               limit 1
@@ -68,88 +83,161 @@ export const Route = createFileRoute("/api/comments/like")({
             [commentId],
           );
 
-          if (!comment?.rows || comment.rows.length === 0) {
+          console.log(
+            "RESULTADO DA BUSCA DO COMENTÁRIO:",
+            commentResult,
+          );
+
+          const commentRows =
+            commentResult?.rows ?? [];
+
+          if (commentRows.length === 0) {
+            console.error(
+              "COMENTÁRIO NÃO ENCONTRADO PARA CURTIDA:",
+              commentId,
+            );
+
             return Response.json(
               {
-                error: "Comentário não encontrado.",
+                error:
+                  "Comentário não encontrado.",
               },
               { status: 404 },
             );
           }
 
           // =====================================================
-          // 4. Verificar se o usuário já curtiu
+          // 4. VERIFICAR CURTIDA EXISTENTE
           // =====================================================
-          const existingLike = await sql.query(
-            `
-              select "id"
-              from "comment_like"
-              where "commentId" = $1
-                and "userId" = $2
-              limit 1
-            `,
-            [commentId, session.user.id],
-          );
 
-          let liked = false;
+          const existingLike =
+            await sql.query(
+              `
+                select
+                  "id"
+                from "comment_like"
+                where "commentId" = $1
+                  and "userId" = $2
+                limit 1
+              `,
+              [
+                commentId,
+                session.user.id,
+              ],
+            );
+
+          const existingLikeRows =
+            existingLike?.rows ?? [];
 
           // =====================================================
-          // 5. Curtir ou remover curtida
+          // 5. REMOVER CURTIDA
           // =====================================================
-          if (existingLike?.rows && existingLike.rows.length > 0) {
+
+          if (
+            existingLikeRows.length > 0
+          ) {
             await sql.query(
               `
                 delete from "comment_like"
                 where "commentId" = $1
                   and "userId" = $2
               `,
-              [commentId, session.user.id],
+              [
+                commentId,
+                session.user.id,
+              ],
             );
 
-            liked = false;
-          } else {
-            const id = crypto.randomUUID();
+            const countResult =
+              await sql.query(
+                `
+                  select
+                    count(*)::int as "count"
+                  from "comment_like"
+                  where "commentId" = $1
+                `,
+                [commentId],
+              );
 
-            await sql.query(
-              `
-                insert into "comment_like" (
-                  "id",
-                  "commentId",
-                  "userId"
-                )
-                values ($1, $2, $3)
-              `,
-              [id, commentId, session.user.id],
+            const likes =
+              Number(
+                countResult?.rows?.[0]
+                  ?.count ?? 0,
+              );
+
+            console.log(
+              "CURTIDA REMOVIDA:",
+              commentId,
+              likes,
             );
 
-            liked = true;
+            return Response.json({
+              liked: false,
+              likes,
+            });
           }
 
           // =====================================================
-          // 6. Contar curtidas
+          // 6. ADICIONAR CURTIDA
           // =====================================================
-          const countResult = await sql.query(
+
+          const likeId =
+            crypto.randomUUID();
+
+          await sql.query(
             `
-              select count(*)::int as "count"
-              from "comment_like"
-              where "commentId" = $1
+              insert into "comment_like" (
+                "id",
+                "commentId",
+                "userId"
+              )
+              values ($1, $2, $3)
             `,
-            [commentId],
+            [
+              likeId,
+              commentId,
+              session.user.id,
+            ],
           );
 
+          // =====================================================
+          // 7. CONTAR CURTIDAS
+          // =====================================================
+
+          const countResult =
+            await sql.query(
+              `
+                select
+                  count(*)::int as "count"
+                from "comment_like"
+                where "commentId" = $1
+              `,
+              [commentId],
+            );
+
           const likes =
-            countResult?.rows?.[0]?.count ?? 0;
+            Number(
+              countResult?.rows?.[0]
+                ?.count ?? 0,
+            );
+
+          console.log(
+            "CURTIDA ADICIONADA:",
+            commentId,
+            likes,
+          );
 
           // =====================================================
-          // 7. Resposta
+          // 8. RESPONDER
           // =====================================================
+
           return Response.json({
-            liked,
+            liked: true,
             likes,
           });
         } catch (error) {
           console.error(
-            "ERRO AO CURTIR COMENTÁRIO:",
+            "ERRO REAL AO CURTIR COMENTÁRIO:",
             error,
           );
 
@@ -160,7 +248,8 @@ export const Route = createFileRoute("/api/comments/like")({
 
           return Response.json(
             {
-              error: "Não foi possível alterar a curtida.",
+              error:
+                "Não foi possível alterar a curtida.",
               details: message,
             },
             { status: 500 },
