@@ -1,4 +1,8 @@
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  useRouterState,
+} from "@tanstack/react-router";
 
 import {
   Bookmark,
@@ -18,63 +22,98 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 const BASE_NAV = [
-  { to: "/", label: "Início", icon: House, match: (p: string) => p === "/" },
+  {
+    to: "/",
+    label: "Início",
+    icon: House,
+    match: (p: string) =>
+      p === "/",
+  },
   {
     to: "/search",
     label: "Buscar",
     icon: Search,
-    match: (p: string) => p.startsWith("/search") || p.startsWith("/browse"),
+    match: (p: string) =>
+      p.startsWith("/search") ||
+      p.startsWith("/browse"),
   },
   {
     to: "/my-list",
     label: "Lista",
     icon: Bookmark,
-    match: (p: string) => p.startsWith("/my-list"),
+    match: (p: string) =>
+      p.startsWith("/my-list"),
   },
   {
     to: "/account",
     label: "Conta",
     icon: UserCircle,
     match: (p: string) =>
-      p.startsWith("/account") || p.startsWith("/login"),
+      p.startsWith("/account") ||
+      p.startsWith("/login"),
   },
 ] as const;
 
+const ADULT_NAV = {
+  to: "/adult",
+  label: "🔞 +18",
+  match: (p: string) =>
+    p.startsWith("/adult"),
+} as const;
+
 export function Shell() {
-  const pathname = useRouterState({
-    select: (s) => s.location.pathname,
-  });
+  const pathname =
+    useRouterState({
+      select: (s) =>
+        s.location.pathname,
+    });
 
-  const { user } = useCurrentUserState();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { user } =
+    useCurrentUserState();
 
-  const cinema = pathname.startsWith("/watch");
+  const [menuOpen, setMenuOpen] =
+    useState(false);
+
+  const cinema =
+    pathname.startsWith(
+      "/watch",
+    );
 
   const nav =
-    user && isHikariAdmin(user.primaryEmail)
+    user &&
+    isHikariAdmin(
+      user.primaryEmail,
+    )
       ? [
           ...BASE_NAV,
           {
             to: "/admin",
             label: "Admin",
             icon: Settings2,
-            match: (p: string) => p.startsWith("/admin"),
+            match: (p: string) =>
+              p.startsWith(
+                "/admin",
+              ),
           },
         ]
       : BASE_NAV;
 
-  const bottomNav = BASE_NAV;
+  const bottomNav =
+    BASE_NAV;
 
-  if (cinema) return <Outlet />;
+  if (cinema) {
+    return <Outlet />;
+  }
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
       <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
-
           <button
             type="button"
-            onClick={() => setMenuOpen(true)}
+            onClick={() =>
+              setMenuOpen(true)
+            }
             className="flex size-11 items-center justify-center rounded-md text-fg hover:bg-elevated"
             aria-label="Abrir menu"
           >
@@ -84,24 +123,29 @@ export function Shell() {
           <Logo />
 
           <nav className="hidden items-center gap-1 md:flex">
-            {nav.map((item) => {
-              const active = item.match(pathname);
+            {nav.map(
+              (item) => {
+                const active =
+                  item.match(
+                    pathname,
+                  );
 
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={cn(
-                    "inline-flex h-11 items-center px-3 text-sm transition-colors",
-                    active
-                      ? "text-fg"
-                      : "text-muted hover:text-fg"
-                  )}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={cn(
+                      "inline-flex h-11 items-center px-3 text-sm transition-colors",
+                      active
+                        ? "text-fg"
+                        : "text-muted hover:text-fg",
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              },
+            )}
           </nav>
 
           <Link
@@ -118,7 +162,9 @@ export function Shell() {
         <>
           <button
             type="button"
-            onClick={() => setMenuOpen(false)}
+            onClick={() =>
+              setMenuOpen(false)
+            }
             className="fixed inset-0 z-50 bg-black/60"
             aria-label="Fechar menu"
           />
@@ -129,7 +175,9 @@ export function Shell() {
 
               <button
                 type="button"
-                onClick={() => setMenuOpen(false)}
+                onClick={() =>
+                  setMenuOpen(false)
+                }
                 className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
                 aria-label="Fechar menu"
               >
@@ -139,27 +187,63 @@ export function Shell() {
 
             <nav className="p-4">
               <div className="space-y-1">
-                {nav.map((item) => {
-                  const active = item.match(pathname);
-                  const Icon = item.icon;
+                {nav.map(
+                  (item) => {
+                    const active =
+                      item.match(
+                        pathname,
+                      );
 
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setMenuOpen(false)}
-                      className={cn(
-                        "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                        active
-                          ? "bg-elevated text-fg"
-                          : "text-muted hover:bg-elevated hover:text-fg"
-                      )}
-                    >
-                      <Icon className="size-5" />
-                      {item.label}
-                    </Link>
-                  );
-                })}
+                    const Icon =
+                      item.icon;
+
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={() =>
+                          setMenuOpen(
+                            false,
+                          )
+                        }
+                        className={cn(
+                          "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                          active
+                            ? "bg-elevated text-fg"
+                            : "text-muted hover:bg-elevated hover:text-fg",
+                        )}
+                      >
+                        <Icon className="size-5" />
+                        {item.label}
+                      </Link>
+                    );
+                  },
+                )}
+
+                <Link
+                  to={ADULT_NAV.to}
+                  onClick={() =>
+                    setMenuOpen(
+                      false,
+                    )
+                  }
+                  className={cn(
+                    "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                    ADULT_NAV.match(
+                      pathname,
+                    )
+                      ? "bg-elevated text-fg"
+                      : "text-muted hover:bg-elevated hover:text-fg",
+                  )}
+                >
+                  <span className="flex size-5 items-center justify-center text-base">
+                    🔞
+                  </span>
+
+                  <span>
+                    +18
+                  </span>
+                </Link>
               </div>
             </nav>
           </aside>
@@ -183,27 +267,38 @@ export function Shell() {
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 backdrop-blur-md md:hidden">
         <ul className="grid grid-cols-4">
-          {bottomNav.map((item) => {
-            const active = item.match(pathname);
-            const Icon = item.icon;
+          {bottomNav.map(
+            (item) => {
+              const active =
+                item.match(
+                  pathname,
+                );
 
-            return (
-              <li key={item.to}>
-                <Link
-                  to={item.to}
-                  className={cn(
-                    "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] tracking-wide uppercase",
-                    active ? "text-fg" : "text-subtle"
-                  )}
+              const Icon =
+                item.icon;
+
+              return (
+                <li
+                  key={item.to}
                 >
-                  <Icon className="size-5" />
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
+                  <Link
+                    to={item.to}
+                    className={cn(
+                      "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] tracking-wide uppercase",
+                      active
+                        ? "text-fg"
+                        : "text-subtle",
+                    )}
+                  >
+                    <Icon className="size-5" />
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            },
+          )}
         </ul>
       </nav>
     </div>
   );
-}
+            }
