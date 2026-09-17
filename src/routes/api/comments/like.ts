@@ -25,9 +25,11 @@ export const Route = createFileRoute("/api/comments/like")({
             );
           }
 
+          const userId = session.user.id;
+
           console.log(
             "USUÁRIO DA CURTIDA:",
-            session.user.id,
+            userId,
           );
 
           // =====================================================
@@ -83,13 +85,29 @@ export const Route = createFileRoute("/api/comments/like")({
             [commentId],
           );
 
-          console.log(
-            "RESULTADO DA BUSCA DO COMENTÁRIO:",
-            commentResult,
-          );
+          /*
+           * IMPORTANTE:
+           *
+           * O adaptador de banco usado pelo Hikari pode retornar
+           * o resultado de SELECT diretamente como um array.
+           *
+           * Em alguns ambientes ele pode retornar:
+           *
+           *   { rows: [...] }
+           *
+           * Por isso aceitamos os dois formatos.
+           */
 
-          const commentRows =
-            commentResult?.rows ?? [];
+          const commentRows = Array.isArray(
+            commentResult,
+          )
+            ? commentResult
+            : commentResult?.rows ?? [];
+
+          console.log(
+            "QUANTIDADE DE COMENTÁRIOS ENCONTRADOS:",
+            commentRows.length,
+          );
 
           if (commentRows.length === 0) {
             console.error(
@@ -107,10 +125,10 @@ export const Route = createFileRoute("/api/comments/like")({
           }
 
           // =====================================================
-          // 4. VERIFICAR CURTIDA EXISTENTE
+          // 4. VERIFICAR SE O USUÁRIO JÁ CURTIU
           // =====================================================
 
-          const existingLike =
+          const existingLikeResult =
             await sql.query(
               `
                 select
@@ -120,33 +138,33 @@ export const Route = createFileRoute("/api/comments/like")({
                   and "userId" = $2
                 limit 1
               `,
-              [
-                commentId,
-                session.user.id,
-              ],
+              [commentId, userId],
             );
 
           const existingLikeRows =
-            existingLike?.rows ?? [];
+            Array.isArray(
+              existingLikeResult,
+            )
+              ? existingLikeResult
+              : existingLikeResult?.rows ?? [];
 
           // =====================================================
-          // 5. REMOVER CURTIDA
+          // 5. SE JÁ CURTIU → REMOVER CURTIDA
           // =====================================================
 
-          if (
-            existingLikeRows.length > 0
-          ) {
+          if (existingLikeRows.length > 0) {
             await sql.query(
               `
                 delete from "comment_like"
                 where "commentId" = $1
                   and "userId" = $2
               `,
-              [
-                commentId,
-                session.user.id,
-              ],
+              [commentId, userId],
             );
+
+            // ===================================================
+            // CONTAR CURTIDAS APÓS REMOVER
+            // ===================================================
 
             const countResult =
               await sql.query(
@@ -159,10 +177,14 @@ export const Route = createFileRoute("/api/comments/like")({
                 [commentId],
               );
 
+            const countRows =
+              Array.isArray(countResult)
+                ? countResult
+                : countResult?.rows ?? [];
+
             const likes =
               Number(
-                countResult?.rows?.[0]
-                  ?.count ?? 0,
+                countRows[0]?.count ?? 0,
               );
 
             console.log(
@@ -196,7 +218,7 @@ export const Route = createFileRoute("/api/comments/like")({
             [
               likeId,
               commentId,
-              session.user.id,
+              userId,
             ],
           );
 
@@ -215,10 +237,14 @@ export const Route = createFileRoute("/api/comments/like")({
               [commentId],
             );
 
+          const countRows =
+            Array.isArray(countResult)
+              ? countResult
+              : countResult?.rows ?? [];
+
           const likes =
             Number(
-              countResult?.rows?.[0]
-                ?.count ?? 0,
+              countRows[0]?.count ?? 0,
             );
 
           console.log(
