@@ -38,7 +38,7 @@ export function Hero({
           key={current.id}
           src={backdrop}
           alt=""
-          className="absolute inset-0 size-full object-cover object-[center_35%] md:object-center"
+          className="absolute inset-0 size-full object-contain object-center"
         />
       )}
 
@@ -132,4 +132,4 @@ export function Hero({
       </div>
     </section>
   );
-}
+    }
