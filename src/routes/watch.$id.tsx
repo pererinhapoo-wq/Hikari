@@ -1,10 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  AlertTriangle,
+  Ban,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Flag,
   Heart,
   MessageCircle,
+  MoreVertical,
   Send,
   X,
 } from "lucide-react";
@@ -481,6 +485,18 @@ type SortBy =
   | "spoiler";
 
 /* ========================================================= */
+/* TIPO DA DENÚNCIA                                          */
+/* ========================================================= */
+
+type ReportReason =
+  | "spam"
+  | "hate"
+  | "spoiler"
+  | "sexual"
+  | "harassment"
+  | "other";
+
+/* ========================================================= */
 /* COMENTÁRIOS                                               */
 /* ========================================================= */
 
@@ -537,6 +553,31 @@ function CommentsSection({
 
   const [sortOpen, setSortOpen] =
     useState(false);
+
+  /* ====================================================== */
+  /* MODERAÇÃO                                               */
+  /* ====================================================== */
+
+  const [menuOpenId, setMenuOpenId] =
+    useState<string | null>(null);
+
+  const [moderatingId, setModeratingId] =
+    useState<string | null>(null);
+
+  const [reportingComment, setReportingComment] =
+    useState<Comment | null>(null);
+
+  const [reportReason, setReportReason] =
+    useState<ReportReason | "">("");
+
+  const [reportSending, setReportSending] =
+    useState(false);
+
+  const [spamComment, setSpamComment] =
+    useState<Comment | null>(null);
+
+  const [moderationSuccess, setModerationSuccess] =
+    useState("");
 
   /* ====================================================== */
   /* CARREGAR COMENTÁRIOS                                   */
@@ -854,6 +895,138 @@ function CommentsSection({
     };
 
   /* ====================================================== */
+  /* MODERAÇÃO                                               */
+  /* ====================================================== */
+
+  const handleModeration =
+    async (
+      commentId: string,
+      action:
+        | "spoiler"
+        | "report"
+        | "spam",
+      reason?: ReportReason,
+    ) => {
+      if (moderatingId) {
+        return;
+      }
+
+      try {
+        setModeratingId(
+          commentId,
+        );
+
+        setError("");
+        setModerationSuccess("");
+
+        const response =
+          await fetch(
+            "/api/comments/moderation",
+            {
+              method: "POST",
+              credentials:
+                "include",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                commentId,
+                action,
+                ...(reason
+                  ? { reason }
+                  : {}),
+              }),
+            },
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              "Não foi possível realizar esta ação.",
+          );
+        }
+
+        if (
+          action ===
+          "spoiler"
+        ) {
+          setComments(
+            (current) =>
+              current.map(
+                (comment) =>
+                  comment.id ===
+                  commentId
+                    ? {
+                        ...comment,
+                        isSpoiler:
+                          true,
+                      }
+                    : comment,
+              ),
+          );
+
+          setModerationSuccess(
+            "Comentário marcado como spoiler.",
+          );
+        }
+
+        if (
+          action ===
+          "spam"
+        ) {
+          setModerationSuccess(
+            "Comentário sinalizado como spam.",
+          );
+        }
+
+        if (
+          action ===
+          "report"
+        ) {
+          setModerationSuccess(
+            "Denúncia enviada. Obrigado por ajudar a manter a comunidade do Hikari segura.",
+          );
+        }
+
+        setMenuOpenId(null);
+        setSpamComment(null);
+        setReportingComment(null);
+        setReportReason("");
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível realizar esta ação.",
+        );
+      } finally {
+        setModeratingId(
+          null,
+        );
+      }
+    };
+
+  /* ====================================================== */
+  /* ABRIR DENÚNCIA                                         */
+  /* ====================================================== */
+
+  const openReport =
+    (comment: Comment) => {
+      setMenuOpenId(null);
+      setReportingComment(
+        comment,
+      );
+      setReportReason("");
+      setError("");
+      setModerationSuccess("");
+    };
+
+  /* ====================================================== */
   /* DATA                                                    */
   /* ====================================================== */
 
@@ -996,10 +1169,6 @@ function CommentsSection({
 
       <div className="grid gap-8">
 
-        {/* ================================================= */}
-        {/* ÁREA PRINCIPAL DOS COMENTÁRIOS                    */}
-        {/* ================================================= */}
-
         <div className="min-w-0">
 
           {/* =============================================== */}
@@ -1031,10 +1200,6 @@ function CommentsSection({
                 {comments.length}
 
               </div>
-
-              {/* ========================================= */}
-              {/* DROPDOWN                                  */}
-              {/* ========================================= */}
 
               <div className="relative">
 
@@ -1260,6 +1425,16 @@ function CommentsSection({
           </div>
 
           {/* =============================================== */}
+          {/* SUCESSO DA MODERAÇÃO                            */}
+          {/* =============================================== */}
+
+          {moderationSuccess && (
+            <div className="mt-4 rounded-lg border border-white/5 bg-surface px-4 py-3 text-sm text-muted">
+              {moderationSuccess}
+            </div>
+          )}
+
+          {/* =============================================== */}
           {/* INDICADOR DO FILTRO                             */}
           {/* =============================================== */}
 
@@ -1379,6 +1554,39 @@ function CommentsSection({
                             comment.id,
                           );
                         }}
+                        menuOpen={
+                          menuOpenId ===
+                          comment.id
+                        }
+                        onToggleMenu={() => {
+                          setMenuOpenId(
+                            (current) =>
+                              current ===
+                              comment.id
+                                ? null
+                                : comment.id,
+                          );
+                        }}
+                        onMarkSpoiler={() => {
+                          void handleModeration(
+                            comment.id,
+                            "spoiler",
+                          );
+                        }}
+                        onReport={() =>
+                          openReport(
+                            comment,
+                          )
+                        }
+                        onSpam={() =>
+                          setSpamComment(
+                            comment,
+                          )
+                        }
+                        moderating={
+                          moderatingId ===
+                          comment.id
+                        }
                       />
 
                       {replies.length >
@@ -1428,6 +1636,39 @@ function CommentsSection({
                                 onCancelReply={() => {}}
                                 onSendReply={() => {}}
                                 isReply
+                                menuOpen={
+                                  menuOpenId ===
+                                  reply.id
+                                }
+                                onToggleMenu={() => {
+                                  setMenuOpenId(
+                                    (current) =>
+                                      current ===
+                                      reply.id
+                                        ? null
+                                        : reply.id,
+                                  );
+                                }}
+                                onMarkSpoiler={() => {
+                                  void handleModeration(
+                                    reply.id,
+                                    "spoiler",
+                                  );
+                                }}
+                                onReport={() =>
+                                  openReport(
+                                    reply,
+                                  )
+                                }
+                                onSpam={() =>
+                                  setSpamComment(
+                                    reply,
+                                  )
+                                }
+                                moderating={
+                                  moderatingId ===
+                                  reply.id
+                                }
                               />
                             ),
                           )}
@@ -1446,6 +1687,307 @@ function CommentsSection({
         </div>
 
       </div>
+
+      {/* ================================================== */}
+      {/* MODAL DE DENÚNCIA                                  */}
+      {/* ================================================== */}
+
+      {reportingComment && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="report-dialog-title"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl"
+          >
+
+            <div className="flex items-start gap-3">
+
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated">
+
+                <Flag className="size-5" />
+
+              </div>
+
+              <div className="min-w-0 flex-1">
+
+                <h3
+                  id="report-dialog-title"
+                  className="font-display text-xl"
+                >
+                  Denunciar comentário
+                </h3>
+
+                <p className="mt-1 text-sm text-muted">
+                  Por que você está denunciando este comentário?
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!reportSending) {
+                    setReportingComment(
+                      null,
+                    );
+                    setReportReason(
+                      "",
+                    );
+                  }
+                }}
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
+                aria-label="Fechar"
+                disabled={
+                  reportSending
+                }
+              >
+                <X className="size-5" />
+              </button>
+
+            </div>
+
+            <div className="mt-5 space-y-2">
+
+              {[
+                {
+                  value: "spam" as const,
+                  label: "Spam ou propaganda",
+                },
+                {
+                  value: "hate" as const,
+                  label: "Discurso de ódio ou ofensa",
+                },
+                {
+                  value: "spoiler" as const,
+                  label: "Spoiler não marcado",
+                },
+                {
+                  value: "sexual" as const,
+                  label: "Conteúdo sexual ou impróprio",
+                },
+                {
+                  value: "harassment" as const,
+                  label: "Assédio ou ameaça",
+                },
+                {
+                  value: "other" as const,
+                  label: "Outro motivo",
+                },
+              ].map(
+                (item) => (
+                  <label
+                    key={
+                      item.value
+                    }
+                    className={cn(
+                      "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 text-sm transition-colors",
+                      reportReason ===
+                        item.value
+                        ? "border-white/20 bg-elevated text-fg"
+                        : "border-white/5 bg-surface text-muted hover:border-white/10 hover:text-fg",
+                    )}
+                  >
+
+                    <input
+                      type="radio"
+                      name="report-reason"
+                      value={
+                        item.value
+                      }
+                      checked={
+                        reportReason ===
+                        item.value
+                      }
+                      onChange={() =>
+                        setReportReason(
+                          item.value,
+                        )
+                      }
+                      className="size-4 accent-current"
+                    />
+
+                    <span>
+                      {item.label}
+                    </span>
+
+                  </label>
+                ),
+              )}
+
+            </div>
+
+            {error && (
+              <p className="mt-3 text-sm text-red-400">
+                {error}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!reportSending) {
+                    setReportingComment(
+                      null,
+                    );
+                    setReportReason(
+                      "",
+                    );
+                  }
+                }}
+                disabled={
+                  reportSending
+                }
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() => {
+                  if (
+                    reportingComment &&
+                    reportReason
+                  ) {
+                    void handleModeration(
+                      reportingComment.id,
+                      "report",
+                      reportReason,
+                    );
+                  }
+                }}
+                disabled={
+                  !reportReason ||
+                  reportSending ||
+                  Boolean(
+                    moderatingId,
+                  )
+                }
+              >
+                <Flag className="size-4" />
+
+                {reportSending
+                  ? "Enviando..."
+                  : "Enviar denúncia"}
+              </Button>
+
+            </div>
+
+            <p className="mt-4 text-xs leading-5 text-subtle">
+              As denúncias ajudam a equipe de moderação a manter a comunidade do Hikari segura.
+            </p>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* ================================================== */}
+      {/* MODAL DE SPAM                                      */}
+      {/* ================================================== */}
+
+      {spamComment && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="spam-dialog-title"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl"
+          >
+
+            <div className="flex items-start gap-3">
+
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated">
+
+                <Ban className="size-5" />
+
+              </div>
+
+              <div className="min-w-0 flex-1">
+
+                <h3
+                  id="spam-dialog-title"
+                  className="font-display text-xl"
+                >
+                  Marcar como spam?
+                </h3>
+
+                <p className="mt-1 text-sm text-muted">
+                  Este comentário será sinalizado para análise da moderação.
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="mt-4 rounded-lg border border-white/5 bg-surface p-3">
+
+              <p className="line-clamp-4 whitespace-pre-wrap text-sm text-muted">
+                {spamComment.content}
+              </p>
+
+            </div>
+
+            {error && (
+              <p className="mt-3 text-sm text-red-400">
+                {error}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!moderatingId) {
+                    setSpamComment(
+                      null,
+                    );
+                  }
+                }}
+                disabled={
+                  Boolean(
+                    moderatingId,
+                  )
+                }
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() => {
+                  void handleModeration(
+                    spamComment.id,
+                    "spam",
+                  );
+                }}
+                disabled={
+                  Boolean(
+                    moderatingId,
+                  )
+                }
+              >
+                <Ban className="size-4" />
+
+                {moderatingId ===
+                spamComment.id
+                  ? "Enviando..."
+                  : "Marcar como spam"}
+              </Button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
 
     </section>
   );
@@ -1472,6 +2014,12 @@ function CommentCard({
   onCancelReply,
   onSendReply,
   isReply = false,
+  menuOpen,
+  onToggleMenu,
+  onMarkSpoiler,
+  onReport,
+  onSpam,
+  moderating,
 }: {
   comment: Comment;
   replyCount: number;
@@ -1497,6 +2045,12 @@ function CommentCard({
   onCancelReply: () => void;
   onSendReply: () => void;
   isReply?: boolean;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+  onMarkSpoiler: () => void;
+  onReport: () => void;
+  onSpam: () => void;
+  moderating: boolean;
 }) {
   const isReplying =
     replyingId ===
@@ -1544,32 +2098,139 @@ function CommentCard({
 
         <div className="min-w-0 flex-1">
 
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {/* =============================================== */}
+          {/* USUÁRIO + DATA + MENU                           */}
+          {/* =============================================== */}
 
-            <span className="text-sm font-semibold">
-              {comment.userName ||
-                "Usuário"}
-            </span>
+          <div className="relative flex items-start gap-2">
 
-            {isReply &&
-              replyToName && (
-                <>
-                  <span className="text-sm text-subtle">
-                    →
-                  </span>
+            <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
 
-                  <span className="text-sm font-semibold text-muted">
-                    {replyToName}
-                  </span>
-                </>
+              <span className="text-sm font-semibold">
+                {comment.userName ||
+                  "Usuário"}
+              </span>
+
+              {isReply &&
+                replyToName && (
+                  <>
+                    <span className="text-sm text-subtle">
+                      →
+                    </span>
+
+                    <span className="text-sm font-semibold text-muted">
+                      {replyToName}
+                    </span>
+                  </>
+                )}
+
+              <span className="text-xs text-subtle">
+                ·{" "}
+                {formatDate(
+                  comment.createdAt,
+                )}
+              </span>
+
+            </div>
+
+            {/* ============================================= */}
+            {/* MENU DE MODERAÇÃO                             */}
+            {/* ============================================= */}
+
+            <div className="relative shrink-0">
+
+              <button
+                type="button"
+                onClick={
+                  onToggleMenu
+                }
+                disabled={
+                  moderating
+                }
+                aria-label="Opções do comentário"
+                aria-haspopup="menu"
+                aria-expanded={
+                  menuOpen
+                }
+                className="flex size-9 items-center justify-center rounded-lg text-subtle transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
+              >
+
+                <MoreVertical className="size-5" />
+
+              </button>
+
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+6px)] z-50 w-56 overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
+                >
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={
+                      onMarkSpoiler
+                    }
+                    disabled={
+                      moderating
+                    }
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
+                  >
+
+                    <AlertTriangle className="size-4 shrink-0" />
+
+                    <span>
+                      {moderating
+                        ? "Enviando..."
+                        : "Marcar como spoiler"}
+                    </span>
+
+                  </button>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={
+                      onReport
+                    }
+                    disabled={
+                      moderating
+                    }
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
+                  >
+
+                    <Flag className="size-4 shrink-0" />
+
+                    <span>
+                      Denunciar comentário
+                    </span>
+
+                  </button>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={
+                      onSpam
+                    }
+                    disabled={
+                      moderating
+                    }
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
+                  >
+
+                    <Ban className="size-4 shrink-0" />
+
+                    <span>
+                      Marcar como spam
+                    </span>
+
+                  </button>
+
+                </div>
               )}
 
-            <span className="text-xs text-subtle">
-              ·{" "}
-              {formatDate(
-                comment.createdAt,
-              )}
-            </span>
+            </div>
 
           </div>
 
@@ -1766,4 +2427,4 @@ function CommentCard({
 
     </article>
   );
-  }
+      }
