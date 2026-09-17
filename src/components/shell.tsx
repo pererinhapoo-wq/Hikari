@@ -27,7 +27,7 @@ export function Shell() {
       <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
           <details className="relative">
-  <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-md">
+  <summary <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-md">className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-md">
     <Menu size={24} />
   </summary>
 
