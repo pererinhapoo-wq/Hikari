@@ -23,10 +23,13 @@ export type MyProfileComment = {
   userName: string;
   userImage: string | null;
   likes: number;
+  liked: boolean;
 };
 
 function parseFavorites(value: unknown): string[] {
-  if (typeof value !== "string" || !value) return [];
+  if (typeof value !== "string" || !value) {
+    return [];
+  }
 
   try {
     const parsed = JSON.parse(value);
@@ -43,7 +46,9 @@ function parseFavorites(value: unknown): string[] {
 }
 
 function normalizeNick(value: unknown): string {
-  if (typeof value !== "string") return "";
+  if (typeof value !== "string") {
+    return "";
+  }
 
   return value
     .trim()
@@ -139,7 +144,14 @@ export const getMyComments = createServerFn({
           select count(*)::int
           from "comment_like" cl
           where cl."commentId" = c."id"
-        ) as "likes"
+        ) as "likes",
+
+        exists (
+          select 1
+          from "comment_like" cl2
+          where cl2."commentId" = c."id"
+            and cl2."userId" = ${context.userId}
+        ) as "liked"
 
       from "comment" c
 
@@ -154,7 +166,10 @@ export const getMyComments = createServerFn({
 
     return rows.map((comment) => ({
       ...comment,
-      likes: Number(comment.likes ?? 0) || 0,
+      likes: Number(
+        comment.likes ?? 0,
+      ) || 0,
+      liked: Boolean(comment.liked),
     }));
   });
 
@@ -173,7 +188,9 @@ export const updateProfile = createServerFn({
       favorites?: unknown;
     };
 
-    const nick = normalizeNick(input.nick);
+    const nick = normalizeNick(
+      input.nick,
+    );
 
     if (!nick) {
       throw new Error(
