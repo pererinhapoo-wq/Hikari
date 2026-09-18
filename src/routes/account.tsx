@@ -41,7 +41,9 @@ function Account() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!user) return;
+    const userId = user?.id;
+
+    if (!userId) return;
 
     let active = true;
 
@@ -62,6 +64,7 @@ function Account() {
         setNick("");
         setBio("");
         setFavorites("");
+        setError("Não foi possível carregar seu perfil.");
       })
       .finally(() => {
         if (active) {
@@ -72,7 +75,7 @@ function Account() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [user?.id]);
 
   if (isPending) return null;
 
@@ -151,7 +154,10 @@ function Account() {
               {loadingProfile ? (
                 <>
                   <div className="h-6 w-32 animate-pulse rounded bg-elevated" />
+
                   <div className="mt-2 h-4 w-24 animate-pulse rounded bg-elevated" />
+
+                  <div className="mt-2 h-3 w-36 animate-pulse rounded bg-elevated" />
                 </>
               ) : (
                 <>
@@ -204,6 +210,7 @@ function Account() {
           {loadingProfile ? (
             <div className="space-y-3">
               <div className="h-3 w-20 animate-pulse rounded bg-elevated" />
+
               <div className="h-16 animate-pulse rounded-xl bg-elevated" />
             </div>
           ) : editing ? (
@@ -285,6 +292,7 @@ function Account() {
                   disabled={saving}
                 >
                   <Save className="size-4" />
+
                   {saving ? "Salvando..." : "Salvar"}
                 </Button>
 
@@ -405,4 +413,4 @@ function Account() {
       </section>
     </main>
   );
-}
+              }
