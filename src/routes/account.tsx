@@ -6,7 +6,6 @@ import {
   Pencil,
   Save,
   ShieldCheck,
-  UserCircle,
   X,
 } from "lucide-react";
 
@@ -32,12 +31,14 @@ function Account() {
   const getProfileFn = useServerFn(getProfile);
   const updateProfileFn = useServerFn(updateProfile);
 
+  const [nick, setNick] = useState("");
   const [bio, setBio] = useState("");
   const [favorites, setFavorites] = useState("");
   const [editing, setEditing] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!user || editing) return;
@@ -48,12 +49,15 @@ function Account() {
       .then((profile) => {
         if (!active) return;
 
+        setNick(profile.nick);
         setBio(profile.bio);
         setFavorites(profile.favorites.join(", "));
+        setError("");
       })
       .catch(() => {
         if (!active) return;
 
+        setNick("");
         setBio("");
         setFavorites("");
       })
@@ -83,10 +87,12 @@ function Account() {
   async function saveProfile() {
     setSaving(true);
     setSaved(false);
+    setError("");
 
     try {
-      await updateProfileFn({
+      const profile = await updateProfileFn({
         data: {
+          nick,
           bio,
           favorites: favorites
             .split(",")
@@ -95,8 +101,18 @@ function Account() {
         },
       });
 
+      setNick(profile.nick);
+      setBio(profile.bio);
+      setFavorites(profile.favorites.join(", "));
+
       setSaved(true);
       setEditing(false);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível salvar o perfil.",
+      );
     } finally {
       setSaving(false);
     }
@@ -110,7 +126,7 @@ function Account() {
         </p>
 
         <h1 className="mt-1 font-display text-3xl tracking-tight">
-          Minha conta
+          Meu perfil
         </h1>
       </header>
 
@@ -131,17 +147,12 @@ function Account() {
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-xl font-medium">
-                {displayName}
+                {nick || "Defina seu Nick"}
               </p>
 
               <p className="truncate text-sm text-muted">
                 {email}
               </p>
-
-              <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted">
-                <UserCircle className="size-3.5" />
-                Perfil HIKARI
-              </div>
             </div>
           </div>
 
@@ -183,6 +194,31 @@ function Account() {
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-muted">
+                  Nick
+                </label>
+
+                <input
+                  type="text"
+                  value={nick}
+                  onChange={(e) => {
+                    setNick(e.target.value.toLowerCase());
+                    setError("");
+                  }}
+                  maxLength={30}
+                  placeholder="pererinha"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="mt-2 h-11 w-full rounded-xl border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-fg/30"
+                />
+
+                <p className="mt-1.5 text-[11px] text-subtle">
+                  3 a 30 caracteres. Use apenas letras, números ou _.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-muted">
                   Bio
                 </label>
 
@@ -190,6 +226,7 @@ function Account() {
                   value={bio}
                   onChange={(e) => {
                     setBio(e.target.value);
+                    setError("");
                   }}
                   maxLength={500}
                   rows={4}
@@ -208,6 +245,7 @@ function Account() {
                   value={favorites}
                   onChange={(e) => {
                     setFavorites(e.target.value);
+                    setError("");
                   }}
                   placeholder="One Piece, Naruto, Jujutsu Kaisen..."
                   className="mt-2 h-11 w-full rounded-xl border border-border bg-bg px-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-fg/30"
@@ -217,6 +255,12 @@ function Account() {
                   Separe os títulos por vírgula.
                 </p>
               </div>
+
+              {error && (
+                <div className="rounded-xl border border-border bg-elevated px-3 py-2.5 text-sm text-fg">
+                  {error}
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <Button
@@ -232,7 +276,10 @@ function Account() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setEditing(false)}
+                  onClick={() => {
+                    setError("");
+                    setEditing(false);
+                  }}
                   disabled={saving}
                 >
                   <X className="size-4" />
@@ -275,12 +322,19 @@ function Account() {
                 </div>
               )}
 
+              {error && (
+                <div className="mt-4 rounded-xl border border-border bg-elevated px-3 py-2.5 text-sm text-fg">
+                  {error}
+                </div>
+              )}
+
               <div className="mt-5">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => {
                     setSaved(false);
+                    setError("");
                     setEditing(true);
                   }}
                 >
@@ -336,4 +390,4 @@ function Account() {
       </section>
     </main>
   );
-          }
+    }
