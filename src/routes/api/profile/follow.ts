@@ -172,11 +172,9 @@ export const Route = createFileRoute(
           following = true;
 
           /*
-           * A notificação é secundária.
-           *
-           * Se houver qualquer problema com a tabela
-           * de notificações, não impedimos o usuário
-           * de seguir outra pessoa.
+           * A notificação é independente do seguimento.
+           * Se houver algum problema na criação dela,
+           * o usuário continua seguindo normalmente.
            */
           try {
             await sql`
@@ -188,7 +186,7 @@ export const Route = createFileRoute(
                 "message"
               )
               values (
-                gen_random_uuid()::text,
+                ${crypto.randomUUID()},
                 ${targetUserId},
                 ${currentUserId},
                 'follow',
@@ -196,8 +194,7 @@ export const Route = createFileRoute(
               )
             `;
           } catch {
-            // O seguimento continua funcionando
-            // mesmo se a notificação falhar.
+            // Não interrompe o seguimento se a notificação falhar.
           }
         }
 
