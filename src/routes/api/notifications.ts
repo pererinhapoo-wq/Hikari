@@ -2,9 +2,29 @@ import { json } from "@tanstack/react-start";
 import {
   createFileRoute,
 } from "@tanstack/react-router";
+import { createHash } from "node:crypto";
 
 import { getSql, dbSource } from "@/lib/db";
 import { auth } from "@/lib/auth/server";
+
+const rawDatabaseUrl =
+  typeof process !== "undefined"
+    ? process.env.DATABASE_URL
+    : undefined;
+
+function getDatabaseHash(value?: string) {
+  if (!value || !value.trim()) {
+    return "DATABASE_URL_NOT_SET";
+  }
+
+  return createHash("sha256")
+    .update(value)
+    .digest("hex")
+    .slice(0, 12);
+}
+
+const runtimeDatabaseHash =
+  getDatabaseHash(rawDatabaseUrl);
 
 export const Route = createFileRoute(
   "/api/notifications",
@@ -29,6 +49,7 @@ export const Route = createFileRoute(
                 dbSource,
                 databaseUrlConfigured:
                   dbSource === "neon",
+                runtimeDatabaseHash,
               },
             },
             {
@@ -110,6 +131,7 @@ export const Route = createFileRoute(
               dbSource,
               databaseUrlConfigured:
                 dbSource === "neon",
+              runtimeDatabaseHash,
               notificationTableExists,
               migration010Registered,
               migration0011Registered,
@@ -174,6 +196,7 @@ export const Route = createFileRoute(
             dbSource,
             databaseUrlConfigured:
               dbSource === "neon",
+            runtimeDatabaseHash,
             notificationTableExists,
             migration010Registered,
             migration0011Registered,
