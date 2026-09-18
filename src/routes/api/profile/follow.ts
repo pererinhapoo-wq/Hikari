@@ -138,6 +138,12 @@ export const Route = createFileRoute(
 
         let following = false;
 
+        let notificationCreated =
+          false;
+
+        let notificationError:
+          string | null = null;
+
         if (
           existing.length > 0
         ) {
@@ -171,11 +177,6 @@ export const Route = createFileRoute(
 
           following = true;
 
-          /*
-           * A notificação é independente do seguimento.
-           * Se houver algum problema na criação dela,
-           * o usuário continua seguindo normalmente.
-           */
           try {
             await sql`
               insert into "notification" (
@@ -193,8 +194,17 @@ export const Route = createFileRoute(
                 ${session.user.name ?? "Alguém"} || ' começou a seguir você.'
               )
             `;
-          } catch {
-            // Não interrompe o seguimento se a notificação falhar.
+
+            notificationCreated =
+              true;
+          } catch (error) {
+            notificationCreated =
+              false;
+
+            notificationError =
+              error instanceof Error
+                ? error.message
+                : String(error);
           }
         }
 
@@ -234,6 +244,10 @@ export const Route = createFileRoute(
               followingRows[0]
                 ?.count ?? "0",
             ),
+
+          notificationCreated,
+
+          notificationError,
         });
       },
     },
