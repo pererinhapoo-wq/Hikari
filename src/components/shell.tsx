@@ -75,6 +75,9 @@ export function Shell() {
   const [menuOpen, setMenuOpen] =
     useState(false);
 
+  const [notificationsOpen, setNotificationsOpen] =
+    useState(false);
+
   const cinema =
     pathname.startsWith(
       "/watch",
@@ -157,12 +160,19 @@ export function Shell() {
             {/* NOTIFICAÇÕES DESKTOP */}
             <button
               type="button"
+              onClick={() =>
+                setNotificationsOpen(
+                  !notificationsOpen,
+                )
+              }
               className="relative hidden size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:flex"
               aria-label="Notificações"
+              aria-expanded={
+                notificationsOpen
+              }
             >
               <Bell className="size-5" />
 
-              {/* PONTO VERMELHO */}
               <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
             </button>
 
@@ -178,17 +188,81 @@ export function Shell() {
             {/* NOTIFICAÇÕES MOBILE */}
             <button
               type="button"
+              onClick={() =>
+                setNotificationsOpen(
+                  !notificationsOpen,
+                )
+              }
               className="relative flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
               aria-label="Notificações"
+              aria-expanded={
+                notificationsOpen
+              }
             >
               <Bell className="size-5" />
 
-              {/* PONTO VERMELHO */}
               <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
             </button>
           </div>
         </div>
       </header>
+
+      {/* PAINEL DE NOTIFICAÇÕES */}
+      {notificationsOpen && (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              setNotificationsOpen(
+                false,
+              )
+            }
+            className="fixed inset-0 z-40"
+            aria-label="Fechar notificações"
+          />
+
+          <div className="fixed right-4 top-16 z-50 w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:right-6 md:top-20">
+            <div className="flex items-center justify-between border-b border-border px-4 py-4">
+              <div>
+                <h2 className="font-semibold">
+                  Notificações
+                </h2>
+
+                <p className="mt-0.5 text-xs text-muted">
+                  Suas atividades recentes
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setNotificationsOpen(
+                    false,
+                  )
+                }
+                className="flex size-9 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
+                aria-label="Fechar notificações"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
+              <div>
+                <Bell className="mx-auto mb-3 size-7 text-muted" />
+
+                <p className="text-sm font-medium">
+                  Nenhuma notificação
+                </p>
+
+                <p className="mt-1 text-xs text-muted">
+                  Quando alguém interagir com seu perfil, aparecerá aqui.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* MENU LATERAL */}
       {menuOpen && (
@@ -334,4 +408,4 @@ export function Shell() {
       </nav>
     </div>
   );
-    }
+            }
