@@ -27,10 +27,19 @@ import { displayTitle, type Episode } from "@/lib/types";
 export const Route = createFileRoute("/watch/$id")({
   validateSearch: (
     raw: Record<string, unknown>,
-  ): { ep?: string } => ({
+  ): {
+    ep?: string;
+    comment?: string;
+  } => ({
     ep:
       typeof raw.ep === "string" && raw.ep
         ? raw.ep
+        : undefined,
+
+    comment:
+      typeof raw.comment === "string" &&
+      raw.comment
+        ? raw.comment
         : undefined,
   }),
 
@@ -51,7 +60,12 @@ export const Route = createFileRoute("/watch/$id")({
 
 function WatchPage() {
   const { id } = Route.useParams();
-  const { ep: epQuery } = Route.useSearch();
+
+  const {
+    ep: epQuery,
+    comment: commentQuery,
+  } = Route.useSearch();
+
   const { remote } = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
@@ -450,6 +464,9 @@ function WatchPage() {
           episodeNumber={
             current?.number ?? 1
           }
+          targetCommentId={
+            commentQuery
+          }
         />
 
       </div>
@@ -508,11 +525,13 @@ function CommentsSection({
   episodeId,
   animeTitle,
   episodeNumber,
+  targetCommentId,
 }: {
   animeId: string;
   episodeId: string;
   animeTitle: string;
   episodeNumber: number;
+  targetCommentId?: string;
 }) {
   const [text, setText] =
     useState("");
@@ -564,6 +583,17 @@ function CommentsSection({
     isHikariAdmin(
       currentUserEmail,
     );
+
+  /* ====================================================== */
+  /* DESTAQUE DA NOTIFICAÇÃO                                */
+  /* ====================================================== */
+
+  const [
+    highlightedCommentId,
+    setHighlightedCommentId,
+  ] = useState<string | null>(
+    null,
+  );
 
   /* ====================================================== */
   /* ORDENAÇÃO / FILTRO                                      */
@@ -748,11 +778,6 @@ function CommentsSection({
               : [],
           );
 
-          /*
-           * O próprio endpoint de comentários
-           * também informa o usuário atual e
-           * se ele é administrador.
-           */
           if (
             typeof data.currentUserId ===
             "string"
@@ -770,14 +795,6 @@ function CommentsSection({
             typeof data.isAdmin ===
             "boolean"
           ) {
-            /*
-             * O acesso administrativo continua
-             * sendo validado pelo email através
-             * de isHikariAdmin.
-             *
-             * O valor retornado pela API serve
-             * como confirmação adicional.
-             */
             if (
               data.isAdmin &&
               currentUserEmail
@@ -811,6 +828,70 @@ function CommentsSection({
   }, [
     animeId,
     episodeId,
+  ]);
+
+  /* ====================================================== */
+  /* IR PARA O COMENTÁRIO DA NOTIFICAÇÃO                    */
+  /* ====================================================== */
+
+  useEffect(() => {
+    if (
+      loading ||
+      !targetCommentId ||
+      comments.length === 0
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const focusComment = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const element =
+        document.getElementById(
+          `comment-${targetCommentId}`,
+        );
+
+      if (!element) {
+        return;
+      }
+
+      setHighlightedCommentId(
+        targetCommentId,
+      );
+
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      window.setTimeout(() => {
+        if (!cancelled) {
+          setHighlightedCommentId(
+            null,
+          );
+        }
+      }, 4000);
+    };
+
+    const firstFrame =
+      window.requestAnimationFrame(
+        focusComment,
+      );
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(
+        firstFrame,
+      );
+    };
+  }, [
+    loading,
+    comments,
+    targetCommentId,
   ]);
 
   /* ====================================================== */
@@ -1896,6 +1977,9 @@ function CommentsSection({
                         replyCount={
                           replies.length
                         }
+                        replyToName={
+                          undefined
+                        }
                         likingId={
                           likingId
                         }
@@ -1995,6 +2079,10 @@ function CommentsSection({
                         }
                         canEdit={
                           canEdit
+                        }
+                        highlighted={
+                          highlightedCommentId ===
+                          comment.id
                         }
                       />
 
@@ -2102,6 +2190,10 @@ function CommentsSection({
                                   }
                                   canEdit={
                                     canEditReply
+                                  }
+                                  highlighted={
+                                    highlightedCommentId ===
+                                    reply.id
                                   }
                                 />
                               );
@@ -2736,6 +2828,7 @@ function CommentCard({
   onSpam,
   moderating,
   canEdit,
+  highlighted = false,
 }: {
   comment: Comment;
   replyCount: number;
@@ -2770,6 +2863,7 @@ function CommentCard({
   onSpam: () => void;
   moderating: boolean;
   canEdit: boolean;
+  highlighted?: boolean;
 }) {
   const isReplying =
     replyingId ===
@@ -2777,10 +2871,13 @@ function CommentCard({
 
   return (
     <article
+      id={`comment-${comment.id}`}
       className={cn(
-        "rounded-xl border border-white/5 bg-surface p-4 sm:p-5",
+        "rounded-xl border border-white/5 bg-surface p-4 transition-all duration-500 sm:p-5",
         isReply &&
           "bg-surface/80",
+        highlighted &&
+          "border-white/30 bg-elevated shadow-[0_0_0_2px_rgba(255,255,255,0.08)]",
       )}
     >
 
@@ -3192,4 +3289,4 @@ function CommentCard({
 
     </article>
   );
-      }
+    }
