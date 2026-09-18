@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import {
+  Link,
+  createFileRoute,
+} from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+
 import {
   BadgeCheck,
   Bookmark,
@@ -26,39 +30,79 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import { signOut } from "@/lib/auth/client";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+
 import {
+  getMyComments,
   getProfile,
   updateProfile,
 } from "@/lib/profile.functions";
+
 import { useHikariStore } from "@/lib/store";
 
-export const Route = createFileRoute("/account")({
+export const Route = createFileRoute(
+  "/account",
+)({
   component: Account,
 });
 
-type ProfileTab = "comments" | "favorites" | "about";
+type ProfileTab =
+  | "comments"
+  | "favorites"
+  | "about";
 
 function Account() {
-  const { user, isPending } = useCurrentUserState();
-  const myList = useHikariStore((s) => s.myList);
+  const {
+    user,
+    isPending,
+  } = useCurrentUserState();
 
-  const getProfileFn = useServerFn(getProfile);
-  const updateProfileFn = useServerFn(updateProfile);
+  const myList =
+    useHikariStore(
+      (s) => s.myList,
+    );
 
-  const [nick, setNick] = useState("");
-  const [bio, setBio] = useState("");
-  const [favorites, setFavorites] = useState("");
-  const [commentCount, setCommentCount] = useState(0);
+  const getProfileFn =
+    useServerFn(getProfile);
 
-  const [editing, setEditing] = useState(false);
+  const updateProfileFn =
+    useServerFn(updateProfile);
+
+  const [nick, setNick] =
+    useState("");
+
+  const [bio, setBio] =
+    useState("");
+
+  const [favorites, setFavorites] =
+    useState("");
+
+  const [commentCount, setCommentCount] =
+    useState(0);
+
+  const [editing, setEditing] =
+    useState(false);
+
   const [activeTab, setActiveTab] =
-    useState<ProfileTab>("comments");
+    useState<ProfileTab>(
+      "comments",
+    );
 
-  const [loadingProfile, setLoadingProfile] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [
+    loadingProfile,
+    setLoadingProfile,
+  ] = useState(true);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [saved, setSaved] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [menuOpen, setMenuOpen] =
+    useState(false);
 
   useEffect(() => {
     const userId = user?.id;
@@ -75,8 +119,15 @@ function Account() {
 
         setNick(profile.nick);
         setBio(profile.bio);
-        setFavorites(profile.favorites.join(", "));
-        setCommentCount(profile.commentCount);
+
+        setFavorites(
+          profile.favorites.join(", "),
+        );
+
+        setCommentCount(
+          profile.commentCount,
+        );
+
         setError("");
       })
       .catch(() => {
@@ -86,7 +137,10 @@ function Account() {
         setBio("");
         setFavorites("");
         setCommentCount(0);
-        setError("Não foi possível carregar seu perfil.");
+
+        setError(
+          "Não foi possível carregar seu perfil.",
+        );
       })
       .finally(() => {
         if (active) {
@@ -99,26 +153,43 @@ function Account() {
     };
   }, [user?.id]);
 
-  if (isPending) return null;
-
-  if (!user) {
-    return <RedirectToSignIn to="/login" />;
+  if (isPending) {
+    return null;
   }
 
-  const admin = isHikariAdmin(user.primaryEmail);
+  if (!user) {
+    return (
+      <RedirectToSignIn
+        to="/login"
+      />
+    );
+  }
 
-  const email = user.primaryEmail ?? "";
+  const admin =
+    isHikariAdmin(
+      user.primaryEmail,
+    );
+
+  const email =
+    user.primaryEmail ?? "";
 
   const avatarSource =
-    nick || user.displayName || "Usuário";
+    nick ||
+    user.displayName ||
+    "Usuário";
 
   const avatarLetter =
-    avatarSource.charAt(0).toUpperCase();
+    avatarSource
+      .charAt(0)
+      .toUpperCase();
 
-  const favoriteList = favorites
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const favoriteList =
+    favorites
+      .split(",")
+      .map(
+        (item) => item.trim(),
+      )
+      .filter(Boolean);
 
   async function saveProfile() {
     setSaving(true);
@@ -126,18 +197,28 @@ function Account() {
     setError("");
 
     try {
-      const profile = await updateProfileFn({
-        data: {
-          nick,
-          bio,
-          favorites: favoriteList,
-        },
-      });
+      const profile =
+        await updateProfileFn({
+          data: {
+            nick,
+            bio,
+            favorites:
+              favoriteList,
+          },
+        });
 
       setNick(profile.nick);
       setBio(profile.bio);
-      setFavorites(profile.favorites.join(", "));
-      setCommentCount(profile.commentCount);
+
+      setFavorites(
+        profile.favorites.join(
+          ", ",
+        ),
+      );
+
+      setCommentCount(
+        profile.commentCount,
+      );
 
       setSaved(true);
       setEditing(false);
@@ -161,28 +242,27 @@ function Account() {
           title: nick
             ? `${nick} — HIKARI`
             : "Perfil HIKARI",
+
           text: nick
             ? `Confira o perfil de @${nick} no HIKARI.`
             : "Confira este perfil no HIKARI.",
+
           url: window.location.href,
         });
-      } else if (navigator.clipboard) {
+      } else if (
+        navigator.clipboard
+      ) {
         await navigator.clipboard.writeText(
           window.location.href,
         );
       }
     } catch {
-      // O usuário pode simplesmente ter cancelado.
+      // Usuário cancelou.
     }
   }
 
   return (
     <main className="min-h-screen bg-[#030817] text-white">
-
-      {/* ====================================================== */}
-      {/* FUNDO GERAL DO PERFIL                                  */}
-      {/* ====================================================== */}
-
       <div className="mx-auto w-full max-w-[1500px] px-3 pb-24 pt-4 sm:px-5 lg:px-8">
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -219,7 +299,6 @@ function Account() {
 
               <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_35%,rgba(1,8,22,0.12)_60%,rgba(1,8,22,0.78)_100%)]" />
 
-              {/* Personagem estilizado */}
               <div className="absolute bottom-[-70px] left-1/2 h-[280px] w-[300px] -translate-x-1/2 opacity-50">
 
                 <div className="absolute left-1/2 top-0 h-[210px] w-[145px] -translate-x-1/2 rounded-t-[80px] bg-[#050918] shadow-[0_0_60px_rgba(0,0,0,0.7)]" />
@@ -230,7 +309,6 @@ function Account() {
 
               </div>
 
-              {/* Texto japonês */}
               <div className="absolute right-5 top-6 text-right sm:right-8 sm:top-8">
 
                 <p className="text-xl font-medium tracking-[0.45em] text-white/90 sm:text-2xl">
@@ -247,7 +325,6 @@ function Account() {
 
               </div>
 
-              {/* Marca */}
               <div className="absolute bottom-5 left-5 hidden items-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-2 backdrop-blur-md sm:flex">
 
                 <Sparkles className="size-4 text-violet-300" />
@@ -266,14 +343,15 @@ function Account() {
 
             <div className="relative px-5 pb-5 sm:px-8 lg:px-10">
 
-              {/* Avatar */}
               <div className="-mt-16 sm:-mt-20">
 
                 <div className="relative inline-block">
 
                   {user.profileImageUrl ? (
                     <img
-                      src={user.profileImageUrl}
+                      src={
+                        user.profileImageUrl
+                      }
                       alt=""
                       className="size-32 rounded-full border-[5px] border-[#061329] bg-[#09172f] object-cover shadow-[0_8px_35px_rgba(0,0,0,0.55)] sm:size-40"
                     />
@@ -295,10 +373,6 @@ function Account() {
 
               </div>
 
-              {/* ================================================== */}
-              {/* IDENTIDADE + AÇÕES                                */}
-              {/* ================================================== */}
-
               <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
 
                 <div className="min-w-0">
@@ -316,7 +390,8 @@ function Account() {
                       <div className="flex flex-wrap items-center gap-2">
 
                         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                          {nick || "Defina seu Nick"}
+                          {nick ||
+                            "Defina seu Nick"}
                         </h1>
 
                         {nick && (
@@ -336,15 +411,12 @@ function Account() {
                           {bio}
                         </p>
                       )}
-
                     </>
                   )}
 
                 </div>
 
-                {/* ================================================== */}
-                {/* BOTÕES                                             */}
-                {/* ================================================== */}
+                {/* BOTÕES */}
 
                 <div className="relative flex shrink-0 items-center gap-2">
 
@@ -366,18 +438,19 @@ function Account() {
                   <button
                     type="button"
                     onClick={() =>
-                      setMenuOpen((value) => !value)
+                      setMenuOpen(
+                        (value) =>
+                          !value,
+                      )
                     }
                     className="grid size-10 place-items-center rounded-xl border border-[#294674] bg-[#0a1932] text-[#b6c8e5] transition hover:bg-[#102343]"
                     aria-label="Mais opções"
-                    aria-expanded={menuOpen}
+                    aria-expanded={
+                      menuOpen
+                    }
                   >
                     <MoreHorizontal className="size-5" />
                   </button>
-
-                  {/* ================================================== */}
-                  {/* MENU DOS 3 PONTOS                                  */}
-                  {/* ================================================== */}
 
                   {menuOpen && (
                     <div className="absolute right-0 top-12 z-30 w-56 overflow-hidden rounded-2xl border border-[#294674] bg-[#07152b] p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
@@ -417,7 +490,9 @@ function Account() {
                         type="button"
                         onClick={() => {
                           setMenuOpen(false);
-                          setActiveTab("about");
+                          setActiveTab(
+                            "about",
+                          );
                         }}
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white transition hover:bg-[#102343]"
                       >
@@ -452,9 +527,7 @@ function Account() {
 
               </div>
 
-              {/* ================================================== */}
-              {/* INFORMAÇÕES                                       */}
-              {/* ================================================== */}
+              {/* INFORMAÇÕES */}
 
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[#7186aa]">
 
@@ -474,15 +547,17 @@ function Account() {
 
               </div>
 
-              {/* ================================================== */}
-              {/* ESTATÍSTICAS                                      */}
-              {/* ================================================== */}
+              {/* ESTATÍSTICAS */}
 
               <div className="mt-6 grid grid-cols-2 overflow-hidden rounded-2xl border border-[#1b3762] bg-[#07152b] sm:grid-cols-4">
 
                 <Stat
-                  icon={<MessageCircle />}
-                  value={String(commentCount)}
+                  icon={
+                    <MessageCircle />
+                  }
+                  value={String(
+                    commentCount,
+                  )}
                   label="Comentários"
                 />
 
@@ -508,36 +583,49 @@ function Account() {
 
             </div>
 
-            {/* ================================================== */}
-            {/* ABAS                                               */}
-            {/* ================================================== */}
+            {/* ABAS */}
 
             <div className="border-t border-[#1b3762] px-3 sm:px-6">
 
               <div className="grid grid-cols-3">
 
                 <ProfileTabButton
-                  active={activeTab === "comments"}
+                  active={
+                    activeTab ===
+                    "comments"
+                  }
                   onClick={() =>
-                    setActiveTab("comments")
+                    setActiveTab(
+                      "comments",
+                    )
                   }
                 >
                   Comentários
                 </ProfileTabButton>
 
                 <ProfileTabButton
-                  active={activeTab === "favorites"}
+                  active={
+                    activeTab ===
+                    "favorites"
+                  }
                   onClick={() =>
-                    setActiveTab("favorites")
+                    setActiveTab(
+                      "favorites",
+                    )
                   }
                 >
                   Favoritos
                 </ProfileTabButton>
 
                 <ProfileTabButton
-                  active={activeTab === "about"}
+                  active={
+                    activeTab ===
+                    "about"
+                  }
                   onClick={() =>
-                    setActiveTab("about")
+                    setActiveTab(
+                      "about",
+                    )
                   }
                 >
                   Sobre
@@ -547,27 +635,34 @@ function Account() {
 
             </div>
 
-            {/* ================================================== */}
-            {/* CONTEÚDO DAS ABAS                                 */}
-            {/* ================================================== */}
+            {/* CONTEÚDO */}
 
             <div className="p-5 sm:p-7 lg:p-8">
 
-              {activeTab === "comments" && (
-                <CommentsTab nick={nick} />
-              )}
-
-              {activeTab === "favorites" && (
-                <FavoritesTab
-                  favoriteList={favoriteList}
+              {activeTab ===
+                "comments" && (
+                <CommentsTab
+                  nick={nick}
                 />
               )}
 
-              {activeTab === "about" && (
+              {activeTab ===
+                "favorites" && (
+                <FavoritesTab
+                  favoriteList={
+                    favoriteList
+                  }
+                />
+              )}
+
+              {activeTab ===
+                "about" && (
                 <AboutTab
                   bio={bio}
                   email={email}
-                  myListLength={myList.length}
+                  myListLength={
+                    myList.length
+                  }
                 />
               )}
 
@@ -576,12 +671,11 @@ function Account() {
           </section>
 
           {/* ================================================== */}
-          {/* COLUNA DIREITA                                    */}
+          {/* COLUNA DIREITA                                     */}
           {/* ================================================== */}
 
           <aside className="space-y-4 lg:pt-0">
 
-            {/* Conta aberta */}
             <SideCard>
 
               <div className="flex gap-3">
@@ -608,7 +702,6 @@ function Account() {
 
             </SideCard>
 
-            {/* Privacidade */}
             <SideCard>
 
               <div className="flex gap-3">
@@ -626,8 +719,7 @@ function Account() {
                   </h2>
 
                   <p className="mt-1 text-xs leading-5 text-[#8fa5c7]">
-                    Futuramente você poderá controlar quem pode
-                    acompanhar seu perfil.
+                    Futuramente você poderá controlar quem pode acompanhar seu perfil.
                   </p>
 
                 </div>
@@ -640,9 +732,9 @@ function Account() {
 
         </div>
 
-        {/* ====================================================== */}
-        {/* EDITOR DE PERFIL                                      */}
-        {/* ====================================================== */}
+        {/* ================================================== */}
+        {/* EDITOR DE PERFIL                                   */}
+        {/* ================================================== */}
 
         {editing && (
           <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
@@ -678,7 +770,6 @@ function Account() {
 
               <div className="mt-6 space-y-5">
 
-                {/* Nick */}
                 <div>
 
                   <label className="text-sm font-medium text-white">
@@ -703,13 +794,11 @@ function Account() {
                   />
 
                   <p className="mt-1.5 text-xs text-[#7186aa]">
-                    3 a 30 caracteres. Use apenas letras,
-                    números ou _.
+                    3 a 30 caracteres. Use apenas letras, números ou _.
                   </p>
 
                 </div>
 
-                {/* Bio */}
                 <div>
 
                   <label className="text-sm font-medium text-white">
@@ -719,7 +808,9 @@ function Account() {
                   <textarea
                     value={bio}
                     onChange={(e) => {
-                      setBio(e.target.value);
+                      setBio(
+                        e.target.value,
+                      );
                       setError("");
                     }}
                     maxLength={500}
@@ -730,7 +821,6 @@ function Account() {
 
                 </div>
 
-                {/* Favoritos */}
                 <div>
 
                   <label className="text-sm font-medium text-white">
@@ -741,7 +831,9 @@ function Account() {
                     type="text"
                     value={favorites}
                     onChange={(e) => {
-                      setFavorites(e.target.value);
+                      setFavorites(
+                        e.target.value,
+                      );
                       setError("");
                     }}
                     placeholder="One Piece, Naruto, Jujutsu Kaisen..."
@@ -754,14 +846,12 @@ function Account() {
 
                 </div>
 
-                {/* Erro */}
                 {error && (
                   <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                     {error}
                   </div>
                 )}
 
-                {/* Botões */}
                 <div className="flex gap-2">
 
                   <Button
@@ -777,7 +867,6 @@ function Account() {
                     {saving
                       ? "Salvando..."
                       : "Salvar"}
-
                   </Button>
 
                   <Button
@@ -793,7 +882,6 @@ function Account() {
                     <X className="size-4" />
 
                     Cancelar
-
                   </Button>
 
                 </div>
@@ -805,9 +893,9 @@ function Account() {
           </div>
         )}
 
-        {/* ====================================================== */}
-        {/* ADMIN                                                 */}
-        {/* ====================================================== */}
+        {/* ================================================== */}
+        {/* ADMIN                                             */}
+        {/* ================================================== */}
 
         {admin && (
           <section className="mt-5 rounded-2xl border border-violet-500/20 bg-[#07152b] p-5 shadow-[0_0_35px_rgba(92,55,255,0.08)]">
@@ -846,9 +934,9 @@ function Account() {
           </section>
         )}
 
-        {/* ====================================================== */}
-        {/* RODAPÉ                                                */}
-        {/* ====================================================== */}
+        {/* ================================================== */}
+        {/* RODAPÉ                                            */}
+        {/* ================================================== */}
 
         <div className="mt-5 flex flex-wrap items-center gap-2 pb-8">
 
@@ -884,13 +972,12 @@ function Account() {
         </div>
 
       </div>
-
     </main>
   );
 }
 
 /* ============================================================ */
-/* COMPONENTE DE ESTATÍSTICA                                   */
+/* ESTATÍSTICA                                                  */
 /* ============================================================ */
 
 function Stat({
@@ -930,42 +1017,323 @@ function CommentsTab({
 }: {
   nick: string;
 }) {
+  const getMyCommentsFn =
+    useServerFn(
+      getMyComments,
+    );
+
+  const [
+    comments,
+    setComments,
+  ] = useState<
+    Awaited<
+      ReturnType<
+        typeof getMyCommentsFn
+      >
+    >
+  >([]);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    setLoading(true);
+    setError("");
+
+    void getMyCommentsFn()
+      .then((result) => {
+        if (!active) return;
+
+        setComments(result);
+      })
+      .catch(() => {
+        if (!active) return;
+
+        setComments([]);
+        setError(
+          "Não foi possível carregar seus comentários.",
+        );
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div>
 
       <h2 className="text-xl font-semibold">
-        Comentários de {nick || "você"}
+        Comentários de{" "}
+        {nick || "você"}
       </h2>
 
       <p className="mt-1 text-sm text-[#8197ba]">
         Suas atividades nos episódios do HIKARI.
       </p>
 
-      <div className="mt-6 rounded-2xl border border-[#294674] bg-[#07152b] p-8 text-center sm:p-12">
+      {loading && (
+        <div className="mt-6 space-y-3">
 
-        <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#102343] text-[#8da4ff]">
+          <CommentSkeleton />
 
-          <MessageCircle className="size-8" />
+          <CommentSkeleton />
+
+          <CommentSkeleton />
 
         </div>
+      )}
 
-        <h3 className="mt-5 font-semibold">
-          Seus comentários aparecerão aqui
-        </h3>
+      {!loading &&
+        error && (
+          <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-200">
+            {error}
+          </div>
+        )}
 
-        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#7186aa]">
-          Os comentários que você fizer nos episódios do HIKARI
-          poderão aparecer nesta área.
-        </p>
+      {!loading &&
+        !error &&
+        comments.length === 0 && (
+          <div className="mt-6 rounded-2xl border border-[#294674] bg-[#07152b] p-8 text-center sm:p-12">
 
-      </div>
+            <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#102343] text-[#8da4ff]">
+
+              <MessageCircle className="size-8" />
+
+            </div>
+
+            <h3 className="mt-5 font-semibold">
+              Você ainda não fez comentários
+            </h3>
+
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#7186aa]">
+              Quando você comentar em um episódio do HIKARI, seus comentários aparecerão aqui.
+            </p>
+
+          </div>
+        )}
+
+      {!loading &&
+        !error &&
+        comments.length > 0 && (
+          <div className="mt-6 space-y-4">
+
+            {comments.map(
+              (comment) => (
+                <ProfileCommentCard
+                  key={comment.id}
+                  comment={
+                    comment
+                  }
+                />
+              ),
+            )}
+
+          </div>
+        )}
 
     </div>
   );
 }
 
 /* ============================================================ */
-/* ABA DE FAVORITOS                                            */
+/* SKELETON DO COMENTÁRIO                                      */
+/* ============================================================ */
+
+function CommentSkeleton() {
+  return (
+    <div className="rounded-2xl border border-[#294674] bg-[#07152b] p-5">
+
+      <div className="h-4 w-32 animate-pulse rounded bg-[#102343]" />
+
+      <div className="mt-4 h-4 w-full animate-pulse rounded bg-[#102343]" />
+
+      <div className="mt-2 h-4 w-4/5 animate-pulse rounded bg-[#102343]" />
+
+      <div className="mt-5 h-3 w-24 animate-pulse rounded bg-[#102343]" />
+
+    </div>
+  );
+}
+
+/* ============================================================ */
+/* CARD DE COMENTÁRIO DO PERFIL                                */
+/* ============================================================ */
+
+function ProfileCommentCard({
+  comment,
+}: {
+  comment: Awaited<
+    ReturnType<
+      typeof getMyComments
+    >
+  >[number];
+}) {
+  const date = new Date(
+    comment.createdAt,
+  );
+
+  const formattedDate =
+    Number.isNaN(
+      date.getTime(),
+    )
+      ? ""
+      : date.toLocaleDateString(
+          "pt-BR",
+          {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          },
+        );
+
+  const formattedTime =
+    Number.isNaN(
+      date.getTime(),
+    )
+      ? ""
+      : date.toLocaleTimeString(
+          "pt-BR",
+          {
+            hour: "2-digit",
+            minute: "2-digit",
+          },
+        );
+
+  return (
+    <article className="rounded-2xl border border-[#294674] bg-[#07152b] p-5 transition hover:border-[#365b91]">
+
+      <div className="flex items-start gap-3">
+
+        {comment.userImage ? (
+          <img
+            src={
+              comment.userImage
+            }
+            alt=""
+            className="size-10 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[#15284b] text-sm font-semibold text-[#b7c7e5]">
+            {comment.userName
+              .charAt(0)
+              .toUpperCase()}
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1">
+
+          <div className="flex flex-wrap items-center gap-2">
+
+            <span className="font-medium text-white">
+              {comment.userName}
+            </span>
+
+            {comment.parentId && (
+              <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[11px] text-violet-200">
+                Resposta
+              </span>
+            )}
+
+          </div>
+
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#7186aa]">
+
+            <span>
+              Episódio{" "}
+              {comment.episodeId}
+            </span>
+
+            <span>
+              •
+            </span>
+
+            <span>
+              {formattedDate}
+            </span>
+
+            {formattedTime && (
+              <>
+                <span>
+                  •
+                </span>
+
+                <span>
+                  {formattedTime}
+                </span>
+              </>
+            )}
+
+          </div>
+
+        </div>
+
+      </div>
+
+      {comment.isSpoiler ? (
+        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-amber-300">
+            Spoiler
+          </p>
+
+          <p className="mt-2 text-sm leading-6 text-[#c4d1e8]">
+            {comment.content}
+          </p>
+
+        </div>
+      ) : (
+        <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#c4d1e8]">
+          {comment.content}
+        </p>
+      )}
+
+      <div className="mt-5 flex items-center gap-4 border-t border-[#1b3762] pt-4 text-xs text-[#8197ba]">
+
+        <span className="flex items-center gap-1.5">
+
+          <Heart className="size-4" />
+
+          {comment.likes}
+          {comment.likes ===
+          1
+            ? " curtida"
+            : " curtidas"}
+
+        </span>
+
+        <span className="flex items-center gap-1.5">
+
+          <MessageCircle className="size-4" />
+
+          {comment.parentId
+            ? "Resposta"
+            : "Comentário"}
+
+        </span>
+
+      </div>
+
+    </article>
+  );
+}
+
+/* ============================================================ */
+/* ABA FAVORITOS                                                */
 /* ============================================================ */
 
 function FavoritesTab({
@@ -984,17 +1352,20 @@ function FavoritesTab({
         Os títulos que você escolheu como favoritos.
       </p>
 
-      {favoriteList.length > 0 ? (
+      {favoriteList.length >
+      0 ? (
         <div className="mt-6 flex flex-wrap gap-2">
 
-          {favoriteList.map((item) => (
-            <span
-              key={item}
-              className="rounded-full border border-[#294674] bg-[#0b1c38] px-4 py-2 text-sm text-[#c6d4ec]"
-            >
-              {item}
-            </span>
-          ))}
+          {favoriteList.map(
+            (item) => (
+              <span
+                key={item}
+                className="rounded-full border border-[#294674] bg-[#0b1c38] px-4 py-2 text-sm text-[#c6d4ec]"
+              >
+                {item}
+              </span>
+            ),
+          )}
 
         </div>
       ) : (
@@ -1014,7 +1385,7 @@ function FavoritesTab({
 }
 
 /* ============================================================ */
-/* ABA SOBRE                                                   */
+/* ABA SOBRE                                                    */
 /* ============================================================ */
 
 function AboutTab({
@@ -1091,7 +1462,7 @@ function AboutTab({
 }
 
 /* ============================================================ */
-/* CARD LATERAL                                                */
+/* CARD LATERAL                                                 */
 /* ============================================================ */
 
 function SideCard({
@@ -1107,7 +1478,7 @@ function SideCard({
 }
 
 /* ============================================================ */
-/* BOTÃO DAS ABAS                                              */
+/* BOTÃO DAS ABAS                                               */
 /* ============================================================ */
 
 function ProfileTabButton({
@@ -1137,4 +1508,4 @@ function ProfileTabButton({
 
     </button>
   );
-    }
+}
