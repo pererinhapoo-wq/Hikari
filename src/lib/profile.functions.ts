@@ -16,7 +16,6 @@ export type PublicUserProfile = {
   userId: string;
   nick: string;
   bio: string;
-  favorites: string[];
   commentCount: number;
   followersCount: number;
   followingCount: number;
@@ -39,27 +38,20 @@ export type MyProfileComment = {
   liked: boolean;
 };
 
-function parseFavorites(
-  value: unknown,
-): string[] {
-  if (
-    typeof value !== "string" ||
-    !value
-  ) {
+export type PublicProfileComment = MyProfileComment;
+
+function parseFavorites(value: unknown): string[] {
+  if (typeof value !== "string" || !value) {
     return [];
   }
 
   try {
-    const parsed =
-      JSON.parse(value);
+    const parsed = JSON.parse(value);
 
     return Array.isArray(parsed)
       ? parsed.filter(
-          (
-            item,
-          ): item is string =>
-            typeof item ===
-            "string",
+          (item): item is string =>
+            typeof item === "string",
         )
       : [];
   } catch {
@@ -67,12 +59,8 @@ function parseFavorites(
   }
 }
 
-function normalizeNick(
-  value: unknown,
-): string {
-  if (
-    typeof value !== "string"
-  ) {
+function normalizeNick(value: unknown): string {
+  if (typeof value !== "string") {
     return "";
   }
 
@@ -83,556 +71,451 @@ function normalizeNick(
     .slice(0, 30);
 }
 
-function isValidNick(
-  nick: string,
-): boolean {
-  return /^[a-z0-9_]{3,30}$/.test(
-    nick,
-  );
+function isValidNick(nick: string): boolean {
+  return /^[a-z0-9_]{3,30}$/.test(nick);
 }
 
-/* ============================================================ */
-/* PERFIL DO USUÁRIO LOGADO                                      */
-/* ============================================================ */
+export const getProfile = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
 
-export const getProfile =
-  createServerFn({
-    method: "GET",
-  })
-    .middleware([
-      authMiddleware,
-    ])
-    .handler(
-      async ({
-        context,
-      }) => {
-        const sql =
-          await getSql();
+    const rows = await sql<{
+      nick: string | null;
+      bio: string | null;
+      favorites: string | null;
+    }>`
+      select
+        "nick",
+        "bio",
+        "favorites"
+      from "profile"
+      where "userId" = ${context.userId}
+      limit 1
+    `;
 
-        const rows =
-          await sql<{
-            nick: string | null;
-            bio: string | null;
-            favorites:
-              | string
-              | null;
-          }>`
-            select
-              "nick",
-              "bio",
-              "favorites"
-            from "profile"
-            where
-              "userId" =
-              ${context.userId}
-            limit 1
-          `;
+    const commentRows = await sql<{
+      count: string;
+    }>`
+      select count(*)::text as count
+      from "comment"
+      where "userId" = ${context.userId}
+    `;
 
-        const commentRows =
-          await sql<{
-            count: string;
-          }>`
-            select
-              count(*)::text as count
-            from "comment"
-            where
-              "userId" =
-              ${context.userId}
-          `;
+    const followerRows = await sql<{
+      count: string;
+    }>`
+      select count(*)::text as count
+      from "user_follow"
+      where "followingId" = ${context.userId}
+    `;
 
-        const followerRows =
-          await sql<{
-            count: string;
-          }>`
-            select
-              count(*)::text as count
-            from "user_follow"
-            where
-              "followingId" =
-              ${context.userId}
-          `;
+    const followingRows = await sql<{
+      count: string;
+    }>`
+      select count(*)::text as count
+      from "user_follow"
+      where "followerId" = ${context.userId}
+    `;
 
-        const followingRows =
-          await sql<{
-            count: string;
-          }>`
-            select
-              count(*)::text as count
-            from "user_follow"
-            where
-              "followerId" =
-              ${context.userId}
-          `;
+    const row = rows[0];
 
-        const row =
-          rows[0];
-
-        return {
-          nick:
-            row?.nick ?? "",
-
-          bio:
-            row?.bio ?? "",
-
-          favorites:
-            parseFavorites(
-              row?.favorites,
-            ),
-
-          commentCount:
-            Number(
-              commentRows[0]
-                ?.count ?? "0",
-            ),
-
-          followersCount:
-            Number(
-              followerRows[0]
-                ?.count ?? "0",
-            ),
-
-          followingCount:
-            Number(
-              followingRows[0]
-                ?.count ?? "0",
-            ),
-        } satisfies UserProfile;
-      },
+    const commentCount = Number(
+      commentRows[0]?.count ?? "0",
     );
 
-/* ============================================================ */
-/* PERFIL PÚBLICO                                                 */
-/* ============================================================ */
+    const followersCount = Number(
+      followerRows[0]?.count ?? "0",
+    );
+
+    const followingCount = Number(
+      followingRows[0]?.count ?? "0",
+    );
+
+    return {
+      nick: row?.nick ?? "",
+      bio: row?.bio ?? "",
+      favorites: parseFavorites(
+        row?.favorites,
+      ),
+      commentCount,
+      followersCount,
+      followingCount,
+    } satisfies UserProfile;
+  });
 
 export const getPublicProfile =
   createServerFn({
     method: "GET",
   })
-    .middleware([
-      authMiddleware,
-    ])
-    .handler(
-      async ({
-        context,
-        data,
-      }) => {
-        const input =
-          data as {
-            nick?: unknown;
-          };
+    .middleware([authMiddleware])
+    .handler(async ({ context, data }) => {
+      const input = data as {
+        nick?: unknown;
+      };
 
-        const nick =
-          normalizeNick(
-            input.nick,
-          );
+      const nick = normalizeNick(
+        input.nick,
+      );
 
-        if (!nick) {
-          throw new Error(
-            "Nick não informado.",
-          );
-        }
+      if (!nick) {
+        throw new Error(
+          "Nick não informado.",
+        );
+      }
 
-        const sql =
-          await getSql();
+      const sql = await getSql();
 
-        const profileRows =
-          await sql<{
-            userId: string;
-            nick: string;
-            bio: string | null;
-            favorites:
-              | string
-              | null;
-          }>`
-            select
-              p."userId",
-              p."nick",
-              p."bio",
-              p."favorites"
-            from "profile" p
-            where
-              lower(p."nick") =
-                lower(${nick})
-            limit 1
-          `;
+      const rows = await sql<{
+        userId: string;
+        nick: string | null;
+        bio: string | null;
+      }>`
+        select
+          p."userId",
+          p."nick",
+          p."bio"
+        from "profile" p
+        where lower(p."nick") = lower(${nick})
+        limit 1
+      `;
 
-        const profile =
-          profileRows[0];
+      const row = rows[0];
 
-        if (!profile) {
-          throw new Error(
-            "Perfil não encontrado.",
-          );
-        }
+      if (!row) {
+        throw new Error(
+          "Esse perfil não existe.",
+        );
+      }
 
-        const followerRows =
-          await sql<{
-            count: string;
-          }>`
-            select
-              count(*)::text as count
-            from "user_follow"
-            where
-              "followingId" =
-              ${profile.userId}
-          `;
+      const commentRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "comment"
+        where "userId" = ${row.userId}
+      `;
 
-        const followingRows =
-          await sql<{
-            count: string;
-          }>`
-            select
-              count(*)::text as count
-            from "user_follow"
-            where
-              "followerId" =
-              ${profile.userId}
-          `;
+      const followerRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "user_follow"
+        where "followingId" = ${row.userId}
+      `;
 
-        const commentRows =
-          await sql<{
-            count: string;
-          }>`
-            select
-              count(*)::text as count
-            from "comment"
-            where
-              "userId" =
-              ${profile.userId}
-          `;
+      const followingRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "user_follow"
+        where "followerId" = ${row.userId}
+      `;
 
-        const followingCheck =
-          await sql<{
-            exists: boolean;
-          }>`
-            select exists (
-              select 1
-              from "user_follow"
-              where
-                "followerId" =
-                  ${context.userId}
-                and
-                "followingId" =
-                  ${profile.userId}
-            ) as exists
-          `;
+      const followRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "user_follow"
+        where
+          "followerId" = ${context.userId}
+          and "followingId" = ${row.userId}
+      `;
 
-        return {
-          userId:
-            profile.userId,
-
-          nick:
-            profile.nick,
-
-          bio:
-            profile.bio ?? "",
-
-          favorites:
-            parseFavorites(
-              profile.favorites,
-            ),
-
-          commentCount:
-            Number(
-              commentRows[0]
-                ?.count ?? "0",
-            ),
-
-          followersCount:
-            Number(
-              followerRows[0]
-                ?.count ?? "0",
-            ),
-
-          followingCount:
-            Number(
-              followingRows[0]
-                ?.count ?? "0",
-            ),
-
-          isFollowing:
-            Boolean(
-              followingCheck[0]
-                ?.exists,
-            ),
-        } satisfies PublicUserProfile;
-      },
-    );
-
-/* ============================================================ */
-/* MEUS COMENTÁRIOS                                               */
-/* ============================================================ */
+      return {
+        userId: row.userId,
+        nick: row.nick ?? "",
+        bio: row.bio ?? "",
+        commentCount: Number(
+          commentRows[0]?.count ?? "0",
+        ),
+        followersCount: Number(
+          followerRows[0]?.count ?? "0",
+        ),
+        followingCount: Number(
+          followingRows[0]?.count ?? "0",
+        ),
+        isFollowing:
+          Number(
+            followRows[0]?.count ?? "0",
+          ) > 0,
+      } satisfies PublicUserProfile;
+    });
 
 export const getMyComments =
   createServerFn({
     method: "GET",
   })
-    .middleware([
-      authMiddleware,
-    ])
-    .handler(
-      async ({
-        context,
-      }) => {
-        const sql =
-          await getSql();
+    .middleware([authMiddleware])
+    .handler(async ({ context }) => {
+      const sql = await getSql();
 
-        const rows =
-          await sql<MyProfileComment>`
-            select
-              c."id",
-              c."animeId",
-              c."episodeId",
-              c."content",
-              c."parentId",
-              c."isSpoiler",
-              c."createdAt",
-              c."updatedAt",
-              c."userId",
+      const rows =
+        await sql<MyProfileComment>`
+          select
+            c."id",
+            c."animeId",
+            c."episodeId",
+            c."content",
+            c."parentId",
+            c."isSpoiler",
+            c."createdAt",
+            c."updatedAt",
+            c."userId",
 
-              coalesce(
-                u."name",
-                'Usuário'
-              ) as "userName",
+            coalesce(
+              u."name",
+              'Usuário'
+            ) as "userName",
 
-              u."image"
-                as "userImage",
+            u."image" as "userImage",
 
-              (
-                select
-                  count(*)::int
-                from
-                  "comment_like" cl
-                where
-                  cl."commentId" =
-                  c."id"
-              ) as "likes",
+            (
+              select count(*)::int
+              from "comment_like" cl
+              where
+                cl."commentId" = c."id"
+            ) as "likes",
 
-              exists (
-                select 1
-                from
-                  "comment_like" cl2
-                where
-                  cl2."commentId" =
-                  c."id"
-                  and
-                  cl2."userId" =
+            exists (
+              select 1
+              from "comment_like" cl2
+              where
+                cl2."commentId" = c."id"
+                and cl2."userId" =
                   ${context.userId}
-              ) as "liked"
+            ) as "liked"
 
-            from
-              "comment" c
+          from "comment" c
 
-            left join
-              "user" u
-              on u."id" =
-                c."userId"
+          left join "user" u
+            on u."id" = c."userId"
 
-            where
-              c."userId" =
+          where
+            c."userId" =
               ${context.userId}
 
-            order by
-              c."createdAt" desc
-          `;
+          order by
+            c."createdAt" desc
+        `;
 
-        return rows.map(
-          (comment) => ({
-            ...comment,
+      return rows.map((comment) => ({
+        ...comment,
+        likes:
+          Number(comment.likes ?? 0) ||
+          0,
+        liked: Boolean(comment.liked),
+      }));
+    });
 
-            likes:
-              Number(
-                comment.likes ??
-                  0,
-              ) || 0,
+export const getPublicComments =
+  createServerFn({
+    method: "GET",
+  })
+    .middleware([authMiddleware])
+    .handler(async ({ context, data }) => {
+      const input = data as {
+        userId?: unknown;
+      };
 
-            liked:
-              Boolean(
-                comment.liked,
-              ),
-          }),
+      const userId =
+        typeof input.userId === "string"
+          ? input.userId.trim()
+          : "";
+
+      if (!userId) {
+        throw new Error(
+          "Usuário não informado.",
         );
-      },
-    );
+      }
 
-/* ============================================================ */
-/* ATUALIZAR PERFIL                                               */
-/* ============================================================ */
+      const sql = await getSql();
+
+      const rows =
+        await sql<PublicProfileComment>`
+          select
+            c."id",
+            c."animeId",
+            c."episodeId",
+            c."content",
+            c."parentId",
+            c."isSpoiler",
+            c."createdAt",
+            c."updatedAt",
+            c."userId",
+
+            coalesce(
+              u."name",
+              'Usuário'
+            ) as "userName",
+
+            u."image" as "userImage",
+
+            (
+              select count(*)::int
+              from "comment_like" cl
+              where
+                cl."commentId" = c."id"
+            ) as "likes",
+
+            exists (
+              select 1
+              from "comment_like" cl2
+              where
+                cl2."commentId" = c."id"
+                and cl2."userId" =
+                  ${context.userId}
+            ) as "liked"
+
+          from "comment" c
+
+          left join "user" u
+            on u."id" = c."userId"
+
+          where
+            c."userId" = ${userId}
+
+          order by
+            c."createdAt" desc
+        `;
+
+      return rows.map((comment) => ({
+        ...comment,
+        likes:
+          Number(comment.likes ?? 0) ||
+          0,
+        liked: Boolean(comment.liked),
+      }));
+    });
 
 export const updateProfile =
   createServerFn({
     method: "POST",
   })
-    .middleware([
-      authMiddleware,
-    ])
-    .handler(
-      async ({
-        context,
-        data,
-      }) => {
-        const input =
-          data as {
-            nick?: unknown;
-            bio?: unknown;
-            favorites?: unknown;
-          };
+    .middleware([authMiddleware])
+    .handler(async ({ context, data }) => {
+      const input = data as {
+        nick?: unknown;
+        bio?: unknown;
+        favorites?: unknown;
+      };
 
-        const nick =
-          normalizeNick(
-            input.nick,
-          );
+      const nick = normalizeNick(
+        input.nick,
+      );
 
-        if (!nick) {
-          throw new Error(
-            "O Nick é obrigatório.",
-          );
-        }
+      if (!nick) {
+        throw new Error(
+          "O Nick é obrigatório.",
+        );
+      }
 
-        if (
-          !isValidNick(nick)
-        ) {
-          throw new Error(
-            "O Nick deve ter entre 3 e 30 caracteres e usar apenas letras, números ou _.",
-          );
-        }
+      if (!isValidNick(nick)) {
+        throw new Error(
+          "O Nick deve ter entre 3 e 30 caracteres e usar apenas letras, números ou _.",
+        );
+      }
 
-        const bio =
-          typeof input.bio ===
-          "string"
-            ? input.bio
-                .trim()
-                .slice(0, 500)
-            : "";
+      const bio =
+        typeof input.bio === "string"
+          ? input.bio.trim().slice(0, 500)
+          : "";
 
-        const favorites =
-          Array.isArray(
-            input.favorites,
-          )
-            ? input.favorites.filter(
-                (
-                  item,
-                ): item is string =>
-                  typeof item ===
-                  "string",
-              )
-            : [];
+      const favorites =
+        Array.isArray(input.favorites)
+          ? input.favorites.filter(
+              (item): item is string =>
+                typeof item === "string",
+            )
+          : [];
 
-        const sql =
-          await getSql();
+      const sql = await getSql();
 
-        const existing =
-          await sql<{
-            userId: string;
-          }>`
-            select
-              "userId"
-            from "profile"
-            where
-              lower("nick") =
-                lower(${nick})
-              and
-              "userId" <>
-                ${context.userId}
-            limit 1
-          `;
+      const existing = await sql<{
+        userId: string;
+      }>`
+        select "userId"
+        from "profile"
+        where
+          lower("nick") =
+            lower(${nick})
+          and "userId" <>
+            ${context.userId}
+        limit 1
+      `;
 
-        if (
-          existing.length > 0
-        ) {
-          throw new Error(
-            "Esse Nick já está em uso.",
-          );
-        }
+      if (existing.length > 0) {
+        throw new Error(
+          "Esse Nick já está em uso.",
+        );
+      }
 
-        await sql`
-          insert into "profile" (
-            "userId",
-            "nick",
-            "bio",
-            "favorites"
-          )
-          values (
-            ${context.userId},
-            ${nick},
-            ${bio},
-            ${JSON.stringify(
-              favorites,
-            )}
-          )
-          on conflict ("userId")
-          do update set
-            "nick" =
-              excluded."nick",
+      await sql`
+        insert into "profile" (
+          "userId",
+          "nick",
+          "bio",
+          "favorites"
+        )
+        values (
+          ${context.userId},
+          ${nick},
+          ${bio},
+          ${JSON.stringify(favorites)}
+        )
+        on conflict ("userId")
+        do update set
+          "nick" =
+            excluded."nick",
+          "bio" =
+            excluded."bio",
+          "favorites" =
+            excluded."favorites",
+          "updatedAt" =
+            CURRENT_TIMESTAMP
+      `;
 
-            "bio" =
-              excluded."bio",
+      const commentRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "comment"
+        where "userId" =
+          ${context.userId}
+      `;
 
-            "favorites" =
-              excluded."favorites",
+      const followerRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "user_follow"
+        where "followingId" =
+          ${context.userId}
+      `;
 
-            "updatedAt" =
-              CURRENT_TIMESTAMP
-        `;
+      const followingRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "user_follow"
+        where "followerId" =
+          ${context.userId}
+      `;
 
-        const commentRows =
-          await sql<{
-            count: string;
-          }>`
-            select
-              count(*)::text as count
-            from "comment"
-            where
-              "userId" =
-              ${context.userId}
-          `;
-
-        const followerRows =
-          await sql<{
-            count: string;
-          }>`
-            select
-              count(*)::text as count
-            from "user_follow"
-            where
-              "followingId" =
-              ${context.userId}
-          `;
-
-        const followingRows =
-          await sql<{
-            count: string;
-          }>`
-            select
-              count(*)::text as count
-            from "user_follow"
-            where
-              "followerId" =
-              ${context.userId}
-          `;
-
-        return {
-          nick,
-          bio,
-          favorites,
-
-          commentCount:
-            Number(
-              commentRows[0]
-                ?.count ?? "0",
-            ),
-
-          followersCount:
-            Number(
-              followerRows[0]
-                ?.count ?? "0",
-            ),
-
-          followingCount:
-            Number(
-              followingRows[0]
-                ?.count ?? "0",
-            ),
-        } satisfies UserProfile;
-      },
-    );
+      return {
+        nick,
+        bio,
+        favorites,
+        commentCount: Number(
+          commentRows[0]?.count ?? "0",
+        ),
+        followersCount: Number(
+          followerRows[0]?.count ?? "0",
+        ),
+        followingCount: Number(
+          followingRows[0]?.count ?? "0",
+        ),
+      } satisfies UserProfile;
+    });
