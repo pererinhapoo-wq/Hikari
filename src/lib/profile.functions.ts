@@ -22,6 +22,14 @@ export type PublicUserProfile = {
   isFollowing: boolean;
 };
 
+export type ProfileUser = {
+  userId: string;
+  nick: string;
+  name: string;
+  image: string | null;
+  isFollowing: boolean;
+};
+
 export type MyProfileComment = {
   id: string;
   animeId: string;
@@ -38,10 +46,16 @@ export type MyProfileComment = {
   liked: boolean;
 };
 
-export type PublicProfileComment = MyProfileComment;
+export type PublicProfileComment =
+  MyProfileComment;
 
-function parseFavorites(value: unknown): string[] {
-  if (typeof value !== "string" || !value) {
+function parseFavorites(
+  value: unknown,
+): string[] {
+  if (
+    typeof value !== "string" ||
+    !value
+  ) {
     return [];
   }
 
@@ -50,7 +64,9 @@ function parseFavorites(value: unknown): string[] {
 
     return Array.isArray(parsed)
       ? parsed.filter(
-          (item): item is string =>
+          (
+            item,
+          ): item is string =>
             typeof item === "string",
         )
       : [];
@@ -59,7 +75,9 @@ function parseFavorites(value: unknown): string[] {
   }
 }
 
-function normalizeNick(value: unknown): string {
+function normalizeNick(
+  value: unknown,
+): string {
   if (typeof value !== "string") {
     return "";
   }
@@ -71,87 +89,93 @@ function normalizeNick(value: unknown): string {
     .slice(0, 30);
 }
 
-function isValidNick(nick: string): boolean {
-  return /^[a-z0-9_]{3,30}$/.test(nick);
+function isValidNick(
+  nick: string,
+): boolean {
+  return /^[a-z0-9_]{3,30}$/.test(
+    nick,
+  );
 }
 
-export const getProfile = createServerFn({
-  method: "GET",
-})
-  .middleware([authMiddleware])
-  .handler(async ({ context }) => {
-    const sql = await getSql();
+export const getProfile =
+  createServerFn({
+    method: "GET",
+  })
+    .middleware([authMiddleware])
+    .handler(async ({ context }) => {
+      const sql = await getSql();
 
-    const rows = await sql<{
-      nick: string | null;
-      bio: string | null;
-      favorites: string | null;
-    }>`
-      select
-        "nick",
-        "bio",
-        "favorites"
-      from "profile"
-      where "userId" = ${context.userId}
-      limit 1
-    `;
+      const rows = await sql<{
+        nick: string | null;
+        bio: string | null;
+        favorites: string | null;
+      }>`
+        select
+          "nick",
+          "bio",
+          "favorites"
+        from "profile"
+        where "userId" =
+          ${context.userId}
+        limit 1
+      `;
 
-    const commentRows = await sql<{
-      count: string;
-    }>`
-      select count(*)::text as count
-      from "comment"
-      where "userId" = ${context.userId}
-    `;
+      const commentRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "comment"
+        where "userId" =
+          ${context.userId}
+      `;
 
-    const followerRows = await sql<{
-      count: string;
-    }>`
-      select count(*)::text as count
-      from "user_follow"
-      where "followingId" = ${context.userId}
-    `;
+      const followerRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "user_follow"
+        where "followingId" =
+          ${context.userId}
+      `;
 
-    const followingRows = await sql<{
-      count: string;
-    }>`
-      select count(*)::text as count
-      from "user_follow"
-      where "followerId" = ${context.userId}
-    `;
+      const followingRows = await sql<{
+        count: string;
+      }>`
+        select count(*)::text as count
+        from "user_follow"
+        where "followerId" =
+          ${context.userId}
+      `;
 
-    const row = rows[0];
+      const row = rows[0];
 
-    const commentCount = Number(
-      commentRows[0]?.count ?? "0",
-    );
-
-    const followersCount = Number(
-      followerRows[0]?.count ?? "0",
-    );
-
-    const followingCount = Number(
-      followingRows[0]?.count ?? "0",
-    );
-
-    return {
-      nick: row?.nick ?? "",
-      bio: row?.bio ?? "",
-      favorites: parseFavorites(
-        row?.favorites,
-      ),
-      commentCount,
-      followersCount,
-      followingCount,
-    } satisfies UserProfile;
-  });
+      return {
+        nick: row?.nick ?? "",
+        bio: row?.bio ?? "",
+        favorites: parseFavorites(
+          row?.favorites,
+        ),
+        commentCount: Number(
+          commentRows[0]?.count ?? "0",
+        ),
+        followersCount: Number(
+          followerRows[0]?.count ?? "0",
+        ),
+        followingCount: Number(
+          followingRows[0]?.count ?? "0",
+        ),
+      } satisfies UserProfile;
+    });
 
 export const getPublicProfile =
   createServerFn({
     method: "GET",
   })
     .middleware([authMiddleware])
-    .handler(async ({ context, data }) => {
+    .handler(async ({
+      context,
+      data,
+    }) => {
       const input = data as {
         nick?: unknown;
       };
@@ -178,7 +202,8 @@ export const getPublicProfile =
           p."nick",
           p."bio"
         from "profile" p
-        where lower(p."nick") = lower(${nick})
+        where lower(p."nick") =
+          lower(${nick})
         limit 1
       `;
 
@@ -195,7 +220,8 @@ export const getPublicProfile =
       }>`
         select count(*)::text as count
         from "comment"
-        where "userId" = ${row.userId}
+        where "userId" =
+          ${row.userId}
       `;
 
       const followerRows = await sql<{
@@ -203,7 +229,8 @@ export const getPublicProfile =
       }>`
         select count(*)::text as count
         from "user_follow"
-        where "followingId" = ${row.userId}
+        where "followingId" =
+          ${row.userId}
       `;
 
       const followingRows = await sql<{
@@ -211,7 +238,8 @@ export const getPublicProfile =
       }>`
         select count(*)::text as count
         from "user_follow"
-        where "followerId" = ${row.userId}
+        where "followerId" =
+          ${row.userId}
       `;
 
       const followRows = await sql<{
@@ -220,8 +248,10 @@ export const getPublicProfile =
         select count(*)::text as count
         from "user_follow"
         where
-          "followerId" = ${context.userId}
-          and "followingId" = ${row.userId}
+          "followerId" =
+            ${context.userId}
+          and "followingId" =
+            ${row.userId}
       `;
 
       return {
@@ -242,6 +272,160 @@ export const getPublicProfile =
             followRows[0]?.count ?? "0",
           ) > 0,
       } satisfies PublicUserProfile;
+    });
+
+export const getProfileFollowers =
+  createServerFn({
+    method: "GET",
+  })
+    .middleware([authMiddleware])
+    .handler(async ({
+      context,
+    }) => {
+      const sql = await getSql();
+
+      const rows =
+        await sql<{
+          userId: string;
+          nick: string | null;
+          name: string | null;
+          image: string | null;
+        }>`
+          select
+            u."id" as "userId",
+            p."nick",
+            u."name",
+            u."image"
+          from "user_follow" uf
+
+          inner join "user" u
+            on u."id" =
+              uf."followerId"
+
+          inner join "profile" p
+            on p."userId" =
+              u."id"
+
+          where uf."followingId" =
+            ${context.userId}
+
+          order by
+            uf."createdAt" desc
+        `;
+
+      const result: ProfileUser[] = [];
+
+      for (const row of rows) {
+        if (!row.nick) {
+          continue;
+        }
+
+        const followRows =
+          await sql<{
+            count: string;
+          }>`
+            select count(*)::text as count
+            from "user_follow"
+            where
+              "followerId" =
+                ${context.userId}
+              and "followingId" =
+                ${row.userId}
+          `;
+
+        result.push({
+          userId: row.userId,
+          nick: row.nick,
+          name:
+            row.name ??
+            "Usuário",
+          image: row.image,
+          isFollowing:
+            Number(
+              followRows[0]?.count ??
+                "0",
+            ) > 0,
+        });
+      }
+
+      return result;
+    });
+
+export const getProfileFollowing =
+  createServerFn({
+    method: "GET",
+  })
+    .middleware([authMiddleware])
+    .handler(async ({
+      context,
+    }) => {
+      const sql = await getSql();
+
+      const rows =
+        await sql<{
+          userId: string;
+          nick: string | null;
+          name: string | null;
+          image: string | null;
+        }>`
+          select
+            u."id" as "userId",
+            p."nick",
+            u."name",
+            u."image"
+          from "user_follow" uf
+
+          inner join "user" u
+            on u."id" =
+              uf."followingId"
+
+          inner join "profile" p
+            on p."userId" =
+              u."id"
+
+          where uf."followerId" =
+            ${context.userId}
+
+          order by
+            uf."createdAt" desc
+        `;
+
+      const result: ProfileUser[] = [];
+
+      for (const row of rows) {
+        if (!row.nick) {
+          continue;
+        }
+
+        const followRows =
+          await sql<{
+            count: string;
+          }>`
+            select count(*)::text as count
+            from "user_follow"
+            where
+              "followerId" =
+                ${context.userId}
+              and "followingId" =
+                ${row.userId}
+          `;
+
+        result.push({
+          userId: row.userId,
+          nick: row.nick,
+          name:
+            row.name ??
+            "Usuário",
+          image: row.image,
+          isFollowing:
+            Number(
+              followRows[0]?.count ??
+                "0",
+            ) > 0,
+        });
+      }
+
+      return result;
     });
 
 export const getMyComments =
@@ -276,14 +460,16 @@ export const getMyComments =
               select count(*)::int
               from "comment_like" cl
               where
-                cl."commentId" = c."id"
+                cl."commentId" =
+                  c."id"
             ) as "likes",
 
             exists (
               select 1
               from "comment_like" cl2
               where
-                cl2."commentId" = c."id"
+                cl2."commentId" =
+                  c."id"
                 and cl2."userId" =
                   ${context.userId}
             ) as "liked"
@@ -291,11 +477,11 @@ export const getMyComments =
           from "comment" c
 
           left join "user" u
-            on u."id" = c."userId"
+            on u."id" =
+              c."userId"
 
-          where
-            c."userId" =
-              ${context.userId}
+          where c."userId" =
+            ${context.userId}
 
           order by
             c."createdAt" desc
@@ -304,9 +490,11 @@ export const getMyComments =
       return rows.map((comment) => ({
         ...comment,
         likes:
-          Number(comment.likes ?? 0) ||
-          0,
-        liked: Boolean(comment.liked),
+          Number(
+            comment.likes ?? 0,
+          ) || 0,
+        liked:
+          Boolean(comment.liked),
       }));
     });
 
@@ -315,13 +503,17 @@ export const getPublicComments =
     method: "GET",
   })
     .middleware([authMiddleware])
-    .handler(async ({ context, data }) => {
+    .handler(async ({
+      context,
+      data,
+    }) => {
       const input = data as {
         userId?: unknown;
       };
 
       const userId =
-        typeof input.userId === "string"
+        typeof input.userId ===
+        "string"
           ? input.userId.trim()
           : "";
 
@@ -357,14 +549,16 @@ export const getPublicComments =
               select count(*)::int
               from "comment_like" cl
               where
-                cl."commentId" = c."id"
+                cl."commentId" =
+                  c."id"
             ) as "likes",
 
             exists (
               select 1
               from "comment_like" cl2
               where
-                cl2."commentId" = c."id"
+                cl2."commentId" =
+                  c."id"
                 and cl2."userId" =
                   ${context.userId}
             ) as "liked"
@@ -372,10 +566,11 @@ export const getPublicComments =
           from "comment" c
 
           left join "user" u
-            on u."id" = c."userId"
+            on u."id" =
+              c."userId"
 
-          where
-            c."userId" = ${userId}
+          where c."userId" =
+            ${userId}
 
           order by
             c."createdAt" desc
@@ -384,9 +579,11 @@ export const getPublicComments =
       return rows.map((comment) => ({
         ...comment,
         likes:
-          Number(comment.likes ?? 0) ||
-          0,
-        liked: Boolean(comment.liked),
+          Number(
+            comment.likes ?? 0,
+          ) || 0,
+        liked:
+          Boolean(comment.liked),
       }));
     });
 
@@ -395,7 +592,10 @@ export const updateProfile =
     method: "POST",
   })
     .middleware([authMiddleware])
-    .handler(async ({ context, data }) => {
+    .handler(async ({
+      context,
+      data,
+    }) => {
       const input = data as {
         nick?: unknown;
         bio?: unknown;
@@ -420,14 +620,21 @@ export const updateProfile =
 
       const bio =
         typeof input.bio === "string"
-          ? input.bio.trim().slice(0, 500)
+          ? input.bio
+              .trim()
+              .slice(0, 500)
           : "";
 
       const favorites =
-        Array.isArray(input.favorites)
+        Array.isArray(
+          input.favorites,
+        )
           ? input.favorites.filter(
-              (item): item is string =>
-                typeof item === "string",
+              (
+                item,
+              ): item is string =>
+                typeof item ===
+                "string",
             )
           : [];
 
@@ -463,7 +670,9 @@ export const updateProfile =
           ${context.userId},
           ${nick},
           ${bio},
-          ${JSON.stringify(favorites)}
+          ${JSON.stringify(
+            favorites,
+          )}
         )
         on conflict ("userId")
         do update set
@@ -509,13 +718,16 @@ export const updateProfile =
         bio,
         favorites,
         commentCount: Number(
-          commentRows[0]?.count ?? "0",
+          commentRows[0]?.count ??
+            "0",
         ),
         followersCount: Number(
-          followerRows[0]?.count ?? "0",
+          followerRows[0]?.count ??
+            "0",
         ),
         followingCount: Number(
-          followingRows[0]?.count ?? "0",
+          followingRows[0]?.count ??
+            "0",
         ),
       } satisfies UserProfile;
     });
