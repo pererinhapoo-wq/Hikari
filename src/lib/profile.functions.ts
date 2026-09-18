@@ -179,9 +179,7 @@ export const getPublicProfile =
   createServerFn({
     method: "GET",
   })
-    .middleware([authMiddleware])
     .handler(async ({
-      context,
       data,
     }) => {
       const input = data as {
@@ -250,18 +248,6 @@ export const getPublicProfile =
           ${row.userId}
       `;
 
-      const followRows = await sql<{
-        count: string;
-      }>`
-        select count(*)::text as count
-        from "user_follow"
-        where
-          "followerId" =
-            ${context.userId}
-          and "followingId" =
-            ${row.userId}
-      `;
-
       return {
         userId: row.userId,
         nick: row.nick ?? "",
@@ -275,10 +261,7 @@ export const getPublicProfile =
         followingCount: Number(
           followingRows[0]?.count ?? "0",
         ),
-        isFollowing:
-          Number(
-            followRows[0]?.count ?? "0",
-          ) > 0,
+        isFollowing: false,
       } satisfies PublicUserProfile;
     });
 
@@ -526,9 +509,7 @@ export const getPublicComments =
   createServerFn({
     method: "GET",
   })
-    .middleware([authMiddleware])
     .handler(async ({
-      context,
       data,
     }) => {
       const input = data as {
@@ -575,17 +556,7 @@ export const getPublicComments =
               where
                 cl."commentId" =
                   c."id"
-            ) as "likes",
-
-            exists (
-              select 1
-              from "comment_like" cl2
-              where
-                cl2."commentId" =
-                  c."id"
-                and cl2."userId" =
-                  ${context.userId}
-            ) as "liked"
+            ) as "likes"
 
           from "comment" c
 
@@ -606,8 +577,7 @@ export const getPublicComments =
           Number(
             comment.likes ?? 0,
           ) || 0,
-        liked:
-          Boolean(comment.liked),
+        liked: false,
       }));
     });
 
