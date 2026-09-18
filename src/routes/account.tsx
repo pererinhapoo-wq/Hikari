@@ -7,12 +7,14 @@ import {
   CalendarDays,
   Camera,
   Heart,
+  Link as LinkIcon,
   Lock,
   LogOut,
   MessageCircle,
   MoreHorizontal,
   Pencil,
   Save,
+  Settings,
   ShieldCheck,
   Sparkles,
   UserPlus,
@@ -56,6 +58,7 @@ function Account() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const userId = user?.id;
@@ -146,14 +149,42 @@ function Account() {
     }
   }
 
+  async function shareProfile() {
+    setMenuOpen(false);
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: nick
+            ? `${nick} — HIKARI`
+            : "Perfil HIKARI",
+          text: nick
+            ? `Confira o perfil de @${nick} no HIKARI.`
+            : "Confira este perfil no HIKARI.",
+          url: window.location.href,
+        });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(
+          window.location.href,
+        );
+      }
+    } catch {
+      // O usuário pode simplesmente ter cancelado.
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#030817] text-white">
-      {/* Fundo geral do perfil */}
+      {/* ====================================================== */}
+      {/* FUNDO GERAL DO PERFIL                                  */}
+      {/* ====================================================== */}
+
       <div className="mx-auto w-full max-w-[1500px] px-3 pb-24 pt-4 sm:px-5 lg:px-8">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-          {/* ====================================================== */}
-          {/* COLUNA PRINCIPAL                                       */}
-          {/* ====================================================== */}
+
+          {/* ================================================== */}
+          {/* COLUNA PRINCIPAL                                   */}
+          {/* ================================================== */}
 
           <section className="min-w-0 overflow-hidden rounded-2xl border border-[#1c3c70] bg-[#061329] shadow-[0_0_40px_rgba(38,70,180,0.12)]">
 
@@ -162,7 +193,8 @@ function Account() {
             {/* ================================================== */}
 
             <div className="relative h-[250px] overflow-hidden sm:h-[300px] lg:h-[340px]">
-              {/* textura de fundo */}
+
+              {/* Fundo da capa */}
               <div
                 className="absolute inset-0"
                 style={{
@@ -171,23 +203,24 @@ function Account() {
                 }}
               />
 
-              {/* textura luminosa */}
+              {/* Textura luminosa */}
               <div className="absolute -left-20 top-10 size-[280px] rounded-full bg-blue-500/20 blur-3xl" />
 
               <div className="absolute right-0 top-0 size-[330px] rounded-full bg-purple-500/25 blur-3xl" />
 
-              {/* círculos da textura */}
+              {/* Círculos */}
               <div className="absolute -right-20 -top-40 size-[520px] rounded-full border border-white/10" />
 
               <div className="absolute -right-10 -top-32 size-[430px] rounded-full border border-white/5" />
 
               <div className="absolute left-20 -bottom-48 size-[480px] rounded-full border border-white/5" />
 
-              {/* brilho central */}
+              {/* Escurecimento inferior */}
               <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_35%,rgba(1,8,22,0.12)_60%,rgba(1,8,22,0.78)_100%)]" />
 
-              {/* personagem/cenário estilizado */}
+              {/* Personagem estilizado */}
               <div className="absolute bottom-[-70px] left-1/2 h-[280px] w-[300px] -translate-x-1/2 opacity-50">
+
                 <div className="absolute left-1/2 top-0 h-[210px] w-[145px] -translate-x-1/2 rounded-t-[80px] bg-[#050918] shadow-[0_0_60px_rgba(0,0,0,0.7)]" />
 
                 <div className="absolute left-1/2 top-[75px] h-[170px] w-[230px] -translate-x-1/2 rounded-t-[110px] bg-[#071126]" />
@@ -195,8 +228,9 @@ function Account() {
                 <div className="absolute left-1/2 top-[45px] h-[130px] w-[70px] -translate-x-1/2 rounded-full bg-[#111b35]" />
               </div>
 
-              {/* texto da capa */}
+              {/* Texto japonês */}
               <div className="absolute right-5 top-6 text-right sm:right-8 sm:top-8">
+
                 <p className="text-xl font-medium tracking-[0.45em] text-white/90 sm:text-2xl">
                   好きなことで
                 </p>
@@ -210,8 +244,9 @@ function Account() {
                 </p>
               </div>
 
-              {/* marca da capa */}
+              {/* Marca */}
               <div className="absolute bottom-5 left-5 hidden items-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-2 backdrop-blur-md sm:flex">
+
                 <Sparkles className="size-4 text-violet-300" />
 
                 <span className="text-xs font-medium tracking-[0.18em] text-white/80">
@@ -221,13 +256,16 @@ function Account() {
             </div>
 
             {/* ================================================== */}
-            {/* IDENTIDADE                                          */}
+            {/* IDENTIDADE                                         */}
             {/* ================================================== */}
 
             <div className="relative px-5 pb-5 sm:px-8 lg:px-10">
-              {/* avatar */}
+
+              {/* Avatar */}
               <div className="-mt-16 sm:-mt-20">
+
                 <div className="relative inline-block">
+
                   {user.profileImageUrl ? (
                     <img
                       src={user.profileImageUrl}
@@ -250,9 +288,14 @@ function Account() {
                 </div>
               </div>
 
-              {/* identidade + ações */}
+              {/* ================================================== */}
+              {/* IDENTIDADE + AÇÕES                                */}
+              {/* ================================================== */}
+
               <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+
                 <div className="min-w-0">
+
                   {loadingProfile ? (
                     <>
                       <div className="h-9 w-48 animate-pulse rounded-lg bg-[#102343]" />
@@ -264,6 +307,7 @@ function Account() {
                   ) : (
                     <>
                       <div className="flex flex-wrap items-center gap-2">
+
                         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
                           {nick || "Defina seu Nick"}
                         </h1>
@@ -288,7 +332,12 @@ function Account() {
                   )}
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2">
+                {/* ================================================== */}
+                {/* BOTÕES                                             */}
+                {/* ================================================== */}
+
+                <div className="relative flex shrink-0 items-center gap-2">
+
                   <Button
                     type="button"
                     variant="outline"
@@ -296,6 +345,7 @@ function Account() {
                       setSaved(false);
                       setError("");
                       setEditing(true);
+                      setMenuOpen(false);
                     }}
                     className="border-[#294674] bg-[#0a1932] text-white hover:bg-[#102343]"
                   >
@@ -305,31 +355,118 @@ function Account() {
 
                   <button
                     type="button"
-                    className="grid size-10 place-items-center rounded-xl border border-[#294674] bg-[#0a1932] text-[#b6c8e5] hover:bg-[#102343]"
+                    onClick={() =>
+                      setMenuOpen((value) => !value)
+                    }
+                    className="grid size-10 place-items-center rounded-xl border border-[#294674] bg-[#0a1932] text-[#b6c8e5] transition hover:bg-[#102343]"
                     aria-label="Mais opções"
+                    aria-expanded={menuOpen}
                   >
                     <MoreHorizontal className="size-5" />
                   </button>
+
+                  {/* ================================================== */}
+                  {/* MENU DOS 3 PONTOS                                  */}
+                  {/* ================================================== */}
+
+                  {menuOpen && (
+                    <div className="absolute right-0 top-12 z-30 w-56 overflow-hidden rounded-2xl border border-[#294674] bg-[#07152b] p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
+
+                      {/* Editar */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSaved(false);
+                          setError("");
+                          setEditing(true);
+                          setMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white transition hover:bg-[#102343]"
+                      >
+                        <Pencil className="size-4 text-[#9fb2ff]" />
+
+                        <span>
+                          Editar perfil
+                        </span>
+                      </button>
+
+                      {/* Compartilhar */}
+                      <button
+                        type="button"
+                        onClick={() => void shareProfile()}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white transition hover:bg-[#102343]"
+                      >
+                        <LinkIcon className="size-4 text-[#9fb2ff]" />
+
+                        <span>
+                          Compartilhar perfil
+                        </span>
+                      </button>
+
+                      {/* Configurações */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setActiveTab("about");
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white transition hover:bg-[#102343]"
+                      >
+                        <Settings className="size-4 text-[#9fb2ff]" />
+
+                        <span>
+                          Configurações
+                        </span>
+                      </button>
+
+                      {/* Separador */}
+                      <div className="my-1.5 border-t border-[#1c3c70]" />
+
+                      {/* Sair */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          void signOut("/");
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-200 transition hover:bg-red-500/10"
+                      >
+                        <LogOut className="size-4" />
+
+                        <span>
+                          Sair da conta
+                        </span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* email */}
+              {/* ================================================== */}
+              {/* INFORMAÇÕES                                       */}
+              {/* ================================================== */}
+
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[#7186aa]">
+
                 {email && (
-                  <span>{email}</span>
+                  <span>
+                    {email}
+                  </span>
                 )}
 
                 <span className="flex items-center gap-1.5">
                   <Sparkles className="size-3.5" />
+
                   Membro da comunidade HIKARI
                 </span>
               </div>
 
               {/* ================================================== */}
-              {/* ESTATÍSTICAS                                       */}
+              {/* ESTATÍSTICAS                                      */}
               {/* ================================================== */}
 
               <div className="mt-6 grid grid-cols-2 overflow-hidden rounded-2xl border border-[#1b3762] bg-[#07152b] sm:grid-cols-4">
+
                 <Stat
                   icon={<MessageCircle />}
                   value="0"
@@ -357,28 +494,36 @@ function Account() {
             </div>
 
             {/* ================================================== */}
-            {/* ABAS                                                */}
+            {/* ABAS                                               */}
             {/* ================================================== */}
 
             <div className="border-t border-[#1b3762] px-3 sm:px-6">
+
               <div className="grid grid-cols-3">
+
                 <ProfileTabButton
                   active={activeTab === "comments"}
-                  onClick={() => setActiveTab("comments")}
+                  onClick={() =>
+                    setActiveTab("comments")
+                  }
                 >
                   Comentários
                 </ProfileTabButton>
 
                 <ProfileTabButton
                   active={activeTab === "favorites"}
-                  onClick={() => setActiveTab("favorites")}
+                  onClick={() =>
+                    setActiveTab("favorites")
+                  }
                 >
                   Favoritos
                 </ProfileTabButton>
 
                 <ProfileTabButton
                   active={activeTab === "about"}
-                  onClick={() => setActiveTab("about")}
+                  onClick={() =>
+                    setActiveTab("about")
+                  }
                 >
                   Sobre
                 </ProfileTabButton>
@@ -386,10 +531,11 @@ function Account() {
             </div>
 
             {/* ================================================== */}
-            {/* CONTEÚDO DAS ABAS                                  */}
+            {/* CONTEÚDO DAS ABAS                                 */}
             {/* ================================================== */}
 
             <div className="p-5 sm:p-7 lg:p-8">
+
               {activeTab === "comments" && (
                 <CommentsTab nick={nick} />
               )}
@@ -410,19 +556,23 @@ function Account() {
             </div>
           </section>
 
-          {/* ====================================================== */}
-          {/* COLUNA DIREITA                                         */}
-          {/* ====================================================== */}
+          {/* ================================================== */}
+          {/* COLUNA DIREITA                                    */}
+          {/* ================================================== */}
 
           <aside className="space-y-4 lg:pt-0">
+
             {/* Conta aberta */}
             <SideCard>
+
               <div className="flex gap-3">
+
                 <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-cyan-500/10 text-cyan-300">
                   <Users className="size-5" />
                 </div>
 
                 <div>
+
                   <h2 className="font-medium text-white">
                     Conta aberta
                   </h2>
@@ -436,7 +586,9 @@ function Account() {
 
             {/* Sobre */}
             <SideCard>
+
               <div className="flex items-center gap-2">
+
                 <Users className="size-5 text-violet-300" />
 
                 <h2 className="font-semibold">
@@ -450,14 +602,18 @@ function Account() {
               </p>
 
               <div className="mt-5 flex items-center gap-2 text-xs text-[#7186aa]">
+
                 <CalendarDays className="size-4" />
+
                 Membro da comunidade HIKARI
               </div>
             </SideCard>
 
             {/* Seguidores */}
             <SideCard>
+
               <div className="flex items-center justify-between">
+
                 <h2 className="font-semibold">
                   Seguidores (0)
                 </h2>
@@ -466,6 +622,7 @@ function Account() {
               </div>
 
               <div className="mt-4 rounded-xl border border-dashed border-[#294674] px-4 py-5 text-center">
+
                 <Users className="mx-auto size-6 text-[#637da8]" />
 
                 <p className="mt-2 text-xs text-[#7186aa]">
@@ -476,7 +633,9 @@ function Account() {
 
             {/* Seguindo */}
             <SideCard>
+
               <div className="flex items-center justify-between">
+
                 <h2 className="font-semibold">
                   Seguindo (0)
                 </h2>
@@ -485,6 +644,7 @@ function Account() {
               </div>
 
               <div className="mt-4 rounded-xl border border-dashed border-[#294674] px-4 py-5 text-center">
+
                 <UserPlus className="mx-auto size-6 text-[#637da8]" />
 
                 <p className="mt-2 text-xs text-[#7186aa]">
@@ -495,12 +655,15 @@ function Account() {
 
             {/* Privacidade */}
             <SideCard>
+
               <div className="flex gap-3">
+
                 <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-violet-500/10 text-violet-300">
                   <Lock className="size-5" />
                 </div>
 
                 <div>
+
                   <h2 className="font-medium">
                     Conta privada
                   </h2>
@@ -521,9 +684,13 @@ function Account() {
 
         {editing && (
           <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
+
             <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-[#294674] bg-[#07152b] p-5 shadow-2xl sm:p-6">
+
               <div className="flex items-center justify-between">
+
                 <div>
+
                   <p className="text-xs uppercase tracking-[0.2em] text-[#7186aa]">
                     Perfil Hikari
                   </p>
@@ -546,8 +713,10 @@ function Account() {
               </div>
 
               <div className="mt-6 space-y-5">
+
                 {/* Nick */}
                 <div>
+
                   <label className="text-sm font-medium text-white">
                     Nick
                   </label>
@@ -556,7 +725,9 @@ function Account() {
                     type="text"
                     value={nick}
                     onChange={(e) => {
-                      setNick(e.target.value.toLowerCase());
+                      setNick(
+                        e.target.value.toLowerCase(),
+                      );
                       setError("");
                     }}
                     maxLength={30}
@@ -568,13 +739,14 @@ function Account() {
                   />
 
                   <p className="mt-1.5 text-xs text-[#7186aa]">
-                    3 a 30 caracteres. Use apenas letras, números
-                    ou _.
+                    3 a 30 caracteres. Use apenas letras,
+                    números ou _.
                   </p>
                 </div>
 
                 {/* Bio */}
                 <div>
+
                   <label className="text-sm font-medium text-white">
                     Bio
                   </label>
@@ -594,6 +766,7 @@ function Account() {
 
                 {/* Favoritos */}
                 <div>
+
                   <label className="text-sm font-medium text-white">
                     Animes favoritos
                   </label>
@@ -614,22 +787,29 @@ function Account() {
                   </p>
                 </div>
 
+                {/* Erro */}
                 {error && (
                   <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                     {error}
                   </div>
                 )}
 
+                {/* Botões */}
                 <div className="flex gap-2">
+
                   <Button
                     type="button"
-                    onClick={() => void saveProfile()}
+                    onClick={() =>
+                      void saveProfile()
+                    }
                     disabled={saving}
                     className="bg-violet-600 text-white hover:bg-violet-500"
                   >
                     <Save className="size-4" />
 
-                    {saving ? "Salvando..." : "Salvar"}
+                    {saving
+                      ? "Salvando..."
+                      : "Salvar"}
                   </Button>
 
                   <Button
@@ -643,6 +823,7 @@ function Account() {
                     className="border-[#294674] bg-transparent text-white hover:bg-[#102343]"
                   >
                     <X className="size-4" />
+
                     Cancelar
                   </Button>
                 </div>
@@ -657,9 +838,13 @@ function Account() {
 
         {admin && (
           <section className="mt-5 rounded-2xl border border-violet-500/20 bg-[#07152b] p-5 shadow-[0_0_35px_rgba(92,55,255,0.08)]">
+
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
               <div>
+
                 <div className="flex items-center gap-2">
+
                   <ShieldCheck className="size-5 text-violet-300" />
 
                   <h2 className="font-semibold">
@@ -685,17 +870,21 @@ function Account() {
         )}
 
         {/* ====================================================== */}
-        {/* RODAPÉ DO PERFIL                                      */}
+        {/* RODAPÉ                                                */}
         {/* ====================================================== */}
 
         <div className="mt-5 flex flex-wrap items-center gap-2 pb-8">
+
           <Button
             type="button"
             variant="outline"
-            onClick={() => void signOut("/")}
+            onClick={() =>
+              void signOut("/")
+            }
             className="border-[#294674] bg-[#07152b] text-white hover:bg-[#102343]"
           >
             <LogOut className="size-4" />
+
             Sair da conta
           </Button>
 
@@ -735,6 +924,7 @@ function Stat({
 }) {
   return (
     <div className="flex min-h-[100px] flex-col items-center justify-center border-b border-[#1b3762] px-3 py-4 text-center sm:border-b-0 sm:border-r last:border-r-0">
+
       <div className="text-[#91a8ff] [&>svg]:size-5">
         {icon}
       </div>
@@ -761,6 +951,7 @@ function CommentsTab({
 }) {
   return (
     <div>
+
       <h2 className="text-xl font-semibold">
         Comentários de {nick || "você"}
       </h2>
@@ -770,6 +961,7 @@ function CommentsTab({
       </p>
 
       <div className="mt-6 rounded-2xl border border-[#294674] bg-[#07152b] p-8 text-center sm:p-12">
+
         <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#102343] text-[#8da4ff]">
           <MessageCircle className="size-8" />
         </div>
@@ -798,6 +990,7 @@ function FavoritesTab({
 }) {
   return (
     <div>
+
       <h2 className="text-xl font-semibold">
         Animes favoritos
       </h2>
@@ -808,6 +1001,7 @@ function FavoritesTab({
 
       {favoriteList.length > 0 ? (
         <div className="mt-6 flex flex-wrap gap-2">
+
           {favoriteList.map((item) => (
             <span
               key={item}
@@ -819,6 +1013,7 @@ function FavoritesTab({
         </div>
       ) : (
         <div className="mt-6 rounded-2xl border border-dashed border-[#294674] bg-[#07152b] p-8 text-center">
+
           <Bookmark className="mx-auto size-7 text-[#667ea9]" />
 
           <p className="mt-3 text-sm text-[#8197ba]">
@@ -845,12 +1040,15 @@ function AboutTab({
 }) {
   return (
     <div>
+
       <h2 className="text-xl font-semibold">
         Sobre
       </h2>
 
       <div className="mt-6 space-y-4">
+
         <div className="rounded-2xl border border-[#294674] bg-[#07152b] p-5">
+
           <p className="text-xs uppercase tracking-[0.16em] text-[#7186aa]">
             Bio
           </p>
@@ -862,20 +1060,26 @@ function AboutTab({
         </div>
 
         <div className="rounded-2xl border border-[#294674] bg-[#07152b] p-5">
+
           <p className="text-xs uppercase tracking-[0.16em] text-[#7186aa]">
             Minha conta
           </p>
 
           <div className="mt-4 space-y-3 text-sm">
+
             <div className="flex items-center justify-between">
+
               <span className="text-[#8197ba]">
                 Animes na minha lista
               </span>
 
-              <strong>{myListLength}</strong>
+              <strong>
+                {myListLength}
+              </strong>
             </div>
 
             <div className="flex items-center justify-between">
+
               <span className="text-[#8197ba]">
                 E-mail
               </span>
@@ -937,4 +1141,4 @@ function ProfileTabButton({
       )}
     </button>
   );
-                                 }
+        }
