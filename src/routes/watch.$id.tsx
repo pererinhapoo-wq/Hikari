@@ -627,7 +627,7 @@ function CommentsSection({
     useState(false);
 
   /* ====================================================== */
-  /* CARREGAR SESSÃO                                        */
+  /* CARREGAR SESSÃO                                         */
   /* ====================================================== */
 
   useEffect(() => {
@@ -747,6 +747,46 @@ function CommentsSection({
               ? data.comments
               : [],
           );
+
+          /*
+           * O próprio endpoint de comentários
+           * também informa o usuário atual e
+           * se ele é administrador.
+           */
+          if (
+            typeof data.currentUserId ===
+            "string"
+          ) {
+            setCurrentUserId(
+              data.currentUserId,
+            );
+          } else {
+            setCurrentUserId(
+              null,
+            );
+          }
+
+          if (
+            typeof data.isAdmin ===
+            "boolean"
+          ) {
+            /*
+             * O acesso administrativo continua
+             * sendo validado pelo email através
+             * de isHikariAdmin.
+             *
+             * O valor retornado pela API serve
+             * como confirmação adicional.
+             */
+            if (
+              data.isAdmin &&
+              currentUserEmail
+            ) {
+              setCurrentUserEmail(
+                currentUserEmail,
+              );
+            }
+          }
         }
       } catch (err) {
         console.error(err);
@@ -1019,15 +1059,19 @@ function CommentsSection({
   const openEdit =
     (comment: Comment) => {
       setMenuOpenId(null);
+
       setEditingComment(
         comment,
       );
+
       setEditText(
         comment.content,
       );
+
       setEditIsSpoiler(
         comment.isSpoiler,
       );
+
       setError("");
       setModerationSuccess("");
     };
@@ -1102,8 +1146,12 @@ function CommentsSection({
         setEditingComment(
           null,
         );
+
         setEditText("");
-        setEditIsSpoiler(false);
+
+        setEditIsSpoiler(
+          false,
+        );
 
         setModerationSuccess(
           "Comentário editado com sucesso.",
@@ -1128,9 +1176,11 @@ function CommentsSection({
   const openDelete =
     (comment: Comment) => {
       setMenuOpenId(null);
+
       setDeletingComment(
         comment,
       );
+
       setError("");
       setModerationSuccess("");
     };
@@ -1335,7 +1385,10 @@ function CommentsSection({
         setModeratingId(
           null,
         );
-        setReportSending(false);
+
+        setReportSending(
+          false,
+        );
       }
     };
 
@@ -1346,11 +1399,15 @@ function CommentsSection({
   const openReport =
     (comment: Comment) => {
       setMenuOpenId(null);
+
       setReportingComment(
         comment,
       );
+
       setReportReason("");
+
       setError("");
+
       setModerationSuccess("");
     };
 
@@ -3135,4 +3192,4 @@ function CommentCard({
 
     </article>
   );
-        }
+      }
