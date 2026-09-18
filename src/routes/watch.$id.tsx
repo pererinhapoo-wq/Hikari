@@ -15,15 +15,28 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { upload } from "@vercel/blob/client";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchAnimeDetail } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
-import { cn, isDirectVideo, youtubeIdFrom } from "@/lib/utils";
+import {
+  cn,
+  isDirectVideo,
+  youtubeIdFrom,
+} from "@/lib/utils";
 import { mergeDetail } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
-import { displayTitle, type Episode } from "@/lib/types";
+import {
+  displayTitle,
+  type Episode,
+} from "@/lib/types";
 
 export const Route = createFileRoute("/watch/$id")({
   validateSearch: (
@@ -484,6 +497,7 @@ type Comment = {
   animeId: string;
   episodeId: string;
   content: string;
+  imageUrl: string | null;
   parentId: string | null;
   isSpoiler: boolean;
   createdAt: string;
@@ -566,6 +580,22 @@ function CommentsSection({
 
   const [error, setError] =
     useState("");
+
+  /* ====================================================== */
+  /* IMAGEM DO COMENTÁRIO                                   */
+  /* ====================================================== */
+
+  const [commentImage, setCommentImage] =
+    useState<File | null>(null);
+
+  const [commentImagePreview, setCommentImagePreview] =
+    useState<string | null>(null);
+
+  const [imageUploading, setImageUploading] =
+    useState(false);
+
+  const imageInputRef =
+    useRef<HTMLInputElement | null>(null);
 
   /* ====================================================== */
   /* USUÁRIO ATUAL                                          */
@@ -656,6 +686,136 @@ function CommentsSection({
 
   const [deleteSending, setDeleteSending] =
     useState(false);
+
+  /* ====================================================== */
+  /* LIMPAR PREVIEW QUANDO A IMAGEM MUDA                     */
+  /* ====================================================== */
+
+  useEffect(() => {
+    if (!commentImage) {
+      setCommentImagePreview(null);
+      return;
+    }
+
+    const previewUrl =
+      URL.createObjectURL(
+        commentImage,
+      );
+
+    setCommentImagePreview(
+      previewUrl,
+    );
+
+    return () => {
+      URL.revokeObjectURL(
+        previewUrl,
+      );
+    };
+  }, [
+    commentImage,
+  ]);
+
+  /* ====================================================== */
+  /* SELECIONAR IMAGEM                                      */
+  /* ====================================================== */
+
+  const handleSelectImage = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (
+      ![
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+      ].includes(file.type)
+    ) {
+      setError(
+        "Escolha uma imagem JPG, PNG, WebP ou GIF.",
+      );
+
+      event.target.value = "";
+
+      return;
+    }
+
+    if (
+      file.size >
+      10 * 1024 * 1024
+    ) {
+      setError(
+        "A imagem pode ter no máximo 10 MB.",
+      );
+
+      event.target.value = "";
+
+      return;
+    }
+
+    setError("");
+
+    setCommentImage(
+      file,
+    );
+  };
+
+  /* ====================================================== */
+  /* REMOVER IMAGEM                                         */
+  /* ====================================================== */
+
+  const handleRemoveImage = () => {
+    setCommentImage(
+      null,
+    );
+
+    setCommentImagePreview(
+      null,
+    );
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value =
+        "";
+    }
+  };
+
+  /* ====================================================== */
+  /* UPLOAD DA IMAGEM                                       */
+  /* ====================================================== */
+
+  const uploadCommentImage =
+    async (
+      file: File,
+    ): Promise<string> => {
+      if (
+        typeof window ===
+        "undefined"
+      ) {
+        throw new Error(
+          "Navegador necessário.",
+        );
+      }
+
+      const blob =
+        await upload(
+          `hikari/comments/${file.name}`,
+          file,
+          {
+            access: "public",
+            handleUploadUrl:
+              "/api/upload-comment-image",
+            multipart: true,
+          },
+        );
+
+      return blob.url;
+    };
 
   /* ====================================================== */
   /* CARREGAR SESSÃO                                         */
@@ -908,7 +1068,8 @@ function CommentsSection({
         !value ||
         !animeId ||
         !episodeId ||
-        sending
+        sending ||
+        imageUploading
       ) {
         return;
       }
@@ -916,6 +1077,19 @@ function CommentsSection({
       try {
         setSending(true);
         setError("");
+
+        let imageUrl:
+          | string
+          | null = null;
+
+        if (commentImage) {
+          setImageUploading(true);
+
+          imageUrl =
+            await uploadCommentImage(
+              commentImage,
+            );
+        }
 
         const response =
           await fetch(
@@ -932,6 +1106,7 @@ function CommentsSection({
                 animeId,
                 episodeId,
                 content: value,
+                imageUrl,
                 parentId: null,
                 isSpoiler,
               }),
@@ -959,6 +1134,7 @@ function CommentsSection({
 
         setText("");
         setIsSpoiler(false);
+        handleRemoveImage();
       } catch (err) {
         console.error(err);
 
@@ -969,6 +1145,7 @@ function CommentsSection({
         );
       } finally {
         setSending(false);
+        setImageUploading(false);
       }
     };
 
@@ -1836,17 +2013,35 @@ function CommentsSection({
             />
 
             {/* ============================================= */}
-            {/* IMAGEM / GIF                                    */}
+            {/* IMAGEM / GIF                                   */}
             {/* ============================================= */}
 
             <div className="mt-3 flex items-center gap-2">
 
+              <input
+                ref={
+                  imageInputRef
+                }
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={
+                  handleSelectImage
+                }
+                className="hidden"
+              />
+
               <button
                 type="button"
-                disabled
+                onClick={() =>
+                  imageInputRef.current?.click()
+                }
+                disabled={
+                  sending ||
+                  imageUploading
+                }
                 aria-label="Adicionar imagem"
                 title="Imagem"
-                className="flex min-h-10 items-center gap-2 rounded-lg border border-white/5 bg-bg px-3 text-xs font-medium text-muted opacity-60"
+                className="flex min-h-10 items-center gap-2 rounded-lg border border-white/5 bg-bg px-3 text-xs font-medium text-muted transition-colors hover:border-white/10 hover:bg-elevated hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ImageIcon className="size-4" />
                 Imagem
@@ -1866,6 +2061,40 @@ function CommentsSection({
               </button>
 
             </div>
+
+            {/* ============================================= */}
+            {/* PRÉVIA DA IMAGEM                               */}
+            {/* ============================================= */}
+
+            {commentImagePreview && (
+              <div className="relative mt-3 w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-bg">
+
+                <img
+                  src={
+                    commentImagePreview
+                  }
+                  alt="Prévia da imagem do comentário"
+                  className="max-h-64 max-w-full object-contain"
+                />
+
+                <button
+                  type="button"
+                  onClick={
+                    handleRemoveImage
+                  }
+                  disabled={
+                    sending ||
+                    imageUploading
+                  }
+                  aria-label="Remover imagem"
+                  title="Remover imagem"
+                  className="absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/75 text-white backdrop-blur-sm transition-colors hover:bg-black disabled:opacity-50"
+                >
+                  <X className="size-4" />
+                </button>
+
+              </div>
+            )}
 
             <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
 
@@ -1903,14 +2132,17 @@ function CommentsSection({
                 }
                 disabled={
                   !text.trim() ||
-                  sending
+                  sending ||
+                  imageUploading
                 }
               >
                 <Send className="size-4" />
 
-                {sending
-                  ? "Enviando..."
-                  : "Comentar"}
+                {imageUploading
+                  ? "Enviando imagem..."
+                  : sending
+                    ? "Enviando..."
+                    : "Comentar"}
               </Button>
 
             </div>
@@ -2476,6 +2708,16 @@ function CommentsSection({
                 {deletingComment.content}
               </p>
 
+              {deletingComment.imageUrl && (
+                <img
+                  src={
+                    deletingComment.imageUrl
+                  }
+                  alt=""
+                  className="mt-3 max-h-40 rounded-lg object-contain"
+                />
+              )}
+
             </div>
 
             {error && (
@@ -2768,6 +3010,16 @@ function CommentsSection({
               <p className="line-clamp-4 whitespace-pre-wrap text-sm text-muted">
                 {spamComment.content}
               </p>
+
+              {spamComment.imageUrl && (
+                <img
+                  src={
+                    spamComment.imageUrl
+                  }
+                  alt=""
+                  className="mt-3 max-h-40 rounded-lg object-contain"
+                />
+              )}
 
             </div>
 
@@ -3152,6 +3404,25 @@ function CommentCard({
           )}
 
           {/* =============================================== */}
+          {/* IMAGEM DO COMENTÁRIO                            */}
+          {/* =============================================== */}
+
+          {comment.imageUrl && (
+            <div className="mt-3 overflow-hidden rounded-xl border border-white/5 bg-bg">
+
+              <img
+                src={
+                  comment.imageUrl
+                }
+                alt="Imagem anexada ao comentário"
+                loading="lazy"
+                className="max-h-[520px] w-auto max-w-full object-contain"
+              />
+
+            </div>
+          )}
+
+          {/* =============================================== */}
           {/* AÇÕES                                            */}
           {/* =============================================== */}
 
@@ -3322,4 +3593,4 @@ function CommentCard({
 
     </article>
   );
-      }
+  }
