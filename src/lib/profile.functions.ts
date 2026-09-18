@@ -12,6 +12,17 @@ export type UserProfile = {
   followingCount: number;
 };
 
+export type PublicUserProfile = {
+  userId: string;
+  nick: string;
+  bio: string;
+  favorites: string[];
+  commentCount: number;
+  followersCount: number;
+  followingCount: number;
+  isFollowing: boolean;
+};
+
 export type MyProfileComment = {
   id: string;
   animeId: string;
@@ -81,7 +92,7 @@ function isValidNick(
 }
 
 /* ============================================================ */
-/* PERFIL                                                        */
+/* PERFIL DO USUÁRIO LOGADO                                      */
 /* ============================================================ */
 
 export const getProfile =
@@ -156,24 +167,6 @@ export const getProfile =
         const row =
           rows[0];
 
-        const commentCount =
-          Number(
-            commentRows[0]
-              ?.count ?? "0",
-          );
-
-        const followersCount =
-          Number(
-            followerRows[0]
-              ?.count ?? "0",
-          );
-
-        const followingCount =
-          Number(
-            followingRows[0]
-              ?.count ?? "0",
-          );
-
         return {
           nick:
             row?.nick ?? "",
@@ -186,17 +179,188 @@ export const getProfile =
               row?.favorites,
             ),
 
-          commentCount,
+          commentCount:
+            Number(
+              commentRows[0]
+                ?.count ?? "0",
+            ),
 
-          followersCount,
+          followersCount:
+            Number(
+              followerRows[0]
+                ?.count ?? "0",
+            ),
 
-          followingCount,
+          followingCount:
+            Number(
+              followingRows[0]
+                ?.count ?? "0",
+            ),
         } satisfies UserProfile;
       },
     );
 
 /* ============================================================ */
-/* MEUS COMENTÁRIOS                                             */
+/* PERFIL PÚBLICO                                                 */
+/* ============================================================ */
+
+export const getPublicProfile =
+  createServerFn({
+    method: "GET",
+  })
+    .middleware([
+      authMiddleware,
+    ])
+    .handler(
+      async ({
+        context,
+        data,
+      }) => {
+        const input =
+          data as {
+            nick?: unknown;
+          };
+
+        const nick =
+          normalizeNick(
+            input.nick,
+          );
+
+        if (!nick) {
+          throw new Error(
+            "Nick não informado.",
+          );
+        }
+
+        const sql =
+          await getSql();
+
+        const profileRows =
+          await sql<{
+            userId: string;
+            nick: string;
+            bio: string | null;
+            favorites:
+              | string
+              | null;
+          }>`
+            select
+              p."userId",
+              p."nick",
+              p."bio",
+              p."favorites"
+            from "profile" p
+            where
+              lower(p."nick") =
+                lower(${nick})
+            limit 1
+          `;
+
+        const profile =
+          profileRows[0];
+
+        if (!profile) {
+          throw new Error(
+            "Perfil não encontrado.",
+          );
+        }
+
+        const followerRows =
+          await sql<{
+            count: string;
+          }>`
+            select
+              count(*)::text as count
+            from "user_follow"
+            where
+              "followingId" =
+              ${profile.userId}
+          `;
+
+        const followingRows =
+          await sql<{
+            count: string;
+          }>`
+            select
+              count(*)::text as count
+            from "user_follow"
+            where
+              "followerId" =
+              ${profile.userId}
+          `;
+
+        const commentRows =
+          await sql<{
+            count: string;
+          }>`
+            select
+              count(*)::text as count
+            from "comment"
+            where
+              "userId" =
+              ${profile.userId}
+          `;
+
+        const followingCheck =
+          await sql<{
+            exists: boolean;
+          }>`
+            select exists (
+              select 1
+              from "user_follow"
+              where
+                "followerId" =
+                  ${context.userId}
+                and
+                "followingId" =
+                  ${profile.userId}
+            ) as exists
+          `;
+
+        return {
+          userId:
+            profile.userId,
+
+          nick:
+            profile.nick,
+
+          bio:
+            profile.bio ?? "",
+
+          favorites:
+            parseFavorites(
+              profile.favorites,
+            ),
+
+          commentCount:
+            Number(
+              commentRows[0]
+                ?.count ?? "0",
+            ),
+
+          followersCount:
+            Number(
+              followerRows[0]
+                ?.count ?? "0",
+            ),
+
+          followingCount:
+            Number(
+              followingRows[0]
+                ?.count ?? "0",
+            ),
+
+          isFollowing:
+            Boolean(
+              followingCheck[0]
+                ?.exists,
+            ),
+        } satisfies PublicUserProfile;
+      },
+    );
+
+/* ============================================================ */
+/* MEUS COMENTÁRIOS                                               */
 /* ============================================================ */
 
 export const getMyComments =
@@ -292,7 +456,7 @@ export const getMyComments =
     );
 
 /* ============================================================ */
-/* ATUALIZAR PERFIL                                              */
+/* ATUALIZAR PERFIL                                               */
 /* ============================================================ */
 
 export const updateProfile =
@@ -447,31 +611,28 @@ export const updateProfile =
               ${context.userId}
           `;
 
-        const commentCount =
-          Number(
-            commentRows[0]
-              ?.count ?? "0",
-          );
-
-        const followersCount =
-          Number(
-            followerRows[0]
-              ?.count ?? "0",
-          );
-
-        const followingCount =
-          Number(
-            followingRows[0]
-              ?.count ?? "0",
-          );
-
         return {
           nick,
           bio,
           favorites,
-          commentCount,
-          followersCount,
-          followingCount,
+
+          commentCount:
+            Number(
+              commentRows[0]
+                ?.count ?? "0",
+            ),
+
+          followersCount:
+            Number(
+              followerRows[0]
+                ?.count ?? "0",
+            ),
+
+          followingCount:
+            Number(
+              followingRows[0]
+                ?.count ?? "0",
+            ),
         } satisfies UserProfile;
       },
     );
