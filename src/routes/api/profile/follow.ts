@@ -171,23 +171,34 @@ export const Route = createFileRoute(
 
           following = true;
 
-          // Cria uma notificação para o usuário seguido.
-          await sql`
-            insert into "notification" (
-              "id",
-              "userId",
-              "actorId",
-              "type",
-              "message"
-            )
-            values (
-              gen_random_uuid()::text,
-              ${targetUserId},
-              ${currentUserId},
-              'follow',
-              ${session.user.name ?? "Alguém"} || ' começou a seguir você.'
-            )
-          `;
+          /*
+           * A notificação é secundária.
+           *
+           * Se houver qualquer problema com a tabela
+           * de notificações, não impedimos o usuário
+           * de seguir outra pessoa.
+           */
+          try {
+            await sql`
+              insert into "notification" (
+                "id",
+                "userId",
+                "actorId",
+                "type",
+                "message"
+              )
+              values (
+                gen_random_uuid()::text,
+                ${targetUserId},
+                ${currentUserId},
+                'follow',
+                ${session.user.name ?? "Alguém"} || ' começou a seguir você.'
+              )
+            `;
+          } catch {
+            // O seguimento continua funcionando
+            // mesmo se a notificação falhar.
+          }
         }
 
         const followerRows =
