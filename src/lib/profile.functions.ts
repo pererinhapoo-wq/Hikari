@@ -10,6 +10,21 @@ export type UserProfile = {
   commentCount: number;
 };
 
+export type MyProfileComment = {
+  id: string;
+  animeId: string;
+  episodeId: string;
+  content: string;
+  parentId: string | null;
+  isSpoiler: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  userName: string;
+  userImage: string | null;
+  likes: number;
+};
+
 function parseFavorites(value: unknown): string[] {
   if (typeof value !== "string" || !value) return [];
 
@@ -18,7 +33,8 @@ function parseFavorites(value: unknown): string[] {
 
     return Array.isArray(parsed)
       ? parsed.filter(
-          (item): item is string => typeof item === "string",
+          (item): item is string =>
+            typeof item === "string",
         )
       : [];
   } catch {
@@ -40,7 +56,13 @@ function isValidNick(nick: string): boolean {
   return /^[a-z0-9_]{3,30}$/.test(nick);
 }
 
-export const getProfile = createServerFn({ method: "GET" })
+/* ============================================================ */
+/* PERFIL                                                        */
+/* ============================================================ */
+
+export const getProfile = createServerFn({
+  method: "GET",
+})
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const sql = await getSql();
@@ -76,12 +98,73 @@ export const getProfile = createServerFn({ method: "GET" })
     return {
       nick: row?.nick ?? "",
       bio: row?.bio ?? "",
-      favorites: parseFavorites(row?.favorites),
+      favorites: parseFavorites(
+        row?.favorites,
+      ),
       commentCount,
     } satisfies UserProfile;
   });
 
-export const updateProfile = createServerFn({ method: "POST" })
+/* ============================================================ */
+/* MEUS COMENTÁRIOS                                             */
+/* ============================================================ */
+
+export const getMyComments = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+
+    const rows = await sql<MyProfileComment>`
+      select
+        c."id",
+        c."animeId",
+        c."episodeId",
+        c."content",
+        c."parentId",
+        c."isSpoiler",
+        c."createdAt",
+        c."updatedAt",
+        c."userId",
+
+        coalesce(
+          u."name",
+          'Usuário'
+        ) as "userName",
+
+        u."image" as "userImage",
+
+        (
+          select count(*)::int
+          from "comment_like" cl
+          where cl."commentId" = c."id"
+        ) as "likes"
+
+      from "comment" c
+
+      left join "user" u
+        on u."id" = c."userId"
+
+      where c."userId" = ${context.userId}
+
+      order by
+        c."createdAt" desc
+    `;
+
+    return rows.map((comment) => ({
+      ...comment,
+      likes: Number(comment.likes ?? 0) || 0,
+    }));
+  });
+
+/* ============================================================ */
+/* ATUALIZAR PERFIL                                              */
+/* ============================================================ */
+
+export const updateProfile = createServerFn({
+  method: "POST",
+})
   .middleware([authMiddleware])
   .handler(async ({ context, data }) => {
     const input = data as {
@@ -93,7 +176,9 @@ export const updateProfile = createServerFn({ method: "POST" })
     const nick = normalizeNick(input.nick);
 
     if (!nick) {
-      throw new Error("O Nick é obrigatório.");
+      throw new Error(
+        "O Nick é obrigatório.",
+      );
     }
 
     if (!isValidNick(nick)) {
@@ -107,11 +192,13 @@ export const updateProfile = createServerFn({ method: "POST" })
         ? input.bio.trim().slice(0, 500)
         : "";
 
-    const favorites = Array.isArray(input.favorites)
-      ? input.favorites.filter(
-          (item): item is string => typeof item === "string",
-        )
-      : [];
+    const favorites =
+      Array.isArray(input.favorites)
+        ? input.favorites.filter(
+            (item): item is string =>
+              typeof item === "string",
+          )
+        : [];
 
     const sql = await getSql();
 
@@ -120,13 +207,17 @@ export const updateProfile = createServerFn({ method: "POST" })
     }>`
       select "userId"
       from "profile"
-      where lower("nick") = lower(${nick})
-        and "userId" <> ${context.userId}
+      where lower("nick") =
+        lower(${nick})
+        and "userId" <>
+        ${context.userId}
       limit 1
     `;
 
     if (existing.length > 0) {
-      throw new Error("Esse Nick já está em uso.");
+      throw new Error(
+        "Esse Nick já está em uso.",
+      );
     }
 
     await sql`
@@ -144,10 +235,14 @@ export const updateProfile = createServerFn({ method: "POST" })
       )
       on conflict ("userId")
       do update set
-        "nick" = excluded."nick",
-        "bio" = excluded."bio",
-        "favorites" = excluded."favorites",
-        "updatedAt" = CURRENT_TIMESTAMP
+        "nick" =
+          excluded."nick",
+        "bio" =
+          excluded."bio",
+        "favorites" =
+          excluded."favorites",
+        "updatedAt" =
+          CURRENT_TIMESTAMP
     `;
 
     const commentRows = await sql<{
