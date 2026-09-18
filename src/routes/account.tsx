@@ -6,6 +6,7 @@ import {
   Bookmark,
   Camera,
   Heart,
+  Link as LinkIcon,
   Lock,
   LogOut,
   MessageCircle,
@@ -47,6 +48,7 @@ function Account() {
   const [nick, setNick] = useState("");
   const [bio, setBio] = useState("");
   const [favorites, setFavorites] = useState("");
+  const [commentCount, setCommentCount] = useState(0);
 
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] =
@@ -74,6 +76,7 @@ function Account() {
         setNick(profile.nick);
         setBio(profile.bio);
         setFavorites(profile.favorites.join(", "));
+        setCommentCount(profile.commentCount);
         setError("");
       })
       .catch(() => {
@@ -82,6 +85,7 @@ function Account() {
         setNick("");
         setBio("");
         setFavorites("");
+        setCommentCount(0);
         setError("Não foi possível carregar seu perfil.");
       })
       .finally(() => {
@@ -133,6 +137,7 @@ function Account() {
       setNick(profile.nick);
       setBio(profile.bio);
       setFavorites(profile.favorites.join(", "));
+      setCommentCount(profile.commentCount);
 
       setSaved(true);
       setEditing(false);
@@ -477,7 +482,7 @@ function Account() {
 
                 <Stat
                   icon={<MessageCircle />}
-                  value="0"
+                  value={String(commentCount)}
                   label="Comentários"
                 />
 
@@ -1132,4 +1137,4 @@ function ProfileTabButton({
 
     </button>
   );
-}
+    }
