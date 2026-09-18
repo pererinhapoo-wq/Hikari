@@ -35,6 +35,7 @@ import {
   getMyComments,
   getProfile,
   updateProfile,
+  type MyProfileComment,
 } from "@/lib/profile.functions";
 
 import { useHikariStore } from "@/lib/store";
@@ -1026,11 +1027,7 @@ function CommentsTab({
     comments,
     setComments,
   ] = useState<
-    Awaited<
-      ReturnType<
-        typeof getMyCommentsFn
-      >
-    >
+    MyProfileComment[]
   >([]);
 
   const [
@@ -1043,6 +1040,13 @@ function CommentsTab({
     setError,
   ] = useState("");
 
+  const [
+    likeBusy,
+    setLikeBusy,
+  ] = useState<
+    string | null
+  >(null);
+
   useEffect(() => {
     let active = true;
 
@@ -1053,12 +1057,15 @@ function CommentsTab({
       .then((result) => {
         if (!active) return;
 
-        setComments(result);
+        setComments(
+          result,
+        );
       })
       .catch(() => {
         if (!active) return;
 
         setComments([]);
+
         setError(
           "Não foi possível carregar seus comentários.",
         );
@@ -1072,7 +1079,82 @@ function CommentsTab({
     return () => {
       active = false;
     };
-  }, []);
+  }, [getMyCommentsFn]);
+
+  async function toggleLike(
+    commentId: string,
+  ) {
+    if (likeBusy) {
+      return;
+    }
+
+    setLikeBusy(
+      commentId,
+    );
+
+    setError("");
+
+    try {
+      const response =
+        await fetch(
+          "/api/comments/like",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              commentId,
+            }),
+          },
+        );
+
+      const data =
+        (await response.json()) as {
+          liked?: boolean;
+          likes?: number;
+          error?: string;
+        };
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Não foi possível alterar a curtida.",
+        );
+      }
+
+      setComments(
+        (current) =>
+          current.map(
+            (comment) =>
+              comment.id ===
+              commentId
+                ? {
+                    ...comment,
+                    liked:
+                      Boolean(
+                        data.liked,
+                      ),
+                    likes:
+                      Number(
+                        data.likes ??
+                          0,
+                      ) || 0,
+                  }
+                : comment,
+          ),
+      );
+    } catch {
+      setError(
+        "Não foi possível alterar a curtida.",
+      );
+    } finally {
+      setLikeBusy(
+        null,
+      );
+    }
+  }
 
   return (
     <div>
@@ -1139,6 +1221,13 @@ function CommentsTab({
                   comment={
                     comment
                   }
+                  onToggleLike={
+                    toggleLike
+                  }
+                  likeBusy={
+                    likeBusy ===
+                    comment.id
+                  }
                 />
               ),
             )}
@@ -1176,12 +1265,14 @@ function CommentSkeleton() {
 
 function ProfileCommentCard({
   comment,
+  onToggleLike,
+  likeBusy,
 }: {
-  comment: Awaited<
-    ReturnType<
-      typeof getMyComments
-    >
-  >[number];
+  comment: MyProfileComment;
+  onToggleLike: (
+    commentId: string,
+  ) => void;
+  likeBusy: boolean;
 }) {
   const date = new Date(
     comment.createdAt,
@@ -1217,6 +1308,8 @@ function ProfileCommentCard({
   return (
     <article className="rounded-2xl border border-[#294674] bg-[#07152b] p-5 transition hover:border-[#365b91]">
 
+      {/* CABEÇALHO */}
+
       <div className="flex items-start gap-3">
 
         {comment.userImage ? (
@@ -1229,7 +1322,10 @@ function ProfileCommentCard({
           />
         ) : (
           <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[#15284b] text-sm font-semibold text-[#b7c7e5]">
-            {comment.userName
+            {(
+              comment.userName ||
+              "U"
+            )
               .charAt(0)
               .toUpperCase()}
           </div>
@@ -1251,9 +1347,20 @@ function ProfileCommentCard({
 
           </div>
 
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#7186aa]">
+          {/* LINK DO EPISÓDIO */}
 
-            <span>
+          <Link
+            to="/watch/$id"
+            params={{
+              id: comment.animeId,
+            }}
+            search={{
+              ep: comment.episodeId,
+            }}
+            className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#7186aa] transition hover:text-[#aebcff]"
+          >
+
+            <span className="max-w-full truncate">
               Episódio{" "}
               {comment.episodeId}
             </span>
@@ -1278,11 +1385,13 @@ function ProfileCommentCard({
               </>
             )}
 
-          </div>
+          </Link>
 
         </div>
 
       </div>
+
+      {/* CONTEÚDO */}
 
       {comment.isSpoiler ? (
         <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
@@ -1291,7 +1400,7 @@ function ProfileCommentCard({
             Spoiler
           </p>
 
-          <p className="mt-2 text-sm leading-6 text-[#c4d1e8]">
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#c4d1e8]">
             {comment.content}
           </p>
 
@@ -1302,29 +1411,76 @@ function ProfileCommentCard({
         </p>
       )}
 
-      <div className="mt-5 flex items-center gap-4 border-t border-[#1b3762] pt-4 text-xs text-[#8197ba]">
+      {/* AÇÕES */}
 
-        <span className="flex items-center gap-1.5">
+      <div className="mt-5 flex items-center gap-4 border-t border-[#1b3762] pt-4">
 
-          <Heart className="size-4" />
+        {/* CURTIR */}
 
-          {comment.likes}
-          {comment.likes ===
-          1
-            ? " curtida"
-            : " curtidas"}
+        <button
+          type="button"
+          onClick={() =>
+            onToggleLike(
+              comment.id,
+            )
+          }
+          disabled={likeBusy}
+          aria-label={
+            comment.liked
+              ? "Remover curtida"
+              : "Curtir comentário"
+          }
+          className={`flex items-center gap-1.5 text-xs transition ${
+            comment.liked
+              ? "text-pink-400"
+              : "text-[#8197ba] hover:text-pink-300"
+          } ${
+            likeBusy
+              ? "opacity-60"
+              : ""
+          }`}
+        >
 
-        </span>
+          <Heart
+            className={`size-4 ${
+              comment.liked
+                ? "fill-current"
+                : ""
+            }`}
+          />
 
-        <span className="flex items-center gap-1.5">
+          <span>
+            {comment.likes}{" "}
+            {comment.likes ===
+            1
+              ? "curtida"
+              : "curtidas"}
+          </span>
+
+        </button>
+
+        {/* ABRIR EPISÓDIO / COMENTÁRIO */}
+
+        <Link
+          to="/watch/$id"
+          params={{
+            id: comment.animeId,
+          }}
+          search={{
+            ep: comment.episodeId,
+          }}
+          className="flex items-center gap-1.5 text-xs text-[#8197ba] transition hover:text-[#b8c7e3]"
+        >
 
           <MessageCircle className="size-4" />
 
-          {comment.parentId
-            ? "Resposta"
-            : "Comentário"}
+          <span>
+            {comment.parentId
+              ? "Resposta"
+              : "Comentário"}
+          </span>
 
-        </span>
+        </Link>
 
       </div>
 
@@ -1500,6 +1656,7 @@ function ProfileTabButton({
           : "text-[#7186aa] hover:text-[#c7d5ec]"
       }`}
     >
+
       {children}
 
       {active && (
@@ -1508,4 +1665,4 @@ function ProfileTabButton({
 
     </button>
   );
-}
+  }
