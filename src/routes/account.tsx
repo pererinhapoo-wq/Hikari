@@ -4,10 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   BadgeCheck,
   Bookmark,
-  CalendarDays,
   Camera,
   Heart,
-  Link as LinkIcon,
   Lock,
   LogOut,
   MessageCircle,
@@ -175,11 +173,13 @@ function Account() {
 
   return (
     <main className="min-h-screen bg-[#030817] text-white">
+
       {/* ====================================================== */}
       {/* FUNDO GERAL DO PERFIL                                  */}
       {/* ====================================================== */}
 
       <div className="mx-auto w-full max-w-[1500px] px-3 pb-24 pt-4 sm:px-5 lg:px-8">
+
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
 
           {/* ================================================== */}
@@ -194,7 +194,6 @@ function Account() {
 
             <div className="relative h-[250px] overflow-hidden sm:h-[300px] lg:h-[340px]">
 
-              {/* Fundo da capa */}
               <div
                 className="absolute inset-0"
                 style={{
@@ -203,19 +202,16 @@ function Account() {
                 }}
               />
 
-              {/* Textura luminosa */}
               <div className="absolute -left-20 top-10 size-[280px] rounded-full bg-blue-500/20 blur-3xl" />
 
               <div className="absolute right-0 top-0 size-[330px] rounded-full bg-purple-500/25 blur-3xl" />
 
-              {/* Círculos */}
               <div className="absolute -right-20 -top-40 size-[520px] rounded-full border border-white/10" />
 
               <div className="absolute -right-10 -top-32 size-[430px] rounded-full border border-white/5" />
 
               <div className="absolute left-20 -bottom-48 size-[480px] rounded-full border border-white/5" />
 
-              {/* Escurecimento inferior */}
               <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_35%,rgba(1,8,22,0.12)_60%,rgba(1,8,22,0.78)_100%)]" />
 
               {/* Personagem estilizado */}
@@ -226,6 +222,7 @@ function Account() {
                 <div className="absolute left-1/2 top-[75px] h-[170px] w-[230px] -translate-x-1/2 rounded-t-[110px] bg-[#071126]" />
 
                 <div className="absolute left-1/2 top-[45px] h-[130px] w-[70px] -translate-x-1/2 rounded-full bg-[#111b35]" />
+
               </div>
 
               {/* Texto japonês */}
@@ -242,6 +239,7 @@ function Account() {
                 <p className="mt-1 text-xs text-white/60">
                   Viver do que ama
                 </p>
+
               </div>
 
               {/* Marca */}
@@ -252,7 +250,9 @@ function Account() {
                 <span className="text-xs font-medium tracking-[0.18em] text-white/80">
                   PERFIL HIKARI
                 </span>
+
               </div>
+
             </div>
 
             {/* ================================================== */}
@@ -285,7 +285,9 @@ function Account() {
                   >
                     <Camera className="size-4" />
                   </button>
+
                 </div>
+
               </div>
 
               {/* ================================================== */}
@@ -315,6 +317,7 @@ function Account() {
                         {nick && (
                           <BadgeCheck className="size-6 fill-violet-500 text-white" />
                         )}
+
                       </div>
 
                       {nick && (
@@ -328,8 +331,10 @@ function Account() {
                           {bio}
                         </p>
                       )}
+
                     </>
                   )}
+
                 </div>
 
                 {/* ================================================== */}
@@ -372,7 +377,6 @@ function Account() {
                   {menuOpen && (
                     <div className="absolute right-0 top-12 z-30 w-56 overflow-hidden rounded-2xl border border-[#294674] bg-[#07152b] p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
 
-                      {/* Editar */}
                       <button
                         type="button"
                         onClick={() => {
@@ -390,10 +394,11 @@ function Account() {
                         </span>
                       </button>
 
-                      {/* Compartilhar */}
                       <button
                         type="button"
-                        onClick={() => void shareProfile()}
+                        onClick={() =>
+                          void shareProfile()
+                        }
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white transition hover:bg-[#102343]"
                       >
                         <LinkIcon className="size-4 text-[#9fb2ff]" />
@@ -403,7 +408,6 @@ function Account() {
                         </span>
                       </button>
 
-                      {/* Configurações */}
                       <button
                         type="button"
                         onClick={() => {
@@ -419,10 +423,8 @@ function Account() {
                         </span>
                       </button>
 
-                      {/* Separador */}
                       <div className="my-1.5 border-t border-[#1c3c70]" />
 
-                      {/* Sair */}
                       <button
                         type="button"
                         onClick={() => {
@@ -437,9 +439,12 @@ function Account() {
                           Sair da conta
                         </span>
                       </button>
+
                     </div>
                   )}
+
                 </div>
+
               </div>
 
               {/* ================================================== */}
@@ -455,10 +460,13 @@ function Account() {
                 )}
 
                 <span className="flex items-center gap-1.5">
+
                   <Sparkles className="size-3.5" />
 
                   Membro da comunidade HIKARI
+
                 </span>
+
               </div>
 
               {/* ================================================== */}
@@ -490,7 +498,9 @@ function Account() {
                   value="0"
                   label="Seguindo"
                 />
+
               </div>
+
             </div>
 
             {/* ================================================== */}
@@ -527,7 +537,9 @@ function Account() {
                 >
                   Sobre
                 </ProfileTabButton>
+
               </div>
+
             </div>
 
             {/* ================================================== */}
@@ -553,7 +565,9 @@ function Account() {
                   myListLength={myList.length}
                 />
               )}
+
             </div>
+
           </section>
 
           {/* ================================================== */}
@@ -568,7 +582,9 @@ function Account() {
               <div className="flex gap-3">
 
                 <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-cyan-500/10 text-cyan-300">
+
                   <Users className="size-5" />
+
                 </div>
 
                 <div>
@@ -580,77 +596,11 @@ function Account() {
                   <p className="mt-1 text-xs leading-5 text-[#8fa5c7]">
                     Qualquer pessoa pode seguir você.
                   </p>
+
                 </div>
-              </div>
-            </SideCard>
 
-            {/* Sobre */}
-            <SideCard>
-
-              <div className="flex items-center gap-2">
-
-                <Users className="size-5 text-violet-300" />
-
-                <h2 className="font-semibold">
-                  Sobre
-                </h2>
               </div>
 
-              <p className="mt-4 text-sm leading-6 text-[#9eb1d1]">
-                {bio ||
-                  "Este usuário ainda não adicionou uma descrição."}
-              </p>
-
-              <div className="mt-5 flex items-center gap-2 text-xs text-[#7186aa]">
-
-                <CalendarDays className="size-4" />
-
-                Membro da comunidade HIKARI
-              </div>
-            </SideCard>
-
-            {/* Seguidores */}
-            <SideCard>
-
-              <div className="flex items-center justify-between">
-
-                <h2 className="font-semibold">
-                  Seguidores (0)
-                </h2>
-
-                <Users className="size-4 text-[#7489ad]" />
-              </div>
-
-              <div className="mt-4 rounded-xl border border-dashed border-[#294674] px-4 py-5 text-center">
-
-                <Users className="mx-auto size-6 text-[#637da8]" />
-
-                <p className="mt-2 text-xs text-[#7186aa]">
-                  Seus seguidores aparecerão aqui.
-                </p>
-              </div>
-            </SideCard>
-
-            {/* Seguindo */}
-            <SideCard>
-
-              <div className="flex items-center justify-between">
-
-                <h2 className="font-semibold">
-                  Seguindo (0)
-                </h2>
-
-                <UserPlus className="size-4 text-[#7489ad]" />
-              </div>
-
-              <div className="mt-4 rounded-xl border border-dashed border-[#294674] px-4 py-5 text-center">
-
-                <UserPlus className="mx-auto size-6 text-[#637da8]" />
-
-                <p className="mt-2 text-xs text-[#7186aa]">
-                  Os usuários que você seguir aparecerão aqui.
-                </p>
-              </div>
             </SideCard>
 
             {/* Privacidade */}
@@ -659,7 +609,9 @@ function Account() {
               <div className="flex gap-3">
 
                 <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-violet-500/10 text-violet-300">
+
                   <Lock className="size-5" />
+
                 </div>
 
                 <div>
@@ -672,10 +624,15 @@ function Account() {
                     Futuramente você poderá controlar quem pode
                     acompanhar seu perfil.
                   </p>
+
                 </div>
+
               </div>
+
             </SideCard>
+
           </aside>
+
         </div>
 
         {/* ====================================================== */}
@@ -698,6 +655,7 @@ function Account() {
                   <h2 className="mt-1 text-2xl font-semibold">
                     Editar perfil
                   </h2>
+
                 </div>
 
                 <button
@@ -710,6 +668,7 @@ function Account() {
                 >
                   <X className="size-5" />
                 </button>
+
               </div>
 
               <div className="mt-6 space-y-5">
@@ -742,6 +701,7 @@ function Account() {
                     3 a 30 caracteres. Use apenas letras,
                     números ou _.
                   </p>
+
                 </div>
 
                 {/* Bio */}
@@ -762,6 +722,7 @@ function Account() {
                     placeholder="Conte um pouco sobre você..."
                     className="mt-2 w-full resize-none rounded-xl border border-[#294674] bg-[#030b19] p-4 text-sm text-white outline-none placeholder:text-[#536988] focus:border-violet-400"
                   />
+
                 </div>
 
                 {/* Favoritos */}
@@ -785,6 +746,7 @@ function Account() {
                   <p className="mt-1.5 text-xs text-[#7186aa]">
                     Separe os títulos por vírgula.
                   </p>
+
                 </div>
 
                 {/* Erro */}
@@ -810,6 +772,7 @@ function Account() {
                     {saving
                       ? "Salvando..."
                       : "Salvar"}
+
                   </Button>
 
                   <Button
@@ -825,10 +788,15 @@ function Account() {
                     <X className="size-4" />
 
                     Cancelar
+
                   </Button>
+
                 </div>
+
               </div>
+
             </div>
+
           </div>
         )}
 
@@ -850,11 +818,13 @@ function Account() {
                   <h2 className="font-semibold">
                     Administrador HIKARI
                   </h2>
+
                 </div>
 
                 <p className="mt-1 text-sm text-[#8fa5c7]">
                   Seu acesso ao painel de administração está liberado.
                 </p>
+
               </div>
 
               <Button
@@ -865,7 +835,9 @@ function Account() {
                   Abrir Admin
                 </Link>
               </Button>
+
             </div>
+
           </section>
         )}
 
@@ -903,8 +875,11 @@ function Account() {
               Perfil salvo.
             </span>
           )}
+
         </div>
+
       </div>
+
     </main>
   );
 }
@@ -936,6 +911,7 @@ function Stat({
       <span className="mt-1 text-xs text-[#7186aa]">
         {label}
       </span>
+
     </div>
   );
 }
@@ -963,7 +939,9 @@ function CommentsTab({
       <div className="mt-6 rounded-2xl border border-[#294674] bg-[#07152b] p-8 text-center sm:p-12">
 
         <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#102343] text-[#8da4ff]">
+
           <MessageCircle className="size-8" />
+
         </div>
 
         <h3 className="mt-5 font-semibold">
@@ -974,7 +952,9 @@ function CommentsTab({
           Os comentários que você fizer nos episódios do HIKARI
           poderão aparecer nesta área.
         </p>
+
       </div>
+
     </div>
   );
 }
@@ -1010,6 +990,7 @@ function FavoritesTab({
               {item}
             </span>
           ))}
+
         </div>
       ) : (
         <div className="mt-6 rounded-2xl border border-dashed border-[#294674] bg-[#07152b] p-8 text-center">
@@ -1019,8 +1000,10 @@ function FavoritesTab({
           <p className="mt-3 text-sm text-[#8197ba]">
             Você ainda não adicionou animes favoritos.
           </p>
+
         </div>
       )}
+
     </div>
   );
 }
@@ -1057,6 +1040,7 @@ function AboutTab({
             {bio ||
               "Este usuário ainda não adicionou uma descrição."}
           </p>
+
         </div>
 
         <div className="rounded-2xl border border-[#294674] bg-[#07152b] p-5">
@@ -1076,6 +1060,7 @@ function AboutTab({
               <strong>
                 {myListLength}
               </strong>
+
             </div>
 
             <div className="flex items-center justify-between">
@@ -1087,10 +1072,15 @@ function AboutTab({
               <span className="max-w-[60%] truncate text-[#b4c5df]">
                 {email}
               </span>
+
             </div>
+
           </div>
+
         </div>
+
       </div>
+
     </div>
   );
 }
@@ -1139,6 +1129,7 @@ function ProfileTabButton({
       {active && (
         <span className="absolute bottom-0 left-1/2 h-0.5 w-20 -translate-x-1/2 rounded-full bg-gradient-to-r from-[#5366ff] to-[#a855f7] shadow-[0_0_12px_rgba(100,80,255,0.8)]" />
       )}
+
     </button>
   );
-        }
+}
