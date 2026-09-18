@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchAnimeDetail } from "@/lib/api";
+import { isHikariAdmin } from "@/lib/auth/admin";
 import { cn, isDirectVideo, youtubeIdFrom } from "@/lib/utils";
 import { mergeDetail } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
@@ -547,6 +548,24 @@ function CommentsSection({
     useState("");
 
   /* ====================================================== */
+  /* USUÁRIO ATUAL                                          */
+  /* ====================================================== */
+
+  const [currentUserId, setCurrentUserId] =
+    useState<string | null>(null);
+
+  const [currentUserEmail, setCurrentUserEmail] =
+    useState<string | null>(null);
+
+  const [sessionLoading, setSessionLoading] =
+    useState(true);
+
+  const isAdmin =
+    isHikariAdmin(
+      currentUserEmail,
+    );
+
+  /* ====================================================== */
   /* ORDENAÇÃO / FILTRO                                      */
   /* ====================================================== */
 
@@ -580,6 +599,103 @@ function CommentsSection({
 
   const [moderationSuccess, setModerationSuccess] =
     useState("");
+
+  /* ====================================================== */
+  /* EDIÇÃO                                                  */
+  /* ====================================================== */
+
+  const [editingComment, setEditingComment] =
+    useState<Comment | null>(null);
+
+  const [editText, setEditText] =
+    useState("");
+
+  const [editIsSpoiler, setEditIsSpoiler] =
+    useState(false);
+
+  const [editSaving, setEditSaving] =
+    useState(false);
+
+  /* ====================================================== */
+  /* EXCLUSÃO                                                */
+  /* ====================================================== */
+
+  const [deletingComment, setDeletingComment] =
+    useState<Comment | null>(null);
+
+  const [deleteSending, setDeleteSending] =
+    useState(false);
+
+  /* ====================================================== */
+  /* CARREGAR SESSÃO                                        */
+  /* ====================================================== */
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSession() {
+      try {
+        setSessionLoading(true);
+
+        const response =
+          await fetch(
+            "/api/auth/get-session",
+            {
+              method: "GET",
+              credentials: "include",
+            },
+          );
+
+        if (!response.ok) {
+          if (!cancelled) {
+            setCurrentUserId(null);
+            setCurrentUserEmail(null);
+          }
+
+          return;
+        }
+
+        const data =
+          await response.json();
+
+        if (!cancelled) {
+          setCurrentUserId(
+            typeof data?.user?.id ===
+              "string"
+              ? data.user.id
+              : null,
+          );
+
+          setCurrentUserEmail(
+            typeof data?.user?.email ===
+              "string"
+              ? data.user.email
+              : null,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "ERRO AO CARREGAR SESSÃO:",
+          err,
+        );
+
+        if (!cancelled) {
+          setCurrentUserId(null);
+          setCurrentUserEmail(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setSessionLoading(false);
+        }
+      }
+    }
+
+    void loadSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* ====================================================== */
   /* CARREGAR COMENTÁRIOS                                   */
@@ -897,6 +1013,211 @@ function CommentsSection({
     };
 
   /* ====================================================== */
+  /* EDITAR COMENTÁRIO                                      */
+  /* ====================================================== */
+
+  const openEdit =
+    (comment: Comment) => {
+      setMenuOpenId(null);
+      setEditingComment(
+        comment,
+      );
+      setEditText(
+        comment.content,
+      );
+      setEditIsSpoiler(
+        comment.isSpoiler,
+      );
+      setError("");
+      setModerationSuccess("");
+    };
+
+  const handleEdit =
+    async () => {
+      if (
+        !editingComment ||
+        !editText.trim() ||
+        editSaving
+      ) {
+        return;
+      }
+
+      try {
+        setEditSaving(true);
+        setError("");
+
+        const response =
+          await fetch(
+            "/api/comments/edit",
+            {
+              method: "POST",
+              credentials:
+                "include",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                commentId:
+                  editingComment.id,
+                action: "edit",
+                content:
+                  editText.trim(),
+                isSpoiler:
+                  editIsSpoiler,
+              }),
+            },
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              "Não foi possível editar o comentário.",
+          );
+        }
+
+        if (data.comment) {
+          setComments(
+            (current) =>
+              current.map(
+                (comment) =>
+                  comment.id ===
+                  editingComment.id
+                    ? {
+                        ...comment,
+                        ...data.comment,
+                        liked:
+                          comment.liked,
+                        likes:
+                          comment.likes,
+                      }
+                    : comment,
+              ),
+          );
+        }
+
+        setEditingComment(
+          null,
+        );
+        setEditText("");
+        setEditIsSpoiler(false);
+
+        setModerationSuccess(
+          "Comentário editado com sucesso.",
+        );
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível editar o comentário.",
+        );
+      } finally {
+        setEditSaving(false);
+      }
+    };
+
+  /* ====================================================== */
+  /* EXCLUIR COMENTÁRIO                                     */
+  /* ====================================================== */
+
+  const openDelete =
+    (comment: Comment) => {
+      setMenuOpenId(null);
+      setDeletingComment(
+        comment,
+      );
+      setError("");
+      setModerationSuccess("");
+    };
+
+  const handleDelete =
+    async () => {
+      if (
+        !deletingComment ||
+        deleteSending
+      ) {
+        return;
+      }
+
+      try {
+        setDeleteSending(true);
+        setError("");
+
+        const response =
+          await fetch(
+            "/api/comments/edit",
+            {
+              method: "POST",
+              credentials:
+                "include",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                commentId:
+                  deletingComment.id,
+                action: "delete",
+              }),
+            },
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              "Não foi possível excluir o comentário.",
+          );
+        }
+
+        setComments(
+          (current) =>
+            current.filter(
+              (comment) =>
+                comment.id !==
+                  deletingComment.id &&
+                comment.parentId !==
+                  deletingComment.id,
+            ),
+        );
+
+        if (
+          replyingId ===
+          deletingComment.id
+        ) {
+          setReplyingId(null);
+          setReplyText("");
+          setReplyIsSpoiler(false);
+        }
+
+        setDeletingComment(
+          null,
+        );
+
+        setModerationSuccess(
+          "Comentário excluído com sucesso.",
+        );
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível excluir o comentário.",
+        );
+      } finally {
+        setDeleteSending(false);
+      }
+    };
+
+  /* ====================================================== */
   /* MODERAÇÃO                                               */
   /* ====================================================== */
 
@@ -920,6 +1241,10 @@ function CommentsSection({
 
         setError("");
         setModerationSuccess("");
+
+        if (action === "report") {
+          setReportSending(true);
+        }
 
         const response =
           await fetch(
@@ -1010,6 +1335,7 @@ function CommentsSection({
         setModeratingId(
           null,
         );
+        setReportSending(false);
       }
     };
 
@@ -1056,7 +1382,7 @@ function CommentsSection({
     };
 
   /* ====================================================== */
-  /* COMENTÁRIOS PRINCIPAIS                                  */
+  /* COMENTÁRIOS PRINCIPAIS                                 */
   /* ====================================================== */
 
   const rootComments =
@@ -1427,7 +1753,7 @@ function CommentsSection({
           </div>
 
           {/* =============================================== */}
-          {/* SUCESSO DA MODERAÇÃO                            */}
+          {/* SUCESSO                                          */}
           {/* =============================================== */}
 
           {moderationSuccess && (
@@ -1485,6 +1811,17 @@ function CommentsSection({
                   const replies =
                     repliesFor(
                       comment.id,
+                    );
+
+                  const canEdit =
+                    !sessionLoading &&
+                    Boolean(
+                      currentUserId &&
+                      (
+                        currentUserId ===
+                          comment.userId ||
+                        isAdmin
+                      ),
                     );
 
                   return (
@@ -1569,6 +1906,16 @@ function CommentsSection({
                                 : comment.id,
                           );
                         }}
+                        onEdit={() =>
+                          openEdit(
+                            comment,
+                          )
+                        }
+                        onDelete={() =>
+                          openDelete(
+                            comment,
+                          )
+                        }
                         onMarkSpoiler={() => {
                           void handleModeration(
                             comment.id,
@@ -1589,6 +1936,9 @@ function CommentsSection({
                           moderatingId ===
                           comment.id
                         }
+                        canEdit={
+                          canEdit
+                        }
                       />
 
                       {replies.length >
@@ -1598,81 +1948,107 @@ function CommentsSection({
                           {replies.map(
                             (
                               reply,
-                            ) => (
-                              <CommentCard
-                                key={
-                                  reply.id
-                                }
-                                comment={
-                                  reply
-                                }
-                                replyCount={
-                                  0
-                                }
-                                replyToName={
-                                  comment.userName ||
-                                  "Usuário"
-                                }
-                                likingId={
-                                  likingId
-                                }
-                                replyingId={
-                                  null
-                                }
-                                replyText=""
-                                replyIsSpoiler={
-                                  false
-                                }
-                                replySending={
-                                  false
-                                }
-                                formatDate={
-                                  formatDate
-                                }
-                                onLike={
-                                  handleLike
-                                }
-                                onReplyChange={() => {}}
-                                onReplySpoilerChange={() => {}}
-                                onStartReply={() => {}}
-                                onCancelReply={() => {}}
-                                onSendReply={() => {}}
-                                isReply
-                                menuOpen={
-                                  menuOpenId ===
-                                  reply.id
-                                }
-                                onToggleMenu={() => {
-                                  setMenuOpenId(
-                                    (current) =>
-                                      current ===
-                                      reply.id
-                                        ? null
-                                        : reply.id,
-                                  );
-                                }}
-                                onMarkSpoiler={() => {
-                                  void handleModeration(
-                                    reply.id,
-                                    "spoiler",
-                                  );
-                                }}
-                                onReport={() =>
-                                  openReport(
-                                    reply,
-                                  )
-                                }
-                                onSpam={() =>
-                                  setSpamComment(
-                                    reply,
-                                  )
-                                }
-                                moderating={
-                                  moderatingId ===
-                                  reply.id
-                                }
-                              />
-                            ),
+                            ) => {
+                              const canEditReply =
+                                !sessionLoading &&
+                                Boolean(
+                                  currentUserId &&
+                                  (
+                                    currentUserId ===
+                                      reply.userId ||
+                                    isAdmin
+                                  ),
+                                );
+
+                              return (
+                                <CommentCard
+                                  key={
+                                    reply.id
+                                  }
+                                  comment={
+                                    reply
+                                  }
+                                  replyCount={
+                                    0
+                                  }
+                                  replyToName={
+                                    comment.userName ||
+                                    "Usuário"
+                                  }
+                                  likingId={
+                                    likingId
+                                  }
+                                  replyingId={
+                                    null
+                                  }
+                                  replyText=""
+                                  replyIsSpoiler={
+                                    false
+                                  }
+                                  replySending={
+                                    false
+                                  }
+                                  formatDate={
+                                    formatDate
+                                  }
+                                  onLike={
+                                    handleLike
+                                  }
+                                  onReplyChange={() => {}}
+                                  onReplySpoilerChange={() => {}}
+                                  onStartReply={() => {}}
+                                  onCancelReply={() => {}}
+                                  onSendReply={() => {}}
+                                  isReply
+                                  menuOpen={
+                                    menuOpenId ===
+                                    reply.id
+                                  }
+                                  onToggleMenu={() => {
+                                    setMenuOpenId(
+                                      (current) =>
+                                        current ===
+                                        reply.id
+                                          ? null
+                                          : reply.id,
+                                    );
+                                  }}
+                                  onEdit={() =>
+                                    openEdit(
+                                      reply,
+                                    )
+                                  }
+                                  onDelete={() =>
+                                    openDelete(
+                                      reply,
+                                    )
+                                  }
+                                  onMarkSpoiler={() => {
+                                    void handleModeration(
+                                      reply.id,
+                                      "spoiler",
+                                    );
+                                  }}
+                                  onReport={() =>
+                                    openReport(
+                                      reply,
+                                    )
+                                  }
+                                  onSpam={() =>
+                                    setSpamComment(
+                                      reply,
+                                    )
+                                  }
+                                  moderating={
+                                    moderatingId ===
+                                    reply.id
+                                  }
+                                  canEdit={
+                                    canEditReply
+                                  }
+                                />
+                              );
+                            },
                           )}
 
                         </div>
@@ -1689,6 +2065,284 @@ function CommentsSection({
         </div>
 
       </div>
+
+      {/* ================================================== */}
+      {/* MODAL DE EDIÇÃO                                    */}
+      {/* ================================================== */}
+
+      {editingComment && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-dialog-title"
+            className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl"
+          >
+
+            <div className="flex items-start gap-3">
+
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated">
+
+                <Edit3 className="size-5" />
+
+              </div>
+
+              <div className="min-w-0 flex-1">
+
+                <h3
+                  id="edit-dialog-title"
+                  className="font-display text-xl"
+                >
+                  Editar comentário
+                </h3>
+
+                <p className="mt-1 text-sm text-muted">
+                  Altere o texto do seu comentário.
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!editSaving) {
+                    setEditingComment(
+                      null,
+                    );
+                    setEditText("");
+                    setEditIsSpoiler(
+                      false,
+                    );
+                  }
+                }}
+                disabled={
+                  editSaving
+                }
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
+                aria-label="Fechar"
+              >
+                <X className="size-5" />
+              </button>
+
+            </div>
+
+            <textarea
+              value={editText}
+              onChange={(
+                event,
+              ) =>
+                setEditText(
+                  event.target.value,
+                )
+              }
+              rows={6}
+              maxLength={2000}
+              disabled={
+                editSaving
+              }
+              className="mt-5 w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15 disabled:opacity-60"
+            />
+
+            <div className="mt-2 flex justify-end">
+
+              <span className="text-xs text-subtle">
+                {editText.length}/2000
+              </span>
+
+            </div>
+
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
+
+              <input
+                type="checkbox"
+                checked={
+                  editIsSpoiler
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setEditIsSpoiler(
+                    event.target.checked,
+                  )
+                }
+                disabled={
+                  editSaving
+                }
+                className="size-4 accent-current"
+              />
+
+              <span>
+                Marcar como spoiler
+              </span>
+
+            </label>
+
+            {error && (
+              <p className="mt-3 text-sm text-red-400">
+                {error}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!editSaving) {
+                    setEditingComment(
+                      null,
+                    );
+                    setEditText("");
+                    setEditIsSpoiler(
+                      false,
+                    );
+                  }
+                }}
+                disabled={
+                  editSaving
+                }
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() =>
+                  void handleEdit()
+                }
+                disabled={
+                  !editText.trim() ||
+                  editSaving
+                }
+              >
+                <Edit3 className="size-4" />
+
+                {editSaving
+                  ? "Salvando..."
+                  : "Salvar alterações"}
+              </Button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+      {/* ================================================== */}
+      {/* MODAL DE EXCLUSÃO                                  */}
+      {/* ================================================== */}
+
+      {deletingComment && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl"
+          >
+
+            <div className="flex items-start gap-3">
+
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated">
+
+                <Trash2 className="size-5" />
+
+              </div>
+
+              <div className="min-w-0 flex-1">
+
+                <h3
+                  id="delete-dialog-title"
+                  className="font-display text-xl"
+                >
+                  Excluir comentário?
+                </h3>
+
+                <p className="mt-1 text-sm text-muted">
+                  Essa ação não pode ser desfeita.
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!deleteSending) {
+                    setDeletingComment(
+                      null,
+                    );
+                  }
+                }}
+                disabled={
+                  deleteSending
+                }
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
+                aria-label="Fechar"
+              >
+                <X className="size-5" />
+              </button>
+
+            </div>
+
+            <div className="mt-5 rounded-lg border border-white/5 bg-surface p-3">
+
+              <p className="line-clamp-5 whitespace-pre-wrap text-sm text-muted">
+                {deletingComment.content}
+              </p>
+
+            </div>
+
+            {error && (
+              <p className="mt-3 text-sm text-red-400">
+                {error}
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!deleteSending) {
+                    setDeletingComment(
+                      null,
+                    );
+                  }
+                }}
+                disabled={
+                  deleteSending
+                }
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() =>
+                  void handleDelete()
+                }
+                disabled={
+                  deleteSending
+                }
+              >
+                <Trash2 className="size-4" />
+
+                {deleteSending
+                  ? "Excluindo..."
+                  : "Excluir comentário"}
+              </Button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
 
       {/* ================================================== */}
       {/* MODAL DE DENÚNCIA                                  */}
@@ -2018,10 +2672,13 @@ function CommentCard({
   isReply = false,
   menuOpen,
   onToggleMenu,
+  onEdit,
+  onDelete,
   onMarkSpoiler,
   onReport,
   onSpam,
   moderating,
+  canEdit,
 }: {
   comment: Comment;
   replyCount: number;
@@ -2049,10 +2706,13 @@ function CommentCard({
   isReply?: boolean;
   menuOpen: boolean;
   onToggleMenu: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
   onMarkSpoiler: () => void;
   onReport: () => void;
   onSpam: () => void;
   moderating: boolean;
+  canEdit: boolean;
 }) {
   const isReplying =
     replyingId ===
@@ -2136,7 +2796,7 @@ function CommentCard({
             </div>
 
             {/* ============================================= */}
-            {/* MENU DE MODERAÇÃO                             */}
+            {/* MENU                                           */}
             {/* ============================================= */}
 
             <div className="relative shrink-0">
@@ -2167,67 +2827,113 @@ function CommentCard({
                   className="absolute right-0 top-[calc(100%+6px)] z-50 w-56 overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
                 >
 
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={
-                      onMarkSpoiler
-                    }
-                    disabled={
-                      moderating
-                    }
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
-                  >
+                  {canEdit ? (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={
+                          onEdit
+                        }
+                        disabled={
+                          moderating
+                        }
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
+                      >
 
-                    <AlertTriangle className="size-4 shrink-0" />
+                        <Edit3 className="size-4 shrink-0" />
 
-                    <span>
-                      {moderating
-                        ? "Enviando..."
-                        : "Marcar como spoiler"}
-                    </span>
+                        <span>
+                          Editar comentário
+                        </span>
 
-                  </button>
+                      </button>
 
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={
-                      onReport
-                    }
-                    disabled={
-                      moderating
-                    }
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
-                  >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={
+                          onDelete
+                        }
+                        disabled={
+                          moderating
+                        }
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
+                      >
 
-                    <Flag className="size-4 shrink-0" />
+                        <Trash2 className="size-4 shrink-0" />
 
-                    <span>
-                      Denunciar comentário
-                    </span>
+                        <span>
+                          Excluir comentário
+                        </span>
 
-                  </button>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={
+                          onMarkSpoiler
+                        }
+                        disabled={
+                          moderating
+                        }
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
+                      >
 
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={
-                      onSpam
-                    }
-                    disabled={
-                      moderating
-                    }
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
-                  >
+                        <AlertTriangle className="size-4 shrink-0" />
 
-                    <Ban className="size-4 shrink-0" />
+                        <span>
+                          {moderating
+                            ? "Enviando..."
+                            : "Marcar como spoiler"}
+                        </span>
 
-                    <span>
-                      Marcar como spam
-                    </span>
+                      </button>
 
-                  </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={
+                          onReport
+                        }
+                        disabled={
+                          moderating
+                        }
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
+                      >
+
+                        <Flag className="size-4 shrink-0" />
+
+                        <span>
+                          Denunciar comentário
+                        </span>
+
+                      </button>
+
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={
+                          onSpam
+                        }
+                        disabled={
+                          moderating
+                        }
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
+                      >
+
+                        <Ban className="size-4 shrink-0" />
+
+                        <span>
+                          Marcar como spam
+                        </span>
+
+                      </button>
+                    </>
+                  )}
 
                 </div>
               )}
@@ -2429,4 +3135,4 @@ function CommentCard({
 
     </article>
   );
-    }
+        }
