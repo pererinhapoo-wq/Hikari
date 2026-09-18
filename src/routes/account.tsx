@@ -41,9 +41,11 @@ function Account() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!user || editing) return;
+    if (!user) return;
 
     let active = true;
+
+    setLoadingProfile(true);
 
     void getProfileFn()
       .then((profile) => {
@@ -70,7 +72,7 @@ function Account() {
     return () => {
       active = false;
     };
-  }, [user, editing]);
+  }, [user]);
 
   if (isPending) return null;
 
@@ -80,9 +82,9 @@ function Account() {
 
   const admin = isHikariAdmin(user.primaryEmail);
 
-  const displayName = user.displayName ?? "Usuário";
   const email = user.primaryEmail ?? "";
-  const avatarLetter = displayName.charAt(0).toUpperCase();
+  const avatarSource = nick || user.displayName || "Usuário";
+  const avatarLetter = avatarSource.charAt(0).toUpperCase();
 
   async function saveProfile() {
     setSaving(true);
@@ -146,13 +148,28 @@ function Account() {
             )}
 
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xl font-medium">
-                {nick || "Defina seu Nick"}
-              </p>
+              {loadingProfile ? (
+                <>
+                  <div className="h-6 w-32 animate-pulse rounded bg-elevated" />
+                  <div className="mt-2 h-4 w-24 animate-pulse rounded bg-elevated" />
+                </>
+              ) : (
+                <>
+                  <p className="truncate text-xl font-medium">
+                    {nick || "Defina seu Nick"}
+                  </p>
 
-              <p className="truncate text-sm text-muted">
-                {email}
-              </p>
+                  {nick && (
+                    <p className="truncate text-sm text-muted">
+                      @{nick}
+                    </p>
+                  )}
+
+                  <p className="mt-1 truncate text-xs text-subtle">
+                    {email}
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
@@ -184,10 +201,9 @@ function Account() {
         </div>
 
         <div className="border-t border-border p-5">
-          {loadingProfile && !editing ? (
-            <div className="space-y-2">
+          {loadingProfile ? (
+            <div className="space-y-3">
               <div className="h-3 w-20 animate-pulse rounded bg-elevated" />
-
               <div className="h-16 animate-pulse rounded-xl bg-elevated" />
             </div>
           ) : editing ? (
@@ -269,7 +285,6 @@ function Account() {
                   disabled={saving}
                 >
                   <Save className="size-4" />
-
                   {saving ? "Salvando..." : "Salvar"}
                 </Button>
 
@@ -390,4 +405,4 @@ function Account() {
       </section>
     </main>
   );
-    }
+}
