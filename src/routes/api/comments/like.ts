@@ -82,7 +82,10 @@ export const Route = createFileRoute("/api/comments/like")({
 
           // =====================================================
           // 3. VERIFICAR SE O COMENTÁRIO EXISTE
-          //    E PEGAR O DONO DO COMENTÁRIO
+          //    E PEGAR:
+          //    - dono do comentário
+          //    - anime
+          //    - episódio
           // =====================================================
 
           const commentResult =
@@ -90,24 +93,15 @@ export const Route = createFileRoute("/api/comments/like")({
               `
                 select
                   "id",
-                  "userId"
+                  "userId",
+                  "animeId",
+                  "episodeId"
                 from "comment"
                 where "id" = $1
                 limit 1
               `,
               [commentId],
             );
-
-          /*
-           * O adaptador de banco usado pelo Hikari pode retornar
-           * o resultado de SELECT diretamente como um array.
-           *
-           * Em alguns ambientes ele pode retornar:
-           *
-           *   { rows: [...] }
-           *
-           * Por isso aceitamos os dois formatos.
-           */
 
           const commentRows =
             Array.isArray(
@@ -140,9 +134,20 @@ export const Route = createFileRoute("/api/comments/like")({
             );
           }
 
+          const comment =
+            commentRows[0];
+
           const commentOwnerId =
-            commentRows[0]
-              ?.userId;
+            comment?.userId ??
+            null;
+
+          const animeId =
+            comment?.animeId ??
+            null;
+
+          const episodeId =
+            comment?.episodeId ??
+            null;
 
           // =====================================================
           // 4. VERIFICAR SE O USUÁRIO JÁ CURTIU
@@ -260,13 +265,20 @@ export const Route = createFileRoute("/api/comments/like")({
           // 7. CRIAR NOTIFICAÇÃO
           // =====================================================
           //
+          // Agora a notificação guarda:
+          //
+          // commentId
+          // animeId
+          // episodeId
+          //
+          // Isso permitirá que o Hikari saiba exatamente
+          // onde a curtida aconteceu.
+          //
           // A notificação não pode impedir a curtida.
-          // Portanto, se ocorrer algum problema aqui,
-          // a curtida continua funcionando normalmente.
           //
           // Também não notificamos quando o usuário curte
           // o próprio comentário.
-          //
+          // =====================================================
 
           if (
             commentOwnerId &&
@@ -287,14 +299,20 @@ export const Route = createFileRoute("/api/comments/like")({
                     "userId",
                     "actorId",
                     "type",
-                    "message"
+                    "message",
+                    "commentId",
+                    "animeId",
+                    "episodeId"
                   )
                   values (
                     $1,
                     $2,
                     $3,
                     $4,
-                    $5
+                    $5,
+                    $6,
+                    $7,
+                    $8
                   )
                 `,
                 [
@@ -303,12 +321,20 @@ export const Route = createFileRoute("/api/comments/like")({
                   userId,
                   "comment_like",
                   `${actorName} curtiu seu comentário.`,
+                  commentId,
+                  animeId,
+                  episodeId,
                 ],
               );
 
               console.log(
                 "NOTIFICAÇÃO DE CURTIDA CRIADA:",
-                notificationId,
+                {
+                  notificationId,
+                  commentId,
+                  animeId,
+                  episodeId,
+                },
               );
             } catch (
               notificationError
@@ -319,8 +345,9 @@ export const Route = createFileRoute("/api/comments/like")({
               );
 
               // IMPORTANTE:
-              // Não retornamos erro aqui.
-              // A curtida já foi salva e continua válida.
+              // A curtida já foi salva.
+              // Portanto, mesmo que a notificação
+              // dê erro, a curtida continua válida.
             }
           }
 
