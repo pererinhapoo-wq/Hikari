@@ -36,6 +36,9 @@ type NotificationItem = {
   commentId: string | null;
   animeId: string | null;
   episodeId: string | null;
+
+  // Quantidade atual de curtidas do comentário
+  commentLikes: number;
 };
 
 const BASE_NAV = [
@@ -308,9 +311,7 @@ export function Shell() {
           {/* AÇÕES DA DIREITA */}
           <div className="flex items-center gap-1">
 
-            {/* =====================================================
-                NOTIFICAÇÕES DESKTOP
-            ====================================================== */}
+            {/* NOTIFICAÇÕES DESKTOP */}
             <button
               type="button"
               onClick={() => {
@@ -350,9 +351,7 @@ export function Shell() {
               <Search className="size-5" />
             </Link>
 
-            {/* =====================================================
-                NOTIFICAÇÕES MOBILE
-            ====================================================== */}
+            {/* NOTIFICAÇÕES MOBILE */}
             <button
               type="button"
               onClick={() => {
@@ -470,11 +469,13 @@ export function Shell() {
                         notification.episodeId,
                       );
 
-                    const isCommentNotification =
+                    const isLikeNotification =
                       notification.type ===
-                        "comment_like" ||
+                      "comment_like";
+
+                    const isReplyNotification =
                       notification.type ===
-                        "comment_reply";
+                      "comment_reply";
 
                     const notificationContent =
                       (
@@ -512,14 +513,31 @@ export function Shell() {
                                 }
                               </p>
 
+                              {/* CURTIDAS */}
+                              {isLikeNotification && (
+                                <p className="mt-1.5 text-xs font-medium text-muted">
+                                  ❤️{" "}
+                                  {Number(
+                                    notification.commentLikes ??
+                                      0,
+                                  )}{" "}
+                                  {Number(
+                                    notification.commentLikes ??
+                                      0,
+                                  ) === 1
+                                    ? "curtida"
+                                    : "curtidas"}
+                                </p>
+                              )}
+
                               {/* DESTINO */}
                               {hasEpisodeTarget &&
-                                isCommentNotification && (
+                                (isLikeNotification ||
+                                  isReplyNotification) && (
                                   <div className="mt-2">
 
                                     <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
-                                      {notification.type ===
-                                      "comment_reply"
+                                      {isReplyNotification
                                         ? "💬 Ver resposta"
                                         : "❤️ Ver curtida"}
                                     </span>
@@ -570,6 +588,9 @@ export function Shell() {
                           search={{
                             ep:
                               notification.episodeId!,
+                            comment:
+                              notification.commentId ??
+                              undefined,
                           }}
                           onClick={() =>
                             setNotificationsOpen(
@@ -772,4 +793,4 @@ export function Shell() {
       </nav>
     </div>
   );
-}
+  }
