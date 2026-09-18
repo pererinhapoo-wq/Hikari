@@ -170,6 +170,24 @@ export const Route = createFileRoute(
           `;
 
           following = true;
+
+          // Cria uma notificação para o usuário seguido.
+          await sql`
+            insert into "notification" (
+              "id",
+              "userId",
+              "actorId",
+              "type",
+              "message"
+            )
+            values (
+              gen_random_uuid()::text,
+              ${targetUserId},
+              ${currentUserId},
+              'follow',
+              ${session.user.name ?? "Alguém"} || ' começou a seguir você.'
+            )
+          `;
         }
 
         const followerRows =
