@@ -45,70 +45,69 @@ export const Route = createFileRoute(
               session?.user?.email,
             );
 
-          const result =
-            await sql.query(
-              `
-                select
-                  c."id",
-                  c."animeId",
-                  c."episodeId",
-                  c."content",
-                  c."imageUrl",
-                  c."parentId",
-                  c."isSpoiler",
-                  c."createdAt",
-                  c."updatedAt",
-                  c."userId",
+          const result = await sql.query(
+            `
+              select
+                c."id",
+                c."animeId",
+                c."episodeId",
+                c."content",
+                c."imageUrl",
+                c."parentId",
+                c."isSpoiler",
+                c."createdAt",
+                c."updatedAt",
+                c."userId",
 
-                  coalesce(
-                    u."name",
-                    'Usuário'
-                  ) as "userName",
+                coalesce(
+                  u."name",
+                  'Usuário'
+                ) as "userName",
 
-                  u."image" as "userImage",
+                u."image" as "userImage",
 
-                  (
-                    select count(*)::int
-                    from "comment_like" cl
-                    where cl."commentId" = c."id"
-                  ) as "likes",
+                (
+                  select count(*)::int
+                  from "comment_like" cl
+                  where cl."commentId" = c."id"
+                ) as "likes",
 
-                  ${
-                    currentUserId
-                      ? `
-                        exists (
-                          select 1
-                          from "comment_like" cl2
-                          where cl2."commentId" = c."id"
-                            and cl2."userId" = $3
-                        ) as "liked"
-                      `
-                      : `
-                        false as "liked"
-                      `
-                  }
+                ${
+                  currentUserId
+                    ? `
+                      exists (
+                        select 1
+                        from "comment_like" cl2
+                        where cl2."commentId" = c."id"
+                          and cl2."userId" = $3
+                      ) as "liked"
+                    `
+                    : `
+                      false as "liked"
+                    `
+                }
 
-                from "comment" c
+              from "comment" c
 
-                left join "user" u
-                  on u."id" = c."userId"
+              left join "user" u
+                on u."id" = c."userId"
 
-                where c."animeId" = $1
-                  and c."episodeId" = $2
+              where c."animeId" = $1
+                and c."episodeId" = $2
 
-                order by c."createdAt" desc
-              `,
-              currentUserId
-                ? [
-                    animeId,
-                    episodeId,
-                    currentUserId,
-                  ]
-                : [
-                    animeId,
-                    episodeId,
-                  ],
-            );
+              order by c."createdAt" desc
+            `,
+            currentUserId
+              ? [
+                  animeId,
+                  episodeId,
+                  currentUserId,
+                ]
+              : [
+                  animeId,
+                  episodeId,
+                ],
+          );
 
           const comments =
             Array.isArray(result)
@@ -116,27 +115,25 @@ export const Route = createFileRoute(
               : result?.rows ?? [];
 
           const normalizedComments =
-            comments.map(
-              (comment) => ({
-                ...comment,
+            comments.map((comment) => ({
+              ...comment,
 
-                likes:
-                  Number(
-                    comment.likes ?? 0,
-                  ) || 0,
+              likes:
+                Number(
+                  comment.likes ?? 0,
+                ) || 0,
 
-                liked:
-                  Boolean(
-                    comment.liked,
-                  ),
+              liked:
+                Boolean(
+                  comment.liked,
+                ),
 
-                imageUrl:
-                  typeof comment.imageUrl ===
-                  "string"
-                    ? comment.imageUrl
-                    : null,
-              }),
-            );
+              imageUrl:
+                typeof comment.imageUrl ===
+                "string"
+                  ? comment.imageUrl
+                  : null,
+            }));
 
           console.log(
             "COMENTÁRIOS ENCONTRADOS:",
@@ -220,13 +217,6 @@ export const Route = createFileRoute(
               ? body.content.trim()
               : "";
 
-          const imageUrl =
-            typeof body.imageUrl ===
-            "string" &&
-            body.imageUrl.trim()
-              ? body.imageUrl.trim()
-              : null;
-
           const parentId =
             typeof body.parentId ===
               "string" &&
@@ -239,6 +229,13 @@ export const Route = createFileRoute(
             "boolean"
               ? body.isSpoiler
               : false;
+
+          const imageUrl =
+            typeof body.imageUrl ===
+            "string" &&
+            body.imageUrl.trim()
+              ? body.imageUrl.trim()
+              : null;
 
           if (
             !animeId ||
@@ -270,26 +267,12 @@ export const Route = createFileRoute(
             );
           }
 
-          if (
-            imageUrl &&
-            imageUrl.length > 2000
-          ) {
-            return Response.json(
-              {
-                error:
-                  "A URL da imagem é inválida.",
-              },
-              {
-                status: 400,
-              },
-            );
-          }
-
           const sql =
             await getSql();
 
           let parentCommentOwnerId:
-            string | null = null;
+            | string
+            | null = null;
 
           if (parentId) {
             const parentResult =
@@ -298,10 +281,13 @@ export const Route = createFileRoute(
                   select
                     "id",
                     "userId"
+
                   from "comment"
+
                   where "id" = $1
                     and "animeId" = $2
                     and "episodeId" = $3
+
                   limit 1
                 `,
                 [
@@ -353,6 +339,7 @@ export const Route = createFileRoute(
                 "parentId",
                 "isSpoiler"
               )
+
               values (
                 $1,
                 $2,
@@ -402,6 +389,7 @@ export const Route = createFileRoute(
                     "animeId",
                     "episodeId"
                   )
+
                   values (
                     $1,
                     $2,
