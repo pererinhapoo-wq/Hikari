@@ -211,6 +211,18 @@ export function Shell() {
       );
 
       try {
+        // Primeiro marca todas as notificações
+        // atuais como lidas.
+        if (unreadCount > 0) {
+          await fetch(
+            "/api/notifications",
+            {
+              method: "PATCH",
+            },
+          );
+        }
+
+        // Depois recarrega a lista já atualizada.
         const response =
           await fetch(
             "/api/notifications",
@@ -243,6 +255,11 @@ export function Shell() {
         );
       }
     };
+
+  const notificationBadge =
+    unreadCount > 99
+      ? "99+"
+      : String(unreadCount);
 
   if (cinema) {
     return <Outlet />;
@@ -311,16 +328,21 @@ export function Shell() {
                 }
               }}
               className="relative hidden size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:flex"
-              aria-label="Notificações"
+              aria-label={
+                unreadCount > 0
+                  ? `${unreadCount} notificações não lidas`
+                  : "Notificações"
+              }
               aria-expanded={
                 notificationsOpen
               }
             >
               <Bell className="size-5" />
 
-              {unreadCount >
-                0 && (
-                <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
+              {unreadCount > 0 && (
+                <span className="absolute right-0.5 top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg">
+                  {notificationBadge}
+                </span>
               )}
             </button>
 
@@ -348,16 +370,21 @@ export function Shell() {
                 }
               }}
               className="relative flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
-              aria-label="Notificações"
+              aria-label={
+                unreadCount > 0
+                  ? `${unreadCount} notificações não lidas`
+                  : "Notificações"
+              }
               aria-expanded={
                 notificationsOpen
               }
             >
               <Bell className="size-5" />
 
-              {unreadCount >
-                0 && (
-                <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
+              {unreadCount > 0 && (
+                <span className="absolute right-0.5 top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg">
+                  {notificationBadge}
+                </span>
               )}
             </button>
           </div>
@@ -635,4 +662,4 @@ export function Shell() {
       </nav>
     </div>
   );
-    }
+      }
