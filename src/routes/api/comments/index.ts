@@ -10,24 +10,15 @@ export const Route = createFileRoute(
     handlers: {
       GET: async ({ request }) => {
         try {
-          const url = new URL(
-            request.url,
-          );
+          const url = new URL(request.url);
 
           const animeId =
-            url.searchParams.get(
-              "animeId",
-            );
+            url.searchParams.get("animeId");
 
           const episodeId =
-            url.searchParams.get(
-              "episodeId",
-            );
+            url.searchParams.get("episodeId");
 
-          if (
-            !animeId ||
-            !episodeId
-          ) {
+          if (!animeId || !episodeId) {
             return Response.json(
               {
                 error:
@@ -39,20 +30,15 @@ export const Route = createFileRoute(
             );
           }
 
-          const sql =
-            await getSql();
+          const sql = await getSql();
 
           const session =
-            await auth.api.getSession(
-              {
-                headers:
-                  request.headers,
-              },
-            );
+            await auth.api.getSession({
+              headers: request.headers,
+            });
 
           const currentUserId =
-            session?.user?.id ??
-            null;
+            session?.user?.id ?? null;
 
           const isAdmin =
             isHikariAdmin(
@@ -67,6 +53,7 @@ export const Route = createFileRoute(
                   c."animeId",
                   c."episodeId",
                   c."content",
+                  c."imageUrl",
                   c."parentId",
                   c."isSpoiler",
                   c."createdAt",
@@ -83,8 +70,7 @@ export const Route = createFileRoute(
                   (
                     select count(*)::int
                     from "comment_like" cl
-                    where cl."commentId" =
-                      c."id"
+                    where cl."commentId" = c."id"
                   ) as "likes",
 
                   ${
@@ -93,10 +79,8 @@ export const Route = createFileRoute(
                         exists (
                           select 1
                           from "comment_like" cl2
-                          where cl2."commentId" =
-                            c."id"
-                            and cl2."userId" =
-                            $3
+                          where cl2."commentId" = c."id"
+                            and cl2."userId" = $3
                         ) as "liked"
                       `
                       : `
@@ -107,17 +91,12 @@ export const Route = createFileRoute(
                 from "comment" c
 
                 left join "user" u
-                  on u."id" =
-                    c."userId"
+                  on u."id" = c."userId"
 
-                where c."animeId" =
-                  $1
+                where c."animeId" = $1
+                  and c."episodeId" = $2
 
-                  and c."episodeId" =
-                  $2
-
-                order by
-                  c."createdAt" desc
+                order by c."createdAt" desc
               `,
               currentUserId
                 ? [
@@ -143,14 +122,19 @@ export const Route = createFileRoute(
 
                 likes:
                   Number(
-                    comment.likes ??
-                      0,
+                    comment.likes ?? 0,
                   ) || 0,
 
                 liked:
                   Boolean(
                     comment.liked,
                   ),
+
+                imageUrl:
+                  typeof comment.imageUrl ===
+                  "string"
+                    ? comment.imageUrl
+                    : null,
               }),
             );
 
@@ -162,7 +146,9 @@ export const Route = createFileRoute(
           return Response.json({
             comments:
               normalizedComments,
+
             currentUserId,
+
             isAdmin,
           });
         } catch (error) {
@@ -183,25 +169,14 @@ export const Route = createFileRoute(
         }
       },
 
-      POST: async ({
-        request,
-      }) => {
+      POST: async ({ request }) => {
         try {
-          // =====================================================
-          // 1. VERIFICAR USUÁRIO LOGADO
-          // =====================================================
-
           const session =
-            await auth.api.getSession(
-              {
-                headers:
-                  request.headers,
-              },
-            );
+            await auth.api.getSession({
+              headers: request.headers,
+            });
 
-          if (
-            !session?.user?.id
-          ) {
+          if (!session?.user?.id) {
             return Response.json(
               {
                 error:
@@ -224,10 +199,6 @@ export const Route = createFileRoute(
             },
           );
 
-          // =====================================================
-          // 2. LER DADOS DO COMENTÁRIO
-          // =====================================================
-
           const body =
             await request.json();
 
@@ -248,6 +219,13 @@ export const Route = createFileRoute(
             "string"
               ? body.content.trim()
               : "";
+
+          const imageUrl =
+            typeof body.imageUrl ===
+            "string" &&
+            body.imageUrl.trim()
+              ? body.imageUrl.trim()
+              : null;
 
           const parentId =
             typeof body.parentId ===
@@ -279,8 +257,7 @@ export const Route = createFileRoute(
           }
 
           if (
-            content.length >
-            2000
+            content.length > 2000
           ) {
             return Response.json(
               {
@@ -293,12 +270,23 @@ export const Route = createFileRoute(
             );
           }
 
+          if (
+            imageUrl &&
+            imageUrl.length > 2000
+          ) {
+            return Response.json(
+              {
+                error:
+                  "A URL da imagem é inválida.",
+              },
+              {
+                status: 400,
+              },
+            );
+          }
+
           const sql =
             await getSql();
-
-          // =====================================================
-          // 3. VERIFICAR COMENTÁRIO PAI
-          // =====================================================
 
           let parentCommentOwnerId:
             string | null = null;
@@ -311,15 +299,9 @@ export const Route = createFileRoute(
                     "id",
                     "userId"
                   from "comment"
-                  where "id" =
-                    $1
-
-                    and "animeId" =
-                    $2
-
-                    and "episodeId" =
-                    $3
-
+                  where "id" = $1
+                    and "animeId" = $2
+                    and "episodeId" = $3
                   limit 1
                 `,
                 [
@@ -338,8 +320,7 @@ export const Route = createFileRoute(
                   [];
 
             if (
-              parentRows.length ===
-              0
+              parentRows.length === 0
             ) {
               return Response.json(
                 {
@@ -354,13 +335,8 @@ export const Route = createFileRoute(
 
             parentCommentOwnerId =
               parentRows[0]
-                ?.userId ??
-              null;
+                ?.userId ?? null;
           }
-
-          // =====================================================
-          // 4. CRIAR COMENTÁRIO
-          // =====================================================
 
           const id =
             crypto.randomUUID();
@@ -373,10 +349,10 @@ export const Route = createFileRoute(
                 "animeId",
                 "episodeId",
                 "content",
+                "imageUrl",
                 "parentId",
                 "isSpoiler"
               )
-
               values (
                 $1,
                 $2,
@@ -384,7 +360,8 @@ export const Route = createFileRoute(
                 $4,
                 $5,
                 $6,
-                $7
+                $7,
+                $8
               )
             `,
             [
@@ -393,14 +370,11 @@ export const Route = createFileRoute(
               animeId,
               episodeId,
               content,
+              imageUrl,
               parentId,
               isSpoiler,
             ],
           );
-
-          // =====================================================
-          // 5. NOTIFICAÇÃO DE RESPOSTA
-          // =====================================================
 
           if (
             parentId &&
@@ -468,38 +442,44 @@ export const Route = createFileRoute(
                 "ERRO AO CRIAR NOTIFICAÇÃO DE RESPOSTA:",
                 notificationError,
               );
-
-              // A resposta já foi salva.
-              // Se a notificação falhar,
-              // o comentário continua existindo.
             }
           }
-
-          // =====================================================
-          // 6. RETORNAR COMENTÁRIO CRIADO
-          // =====================================================
 
           const now =
             new Date().toISOString();
 
           const comment = {
             id,
+
             animeId,
+
             episodeId,
+
             content,
+
+            imageUrl,
+
             parentId,
+
             isSpoiler,
+
             createdAt: now,
+
             updatedAt: now,
+
             userId:
               session.user.id,
+
             userName:
               session.user.name ||
               "Usuário",
+
             userImage:
               session.user.image ||
               null,
+
             likes: 0,
+
             liked: false,
           };
 
