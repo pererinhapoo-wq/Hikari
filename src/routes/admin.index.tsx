@@ -3,6 +3,7 @@ import {
   Download,
   Plus,
   Search,
+  ShieldAlert,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -39,7 +40,8 @@ function AdminIndex() {
   const [importQ, setImportQ] = useState("");
   const [hits, setHits] = useState<SlimAnime[]>([]);
   const [searching, setSearching] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] =
+    useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const n = q.trim().toLowerCase();
@@ -279,12 +281,25 @@ function AdminIndex() {
             </p>
           </div>
 
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Filtrar catálogo"
-            className="w-full sm:max-w-56"
-          />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              asChild
+              variant="outline"
+              className="w-full sm:w-auto"
+            >
+              <Link to="/admin/moderation">
+                <ShieldAlert className="size-4" />
+                Moderação
+              </Link>
+            </Button>
+
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Filtrar catálogo"
+              className="w-full sm:max-w-56"
+            />
+          </div>
         </div>
 
         {filtered.length === 0 ? (
@@ -423,4 +438,4 @@ function AdminIndex() {
       </Dialog>
     </div>
   );
-}
+    }
