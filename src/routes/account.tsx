@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  Heart,
   LogOut,
+  MessageCircle,
   Pencil,
   Save,
   ShieldCheck,
+  UserPlus,
+  Users,
   X,
 } from "lucide-react";
 
@@ -39,6 +43,9 @@ function Account() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState<
+    "comments" | "favorites" | "about"
+  >("comments");
 
   useEffect(() => {
     const userId = user?.id;
@@ -89,6 +96,12 @@ function Account() {
   const avatarSource = nick || user.displayName || "Usuário";
   const avatarLetter = avatarSource.charAt(0).toUpperCase();
 
+  const favoriteCount = favorites
+    ? favorites
+        .split(",")
+        .filter((item) => item.trim()).length
+    : 0;
+
   async function saveProfile() {
     setSaving(true);
     setSaved(false);
@@ -124,7 +137,7 @@ function Account() {
   }
 
   return (
-    <main className="mx-auto max-w-xl space-y-5 py-6">
+    <main className="mx-auto max-w-2xl space-y-5 py-6">
       <header className="px-1">
         <p className="text-[11px] tracking-[0.28em] text-muted uppercase">
           Seu perfil
@@ -135,67 +148,64 @@ function Account() {
         </h1>
       </header>
 
+      {/* PERFIL */}
       <section className="overflow-hidden rounded-2xl bg-surface shadow-[var(--shadow-border)]">
-        {/* Capa do perfil */}
-        <div className="relative h-36 overflow-hidden bg-gradient-to-br from-indigo-950 via-purple-900 to-slate-950">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(129,140,248,0.35),transparent_35%),radial-gradient(circle_at_80%_80%,rgba(168,85,247,0.3),transparent_40%)]" />
+        {/* CAPA */}
+        <div className="relative h-40 overflow-hidden bg-gradient-to-br from-indigo-950 via-purple-900 to-slate-950 sm:h-48">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_25%,rgba(129,140,248,0.38),transparent_32%),radial-gradient(circle_at_82%_75%,rgba(168,85,247,0.34),transparent_40%)]" />
 
           <div className="absolute inset-0 opacity-20">
-            <div className="absolute -right-10 -top-20 size-56 rounded-full border border-white/20" />
-            <div className="absolute -right-4 -top-14 size-44 rounded-full border border-white/10" />
-            <div className="absolute -bottom-28 -left-10 size-64 rounded-full border border-white/10" />
+            <div className="absolute -right-10 -top-28 size-72 rounded-full border border-white/20" />
+
+            <div className="absolute -right-2 -top-20 size-56 rounded-full border border-white/10" />
+
+            <div className="absolute -bottom-36 -left-20 size-80 rounded-full border border-white/10" />
           </div>
         </div>
 
-        {/* Área principal do perfil */}
-        <div className="relative px-5 pb-5">
-          {/* Avatar sobre a capa */}
-          <div className="-mt-10">
+        {/* IDENTIDADE */}
+        <div className="relative px-5 pb-5 sm:px-6">
+          {/* AVATAR */}
+          <div className="-mt-11">
             {user.profileImageUrl ? (
               <img
                 src={user.profileImageUrl}
                 alt=""
-                className="size-20 rounded-full border-4 border-surface object-cover shadow-lg"
+                className="size-22 rounded-full border-4 border-surface bg-surface object-cover shadow-xl"
               />
             ) : (
-              <div className="grid size-20 place-items-center rounded-full border-4 border-surface bg-elevated font-display text-2xl shadow-lg">
+              <div className="grid size-22 place-items-center rounded-full border-4 border-surface bg-elevated font-display text-3xl shadow-xl">
                 {avatarLetter}
               </div>
             )}
           </div>
 
-          {/* Identidade */}
+          {/* NOME */}
           <div className="mt-3">
             {loadingProfile ? (
               <>
-                <div className="h-7 w-36 animate-pulse rounded bg-elevated" />
+                <div className="h-8 w-40 animate-pulse rounded-lg bg-elevated" />
 
-                <div className="mt-2 h-4 w-24 animate-pulse rounded bg-elevated" />
-
-                <div className="mt-3 h-3 w-36 animate-pulse rounded bg-elevated" />
+                <div className="mt-2 h-4 w-28 animate-pulse rounded bg-elevated" />
               </>
             ) : (
               <>
-                <p className="truncate text-2xl font-medium tracking-tight">
+                <h2 className="truncate text-2xl font-semibold tracking-tight">
                   {nick || "Defina seu Nick"}
-                </p>
+                </h2>
 
                 {nick && (
                   <p className="mt-0.5 text-sm text-muted">
                     @{nick}
                   </p>
                 )}
-
-                <p className="mt-2 truncate text-xs text-subtle">
-                  {email}
-                </p>
               </>
             )}
           </div>
 
-          {/* Botão de edição */}
+          {/* BOTÃO */}
           {!loadingProfile && (
-            <div className="mt-4">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -210,50 +220,211 @@ function Account() {
               </Button>
 
               {saved && (
-                <span className="ml-3 text-xs text-muted">
+                <span className="text-xs text-muted">
                   Perfil salvo.
                 </span>
               )}
             </div>
           )}
 
-          {/* Informações básicas */}
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-elevated p-3">
-              <p className="text-xs text-muted">
-                Minha Lista
+          {/* EMAIL - PRIVADO DO PRÓPRIO PERFIL */}
+          {!loadingProfile && (
+            <p className="mt-3 truncate text-xs text-subtle">
+              {email}
+            </p>
+          )}
+
+          {/* ESTATÍSTICAS */}
+          <div className="mt-6 grid grid-cols-2 overflow-hidden rounded-xl border border-border sm:grid-cols-4">
+            <div className="border-b border-border p-3 text-center sm:border-b-0 sm:border-r">
+              <MessageCircle className="mx-auto size-4 text-muted" />
+
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                0
               </p>
 
-              <p className="mt-1 text-xl font-medium tabular-nums">
-                {myList.length}
+              <p className="text-[11px] text-muted">
+                Comentários
               </p>
             </div>
 
-            <div className="rounded-xl bg-elevated p-3">
-              <p className="text-xs text-muted">
-                Favoritos
+            <div className="border-b border-border p-3 text-center sm:border-b-0 sm:border-r">
+              <Heart className="mx-auto size-4 text-muted" />
+
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                0
               </p>
 
-              <p className="mt-1 text-xl font-medium tabular-nums">
-                {favorites
-                  ? favorites
-                      .split(",")
-                      .filter((item) => item.trim()).length
-                  : 0}
+              <p className="text-[11px] text-muted">
+                Curtidas
+              </p>
+            </div>
+
+            <div className="border-border p-3 text-center sm:border-r">
+              <Users className="mx-auto size-4 text-muted" />
+
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                0
+              </p>
+
+              <p className="text-[11px] text-muted">
+                Seguidores
+              </p>
+            </div>
+
+            <div className="border-t border-border p-3 text-center sm:border-t-0">
+              <UserPlus className="mx-auto size-4 text-muted" />
+
+              <p className="mt-1 text-lg font-semibold tabular-nums">
+                0
+              </p>
+
+              <p className="text-[11px] text-muted">
+                Seguindo
               </p>
             </div>
           </div>
         </div>
 
-        {/* Conteúdo do perfil */}
-        <div className="border-t border-border p-5">
-          {loadingProfile ? (
-            <div className="space-y-3">
-              <div className="h-3 w-20 animate-pulse rounded bg-elevated" />
+        {/* ABAS */}
+        <div className="border-t border-border">
+          <div className="grid grid-cols-3">
+            <button
+              type="button"
+              onClick={() => setActiveTab("comments")}
+              className={`relative px-3 py-4 text-sm font-medium transition ${
+                activeTab === "comments"
+                  ? "text-fg"
+                  : "text-muted hover:text-fg"
+              }`}
+            >
+              Comentários
 
-              <div className="h-16 animate-pulse rounded-xl bg-elevated" />
+              {activeTab === "comments" && (
+                <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-fg" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("favorites")}
+              className={`relative px-3 py-4 text-sm font-medium transition ${
+                activeTab === "favorites"
+                  ? "text-fg"
+                  : "text-muted hover:text-fg"
+              }`}
+            >
+              Favoritos
+
+              {activeTab === "favorites" && (
+                <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-fg" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("about")}
+              className={`relative px-3 py-4 text-sm font-medium transition ${
+                activeTab === "about"
+                  ? "text-fg"
+                  : "text-muted hover:text-fg"
+              }`}
+            >
+              Sobre
+
+              {activeTab === "about" && (
+                <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-fg" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* CONTEÚDO DAS ABAS */}
+        <div className="min-h-44 border-t border-border p-5 sm:p-6">
+          {activeTab === "comments" && (
+            <div className="flex min-h-32 flex-col items-center justify-center text-center">
+              <MessageCircle className="size-7 text-subtle" />
+
+              <p className="mt-3 text-sm font-medium">
+                Seus comentários aparecerão aqui
+              </p>
+
+              <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted">
+                Os comentários que você fizer nos episódios do HIKARI
+                poderão aparecer nesta área.
+              </p>
             </div>
-          ) : editing ? (
+          )}
+
+          {activeTab === "favorites" && (
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                    Animes favoritos
+                  </p>
+
+                  <p className="mt-1 text-xs text-subtle">
+                    {favoriteCount} favorito
+                    {favoriteCount === 1 ? "" : "s"}
+                  </p>
+                </div>
+
+                <Heart className="size-5 text-muted" />
+              </div>
+
+              {favorites ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {favorites
+                    .split(",")
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                    .map((item) => (
+                      <span
+                        key={item}
+                        className="rounded-full bg-elevated px-3 py-1.5 text-xs text-fg"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                </div>
+              ) : (
+                <p className="mt-5 text-sm text-muted">
+                  Você ainda não adicionou animes favoritos.
+                </p>
+              )}
+            </div>
+          )}
+
+          {activeTab === "about" && (
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                  Bio
+                </p>
+
+                <p className="mt-2 text-sm leading-relaxed text-fg">
+                  {bio || "Você ainda não adicionou uma bio."}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                  Minha Lista
+                </p>
+
+                <p className="mt-2 text-sm text-fg">
+                  {myList.length} anime
+                  {myList.length === 1 ? "" : "s"} na sua lista.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* EDIÇÃO */}
+        {editing && (
+          <div className="border-t border-border p-5 sm:p-6">
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-muted">
@@ -350,52 +521,11 @@ function Account() {
                 </Button>
               </div>
             </div>
-          ) : (
-            <>
-              <div>
-                <p className="text-xs font-medium tracking-wide text-muted uppercase">
-                  Bio
-                </p>
-
-                <p className="mt-2 text-sm leading-relaxed text-fg">
-                  {bio || "Você ainda não adicionou uma bio."}
-                </p>
-              </div>
-
-              {favorites && (
-                <div className="mt-5">
-                  <p className="text-xs font-medium tracking-wide text-muted uppercase">
-                    Animes favoritos
-                  </p>
-
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {favorites
-                      .split(",")
-                      .map((item) => item.trim())
-                      .filter(Boolean)
-                      .map((item) => (
-                        <span
-                          key={item}
-                          className="rounded-full bg-elevated px-3 py-1.5 text-xs text-fg"
-                        >
-                          {item}
-                        </span>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="mt-4 rounded-xl border border-border bg-elevated px-3 py-2.5 text-sm text-fg">
-                  {error}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+          </div>
+        )}
       </section>
 
-      {/* Área administrativa */}
+      {/* ADMINISTRADOR */}
       {admin && (
         <section className="rounded-2xl border border-border bg-surface p-5">
           <div className="flex items-center gap-2 font-medium">
@@ -415,7 +545,7 @@ function Account() {
         </section>
       )}
 
-      {/* Conta */}
+      {/* CONTA */}
       <section className="flex flex-wrap gap-2 px-1 pb-24">
         <Button
           type="button"
@@ -434,4 +564,4 @@ function Account() {
       </section>
     </main>
   );
-      }
+    }
