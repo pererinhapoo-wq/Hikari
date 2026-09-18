@@ -46,7 +46,7 @@ const BASE_NAV = [
   },
   {
     to: "/account",
-    label: "Conta",
+    label: "Perfil",
     icon: UserCircle,
     match: (p: string) =>
       p.startsWith("/account") ||
@@ -301,4 +301,4 @@ export function Shell() {
       </nav>
     </div>
   );
-            }
+    }
