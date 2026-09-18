@@ -2,7 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { auth } from "@/lib/auth/server";
 
-export const Route = createFileRoute("/api/comments/like")({
+export const Route = createFileRoute(
+  "/api/comments/like",
+)({
   server: {
     handlers: {
       POST: async ({ request }) => {
@@ -28,11 +30,6 @@ export const Route = createFileRoute("/api/comments/like")({
 
           const userId =
             session.user.id;
-
-          console.log(
-            "USUÁRIO DA CURTIDA:",
-            userId,
-          );
 
           // =====================================================
           // 2. LER JSON
@@ -72,20 +69,11 @@ export const Route = createFileRoute("/api/comments/like")({
             );
           }
 
-          console.log(
-            "ID DO COMENTÁRIO PARA CURTIDA:",
-            commentId,
-          );
-
           const sql =
             await getSql();
 
           // =====================================================
-          // 3. VERIFICAR SE O COMENTÁRIO EXISTE
-          //    E PEGAR:
-          //    - dono do comentário
-          //    - anime
-          //    - episódio
+          // 3. PEGAR DADOS DO COMENTÁRIO
           // =====================================================
 
           const commentResult =
@@ -111,20 +99,10 @@ export const Route = createFileRoute("/api/comments/like")({
               : commentResult?.rows ??
                 [];
 
-          console.log(
-            "QUANTIDADE DE COMENTÁRIOS ENCONTRADOS:",
-            commentRows.length,
-          );
-
           if (
             commentRows.length ===
             0
           ) {
-            console.error(
-              "COMENTÁRIO NÃO ENCONTRADO PARA CURTIDA:",
-              commentId,
-            );
-
             return Response.json(
               {
                 error:
@@ -150,7 +128,7 @@ export const Route = createFileRoute("/api/comments/like")({
             null;
 
           // =====================================================
-          // 4. VERIFICAR SE O USUÁRIO JÁ CURTIU
+          // 4. VERIFICAR SE JÁ CURTIU
           // =====================================================
 
           const existingLikeResult =
@@ -159,8 +137,10 @@ export const Route = createFileRoute("/api/comments/like")({
                 select
                   "id"
                 from "comment_like"
-                where "commentId" = $1
-                  and "userId" = $2
+                where
+                  "commentId" = $1
+                  and
+                  "userId" = $2
                 limit 1
               `,
               [
@@ -178,7 +158,7 @@ export const Route = createFileRoute("/api/comments/like")({
                 [];
 
           // =====================================================
-          // 5. SE JÁ CURTIU → REMOVER CURTIDA
+          // 5. SE JÁ CURTIU → REMOVER
           // =====================================================
 
           if (
@@ -188,8 +168,10 @@ export const Route = createFileRoute("/api/comments/like")({
             await sql.query(
               `
                 delete from "comment_like"
-                where "commentId" = $1
-                  and "userId" = $2
+                where
+                  "commentId" = $1
+                  and
+                  "userId" = $2
               `,
               [
                 commentId,
@@ -197,17 +179,14 @@ export const Route = createFileRoute("/api/comments/like")({
               ],
             );
 
-            // ===================================================
-            // CONTAR CURTIDAS APÓS REMOVER
-            // ===================================================
-
             const countResult =
               await sql.query(
                 `
                   select
                     count(*)::int as "count"
                   from "comment_like"
-                  where "commentId" = $1
+                  where
+                    "commentId" = $1
                 `,
                 [commentId],
               );
@@ -225,12 +204,6 @@ export const Route = createFileRoute("/api/comments/like")({
                 countRows[0]
                   ?.count ?? 0,
               );
-
-            console.log(
-              "CURTIDA REMOVIDA:",
-              commentId,
-              likes,
-            );
 
             return Response.json({
               liked: false,
@@ -252,7 +225,11 @@ export const Route = createFileRoute("/api/comments/like")({
                 "commentId",
                 "userId"
               )
-              values ($1, $2, $3)
+              values (
+                $1,
+                $2,
+                $3
+              )
             `,
             [
               likeId,
@@ -264,25 +241,11 @@ export const Route = createFileRoute("/api/comments/like")({
           // =====================================================
           // 7. CRIAR NOTIFICAÇÃO
           // =====================================================
-          //
-          // Agora a notificação guarda:
-          //
-          // commentId
-          // animeId
-          // episodeId
-          //
-          // Isso permitirá que o Hikari saiba exatamente
-          // onde a curtida aconteceu.
-          //
-          // A notificação não pode impedir a curtida.
-          //
-          // Também não notificamos quando o usuário curte
-          // o próprio comentário.
-          // =====================================================
 
           if (
             commentOwnerId &&
-            commentOwnerId !== userId
+            commentOwnerId !==
+              userId
           ) {
             try {
               const notificationId =
@@ -344,10 +307,8 @@ export const Route = createFileRoute("/api/comments/like")({
                 notificationError,
               );
 
-              // IMPORTANTE:
-              // A curtida já foi salva.
-              // Portanto, mesmo que a notificação
-              // dê erro, a curtida continua válida.
+              // A curtida continua válida
+              // mesmo se a notificação falhar.
             }
           }
 
@@ -361,7 +322,8 @@ export const Route = createFileRoute("/api/comments/like")({
                 select
                   count(*)::int as "count"
                 from "comment_like"
-                where "commentId" = $1
+                where
+                  "commentId" = $1
               `,
               [commentId],
             );
@@ -379,12 +341,6 @@ export const Route = createFileRoute("/api/comments/like")({
               countRows[0]
                 ?.count ?? 0,
             );
-
-          console.log(
-            "CURTIDA ADICIONADA:",
-            commentId,
-            likes,
-          );
 
           // =====================================================
           // 9. RESPONDER
