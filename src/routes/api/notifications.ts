@@ -1,4 +1,3 @@
-import { json } from "@tanstack/react-start";
 import {
   createFileRoute,
 } from "@tanstack/react-router";
@@ -12,7 +11,9 @@ const rawDatabaseUrl =
     ? process.env.DATABASE_URL
     : undefined;
 
-function getDatabaseHash(value?: string) {
+function getDatabaseHash(
+  value?: string,
+) {
   if (!value || !value.trim()) {
     return "DATABASE_URL_NOT_SET";
   }
@@ -24,7 +25,9 @@ function getDatabaseHash(value?: string) {
 }
 
 const runtimeDatabaseHash =
-  getDatabaseHash(rawDatabaseUrl);
+  getDatabaseHash(
+    rawDatabaseUrl,
+  );
 
 export const Route = createFileRoute(
   "/api/notifications",
@@ -41,16 +44,10 @@ export const Route = createFileRoute(
           });
 
         if (!session?.user) {
-          return json(
+          return Response.json(
             {
               notifications: [],
               unreadCount: 0,
-              debug: {
-                dbSource,
-                databaseUrlConfigured:
-                  dbSource === "neon",
-                runtimeDatabaseHash,
-              },
             },
             {
               status: 401,
@@ -61,10 +58,12 @@ export const Route = createFileRoute(
         const sql =
           await getSql();
 
-        let notificationTableExists = false;
-        let migration0011Registered = false;
-        let migration010Registered = false;
-        let registeredMigrations: string[] = [];
+        // =====================================================
+        // VERIFICAR SE A TABELA EXISTE
+        // =====================================================
+
+        let notificationTableExists =
+          false;
 
         try {
           const tableRows =
@@ -89,60 +88,10 @@ export const Route = createFileRoute(
             false;
         }
 
-        try {
-          const migrationRows =
-            await sql<{
-              name: string;
-            }>`
-              select "name"
-              from "_migrations"
-              where "name" in (
-                '0010_notification_fix.sql',
-                '0011_notification_recreate.sql'
-              )
-              order by "name"
-            `;
-
-          migration0011Registered =
-            migrationRows.some(
-              (row) =>
-                row.name ===
-                "0011_notification_recreate.sql",
-            );
-
-          migration010Registered =
-            migrationRows.some(
-              (row) =>
-                row.name ===
-                "0010_notification_fix.sql",
-            );
-        } catch {
-          migration0011Registered =
-            false;
-          migration010Registered =
-            false;
-        }
-
-        try {
-          const allMigrationRows =
-            await sql<{
-              name: string;
-            }>`
-              select "name"
-              from "_migrations"
-              order by "name"
-            `;
-
-          registeredMigrations =
-            allMigrationRows.map(
-              (row) => row.name,
-            );
-        } catch {
-          registeredMigrations = [];
-        }
-
-        if (!notificationTableExists) {
-          return json({
+        if (
+          !notificationTableExists
+        ) {
+          return Response.json({
             notifications: [],
             unreadCount: 0,
 
@@ -151,13 +100,14 @@ export const Route = createFileRoute(
               databaseUrlConfigured:
                 dbSource === "neon",
               runtimeDatabaseHash,
-              registeredMigrations,
               notificationTableExists,
-              migration010Registered,
-              migration0011Registered,
             },
           });
         }
+
+        // =====================================================
+        // BUSCAR NOTIFICAÇÕES
+        // =====================================================
 
         const notifications =
           await sql<{
@@ -169,6 +119,10 @@ export const Route = createFileRoute(
             actorId: string | null;
             actorName: string | null;
             actorImage: string | null;
+
+            commentId: string | null;
+            animeId: string | null;
+            episodeId: string | null;
           }>`
             select
               n."id",
@@ -176,19 +130,35 @@ export const Route = createFileRoute(
               n."message",
               n."read",
               n."createdAt",
+
               n."actorId",
+
               u."name" as "actorName",
-              u."image" as "actorImage"
+              u."image" as "actorImage",
+
+              n."commentId",
+              n."animeId",
+              n."episodeId"
+
             from "notification" n
+
             left join "user" u
-              on u."id" = n."actorId"
+              on u."id" =
+                n."actorId"
+
             where
               n."userId" =
                 ${session.user.id}
+
             order by
               n."createdAt" desc
+
             limit 50
           `;
+
+        // =====================================================
+        // CONTAR NÃO LIDAS
+        // =====================================================
 
         const unreadRows =
           await sql<{
@@ -196,16 +166,20 @@ export const Route = createFileRoute(
           }>`
             select
               count(*)::text as count
+
             from "notification"
+
             where
               "userId" =
                 ${session.user.id}
+
               and
               "read" = false
           `;
 
-        return json({
+        return Response.json({
           notifications,
+
           unreadCount:
             Number(
               unreadRows[0]
@@ -217,10 +191,7 @@ export const Route = createFileRoute(
             databaseUrlConfigured:
               dbSource === "neon",
             runtimeDatabaseHash,
-            registeredMigrations,
             notificationTableExists,
-            migration010Registered,
-            migration0011Registered,
           },
         });
       },
