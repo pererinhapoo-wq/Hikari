@@ -64,6 +64,7 @@ export const Route = createFileRoute(
         let notificationTableExists = false;
         let migration0011Registered = false;
         let migration010Registered = false;
+        let registeredMigrations: string[] = [];
 
         try {
           const tableRows =
@@ -122,6 +123,24 @@ export const Route = createFileRoute(
             false;
         }
 
+        try {
+          const allMigrationRows =
+            await sql<{
+              name: string;
+            }>`
+              select "name"
+              from "_migrations"
+              order by "name"
+            `;
+
+          registeredMigrations =
+            allMigrationRows.map(
+              (row) => row.name,
+            );
+        } catch {
+          registeredMigrations = [];
+        }
+
         if (!notificationTableExists) {
           return json({
             notifications: [],
@@ -132,6 +151,7 @@ export const Route = createFileRoute(
               databaseUrlConfigured:
                 dbSource === "neon",
               runtimeDatabaseHash,
+              registeredMigrations,
               notificationTableExists,
               migration010Registered,
               migration0011Registered,
@@ -197,6 +217,7 @@ export const Route = createFileRoute(
             databaseUrlConfigured:
               dbSource === "neon",
             runtimeDatabaseHash,
+            registeredMigrations,
             notificationTableExists,
             migration010Registered,
             migration0011Registered,
