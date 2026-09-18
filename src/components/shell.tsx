@@ -31,6 +31,11 @@ type NotificationItem = {
   actorId: string | null;
   actorName: string | null;
   actorImage: string | null;
+
+  // Destino da notificação
+  commentId: string | null;
+  animeId: string | null;
+  episodeId: string | null;
 };
 
 const BASE_NAV = [
@@ -439,61 +444,116 @@ export function Shell() {
                 {notifications.map(
                   (
                     notification,
-                  ) => (
-                    <div
-                      key={
-                        notification.id
-                      }
-                      className={cn(
-                        "border-b border-border px-4 py-4 last:border-b-0",
-                        !notification.read &&
-                          "bg-elevated/50",
-                      )}
-                    >
-                      <div className="flex gap-3">
+                  ) => {
+                    const hasEpisodeTarget =
+                      Boolean(
+                        notification.animeId &&
+                        notification.episodeId,
+                      );
 
-                        {notification.actorImage ? (
-                          <img
-                            src={
-                              notification.actorImage
-                            }
-                            alt=""
-                            className="size-10 shrink-0 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
-                            <UserCircle className="size-6" />
-                          </div>
-                        )}
+                    const notificationContent =
+                      (
+                        <div
+                          className={cn(
+                            "border-b border-border px-4 py-4 last:border-b-0",
+                            !notification.read &&
+                              "bg-elevated/50",
+                          )}
+                        >
+                          <div className="flex gap-3">
 
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm leading-5">
-                            {
-                              notification.message
-                            }
-                          </p>
-
-                          <p className="mt-1 text-[11px] text-muted">
-                            {new Date(
-                              notification.createdAt,
-                            ).toLocaleString(
-                              "pt-BR",
-                              {
-                                dateStyle:
-                                  "short",
-                                timeStyle:
-                                  "short",
-                              },
+                            {notification.actorImage ? (
+                              <img
+                                src={
+                                  notification.actorImage
+                                }
+                                alt=""
+                                className="size-10 shrink-0 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
+                                <UserCircle className="size-6" />
+                              </div>
                             )}
-                          </p>
-                        </div>
 
-                        {!notification.read && (
-                          <span className="mt-1 size-2 shrink-0 rounded-full bg-red-500" />
-                        )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm leading-5">
+                                {
+                                  notification.message
+                                }
+                              </p>
+
+                              {hasEpisodeTarget && (
+                                <p className="mt-1.5 text-xs font-medium text-fg">
+                                  Ver episódio
+                                </p>
+                              )}
+
+                              <p className="mt-1 text-[11px] text-muted">
+                                {new Date(
+                                  notification.createdAt,
+                                ).toLocaleString(
+                                  "pt-BR",
+                                  {
+                                    dateStyle:
+                                      "short",
+                                    timeStyle:
+                                      "short",
+                                  },
+                                )}
+                              </p>
+                            </div>
+
+                            {!notification.read && (
+                              <span className="mt-1 size-2 shrink-0 rounded-full bg-red-500" />
+                            )}
+                          </div>
+                        </div>
+                      );
+
+                    if (
+                      hasEpisodeTarget
+                    ) {
+                      return (
+                        <Link
+                          key={
+                            notification.id
+                          }
+                          to="/watch/$id"
+                          params={{
+                            id:
+                              notification.animeId!,
+                          }}
+                          search={{
+                            ep:
+                              notification.episodeId!,
+                          }}
+                          onClick={() =>
+                            setNotificationsOpen(
+                              false,
+                            )
+                          }
+                          className="block transition-colors hover:bg-elevated/70"
+                        >
+                          {
+                            notificationContent
+                          }
+                        </Link>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={
+                          notification.id
+                        }
+                      >
+                        {
+                          notificationContent
+                        }
                       </div>
-                    </div>
-                  ),
+                    );
+                  },
                 )}
               </div>
             )}
@@ -650,4 +710,4 @@ export function Shell() {
       </nav>
     </div>
   );
-                  }
+        }
