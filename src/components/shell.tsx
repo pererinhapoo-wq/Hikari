@@ -37,6 +37,10 @@ type NotificationItem = {
   animeId: string | null;
   episodeId: string | null;
 
+  // Informações do anime
+  animeTitle: string | null;
+  animeCover: string | null;
+
   // Quantidade atual de curtidas do comentário
   commentLikes: number;
 };
@@ -530,18 +534,59 @@ export function Shell() {
                                 </p>
                               )}
 
-                              {/* DESTINO */}
+                              {/* ANIME */}
+                              {(notification.animeCover ||
+                                notification.animeTitle) && (
+                                <div className="mt-3 flex items-center gap-3">
+
+                                  {/* CAPA */}
+                                  {notification.animeCover ? (
+                                    <img
+                                      src={
+                                        notification.animeCover
+                                      }
+                                      alt=""
+                                      className="h-16 w-11 shrink-0 rounded-md object-cover"
+                                    />
+                                  ) : null}
+
+                                  {/* NOME + DESTINO */}
+                                  <div className="min-w-0 flex-1">
+
+                                    {notification.animeTitle && (
+                                      <p className="truncate text-sm font-medium text-fg">
+                                        {
+                                          notification.animeTitle
+                                        }
+                                      </p>
+                                    )}
+
+                                    {hasEpisodeTarget &&
+                                      (isLikeNotification ||
+                                        isReplyNotification) && (
+                                        <p className="mt-1 text-xs font-medium text-muted">
+                                          {notification.commentId
+                                            ? "Ver comentário"
+                                            : "Ver episódio"}
+                                        </p>
+                                      )}
+
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* DESTINO SEM INFORMAÇÃO DO ANIME */}
                               {hasEpisodeTarget &&
                                 (isLikeNotification ||
-                                  isReplyNotification) && (
+                                  isReplyNotification) &&
+                                !notification.animeCover &&
+                                !notification.animeTitle && (
                                   <div className="mt-2">
-
                                     <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
-                                      {isReplyNotification
-                                        ? "💬 Ver resposta"
-                                        : "❤️ Ver curtida"}
+                                      {notification.commentId
+                                        ? "Ver comentário"
+                                        : "Ver episódio"}
                                     </span>
-
                                   </div>
                                 )}
 
@@ -793,4 +838,4 @@ export function Shell() {
       </nav>
     </div>
   );
-  }
+}
