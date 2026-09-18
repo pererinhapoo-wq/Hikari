@@ -195,6 +195,7 @@ export function Shell() {
 
     return () => {
       cancelled = true;
+
       window.clearInterval(
         interval,
       );
@@ -255,6 +256,10 @@ export function Shell() {
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
+
+      {/* =========================================================
+          HEADER
+      ========================================================== */}
       <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
 
@@ -303,7 +308,9 @@ export function Shell() {
           {/* AÇÕES DA DIREITA */}
           <div className="flex items-center gap-1">
 
-            {/* NOTIFICAÇÕES DESKTOP */}
+            {/* =====================================================
+                NOTIFICAÇÕES DESKTOP
+            ====================================================== */}
             <button
               type="button"
               onClick={() => {
@@ -343,7 +350,9 @@ export function Shell() {
               <Search className="size-5" />
             </Link>
 
-            {/* NOTIFICAÇÕES MOBILE */}
+            {/* =====================================================
+                NOTIFICAÇÕES MOBILE
+            ====================================================== */}
             <button
               type="button"
               onClick={() => {
@@ -377,7 +386,9 @@ export function Shell() {
         </div>
       </header>
 
-      {/* PAINEL DE NOTIFICAÇÕES */}
+      {/* =========================================================
+          PAINEL DE NOTIFICAÇÕES
+      ========================================================== */}
       {notificationsOpen && (
         <>
           <button
@@ -393,6 +404,7 @@ export function Shell() {
 
           <div className="fixed right-4 top-16 z-50 w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:right-6 md:top-20">
 
+            {/* CABEÇALHO */}
             <div className="flex items-center justify-between border-b border-border px-4 py-4">
               <div>
                 <h2 className="font-semibold">
@@ -418,6 +430,7 @@ export function Shell() {
               </button>
             </div>
 
+            {/* CARREGANDO */}
             {notificationsLoading ? (
               <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
                 <p className="text-sm text-muted">
@@ -426,6 +439,8 @@ export function Shell() {
               </div>
             ) : notifications.length ===
               0 ? (
+
+              /* SEM NOTIFICAÇÕES */
               <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
                 <div>
                   <Bell className="mx-auto mb-3 size-7 text-muted" />
@@ -440,16 +455,26 @@ export function Shell() {
                 </div>
               </div>
             ) : (
+
+              /* LISTA */
               <div className="max-h-[70vh] overflow-y-auto">
+
                 {notifications.map(
                   (
                     notification,
                   ) => {
+
                     const hasEpisodeTarget =
                       Boolean(
                         notification.animeId &&
                         notification.episodeId,
                       );
+
+                    const isCommentNotification =
+                      notification.type ===
+                        "comment_like" ||
+                      notification.type ===
+                        "comment_reply";
 
                     const notificationContent =
                       (
@@ -462,6 +487,7 @@ export function Shell() {
                         >
                           <div className="flex gap-3">
 
+                            {/* AVATAR */}
                             {notification.actorImage ? (
                               <img
                                 src={
@@ -476,20 +502,33 @@ export function Shell() {
                               </div>
                             )}
 
+                            {/* CONTEÚDO */}
                             <div className="min-w-0 flex-1">
+
+                              {/* MENSAGEM */}
                               <p className="text-sm leading-5">
                                 {
                                   notification.message
                                 }
                               </p>
 
-                              {hasEpisodeTarget && (
-                                <p className="mt-1.5 text-xs font-medium text-fg">
-                                  Ver episódio
-                                </p>
-                              )}
+                              {/* DESTINO */}
+                              {hasEpisodeTarget &&
+                                isCommentNotification && (
+                                  <div className="mt-2">
 
-                              <p className="mt-1 text-[11px] text-muted">
+                                    <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
+                                      {notification.type ===
+                                      "comment_reply"
+                                        ? "💬 Ver resposta"
+                                        : "❤️ Ver curtida"}
+                                    </span>
+
+                                  </div>
+                                )}
+
+                              {/* DATA */}
+                              <p className="mt-1.5 text-[11px] text-muted">
                                 {new Date(
                                   notification.createdAt,
                                 ).toLocaleString(
@@ -504,6 +543,7 @@ export function Shell() {
                               </p>
                             </div>
 
+                            {/* NÃO LIDA */}
                             {!notification.read && (
                               <span className="mt-1 size-2 shrink-0 rounded-full bg-red-500" />
                             )}
@@ -511,6 +551,9 @@ export function Shell() {
                         </div>
                       );
 
+                    {/* =================================================
+                        NOTIFICAÇÃO COM DESTINO
+                    ================================================== */}
                     if (
                       hasEpisodeTarget
                     ) {
@@ -542,6 +585,9 @@ export function Shell() {
                       );
                     }
 
+                    {/* =================================================
+                        NOTIFICAÇÃO SEM DESTINO
+                    ================================================== */}
                     return (
                       <div
                         key={
@@ -555,13 +601,16 @@ export function Shell() {
                     );
                   },
                 )}
+
               </div>
             )}
           </div>
         </>
       )}
 
-      {/* MENU LATERAL */}
+      {/* =========================================================
+          MENU LATERAL
+      ========================================================== */}
       {menuOpen && (
         <>
           <button
@@ -620,12 +669,14 @@ export function Shell() {
                         )}
                       >
                         <Icon className="size-5" />
+
                         {item.label}
                       </Link>
                     );
                   },
                 )}
 
+                {/* +18 */}
                 <Link
                   to={ADULT_NAV.to}
                   onClick={() =>
@@ -657,10 +708,16 @@ export function Shell() {
         </>
       )}
 
+      {/* =========================================================
+          CONTEÚDO PRINCIPAL
+      ========================================================== */}
       <main className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6 sm:pb-16">
         <Outlet />
       </main>
 
+      {/* =========================================================
+          FOOTER
+      ========================================================== */}
       <footer className="mx-auto hidden max-w-6xl items-center justify-between px-6 py-8 text-xs text-subtle md:flex">
         <p>
           Hikari 光 — catálogo via AniList, com MyAnimeList como reserva.
@@ -668,10 +725,14 @@ export function Shell() {
 
         <p className="inline-flex items-center gap-1.5">
           <Clapperboard className="size-3.5" />
+
           Trailers e episódios com URL própria
         </p>
       </footer>
 
+      {/* =========================================================
+          NAVEGAÇÃO MOBILE
+      ========================================================== */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 backdrop-blur-md md:hidden">
         <ul className="grid grid-cols-4">
 
@@ -699,6 +760,7 @@ export function Shell() {
                     )}
                   >
                     <Icon className="size-5" />
+
                     {item.label}
                   </Link>
                 </li>
@@ -710,4 +772,4 @@ export function Shell() {
       </nav>
     </div>
   );
-        }
+}
