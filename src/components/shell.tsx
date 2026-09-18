@@ -28,6 +28,7 @@ type NotificationItem = {
   message: string;
   read: boolean;
   createdAt: string;
+
   actorId: string | null;
   actorName: string | null;
   actorImage: string | null;
@@ -43,6 +44,13 @@ type NotificationItem = {
 
   // Quantidade atual de curtidas do comentário
   commentLikes: number;
+
+  // Pessoas que curtiram
+  likeAvatars: Array<{
+    id: string;
+    name: string | null;
+    image: string | null;
+  }>;
 };
 
 const BASE_NAV = [
@@ -481,6 +489,33 @@ export function Shell() {
                       notification.type ===
                       "comment_reply";
 
+                    const likeCount =
+                      Number(
+                        notification.commentLikes ??
+                          0,
+                      );
+
+                    const likeAvatars =
+                      Array.isArray(
+                        notification.likeAvatars,
+                      )
+                        ? notification.likeAvatars
+                        : [];
+
+                    const notificationMessage =
+                      isLikeNotification &&
+                      likeCount > 1 &&
+                      notification.actorName
+                        ? `${notification.actorName} e mais ${
+                            likeCount - 1
+                          } ${
+                            likeCount - 1 ===
+                            1
+                              ? "pessoa"
+                              : "pessoas"
+                          } curtiram seu comentário.`
+                        : notification.message;
+
                     const notificationContent =
                       (
                         <div
@@ -492,7 +527,7 @@ export function Shell() {
                         >
                           <div className="flex gap-3">
 
-                            {/* AVATAR */}
+                            {/* AVATAR DO AUTOR DA NOTIFICAÇÃO */}
                             {notification.actorImage ? (
                               <img
                                 src={
@@ -513,25 +548,82 @@ export function Shell() {
                               {/* MENSAGEM */}
                               <p className="text-sm leading-5">
                                 {
-                                  notification.message
+                                  notificationMessage
                                 }
                               </p>
 
                               {/* CURTIDAS */}
                               {isLikeNotification && (
-                                <p className="mt-1.5 text-xs font-medium text-muted">
-                                  ❤️{" "}
-                                  {Number(
-                                    notification.commentLikes ??
-                                      0,
-                                  )}{" "}
-                                  {Number(
-                                    notification.commentLikes ??
-                                      0,
-                                  ) === 1
-                                    ? "curtida"
-                                    : "curtidas"}
-                                </p>
+                                <div className="mt-2 flex items-center gap-2">
+
+                                  {/* FOTOS SOBREPOSTAS */}
+                                  {likeAvatars.length >
+                                    0 && (
+                                    <div className="flex items-center pl-1">
+
+                                      {likeAvatars
+                                        .slice(
+                                          0,
+                                          2,
+                                        )
+                                        .map(
+                                          (
+                                            avatar,
+                                            index,
+                                          ) => (
+                                            <div
+                                              key={
+                                                avatar.id
+                                              }
+                                              className={cn(
+                                                "relative size-7 overflow-hidden rounded-full border-2 border-bg bg-elevated",
+                                                index >
+                                                  0 &&
+                                                  "-ml-2",
+                                              )}
+                                              style={{
+                                                zIndex:
+                                                  10 -
+                                                  index,
+                                              }}
+                                            >
+                                              {avatar.image ? (
+                                                <img
+                                                  src={
+                                                    avatar.image
+                                                  }
+                                                  alt=""
+                                                  className="size-full object-cover"
+                                                />
+                                              ) : (
+                                                <div className="flex size-full items-center justify-center text-[10px] font-semibold text-muted">
+                                                  {(
+                                                    avatar.name ??
+                                                    "U"
+                                                  )
+                                                    .charAt(
+                                                      0,
+                                                    )
+                                                    .toUpperCase()}
+                                                </div>
+                                              )}
+                                            </div>
+                                          ),
+                                        )}
+
+                                    </div>
+                                  )}
+
+                                  <span className="text-xs font-medium text-muted">
+                                    {
+                                      likeCount
+                                    }{" "}
+                                    {likeCount ===
+                                    1
+                                      ? "curtida"
+                                      : "curtidas"}
+                                  </span>
+                                </div>
                               )}
 
                               {/* ANIME */}
@@ -838,4 +930,4 @@ export function Shell() {
       </nav>
     </div>
   );
-}
+  }
