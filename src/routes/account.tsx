@@ -5,12 +5,16 @@ import {
   BadgeCheck,
   Bookmark,
   CalendarDays,
+  Camera,
   Heart,
+  Lock,
   LogOut,
   MessageCircle,
+  MoreHorizontal,
   Pencil,
   Save,
   ShieldCheck,
+  Sparkles,
   UserPlus,
   Users,
   X,
@@ -103,16 +107,13 @@ function Account() {
   const avatarSource =
     nick || user.displayName || "Usuário";
 
-  const avatarLetter = avatarSource
-    .charAt(0)
-    .toUpperCase();
+  const avatarLetter =
+    avatarSource.charAt(0).toUpperCase();
 
-  const favoriteItems = favorites
-    ? favorites
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-    : [];
+  const favoriteList = favorites
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
   async function saveProfile() {
     setSaving(true);
@@ -124,10 +125,7 @@ function Account() {
         data: {
           nick,
           bio,
-          favorites: favorites
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
+          favorites: favoriteList,
         },
       });
 
@@ -149,583 +147,794 @@ function Account() {
   }
 
   return (
-    <main className="min-h-screen bg-bg pb-24 text-fg">
-      <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-5 lg:px-6 lg:py-8">
+    <main className="min-h-screen bg-[#030817] text-white">
+      {/* Fundo geral do perfil */}
+      <div className="mx-auto w-full max-w-[1500px] px-3 pb-24 pt-4 sm:px-5 lg:px-8">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+          {/* ====================================================== */}
+          {/* COLUNA PRINCIPAL                                       */}
+          {/* ====================================================== */}
 
-        {/* PERFIL */}
-        <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--shadow-border)]">
+          <section className="min-w-0 overflow-hidden rounded-2xl border border-[#1c3c70] bg-[#061329] shadow-[0_0_40px_rgba(38,70,180,0.12)]">
 
-          {/* CAPA */}
-          <div className="relative h-40 overflow-hidden sm:h-48 lg:h-56">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(88,80,190,0.95),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(133,45,210,0.9),transparent_48%),linear-gradient(135deg,#1d1744,#4d137d,#24103d)]" />
+            {/* ================================================== */}
+            {/* CAPA                                                */}
+            {/* ================================================== */}
 
-            <div className="absolute -right-20 -top-32 size-80 rounded-full border border-white/5" />
-            <div className="absolute right-10 -top-20 size-64 rounded-full border border-white/5" />
-            <div className="absolute -left-24 bottom-[-180px] size-96 rounded-full border border-white/5" />
+            <div className="relative h-[250px] overflow-hidden sm:h-[300px] lg:h-[340px]">
+              {/* textura de fundo */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "radial-gradient(circle at 50% 115%, rgba(88,54,255,0.95) 0%, rgba(39,48,145,0.75) 34%, rgba(6,19,41,0.25) 70%), linear-gradient(135deg, #152f72 0%, #4025a3 45%, #741bc7 100%)",
+                }}
+              />
 
-            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/5" />
-          </div>
+              {/* textura luminosa */}
+              <div className="absolute -left-20 top-10 size-[280px] rounded-full bg-blue-500/20 blur-3xl" />
 
-          {/* IDENTIDADE */}
-          <div className="relative px-5 pb-6 sm:px-7 lg:px-9">
+              <div className="absolute right-0 top-0 size-[330px] rounded-full bg-purple-500/25 blur-3xl" />
 
-            {/* AVATAR */}
-            <div className="-mt-16 sm:-mt-20">
-              {user.profileImageUrl ? (
-                <img
-                  src={user.profileImageUrl}
-                  alt=""
-                  className="size-28 rounded-full border-4 border-surface object-cover shadow-xl sm:size-32 lg:size-36"
-                />
-              ) : (
-                <div className="grid size-28 place-items-center rounded-full border-4 border-surface bg-elevated font-sans text-4xl font-semibold shadow-xl sm:size-32 lg:size-36">
-                  {avatarLetter}
-                </div>
-              )}
+              {/* círculos da textura */}
+              <div className="absolute -right-20 -top-40 size-[520px] rounded-full border border-white/10" />
+
+              <div className="absolute -right-10 -top-32 size-[430px] rounded-full border border-white/5" />
+
+              <div className="absolute left-20 -bottom-48 size-[480px] rounded-full border border-white/5" />
+
+              {/* brilho central */}
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_35%,rgba(1,8,22,0.12)_60%,rgba(1,8,22,0.78)_100%)]" />
+
+              {/* personagem/cenário estilizado */}
+              <div className="absolute bottom-[-70px] left-1/2 h-[280px] w-[300px] -translate-x-1/2 opacity-50">
+                <div className="absolute left-1/2 top-0 h-[210px] w-[145px] -translate-x-1/2 rounded-t-[80px] bg-[#050918] shadow-[0_0_60px_rgba(0,0,0,0.7)]" />
+
+                <div className="absolute left-1/2 top-[75px] h-[170px] w-[230px] -translate-x-1/2 rounded-t-[110px] bg-[#071126]" />
+
+                <div className="absolute left-1/2 top-[45px] h-[130px] w-[70px] -translate-x-1/2 rounded-full bg-[#111b35]" />
+              </div>
+
+              {/* texto da capa */}
+              <div className="absolute right-5 top-6 text-right sm:right-8 sm:top-8">
+                <p className="text-xl font-medium tracking-[0.45em] text-white/90 sm:text-2xl">
+                  好きなことで
+                </p>
+
+                <p className="text-xl font-medium tracking-[0.45em] text-white/90 sm:text-2xl">
+                  生きていく
+                </p>
+
+                <p className="mt-1 text-xs text-white/60">
+                  Viver do que ama
+                </p>
+              </div>
+
+              {/* marca da capa */}
+              <div className="absolute bottom-5 left-5 hidden items-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-2 backdrop-blur-md sm:flex">
+                <Sparkles className="size-4 text-violet-300" />
+
+                <span className="text-xs font-medium tracking-[0.18em] text-white/80">
+                  PERFIL HIKARI
+                </span>
+              </div>
             </div>
 
-            {/* NOME + BOTÃO */}
-            <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            {/* ================================================== */}
+            {/* IDENTIDADE                                          */}
+            {/* ================================================== */}
 
-              <div className="min-w-0">
-                {loadingProfile ? (
-                  <>
-                    <div className="h-8 w-40 animate-pulse rounded bg-elevated" />
-                    <div className="mt-2 h-5 w-28 animate-pulse rounded bg-elevated" />
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <h1 className="font-sans text-2xl font-bold tracking-tight sm:text-3xl">
-                        {nick || "Defina seu Nick"}
-                      </h1>
+            <div className="relative px-5 pb-5 sm:px-8 lg:px-10">
+              {/* avatar */}
+              <div className="-mt-16 sm:-mt-20">
+                <div className="relative inline-block">
+                  {user.profileImageUrl ? (
+                    <img
+                      src={user.profileImageUrl}
+                      alt=""
+                      className="size-32 rounded-full border-[5px] border-[#061329] bg-[#09172f] object-cover shadow-[0_8px_35px_rgba(0,0,0,0.55)] sm:size-40"
+                    />
+                  ) : (
+                    <div className="grid size-32 place-items-center rounded-full border-[5px] border-[#061329] bg-[#15284b] font-display text-5xl shadow-[0_8px_35px_rgba(0,0,0,0.55)] sm:size-40">
+                      {avatarLetter}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="absolute bottom-1 right-1 grid size-10 place-items-center rounded-full border-2 border-[#061329] bg-[#101f3c] text-white shadow-lg"
+                    aria-label="Alterar foto"
+                  >
+                    <Camera className="size-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* identidade + ações */}
+              <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  {loadingProfile ? (
+                    <>
+                      <div className="h-9 w-48 animate-pulse rounded-lg bg-[#102343]" />
+
+                      <div className="mt-2 h-5 w-32 animate-pulse rounded bg-[#102343]" />
+
+                      <div className="mt-4 h-4 w-64 animate-pulse rounded bg-[#102343]" />
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                          {nick || "Defina seu Nick"}
+                        </h1>
+
+                        {nick && (
+                          <BadgeCheck className="size-6 fill-violet-500 text-white" />
+                        )}
+                      </div>
 
                       {nick && (
-                        <BadgeCheck className="size-5 shrink-0 fill-current" />
+                        <p className="mt-1 text-base text-[#9fb2d4] sm:text-lg">
+                          @{nick}
+                        </p>
                       )}
-                    </div>
 
-                    {nick && (
-                      <p className="mt-1 font-sans text-sm text-muted sm:text-base">
-                        @{nick}
-                      </p>
-                    )}
-                  </>
+                      {bio && (
+                        <p className="mt-4 max-w-2xl text-sm leading-6 text-[#c4d1e8]">
+                          {bio}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSaved(false);
+                      setError("");
+                      setEditing(true);
+                    }}
+                    className="border-[#294674] bg-[#0a1932] text-white hover:bg-[#102343]"
+                  >
+                    <Pencil className="size-4" />
+                    Editar perfil
+                  </Button>
+
+                  <button
+                    type="button"
+                    className="grid size-10 place-items-center rounded-xl border border-[#294674] bg-[#0a1932] text-[#b6c8e5] hover:bg-[#102343]"
+                    aria-label="Mais opções"
+                  >
+                    <MoreHorizontal className="size-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* email */}
+              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[#7186aa]">
+                {email && (
+                  <span>{email}</span>
                 )}
 
-                {!loadingProfile && bio && (
-                  <p className="mt-3 max-w-xl font-sans text-sm leading-relaxed text-muted">
-                    {bio}
-                  </p>
-                )}
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="size-3.5" />
+                  Membro da comunidade HIKARI
+                </span>
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setSaved(false);
-                  setError("");
-                  setEditing(true);
-                }}
-                className="w-fit shrink-0 rounded-xl"
-              >
-                <Pencil className="size-4" />
-                Editar perfil
-              </Button>
-            </div>
-
-            {/* INFORMAÇÕES DA CONTA */}
-            <div className="mt-4">
-              <p className="font-sans text-xs text-subtle">
-                {email}
-              </p>
-
-              <div className="mt-2 flex items-center gap-2 font-sans text-xs text-subtle">
-                <CalendarDays className="size-3.5" />
-                <span>Membro da comunidade HIKARI</span>
-              </div>
-            </div>
-
-            {/* ESTATÍSTICAS */}
-            <div className="mt-6 overflow-hidden rounded-2xl border border-border">
-              <div className="grid grid-cols-2 sm:grid-cols-4">
-
-                <div className="flex flex-col items-center justify-center border-b border-border px-3 py-4 sm:border-b-0 sm:border-r">
-                  <MessageCircle className="size-5 text-muted" />
-
-                  <strong className="mt-2 font-sans text-xl font-semibold">
-                    0
-                  </strong>
-
-                  <span className="mt-0.5 font-sans text-xs text-muted">
-                    Comentários
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center border-b border-border px-3 py-4 sm:border-b-0 sm:border-r">
-                  <Heart className="size-5 text-muted" />
-
-                  <strong className="mt-2 font-sans text-xl font-semibold">
-                    0
-                  </strong>
-
-                  <span className="mt-0.5 font-sans text-xs text-muted">
-                    Curtidas
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center border-r border-border px-3 py-4">
-                  <Users className="size-5 text-muted" />
-
-                  <strong className="mt-2 font-sans text-xl font-semibold">
-                    0
-                  </strong>
-
-                  <span className="mt-0.5 font-sans text-xs text-muted">
-                    Seguidores
-                  </span>
-                </div>
-
-                <div className="flex flex-col items-center justify-center px-3 py-4">
-                  <UserPlus className="size-5 text-muted" />
-
-                  <strong className="mt-2 font-sans text-xl font-semibold">
-                    0
-                  </strong>
-
-                  <span className="mt-0.5 font-sans text-xs text-muted">
-                    Seguindo
-                  </span>
-                </div>
-
-              </div>
-            </div>
-          </div>
-
-          {/* ABAS */}
-          <div className="border-t border-border">
-
-            <div className="grid grid-cols-3">
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("comments")}
-                className={`relative px-3 py-4 font-sans text-sm font-medium transition ${
-                  activeTab === "comments"
-                    ? "text-fg"
-                    : "text-muted hover:text-fg"
-                }`}
-              >
-                Comentários
-
-                {activeTab === "comments" && (
-                  <span className="absolute inset-x-0 bottom-0 mx-auto h-0.5 max-w-32 rounded-full bg-fg" />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("favorites")}
-                className={`relative px-3 py-4 font-sans text-sm font-medium transition ${
-                  activeTab === "favorites"
-                    ? "text-fg"
-                    : "text-muted hover:text-fg"
-                }`}
-              >
-                Favoritos
-
-                {activeTab === "favorites" && (
-                  <span className="absolute inset-x-0 bottom-0 mx-auto h-0.5 max-w-32 rounded-full bg-fg" />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("about")}
-                className={`relative px-3 py-4 font-sans text-sm font-medium transition ${
-                  activeTab === "about"
-                    ? "text-fg"
-                    : "text-muted hover:text-fg"
-                }`}
-              >
-                Sobre
-
-                {activeTab === "about" && (
-                  <span className="absolute inset-x-0 bottom-0 mx-auto h-0.5 max-w-32 rounded-full bg-fg" />
-                )}
-              </button>
-
-            </div>
-          </div>
-
-          {/* CONTEÚDO DAS ABAS */}
-          <div className="p-5 sm:p-7 lg:p-9">
-
-            {/* COMENTÁRIOS */}
-            {activeTab === "comments" && (
-              <div>
-
-                <div>
-                  <h2 className="font-sans text-lg font-semibold">
-                    Comentários de {nick || "pererinha"}
-                  </h2>
-
-                  <p className="mt-1 font-sans text-sm text-muted">
-                    Suas atividades nos episódios do HIKARI.
-                  </p>
-                </div>
-
-                <div className="mt-5 rounded-2xl border border-border bg-bg p-8 text-center sm:p-12">
-
-                  <MessageCircle className="mx-auto size-12 text-muted/70" />
-
-                  <h3 className="mt-4 font-sans text-base font-semibold">
-                    Seus comentários aparecerão aqui
-                  </h3>
-
-                  <p className="mx-auto mt-2 max-w-md font-sans text-sm leading-relaxed text-muted">
-                    Os comentários que você fizer nos episódios
-                    do HIKARI poderão aparecer nesta área.
-                  </p>
-
-                </div>
-              </div>
-            )}
-
-            {/* FAVORITOS */}
-            {activeTab === "favorites" && (
-              <div>
-
-                <div>
-                  <h2 className="font-sans text-lg font-semibold">
-                    Animes favoritos
-                  </h2>
-
-                  <p className="mt-1 font-sans text-sm text-muted">
-                    Títulos que fazem parte dos seus favoritos.
-                  </p>
-                </div>
-
-                {favoriteItems.length > 0 ? (
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {favoriteItems.map((item) => (
-                      <div
-                        key={item}
-                        className="flex items-center gap-3 rounded-xl border border-border bg-bg p-4"
-                      >
-                        <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-elevated">
-                          <Heart className="size-4" />
-                        </div>
-
-                        <span className="font-sans text-sm font-medium">
-                          {item}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-5 rounded-2xl border border-border bg-bg p-8 text-center sm:p-12">
-
-                    <Heart className="mx-auto size-12 text-muted/70" />
-
-                    <h3 className="mt-4 font-sans text-base font-semibold">
-                      Nenhum favorito ainda
-                    </h3>
-
-                    <p className="mx-auto mt-2 max-w-md font-sans text-sm leading-relaxed text-muted">
-                      Seus animes favoritos aparecerão aqui.
-                    </p>
-
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* SOBRE */}
-            {activeTab === "about" && (
-              <div>
-
-                <div>
-                  <h2 className="font-sans text-lg font-semibold">
-                    Sobre {nick || "pererinha"}
-                  </h2>
-
-                  <p className="mt-1 font-sans text-sm text-muted">
-                    Informações públicas do perfil.
-                  </p>
-                </div>
-
-                <div className="mt-5 grid gap-4 lg:grid-cols-2">
-
-                  <div className="rounded-2xl border border-border bg-bg p-5">
-                    <h3 className="font-sans text-sm font-semibold">
-                      Bio
-                    </h3>
-
-                    <p className="mt-3 font-sans text-sm leading-relaxed text-muted">
-                      {bio ||
-                        "Este usuário ainda não adicionou uma descrição."}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-border bg-bg p-5">
-                    <h3 className="font-sans text-sm font-semibold">
-                      Informações
-                    </h3>
-
-                    <div className="mt-4 space-y-3">
-
-                      <div className="flex items-center gap-3">
-                        <Users className="size-4 text-muted" />
-
-                        <span className="font-sans text-sm text-muted">
-                          0 seguidores
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <UserPlus className="size-4 text-muted" />
-
-                        <span className="font-sans text-sm text-muted">
-                          0 seguindo
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <Bookmark className="size-4 text-muted" />
-
-                        <span className="font-sans text-sm text-muted">
-                          {myList.length} animes na lista
-                        </span>
-                      </div>
-
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* RESUMO DA CONTA */}
-        <section className="mt-5 grid gap-4 lg:grid-cols-2">
-
-          <div className="rounded-2xl border border-border bg-surface p-5">
-
-            <div className="flex items-center gap-3">
-              <div className="grid size-10 place-items-center rounded-xl bg-elevated">
-                <Users className="size-5" />
-              </div>
-
-              <div>
-                <h2 className="font-sans text-sm font-semibold">
-                  Conta aberta
-                </h2>
-
-                <p className="mt-1 font-sans text-xs text-muted">
-                  Outros usuários poderão seguir você.
-                </p>
-              </div>
-            </div>
-
-          </div>
-
-          <div className="rounded-2xl border border-border bg-surface p-5">
-
-            <div className="flex items-center gap-3">
-              <div className="grid size-10 place-items-center rounded-xl bg-elevated">
-                <Bookmark className="size-5" />
-              </div>
-
-              <div>
-                <h2 className="font-sans text-sm font-semibold">
-                  Minha Lista
-                </h2>
-
-                <p className="mt-1 font-sans text-xs text-muted">
-                  {myList.length} animes adicionados à sua lista.
-                </p>
-              </div>
-            </div>
-
-          </div>
-
-        </section>
-
-        {/* EDITAR PERFIL */}
-        {editing && (
-          <section className="mt-5 rounded-2xl border border-border bg-surface p-5 sm:p-7">
-
-            <div>
-              <h2 className="font-sans text-lg font-semibold">
-                Editar perfil
-              </h2>
-
-              <p className="mt-1 font-sans text-sm text-muted">
-                Altere as informações públicas do seu perfil.
-              </p>
-            </div>
-
-            <div className="mt-6 space-y-5">
-
-              <div>
-                <label className="font-sans text-xs font-medium text-muted">
-                  Nick
-                </label>
-
-                <input
-                  type="text"
-                  value={nick}
-                  onChange={(e) => {
-                    setNick(e.target.value.toLowerCase());
-                    setError("");
-                  }}
-                  maxLength={30}
-                  placeholder="pererinha"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="mt-2 h-11 w-full rounded-xl border border-border bg-bg px-3 font-sans text-sm text-fg outline-none placeholder:text-subtle focus:border-fg/30"
+              {/* ================================================== */}
+              {/* ESTATÍSTICAS                                       */}
+              {/* ================================================== */}
+
+              <div className="mt-6 grid grid-cols-2 overflow-hidden rounded-2xl border border-[#1b3762] bg-[#07152b] sm:grid-cols-4">
+                <Stat
+                  icon={<MessageCircle />}
+                  value="0"
+                  label="Comentários"
                 />
 
-                <p className="mt-1.5 font-sans text-[11px] text-subtle">
-                  3 a 30 caracteres. Use apenas letras, números ou _.
-                </p>
-              </div>
-
-              <div>
-                <label className="font-sans text-xs font-medium text-muted">
-                  Bio
-                </label>
-
-                <textarea
-                  value={bio}
-                  onChange={(e) => {
-                    setBio(e.target.value);
-                    setError("");
-                  }}
-                  maxLength={500}
-                  rows={4}
-                  placeholder="Conte um pouco sobre você..."
-                  className="mt-2 w-full resize-none rounded-xl border border-border bg-bg p-3 font-sans text-sm text-fg outline-none placeholder:text-subtle focus:border-fg/30"
-                />
-              </div>
-
-              <div>
-                <label className="font-sans text-xs font-medium text-muted">
-                  Animes favoritos
-                </label>
-
-                <input
-                  type="text"
-                  value={favorites}
-                  onChange={(e) => {
-                    setFavorites(e.target.value);
-                    setError("");
-                  }}
-                  placeholder="One Piece, Naruto, Jujutsu Kaisen..."
-                  className="mt-2 h-11 w-full rounded-xl border border-border bg-bg px-3 font-sans text-sm text-fg outline-none placeholder:text-subtle focus:border-fg/30"
+                <Stat
+                  icon={<Heart />}
+                  value="0"
+                  label="Curtidas"
                 />
 
-                <p className="mt-1.5 font-sans text-[11px] text-subtle">
-                  Separe os títulos por vírgula.
-                </p>
-              </div>
+                <Stat
+                  icon={<Users />}
+                  value="0"
+                  label="Seguidores"
+                />
 
-              {error && (
-                <div className="rounded-xl border border-border bg-elevated px-3 py-3 font-sans text-sm">
-                  {error}
-                </div>
+                <Stat
+                  icon={<UserPlus />}
+                  value="0"
+                  label="Seguindo"
+                />
+              </div>
+            </div>
+
+            {/* ================================================== */}
+            {/* ABAS                                                */}
+            {/* ================================================== */}
+
+            <div className="border-t border-[#1b3762] px-3 sm:px-6">
+              <div className="grid grid-cols-3">
+                <ProfileTabButton
+                  active={activeTab === "comments"}
+                  onClick={() => setActiveTab("comments")}
+                >
+                  Comentários
+                </ProfileTabButton>
+
+                <ProfileTabButton
+                  active={activeTab === "favorites"}
+                  onClick={() => setActiveTab("favorites")}
+                >
+                  Favoritos
+                </ProfileTabButton>
+
+                <ProfileTabButton
+                  active={activeTab === "about"}
+                  onClick={() => setActiveTab("about")}
+                >
+                  Sobre
+                </ProfileTabButton>
+              </div>
+            </div>
+
+            {/* ================================================== */}
+            {/* CONTEÚDO DAS ABAS                                  */}
+            {/* ================================================== */}
+
+            <div className="p-5 sm:p-7 lg:p-8">
+              {activeTab === "comments" && (
+                <CommentsTab nick={nick} />
               )}
 
-              <div className="flex flex-wrap gap-2">
+              {activeTab === "favorites" && (
+                <FavoritesTab
+                  favoriteList={favoriteList}
+                />
+              )}
 
-                <Button
-                  type="button"
-                  onClick={() => void saveProfile()}
-                  disabled={saving}
-                >
-                  <Save className="size-4" />
-                  {saving ? "Salvando..." : "Salvar"}
-                </Button>
+              {activeTab === "about" && (
+                <AboutTab
+                  bio={bio}
+                  email={email}
+                  myListLength={myList.length}
+                />
+              )}
+            </div>
+          </section>
 
-                <Button
+          {/* ====================================================== */}
+          {/* COLUNA DIREITA                                         */}
+          {/* ====================================================== */}
+
+          <aside className="space-y-4 lg:pt-0">
+            {/* Conta aberta */}
+            <SideCard>
+              <div className="flex gap-3">
+                <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-cyan-500/10 text-cyan-300">
+                  <Users className="size-5" />
+                </div>
+
+                <div>
+                  <h2 className="font-medium text-white">
+                    Conta aberta
+                  </h2>
+
+                  <p className="mt-1 text-xs leading-5 text-[#8fa5c7]">
+                    Qualquer pessoa pode seguir você.
+                  </p>
+                </div>
+              </div>
+            </SideCard>
+
+            {/* Sobre */}
+            <SideCard>
+              <div className="flex items-center gap-2">
+                <Users className="size-5 text-violet-300" />
+
+                <h2 className="font-semibold">
+                  Sobre
+                </h2>
+              </div>
+
+              <p className="mt-4 text-sm leading-6 text-[#9eb1d1]">
+                {bio ||
+                  "Este usuário ainda não adicionou uma descrição."}
+              </p>
+
+              <div className="mt-5 flex items-center gap-2 text-xs text-[#7186aa]">
+                <CalendarDays className="size-4" />
+                Membro da comunidade HIKARI
+              </div>
+            </SideCard>
+
+            {/* Seguidores */}
+            <SideCard>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold">
+                  Seguidores (0)
+                </h2>
+
+                <Users className="size-4 text-[#7489ad]" />
+              </div>
+
+              <div className="mt-4 rounded-xl border border-dashed border-[#294674] px-4 py-5 text-center">
+                <Users className="mx-auto size-6 text-[#637da8]" />
+
+                <p className="mt-2 text-xs text-[#7186aa]">
+                  Seus seguidores aparecerão aqui.
+                </p>
+              </div>
+            </SideCard>
+
+            {/* Seguindo */}
+            <SideCard>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold">
+                  Seguindo (0)
+                </h2>
+
+                <UserPlus className="size-4 text-[#7489ad]" />
+              </div>
+
+              <div className="mt-4 rounded-xl border border-dashed border-[#294674] px-4 py-5 text-center">
+                <UserPlus className="mx-auto size-6 text-[#637da8]" />
+
+                <p className="mt-2 text-xs text-[#7186aa]">
+                  Os usuários que você seguir aparecerão aqui.
+                </p>
+              </div>
+            </SideCard>
+
+            {/* Privacidade */}
+            <SideCard>
+              <div className="flex gap-3">
+                <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-violet-500/10 text-violet-300">
+                  <Lock className="size-5" />
+                </div>
+
+                <div>
+                  <h2 className="font-medium">
+                    Conta privada
+                  </h2>
+
+                  <p className="mt-1 text-xs leading-5 text-[#8fa5c7]">
+                    Futuramente você poderá controlar quem pode
+                    acompanhar seu perfil.
+                  </p>
+                </div>
+              </div>
+            </SideCard>
+          </aside>
+        </div>
+
+        {/* ====================================================== */}
+        {/* EDITOR DE PERFIL                                      */}
+        {/* ====================================================== */}
+
+        {editing && (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-[#294674] bg-[#07152b] p-5 shadow-2xl sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#7186aa]">
+                    Perfil Hikari
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-semibold">
+                    Editar perfil
+                  </h2>
+                </div>
+
+                <button
                   type="button"
-                  variant="outline"
                   onClick={() => {
                     setError("");
                     setEditing(false);
                   }}
-                  disabled={saving}
+                  className="grid size-9 place-items-center rounded-lg text-[#8fa5c7] hover:bg-[#102343]"
                 >
-                  <X className="size-4" />
-                  Cancelar
-                </Button>
-
+                  <X className="size-5" />
+                </button>
               </div>
 
+              <div className="mt-6 space-y-5">
+                {/* Nick */}
+                <div>
+                  <label className="text-sm font-medium text-white">
+                    Nick
+                  </label>
+
+                  <input
+                    type="text"
+                    value={nick}
+                    onChange={(e) => {
+                      setNick(e.target.value.toLowerCase());
+                      setError("");
+                    }}
+                    maxLength={30}
+                    placeholder="pererinha"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="mt-2 h-12 w-full rounded-xl border border-[#294674] bg-[#030b19] px-4 text-sm text-white outline-none placeholder:text-[#536988] focus:border-violet-400"
+                  />
+
+                  <p className="mt-1.5 text-xs text-[#7186aa]">
+                    3 a 30 caracteres. Use apenas letras, números
+                    ou _.
+                  </p>
+                </div>
+
+                {/* Bio */}
+                <div>
+                  <label className="text-sm font-medium text-white">
+                    Bio
+                  </label>
+
+                  <textarea
+                    value={bio}
+                    onChange={(e) => {
+                      setBio(e.target.value);
+                      setError("");
+                    }}
+                    maxLength={500}
+                    rows={4}
+                    placeholder="Conte um pouco sobre você..."
+                    className="mt-2 w-full resize-none rounded-xl border border-[#294674] bg-[#030b19] p-4 text-sm text-white outline-none placeholder:text-[#536988] focus:border-violet-400"
+                  />
+                </div>
+
+                {/* Favoritos */}
+                <div>
+                  <label className="text-sm font-medium text-white">
+                    Animes favoritos
+                  </label>
+
+                  <input
+                    type="text"
+                    value={favorites}
+                    onChange={(e) => {
+                      setFavorites(e.target.value);
+                      setError("");
+                    }}
+                    placeholder="One Piece, Naruto, Jujutsu Kaisen..."
+                    className="mt-2 h-12 w-full rounded-xl border border-[#294674] bg-[#030b19] px-4 text-sm text-white outline-none placeholder:text-[#536988] focus:border-violet-400"
+                  />
+
+                  <p className="mt-1.5 text-xs text-[#7186aa]">
+                    Separe os títulos por vírgula.
+                  </p>
+                </div>
+
+                {error && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => void saveProfile()}
+                    disabled={saving}
+                    className="bg-violet-600 text-white hover:bg-violet-500"
+                  >
+                    <Save className="size-4" />
+
+                    {saving ? "Salvando..." : "Salvar"}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setError("");
+                      setEditing(false);
+                    }}
+                    disabled={saving}
+                    className="border-[#294674] bg-transparent text-white hover:bg-[#102343]"
+                  >
+                    <X className="size-4" />
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
             </div>
-          </section>
+          </div>
         )}
 
-        {/* ADMIN */}
+        {/* ====================================================== */}
+        {/* ADMIN                                                 */}
+        {/* ====================================================== */}
+
         {admin && (
-          <section className="mt-5 rounded-2xl border border-border bg-surface p-5">
-
-            <div className="flex items-center gap-3">
-              <div className="grid size-10 place-items-center rounded-xl bg-elevated">
-                <ShieldCheck className="size-5" />
-              </div>
-
+          <section className="mt-5 rounded-2xl border border-violet-500/20 bg-[#07152b] p-5 shadow-[0_0_35px_rgba(92,55,255,0.08)]">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="font-sans text-sm font-semibold">
-                  Administrador HIKARI
-                </h2>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="size-5 text-violet-300" />
 
-                <p className="mt-1 font-sans text-xs text-muted">
+                  <h2 className="font-semibold">
+                    Administrador HIKARI
+                  </h2>
+                </div>
+
+                <p className="mt-1 text-sm text-[#8fa5c7]">
                   Seu acesso ao painel de administração está liberado.
                 </p>
               </div>
+
+              <Button
+                asChild
+                className="bg-violet-600 text-white hover:bg-violet-500"
+              >
+                <Link to="/admin">
+                  Abrir Admin
+                </Link>
+              </Button>
             </div>
-
-            <Button asChild className="mt-4">
-              <Link to="/admin">
-                Abrir Admin
-              </Link>
-            </Button>
-
           </section>
         )}
 
-        {/* AÇÕES */}
-        <section className="mt-5 flex flex-wrap gap-2 pb-4">
+        {/* ====================================================== */}
+        {/* RODAPÉ DO PERFIL                                      */}
+        {/* ====================================================== */}
 
+        <div className="mt-5 flex flex-wrap items-center gap-2 pb-8">
           <Button
             type="button"
             variant="outline"
             onClick={() => void signOut("/")}
+            className="border-[#294674] bg-[#07152b] text-white hover:bg-[#102343]"
           >
             <LogOut className="size-4" />
             Sair da conta
           </Button>
 
-          <Button asChild variant="ghost">
+          <Button
+            asChild
+            variant="ghost"
+            className="text-[#9eb1d1] hover:bg-[#102343] hover:text-white"
+          >
             <Link to="/">
               Voltar ao início
             </Link>
           </Button>
 
           {saved && (
-            <span className="self-center font-sans text-xs text-muted">
+            <span className="text-xs text-[#8197ba]">
               Perfil salvo.
             </span>
           )}
-
-        </section>
-
+        </div>
       </div>
     </main>
   );
 }
+
+/* ============================================================ */
+/* COMPONENTE DE ESTATÍSTICA                                   */
+/* ============================================================ */
+
+function Stat({
+  icon,
+  value,
+  label,
+}: {
+  icon: React.ReactNode;
+  value: string;
+  label: string;
+}) {
+  return (
+    <div className="flex min-h-[100px] flex-col items-center justify-center border-b border-[#1b3762] px-3 py-4 text-center sm:border-b-0 sm:border-r last:border-r-0">
+      <div className="text-[#91a8ff] [&>svg]:size-5">
+        {icon}
+      </div>
+
+      <strong className="mt-2 text-xl font-semibold">
+        {value}
+      </strong>
+
+      <span className="mt-1 text-xs text-[#7186aa]">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+/* ============================================================ */
+/* ABA DE COMENTÁRIOS                                          */
+/* ============================================================ */
+
+function CommentsTab({
+  nick,
+}: {
+  nick: string;
+}) {
+  return (
+    <div>
+      <h2 className="text-xl font-semibold">
+        Comentários de {nick || "você"}
+      </h2>
+
+      <p className="mt-1 text-sm text-[#8197ba]">
+        Suas atividades nos episódios do HIKARI.
+      </p>
+
+      <div className="mt-6 rounded-2xl border border-[#294674] bg-[#07152b] p-8 text-center sm:p-12">
+        <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#102343] text-[#8da4ff]">
+          <MessageCircle className="size-8" />
+        </div>
+
+        <h3 className="mt-5 font-semibold">
+          Seus comentários aparecerão aqui
+        </h3>
+
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#7186aa]">
+          Os comentários que você fizer nos episódios do HIKARI
+          poderão aparecer nesta área.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================ */
+/* ABA DE FAVORITOS                                            */
+/* ============================================================ */
+
+function FavoritesTab({
+  favoriteList,
+}: {
+  favoriteList: string[];
+}) {
+  return (
+    <div>
+      <h2 className="text-xl font-semibold">
+        Animes favoritos
+      </h2>
+
+      <p className="mt-1 text-sm text-[#8197ba]">
+        Os títulos que você escolheu como favoritos.
+      </p>
+
+      {favoriteList.length > 0 ? (
+        <div className="mt-6 flex flex-wrap gap-2">
+          {favoriteList.map((item) => (
+            <span
+              key={item}
+              className="rounded-full border border-[#294674] bg-[#0b1c38] px-4 py-2 text-sm text-[#c6d4ec]"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6 rounded-2xl border border-dashed border-[#294674] bg-[#07152b] p-8 text-center">
+          <Bookmark className="mx-auto size-7 text-[#667ea9]" />
+
+          <p className="mt-3 text-sm text-[#8197ba]">
+            Você ainda não adicionou animes favoritos.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================ */
+/* ABA SOBRE                                                   */
+/* ============================================================ */
+
+function AboutTab({
+  bio,
+  email,
+  myListLength,
+}: {
+  bio: string;
+  email: string;
+  myListLength: number;
+}) {
+  return (
+    <div>
+      <h2 className="text-xl font-semibold">
+        Sobre
+      </h2>
+
+      <div className="mt-6 space-y-4">
+        <div className="rounded-2xl border border-[#294674] bg-[#07152b] p-5">
+          <p className="text-xs uppercase tracking-[0.16em] text-[#7186aa]">
+            Bio
+          </p>
+
+          <p className="mt-3 text-sm leading-6 text-[#b4c5df]">
+            {bio ||
+              "Este usuário ainda não adicionou uma descrição."}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-[#294674] bg-[#07152b] p-5">
+          <p className="text-xs uppercase tracking-[0.16em] text-[#7186aa]">
+            Minha conta
+          </p>
+
+          <div className="mt-4 space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[#8197ba]">
+                Animes na minha lista
+              </span>
+
+              <strong>{myListLength}</strong>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-[#8197ba]">
+                E-mail
+              </span>
+
+              <span className="max-w-[60%] truncate text-[#b4c5df]">
+                {email}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================ */
+/* CARD LATERAL                                                */
+/* ============================================================ */
+
+function SideCard({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-[#1c3c70] bg-[#061329] p-5 shadow-[0_0_30px_rgba(28,60,112,0.08)]">
+      {children}
+    </section>
+  );
+}
+
+/* ============================================================ */
+/* BOTÃO DAS ABAS                                              */
+/* ============================================================ */
+
+function ProfileTabButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative min-h-14 px-3 text-sm font-medium transition ${
+        active
+          ? "text-white"
+          : "text-[#7186aa] hover:text-[#c7d5ec]"
+      }`}
+    >
+      {children}
+
+      {active && (
+        <span className="absolute bottom-0 left-1/2 h-0.5 w-20 -translate-x-1/2 rounded-full bg-gradient-to-r from-[#5366ff] to-[#a855f7] shadow-[0_0_12px_rgba(100,80,255,0.8)]" />
+      )}
+    </button>
+  );
+                                 }
