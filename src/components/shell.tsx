@@ -20,7 +20,18 @@ import { Logo } from "@/components/logo";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type NotificationItem = {
+  id: string;
+  type: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+  actorId: string | null;
+  actorName: string | null;
+  actorImage: string | null;
+};
 
 const BASE_NAV = [
   {
@@ -75,8 +86,27 @@ export function Shell() {
   const [menuOpen, setMenuOpen] =
     useState(false);
 
-  const [notificationsOpen, setNotificationsOpen] =
-    useState(false);
+  const [
+    notificationsOpen,
+    setNotificationsOpen,
+  ] = useState(false);
+
+  const [
+    notifications,
+    setNotifications,
+  ] = useState<
+    NotificationItem[]
+  >([]);
+
+  const [
+    unreadCount,
+    setUnreadCount,
+  ] = useState(0);
+
+  const [
+    notificationsLoading,
+    setNotificationsLoading,
+  ] = useState(false);
 
   const cinema =
     pathname.startsWith(
@@ -104,6 +134,115 @@ export function Shell() {
 
   const bottomNav =
     BASE_NAV;
+
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadNotifications =
+      async () => {
+        try {
+          const response =
+            await fetch(
+              "/api/notifications",
+            );
+
+          if (!response.ok) {
+            return;
+          }
+
+          const data =
+            (await response.json()) as {
+              notifications?: NotificationItem[];
+              unreadCount?: number;
+            };
+
+          if (cancelled) {
+            return;
+          }
+
+          setNotifications(
+            data.notifications ?? [],
+          );
+
+          setUnreadCount(
+            Number(
+              data.unreadCount ?? 0,
+            ),
+          );
+        } catch {
+          // Mantém o estado atual caso a API esteja indisponível.
+        }
+      };
+
+    loadNotifications();
+
+    const interval =
+      window.setInterval(
+        loadNotifications,
+        30000,
+      );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(
+        interval,
+      );
+    };
+  }, [user?.id]);
+
+  const openNotifications =
+    async () => {
+      setNotificationsOpen(
+        true,
+      );
+
+      if (!user) {
+        return;
+      }
+
+      setNotificationsLoading(
+        true,
+      );
+
+      try {
+        const response =
+          await fetch(
+            "/api/notifications",
+          );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data =
+          (await response.json()) as {
+            notifications?: NotificationItem[];
+            unreadCount?: number;
+          };
+
+        setNotifications(
+          data.notifications ?? [],
+        );
+
+        setUnreadCount(
+          Number(
+            data.unreadCount ?? 0,
+          ),
+        );
+      } catch {
+        // Mantém os dados atuais.
+      } finally {
+        setNotificationsLoading(
+          false,
+        );
+      }
+    };
 
   if (cinema) {
     return <Outlet />;
@@ -160,11 +299,17 @@ export function Shell() {
             {/* NOTIFICAÇÕES DESKTOP */}
             <button
               type="button"
-              onClick={() =>
-                setNotificationsOpen(
-                  !notificationsOpen,
-                )
-              }
+              onClick={() => {
+                if (
+                  notificationsOpen
+                ) {
+                  setNotificationsOpen(
+                    false,
+                  );
+                } else {
+                  openNotifications();
+                }
+              }}
               className="relative hidden size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:flex"
               aria-label="Notificações"
               aria-expanded={
@@ -173,7 +318,10 @@ export function Shell() {
             >
               <Bell className="size-5" />
 
-              <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
+              {unreadCount >
+                0 && (
+                <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
+              )}
             </button>
 
             {/* BUSCA MOBILE */}
@@ -188,11 +336,17 @@ export function Shell() {
             {/* NOTIFICAÇÕES MOBILE */}
             <button
               type="button"
-              onClick={() =>
-                setNotificationsOpen(
-                  !notificationsOpen,
-                )
-              }
+              onClick={() => {
+                if (
+                  notificationsOpen
+                ) {
+                  setNotificationsOpen(
+                    false,
+                  );
+                } else {
+                  openNotifications();
+                }
+              }}
               className="relative flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
               aria-label="Notificações"
               aria-expanded={
@@ -201,7 +355,10 @@ export function Shell() {
             >
               <Bell className="size-5" />
 
-              <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
+              {unreadCount >
+                0 && (
+                <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
+              )}
             </button>
           </div>
         </div>
@@ -247,19 +404,89 @@ export function Shell() {
               </button>
             </div>
 
-            <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
-              <div>
-                <Bell className="mx-auto mb-3 size-7 text-muted" />
-
-                <p className="text-sm font-medium">
-                  Nenhuma notificação
-                </p>
-
-                <p className="mt-1 text-xs text-muted">
-                  Quando alguém interagir com seu perfil, aparecerá aqui.
+            {notificationsLoading ? (
+              <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
+                <p className="text-sm text-muted">
+                  Carregando...
                 </p>
               </div>
-            </div>
+            ) : notifications.length ===
+              0 ? (
+              <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
+                <div>
+                  <Bell className="mx-auto mb-3 size-7 text-muted" />
+
+                  <p className="text-sm font-medium">
+                    Nenhuma notificação
+                  </p>
+
+                  <p className="mt-1 text-xs text-muted">
+                    Quando alguém interagir com seu perfil, aparecerá aqui.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="max-h-[70vh] overflow-y-auto">
+                {notifications.map(
+                  (
+                    notification,
+                  ) => (
+                    <div
+                      key={
+                        notification.id
+                      }
+                      className={cn(
+                        "border-b border-border px-4 py-4 last:border-b-0",
+                        !notification.read &&
+                          "bg-elevated/50",
+                      )}
+                    >
+                      <div className="flex gap-3">
+                        {notification.actorImage ? (
+                          <img
+                            src={
+                              notification.actorImage
+                            }
+                            alt=""
+                            className="size-10 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
+                            <UserCircle className="size-6" />
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm leading-5">
+                            {
+                              notification.message
+                            }
+                          </p>
+
+                          <p className="mt-1 text-[11px] text-muted">
+                            {new Date(
+                              notification.createdAt,
+                            ).toLocaleString(
+                              "pt-BR",
+                              {
+                                dateStyle:
+                                  "short",
+                                timeStyle:
+                                  "short",
+                              },
+                            )}
+                          </p>
+                        </div>
+
+                        {!notification.read && (
+                          <span className="mt-1 size-2 shrink-0 rounded-full bg-red-500" />
+                        )}
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -408,4 +635,4 @@ export function Shell() {
       </nav>
     </div>
   );
-            }
+    }
