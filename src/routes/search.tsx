@@ -182,15 +182,26 @@ function SearchPage() {
     setUsersError,
   ] = useState("");
 
+  const [
+    suggestionsOpen,
+    setSuggestionsOpen,
+  ] = useState(false);
+
   useEffect(() => {
     setDraft(
       search.q ?? "",
     );
   }, [search.q]);
 
+  /*
+   * Busca usuários enquanto o usuário digita.
+   *
+   * O pequeno atraso evita fazer uma requisição
+   * para cada tecla pressionada imediatamente.
+   */
   useEffect(() => {
     const q =
-      (search.q ?? "").trim();
+      draft.trim();
 
     if (!q) {
       setUsers([]);
@@ -201,69 +212,105 @@ function SearchPage() {
 
     let cancelled = false;
 
-    setUsersLoading(true);
-    setUsersError("");
-
-    void fetch(
-      `/api/users/search?q=${encodeURIComponent(
-        q,
-      )}`,
-      {
-        credentials:
-          "include",
-      },
-    )
-      .then(async (response) => {
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            typeof data?.error ===
-              "string"
-              ? data.error
-              : "Não foi possível buscar usuários.",
-          );
-        }
-
-        return data;
-      })
-      .then((data) => {
-        if (cancelled) return;
-
-        setUsers(
-          Array.isArray(
-            data.users,
-          )
-            ? data.users
-            : [],
-        );
-      })
-      .catch((error) => {
-        if (cancelled) return;
-
-        console.error(
-          "ERRO AO BUSCAR USUÁRIOS:",
-          error,
-        );
-
-        setUsers([]);
-        setUsersError(
-          "Não foi possível carregar os usuários.",
-        );
-      })
-      .finally(() => {
-        if (!cancelled) {
+    const timer =
+      window.setTimeout(
+        () => {
           setUsersLoading(
-            false,
+            true,
           );
-        }
-      });
+          setUsersError("");
+
+          void fetch(
+            `/api/users/search?q=${encodeURIComponent(
+              q,
+            )}`,
+            {
+              credentials:
+                "include",
+            },
+          )
+            .then(
+              async (
+                response,
+              ) => {
+                const data =
+                  await response.json();
+
+                if (
+                  !response.ok
+                ) {
+                  throw new Error(
+                    typeof data?.error ===
+                      "string"
+                      ? data.error
+                      : "Não foi possível buscar usuários.",
+                  );
+                }
+
+                return data;
+              },
+            )
+            .then(
+              (data) => {
+                if (
+                  cancelled
+                ) {
+                  return;
+                }
+
+                setUsers(
+                  Array.isArray(
+                    data.users,
+                  )
+                    ? data.users
+                    : [],
+                );
+              },
+            )
+            .catch(
+              (error) => {
+                if (
+                  cancelled
+                ) {
+                  return;
+                }
+
+                console.error(
+                  "ERRO AO BUSCAR USUÁRIOS:",
+                  error,
+                );
+
+                setUsers(
+                  [],
+                );
+
+                setUsersError(
+                  "Não foi possível carregar os usuários.",
+                );
+              },
+            )
+            .finally(
+              () => {
+                if (
+                  !cancelled
+                ) {
+                  setUsersLoading(
+                    false,
+                  );
+                }
+              },
+            );
+        },
+        250,
+      );
 
     return () => {
       cancelled = true;
+      window.clearTimeout(
+        timer,
+      );
     };
-  }, [search.q]);
+  }, [draft]);
 
   const items =
     useMemo(() => {
@@ -336,6 +383,44 @@ function SearchPage() {
     });
   }
 
+  function submitSearch() {
+    const q =
+      draft.trim();
+
+    setSuggestionsOpen(
+      false,
+    );
+
+    apply({
+      q:
+        q ||
+        undefined,
+    });
+  }
+
+  function selectUser(
+    user: UserSearchResult,
+  ) {
+    /*
+     * Por enquanto o perfil público ainda
+     * será criado na próxima etapa.
+     *
+     * Ao tocar no usuário, colocamos o nome
+     * na busca e executamos a pesquisa.
+     */
+    setDraft(
+      user.name,
+    );
+
+    setSuggestionsOpen(
+      false,
+    );
+
+    apply({
+      q: user.name,
+    });
+  }
+
   const genreOptions =
     genres.length
       ? genres
@@ -353,6 +438,10 @@ function SearchPage() {
     hasUsers ||
     hasAnimes;
 
+  const showSuggestions =
+    suggestionsOpen &&
+    draft.trim().length > 0;
+
   return (
     <div className="space-y-6 pt-6">
       <header className="space-y-1">
@@ -366,15 +455,10 @@ function SearchPage() {
       </header>
 
       <form
-        className="flex gap-2"
+        className="relative flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-
-          apply({
-            q:
-              draft.trim() ||
-              undefined,
-          });
+          submitSearch();
         }}
       >
         <div className="relative flex-1">
@@ -382,15 +466,106 @@ function SearchPage() {
 
           <Input
             value={draft}
-            onChange={(e) =>
+            onChange={(e) => {
               setDraft(
                 e.target.value,
-              )
-            }
+              );
+
+              setSuggestionsOpen(
+                true,
+              );
+            }}
+            onFocus={() => {
+              if (
+                draft.trim()
+              ) {
+                setSuggestionsOpen(
+                  true,
+                );
+              }
+            }}
             placeholder="Buscar animes ou usuários…"
             className="pl-10"
             aria-label="Buscar animes ou usuários"
           />
+
+          {showSuggestions && (
+            <div className="absolute top-full right-0 left-0 z-50 mt-2 overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
+              <div className="border-b border-border px-4 py-3">
+                <p className="text-[11px] font-medium tracking-[0.2em] text-muted uppercase">
+                  Usuários
+                </p>
+              </div>
+
+              {usersLoading ? (
+                <div className="px-4 py-4 text-sm text-muted">
+                  Buscando usuários...
+                </div>
+              ) : usersError ? (
+                <div className="px-4 py-4 text-sm text-muted">
+                  {usersError}
+                </div>
+              ) : users.length > 0 ? (
+                <div className="max-h-72 overflow-y-auto py-1">
+                  {users.map(
+                    (user) => (
+                      <button
+                        key={
+                          user.id
+                        }
+                        type="button"
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-elevated active:bg-elevated"
+                        onMouseDown={(
+                          e,
+                        ) => {
+                          e.preventDefault();
+                        }}
+                        onClick={() =>
+                          selectUser(
+                            user,
+                          )
+                        }
+                      >
+                        {user.image ? (
+                          <img
+                            src={
+                              user.image
+                            }
+                            alt=""
+                            className="size-10 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="grid size-10 shrink-0 place-items-center rounded-full bg-elevated">
+                            <UserCircle className="size-5 text-muted" />
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">
+                            {
+                              user.name
+                            }
+                          </p>
+
+                          <p className="text-xs text-muted">
+                            Usuário HIKARI
+                          </p>
+                        </div>
+
+                        <SearchIcon className="size-4 shrink-0 text-subtle" />
+                      </button>
+                    ),
+                  )}
+                </div>
+              ) : (
+                <div className="px-4 py-4">
+                  <p className="text-sm text-muted">
+                    Nenhum usuário encontrado.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <Button type="submit">
@@ -598,35 +773,39 @@ function SearchPage() {
         </Field>
       </div>
 
-      {search.q && (
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <UserCircle className="size-5" />
+      {search.q &&
+        users.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <UserCircle className="size-5" />
 
-            <h2 className="font-display text-xl">
-              Usuários
-            </h2>
+              <h2 className="font-display text-xl">
+                Usuários
+              </h2>
 
-            {usersLoading && (
               <span className="text-xs text-muted">
-                Buscando...
+                {users.length} resultado
+                {users.length ===
+                1
+                  ? ""
+                  : "s"}
               </span>
-            )}
-          </div>
+            </div>
 
-          {usersError ? (
-            <p className="text-sm text-muted">
-              {usersError}
-            </p>
-          ) : users.length > 0 ? (
             <div className="space-y-2">
               {users.map(
                 (user) => (
-                  <div
+                  <button
                     key={
                       user.id
                     }
-                    className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3 transition hover:bg-elevated"
+                    type="button"
+                    className="flex w-full items-center gap-3 rounded-2xl border border-border bg-surface p-3 text-left transition hover:bg-elevated"
+                    onClick={() =>
+                      selectUser(
+                        user,
+                      )
+                    }
                   >
                     {user.image ? (
                       <img
@@ -642,7 +821,7 @@ function SearchPage() {
                       </div>
                     )}
 
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">
                         {
                           user.name
@@ -653,17 +832,14 @@ function SearchPage() {
                         Usuário HIKARI
                       </p>
                     </div>
-                  </div>
+
+                    <SearchIcon className="size-4 shrink-0 text-subtle" />
+                  </button>
                 ),
               )}
             </div>
-          ) : !usersLoading ? (
-            <p className="text-sm text-muted">
-              Nenhum usuário encontrado.
-            </p>
-          ) : null}
-        </section>
-      )}
+          </section>
+        )}
 
       {hasAnimes && (
         <section className="space-y-3">
@@ -741,4 +917,4 @@ function Field({
       {children}
     </label>
   );
-    }
+}
