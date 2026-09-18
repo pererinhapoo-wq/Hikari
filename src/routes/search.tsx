@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Search as SearchIcon,
   SlidersHorizontal,
-  UserCircle,
 } from "lucide-react";
 import {
   useEffect,
@@ -41,12 +40,6 @@ type Search = {
   format?: string;
   status?: string;
   sort?: string;
-};
-
-type UserSearchResult = {
-  id: string;
-  name: string;
-  image: string | null;
 };
 
 export const Route = createFileRoute(
@@ -165,152 +158,11 @@ function SearchPage() {
     setFiltersOpen,
   ] = useState(false);
 
-  const [
-    users,
-    setUsers,
-  ] = useState<
-    UserSearchResult[]
-  >([]);
-
-  const [
-    usersLoading,
-    setUsersLoading,
-  ] = useState(false);
-
-  const [
-    usersError,
-    setUsersError,
-  ] = useState("");
-
-  const [
-    suggestionsOpen,
-    setSuggestionsOpen,
-  ] = useState(false);
-
   useEffect(() => {
     setDraft(
       search.q ?? "",
     );
   }, [search.q]);
-
-  /*
-   * Busca usuários enquanto o usuário digita.
-   *
-   * O pequeno atraso evita fazer uma requisição
-   * para cada tecla pressionada imediatamente.
-   */
-  useEffect(() => {
-    const q =
-      draft.trim();
-
-    if (!q) {
-      setUsers([]);
-      setUsersLoading(false);
-      setUsersError("");
-      return;
-    }
-
-    let cancelled = false;
-
-    const timer =
-      window.setTimeout(
-        () => {
-          setUsersLoading(
-            true,
-          );
-          setUsersError("");
-
-          void fetch(
-            `/api/users/search?q=${encodeURIComponent(
-              q,
-            )}`,
-            {
-              credentials:
-                "include",
-            },
-          )
-            .then(
-              async (
-                response,
-              ) => {
-                const data =
-                  await response.json();
-
-                if (
-                  !response.ok
-                ) {
-                  throw new Error(
-                    typeof data?.error ===
-                      "string"
-                      ? data.error
-                      : "Não foi possível buscar usuários.",
-                  );
-                }
-
-                return data;
-              },
-            )
-            .then(
-              (data) => {
-                if (
-                  cancelled
-                ) {
-                  return;
-                }
-
-                setUsers(
-                  Array.isArray(
-                    data.users,
-                  )
-                    ? data.users
-                    : [],
-                );
-              },
-            )
-            .catch(
-              (error) => {
-                if (
-                  cancelled
-                ) {
-                  return;
-                }
-
-                console.error(
-                  "ERRO AO BUSCAR USUÁRIOS:",
-                  error,
-                );
-
-                setUsers(
-                  [],
-                );
-
-                setUsersError(
-                  "Não foi possível carregar os usuários.",
-                );
-              },
-            )
-            .finally(
-              () => {
-                if (
-                  !cancelled
-                ) {
-                  setUsersLoading(
-                    false,
-                  );
-                }
-              },
-            );
-        },
-        250,
-      );
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(
-        timer,
-      );
-    };
-  }, [draft]);
 
   const items =
     useMemo(() => {
@@ -387,37 +239,10 @@ function SearchPage() {
     const q =
       draft.trim();
 
-    setSuggestionsOpen(
-      false,
-    );
-
     apply({
       q:
         q ||
         undefined,
-    });
-  }
-
-  function selectUser(
-    user: UserSearchResult,
-  ) {
-    /*
-     * Por enquanto o perfil público ainda
-     * será criado na próxima etapa.
-     *
-     * Ao tocar no usuário, colocamos o nome
-     * na busca e executamos a pesquisa.
-     */
-    setDraft(
-      user.name,
-    );
-
-    setSuggestionsOpen(
-      false,
-    );
-
-    apply({
-      q: user.name,
     });
   }
 
@@ -428,19 +253,8 @@ function SearchPage() {
           GENRE_PT,
         );
 
-  const hasUsers =
-    users.length > 0;
-
   const hasAnimes =
     items.length > 0;
-
-  const hasResults =
-    hasUsers ||
-    hasAnimes;
-
-  const showSuggestions =
-    suggestionsOpen &&
-    draft.trim().length > 0;
 
   return (
     <div className="space-y-6 pt-6">
@@ -470,102 +284,11 @@ function SearchPage() {
               setDraft(
                 e.target.value,
               );
-
-              setSuggestionsOpen(
-                true,
-              );
             }}
-            onFocus={() => {
-              if (
-                draft.trim()
-              ) {
-                setSuggestionsOpen(
-                  true,
-                );
-              }
-            }}
-            placeholder="Buscar animes ou usuários…"
+            placeholder="Buscar animes…"
             className="pl-10"
-            aria-label="Buscar animes ou usuários"
+            aria-label="Buscar animes"
           />
-
-          {showSuggestions && (
-            <div className="absolute top-full right-0 left-0 z-50 mt-2 overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
-              <div className="border-b border-border px-4 py-3">
-                <p className="text-[11px] font-medium tracking-[0.2em] text-muted uppercase">
-                  Usuários
-                </p>
-              </div>
-
-              {usersLoading ? (
-                <div className="px-4 py-4 text-sm text-muted">
-                  Buscando usuários...
-                </div>
-              ) : usersError ? (
-                <div className="px-4 py-4 text-sm text-muted">
-                  {usersError}
-                </div>
-              ) : users.length > 0 ? (
-                <div className="max-h-72 overflow-y-auto py-1">
-                  {users.map(
-                    (user) => (
-                      <button
-                        key={
-                          user.id
-                        }
-                        type="button"
-                        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-elevated active:bg-elevated"
-                        onMouseDown={(
-                          e,
-                        ) => {
-                          e.preventDefault();
-                        }}
-                        onClick={() =>
-                          selectUser(
-                            user,
-                          )
-                        }
-                      >
-                        {user.image ? (
-                          <img
-                            src={
-                              user.image
-                            }
-                            alt=""
-                            className="size-10 shrink-0 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="grid size-10 shrink-0 place-items-center rounded-full bg-elevated">
-                            <UserCircle className="size-5 text-muted" />
-                          </div>
-                        )}
-
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
-                            {
-                              user.name
-                            }
-                          </p>
-
-                          <p className="text-xs text-muted">
-                            Usuário HIKARI
-                          </p>
-                        </div>
-
-                        <SearchIcon className="size-4 shrink-0 text-subtle" />
-                      </button>
-                    ),
-                  )}
-                </div>
-              ) : (
-                <div className="px-4 py-4">
-                  <p className="text-sm text-muted">
-                    Nenhum usuário encontrado.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         <Button type="submit">
@@ -773,74 +496,6 @@ function SearchPage() {
         </Field>
       </div>
 
-      {search.q &&
-        users.length > 0 && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <UserCircle className="size-5" />
-
-              <h2 className="font-display text-xl">
-                Usuários
-              </h2>
-
-              <span className="text-xs text-muted">
-                {users.length} resultado
-                {users.length ===
-                1
-                  ? ""
-                  : "s"}
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              {users.map(
-                (user) => (
-                  <button
-                    key={
-                      user.id
-                    }
-                    type="button"
-                    className="flex w-full items-center gap-3 rounded-2xl border border-border bg-surface p-3 text-left transition hover:bg-elevated"
-                    onClick={() =>
-                      selectUser(
-                        user,
-                      )
-                    }
-                  >
-                    {user.image ? (
-                      <img
-                        src={
-                          user.image
-                        }
-                        alt=""
-                        className="size-12 shrink-0 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="grid size-12 shrink-0 place-items-center rounded-full bg-elevated">
-                        <UserCircle className="size-6 text-muted" />
-                      </div>
-                    )}
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">
-                        {
-                          user.name
-                        }
-                      </p>
-
-                      <p className="text-xs text-muted">
-                        Usuário HIKARI
-                      </p>
-                    </div>
-
-                    <SearchIcon className="size-4 shrink-0 text-subtle" />
-                  </button>
-                ),
-              )}
-            </div>
-          </section>
-        )}
-
       {hasAnimes && (
         <section className="space-y-3">
           <div className="flex items-center gap-2">
@@ -870,27 +525,26 @@ function SearchPage() {
         </section>
       )}
 
-      {!hasResults &&
-        !usersLoading && (
-          <div className="py-20 text-center">
-            <p className="font-display text-2xl">
-              Nada encontrado
-            </p>
+      {!hasAnimes && (
+        <div className="py-20 text-center">
+          <p className="font-display text-2xl">
+            Nada encontrado
+          </p>
 
-            <p className="mt-2 text-sm text-muted">
-              Tente outro título
-              ou limpe os
-              filtros.
-            </p>
+          <p className="mt-2 text-sm text-muted">
+            Tente outro título
+            ou limpe os
+            filtros.
+          </p>
 
-            <Link
-              to="/search"
-              className="mt-4 inline-block text-sm text-fg underline"
-            >
-              Limpar busca
-            </Link>
-          </div>
-        )}
+          <Link
+            to="/search"
+            className="mt-4 inline-block text-sm text-fg underline"
+          >
+            Limpar busca
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
@@ -917,4 +571,4 @@ function Field({
       {children}
     </label>
   );
-}
+         }
