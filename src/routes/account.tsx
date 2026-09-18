@@ -131,54 +131,93 @@ function Account() {
         </p>
 
         <h1 className="mt-1 font-display text-3xl tracking-tight">
-          Meu perfil
+          Perfil
         </h1>
       </header>
 
       <section className="overflow-hidden rounded-2xl bg-surface shadow-[var(--shadow-border)]">
-        <div className="p-5">
-          <div className="flex items-center gap-4">
+        {/* Capa do perfil */}
+        <div className="relative h-36 overflow-hidden bg-gradient-to-br from-indigo-950 via-purple-900 to-slate-950">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(129,140,248,0.35),transparent_35%),radial-gradient(circle_at_80%_80%,rgba(168,85,247,0.3),transparent_40%)]" />
+
+          <div className="absolute inset-0 opacity-20">
+            <div className="absolute -right-10 -top-20 size-56 rounded-full border border-white/20" />
+            <div className="absolute -right-4 -top-14 size-44 rounded-full border border-white/10" />
+            <div className="absolute -bottom-28 -left-10 size-64 rounded-full border border-white/10" />
+          </div>
+        </div>
+
+        {/* Área principal do perfil */}
+        <div className="relative px-5 pb-5">
+          {/* Avatar sobre a capa */}
+          <div className="-mt-10">
             {user.profileImageUrl ? (
               <img
                 src={user.profileImageUrl}
                 alt=""
-                className="size-20 rounded-full object-cover"
+                className="size-20 rounded-full border-4 border-surface object-cover shadow-lg"
               />
             ) : (
-              <div className="grid size-20 shrink-0 place-items-center rounded-full bg-elevated font-display text-2xl">
+              <div className="grid size-20 place-items-center rounded-full border-4 border-surface bg-elevated font-display text-2xl shadow-lg">
                 {avatarLetter}
               </div>
             )}
-
-            <div className="min-w-0 flex-1">
-              {loadingProfile ? (
-                <>
-                  <div className="h-6 w-32 animate-pulse rounded bg-elevated" />
-
-                  <div className="mt-2 h-4 w-24 animate-pulse rounded bg-elevated" />
-
-                  <div className="mt-2 h-3 w-36 animate-pulse rounded bg-elevated" />
-                </>
-              ) : (
-                <>
-                  <p className="truncate text-xl font-medium">
-                    {nick || "Defina seu Nick"}
-                  </p>
-
-                  {nick && (
-                    <p className="truncate text-sm text-muted">
-                      @{nick}
-                    </p>
-                  )}
-
-                  <p className="mt-1 truncate text-xs text-subtle">
-                    {email}
-                  </p>
-                </>
-              )}
-            </div>
           </div>
 
+          {/* Identidade */}
+          <div className="mt-3">
+            {loadingProfile ? (
+              <>
+                <div className="h-7 w-36 animate-pulse rounded bg-elevated" />
+
+                <div className="mt-2 h-4 w-24 animate-pulse rounded bg-elevated" />
+
+                <div className="mt-3 h-3 w-36 animate-pulse rounded bg-elevated" />
+              </>
+            ) : (
+              <>
+                <p className="truncate text-2xl font-medium tracking-tight">
+                  {nick || "Defina seu Nick"}
+                </p>
+
+                {nick && (
+                  <p className="mt-0.5 text-sm text-muted">
+                    @{nick}
+                  </p>
+                )}
+
+                <p className="mt-2 truncate text-xs text-subtle">
+                  {email}
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Botão de edição */}
+          {!loadingProfile && (
+            <div className="mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSaved(false);
+                  setError("");
+                  setEditing(true);
+                }}
+              >
+                <Pencil className="size-4" />
+                Editar perfil
+              </Button>
+
+              {saved && (
+                <span className="ml-3 text-xs text-muted">
+                  Perfil salvo.
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Informações básicas */}
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-elevated p-3">
               <p className="text-xs text-muted">
@@ -206,6 +245,7 @@ function Account() {
           </div>
         </div>
 
+        {/* Conteúdo do perfil */}
         <div className="border-t border-border p-5">
           {loadingProfile ? (
             <div className="space-y-3">
@@ -350,32 +390,12 @@ function Account() {
                   {error}
                 </div>
               )}
-
-              <div className="mt-5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setSaved(false);
-                    setError("");
-                    setEditing(true);
-                  }}
-                >
-                  <Pencil className="size-4" />
-                  Editar perfil
-                </Button>
-
-                {saved && (
-                  <span className="ml-3 text-xs text-muted">
-                    Perfil salvo.
-                  </span>
-                )}
-              </div>
             </>
           )}
         </div>
       </section>
 
+      {/* Área administrativa */}
       {admin && (
         <section className="rounded-2xl border border-border bg-surface p-5">
           <div className="flex items-center gap-2 font-medium">
@@ -395,6 +415,7 @@ function Account() {
         </section>
       )}
 
+      {/* Conta */}
       <section className="flex flex-wrap gap-2 px-1 pb-24">
         <Button
           type="button"
@@ -413,4 +434,4 @@ function Account() {
       </section>
     </main>
   );
-              }
+      }
