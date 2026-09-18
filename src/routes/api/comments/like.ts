@@ -11,9 +11,10 @@ export const Route = createFileRoute("/api/comments/like")({
           // 1. VERIFICAR USUÁRIO LOGADO
           // =====================================================
 
-          const session = await auth.api.getSession({
-            headers: request.headers,
-          });
+          const session =
+            await auth.api.getSession({
+              headers: request.headers,
+            });
 
           if (!session?.user?.id) {
             return Response.json(
@@ -25,7 +26,8 @@ export const Route = createFileRoute("/api/comments/like")({
             );
           }
 
-          const userId = session.user.id;
+          const userId =
+            session.user.id;
 
           console.log(
             "USUÁRIO DA CURTIDA:",
@@ -36,28 +38,35 @@ export const Route = createFileRoute("/api/comments/like")({
           // 2. LER JSON
           // =====================================================
 
-          let body: Record<string, unknown>;
+          let body: Record<
+            string,
+            unknown
+          >;
 
           try {
-            body = await request.json();
+            body =
+              await request.json();
           } catch {
             return Response.json(
               {
-                error: "JSON inválido.",
+                error:
+                  "JSON inválido.",
               },
               { status: 400 },
             );
           }
 
           const commentId =
-            typeof body.commentId === "string"
+            typeof body.commentId ===
+            "string"
               ? body.commentId.trim()
               : "";
 
           if (!commentId) {
             return Response.json(
               {
-                error: "commentId é obrigatório.",
+                error:
+                  "commentId é obrigatório.",
               },
               { status: 400 },
             );
@@ -68,26 +77,28 @@ export const Route = createFileRoute("/api/comments/like")({
             commentId,
           );
 
-          const sql = await getSql();
+          const sql =
+            await getSql();
 
           // =====================================================
           // 3. VERIFICAR SE O COMENTÁRIO EXISTE
+          //    E PEGAR O DONO DO COMENTÁRIO
           // =====================================================
 
-          const commentResult = await sql.query(
-            `
-              select
-                "id"
-              from "comment"
-              where "id" = $1
-              limit 1
-            `,
-            [commentId],
-          );
+          const commentResult =
+            await sql.query(
+              `
+                select
+                  "id",
+                  "userId"
+                from "comment"
+                where "id" = $1
+                limit 1
+              `,
+              [commentId],
+            );
 
           /*
-           * IMPORTANTE:
-           *
            * O adaptador de banco usado pelo Hikari pode retornar
            * o resultado de SELECT diretamente como um array.
            *
@@ -98,18 +109,23 @@ export const Route = createFileRoute("/api/comments/like")({
            * Por isso aceitamos os dois formatos.
            */
 
-          const commentRows = Array.isArray(
-            commentResult,
-          )
-            ? commentResult
-            : commentResult?.rows ?? [];
+          const commentRows =
+            Array.isArray(
+              commentResult,
+            )
+              ? commentResult
+              : commentResult?.rows ??
+                [];
 
           console.log(
             "QUANTIDADE DE COMENTÁRIOS ENCONTRADOS:",
             commentRows.length,
           );
 
-          if (commentRows.length === 0) {
+          if (
+            commentRows.length ===
+            0
+          ) {
             console.error(
               "COMENTÁRIO NÃO ENCONTRADO PARA CURTIDA:",
               commentId,
@@ -123,6 +139,10 @@ export const Route = createFileRoute("/api/comments/like")({
               { status: 404 },
             );
           }
+
+          const commentOwnerId =
+            commentRows[0]
+              ?.userId;
 
           // =====================================================
           // 4. VERIFICAR SE O USUÁRIO JÁ CURTIU
@@ -138,7 +158,10 @@ export const Route = createFileRoute("/api/comments/like")({
                   and "userId" = $2
                 limit 1
               `,
-              [commentId, userId],
+              [
+                commentId,
+                userId,
+              ],
             );
 
           const existingLikeRows =
@@ -146,20 +169,27 @@ export const Route = createFileRoute("/api/comments/like")({
               existingLikeResult,
             )
               ? existingLikeResult
-              : existingLikeResult?.rows ?? [];
+              : existingLikeResult?.rows ??
+                [];
 
           // =====================================================
           // 5. SE JÁ CURTIU → REMOVER CURTIDA
           // =====================================================
 
-          if (existingLikeRows.length > 0) {
+          if (
+            existingLikeRows.length >
+            0
+          ) {
             await sql.query(
               `
                 delete from "comment_like"
                 where "commentId" = $1
                   and "userId" = $2
               `,
-              [commentId, userId],
+              [
+                commentId,
+                userId,
+              ],
             );
 
             // ===================================================
@@ -178,13 +208,17 @@ export const Route = createFileRoute("/api/comments/like")({
               );
 
             const countRows =
-              Array.isArray(countResult)
+              Array.isArray(
+                countResult,
+              )
                 ? countResult
-                : countResult?.rows ?? [];
+                : countResult?.rows ??
+                  [];
 
             const likes =
               Number(
-                countRows[0]?.count ?? 0,
+                countRows[0]
+                  ?.count ?? 0,
               );
 
             console.log(
@@ -223,7 +257,75 @@ export const Route = createFileRoute("/api/comments/like")({
           );
 
           // =====================================================
-          // 7. CONTAR CURTIDAS
+          // 7. CRIAR NOTIFICAÇÃO
+          // =====================================================
+          //
+          // A notificação não pode impedir a curtida.
+          // Portanto, se ocorrer algum problema aqui,
+          // a curtida continua funcionando normalmente.
+          //
+          // Também não notificamos quando o usuário curte
+          // o próprio comentário.
+          //
+
+          if (
+            commentOwnerId &&
+            commentOwnerId !== userId
+          ) {
+            try {
+              const notificationId =
+                crypto.randomUUID();
+
+              const actorName =
+                session.user.name ??
+                "Alguém";
+
+              await sql.query(
+                `
+                  insert into "notification" (
+                    "id",
+                    "userId",
+                    "actorId",
+                    "type",
+                    "message"
+                  )
+                  values (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5
+                  )
+                `,
+                [
+                  notificationId,
+                  commentOwnerId,
+                  userId,
+                  "comment_like",
+                  `${actorName} curtiu seu comentário.`,
+                ],
+              );
+
+              console.log(
+                "NOTIFICAÇÃO DE CURTIDA CRIADA:",
+                notificationId,
+              );
+            } catch (
+              notificationError
+            ) {
+              console.error(
+                "ERRO AO CRIAR NOTIFICAÇÃO DE CURTIDA:",
+                notificationError,
+              );
+
+              // IMPORTANTE:
+              // Não retornamos erro aqui.
+              // A curtida já foi salva e continua válida.
+            }
+          }
+
+          // =====================================================
+          // 8. CONTAR CURTIDAS
           // =====================================================
 
           const countResult =
@@ -238,13 +340,17 @@ export const Route = createFileRoute("/api/comments/like")({
             );
 
           const countRows =
-            Array.isArray(countResult)
+            Array.isArray(
+              countResult,
+            )
               ? countResult
-              : countResult?.rows ?? [];
+              : countResult?.rows ??
+                [];
 
           const likes =
             Number(
-              countRows[0]?.count ?? 0,
+              countRows[0]
+                ?.count ?? 0,
             );
 
           console.log(
@@ -254,7 +360,7 @@ export const Route = createFileRoute("/api/comments/like")({
           );
 
           // =====================================================
-          // 8. RESPONDER
+          // 9. RESPONDER
           // =====================================================
 
           return Response.json({
