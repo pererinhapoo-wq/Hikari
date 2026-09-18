@@ -35,7 +35,6 @@ import {
   getMyComments,
   getProfile,
   updateProfile,
-  type MyProfileComment,
 } from "@/lib/profile.functions";
 
 import { useHikariStore } from "@/lib/store";
@@ -80,6 +79,16 @@ function Account() {
   const [commentCount, setCommentCount] =
     useState(0);
 
+  const [
+    followersCount,
+    setFollowersCount,
+  ] = useState(0);
+
+  const [
+    followingCount,
+    setFollowingCount,
+  ] = useState(0);
+
   const [editing, setEditing] =
     useState(false);
 
@@ -119,14 +128,25 @@ function Account() {
         if (!active) return;
 
         setNick(profile.nick);
+
         setBio(profile.bio);
 
         setFavorites(
-          profile.favorites.join(", "),
+          profile.favorites.join(
+            ", ",
+          ),
         );
 
         setCommentCount(
           profile.commentCount,
+        );
+
+        setFollowersCount(
+          profile.followersCount,
+        );
+
+        setFollowingCount(
+          profile.followingCount,
         );
 
         setError("");
@@ -137,7 +157,12 @@ function Account() {
         setNick("");
         setBio("");
         setFavorites("");
+
         setCommentCount(0);
+
+        setFollowersCount(0);
+
+        setFollowingCount(0);
 
         setError(
           "Não foi possível carregar seu perfil.",
@@ -209,6 +234,7 @@ function Account() {
         });
 
       setNick(profile.nick);
+
       setBio(profile.bio);
 
       setFavorites(
@@ -221,7 +247,16 @@ function Account() {
         profile.commentCount,
       );
 
+      setFollowersCount(
+        profile.followersCount,
+      );
+
+      setFollowingCount(
+        profile.followingCount,
+      );
+
       setSaved(true);
+
       setEditing(false);
     } catch (err) {
       setError(
@@ -268,18 +303,11 @@ function Account() {
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
 
-          {/* ================================================== */}
-          {/* COLUNA PRINCIPAL                                   */}
-          {/* ================================================== */}
-
+          {/* COLUNA PRINCIPAL */}
           <section className="min-w-0 overflow-hidden rounded-2xl border border-[#1c3c70] bg-[#061329] shadow-[0_0_40px_rgba(38,70,180,0.12)]">
 
-            {/* ================================================== */}
-            {/* CAPA                                                */}
-            {/* ================================================== */}
-
+            {/* CAPA */}
             <div className="relative h-[250px] overflow-hidden sm:h-[300px] lg:h-[340px]">
-
               <div
                 className="absolute inset-0"
                 style={{
@@ -301,17 +329,14 @@ function Account() {
               <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_35%,rgba(1,8,22,0.12)_60%,rgba(1,8,22,0.78)_100%)]" />
 
               <div className="absolute bottom-[-70px] left-1/2 h-[280px] w-[300px] -translate-x-1/2 opacity-50">
-
                 <div className="absolute left-1/2 top-0 h-[210px] w-[145px] -translate-x-1/2 rounded-t-[80px] bg-[#050918] shadow-[0_0_60px_rgba(0,0,0,0.7)]" />
 
                 <div className="absolute left-1/2 top-[75px] h-[170px] w-[230px] -translate-x-1/2 rounded-t-[110px] bg-[#071126]" />
 
                 <div className="absolute left-1/2 top-[45px] h-[130px] w-[70px] -translate-x-1/2 rounded-full bg-[#111b35]" />
-
               </div>
 
               <div className="absolute right-5 top-6 text-right sm:right-8 sm:top-8">
-
                 <p className="text-xl font-medium tracking-[0.45em] text-white/90 sm:text-2xl">
                   好きなことで
                 </p>
@@ -323,29 +348,20 @@ function Account() {
                 <p className="mt-1 text-xs text-white/60">
                   Viver do que ama
                 </p>
-
               </div>
 
               <div className="absolute bottom-5 left-5 hidden items-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-2 backdrop-blur-md sm:flex">
-
                 <Sparkles className="size-4 text-violet-300" />
 
                 <span className="text-xs font-medium tracking-[0.18em] text-white/80">
                   PERFIL HIKARI
                 </span>
-
               </div>
-
             </div>
 
-            {/* ================================================== */}
-            {/* IDENTIDADE                                         */}
-            {/* ================================================== */}
-
+            {/* IDENTIDADE */}
             <div className="relative px-5 pb-5 sm:px-8 lg:px-10">
-
               <div className="-mt-16 sm:-mt-20">
-
                 <div className="relative inline-block">
 
                   {user.profileImageUrl ? (
@@ -369,15 +385,12 @@ function Account() {
                   >
                     <Camera className="size-4" />
                   </button>
-
                 </div>
-
               </div>
 
               <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
 
                 <div className="min-w-0">
-
                   {loadingProfile ? (
                     <>
                       <div className="h-9 w-48 animate-pulse rounded-lg bg-[#102343]" />
@@ -398,7 +411,6 @@ function Account() {
                         {nick && (
                           <BadgeCheck className="size-6 fill-violet-500 text-white" />
                         )}
-
                       </div>
 
                       {nick && (
@@ -414,11 +426,9 @@ function Account() {
                       )}
                     </>
                   )}
-
                 </div>
 
                 {/* BOTÕES */}
-
                 <div className="relative flex shrink-0 items-center gap-2">
 
                   <Button
@@ -467,7 +477,6 @@ function Account() {
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white transition hover:bg-[#102343]"
                       >
                         <Pencil className="size-4 text-[#9fb2ff]" />
-
                         <span>
                           Editar perfil
                         </span>
@@ -520,16 +529,12 @@ function Account() {
                           Sair da conta
                         </span>
                       </button>
-
                     </div>
                   )}
-
                 </div>
-
               </div>
 
               {/* INFORMAÇÕES */}
-
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[#7186aa]">
 
                 {email && (
@@ -539,23 +544,17 @@ function Account() {
                 )}
 
                 <span className="flex items-center gap-1.5">
-
                   <Sparkles className="size-3.5" />
 
                   Membro da comunidade HIKARI
-
                 </span>
-
               </div>
 
               {/* ESTATÍSTICAS */}
-
               <div className="mt-6 grid grid-cols-2 overflow-hidden rounded-2xl border border-[#1b3762] bg-[#07152b] sm:grid-cols-4">
 
                 <Stat
-                  icon={
-                    <MessageCircle />
-                  }
+                  icon={<MessageCircle />}
                   value={String(
                     commentCount,
                   )}
@@ -570,24 +569,24 @@ function Account() {
 
                 <Stat
                   icon={<Users />}
-                  value="0"
+                  value={String(
+                    followersCount,
+                  )}
                   label="Seguidores"
                 />
 
                 <Stat
                   icon={<UserPlus />}
-                  value="0"
+                  value={String(
+                    followingCount,
+                  )}
                   label="Seguindo"
                 />
-
               </div>
-
             </div>
 
             {/* ABAS */}
-
             <div className="border-t border-[#1b3762] px-3 sm:px-6">
-
               <div className="grid grid-cols-3">
 
                 <ProfileTabButton
@@ -631,13 +630,10 @@ function Account() {
                 >
                   Sobre
                 </ProfileTabButton>
-
               </div>
-
             </div>
 
             {/* CONTEÚDO */}
-
             <div className="p-5 sm:p-7 lg:p-8">
 
               {activeTab ===
@@ -666,29 +662,20 @@ function Account() {
                   }
                 />
               )}
-
             </div>
-
           </section>
 
-          {/* ================================================== */}
-          {/* COLUNA DIREITA                                     */}
-          {/* ================================================== */}
-
+          {/* COLUNA DIREITA */}
           <aside className="space-y-4 lg:pt-0">
 
             <SideCard>
-
               <div className="flex gap-3">
 
                 <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-cyan-500/10 text-cyan-300">
-
                   <Users className="size-5" />
-
                 </div>
 
                 <div>
-
                   <h2 className="font-medium text-white">
                     Conta aberta
                   </h2>
@@ -696,25 +683,18 @@ function Account() {
                   <p className="mt-1 text-xs leading-5 text-[#8fa5c7]">
                     Qualquer pessoa pode seguir você.
                   </p>
-
                 </div>
-
               </div>
-
             </SideCard>
 
             <SideCard>
-
               <div className="flex gap-3">
 
                 <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-violet-500/10 text-violet-300">
-
                   <Lock className="size-5" />
-
                 </div>
 
                 <div>
-
                   <h2 className="font-medium">
                     Conta privada
                   </h2>
@@ -722,21 +702,14 @@ function Account() {
                   <p className="mt-1 text-xs leading-5 text-[#8fa5c7]">
                     Futuramente você poderá controlar quem pode acompanhar seu perfil.
                   </p>
-
                 </div>
-
               </div>
-
             </SideCard>
 
           </aside>
-
         </div>
 
-        {/* ================================================== */}
-        {/* EDITOR DE PERFIL                                   */}
-        {/* ================================================== */}
-
+        {/* EDITOR DE PERFIL */}
         {editing && (
           <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
 
@@ -745,7 +718,6 @@ function Account() {
               <div className="flex items-center justify-between">
 
                 <div>
-
                   <p className="text-xs uppercase tracking-[0.2em] text-[#7186aa]">
                     Perfil Hikari
                   </p>
@@ -753,7 +725,6 @@ function Account() {
                   <h2 className="mt-1 text-2xl font-semibold">
                     Editar perfil
                   </h2>
-
                 </div>
 
                 <button
@@ -766,13 +737,11 @@ function Account() {
                 >
                   <X className="size-5" />
                 </button>
-
               </div>
 
               <div className="mt-6 space-y-5">
 
                 <div>
-
                   <label className="text-sm font-medium text-white">
                     Nick
                   </label>
@@ -784,6 +753,7 @@ function Account() {
                       setNick(
                         e.target.value.toLowerCase(),
                       );
+
                       setError("");
                     }}
                     maxLength={30}
@@ -797,11 +767,9 @@ function Account() {
                   <p className="mt-1.5 text-xs text-[#7186aa]">
                     3 a 30 caracteres. Use apenas letras, números ou _.
                   </p>
-
                 </div>
 
                 <div>
-
                   <label className="text-sm font-medium text-white">
                     Bio
                   </label>
@@ -812,6 +780,7 @@ function Account() {
                       setBio(
                         e.target.value,
                       );
+
                       setError("");
                     }}
                     maxLength={500}
@@ -819,11 +788,9 @@ function Account() {
                     placeholder="Conte um pouco sobre você..."
                     className="mt-2 w-full resize-none rounded-xl border border-[#294674] bg-[#030b19] p-4 text-sm text-white outline-none placeholder:text-[#536988] focus:border-violet-400"
                   />
-
                 </div>
 
                 <div>
-
                   <label className="text-sm font-medium text-white">
                     Animes favoritos
                   </label>
@@ -835,6 +802,7 @@ function Account() {
                       setFavorites(
                         e.target.value,
                       );
+
                       setError("");
                     }}
                     placeholder="One Piece, Naruto, Jujutsu Kaisen..."
@@ -844,7 +812,6 @@ function Account() {
                   <p className="mt-1.5 text-xs text-[#7186aa]">
                     Separe os títulos por vírgula.
                   </p>
-
                 </div>
 
                 {error && (
@@ -886,25 +853,18 @@ function Account() {
                   </Button>
 
                 </div>
-
               </div>
-
             </div>
-
           </div>
         )}
 
-        {/* ================================================== */}
-        {/* ADMIN                                             */}
-        {/* ================================================== */}
-
+        {/* ADMIN */}
         {admin && (
           <section className="mt-5 rounded-2xl border border-violet-500/20 bg-[#07152b] p-5 shadow-[0_0_35px_rgba(92,55,255,0.08)]">
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
               <div>
-
                 <div className="flex items-center gap-2">
 
                   <ShieldCheck className="size-5 text-violet-300" />
@@ -918,7 +878,6 @@ function Account() {
                 <p className="mt-1 text-sm text-[#8fa5c7]">
                   Seu acesso ao painel de administração está liberado.
                 </p>
-
               </div>
 
               <Button
@@ -931,14 +890,10 @@ function Account() {
               </Button>
 
             </div>
-
           </section>
         )}
 
-        {/* ================================================== */}
-        {/* RODAPÉ                                            */}
-        {/* ================================================== */}
-
+        {/* RODAPÉ */}
         <div className="mt-5 flex flex-wrap items-center gap-2 pb-8">
 
           <Button
@@ -971,14 +926,13 @@ function Account() {
           )}
 
         </div>
-
       </div>
     </main>
   );
 }
 
 /* ============================================================ */
-/* ESTATÍSTICA                                                  */
+/* ESTATÍSTICA                                                    */
 /* ============================================================ */
 
 function Stat({
@@ -1010,7 +964,7 @@ function Stat({
 }
 
 /* ============================================================ */
-/* ABA DE COMENTÁRIOS                                          */
+/* COMENTÁRIOS                                                    */
 /* ============================================================ */
 
 function CommentsTab({
@@ -1019,33 +973,22 @@ function CommentsTab({
   nick: string;
 }) {
   const getMyCommentsFn =
-    useServerFn(
-      getMyComments,
-    );
+    useServerFn(getMyComments);
 
-  const [
-    comments,
-    setComments,
-  ] = useState<
-    MyProfileComment[]
-  >([]);
+  const [comments, setComments] =
+    useState<
+      Awaited<
+        ReturnType<
+          typeof getMyCommentsFn
+        >
+      >
+    >([]);
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [
-    error,
-    setError,
-  ] = useState("");
-
-  const [
-    likeBusy,
-    setLikeBusy,
-  ] = useState<
-    string | null
-  >(null);
+  const [error, setError] =
+    useState("");
 
   useEffect(() => {
     let active = true;
@@ -1057,9 +1000,7 @@ function CommentsTab({
       .then((result) => {
         if (!active) return;
 
-        setComments(
-          result,
-        );
+        setComments(result);
       })
       .catch(() => {
         if (!active) return;
@@ -1079,82 +1020,7 @@ function CommentsTab({
     return () => {
       active = false;
     };
-  }, [getMyCommentsFn]);
-
-  async function toggleLike(
-    commentId: string,
-  ) {
-    if (likeBusy) {
-      return;
-    }
-
-    setLikeBusy(
-      commentId,
-    );
-
-    setError("");
-
-    try {
-      const response =
-        await fetch(
-          "/api/comments/like",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body: JSON.stringify({
-              commentId,
-            }),
-          },
-        );
-
-      const data =
-        (await response.json()) as {
-          liked?: boolean;
-          likes?: number;
-          error?: string;
-        };
-
-      if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "Não foi possível alterar a curtida.",
-        );
-      }
-
-      setComments(
-        (current) =>
-          current.map(
-            (comment) =>
-              comment.id ===
-              commentId
-                ? {
-                    ...comment,
-                    liked:
-                      Boolean(
-                        data.liked,
-                      ),
-                    likes:
-                      Number(
-                        data.likes ??
-                          0,
-                      ) || 0,
-                  }
-                : comment,
-          ),
-      );
-    } catch {
-      setError(
-        "Não foi possível alterar a curtida.",
-      );
-    } finally {
-      setLikeBusy(
-        null,
-      );
-    }
-  }
+  }, []);
 
   return (
     <div>
@@ -1170,13 +1036,9 @@ function CommentsTab({
 
       {loading && (
         <div className="mt-6 space-y-3">
-
           <CommentSkeleton />
-
           <CommentSkeleton />
-
           <CommentSkeleton />
-
         </div>
       )}
 
@@ -1193,9 +1055,7 @@ function CommentsTab({
           <div className="mt-6 rounded-2xl border border-[#294674] bg-[#07152b] p-8 text-center sm:p-12">
 
             <div className="mx-auto grid size-16 place-items-center rounded-full bg-[#102343] text-[#8da4ff]">
-
               <MessageCircle className="size-8" />
-
             </div>
 
             <h3 className="mt-5 font-semibold">
@@ -1218,16 +1078,7 @@ function CommentsTab({
               (comment) => (
                 <ProfileCommentCard
                   key={comment.id}
-                  comment={
-                    comment
-                  }
-                  onToggleLike={
-                    toggleLike
-                  }
-                  likeBusy={
-                    likeBusy ===
-                    comment.id
-                  }
+                  comment={comment}
                 />
               ),
             )}
@@ -1240,7 +1091,7 @@ function CommentsTab({
 }
 
 /* ============================================================ */
-/* SKELETON DO COMENTÁRIO                                      */
+/* SKELETON                                                       */
 /* ============================================================ */
 
 function CommentSkeleton() {
@@ -1260,19 +1111,15 @@ function CommentSkeleton() {
 }
 
 /* ============================================================ */
-/* CARD DE COMENTÁRIO DO PERFIL                                */
+/* CARD DE COMENTÁRIO                                             */
 /* ============================================================ */
 
 function ProfileCommentCard({
   comment,
-  onToggleLike,
-  likeBusy,
 }: {
-  comment: MyProfileComment;
-  onToggleLike: (
-    commentId: string,
-  ) => void;
-  likeBusy: boolean;
+  comment: Awaited<
+    ReturnType<typeof getMyComments>
+  >[number];
 }) {
   const date = new Date(
     comment.createdAt,
@@ -1308,8 +1155,6 @@ function ProfileCommentCard({
   return (
     <article className="rounded-2xl border border-[#294674] bg-[#07152b] p-5 transition hover:border-[#365b91]">
 
-      {/* CABEÇALHO */}
-
       <div className="flex items-start gap-3">
 
         {comment.userImage ? (
@@ -1322,10 +1167,7 @@ function ProfileCommentCard({
           />
         ) : (
           <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[#15284b] text-sm font-semibold text-[#b7c7e5]">
-            {(
-              comment.userName ||
-              "U"
-            )
+            {comment.userName
               .charAt(0)
               .toUpperCase()}
           </div>
@@ -1347,27 +1189,23 @@ function ProfileCommentCard({
 
           </div>
 
-          {/* LINK DO EPISÓDIO */}
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#7186aa]">
 
-          <Link
-            to="/watch/$id"
-            params={{
-              id: comment.animeId,
-            }}
-            search={{
-              ep: comment.episodeId,
-            }}
-            className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#7186aa] transition hover:text-[#aebcff]"
-          >
-
-            <span className="max-w-full truncate">
+            <Link
+              to="/watch/$id"
+              params={{
+                id: comment.animeId,
+              }}
+              search={{
+                ep: comment.episodeId,
+              }}
+              className="transition hover:text-white"
+            >
               Episódio{" "}
               {comment.episodeId}
-            </span>
+            </Link>
 
-            <span>
-              •
-            </span>
+            <span>•</span>
 
             <span>
               {formattedDate}
@@ -1375,9 +1213,7 @@ function ProfileCommentCard({
 
             {formattedTime && (
               <>
-                <span>
-                  •
-                </span>
+                <span>•</span>
 
                 <span>
                   {formattedTime}
@@ -1385,13 +1221,9 @@ function ProfileCommentCard({
               </>
             )}
 
-          </Link>
-
+          </div>
         </div>
-
       </div>
-
-      {/* CONTEÚDO */}
 
       {comment.isSpoiler ? (
         <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
@@ -1400,7 +1232,7 @@ function ProfileCommentCard({
             Spoiler
           </p>
 
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#c4d1e8]">
+          <p className="mt-2 text-sm leading-6 text-[#c4d1e8]">
             {comment.content}
           </p>
 
@@ -1411,55 +1243,55 @@ function ProfileCommentCard({
         </p>
       )}
 
-      {/* AÇÕES */}
-
-      <div className="mt-5 flex items-center gap-4 border-t border-[#1b3762] pt-4">
-
-        {/* CURTIR */}
+      <div className="mt-5 flex items-center gap-4 border-t border-[#1b3762] pt-4 text-xs text-[#8197ba]">
 
         <button
           type="button"
-          onClick={() =>
-            onToggleLike(
-              comment.id,
-            )
-          }
-          disabled={likeBusy}
-          aria-label={
-            comment.liked
-              ? "Remover curtida"
-              : "Curtir comentário"
-          }
-          className={`flex items-center gap-1.5 text-xs transition ${
-            comment.liked
-              ? "text-pink-400"
-              : "text-[#8197ba] hover:text-pink-300"
-          } ${
-            likeBusy
-              ? "opacity-60"
-              : ""
-          }`}
+          onClick={async () => {
+            try {
+              const response =
+                await fetch(
+                  "/api/comments/like",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type":
+                        "application/json",
+                    },
+                    body: JSON.stringify({
+                      commentId:
+                        comment.id,
+                    }),
+                  },
+                );
+
+              if (!response.ok) {
+                return;
+              }
+
+              const result =
+                (await response.json()) as {
+                  liked: boolean;
+                  likes: number;
+                };
+
+              // O card usa os dados vindos do servidor.
+              // A atualização da página mantém o estado sincronizado.
+              void result;
+            } catch {
+              // Ignora erro de rede.
+            }
+          }}
+          className="flex items-center gap-1.5 transition hover:text-white"
         >
+          <Heart className="size-4" />
 
-          <Heart
-            className={`size-4 ${
-              comment.liked
-                ? "fill-current"
-                : ""
-            }`}
-          />
+          {comment.likes}
 
-          <span>
-            {comment.likes}{" "}
-            {comment.likes ===
-            1
-              ? "curtida"
-              : "curtidas"}
-          </span>
-
+          {comment.likes === 1
+            ? " curtida"
+            : " curtidas"}
         </button>
-
-        {/* ABRIR EPISÓDIO / COMENTÁRIO */}
 
         <Link
           to="/watch/$id"
@@ -1469,27 +1301,22 @@ function ProfileCommentCard({
           search={{
             ep: comment.episodeId,
           }}
-          className="flex items-center gap-1.5 text-xs text-[#8197ba] transition hover:text-[#b8c7e3]"
+          className="flex items-center gap-1.5 transition hover:text-white"
         >
-
           <MessageCircle className="size-4" />
 
-          <span>
-            {comment.parentId
-              ? "Resposta"
-              : "Comentário"}
-          </span>
-
+          {comment.parentId
+            ? "Resposta"
+            : "Comentário"}
         </Link>
 
       </div>
-
     </article>
   );
 }
 
 /* ============================================================ */
-/* ABA FAVORITOS                                                */
+/* FAVORITOS                                                      */
 /* ============================================================ */
 
 function FavoritesTab({
@@ -1508,8 +1335,7 @@ function FavoritesTab({
         Os títulos que você escolheu como favoritos.
       </p>
 
-      {favoriteList.length >
-      0 ? (
+      {favoriteList.length > 0 ? (
         <div className="mt-6 flex flex-wrap gap-2">
 
           {favoriteList.map(
@@ -1541,7 +1367,7 @@ function FavoritesTab({
 }
 
 /* ============================================================ */
-/* ABA SOBRE                                                    */
+/* SOBRE                                                          */
 /* ============================================================ */
 
 function AboutTab({
@@ -1608,17 +1434,14 @@ function AboutTab({
             </div>
 
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 }
 
 /* ============================================================ */
-/* CARD LATERAL                                                 */
+/* SIDE CARD                                                      */
 /* ============================================================ */
 
 function SideCard({
@@ -1634,7 +1457,7 @@ function SideCard({
 }
 
 /* ============================================================ */
-/* BOTÃO DAS ABAS                                               */
+/* BOTÃO DE ABA                                                   */
 /* ============================================================ */
 
 function ProfileTabButton({
@@ -1656,13 +1479,11 @@ function ProfileTabButton({
           : "text-[#7186aa] hover:text-[#c7d5ec]"
       }`}
     >
-
       {children}
 
       {active && (
         <span className="absolute bottom-0 left-1/2 h-0.5 w-20 -translate-x-1/2 rounded-full bg-gradient-to-r from-[#5366ff] to-[#a855f7] shadow-[0_0_12px_rgba(100,80,255,0.8)]" />
       )}
-
     </button>
   );
   }
