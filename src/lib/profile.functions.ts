@@ -7,6 +7,7 @@ export type UserProfile = {
   nick: string;
   bio: string;
   favorites: string[];
+  commentCount: number;
 };
 
 function parseFavorites(value: unknown): string[] {
@@ -58,12 +59,25 @@ export const getProfile = createServerFn({ method: "GET" })
       limit 1
     `;
 
+    const commentRows = await sql<{
+      count: string;
+    }>`
+      select count(*)::text as count
+      from "comment"
+      where "userId" = ${context.userId}
+    `;
+
     const row = rows[0];
+
+    const commentCount = Number(
+      commentRows[0]?.count ?? "0",
+    );
 
     return {
       nick: row?.nick ?? "",
       bio: row?.bio ?? "",
       favorites: parseFavorites(row?.favorites),
+      commentCount,
     } satisfies UserProfile;
   });
 
@@ -136,9 +150,22 @@ export const updateProfile = createServerFn({ method: "POST" })
         "updatedAt" = CURRENT_TIMESTAMP
     `;
 
+    const commentRows = await sql<{
+      count: string;
+    }>`
+      select count(*)::text as count
+      from "comment"
+      where "userId" = ${context.userId}
+    `;
+
+    const commentCount = Number(
+      commentRows[0]?.count ?? "0",
+    );
+
     return {
       nick,
       bio,
       favorites,
+      commentCount,
     } satisfies UserProfile;
   });
