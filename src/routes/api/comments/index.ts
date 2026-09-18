@@ -8,10 +8,6 @@ export const Route = createFileRoute(
 )({
   server: {
     handlers: {
-      /* ================================================== */
-      /* GET — CARREGAR COMENTÁRIOS                         */
-      /* ================================================== */
-
       GET: async ({ request }) => {
         try {
           const url = new URL(
@@ -46,10 +42,6 @@ export const Route = createFileRoute(
           const sql =
             await getSql();
 
-          /* ============================================== */
-          /* USUÁRIO ATUAL                                   */
-          /* ============================================== */
-
           const session =
             await auth.api.getSession(
               {
@@ -66,10 +58,6 @@ export const Route = createFileRoute(
             isHikariAdmin(
               session?.user?.email,
             );
-
-          /* ============================================== */
-          /* COMENTÁRIOS + CURTIDAS                         */
-          /* ============================================== */
 
           const result =
             await sql.query(
@@ -148,10 +136,6 @@ export const Route = createFileRoute(
               ? result
               : result?.rows ?? [];
 
-          /* ============================================== */
-          /* NORMALIZAR DADOS                               */
-          /* ============================================== */
-
           const normalizedComments =
             comments.map(
               (comment) => ({
@@ -199,14 +183,14 @@ export const Route = createFileRoute(
         }
       },
 
-      /* ================================================== */
-      /* POST — CRIAR COMENTÁRIO / RESPOSTA                */
-      /* ================================================== */
-
       POST: async ({
         request,
       }) => {
         try {
+          // =====================================================
+          // 1. VERIFICAR USUÁRIO LOGADO
+          // =====================================================
+
           const session =
             await auth.api.getSession(
               {
@@ -239,6 +223,10 @@ export const Route = createFileRoute(
                 session.user.name,
             },
           );
+
+          // =====================================================
+          // 2. LER DADOS DO COMENTÁRIO
+          // =====================================================
 
           const body =
             await request.json();
@@ -308,9 +296,9 @@ export const Route = createFileRoute(
           const sql =
             await getSql();
 
-          /* ============================================== */
-          /* VALIDAR COMENTÁRIO PAI                         */
-          /* ============================================== */
+          // =====================================================
+          // 3. VERIFICAR COMENTÁRIO PAI
+          // =====================================================
 
           let parentCommentOwnerId:
             string | null = null;
@@ -370,9 +358,9 @@ export const Route = createFileRoute(
               null;
           }
 
-          /* ============================================== */
-          /* CRIAR COMENTÁRIO / RESPOSTA                    */
-          /* ============================================== */
+          // =====================================================
+          // 4. CRIAR COMENTÁRIO
+          // =====================================================
 
           const id =
             crypto.randomUUID();
@@ -410,20 +398,9 @@ export const Route = createFileRoute(
             ],
           );
 
-          /* ============================================== */
-          /* NOTIFICAÇÃO DE RESPOSTA                        */
-          /* ============================================== */
-          //
-          // Só criamos a notificação quando:
-          //
-          // 1. Existe um comentário pai.
-          // 2. O dono do comentário pai existe.
-          // 3. A pessoa que respondeu não é a própria
-          //    pessoa que escreveu o comentário original.
-          //
-          // Se a notificação falhar, a resposta continua
-          // salva normalmente.
-          //
+          // =====================================================
+          // 5. NOTIFICAÇÃO DE RESPOSTA
+          // =====================================================
 
           if (
             parentId &&
@@ -446,14 +423,20 @@ export const Route = createFileRoute(
                     "userId",
                     "actorId",
                     "type",
-                    "message"
+                    "message",
+                    "commentId",
+                    "animeId",
+                    "episodeId"
                   )
                   values (
                     $1,
                     $2,
                     $3,
                     $4,
-                    $5
+                    $5,
+                    $6,
+                    $7,
+                    $8
                   )
                 `,
                 [
@@ -462,12 +445,21 @@ export const Route = createFileRoute(
                   session.user.id,
                   "comment_reply",
                   `${actorName} respondeu seu comentário.`,
+                  parentId,
+                  animeId,
+                  episodeId,
                 ],
               );
 
               console.log(
                 "NOTIFICAÇÃO DE RESPOSTA CRIADA:",
-                notificationId,
+                {
+                  notificationId,
+                  commentId:
+                    parentId,
+                  animeId,
+                  episodeId,
+                },
               );
             } catch (
               notificationError
@@ -477,47 +469,37 @@ export const Route = createFileRoute(
                 notificationError,
               );
 
-              // IMPORTANTE:
-              // A resposta já foi criada.
-              // Um erro na notificação não pode
-              // transformar uma resposta válida
-              // em erro para o usuário.
+              // A resposta já foi salva.
+              // Se a notificação falhar,
+              // o comentário continua existindo.
             }
           }
+
+          // =====================================================
+          // 6. RETORNAR COMENTÁRIO CRIADO
+          // =====================================================
 
           const now =
             new Date().toISOString();
 
           const comment = {
             id,
-
             animeId,
-
             episodeId,
-
             content,
-
             parentId,
-
             isSpoiler,
-
             createdAt: now,
-
             updatedAt: now,
-
             userId:
               session.user.id,
-
             userName:
               session.user.name ||
               "Usuário",
-
             userImage:
               session.user.image ||
               null,
-
             likes: 0,
-
             liked: false,
           };
 
