@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-router";
 
 import {
+  Bell,
   Bookmark,
   Clapperboard,
   House,
@@ -109,6 +110,7 @@ export function Shell() {
     <div className="min-h-dvh bg-bg text-fg">
       <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
+          {/* MENU */}
           <button
             type="button"
             onClick={() =>
@@ -120,8 +122,10 @@ export function Shell() {
             <Menu className="size-6" />
           </button>
 
+          {/* LOGO */}
           <Logo />
 
+          {/* NAVEGAÇÃO DESKTOP */}
           <nav className="hidden items-center gap-1 md:flex">
             {nav.map(
               (item) => {
@@ -148,16 +152,45 @@ export function Shell() {
             )}
           </nav>
 
-          <Link
-            to="/search"
-            className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
-            aria-label="Buscar"
-          >
-            <Search className="size-5" />
-          </Link>
+          {/* AÇÕES DA DIREITA */}
+          <div className="flex items-center gap-1">
+            {/* NOTIFICAÇÕES DESKTOP */}
+            <button
+              type="button"
+              className="relative hidden size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:flex"
+              aria-label="Notificações"
+            >
+              <Bell className="size-5" />
+
+              {/* PONTO VERMELHO */}
+              <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
+            </button>
+
+            {/* BUSCA MOBILE */}
+            <Link
+              to="/search"
+              className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
+              aria-label="Buscar"
+            >
+              <Search className="size-5" />
+            </Link>
+
+            {/* NOTIFICAÇÕES MOBILE */}
+            <button
+              type="button"
+              className="relative flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
+              aria-label="Notificações"
+            >
+              <Bell className="size-5" />
+
+              {/* PONTO VERMELHO */}
+              <span className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-red-500 ring-2 ring-bg" />
+            </button>
+          </div>
         </div>
       </header>
 
+      {/* MENU LATERAL */}
       {menuOpen && (
         <>
           <button
