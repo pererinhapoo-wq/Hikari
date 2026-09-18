@@ -312,12 +312,16 @@ export const Route = createFileRoute(
           /* VALIDAR COMENTÁRIO PAI                         */
           /* ============================================== */
 
+          let parentCommentOwnerId:
+            string | null = null;
+
           if (parentId) {
             const parentResult =
               await sql.query(
                 `
                   select
-                    "id"
+                    "id",
+                    "userId"
                   from "comment"
                   where "id" =
                     $1
@@ -359,10 +363,15 @@ export const Route = createFileRoute(
                 },
               );
             }
+
+            parentCommentOwnerId =
+              parentRows[0]
+                ?.userId ??
+              null;
           }
 
           /* ============================================== */
-          /* CRIAR COMENTÁRIO                               */
+          /* CRIAR COMENTÁRIO / RESPOSTA                    */
           /* ============================================== */
 
           const id =
@@ -400,6 +409,81 @@ export const Route = createFileRoute(
               isSpoiler,
             ],
           );
+
+          /* ============================================== */
+          /* NOTIFICAÇÃO DE RESPOSTA                        */
+          /* ============================================== */
+          //
+          // Só criamos a notificação quando:
+          //
+          // 1. Existe um comentário pai.
+          // 2. O dono do comentário pai existe.
+          // 3. A pessoa que respondeu não é a própria
+          //    pessoa que escreveu o comentário original.
+          //
+          // Se a notificação falhar, a resposta continua
+          // salva normalmente.
+          //
+
+          if (
+            parentId &&
+            parentCommentOwnerId &&
+            parentCommentOwnerId !==
+              session.user.id
+          ) {
+            try {
+              const notificationId =
+                crypto.randomUUID();
+
+              const actorName =
+                session.user.name ??
+                "Alguém";
+
+              await sql.query(
+                `
+                  insert into "notification" (
+                    "id",
+                    "userId",
+                    "actorId",
+                    "type",
+                    "message"
+                  )
+                  values (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5
+                  )
+                `,
+                [
+                  notificationId,
+                  parentCommentOwnerId,
+                  session.user.id,
+                  "comment_reply",
+                  `${actorName} respondeu seu comentário.`,
+                ],
+              );
+
+              console.log(
+                "NOTIFICAÇÃO DE RESPOSTA CRIADA:",
+                notificationId,
+              );
+            } catch (
+              notificationError
+            ) {
+              console.error(
+                "ERRO AO CRIAR NOTIFICAÇÃO DE RESPOSTA:",
+                notificationError,
+              );
+
+              // IMPORTANTE:
+              // A resposta já foi criada.
+              // Um erro na notificação não pode
+              // transformar uma resposta válida
+              // em erro para o usuário.
+            }
+          }
 
           const now =
             new Date().toISOString();
