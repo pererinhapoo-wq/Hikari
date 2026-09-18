@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { auth } from "@/lib/auth/server";
+import { isHikariAdmin } from "@/lib/auth/admin";
 
 export const Route = createFileRoute(
   "/api/comments/",
@@ -60,6 +61,11 @@ export const Route = createFileRoute(
           const currentUserId =
             session?.user?.id ??
             null;
+
+          const isAdmin =
+            isHikariAdmin(
+              session?.user?.email,
+            );
 
           /* ============================================== */
           /* COMENTÁRIOS + CURTIDAS                         */
@@ -172,6 +178,8 @@ export const Route = createFileRoute(
           return Response.json({
             comments:
               normalizedComments,
+            currentUserId,
+            isAdmin,
           });
         } catch (error) {
           console.error(
