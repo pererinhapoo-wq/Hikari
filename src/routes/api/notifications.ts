@@ -3,7 +3,7 @@ import {
   createFileRoute,
 } from "@tanstack/react-router";
 
-import { getSql } from "@/lib/db";
+import { getSql, dbSource } from "@/lib/db";
 import { auth } from "@/lib/auth/server";
 
 export const Route = createFileRoute(
@@ -25,6 +25,11 @@ export const Route = createFileRoute(
             {
               notifications: [],
               unreadCount: 0,
+              debug: {
+                dbSource,
+                databaseUrlConfigured:
+                  dbSource === "neon",
+              },
             },
             {
               status: 401,
@@ -35,69 +40,79 @@ export const Route = createFileRoute(
         const sql =
           await getSql();
 
-        /*
-         * Diagnóstico temporário:
-         * verifica se a tabela notification realmente
-         * existe no mesmo banco usado pelo Runtime.
-         */
-        const tableCheck =
-          await sql<{
-            exists: boolean;
-          }>`
-            select
-              to_regclass(
-                'public.notification'
-              ) is not null as "exists"
-          `;
-
-        const notificationExists =
-          Boolean(
-            tableCheck[0]?.exists,
-          );
-
-        /*
-         * Verifica se a migration 0011
-         * está registrada neste mesmo banco.
-         */
-        let migrationExists =
-          false;
+        let notificationTableExists = false;
+        let migration0011Registered = false;
+        let migration010Registered = false;
 
         try {
-          const migrationCheck =
+          const tableRows =
             await sql<{
               exists: boolean;
             }>`
               select exists (
                 select 1
-                from "_migrations"
-                where "name" =
-                  '0011_notification_recreate.sql'
-              ) as "exists"
+                from information_schema.tables
+                where
+                  table_schema = 'public'
+                  and table_name = 'notification'
+              ) as exists
             `;
 
-          migrationExists =
+          notificationTableExists =
             Boolean(
-              migrationCheck[0]?.exists,
+              tableRows[0]?.exists,
             );
         } catch {
-          migrationExists = false;
+          notificationTableExists =
+            false;
         }
 
-        /*
-         * Se a tabela não existe, não deixa a API
-         * quebrar. Retorna o diagnóstico.
-         */
-        if (!notificationExists) {
+        try {
+          const migrationRows =
+            await sql<{
+              name: string;
+            }>`
+              select "name"
+              from "_migrations"
+              where "name" in (
+                '0010_notification_fix.sql',
+                '0011_notification_recreate.sql'
+              )
+              order by "name"
+            `;
+
+          migration0011Registered =
+            migrationRows.some(
+              (row) =>
+                row.name ===
+                "0011_notification_recreate.sql",
+            );
+
+          migration010Registered =
+            migrationRows.some(
+              (row) =>
+                row.name ===
+                "0010_notification_fix.sql",
+            );
+        } catch {
+          migration0011Registered =
+            false;
+          migration010Registered =
+            false;
+        }
+
+        if (!notificationTableExists) {
           return json({
             notifications: [],
             unreadCount: 0,
 
             debug: {
-              notificationTableExists:
-                false,
-
-              migration0011Registered:
-                migrationExists,
+              dbSource,
+              databaseUrlConfigured:
+                dbSource === "neon",
+              notificationTableExists,
+              migration010Registered,
+              migration0011Registered,
             },
           });
         }
@@ -124,8 +139,7 @@ export const Route = createFileRoute(
               u."image" as "actorImage"
             from "notification" n
             left join "user" u
-              on u."id" =
-                n."actorId"
+              on u."id" = n."actorId"
             where
               n."userId" =
                 ${session.user.id}
@@ -150,7 +164,6 @@ export const Route = createFileRoute(
 
         return json({
           notifications,
-
           unreadCount:
             Number(
               unreadRows[0]
@@ -158,11 +171,12 @@ export const Route = createFileRoute(
             ),
 
           debug: {
-            notificationTableExists:
-              true,
-
-            migration0011Registered:
-              migrationExists,
+            dbSource,
+            databaseUrlConfigured:
+              dbSource === "neon",
+            notificationTableExists,
+            migration010Registered,
+            migration0011Registered,
           },
         });
       },
