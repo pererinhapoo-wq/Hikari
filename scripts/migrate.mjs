@@ -15,25 +15,23 @@
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
 import pg from "pg";
 import { pendingMigrations } from "./migration-plan.mjs";
 
 const databaseUrl = process.env.DATABASE_URL;
 
-function getDatabaseIdentity(value) {
+function getDatabaseHash(value) {
   if (!value) return "DATABASE_URL_NOT_SET";
 
-  try {
-    const url = new URL(value);
-
-    return `${url.hostname}${url.pathname}`;
-  } catch {
-    return "DATABASE_URL_INVALID";
-  }
+  return createHash("sha256")
+    .update(value)
+    .digest("hex")
+    .slice(0, 12);
 }
 
 console.log(
-  `[migrate] database identity: ${getDatabaseIdentity(databaseUrl)}`,
+  `[migrate] database hash: ${getDatabaseHash(databaseUrl)}`,
 );
 
 if (!databaseUrl) {
