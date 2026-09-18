@@ -1,9 +1,14 @@
 import {
   createFileRoute,
 } from "@tanstack/react-router";
+
 import { createHash } from "node:crypto";
 
-import { getSql, dbSource } from "@/lib/db";
+import {
+  getSql,
+  dbSource,
+} from "@/lib/db";
+
 import { auth } from "@/lib/auth/server";
 
 const rawDatabaseUrl =
@@ -58,10 +63,6 @@ export const Route = createFileRoute(
         const sql =
           await getSql();
 
-        // =====================================================
-        // VERIFICAR SE A TABELA EXISTE
-        // =====================================================
-
         let notificationTableExists =
           false;
 
@@ -105,10 +106,6 @@ export const Route = createFileRoute(
           });
         }
 
-        // =====================================================
-        // BUSCAR NOTIFICAÇÕES
-        // =====================================================
-
         const notifications =
           await sql<{
             id: string;
@@ -116,13 +113,27 @@ export const Route = createFileRoute(
             message: string;
             read: boolean;
             createdAt: string;
-            actorId: string | null;
-            actorName: string | null;
-            actorImage: string | null;
 
-            commentId: string | null;
-            animeId: string | null;
-            episodeId: string | null;
+            actorId:
+              string | null;
+
+            actorName:
+              string | null;
+
+            actorImage:
+              string | null;
+
+            commentId:
+              string | null;
+
+            animeId:
+              string | null;
+
+            episodeId:
+              string | null;
+
+            commentLikes:
+              number;
           }>`
             select
               n."id",
@@ -138,7 +149,19 @@ export const Route = createFileRoute(
 
               n."commentId",
               n."animeId",
-              n."episodeId"
+              n."episodeId",
+
+              coalesce(
+                (
+                  select
+                    count(*)::int
+                  from "comment_like" cl
+                  where
+                    cl."commentId" =
+                      n."commentId"
+                ),
+                0
+              ) as "commentLikes"
 
             from "notification" n
 
@@ -155,10 +178,6 @@ export const Route = createFileRoute(
 
             limit 50
           `;
-
-        // =====================================================
-        // CONTAR NÃO LIDAS
-        // =====================================================
 
         const unreadRows =
           await sql<{
