@@ -99,6 +99,7 @@ function PublicProfile() {
     setLoading(true);
     setError("");
     setCommentsError("");
+    setComments([]);
 
     void getPublicProfileFn({
       data: {
@@ -175,11 +176,7 @@ function PublicProfile() {
     return () => {
       active = false;
     };
-  }, [
-    nick,
-    getPublicProfileFn,
-    getPublicCommentsFn,
-  ]);
+  }, [nick]);
 
   async function toggleFollow() {
     if (!profile) {
@@ -316,10 +313,12 @@ function PublicProfile() {
               commentId
                 ? {
                     ...comment,
+
                     liked:
                       Boolean(
                         result.liked,
                       ),
+
                     likes:
                       Number(
                         result.likes ??
@@ -803,4 +802,4 @@ function PublicStat({
 
     </div>
   );
-}
+      }
