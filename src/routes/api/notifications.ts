@@ -35,6 +35,73 @@ export const Route = createFileRoute(
         const sql =
           await getSql();
 
+        /*
+         * Diagnóstico temporário:
+         * verifica se a tabela notification realmente
+         * existe no mesmo banco usado pelo Runtime.
+         */
+        const tableCheck =
+          await sql<{
+            exists: boolean;
+          }>`
+            select
+              to_regclass(
+                'public.notification'
+              ) is not null as "exists"
+          `;
+
+        const notificationExists =
+          Boolean(
+            tableCheck[0]?.exists,
+          );
+
+        /*
+         * Verifica se a migration 0011
+         * está registrada neste mesmo banco.
+         */
+        let migrationExists =
+          false;
+
+        try {
+          const migrationCheck =
+            await sql<{
+              exists: boolean;
+            }>`
+              select exists (
+                select 1
+                from "_migrations"
+                where "name" =
+                  '0011_notification_recreate.sql'
+              ) as "exists"
+            `;
+
+          migrationExists =
+            Boolean(
+              migrationCheck[0]?.exists,
+            );
+        } catch {
+          migrationExists = false;
+        }
+
+        /*
+         * Se a tabela não existe, não deixa a API
+         * quebrar. Retorna o diagnóstico.
+         */
+        if (!notificationExists) {
+          return json({
+            notifications: [],
+            unreadCount: 0,
+
+            debug: {
+              notificationTableExists:
+                false,
+
+              migration0011Registered:
+                migrationExists,
+            },
+          });
+        }
+
         const notifications =
           await sql<{
             id: string;
@@ -57,7 +124,8 @@ export const Route = createFileRoute(
               u."image" as "actorImage"
             from "notification" n
             left join "user" u
-              on u."id" = n."actorId"
+              on u."id" =
+                n."actorId"
             where
               n."userId" =
                 ${session.user.id}
@@ -70,7 +138,8 @@ export const Route = createFileRoute(
           await sql<{
             count: string;
           }>`
-            select count(*)::text as count
+            select
+              count(*)::text as count
             from "notification"
             where
               "userId" =
@@ -81,11 +150,20 @@ export const Route = createFileRoute(
 
         return json({
           notifications,
+
           unreadCount:
             Number(
               unreadRows[0]
                 ?.count ?? "0",
             ),
+
+          debug: {
+            notificationTableExists:
+              true,
+
+            migration0011Registered:
+              migrationExists,
+          },
         });
       },
     },
