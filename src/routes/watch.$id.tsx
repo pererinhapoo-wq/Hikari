@@ -8,6 +8,7 @@ import {
   Edit3,
   Flag,
   Heart,
+  Image as ImageIcon,
   MessageCircle,
   MoreVertical,
   Send,
@@ -1834,6 +1835,38 @@ function CommentsSection({
               className="w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
             />
 
+            {/* ============================================= */}
+            {/* IMAGEM / GIF                                    */}
+            {/* ============================================= */}
+
+            <div className="mt-3 flex items-center gap-2">
+
+              <button
+                type="button"
+                disabled
+                aria-label="Adicionar imagem"
+                title="Imagem"
+                className="flex min-h-10 items-center gap-2 rounded-lg border border-white/5 bg-bg px-3 text-xs font-medium text-muted opacity-60"
+              >
+                <ImageIcon className="size-4" />
+                Imagem
+              </button>
+
+              <button
+                type="button"
+                disabled
+                aria-label="Adicionar GIF"
+                title="GIF"
+                className="flex min-h-10 items-center gap-2 rounded-lg border border-white/5 bg-bg px-3 text-xs font-medium text-muted opacity-60"
+              >
+                <span className="text-[10px] font-bold tracking-wide">
+                  GIF
+                </span>
+                GIF
+              </button>
+
+            </div>
+
             <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
 
               <input
@@ -3289,4 +3322,4 @@ function CommentCard({
 
     </article>
   );
-    }
+      }
