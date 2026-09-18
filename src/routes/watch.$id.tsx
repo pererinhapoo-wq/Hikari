@@ -5,11 +5,13 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Edit3,
   Flag,
   Heart,
   MessageCircle,
   MoreVertical,
   Send,
+  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -2427,4 +2429,4 @@ function CommentCard({
 
     </article>
   );
-      }
+    }
