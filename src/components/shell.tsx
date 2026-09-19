@@ -194,16 +194,10 @@ export function Shell() {
       setSearchLoading(true);
 
       try {
-        const normalized = q
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase();
-
         /*
-         * Para o autocomplete fazemos somente UMA consulta.
-         *
-         * Antes eram feitas até 4 consultas simultâneas para
-         * cada tecla digitada. Isso deixava a busca lenta.
+         * Faz somente uma consulta por pesquisa.
+         * Isso evita várias requisições simultâneas
+         * enquanto o usuário está digitando.
          */
         const result = await searchCatalog({
           data: {
@@ -212,13 +206,16 @@ export function Shell() {
           },
         });
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         /*
          * Resultados locais do Hikari.
          */
+        const normalized = q
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+
         const localHits = overlayList(
           [],
           localAnimes,
@@ -233,8 +230,7 @@ export function Shell() {
         });
 
         /*
-         * Junta os resultados remotos com os locais
-         * e remove duplicados.
+         * Junta resultados locais e remotos.
          */
         const remote = overlayList(
           result.items ?? [],
@@ -248,17 +244,14 @@ export function Shell() {
           ...localHits,
           ...remote,
         ]) {
-          if (seen.has(anime.id)) {
-            continue;
-          }
+          if (seen.has(anime.id)) continue;
 
           seen.add(anime.id);
           merged.push(anime);
         }
 
         /*
-         * Prioriza títulos que começam exatamente com
-         * aquilo que foi digitado.
+         * Prioriza títulos que começam com o texto digitado.
          */
         const ranked = merged.sort((a, b) => {
           const aTitle =
@@ -273,33 +266,17 @@ export function Shell() {
               .replace(/[\u0300-\u036f]/g, "")
               .toLowerCase();
 
-          const aStarts =
-            aTitle.startsWith(normalized);
+          const aStarts = aTitle.startsWith(normalized);
+          const bStarts = bTitle.startsWith(normalized);
 
-          const bStarts =
-            bTitle.startsWith(normalized);
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
 
-          if (aStarts && !bStarts) {
-            return -1;
-          }
+          const aContains = aTitle.includes(normalized);
+          const bContains = bTitle.includes(normalized);
 
-          if (!aStarts && bStarts) {
-            return 1;
-          }
-
-          const aContains =
-            aTitle.includes(normalized);
-
-          const bContains =
-            bTitle.includes(normalized);
-
-          if (aContains && !bContains) {
-            return -1;
-          }
-
-          if (!aContains && bContains) {
-            return 1;
-          }
+          if (aContains && !bContains) return -1;
+          if (!aContains && bContains) return 1;
 
           return 0;
         });
@@ -314,7 +291,7 @@ export function Shell() {
           setSearchLoading(false);
         }
       }
-    }, 450);
+    }, 300);
 
     return () => {
       cancelled = true;
@@ -1222,3 +1199,4 @@ export function Shell() {
 
     </div>
   );
+          }
