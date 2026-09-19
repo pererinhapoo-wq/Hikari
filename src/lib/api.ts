@@ -1639,107 +1639,72 @@ async function searchRelaxed(
       original,
     );
 
-  if (
-    normalized.length < 2
-  ) {
+  if (normalized.length < 3) {
     return [];
   }
 
-  const compact =
-    normalized.replace(
-      /\s/g,
-      "",
+  const variants = new Set<string>();
+
+  /*
+   * Para a busca relaxada usamos somente poucas
+   * variações. Isso evita disparar muitas requisições
+   * toda vez que o usuário digita uma letra.
+   */
+  variants.add(normalized);
+
+  if (normalized.length >= 4) {
+    variants.add(
+      normalized.slice(0, -1),
     );
+  }
 
-  const words =
-    normalized
-      .split(/\s+/)
-      .filter(Boolean);
+  if (normalized.length >= 5) {
+    variants.add(
+      normalized.slice(0, -2),
+    );
+  }
 
-  const variants =
-    new Set<string>();
+  const words = normalized
+    .split(/\s+/)
+    .filter(Boolean);
 
-  variants.add(
-    normalized,
+  if (words.length > 1) {
+    variants.add(words[0]);
+  }
+
+  const validVariants = [...variants].filter(
+    (value) => value.length >= 3,
   );
 
-  if (compact) {
-    variants.add(
-      compact,
-    );
-  }
-
-  if (
-    words.length > 1
-  ) {
-    variants.add(
-      words[0],
-    );
-  }
-
-  for (
-    let length =
-      normalized.length - 1;
-    length >= 2;
-    length--
-  ) {
-    variants.add(
-      normalized.slice(
-        0,
-        length,
-      ),
-    );
-
-    if (
-      normalized.length -
-        length >=
-      4
-    ) {
-      break;
-    }
-  }
-
-  const validVariants =
-    [...variants].filter(
-      (value) =>
-        value.trim().length >= 2,
-    );
-
-  const allResults =
-    await Promise.all(
+  const results =
+    await Promise.allSettled(
       validVariants.map(
         async (variant) => {
-          const searchParams:
-            SearchParams = {
+          const searchParams: SearchParams = {
             ...params,
             q: variant,
             page: 1,
           };
 
-          const results =
-            await Promise.allSettled(
-              [
-                searchAni(
-                  searchParams,
-                ),
-                searchJikan(
-                  searchParams,
-                ),
-              ],
-            );
+          /*
+           * A busca relaxada consulta AniList e Jikan
+           * somente depois que a busca normal não encontrou
+           * uma correspondência forte.
+           */
+          const apiResults =
+            await Promise.allSettled([
+              searchAni(searchParams),
+              searchJikan(searchParams),
+            ]);
 
           const ani =
-            results[0].status ===
-            "fulfilled"
-              ? results[0].value
-                  .items
+            apiResults[0].status === "fulfilled"
+              ? apiResults[0].value.items
               : [];
 
           const jikan =
-            results[1].status ===
-            "fulfilled"
-              ? results[1].value
-                  .items
+            apiResults[1].status === "fulfilled"
+              ? apiResults[1].value.items
               : [];
 
           return mergeSearchItems(
@@ -1750,59 +1715,24 @@ async function searchRelaxed(
       ),
     );
 
-  const merged =
-    allResults.reduce(
-      (
+  const merged = results.reduce(
+    (accumulated, result) => {
+      if (result.status !== "fulfilled") {
+        return accumulated;
+      }
+
+      return mergeSearchItems(
         accumulated,
-        current,
-      ) =>
-        mergeSearchItems(
-          accumulated,
-          current,
-        ),
-      [] as SlimAnime[],
-    );
-
-  const ranked =
-    merged
-      .map(
-        (
-          anime,
-          index,
-        ) => ({
-          anime,
-          score:
-            searchScore(
-              anime,
-              original,
-            ),
-          index,
-        }),
-      )
-      .sort(
-        (a, b) => {
-          if (
-            b.score !==
-            a.score
-          ) {
-            return (
-              b.score -
-              a.score
-            );
-          }
-
-          return (
-            a.index -
-            b.index
-          );
-        },
-      )
-      .map(
-        (item) =>
-          item.anime,
+        result.value,
       );
+    },
+    [] as SlimAnime[],
+  );
 
-  return ranked;
+  return rankSearchResults(
+    merged,
+    original,
+  );
 }
 
 export const searchCatalog =
@@ -1813,9 +1743,7 @@ export const searchCatalog =
       searchSchema,
     )
     .handler(
-      async ({
-        data,
-      }) => {
+      async ({ data }) => {
         const key =
           `search:${JSON.stringify(data)}`;
 
@@ -1832,36 +1760,28 @@ export const searchCatalog =
           data.q?.trim() ?? "";
 
         if (q) {
-          const results =
-            await Promise.allSettled([
-              searchAni(data),
-              searchJikan(data),
-            ]);
+          /*
+           * PRIMEIRO: AniList sozinho.
+           *
+           * Isso deixa as pesquisas normais muito mais rápidas.
+           * Jikan só é chamado quando precisamos de fallback.
+           */
+          let aniResult:
+            SearchResult | null = null;
 
-          const aniResult =
-            results[0].status ===
-            "fulfilled"
-              ? results[0].value
-              : null;
+          try {
+            aniResult =
+              await searchAni(data);
+          } catch {
+            aniResult = null;
+          }
 
-          const jikanResult =
-            results[1].status ===
-            "fulfilled"
-              ? results[1].value
-              : null;
+          let items = rankSearchResults(
+            aniResult?.items ?? [],
+            q,
+          );
 
-          let items =
-            rankSearchResults(
-              mergeSearchItems(
-                aniResult?.items ??
-                  [],
-                jikanResult?.items ??
-                  [],
-              ),
-              q,
-            );
-
-          const hasStrongMatch =
+          let hasStrongMatch =
             items.some(
               (anime) =>
                 searchScore(
@@ -1870,23 +1790,61 @@ export const searchCatalog =
                 ) >= 700,
             );
 
-          if (
-            !hasStrongMatch
-          ) {
+          let jikanResult:
+            SearchResult | null = null;
+
+          /*
+           * SEGUNDO: Jikan somente se AniList
+           * não encontrou uma correspondência forte.
+           */
+          if (!hasStrongMatch) {
+            try {
+              jikanResult =
+                await searchJikan(data);
+
+              items = rankSearchResults(
+                mergeSearchItems(
+                  items,
+                  jikanResult.items,
+                ),
+                q,
+              );
+
+              hasStrongMatch =
+                items.some(
+                  (anime) =>
+                    searchScore(
+                      anime,
+                      q,
+                    ) >= 700,
+                );
+            } catch {
+              jikanResult = null;
+            }
+          }
+
+          /*
+           * TERCEIRO: só fazemos a busca relaxada
+           * quando AniList + Jikan não resolveram.
+           *
+           * Isso evita a lentidão que acontecia nas
+           * pesquisas comuns, porque o fallback não é
+           * executado para resultados normais.
+           */
+          if (!hasStrongMatch) {
             try {
               const relaxed =
                 await searchRelaxed(
                   data,
                 );
 
-              items =
-                rankSearchResults(
-                  mergeSearchItems(
-                    items,
-                    relaxed,
-                  ),
-                  q,
-                );
+              items = rankSearchResults(
+                mergeSearchItems(
+                  items,
+                  relaxed,
+                ),
+                q,
+              );
             } catch {
               // Mantém os resultados atuais.
             }
@@ -1895,10 +1853,7 @@ export const searchCatalog =
           const scored =
             items
               .map(
-                (
-                  anime,
-                  index,
-                ) => ({
+                (anime, index) => ({
                   anime,
                   score:
                     searchScore(
@@ -1914,33 +1869,23 @@ export const searchCatalog =
               )
               .sort(
                 (a, b) =>
-                  b.score -
-                    a.score ||
-                  a.index -
-                    b.index,
+                  b.score - a.score ||
+                  a.index - b.index,
               )
               .map(
                 (item) =>
                   item.anime,
               );
 
-          if (
-            scored.length > 0
-          ) {
+          if (scored.length > 0) {
             items = scored;
           }
 
-          const result:
-            SearchResult = {
-            items:
-              items.slice(
-                0,
-                24,
-              ),
+          const result: SearchResult = {
+            items: items.slice(0, 24),
 
             page:
-              data.page ??
-              1,
+              data.page ?? 1,
 
             hasNext:
               Boolean(
@@ -1949,12 +1894,9 @@ export const searchCatalog =
               ),
 
             source:
-              aniResult &&
-              jikanResult
+              aniResult
                 ? "anilist"
-                : aniResult
-                  ? "anilist"
-                  : "jikan",
+                : "jikan",
           };
 
           return toCache(
@@ -1966,16 +1908,12 @@ export const searchCatalog =
         try {
           return toCache(
             key,
-            await searchAni(
-              data,
-            ),
+            await searchAni(data),
           );
         } catch {
           return toCache(
             key,
-            await searchJikan(
-              data,
-            ),
+            await searchJikan(data),
           );
         }
       },
