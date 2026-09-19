@@ -38,6 +38,129 @@ type PublicComment = Awaited<
   >
 >[number];
 
+async function getProfileBackgroundColor(
+  imageUrl: string,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const image =
+      new Image();
+
+    image.crossOrigin =
+      "anonymous";
+
+    image.onload = () => {
+      try {
+        const canvas =
+          document.createElement(
+            "canvas",
+          );
+
+        canvas.width = 32;
+        canvas.height = 32;
+
+        const context =
+          canvas.getContext(
+            "2d",
+          );
+
+        if (!context) {
+          resolve(null);
+          return;
+        }
+
+        context.drawImage(
+          image,
+          0,
+          0,
+          32,
+          32,
+        );
+
+        const data =
+          context.getImageData(
+            0,
+            0,
+            32,
+            32,
+          ).data;
+
+        let red = 0;
+        let green = 0;
+        let blue = 0;
+        let count = 0;
+
+        for (
+          let index = 0;
+          index < data.length;
+          index += 4
+        ) {
+          const r =
+            data[index];
+
+          const g =
+            data[index + 1];
+
+          const b =
+            data[index + 2];
+
+          const alpha =
+            data[index + 3];
+
+          if (alpha < 80) {
+            continue;
+          }
+
+          red += r;
+          green += g;
+          blue += b;
+          count++;
+        }
+
+        if (!count) {
+          resolve(null);
+          return;
+        }
+
+        red = Math.round(
+          red / count,
+        );
+
+        green = Math.round(
+          green / count,
+        );
+
+        blue = Math.round(
+          blue / count,
+        );
+
+        red = Math.round(
+          red * 0.28,
+        );
+
+        green = Math.round(
+          green * 0.28,
+        );
+
+        blue = Math.round(
+          blue * 0.28,
+        );
+
+        resolve(
+          `rgb(${red}, ${green}, ${blue})`,
+        );
+      } catch {
+        resolve(null);
+      }
+    };
+
+    image.onerror = () => {
+      resolve(null);
+    };
+
+    image.src = imageUrl;
+  });
+}
+
 function PublicProfile() {
   const { nick } =
     Route.useParams();
@@ -93,6 +216,13 @@ function PublicProfile() {
     setFollowLoading,
   ] = useState(false);
 
+  const [
+    profileBgColor,
+    setProfileBgColor,
+  ] = useState(
+    "#030817",
+  );
+
   useEffect(() => {
     let active = true;
 
@@ -100,6 +230,9 @@ function PublicProfile() {
     setError("");
     setCommentsError("");
     setComments([]);
+    setProfileBgColor(
+      "#030817",
+    );
 
     void getPublicProfileFn({
       data: {
@@ -121,13 +254,30 @@ function PublicProfile() {
           result.followersCount,
         );
 
+        if (result.image) {
+          const color =
+            await getProfileBackgroundColor(
+              result.image,
+            );
+
+          if (
+            active &&
+            color
+          ) {
+            setProfileBgColor(
+              color,
+            );
+          }
+        }
+
         setCommentsLoading(true);
 
         try {
           const publicComments =
             await getPublicCommentsFn({
               data: {
-                userId: result.userId,
+                userId:
+                  result.userId,
               },
             });
 
@@ -150,7 +300,9 @@ function PublicProfile() {
           );
         } finally {
           if (active) {
-            setCommentsLoading(false);
+            setCommentsLoading(
+              false,
+            );
           }
         }
       })
@@ -248,10 +400,8 @@ function PublicProfile() {
           current
             ? {
                 ...current,
-
                 isFollowing:
                   newFollowing,
-
                 followersCount:
                   newFollowersCount,
               }
@@ -313,12 +463,10 @@ function PublicProfile() {
               commentId
                 ? {
                     ...comment,
-
                     liked:
                       Boolean(
                         result.liked,
                       ),
-
                     likes:
                       Number(
                         result.likes ??
@@ -341,11 +489,9 @@ function PublicProfile() {
     return (
       <main className="min-h-screen bg-[#030817] px-4 py-8 text-white">
         <div className="mx-auto max-w-4xl">
-
           <div className="h-8 w-24 animate-pulse rounded bg-[#102343]" />
 
           <div className="mt-6 rounded-3xl border border-[#1c3c70] bg-[#061329] p-6 sm:p-8">
-
             <div className="h-10 w-56 animate-pulse rounded bg-[#102343]" />
 
             <div className="mt-3 h-5 w-32 animate-pulse rounded bg-[#102343]" />
@@ -353,7 +499,6 @@ function PublicProfile() {
             <div className="mt-6 h-4 w-full animate-pulse rounded bg-[#102343]" />
 
             <div className="mt-2 h-4 w-3/4 animate-pulse rounded bg-[#102343]" />
-
           </div>
         </div>
       </main>
@@ -363,9 +508,7 @@ function PublicProfile() {
   if (!profile) {
     return (
       <main className="min-h-screen bg-[#030817] px-4 py-8 text-white">
-
         <div className="mx-auto max-w-4xl">
-
           <Link
             to="/"
             className="inline-flex items-center gap-2 text-sm text-[#9fb2d4] transition hover:text-white"
@@ -375,7 +518,6 @@ function PublicProfile() {
           </Link>
 
           <div className="mt-6 rounded-3xl border border-red-500/20 bg-[#061329] p-8 text-center">
-
             <Users className="mx-auto size-10 text-red-300" />
 
             <h1 className="mt-4 text-xl font-semibold">
@@ -386,7 +528,6 @@ function PublicProfile() {
               {error ||
                 "Esse perfil não existe."}
             </p>
-
           </div>
         </div>
       </main>
@@ -399,47 +540,26 @@ function PublicProfile() {
       .toUpperCase();
 
   return (
-    <main className="min-h-screen bg-[#030817] px-3 pb-24 pt-5 text-white sm:px-5 lg:px-8">
-
+    <main
+      className="min-h-screen px-3 pb-24 pt-5 text-white transition-colors duration-700 sm:px-5 lg:px-8"
+      style={{
+        backgroundColor:
+          profileBgColor,
+      }}
+    >
       <div className="mx-auto max-w-5xl">
-
         <Link
           to="/"
-          className="inline-flex items-center gap-2 text-sm text-[#9fb2d4] transition hover:text-white"
+          className="inline-flex items-center gap-2 text-sm text-[#d0d9ea] transition hover:text-white"
         >
           <ArrowLeft className="size-4" />
           Voltar
         </Link>
 
-        <section className="mt-5 overflow-hidden rounded-3xl border border-[#1c3c70] bg-[#061329] shadow-[0_0_50px_rgba(38,70,180,0.12)]">
-
-          <div className="relative h-48 overflow-hidden sm:h-64">
-
-            {profile.image ? (
-              <div
-                className="absolute -inset-8 scale-110 bg-cover bg-center blur-2xl transition-all duration-700"
-                style={{
-                  backgroundImage: `url("${profile.image}")`,
-                }}
-              />
-            ) : (
-              <div
-                className="absolute inset-0 bg-gradient-to-br from-[#152f72] via-[#4025a3] to-[#741bc7]"
-              />
-            )}
-
-            <div className="absolute inset-0 bg-black/20" />
-
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#061329]" />
-
-          </div>
-
-          <div className="relative px-5 pb-7 sm:px-8">
-
-            <div className="-mt-14 sm:-mt-16">
-
-              <div className="grid size-28 place-items-center overflow-hidden rounded-full border-[5px] border-[#061329] bg-[#15284b] text-5xl font-semibold shadow-xl sm:size-32">
-
+        <section className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-[0_0_50px_rgba(0,0,0,0.18)] backdrop-blur-sm">
+          <div className="relative px-5 pb-7 pt-7 sm:px-8 sm:pt-8">
+            <div>
+              <div className="grid size-28 place-items-center overflow-hidden rounded-full border-[5px] border-white/10 bg-[#15284b] text-5xl font-semibold shadow-xl sm:size-32">
                 {profile.image ? (
                   <img
                     src={profile.image}
@@ -449,35 +569,28 @@ function PublicProfile() {
                 ) : (
                   avatarLetter
                 )}
-
               </div>
-
             </div>
 
             <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-
               <div>
-
                 <div className="flex flex-wrap items-center gap-2">
-
                   <h1 className="text-3xl font-semibold sm:text-4xl">
                     {profile.nick}
                   </h1>
 
                   <BadgeCheck className="size-6 fill-violet-500 text-white" />
-
                 </div>
 
-                <p className="mt-1 text-base text-[#9fb2d4]">
+                <p className="mt-1 text-base text-[#c0cbe0]">
                   @{profile.nick}
                 </p>
 
                 {profile.bio && (
-                  <p className="mt-4 max-w-2xl text-sm leading-6 text-[#c4d1e8]">
+                  <p className="mt-4 max-w-2xl text-sm leading-6 text-[#d0d9ea]">
                     {profile.bio}
                   </p>
                 )}
-
               </div>
 
               <Button
@@ -494,7 +607,6 @@ function PublicProfile() {
                     : "bg-violet-600 text-white hover:bg-violet-500"
                 }
               >
-
                 {following ? (
                   <>
                     <UserCheck className="size-4" />
@@ -512,9 +624,7 @@ function PublicProfile() {
                       : "Seguir"}
                   </>
                 )}
-
               </Button>
-
             </div>
 
             {error && (
@@ -523,8 +633,7 @@ function PublicProfile() {
               </div>
             )}
 
-            <div className="mt-7 grid grid-cols-2 overflow-hidden rounded-2xl border border-[#1b3762] bg-[#07152b] sm:grid-cols-4">
-
+            <div className="mt-7 grid grid-cols-2 overflow-hidden rounded-2xl border border-white/10 bg-black/15 sm:grid-cols-4">
               <PublicStat
                 icon={<MessageCircle />}
                 value={String(
@@ -554,23 +663,18 @@ function PublicProfile() {
                 )}
                 label="Seguindo"
               />
-
             </div>
-
           </div>
         </section>
 
         <section className="mt-6">
-
           <div className="mb-4 flex items-center gap-2">
-
-            <MessageCircle className="size-5 text-[#91a8ff]" />
+            <MessageCircle className="size-5 text-[#b2bfff]" />
 
             <h2 className="text-xl font-semibold">
               Comentários de{" "}
               {profile.nick}
             </h2>
-
           </div>
 
           {commentsError && (
@@ -581,25 +685,21 @@ function PublicProfile() {
 
           {commentsLoading ? (
             <div className="space-y-3">
-
               <CommentSkeleton />
 
               <CommentSkeleton />
-
             </div>
-          ) : comments.length === 0 ? (
-            <div className="rounded-2xl border border-[#1b3762] bg-[#061329] px-5 py-10 text-center">
+          ) : comments.length ===
+            0 ? (
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
+              <MessageCircle className="mx-auto size-9 text-[#8190ad]" />
 
-              <MessageCircle className="mx-auto size-9 text-[#526b99]" />
-
-              <p className="mt-3 text-sm text-[#8197ba]">
+              <p className="mt-3 text-sm text-[#b5c0d5]">
                 Esse usuário ainda não fez comentários.
               </p>
-
             </div>
           ) : (
             <div className="space-y-3">
-
               {comments.map(
                 (comment) => (
                   <PublicCommentCard
@@ -613,12 +713,9 @@ function PublicProfile() {
                   />
                 ),
               )}
-
             </div>
           )}
-
         </section>
-
       </div>
     </main>
   );
@@ -649,12 +746,9 @@ function PublicCommentCard({
     );
 
   return (
-    <article className="rounded-2xl border border-[#1b3762] bg-[#061329] p-4 sm:p-5">
-
+    <article className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5">
       <div className="flex items-start gap-3">
-
         <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-[#15284b] text-sm font-semibold text-white">
-
           {comment.userImage ? (
             <img
               src={comment.userImage}
@@ -664,22 +758,18 @@ function PublicCommentCard({
           ) : (
             avatarLetter
           )}
-
         </div>
 
         <div className="min-w-0 flex-1">
-
           <div className="flex flex-wrap items-center gap-2">
-
             <span className="font-medium text-white">
               {comment.userName ||
                 "Usuário"}
             </span>
 
-            <span className="text-xs text-[#7186aa]">
+            <span className="text-xs text-[#aab5c9]">
               {createdAt}
             </span>
-
           </div>
 
           <Link
@@ -690,46 +780,40 @@ function PublicCommentCard({
             search={{
               ep: comment.episodeId,
             }}
-            className="mt-1 inline-flex text-xs text-[#91a8ff] transition hover:text-white"
+            className="mt-1 inline-flex text-xs text-[#b2bfff] transition hover:text-white"
           >
             Episódio{" "}
             {comment.episodeId}
           </Link>
-
         </div>
-
       </div>
 
       {comment.isSpoiler ? (
         <details className="mt-4 rounded-xl border border-yellow-500/20 bg-yellow-500/5">
-
           <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-yellow-200">
             ⚠️ Mostrar spoiler
           </summary>
 
-          <p className="border-t border-yellow-500/10 px-4 py-3 text-sm leading-6 text-[#c4d1e8]">
+          <p className="border-t border-yellow-500/10 px-4 py-3 text-sm leading-6 text-[#d0d9ea]">
             {comment.content}
           </p>
-
         </details>
       ) : (
-        <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#c4d1e8]">
+        <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#d0d9ea]">
           {comment.content}
         </p>
       )}
 
-      <div className="mt-4 flex items-center gap-5 border-t border-[#142b4d] pt-3">
-
+      <div className="mt-4 flex items-center gap-5 border-t border-white/10 pt-3">
         <button
           type="button"
           onClick={onLike}
           className={
             comment.liked
               ? "inline-flex items-center gap-2 text-sm text-violet-300 transition hover:text-violet-200"
-              : "inline-flex items-center gap-2 text-sm text-[#8197ba] transition hover:text-white"
+              : "inline-flex items-center gap-2 text-sm text-[#aab5c9] transition hover:text-white"
           }
         >
-
           <Heart
             className="size-4"
             fill={
@@ -740,7 +824,6 @@ function PublicCommentCard({
           />
 
           {comment.likes}
-
         </button>
 
         <Link
@@ -751,40 +834,32 @@ function PublicCommentCard({
           search={{
             ep: comment.episodeId,
           }}
-          className="inline-flex items-center gap-2 text-sm text-[#8197ba] transition hover:text-white"
+          className="inline-flex items-center gap-2 text-sm text-[#aab5c9] transition hover:text-white"
         >
           <MessageCircle className="size-4" />
           Comentário
         </Link>
-
       </div>
-
     </article>
   );
 }
 
 function CommentSkeleton() {
   return (
-    <div className="rounded-2xl border border-[#1b3762] bg-[#061329] p-5">
-
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
       <div className="flex items-center gap-3">
-
-        <div className="size-10 animate-pulse rounded-full bg-[#102343]" />
+        <div className="size-10 animate-pulse rounded-full bg-white/10" />
 
         <div className="flex-1">
+          <div className="h-4 w-32 animate-pulse rounded bg-white/10" />
 
-          <div className="h-4 w-32 animate-pulse rounded bg-[#102343]" />
-
-          <div className="mt-2 h-3 w-24 animate-pulse rounded bg-[#102343]" />
-
+          <div className="mt-2 h-3 w-24 animate-pulse rounded bg-white/10" />
         </div>
-
       </div>
 
-      <div className="mt-5 h-4 w-full animate-pulse rounded bg-[#102343]" />
+      <div className="mt-5 h-4 w-full animate-pulse rounded bg-white/10" />
 
-      <div className="mt-2 h-4 w-4/5 animate-pulse rounded bg-[#102343]" />
-
+      <div className="mt-2 h-4 w-4/5 animate-pulse rounded bg-white/10" />
     </div>
   );
 }
@@ -799,9 +874,8 @@ function PublicStat({
   label: string;
 }) {
   return (
-    <div className="flex min-h-[100px] flex-col items-center justify-center border-b border-[#1b3762] px-3 py-4 text-center sm:border-b-0 sm:border-r last:border-r-0">
-
-      <div className="text-[#91a8ff] [&>svg]:size-5">
+    <div className="flex min-h-[100px] flex-col items-center justify-center border-b border-white/10 px-3 py-4 text-center sm:border-b-0 sm:border-r last:border-r-0">
+      <div className="text-[#b2bfff] [&>svg]:size-5">
         {icon}
       </div>
 
@@ -809,10 +883,9 @@ function PublicStat({
         {value}
       </strong>
 
-      <span className="mt-1 text-xs text-[#7186aa]">
+      <span className="mt-1 text-xs text-[#aab5c9]">
         {label}
       </span>
-
     </div>
   );
           }
