@@ -37,7 +37,7 @@ export function Hero({
 
     const timer = window.setInterval(() => {
       setIndex((i) => (i + 1) % animes.length);
-    }, 6000);
+    }, 8000);
 
     return () => window.clearInterval(timer);
   }, [animes.length]);
