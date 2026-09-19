@@ -1422,11 +1422,47 @@ export const searchCatalog =
         }
 
         try {
-          return toCache(
-            key,
+          const aniResult =
             await searchAni(
               data,
-            ),
+            );
+
+          /*
+           * Se o AniList responder normalmente,
+           * mas não encontrar nenhum resultado,
+           * tenta o Jikan.
+           *
+           * Isso ajuda em buscas parciais como:
+           * "naru"  -> Naruto
+           * "one p" -> One Piece
+           */
+          if (
+            data.q?.trim() &&
+            aniResult.items.length === 0
+          ) {
+            try {
+              const jikanResult =
+                await searchJikan(
+                  data,
+                );
+
+              if (
+                jikanResult.items.length > 0
+              ) {
+                return toCache(
+                  key,
+                  jikanResult,
+                );
+              }
+            } catch {
+              // Mantém o resultado
+              // vazio do AniList.
+            }
+          }
+
+          return toCache(
+            key,
+            aniResult,
           );
         } catch {
           return toCache(
