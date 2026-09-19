@@ -12,6 +12,8 @@ import {
   Settings2,
 } from "lucide-react";
 
+import { useState } from "react";
+
 export const Route = createFileRoute(
   "/settings-player",
 )({
@@ -19,6 +21,17 @@ export const Route = createFileRoute(
 });
 
 function SettingsPlayer() {
+  const [autoplay, setAutoplay] = useState(true);
+
+  const [qualityOpen, setQualityOpen] = useState(false);
+  const [quality, setQuality] = useState("Automática");
+
+  const [captionsOpen, setCaptionsOpen] = useState(false);
+  const [captions, setCaptions] = useState("Ativadas");
+
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const [fullscreen, setFullscreen] = useState("Perguntar");
+
   return (
     <div className="min-h-screen pb-20 pt-5">
 
@@ -75,16 +88,26 @@ function SettingsPlayer() {
             <button
               type="button"
               role="switch"
-              aria-checked="true"
-              className="relative h-6 w-11 shrink-0 rounded-full bg-fg"
+              aria-checked={autoplay}
+              onClick={() => setAutoplay(!autoplay)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                autoplay ? "bg-fg" : "bg-elevated"
+              }`}
             >
-              <span className="absolute right-1 top-1 size-4 rounded-full bg-bg" />
+              <span
+                className={`absolute top-1 size-4 rounded-full transition-transform ${
+                  autoplay
+                    ? "translate-x-6 bg-bg"
+                    : "translate-x-1 bg-muted"
+                }`}
+              />
             </button>
           </div>
 
           {/* QUALIDADE */}
           <button
             type="button"
+            onClick={() => setQualityOpen(true)}
             className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -97,7 +120,7 @@ function SettingsPlayer() {
               </p>
 
               <p className="mt-1 text-xs leading-5 text-muted">
-                Escolha a qualidade padrão dos episódios.
+                {quality}
               </p>
             </div>
 
@@ -117,6 +140,7 @@ function SettingsPlayer() {
 
           <button
             type="button"
+            onClick={() => setCaptionsOpen(true)}
             className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -129,7 +153,7 @@ function SettingsPlayer() {
               </p>
 
               <p className="mt-1 text-xs leading-5 text-muted">
-                Escolha o comportamento padrão das legendas.
+                {captions}
               </p>
             </div>
 
@@ -149,6 +173,7 @@ function SettingsPlayer() {
 
           <button
             type="button"
+            onClick={() => setFullscreenOpen(true)}
             className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -161,7 +186,7 @@ function SettingsPlayer() {
               </p>
 
               <p className="mt-1 text-xs leading-5 text-muted">
-                Defina o comportamento da tela cheia ao iniciar um episódio.
+                {fullscreen}
               </p>
             </div>
 
@@ -171,6 +196,123 @@ function SettingsPlayer() {
         </div>
       </section>
 
+      {/* MODAL QUALIDADE */}
+      {qualityOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-bg p-5">
+            <h2 className="text-lg font-semibold text-fg">
+              Qualidade do vídeo
+            </h2>
+
+            <div className="mt-4 space-y-2">
+              {["Automática", "1080p", "720p", "480p"].map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    setQuality(option);
+                    setQualityOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl bg-elevated px-4 py-3 text-left text-sm text-fg"
+                >
+                  {option}
+
+                  {quality === option && (
+                    <span className="text-muted">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setQualityOpen(false)}
+              className="mt-4 w-full rounded-xl border border-border px-4 py-3 text-sm text-muted"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL LEGENDAS */}
+      {captionsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-bg p-5">
+            <h2 className="text-lg font-semibold text-fg">
+              Legendas
+            </h2>
+
+            <div className="mt-4 space-y-2">
+              {["Ativadas", "Desativadas"].map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    setCaptions(option);
+                    setCaptionsOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl bg-elevated px-4 py-3 text-left text-sm text-fg"
+                >
+                  {option}
+
+                  {captions === option && (
+                    <span className="text-muted">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setCaptionsOpen(false)}
+              className="mt-4 w-full rounded-xl border border-border px-4 py-3 text-sm text-muted"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL TELA CHEIA */}
+      {fullscreenOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-bg p-5">
+            <h2 className="text-lg font-semibold text-fg">
+              Tela cheia
+            </h2>
+
+            <div className="mt-4 space-y-2">
+              {["Perguntar", "Entrar automaticamente"].map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    setFullscreen(option);
+                    setFullscreenOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl bg-elevated px-4 py-3 text-left text-sm text-fg"
+                >
+                  {option}
+
+                  {fullscreen === option && (
+                    <span className="text-muted">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setFullscreenOpen(false)}
+              className="mt-4 w-full rounded-xl border border-border px-4 py-3 text-sm text-muted"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
-      }
+          }
