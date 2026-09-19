@@ -11,7 +11,6 @@ import {
   Info,
   Lock,
   MonitorPlay,
-  Palette,
   Shield,
   UserRound,
 } from "lucide-react";
@@ -95,17 +94,6 @@ const sections: Array<{
         description:
           "Reprodução automática, qualidade, legendas e tela cheia",
         to: "/settings-player",
-      },
-    ],
-  },
-  {
-    title: "Aparência",
-    items: [
-      {
-        icon: Palette,
-        title: "Aparência",
-        description:
-          "Tema, tamanho da fonte e animações",
       },
     ],
   },
@@ -263,4 +251,4 @@ function Settings() {
 
     </div>
   );
-                            }
+          }
