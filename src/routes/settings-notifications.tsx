@@ -10,6 +10,10 @@ import {
   UserPlus,
 } from "lucide-react";
 
+import {
+  useState,
+} from "react";
+
 export const Route = createFileRoute(
   "/settings-notifications",
 )({
@@ -17,6 +21,21 @@ export const Route = createFileRoute(
 });
 
 function SettingsNotifications() {
+  const [
+    likes,
+    setLikes,
+  ] = useState(true);
+
+  const [
+    replies,
+    setReplies,
+  ] = useState(true);
+
+  const [
+    followers,
+    setFollowers,
+  ] = useState(true);
+
   return (
     <div className="min-h-screen pb-20 pt-5">
 
@@ -46,7 +65,7 @@ function SettingsNotifications() {
         </div>
       </div>
 
-      {/* CURTIDAS */}
+      {/* ATIVIDADES */}
       <section className="mb-7">
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
           Atividades
@@ -54,7 +73,9 @@ function SettingsNotifications() {
 
         <div className="overflow-hidden rounded-xl border border-border bg-bg">
 
+          {/* CURTIDAS */}
           <div className="flex items-center gap-4 border-b border-border px-4 py-4">
+
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
               <Heart className="size-5" />
             </div>
@@ -72,15 +93,30 @@ function SettingsNotifications() {
             <button
               type="button"
               role="switch"
-              aria-checked="true"
-              className="relative h-6 w-11 shrink-0 rounded-full bg-fg"
+              aria-checked={likes}
+              onClick={() =>
+                setLikes(!likes)
+              }
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                likes
+                  ? "bg-fg"
+                  : "bg-elevated"
+              }`}
             >
-              <span className="absolute right-1 top-1 size-4 rounded-full bg-bg" />
+              <span
+                className={`absolute top-1 size-4 rounded-full transition-transform ${
+                  likes
+                    ? "translate-x-6 bg-bg"
+                    : "translate-x-1 bg-muted"
+                }`}
+              />
             </button>
+
           </div>
 
           {/* RESPOSTAS */}
           <div className="flex items-center gap-4 border-b border-border px-4 py-4">
+
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
               <MessageCircle className="size-5" />
             </div>
@@ -98,15 +134,30 @@ function SettingsNotifications() {
             <button
               type="button"
               role="switch"
-              aria-checked="true"
-              className="relative h-6 w-11 shrink-0 rounded-full bg-fg"
+              aria-checked={replies}
+              onClick={() =>
+                setReplies(!replies)
+              }
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                replies
+                  ? "bg-fg"
+                  : "bg-elevated"
+              }`}
             >
-              <span className="absolute right-1 top-1 size-4 rounded-full bg-bg" />
+              <span
+                className={`absolute top-1 size-4 rounded-full transition-transform ${
+                  replies
+                    ? "translate-x-6 bg-bg"
+                    : "translate-x-1 bg-muted"
+                }`}
+              />
             </button>
+
           </div>
 
-          {/* SEGUIDORES */}
+          {/* NOVOS SEGUIDORES */}
           <div className="flex items-center gap-4 px-4 py-4">
+
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
               <UserPlus className="size-5" />
             </div>
@@ -124,11 +175,25 @@ function SettingsNotifications() {
             <button
               type="button"
               role="switch"
-              aria-checked="true"
-              className="relative h-6 w-11 shrink-0 rounded-full bg-fg"
+              aria-checked={followers}
+              onClick={() =>
+                setFollowers(!followers)
+              }
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                followers
+                  ? "bg-fg"
+                  : "bg-elevated"
+              }`}
             >
-              <span className="absolute right-1 top-1 size-4 rounded-full bg-bg" />
+              <span
+                className={`absolute top-1 size-4 rounded-full transition-transform ${
+                  followers
+                    ? "translate-x-6 bg-bg"
+                    : "translate-x-1 bg-muted"
+                }`}
+              />
             </button>
+
           </div>
 
         </div>
@@ -136,4 +201,4 @@ function SettingsNotifications() {
 
     </div>
   );
-      }
+}
