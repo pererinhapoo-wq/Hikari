@@ -106,14 +106,14 @@ function SettingsPrivacy() {
             <div
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 publicProfile
-                  ? "bg-fg"
+                  ? "bg-green-500"
                   : "bg-elevated"
               }`}
             >
               <span
                 className={`absolute top-1 size-4 rounded-full transition-transform ${
                   publicProfile
-                    ? "translate-x-6 bg-bg"
+                    ? "translate-x-6 bg-white"
                     : "translate-x-1 bg-muted"
                 }`}
               />
