@@ -26,7 +26,10 @@ type SettingItem = {
   icon: typeof UserRound;
   title: string;
   description: string;
-  to?: "/settings-account" | "/settings-profile";
+  to?:
+    | "/settings-account"
+    | "/settings-profile"
+    | "/settings-privacy";
 };
 
 const sections: Array<{
@@ -65,6 +68,7 @@ const sections: Array<{
         title: "Privacidade",
         description:
           "Visibilidade do perfil, seguidores e usuários bloqueados",
+        to: "/settings-privacy",
       },
     ],
   },
@@ -255,4 +259,4 @@ function Settings() {
 
     </div>
   );
-          }
+        }
