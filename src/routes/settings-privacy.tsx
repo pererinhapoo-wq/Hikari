@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import {
+  useEffect,
   useState,
 } from "react";
 
@@ -42,6 +43,34 @@ function SettingsPrivacy() {
     followers,
     setFollowers,
   ] = useState("Todos");
+
+  useEffect(() => {
+    const saved =
+      localStorage.getItem(
+        "hikari-public-profile",
+      );
+
+    if (saved === "true") {
+      setPublicProfile(true);
+    }
+
+    if (saved === "false") {
+      setPublicProfile(false);
+    }
+  }, []);
+
+  function handlePublicProfileToggle() {
+    setPublicProfile((current) => {
+      const next = !current;
+
+      localStorage.setItem(
+        "hikari-public-profile",
+        String(next),
+      );
+
+      return next;
+    });
+  }
 
   return (
     <div className="min-h-screen pb-20 pt-5">
@@ -82,11 +111,7 @@ function SettingsPrivacy() {
 
           <button
             type="button"
-            onClick={() =>
-              setPublicProfile(
-                !publicProfile,
-              )
-            }
+            onClick={handlePublicProfileToggle}
             className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
