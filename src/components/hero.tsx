@@ -45,6 +45,7 @@ export function Hero({
         -mx-4
         h-[23rem]
         overflow-hidden
+        bg-bg
         sm:-mx-6
         sm:h-[31rem]
         lg:h-[34rem]
@@ -52,7 +53,18 @@ export function Hero({
     >
       {/* IMAGEM PRINCIPAL */}
       {backdrop && (
-        <div className="absolute inset-x-0 top-0 overflow-hidden">
+        <div
+          className="
+            absolute
+            inset-x-0
+            top-0
+            h-[12rem]
+            overflow-hidden
+            bg-bg
+            sm:h-[20rem]
+            lg:h-[23rem]
+          "
+        >
           <img
             key={current.id}
             src={backdrop}
@@ -60,8 +72,7 @@ export function Hero({
             aria-hidden="true"
             className="
               block
-              h-auto
-              w-full
+              size-full
               object-contain
               object-top
             "
@@ -73,36 +84,37 @@ export function Hero({
         <div className="absolute inset-0 bg-bg" />
       )}
 
-      {/* DEGRADÊ SUAVE SOBRE A PARTE INFERIOR */}
+      {/* SOMENTE UMA TRANSIÇÃO ESCURA SUAVE */}
       <div
         className="
-          absolute inset-x-0 bottom-0
-          h-[65%]
-          bg-linear-to-t
-          from-bg
-          via-bg/75
-          to-transparent
-        "
-      />
-
-      {/* DEGRADÊ LATERAL SUAVE */}
-      <div
-        className="
-          absolute inset-0
-          bg-linear-to-r
-          from-bg/25
-          via-transparent
-          to-transparent
+          pointer-events-none
+          absolute
+          inset-x-0
+          top-[7rem]
+          h-[10rem]
+          bg-linear-to-b
+          from-transparent
+          via-bg/30
+          to-bg
+          sm:top-[12rem]
+          sm:h-[12rem]
+          lg:top-[14rem]
         "
       />
 
       {/* CONTEÚDO */}
       <div
         className="
-          relative z-10
-          flex h-full flex-col justify-end
-          px-4 pb-3
-          sm:px-6 sm:pb-7
+          relative
+          z-10
+          flex
+          h-full
+          flex-col
+          justify-end
+          px-4
+          pb-3
+          sm:px-6
+          sm:pb-7
         "
       >
         <p
@@ -259,4 +271,4 @@ export function Hero({
       </div>
     </section>
   );
-        }
+}
