@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import {
+  useEffect,
   useState,
 } from "react";
 
@@ -35,6 +36,97 @@ function SettingsNotifications() {
     followers,
     setFollowers,
   ] = useState(true);
+
+  const [
+    settingsLoaded,
+    setSettingsLoaded,
+  ] = useState(false);
+
+  useEffect(() => {
+    const savedLikes =
+      localStorage.getItem(
+        "hikari-notifications-likes",
+      );
+
+    if (savedLikes === "true") {
+      setLikes(true);
+    }
+
+    if (savedLikes === "false") {
+      setLikes(false);
+    }
+
+    const savedReplies =
+      localStorage.getItem(
+        "hikari-notifications-replies",
+      );
+
+    if (savedReplies === "true") {
+      setReplies(true);
+    }
+
+    if (savedReplies === "false") {
+      setReplies(false);
+    }
+
+    const savedFollowers =
+      localStorage.getItem(
+        "hikari-notifications-followers",
+      );
+
+    if (savedFollowers === "true") {
+      setFollowers(true);
+    }
+
+    if (savedFollowers === "false") {
+      setFollowers(false);
+    }
+
+    setSettingsLoaded(true);
+  }, []);
+
+  function handleLikesToggle() {
+    setLikes((current) => {
+      const next = !current;
+
+      localStorage.setItem(
+        "hikari-notifications-likes",
+        String(next),
+      );
+
+      return next;
+    });
+  }
+
+  function handleRepliesToggle() {
+    setReplies((current) => {
+      const next = !current;
+
+      localStorage.setItem(
+        "hikari-notifications-replies",
+        String(next),
+      );
+
+      return next;
+    });
+  }
+
+  function handleFollowersToggle() {
+    setFollowers((current) => {
+      const next = !current;
+
+      localStorage.setItem(
+        "hikari-notifications-followers",
+        String(next),
+      );
+
+      return next;
+    });
+  }
+
+  if (!settingsLoaded) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen pb-20 pt-5">
@@ -94,8 +186,8 @@ function SettingsNotifications() {
               type="button"
               role="switch"
               aria-checked={likes}
-              onClick={() =>
-                setLikes(!likes)
+              onClick={
+                handleLikesToggle
               }
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 likes
@@ -135,8 +227,8 @@ function SettingsNotifications() {
               type="button"
               role="switch"
               aria-checked={replies}
-              onClick={() =>
-                setReplies(!replies)
+              onClick={
+                handleRepliesToggle
               }
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 replies
@@ -176,8 +268,8 @@ function SettingsNotifications() {
               type="button"
               role="switch"
               aria-checked={followers}
-              onClick={() =>
-                setFollowers(!followers)
+              onClick={
+                handleFollowersToggle
               }
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 followers
