@@ -20,8 +20,13 @@ export function Hero({
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
 
-  const inList = useHikariStore((s) => s.myList.includes(current.id));
-  const toggleList = useHikariStore((s) => s.toggleList);
+  const inList = useHikariStore((s) =>
+    s.myList.includes(current.id),
+  );
+
+  const toggleList = useHikariStore(
+    (s) => s.toggleList,
+  );
 
   const backdrop = current.banner || current.cover;
 
@@ -49,7 +54,7 @@ export function Hero({
     >
       {backdrop && (
         <>
-          {/* Fundo da imagem: elimina as faixas pretas */}
+          {/* FUNDO */}
           <div className="absolute inset-0 overflow-hidden bg-bg">
             <img
               src={backdrop}
@@ -58,24 +63,24 @@ export function Hero({
               className="
                 absolute inset-0
                 size-full
-                scale-125
+                scale-110
                 object-cover
-                opacity-65
-                blur-2xl
+                opacity-55
+                blur-xl
               "
             />
 
-            <div className="absolute inset-0 bg-black/35" />
+            <div className="absolute inset-0 bg-black/20" />
           </div>
 
-          {/* Imagem principal sem distorção */}
+          {/* IMAGEM PRINCIPAL */}
           <div
             className="
               absolute inset-x-0 top-0
-              h-[14rem]
+              h-[13rem]
               overflow-hidden
-              sm:h-[20rem]
-              lg:h-[23rem]
+              sm:h-[19rem]
+              lg:h-[22rem]
             "
           >
             <img
@@ -85,22 +90,22 @@ export function Hero({
               className="
                 absolute inset-0
                 size-full
-                object-contain
+                object-cover
                 object-center
               "
             />
 
-            {/* Escurecimento suave */}
-            <div className="absolute inset-0 bg-black/10" />
+            {/* ESCURECIMENTO LEVE */}
+            <div className="absolute inset-0 bg-black/5" />
 
-            {/* Transição para o conteúdo */}
+            {/* TRANSIÇÃO SUAVE */}
             <div
               className="
                 absolute inset-x-0 bottom-0
-                h-1/2
+                h-2/5
                 bg-linear-to-t
                 from-bg
-                via-bg/45
+                via-bg/35
                 to-transparent
               "
             />
@@ -108,31 +113,34 @@ export function Hero({
         </>
       )}
 
-      {!backdrop && <div className="absolute inset-0 bg-bg" />}
+      {!backdrop && (
+        <div className="absolute inset-0 bg-bg" />
+      )}
 
-      {/* Gradiente lateral */}
+      {/* GRADIENTE LATERAL */}
       <div
         className="
           absolute inset-0
           bg-linear-to-r
-          from-bg/75
-          via-bg/20
+          from-bg/65
+          via-transparent
           to-transparent
         "
       />
 
-      {/* Gradiente inferior */}
+      {/* GRADIENTE INFERIOR */}
       <div
         className="
           absolute inset-x-0 bottom-0
-          h-3/4
+          h-2/3
           bg-linear-to-t
           from-bg
-          via-bg/80
+          via-bg/65
           to-transparent
         "
       />
 
+      {/* CONTEÚDO */}
       <div
         className="
           relative z-10
@@ -171,11 +179,12 @@ export function Hero({
           {title}
         </h1>
 
-        {current.titles.native && current.titles.native !== title && (
-          <p className="mt-0.5 hidden font-display text-sm text-muted sm:block">
-            {current.titles.native}
-          </p>
-        )}
+        {current.titles.native &&
+          current.titles.native !== title && (
+            <p className="mt-0.5 hidden font-display text-sm text-muted sm:block">
+              {current.titles.native}
+            </p>
+          )}
 
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {current.score != null && (
@@ -294,4 +303,4 @@ export function Hero({
       </div>
     </section>
   );
-}
+          }
