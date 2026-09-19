@@ -29,7 +29,8 @@ type SettingItem = {
   to?:
     | "/settings-account"
     | "/settings-profile"
-    | "/settings-privacy";
+    | "/settings-privacy"
+    | "/settings-notifications";
 };
 
 const sections: Array<{
@@ -80,6 +81,7 @@ const sections: Array<{
         title: "Notificações",
         description:
           "Curtidas, respostas e novos seguidores",
+        to: "/settings-notifications",
       },
     ],
   },
