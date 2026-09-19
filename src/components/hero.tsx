@@ -43,25 +43,21 @@ export function Hero({
       className="
         relative
         -mx-4
-        h-[23rem]
         overflow-hidden
         bg-bg
         sm:-mx-6
-        sm:h-[31rem]
-        lg:h-[34rem]
       "
     >
       {/* IMAGEM PRINCIPAL */}
-      {backdrop && (
+      {backdrop ? (
         <div
           className="
-            absolute
-            inset-x-0
-            top-0
-            h-[12rem]
+            relative
+            h-[14rem]
+            w-full
             overflow-hidden
             bg-bg
-            sm:h-[20rem]
+            sm:h-[21rem]
             lg:h-[23rem]
           "
         >
@@ -71,50 +67,51 @@ export function Hero({
             alt=""
             aria-hidden="true"
             className="
-              block
+              absolute
+              inset-0
               size-full
               object-contain
-              object-top
+              object-center
+            "
+          />
+
+          {/* TRANSIÇÃO SUAVE ENTRE IMAGEM E CONTEÚDO */}
+          <div
+            className="
+              pointer-events-none
+              absolute
+              inset-x-0
+              bottom-0
+              h-1/3
+              bg-linear-to-t
+              from-bg
+              via-bg/30
+              to-transparent
             "
           />
         </div>
+      ) : (
+        <div
+          className="
+            h-[14rem]
+            bg-bg
+            sm:h-[21rem]
+            lg:h-[23rem]
+          "
+        />
       )}
-
-      {!backdrop && (
-        <div className="absolute inset-0 bg-bg" />
-      )}
-
-      {/* SOMENTE UMA TRANSIÇÃO ESCURA SUAVE */}
-      <div
-        className="
-          pointer-events-none
-          absolute
-          inset-x-0
-          top-[7rem]
-          h-[10rem]
-          bg-linear-to-b
-          from-transparent
-          via-bg/30
-          to-bg
-          sm:top-[12rem]
-          sm:h-[12rem]
-          lg:top-[14rem]
-        "
-      />
 
       {/* CONTEÚDO */}
       <div
         className="
           relative
           z-10
-          flex
-          h-full
-          flex-col
-          justify-end
           px-4
           pb-3
+          pt-1
           sm:px-6
           sm:pb-7
+          sm:pt-2
         "
       >
         <p
@@ -271,4 +268,4 @@ export function Hero({
       </div>
     </section>
   );
-}
+          }
