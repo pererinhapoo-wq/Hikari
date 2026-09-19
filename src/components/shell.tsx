@@ -19,8 +19,15 @@ import {
 import { Logo } from "@/components/logo";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { searchCatalog } from "@/lib/api";
+import { displayTitle, type SlimAnime } from "@/lib/types";
+import { overlayList } from "@/lib/overlay";
+import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 type NotificationItem = {
   id: string;
@@ -115,6 +122,35 @@ export function Shell() {
     setNotificationsLoading,
   ] = useState(false);
 
+  /* =========================================================
+     BUSCA
+  ========================================================== */
+
+  const [
+    searchOpen,
+    setSearchOpen,
+  ] = useState(false);
+
+  const [
+    searchQuery,
+    setSearchQuery,
+  ] = useState("");
+
+  const [
+    searchResults,
+    setSearchResults,
+  ] = useState<SlimAnime[]>([]);
+
+  const [
+    searchLoading,
+    setSearchLoading,
+  ] = useState(false);
+
+  const localAnimes =
+    useHikariStore(
+      (s) => s.animes,
+    );
+
   const cinema =
     pathname.startsWith(
       "/watch",
@@ -138,6 +174,107 @@ export function Shell() {
           },
         ]
       : BASE_NAV;
+
+  /* =========================================================
+     BUSCA AUTOMÁTICA
+  ========================================================== */
+
+  useEffect(() => {
+    const q =
+      searchQuery.trim();
+
+    if (!searchOpen || !q) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const timer =
+      window.setTimeout(
+        async () => {
+          setSearchLoading(true);
+
+          try {
+            const result =
+              await searchCatalog({
+                data: {
+                  q,
+                  page: 1,
+                },
+              });
+
+            if (cancelled) {
+              return;
+            }
+
+            const localHits =
+              overlayList(
+                [],
+                localAnimes,
+              ).filter(
+                (anime) =>
+                  `${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
+                    .toLowerCase()
+                    .includes(
+                      q.toLowerCase(),
+                    ),
+              );
+
+            const remote =
+              overlayList(
+                result.items,
+                localAnimes,
+              );
+
+            const seen =
+              new Set(
+                localHits.map(
+                  (anime) =>
+                    anime.id,
+                ),
+              );
+
+            setSearchResults([
+              ...localHits,
+              ...remote.filter(
+                (anime) =>
+                  !seen.has(
+                    anime.id,
+                  ),
+              ),
+            ]);
+          } catch {
+            if (!cancelled) {
+              setSearchResults([]);
+            }
+          } finally {
+            if (!cancelled) {
+              setSearchLoading(
+                false,
+              );
+            }
+          }
+        },
+        350,
+      );
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(
+        timer,
+      );
+    };
+  }, [
+    searchOpen,
+    searchQuery,
+    localAnimes,
+  ]);
+
+  /* =========================================================
+     NOTIFICAÇÕES
+  ========================================================== */
 
   useEffect(() => {
     if (!user) {
@@ -339,13 +476,21 @@ export function Shell() {
             </button>
 
             {/* BUSCA */}
-            <Link
-              to="/search"
+            <button
+              type="button"
+              onClick={() => {
+                setSearchOpen(
+                  (value) => !value,
+                );
+              }}
               className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
               aria-label="Buscar"
+              aria-expanded={
+                searchOpen
+              }
             >
               <Search className="size-5" />
-            </Link>
+            </button>
 
             {/* NOTIFICAÇÕES MOBILE */}
             <button
@@ -380,6 +525,158 @@ export function Shell() {
           </div>
         </div>
       </header>
+
+      {/* =========================================================
+          PAINEL DE BUSCA
+      ========================================================== */}
+      {searchOpen && (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              setSearchOpen(false)
+            }
+            className="fixed inset-0 z-40"
+            aria-label="Fechar busca"
+          />
+
+          <div className="fixed left-4 right-4 top-16 z-50 mx-auto max-w-2xl overflow-hidden rounded-xl border border-border bg-bg shadow-2xl">
+
+            {/* CAMPO DE BUSCA */}
+            <div className="border-b border-border p-3">
+              <div className="relative">
+
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+
+                <input
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) =>
+                    setSearchQuery(
+                      e.target.value,
+                    )
+                  }
+                  placeholder="Buscar animes…"
+                  className="h-11 w-full rounded-lg border border-border bg-elevated pl-10 pr-3 text-sm text-fg outline-none placeholder:text-muted focus:border-fg/30"
+                />
+
+              </div>
+            </div>
+
+            {/* RESULTADOS */}
+            {searchQuery.trim() && (
+              <div className="max-h-[70vh] overflow-y-auto">
+
+                {/* CARREGANDO */}
+                {searchLoading ? (
+                  <div className="px-4 py-8 text-center text-sm text-muted">
+                    Buscando...
+                  </div>
+                ) : searchResults.length ===
+                  0 ? (
+
+                  /* NENHUM RESULTADO */
+                  <div className="px-4 py-8 text-center text-sm text-muted">
+                    Nenhum anime encontrado.
+                  </div>
+                ) : (
+
+                  /* RESULTADOS */
+                  <div>
+
+                    {searchResults
+                      .slice(0, 6)
+                      .map(
+                        (anime) => (
+                          <Link
+                            key={
+                              anime.id
+                            }
+                            to="/anime/$id"
+                            params={{
+                              id:
+                                anime.id,
+                            }}
+                            onClick={() =>
+                              setSearchOpen(
+                                false,
+                              )
+                            }
+                            className="flex items-center gap-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-elevated"
+                          >
+
+                            {/* CAPA */}
+                            {anime.cover ? (
+                              <img
+                                src={
+                                  anime.cover
+                                }
+                                alt=""
+                                className="size-12 shrink-0 rounded-md object-cover"
+                              />
+                            ) : (
+                              <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-elevated text-muted">
+                                <Clapperboard className="size-5" />
+                              </div>
+                            )}
+
+                            {/* INFORMAÇÕES */}
+                            <div className="min-w-0 flex-1">
+
+                              <p className="truncate text-sm font-medium text-fg">
+                                {displayTitle(
+                                  anime,
+                                )}
+                              </p>
+
+                              <p className="mt-0.5 text-xs text-muted">
+                                {anime.year ??
+                                  ""}
+                                {anime.year &&
+                                anime.format
+                                  ? " · "
+                                  : ""}
+                                {anime.format ===
+                                "TV"
+                                  ? "Série"
+                                  : anime.format ===
+                                      "MOVIE"
+                                    ? "Filme"
+                                    : ""}
+                              </p>
+
+                            </div>
+
+                          </Link>
+                        ),
+                      )}
+
+                    {/* VER TODOS */}
+                    <Link
+                      to="/search"
+                      search={{
+                        q:
+                          searchQuery.trim(),
+                      }}
+                      onClick={() =>
+                        setSearchOpen(
+                          false,
+                        )
+                      }
+                      className="block border-t border-border px-4 py-4 text-center text-sm font-medium text-fg hover:bg-elevated"
+                    >
+                      Ver todos os resultados
+                    </Link>
+
+                  </div>
+                )}
+
+              </div>
+            )}
+
+          </div>
+        </>
+      )}
 
       {/* =========================================================
           PAINEL DE NOTIFICAÇÕES
@@ -511,7 +808,7 @@ export function Shell() {
                         >
                           <div className="flex gap-3">
 
-                            {/* AVATAR DO AUTOR DA NOTIFICAÇÃO */}
+                            {/* AVATAR DO AUTOR */}
                             {notification.actorImage ? (
                               <img
                                 src={
@@ -686,13 +983,12 @@ export function Shell() {
                             {!notification.read && (
                               <span className="mt-1 size-2 shrink-0 rounded-full bg-red-500" />
                             )}
+
                           </div>
                         </div>
                       );
 
-                    {/* =================================================
-                        NOTIFICAÇÃO COM DESTINO
-                    ================================================== */}
+                    {/* NOTIFICAÇÃO COM DESTINO */}
                     if (
                       hasEpisodeTarget
                     ) {
@@ -727,9 +1023,7 @@ export function Shell() {
                       );
                     }
 
-                    {/* =================================================
-                        NOTIFICAÇÃO SEM DESTINO
-                    ================================================== */}
+                    {/* NOTIFICAÇÃO SEM DESTINO */}
                     return (
                       <div
                         key={
@@ -871,6 +1165,7 @@ export function Shell() {
           Trailers e episódios com URL própria
         </p>
       </footer>
+
     </div>
   );
   }
