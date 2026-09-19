@@ -4,6 +4,8 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 
+import { useServerFn } from "@tanstack/react-start";
+
 import {
   Bell,
   Bookmark,
@@ -20,6 +22,9 @@ import { Logo } from "@/components/logo";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { searchCatalog } from "@/lib/api";
+import {
+  getProfile,
+} from "@/lib/profile.functions";
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
@@ -97,6 +102,12 @@ export function Shell() {
   const { user } =
     useCurrentUserState();
 
+  const getProfileFn =
+    useServerFn(getProfile);
+
+  const [profileNick, setProfileNick] =
+    useState("");
+
   const [menuOpen, setMenuOpen] =
     useState(false);
 
@@ -121,6 +132,35 @@ export function Shell() {
     notificationsLoading,
     setNotificationsLoading,
   ] = useState(false);
+
+  /* =========================================================
+     PERFIL PÚBLICO
+  ========================================================== */
+
+  useEffect(() => {
+    if (!user?.id) {
+      setProfileNick("");
+      return;
+    }
+
+    let active = true;
+
+    void getProfileFn()
+      .then((profile) => {
+        if (!active) return;
+
+        setProfileNick(profile.nick);
+      })
+      .catch(() => {
+        if (!active) return;
+
+        setProfileNick("");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   /* =========================================================
      BUSCA
@@ -266,14 +306,28 @@ export function Shell() {
               .replace(/[\u0300-\u036f]/g, "")
               .toLowerCase();
 
-          const aStarts = aTitle.startsWith(normalized);
-          const bStarts = bTitle.startsWith(normalized);
+          const aStarts =
+            aTitle.startsWith(
+              normalized,
+            );
+
+          const bStarts =
+            bTitle.startsWith(
+              normalized,
+            );
 
           if (aStarts && !bStarts) return -1;
           if (!aStarts && bStarts) return 1;
 
-          const aContains = aTitle.includes(normalized);
-          const bContains = bTitle.includes(normalized);
+          const aContains =
+            aTitle.includes(
+              normalized,
+            );
+
+          const bContains =
+            bTitle.includes(
+              normalized,
+            );
 
           if (aContains && !bContains) return -1;
           if (!aContains && bContains) return 1;
@@ -573,7 +627,6 @@ export function Shell() {
 
           <div className="fixed left-4 right-4 top-16 z-50 mx-auto max-w-2xl overflow-hidden rounded-xl border border-border bg-bg shadow-2xl">
 
-            {/* CAMPO DE BUSCA */}
             <div className="border-b border-border p-3">
               <div className="relative">
 
@@ -594,11 +647,9 @@ export function Shell() {
               </div>
             </div>
 
-            {/* RESULTADOS */}
             {searchQuery.trim() && (
               <div className="max-h-[70vh] overflow-y-auto">
 
-                {/* CARREGANDO */}
                 {searchLoading ? (
                   <div className="px-4 py-8 text-center text-sm text-muted">
                     Buscando...
@@ -606,13 +657,11 @@ export function Shell() {
                 ) : searchResults.length ===
                   0 ? (
 
-                  /* NENHUM RESULTADO */
                   <div className="px-4 py-8 text-center text-sm text-muted">
                     Nenhum anime encontrado.
                   </div>
                 ) : (
 
-                  /* RESULTADOS */
                   <div>
 
                     {searchResults
@@ -636,7 +685,6 @@ export function Shell() {
                             className="flex items-center gap-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-elevated"
                           >
 
-                            {/* CAPA */}
                             {anime.cover ? (
                               <img
                                 src={
@@ -651,7 +699,6 @@ export function Shell() {
                               </div>
                             )}
 
-                            {/* INFORMAÇÕES */}
                             <div className="min-w-0 flex-1">
 
                               <p className="truncate text-sm font-medium text-fg">
@@ -682,7 +729,6 @@ export function Shell() {
                         ),
                       )}
 
-                    {/* VER TODOS */}
                     <Link
                       to="/search"
                       search={{
@@ -727,7 +773,6 @@ export function Shell() {
 
           <div className="fixed right-4 top-16 z-50 w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:right-6 md:top-20">
 
-            {/* CABEÇALHO */}
             <div className="flex items-center justify-between border-b border-border px-4 py-4">
               <div>
                 <h2 className="font-semibold">
@@ -753,7 +798,6 @@ export function Shell() {
               </button>
             </div>
 
-            {/* CARREGANDO */}
             {notificationsLoading ? (
               <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
                 <p className="text-sm text-muted">
@@ -763,7 +807,6 @@ export function Shell() {
             ) : notifications.length ===
               0 ? (
 
-              /* SEM NOTIFICAÇÕES */
               <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
                 <div>
                   <Bell className="mx-auto mb-3 size-7 text-muted" />
@@ -779,7 +822,6 @@ export function Shell() {
               </div>
             ) : (
 
-              /* LISTA */
               <div className="max-h-[70vh] overflow-y-auto">
 
                 {notifications.map(
@@ -839,7 +881,6 @@ export function Shell() {
                         >
                           <div className="flex gap-3">
 
-                            {/* AVATAR DO AUTOR */}
                             {notification.actorImage ? (
                               <img
                                 src={
@@ -854,21 +895,17 @@ export function Shell() {
                               </div>
                             )}
 
-                            {/* CONTEÚDO */}
                             <div className="min-w-0 flex-1">
 
-                              {/* MENSAGEM */}
                               <p className="text-sm leading-5">
                                 {
                                   notificationMessage
                                 }
                               </p>
 
-                              {/* CURTIDAS */}
                               {isLikeNotification && (
                                 <div className="mt-2 flex items-center gap-2">
 
-                                  {/* FOTOS SOBREPOSTAS */}
                                   {likeAvatars.length >
                                     0 && (
                                     <div className="flex items-center pl-1">
@@ -938,12 +975,10 @@ export function Shell() {
                                 </div>
                               )}
 
-                              {/* ANIME */}
                               {(notification.animeCover ||
                                 notification.animeTitle) && (
                                 <div className="mt-3 flex items-center gap-3">
 
-                                  {/* CAPA */}
                                   {notification.animeCover ? (
                                     <img
                                       src={
@@ -954,7 +989,6 @@ export function Shell() {
                                     />
                                   ) : null}
 
-                                  {/* NOME + DESTINO */}
                                   <div className="min-w-0 flex-1">
 
                                     {notification.animeTitle && (
@@ -979,7 +1013,6 @@ export function Shell() {
                                 </div>
                               )}
 
-                              {/* DESTINO SEM INFORMAÇÃO DO ANIME */}
                               {hasEpisodeTarget &&
                                 (isLikeNotification ||
                                   isReplyNotification) &&
@@ -994,7 +1027,6 @@ export function Shell() {
                                   </div>
                                 )}
 
-                              {/* DATA */}
                               <p className="mt-1.5 text-[11px] text-muted">
                                 {new Date(
                                   notification.createdAt,
@@ -1010,7 +1042,6 @@ export function Shell() {
                               </p>
                             </div>
 
-                            {/* NÃO LIDA */}
                             {!notification.read && (
                               <span className="mt-1 size-2 shrink-0 rounded-full bg-red-500" />
                             )}
@@ -1019,7 +1050,6 @@ export function Shell() {
                         </div>
                       );
 
-                    {/* NOTIFICAÇÃO COM DESTINO */}
                     if (
                       hasEpisodeTarget
                     ) {
@@ -1054,7 +1084,6 @@ export function Shell() {
                       );
                     }
 
-                    {/* NOTIFICAÇÃO SEM DESTINO */}
                     return (
                       <div
                         key={
@@ -1143,6 +1172,32 @@ export function Shell() {
                   },
                 )}
 
+                {/* PERFIL PÚBLICO */}
+                {user && profileNick && (
+                  <Link
+                    to="/profile/$nick"
+                    params={{
+                      nick: profileNick,
+                    }}
+                    onClick={() =>
+                      setMenuOpen(false)
+                    }
+                    className={cn(
+                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      pathname ===
+                        `/profile/${profileNick}`
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <UserCircle className="size-5" />
+
+                    <span>
+                      Meu perfil público
+                    </span>
+                  </Link>
+                )}
+
                 {/* +18 */}
                 <Link
                   to={ADULT_NAV.to}
@@ -1199,4 +1254,4 @@ export function Shell() {
 
     </div>
   );
-          }
+  }
