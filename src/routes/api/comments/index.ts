@@ -240,12 +240,12 @@ export const Route = createFileRoute(
           if (
             !animeId ||
             !episodeId ||
-            !content
+            (!content && !imageUrl)
           ) {
             return Response.json(
               {
                 error:
-                  "animeId, episodeId e content são obrigatórios.",
+                  "É necessário escrever um comentário ou enviar uma imagem.",
               },
               {
                 status: 400,
