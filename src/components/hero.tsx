@@ -16,6 +16,7 @@ export function Hero({
   animes?: SlimAnime[];
 }) {
   const [index, setIndex] = useState(0);
+  const [isLandscape, setIsLandscape] = useState(false);
 
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
@@ -38,6 +39,10 @@ export function Hero({
     return () => window.clearInterval(timer);
   }, [animes.length]);
 
+  useEffect(() => {
+    setIsLandscape(false);
+  }, [backdrop]);
+
   return (
     <section
       className="
@@ -51,31 +56,55 @@ export function Hero({
       {/* IMAGEM PRINCIPAL */}
       {backdrop ? (
         <div
-          className="
-            relative
-            h-[14rem]
-            w-full
-            overflow-hidden
-            bg-bg
-            sm:h-[21rem]
-            lg:h-[23rem]
-          "
+          className={
+            isLandscape
+              ? `
+                relative
+                w-full
+                overflow-hidden
+                bg-bg
+              `
+              : `
+                relative
+                h-[14rem]
+                w-full
+                overflow-hidden
+                bg-bg
+                sm:h-[21rem]
+                lg:h-[23rem]
+              `
+          }
         >
           <img
             key={current.id}
             src={backdrop}
             alt=""
             aria-hidden="true"
-            className="
-              absolute
-              inset-0
-              size-full
-              object-contain
-              object-center
-            "
+            onLoad={(event) => {
+              const image = event.currentTarget;
+              setIsLandscape(
+                image.naturalWidth > image.naturalHeight,
+              );
+            }}
+            className={
+              isLandscape
+                ? `
+                  block
+                  h-auto
+                  w-full
+                  object-contain
+                `
+                : `
+                  absolute
+                  inset-0
+                  size-full
+                  object-contain
+                  object-center
+                `
+            }
           />
 
-          {/* TRANSIÇÃO SUAVE ENTRE IMAGEM E CONTEÚDO */}
+          {/* TRANSIÇÃO SUAVE */}
           <div
             className="
               pointer-events-none
@@ -268,4 +297,4 @@ export function Hero({
       </div>
     </section>
   );
-          }
+      }
