@@ -6,14 +6,14 @@ import {
 import {
   Bell,
   ChevronRight,
-  CircleUserRound,
   Eye,
-  Info,
-  Lock,
-  MonitorPlay,
   Palette,
+  Play,
+  Search,
   Shield,
-  UserRound,
+  User,
+  UserCircle,
+  Info,
 } from "lucide-react";
 
 export const Route = createFileRoute(
@@ -22,114 +22,54 @@ export const Route = createFileRoute(
   component: Settings,
 });
 
-type SettingItem = {
-  icon: typeof UserRound;
-  title: string;
-  description: string;
-  to?:
-    | "/settings-account"
-    | "/settings-profile"
-    | "/settings-privacy"
-    | "/settings-notifications"
-    | "/settings-player";
-};
-
-const sections: Array<{
-  title: string;
-  items: SettingItem[];
-}> = [
+const items = [
   {
     title: "Conta",
-    items: [
-      {
-        icon: UserRound,
-        title: "Conta",
-        description:
-          "E-mail, senha e gerenciamento da conta",
-        to: "/settings-account",
-      },
-    ],
+    description: "Gerencie informações da sua conta.",
+    icon: User,
+    href: "/settings-account",
   },
   {
     title: "Perfil",
-    items: [
-      {
-        icon: CircleUserRound,
-        title: "Perfil",
-        description:
-          "Nome, bio e foto do perfil",
-        to: "/settings-profile",
-      },
-    ],
+    description: "Altere suas informações públicas.",
+    icon: UserCircle,
+    href: "/settings-profile",
   },
   {
     title: "Privacidade",
-    items: [
-      {
-        icon: Eye,
-        title: "Privacidade",
-        description:
-          "Visibilidade do perfil, seguidores e usuários bloqueados",
-        to: "/settings-privacy",
-      },
-    ],
+    description: "Controle sua privacidade no Hikari.",
+    icon: Eye,
+    href: "/settings-privacy",
   },
   {
     title: "Notificações",
-    items: [
-      {
-        icon: Bell,
-        title: "Notificações",
-        description:
-          "Curtidas, respostas e novos seguidores",
-        to: "/settings-notifications",
-      },
-    ],
+    description: "Escolha quais notificações receber.",
+    icon: Bell,
+    href: "/settings-notifications",
   },
   {
     title: "Player",
-    items: [
-      {
-        icon: MonitorPlay,
-        title: "Player",
-        description:
-          "Reprodução automática, qualidade, legendas e tela cheia",
-        to: "/settings-player",
-      },
-    ],
+    description: "Configure suas preferências de reprodução.",
+    icon: Play,
+    href: "/settings-player",
   },
   {
     title: "Aparência",
-    items: [
-      {
-        icon: Palette,
-        title: "Aparência",
-        description:
-          "Tema, tamanho da fonte e animações",
-      },
-    ],
+    description: "Personalize a aparência do Hikari.",
+    icon: Palette,
+    href: "/settings-appearance",
   },
   {
     title: "Segurança",
-    items: [
-      {
-        icon: Shield,
-        title: "Segurança",
-        description:
-          "Dispositivos conectados e sessões ativas",
-      },
-    ],
+    description: "Gerencie os dispositivos e sessões da sua conta.",
+    icon: Shield,
+    href: "/settings-security",
   },
   {
     title: "Sobre",
-    items: [
-      {
-        icon: Info,
-        title: "Sobre o Hikari",
-        description:
-          "Termos, privacidade, regras da comunidade e versão",
-      },
-    ],
+    description: "Informações sobre o Hikari.",
+    icon: Info,
+    href: "/settings-about",
   },
 ];
 
@@ -139,186 +79,135 @@ function Settings() {
 
       {/* CABEÇALHO */}
       <div className="mb-6">
-        <Link
-          to="/account"
-          className="mb-4 inline-flex items-center text-sm text-muted hover:text-fg"
-        >
-          ← Voltar
-        </Link>
+        <h1 className="text-2xl font-bold text-fg">
+          Configurações
+        </h1>
 
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-elevated">
-            <Lock className="size-5 text-fg" />
-          </div>
-
-          <div>
-            <h1 className="text-2xl font-bold text-fg">
-              Configurações
-            </h1>
-
-            <p className="mt-1 text-sm text-muted">
-              Personalize sua conta e sua experiência no Hikari.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* CONFIGURAÇÕES */}
-      <div className="space-y-7">
-
-        {sections.map(
-          (section) => (
-            <section
-              key={section.title}
-            >
-              <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
-                {section.title}
-              </h2>
-
-              <div className="overflow-hidden rounded-xl border border-border bg-bg">
-
-                {section.items.map(
-                  (item) => {
-                    const Icon =
-                      item.icon;
-
-                    if (
-                      item.title ===
-                      "Aparência"
-                    ) {
-                      return (
-                        <a
-                          key={item.title}
-                          href="https://grokhikari.vercel.app/settings-appearance"
-                          className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
-                        >
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
-                            <Icon className="size-5" />
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-fg">
-                              {item.title}
-                            </p>
-
-                            <p className="mt-1 text-xs leading-5 text-muted">
-                              {item.description}
-                            </p>
-                          </div>
-
-                          <ChevronRight className="size-5 shrink-0 text-muted" />
-                        </a>
-                      );
-                    }
-
-                    if (
-                      item.title ===
-                      "Segurança"
-                    ) {
-                      return (
-                        <a
-                          key={item.title}
-                          href="https://grokhikari.vercel.app/settings-security"
-                          className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
-                        >
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
-                            <Icon className="size-5" />
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-fg">
-                              {item.title}
-                            </p>
-
-                            <p className="mt-1 text-xs leading-5 text-muted">
-                              {item.description}
-                            </p>
-                          </div>
-
-                          <ChevronRight className="size-5 shrink-0 text-muted" />
-                        </a>
-                      );
-                    }
-
-                    if (item.to) {
-                      return (
-                        <Link
-                          key={item.title}
-                          to={item.to}
-                          className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
-                        >
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
-                            <Icon className="size-5" />
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-fg">
-                              {item.title}
-                            </p>
-
-                            <p className="mt-1 text-xs leading-5 text-muted">
-                              {item.description}
-                            </p>
-                          </div>
-
-                          <ChevronRight className="size-5 shrink-0 text-muted" />
-                        </Link>
-                      );
-                    }
-
-                    return (
-                      <button
-                        key={item.title}
-                        type="button"
-                        className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
-                      >
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
-                          <Icon className="size-5" />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-fg">
-                            {item.title}
-                          </p>
-
-                          <p className="mt-1 text-xs leading-5 text-muted">
-                            {item.description}
-                          </p>
-                        </div>
-
-                        <ChevronRight className="size-5 shrink-0 text-muted" />
-                      </button>
-                    );
-                  },
-                )}
-
-              </div>
-            </section>
-          ),
-        )}
-
-      </div>
-
-      {/* INFORMAÇÃO */}
-      <div className="mt-8 flex items-start gap-3 rounded-xl border border-border bg-elevated/50 p-4">
-        <Info className="mt-0.5 size-4 shrink-0 text-muted" />
-
-        <p className="text-xs leading-5 text-muted">
-          As opções de configuração serão adicionadas
-          individualmente nesta área.
+        <p className="mt-1 text-sm text-muted">
+          Gerencie sua conta e suas preferências.
         </p>
       </div>
 
-      {/* VOLTAR AO PERFIL */}
-      <div className="mt-8">
-        <Link
-          to="/account"
-          className="flex w-full items-center justify-center rounded-lg border border-border px-4 py-3 text-sm font-medium text-fg transition-colors hover:bg-elevated"
-        >
-          Voltar para o perfil
-        </Link>
+      {/* CONFIGURAÇÕES */}
+      <div className="overflow-hidden rounded-xl border border-border bg-bg">
+
+        {items.map((item) => {
+          const Icon = item.icon;
+
+          if (
+            item.title ===
+            "Aparência"
+          ) {
+            return (
+              <a
+                key={item.title}
+                href="https://grokhikari.vercel.app/settings-appearance"
+                className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
+              >
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
+                  <Icon className="size-5" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-fg">
+                    {item.title}
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    {item.description}
+                  </p>
+                </div>
+
+                <ChevronRight className="size-5 shrink-0 text-muted" />
+              </a>
+            );
+          }
+
+          if (
+            item.title ===
+            "Segurança"
+          ) {
+            return (
+              <a
+                key={item.title}
+                href="https://grokhikari.vercel.app/settings-security"
+                className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
+              >
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
+                  <Icon className="size-5" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-fg">
+                    {item.title}
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    {item.description}
+                  </p>
+                </div>
+
+                <ChevronRight className="size-5 shrink-0 text-muted" />
+              </a>
+            );
+          }
+
+          if (
+            item.title ===
+            "Sobre"
+          ) {
+            return (
+              <a
+                key={item.title}
+                href="https://grokhikari.vercel.app/settings-about"
+                className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
+              >
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
+                  <Icon className="size-5" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-fg">
+                    {item.title}
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    {item.description}
+                  </p>
+                </div>
+
+                <ChevronRight className="size-5 shrink-0 text-muted" />
+              </a>
+            );
+          }
+
+          return (
+            <Link
+              key={item.title}
+              to={item.href}
+              className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
+            >
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
+                <Icon className="size-5" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-fg">
+                  {item.title}
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  {item.description}
+                </p>
+              </div>
+
+              <ChevronRight className="size-5 shrink-0 text-muted" />
+            </Link>
+          );
+        })}
+
       </div>
 
     </div>
   );
-    }
+  }
