@@ -186,9 +186,7 @@ function SettingsNotifications() {
               type="button"
               role="switch"
               aria-checked={likes}
-              onClick={
-                handleLikesToggle
-              }
+              onClick={handleLikesToggle}
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 likes
                   ? "bg-green-500"
@@ -196,10 +194,10 @@ function SettingsNotifications() {
               }`}
             >
               <span
-                className={`absolute top-1 size-4 rounded-full transition-transform ${
+                className={`absolute top-1 size-4 rounded-full bg-white transition-all ${
                   likes
-                    ? "translate-x-6 bg-white"
-                    : "translate-x-1 bg-muted"
+                    ? "left-6"
+                    : "left-1"
                 }`}
               />
             </button>
@@ -227,9 +225,7 @@ function SettingsNotifications() {
               type="button"
               role="switch"
               aria-checked={replies}
-              onClick={
-                handleRepliesToggle
-              }
+              onClick={handleRepliesToggle}
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 replies
                   ? "bg-green-500"
@@ -237,10 +233,10 @@ function SettingsNotifications() {
               }`}
             >
               <span
-                className={`absolute top-1 size-4 rounded-full transition-transform ${
+                className={`absolute top-1 size-4 rounded-full bg-white transition-all ${
                   replies
-                    ? "translate-x-6 bg-white"
-                    : "translate-x-1 bg-muted"
+                    ? "left-6"
+                    : "left-1"
                 }`}
               />
             </button>
@@ -268,9 +264,7 @@ function SettingsNotifications() {
               type="button"
               role="switch"
               aria-checked={followers}
-              onClick={
-                handleFollowersToggle
-              }
+              onClick={handleFollowersToggle}
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 followers
                   ? "bg-green-500"
@@ -278,10 +272,10 @@ function SettingsNotifications() {
               }`}
             >
               <span
-                className={`absolute top-1 size-4 rounded-full transition-transform ${
+                className={`absolute top-1 size-4 rounded-full bg-white transition-all ${
                   followers
-                    ? "translate-x-6 bg-white"
-                    : "translate-x-1 bg-muted"
+                    ? "left-6"
+                    : "left-1"
                 }`}
               />
             </button>
@@ -293,4 +287,4 @@ function SettingsNotifications() {
 
     </div>
   );
-}
+              }
