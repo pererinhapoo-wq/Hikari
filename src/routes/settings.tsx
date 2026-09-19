@@ -30,7 +30,8 @@ type SettingItem = {
     | "/settings-account"
     | "/settings-profile"
     | "/settings-privacy"
-    | "/settings-notifications";
+    | "/settings-notifications"
+    | "/settings-player";
 };
 
 const sections: Array<{
@@ -93,6 +94,7 @@ const sections: Array<{
         title: "Player",
         description:
           "Reprodução automática, qualidade, legendas e tela cheia",
+        to: "/settings-player",
       },
     ],
   },
@@ -261,4 +263,4 @@ function Settings() {
 
     </div>
   );
-        }
+                            }
