@@ -97,10 +97,10 @@ function SettingsPlayer() {
               }`}
             >
               <span
-                className={`absolute top-1 size-4 rounded-full transition-transform ${
+                className={`absolute top-1 size-4 rounded-full bg-white transition-all ${
                   autoplay
-                    ? "translate-x-6 bg-white"
-                    : "translate-x-1 bg-muted"
+                    ? "left-6"
+                    : "left-1"
                 }`}
               />
             </button>
@@ -317,4 +317,4 @@ function SettingsPlayer() {
 
     </div>
   );
-}
+          }
