@@ -417,7 +417,7 @@ function PublicProfile() {
 
             {profile.image ? (
               <div
-                className="absolute -inset-8 scale-110 bg-cover bg-center blur-2xl transition-[background-image] duration-700"
+                className="absolute -inset-8 scale-110 bg-cover bg-center blur-2xl transition-all duration-700"
                 style={{
                   backgroundImage: `url("${profile.image}")`,
                 }}
@@ -428,7 +428,7 @@ function PublicProfile() {
               />
             )}
 
-            <div className="absolute inset-0 bg-black/25" />
+            <div className="absolute inset-0 bg-black/20" />
 
             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#061329]" />
 
@@ -815,4 +815,4 @@ function PublicStat({
 
     </div>
   );
-          }
+                }
