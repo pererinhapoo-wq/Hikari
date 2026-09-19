@@ -1628,25 +1628,6 @@ async function searchJikan(
   };
 }
 
-/* =========================================================
- * BUSCA RELAXADA
- *
- * Tenta várias versões da pesquisa para encontrar
- * resultados mesmo quando o usuário digita somente
- * parte do nome.
- *
- * Exemplos:
- *
- * narut
- * naru
- * nar
- *
- * one p
- * one
- *
- * Também tenta a busca sem espaços.
- * ========================================================= */
-
 async function searchRelaxed(
   params: SearchParams,
 ): Promise<SlimAnime[]> {
@@ -1840,8 +1821,26 @@ export const searchCatalog =
               q,
             );
 
+          /*
+           * Só consideramos que a busca
+           * encontrou algo diretamente quando
+           * existe uma correspondência forte.
+           *
+           * Isso evita casos como "Narut"
+           * retornando "Ane Naru Mono" e
+           * impedindo a busca relaxada.
+           */
+          const hasStrongMatch =
+            items.some(
+              (anime) =>
+                searchScore(
+                  anime,
+                  q,
+                ) >= 700,
+            );
+
           if (
-            items.length === 0
+            !hasStrongMatch
           ) {
             try {
               const relaxed =
