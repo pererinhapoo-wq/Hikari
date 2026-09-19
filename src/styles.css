@@ -31,6 +31,29 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* =========================================================
+   TEMA CLARO
+========================================================= */
+
+html.light {
+  --color-bg: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-elevated: #eeeeec;
+  --color-fg: #171717;
+  --color-muted: #666662;
+  --color-subtle: #8a8a85;
+  --color-border: rgb(23 23 23 / 0.1);
+  --color-border-strong: rgb(23 23 23 / 0.18);
+  --color-primary: #171717;
+  --color-primary-fg: #ffffff;
+  --color-danger: #b83f3f;
+  --color-danger-fg: #ffffff;
+  --color-score: #625f58;
+
+  --shadow-border: 0 0 0 1px rgb(0 0 0 / 0.08);
+  --shadow-border-hover: 0 0 0 1px rgb(0 0 0 / 0.14);
+}
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
@@ -70,6 +93,10 @@
     outline: 1px solid rgb(255 255 255 / 0.08);
     outline-offset: -1px;
   }
+
+  html.light img {
+    outline-color: rgb(0 0 0 / 0.08);
+  }
 }
 
 @layer utilities {
@@ -81,6 +108,7 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
@@ -94,9 +122,11 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
   .rail::-webkit-scrollbar {
     display: none;
   }
+
   .rail > * {
     scroll-snap-align: start;
     flex-shrink: 0;
