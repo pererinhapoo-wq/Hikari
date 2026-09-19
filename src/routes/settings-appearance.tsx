@@ -12,7 +12,10 @@ import {
   Type,
 } from "lucide-react";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 export const Route = createFileRoute(
   "/settings-appearance",
@@ -21,9 +24,42 @@ export const Route = createFileRoute(
 });
 
 function SettingsAppearance() {
-  const [theme, setTheme] = useState("Escuro");
-  const [fontSize, setFontSize] = useState("Médio");
-  const [animations, setAnimations] = useState(true);
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined") {
+      return "Escuro";
+    }
+
+    return localStorage.getItem(
+      "hikari-theme",
+    ) === "Claro"
+      ? "Claro"
+      : "Escuro";
+  });
+
+  const [fontSize, setFontSize] =
+    useState("Médio");
+
+  const [animations, setAnimations] =
+    useState(true);
+
+  /* =========================================================
+     TEMA
+  ========================================================== */
+
+  useEffect(() => {
+    const isLight =
+      theme === "Claro";
+
+    document.documentElement.classList.toggle(
+      "light",
+      isLight,
+    );
+
+    localStorage.setItem(
+      "hikari-theme",
+      theme,
+    );
+  }, [theme]);
 
   return (
     <div className="min-h-screen pb-20 pt-5">
@@ -65,7 +101,9 @@ function SettingsAppearance() {
           {/* ESCURO */}
           <button
             type="button"
-            onClick={() => setTheme("Escuro")}
+            onClick={() =>
+              setTheme("Escuro")
+            }
             className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -90,7 +128,9 @@ function SettingsAppearance() {
           {/* CLARO */}
           <button
             type="button"
-            onClick={() => setTheme("Claro")}
+            onClick={() =>
+              setTheme("Claro")
+            }
             className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -126,9 +166,23 @@ function SettingsAppearance() {
           <button
             type="button"
             onClick={() => {
-              const sizes = ["Pequeno", "Médio", "Grande"];
-              const current = sizes.indexOf(fontSize);
-              setFontSize(sizes[(current + 1) % sizes.length]);
+              const sizes = [
+                "Pequeno",
+                "Médio",
+                "Grande",
+              ];
+
+              const current =
+                sizes.indexOf(
+                  fontSize,
+                );
+
+              setFontSize(
+                sizes[
+                  (current + 1) %
+                    sizes.length
+                ],
+              );
             }}
             className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
@@ -177,9 +231,15 @@ function SettingsAppearance() {
               type="button"
               role="switch"
               aria-checked={animations}
-              onClick={() => setAnimations(!animations)}
+              onClick={() =>
+                setAnimations(
+                  !animations,
+                )
+              }
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                animations ? "bg-green-500" : "bg-elevated"
+                animations
+                  ? "bg-green-500"
+                  : "bg-elevated"
               }`}
             >
               <span
