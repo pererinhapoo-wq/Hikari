@@ -57,14 +57,6 @@ const BASE_NAV = [
     match: (p: string) => p === "/",
   },
   {
-    to: "/search",
-    label: "Buscar",
-    icon: Search,
-    match: (p: string) =>
-      p.startsWith("/search") ||
-      p.startsWith("/browse"),
-  },
-  {
     to: "/my-list",
     label: "Lista",
     icon: Bookmark,
@@ -346,10 +338,10 @@ export function Shell() {
               )}
             </button>
 
-            {/* BUSCA MOBILE */}
+            {/* BUSCA */}
             <Link
               to="/search"
-              className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
+              className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
               aria-label="Buscar"
             >
               <Search className="size-5" />
@@ -881,4 +873,4 @@ export function Shell() {
       </footer>
     </div>
   );
-}
+  }
