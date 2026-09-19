@@ -91,13 +91,15 @@ function SettingsPlayer() {
               aria-checked={autoplay}
               onClick={() => setAutoplay(!autoplay)}
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                autoplay ? "bg-fg" : "bg-elevated"
+                autoplay
+                  ? "bg-green-500"
+                  : "bg-elevated"
               }`}
             >
               <span
                 className={`absolute top-1 size-4 rounded-full transition-transform ${
                   autoplay
-                    ? "translate-x-6 bg-bg"
+                    ? "translate-x-6 bg-white"
                     : "translate-x-1 bg-muted"
                 }`}
               />
@@ -218,7 +220,7 @@ function SettingsPlayer() {
                   {option}
 
                   {quality === option && (
-                    <span className="text-muted">✓</span>
+                    <span className="text-green-500">✓</span>
                   )}
                 </button>
               ))}
@@ -257,7 +259,7 @@ function SettingsPlayer() {
                   {option}
 
                   {captions === option && (
-                    <span className="text-muted">✓</span>
+                    <span className="text-green-500">✓</span>
                   )}
                 </button>
               ))}
@@ -296,7 +298,7 @@ function SettingsPlayer() {
                   {option}
 
                   {fullscreen === option && (
-                    <span className="text-muted">✓</span>
+                    <span className="text-green-500">✓</span>
                   )}
                 </button>
               ))}
@@ -315,4 +317,4 @@ function SettingsPlayer() {
 
     </div>
   );
-          }
+}
