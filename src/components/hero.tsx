@@ -16,6 +16,9 @@ export function Hero({
   animes?: SlimAnime[];
 }) {
   const [index, setIndex] = useState(0);
+  const [visibleBackdrop, setVisibleBackdrop] = useState(
+    anime.banner || anime.cover || "",
+  );
   const [isLandscape, setIsLandscape] = useState(false);
 
   const current = animes[index] ?? anime;
@@ -27,7 +30,7 @@ export function Hero({
 
   const toggleList = useHikariStore((s) => s.toggleList);
 
-  const backdrop = current.banner || current.cover;
+  const backdrop = current.banner || current.cover || "";
 
   useEffect(() => {
     if (animes.length < 2) return;
@@ -40,7 +43,27 @@ export function Hero({
   }, [animes.length]);
 
   useEffect(() => {
-    setIsLandscape(false);
+    if (!backdrop) return;
+
+    let cancelled = false;
+
+    const image = new Image();
+
+    image.onload = () => {
+      if (cancelled) return;
+
+      setIsLandscape(
+        image.naturalWidth > image.naturalHeight,
+      );
+
+      setVisibleBackdrop(backdrop);
+    };
+
+    image.src = backdrop;
+
+    return () => {
+      cancelled = true;
+    };
   }, [backdrop]);
 
   return (
@@ -54,7 +77,7 @@ export function Hero({
       "
     >
       {/* IMAGEM PRINCIPAL */}
-      {backdrop ? (
+      {visibleBackdrop ? (
         <div
           className={
             isLandscape
@@ -76,33 +99,28 @@ export function Hero({
           }
         >
           <img
-            key={current.id}
-            src={backdrop}
+            src={visibleBackdrop}
             alt=""
             aria-hidden="true"
-            onLoad={(event) => {
-              const image = event.currentTarget;
-              setIsLandscape(
-                image.naturalWidth > image.naturalHeight,
-              );
-            }}
-            className={
-              isLandscape
-                ? `
-                  block
-                  h-auto
-                  w-full
-                  object-contain
-                `
-                : `
-                  absolute
-                  inset-0
-                  size-full
-                  object-contain
-                  object-center
-                `
-            }
+            className="
+              block
+              h-auto
+              w-full
+              object-contain
+              object-center
+            "
           />
+
+          {!isLandscape && (
+            <div
+              className="
+                pointer-events-none
+                absolute
+                inset-0
+                bg-bg/0
+              "
+            />
+          )}
 
           {/* TRANSIÇÃO SUAVE */}
           <div
@@ -297,4 +315,4 @@ export function Hero({
       </div>
     </section>
   );
-      }
+}
