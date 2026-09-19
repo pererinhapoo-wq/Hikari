@@ -27,7 +27,7 @@ function SettingsPrivacy() {
   const [
     publicProfile,
     setPublicProfile,
-  ] = useState(true);
+  ] = useState<boolean | null>(null);
 
   const [
     followersOpen,
@@ -42,7 +42,7 @@ function SettingsPrivacy() {
   const [
     followers,
     setFollowers,
-  ] = useState("Todos");
+  ] = useState<string | null>(null);
 
   const [
     settingsLoaded,
@@ -55,37 +55,39 @@ function SettingsPrivacy() {
         "hikari-public-profile",
       );
 
-    if (savedPublicProfile === "true") {
-      setPublicProfile(true);
-    }
-
-    if (savedPublicProfile === "false") {
-      setPublicProfile(false);
-    }
-
     const savedFollowers =
       localStorage.getItem(
         "hikari-followers",
       );
 
-    if (savedFollowers) {
-      setFollowers(savedFollowers);
-    }
+    setPublicProfile(
+      savedPublicProfile === "false"
+        ? false
+        : true,
+    );
+
+    setFollowers(
+      savedFollowers ||
+        "Todos",
+    );
 
     setSettingsLoaded(true);
   }, []);
 
   function handlePublicProfileToggle() {
-    setPublicProfile((current) => {
-      const next = !current;
+    if (publicProfile === null) {
+      return;
+    }
 
-      localStorage.setItem(
-        "hikari-public-profile",
-        String(next),
-      );
+    const next =
+      !publicProfile;
 
-      return next;
-    });
+    setPublicProfile(next);
+
+    localStorage.setItem(
+      "hikari-public-profile",
+      String(next),
+    );
   }
 
   function handleFollowersChange(
@@ -101,7 +103,11 @@ function SettingsPrivacy() {
     setFollowersOpen(false);
   }
 
-  if (!settingsLoaded) {
+  if (
+    !settingsLoaded ||
+    publicProfile === null ||
+    followers === null
+  ) {
     return null;
   }
 
@@ -362,4 +368,4 @@ function SettingsPrivacy() {
 
     </div>
   );
-}
+      }
