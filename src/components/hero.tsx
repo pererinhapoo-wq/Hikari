@@ -36,8 +36,7 @@ export function Hero({
     if (animes.length < 2) return;
 
     const timer = window.setInterval(() => {
-      const nextIndex =
-        (index + 1) % animes.length;
+      const nextIndex = (index + 1) % animes.length;
 
       const nextAnime = animes[nextIndex];
       const nextBackdrop =
@@ -96,9 +95,12 @@ export function Hero({
             isLandscape
               ? `
                 relative
+                h-[15rem]
                 w-full
                 overflow-hidden
                 bg-bg
+                sm:h-[21rem]
+                lg:h-[23rem]
               `
               : `
                 relative
@@ -116,9 +118,9 @@ export function Hero({
             alt=""
             aria-hidden="true"
             className="
-              block
-              h-auto
-              w-full
+              absolute
+              inset-0
+              size-full
               object-contain
               object-center
             "
