@@ -10,19 +10,26 @@ import {
   type ReactNode,
 } from "react";
 
-import { fetchHomeCatalog, searchCatalog } from "@/lib/api";
+import {
+  fetchHomeCatalog,
+  searchCatalog,
+} from "@/lib/api";
+
 import {
   FORMAT_PT,
   GENRE_PT,
   SORT_OPTIONS,
   STATUS_PT,
 } from "@/lib/labels";
+
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
+
 import {
   AnimeCard,
   AnimeCardSkeleton,
 } from "@/components/anime-card";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -147,11 +154,41 @@ function SearchPage() {
     setFiltersOpen,
   ] = useState(false);
 
+  const [
+    allRemoteItems,
+    setAllRemoteItems,
+  ] = useState<typeof result.items>(
+    [],
+  );
+
+  const [
+    loadingAll,
+    setLoadingAll,
+  ] = useState(false);
+
+  const [
+    allLoaded,
+    setAllLoaded,
+  ] = useState(false);
+
   useEffect(() => {
     setDraft(
       search.q ?? "",
     );
   }, [search.q]);
+
+  useEffect(() => {
+    setAllRemoteItems([]);
+    setAllLoaded(false);
+    setLoadingAll(false);
+  }, [
+    search.q,
+    search.genre,
+    search.year,
+    search.format,
+    search.status,
+    search.sort,
+  ]);
 
   useEffect(() => {
     const q = draft.trim();
@@ -179,6 +216,88 @@ function SearchPage() {
     navigate,
     search,
   ]);
+
+  async function loadAllResults() {
+    if (
+      loadingAll ||
+      allLoaded ||
+      !result.hasNext
+    ) {
+      return;
+    }
+
+    setLoadingAll(true);
+
+    try {
+      const collected = [
+        ...result.items,
+      ];
+
+      let page =
+        result.page + 1;
+
+      let hasNext =
+        result.hasNext;
+
+      /*
+       * Limite de segurança para evitar
+       * uma quantidade absurda de requisições.
+       *
+       * Cada página possui até 24 animes.
+       */
+      let requests = 0;
+
+      while (
+        hasNext &&
+        requests < 50
+      ) {
+        const next =
+          await searchCatalog({
+            data: {
+              ...search,
+              page,
+            },
+          });
+
+        collected.push(
+          ...next.items,
+        );
+
+        hasNext =
+          next.hasNext;
+
+        page += 1;
+        requests += 1;
+      }
+
+      const unique =
+        Array.from(
+          new Map(
+            collected.map(
+              (anime) => [
+                anime.id,
+                anime,
+              ],
+            ),
+          ).values(),
+        );
+
+      setAllRemoteItems(
+        unique,
+      );
+
+      setAllLoaded(true);
+    } catch {
+      /*
+       * Mantém os resultados que já
+       * estavam carregados caso alguma
+       * página adicional falhe.
+       */
+      setAllLoaded(false);
+    } finally {
+      setLoadingAll(false);
+    }
+  }
 
   const items =
     useMemo(() => {
@@ -213,9 +332,14 @@ function SearchPage() {
           return true;
         });
 
+      const remoteSource =
+        allRemoteItems.length
+          ? allRemoteItems
+          : result.items;
+
       const remote =
         overlayList(
-          result.items,
+          remoteSource,
           locals,
         );
 
@@ -238,6 +362,7 @@ function SearchPage() {
       locals,
       search.q,
       search.genre,
+      allRemoteItems,
     ]);
 
   function apply(
@@ -265,6 +390,11 @@ function SearchPage() {
     Boolean(
       search.q?.trim(),
     );
+
+  const showLoadAll =
+    hasQuery &&
+    result.hasNext &&
+    !allLoaded;
 
   return (
     <div className="space-y-6 pt-6">
@@ -518,6 +648,31 @@ function SearchPage() {
               ),
             )}
           </div>
+
+          {showLoadAll && (
+            <div className="flex justify-center pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={
+                  loadAllResults
+                }
+                disabled={
+                  loadingAll
+                }
+              >
+                {loadingAll
+                  ? "Carregando todos os resultados…"
+                  : "Ver todos os resultados"}
+              </Button>
+            </div>
+          )}
+
+          {allLoaded && (
+            <p className="pt-2 text-center text-xs text-muted">
+              Todos os resultados foram carregados.
+            </p>
+          )}
         </section>
       )}
 
@@ -577,4 +732,4 @@ function Field({
       {children}
     </label>
   );
-    }
+      }
