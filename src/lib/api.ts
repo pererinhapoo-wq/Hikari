@@ -1659,37 +1659,44 @@ async function searchRelaxed(
   const variants =
     new Set<string>();
 
-  variants.add(original);
-  variants.add(normalized);
+  variants.add(
+    normalized,
+  );
 
   if (compact) {
-    variants.add(compact);
-  }
-
-  if (words.length > 1) {
-    variants.add(words[0]);
-  }
-
-  if (
-    normalized.length >= 4
-  ) {
     variants.add(
-      normalized.slice(
-        0,
-        -1,
-      ),
+      compact,
     );
   }
 
   if (
-    normalized.length >= 5
+    words.length > 1
+  ) {
+    variants.add(
+      words[0],
+    );
+  }
+
+  for (
+    let length =
+      normalized.length - 1;
+    length >= 2;
+    length--
   ) {
     variants.add(
       normalized.slice(
         0,
-        -2,
+        length,
       ),
     );
+
+    if (
+      normalized.length -
+        length >=
+      4
+    ) {
+      break;
+    }
   }
 
   const validVariants =
@@ -1705,9 +1712,7 @@ async function searchRelaxed(
           const searchParams:
             SearchParams = {
             ...params,
-
             q: variant,
-
             page: 1,
           };
 
@@ -1717,7 +1722,6 @@ async function searchRelaxed(
                 searchAni(
                   searchParams,
                 ),
-
                 searchJikan(
                   searchParams,
                 ),
@@ -1759,10 +1763,46 @@ async function searchRelaxed(
       [] as SlimAnime[],
     );
 
-  return rankSearchResults(
-    merged,
-    original,
-  );
+  const ranked =
+    merged
+      .map(
+        (
+          anime,
+          index,
+        ) => ({
+          anime,
+          score:
+            searchScore(
+              anime,
+              original,
+            ),
+          index,
+        }),
+      )
+      .sort(
+        (a, b) => {
+          if (
+            b.score !==
+            a.score
+          ) {
+            return (
+              b.score -
+              a.score
+            );
+          }
+
+          return (
+            a.index -
+            b.index
+          );
+        },
+      )
+      .map(
+        (item) =>
+          item.anime,
+      );
+
+  return ranked;
 }
 
 export const searchCatalog =
@@ -1821,15 +1861,6 @@ export const searchCatalog =
               q,
             );
 
-          /*
-           * Só consideramos que a busca
-           * encontrou algo diretamente quando
-           * existe uma correspondência forte.
-           *
-           * Isso evita casos como "Narut"
-           * retornando "Ane Naru Mono" e
-           * impedindo a busca relaxada.
-           */
           const hasStrongMatch =
             items.some(
               (anime) =>
@@ -1857,36 +1888,74 @@ export const searchCatalog =
                   q,
                 );
             } catch {
-              // Continua com os resultados atuais.
+              // Mantém os resultados atuais.
             }
           }
 
-          const result: SearchResult =
-            {
-              items:
-                items.slice(
-                  0,
-                  24,
-                ),
+          const scored =
+            items
+              .map(
+                (
+                  anime,
+                  index,
+                ) => ({
+                  anime,
+                  score:
+                    searchScore(
+                      anime,
+                      q,
+                    ),
+                  index,
+                }),
+              )
+              .filter(
+                (item) =>
+                  item.score > 0,
+              )
+              .sort(
+                (a, b) =>
+                  b.score -
+                    a.score ||
+                  a.index -
+                    b.index,
+              )
+              .map(
+                (item) =>
+                  item.anime,
+              );
 
-              page:
-                data.page ??
-                1,
+          if (
+            scored.length > 0
+          ) {
+            items = scored;
+          }
 
-              hasNext:
-                Boolean(
-                  aniResult?.hasNext ||
-                    jikanResult?.hasNext,
-                ),
+          const result:
+            SearchResult = {
+            items:
+              items.slice(
+                0,
+                24,
+              ),
 
-              source:
-                aniResult &&
-                jikanResult
+            page:
+              data.page ??
+              1,
+
+            hasNext:
+              Boolean(
+                aniResult?.hasNext ||
+                  jikanResult?.hasNext,
+              ),
+
+            source:
+              aniResult &&
+              jikanResult
+                ? "anilist"
+                : aniResult
                   ? "anilist"
-                  : aniResult
-                    ? "anilist"
-                    : "jikan",
-            };
+                  : "jikan",
+          };
 
           return toCache(
             key,
