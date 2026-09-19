@@ -435,8 +435,18 @@ function PublicProfile() {
 
             <div className="-mt-14 sm:-mt-16">
 
-              <div className="grid size-28 place-items-center rounded-full border-[5px] border-[#061329] bg-[#15284b] text-5xl font-semibold shadow-xl sm:size-32">
-                {avatarLetter}
+              <div className="grid size-28 place-items-center overflow-hidden rounded-full border-[5px] border-[#061329] bg-[#15284b] text-5xl font-semibold shadow-xl sm:size-32">
+
+                {profile.image ? (
+                  <img
+                    src={profile.image}
+                    alt={`Foto de ${profile.nick}`}
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  avatarLetter
+                )}
+
               </div>
 
             </div>
