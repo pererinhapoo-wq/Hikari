@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Plugin } from "vite";
 import { defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import netlify from "@netlify/vite-plugin-tanstack-start";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { nitro } from "nitro/vite";
@@ -27,8 +28,8 @@ function hasGlobbedMigrations(root: string): boolean {
  * on import.
  *
  * Vite awaiting the hook puts this on time-to-first-render, so an app with no
- * migrations — no schema to apply — skips it entirely rather than paying for a
- * PGLite instance it never queries.
+ * migrations — no schema to apply — skips it entirely rather than paying for
+ * a PGLite instance it never queries.
  */
 function pgliteBootstrapPlugin(): Plugin {
   return {
@@ -85,11 +86,15 @@ function authPopupPlugin(): Plugin {
           }
 
           const host = String(
-            req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost:8080",
+            req.headers["x-forwarded-host"] ??
+              req.headers.host ??
+              "localhost:8080",
           );
           const proto = String(
             req.headers["x-forwarded-proto"] ??
-              ((req.socket as { encrypted?: boolean } | undefined)?.encrypted ? "https" : "http"),
+              ((req.socket as { encrypted?: boolean } | undefined)?.encrypted
+                ? "https"
+                : "http"),
           );
           const requestHeaders = new Headers();
           for (const [key, value] of Object.entries(req.headers)) {
@@ -100,33 +105,43 @@ function authPopupPlugin(): Plugin {
               requestHeaders.set(key, value);
             }
           }
+
           // Ensure Host is the public preview host so Better Auth's dynamic
           // baseURL / redirect_uri match the popup origin.
-          if (!requestHeaders.has("host")) requestHeaders.set("host", host);
+          if (!requestHeaders.has("host")) {
+            requestHeaders.set("host", host);
+          }
 
           const request = new Request(`${proto}://${host}${rawUrl}`, {
             method: "GET",
             headers: requestHeaders,
           });
 
-          const mod = (await server.ssrLoadModule("/src/lib/auth/popup.server.ts")) as {
+          const mod = (await server.ssrLoadModule(
+            "/src/lib/auth/popup.server.ts",
+          )) as {
             handleAuthPopupRequest: (req: Request) => Promise<Response>;
           };
+
           const response = await mod.handleAuthPopupRequest(request);
 
           res.statusCode = response.status;
+
           // Preserve multiple Set-Cookie headers (OAuth state + session).
           const setCookies =
             typeof response.headers.getSetCookie === "function"
               ? response.headers.getSetCookie()
               : [];
+
           response.headers.forEach((value, key) => {
             if (key.toLowerCase() === "set-cookie") return;
             res.setHeader(key, value);
           });
+
           for (const cookie of setCookies) {
             res.appendHeader("set-cookie", cookie);
           }
+
           const body = Buffer.from(await response.arrayBuffer());
           res.end(body);
         } catch (err) {
@@ -159,18 +174,28 @@ export default defineConfig(({ command, isPreview }) => ({
   resolve: { tsconfigPaths: true },
   plugins: [
     pgliteBootstrapPlugin(),
+
     // Before tanstackStart so /auth/popup never falls through to the SPA.
     authPopupPlugin(),
+
     // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
     appEnvPlugin(),
+
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
     grokPwaPlugin(),
+
     tailwindcss(),
+
     tanstackStart(),
+
+    // Official Netlify integration for TanStack Start.
+    netlify(),
+
     ...(command === "build" || isPreview
       ? [
           nitro({
             preset: "vercel",
+
             // Auto-registers server/middleware/* (the PWA install page +
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
@@ -178,6 +203,7 @@ export default defineConfig(({ command, isPreview }) => ({
           }),
         ]
       : []),
+
     viteReact(),
   ],
 }));
