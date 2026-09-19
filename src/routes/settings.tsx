@@ -26,7 +26,7 @@ type SettingItem = {
   icon: typeof UserRound;
   title: string;
   description: string;
-  to?: string;
+  to?: "/settings-account" | "/settings-profile";
 };
 
 const sections: Array<{
@@ -53,6 +53,7 @@ const sections: Array<{
         title: "Perfil",
         description:
           "Nome, bio e foto do perfil",
+        to: "/settings-profile",
       },
     ],
   },
@@ -176,12 +177,8 @@ function Settings() {
                     if (item.to) {
                       return (
                         <Link
-                          key={
-                            item.title
-                          }
-                          to={
-                            item.to
-                          }
+                          key={item.title}
+                          to={item.to}
                           className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
                         >
                           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -190,15 +187,11 @@ function Settings() {
 
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-fg">
-                              {
-                                item.title
-                              }
+                              {item.title}
                             </p>
 
                             <p className="mt-1 text-xs leading-5 text-muted">
-                              {
-                                item.description
-                              }
+                              {item.description}
                             </p>
                           </div>
 
@@ -209,9 +202,7 @@ function Settings() {
 
                     return (
                       <button
-                        key={
-                          item.title
-                        }
+                        key={item.title}
                         type="button"
                         className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
                       >
@@ -221,15 +212,11 @@ function Settings() {
 
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-fg">
-                            {
-                              item.title
-                            }
+                            {item.title}
                           </p>
 
                           <p className="mt-1 text-xs leading-5 text-muted">
-                            {
-                              item.description
-                            }
+                            {item.description}
                           </p>
                         </div>
 
@@ -268,4 +255,4 @@ function Settings() {
 
     </div>
   );
-      }
+          }
