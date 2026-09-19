@@ -16,6 +16,7 @@ export type PublicUserProfile = {
   userId: string;
   nick: string;
   bio: string;
+  image: string | null;
   commentCount: number;
   followersCount: number;
   followingCount: number;
@@ -202,12 +203,19 @@ export const getPublicProfile =
         userId: string;
         nick: string | null;
         bio: string | null;
+        image: string | null;
       }>`
         select
           p."userId",
           p."nick",
-          p."bio"
+          p."bio",
+          u."image"
         from "profile" p
+
+        inner join "user" u
+          on u."id" =
+            p."userId"
+
         where lower(p."nick") =
           lower(${nick})
         limit 1
@@ -252,6 +260,7 @@ export const getPublicProfile =
         userId: row.userId,
         nick: row.nick ?? "",
         bio: row.bio ?? "",
+        image: row.image,
         commentCount: Number(
           commentRows[0]?.count ?? "0",
         ),
