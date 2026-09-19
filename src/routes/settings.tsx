@@ -31,7 +31,8 @@ type SettingItem = {
     | "/settings-profile"
     | "/settings-privacy"
     | "/settings-notifications"
-    | "/settings-player";
+    | "/settings-player"
+    | "/settings-appearance";
 };
 
 const sections: Array<{
@@ -106,6 +107,7 @@ const sections: Array<{
         title: "Aparência",
         description:
           "Tema, tamanho da fonte e animações",
+        to: "/settings-appearance",
       },
     ],
   },
@@ -263,4 +265,4 @@ function Settings() {
 
     </div>
   );
-  }
+        }
