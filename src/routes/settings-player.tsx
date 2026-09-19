@@ -12,7 +12,10 @@ import {
   Settings2,
 } from "lucide-react";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 export const Route = createFileRoute(
   "/settings-player",
@@ -22,6 +25,7 @@ export const Route = createFileRoute(
 
 function SettingsPlayer() {
   const [autoplay, setAutoplay] = useState(true);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const [qualityOpen, setQualityOpen] = useState(false);
   const [quality, setQuality] = useState("Automática");
@@ -31,6 +35,39 @@ function SettingsPlayer() {
 
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState("Perguntar");
+
+  useEffect(() => {
+    const savedAutoplay = localStorage.getItem(
+      "hikari-player-autoplay",
+    );
+
+    if (savedAutoplay === "true") {
+      setAutoplay(true);
+    }
+
+    if (savedAutoplay === "false") {
+      setAutoplay(false);
+    }
+
+    setSettingsLoaded(true);
+  }, []);
+
+  function handleAutoplayToggle() {
+    setAutoplay((current) => {
+      const next = !current;
+
+      localStorage.setItem(
+        "hikari-player-autoplay",
+        String(next),
+      );
+
+      return next;
+    });
+  }
+
+  if (!settingsLoaded) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen pb-20 pt-5">
@@ -89,7 +126,7 @@ function SettingsPlayer() {
               type="button"
               role="switch"
               aria-checked={autoplay}
-              onClick={() => setAutoplay(!autoplay)}
+              onClick={handleAutoplayToggle}
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 autoplay
                   ? "bg-green-500"
@@ -317,4 +354,4 @@ function SettingsPlayer() {
 
     </div>
   );
-          }
+        }
