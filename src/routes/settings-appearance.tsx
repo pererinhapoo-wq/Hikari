@@ -12,7 +12,10 @@ import {
   Type,
 } from "lucide-react";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 export const Route = createFileRoute(
   "/settings-appearance",
@@ -21,9 +24,59 @@ export const Route = createFileRoute(
 });
 
 function SettingsAppearance() {
-  const [theme, setTheme] = useState("Escuro");
-  const [fontSize, setFontSize] = useState("Médio");
-  const [animations, setAnimations] = useState(true);
+  const [theme, setTheme] =
+    useState("Escuro");
+
+  const [fontSize, setFontSize] =
+    useState("Médio");
+
+  const [animations, setAnimations] =
+    useState(true);
+
+  /* =========================================================
+     CARREGA O TEMA SALVO
+  ========================================================== */
+
+  useEffect(() => {
+    const savedTheme =
+      window.localStorage.getItem(
+        "hikari-theme",
+      );
+
+    if (
+      savedTheme === "Claro" ||
+      savedTheme === "Escuro"
+    ) {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  /* =========================================================
+     APLICA O TEMA NO SITE
+  ========================================================== */
+
+  useEffect(() => {
+    if (theme === "Claro") {
+      document.documentElement.setAttribute(
+        "data-theme",
+        "light",
+      );
+
+      window.localStorage.setItem(
+        "hikari-theme",
+        "Claro",
+      );
+    } else {
+      document.documentElement.removeAttribute(
+        "data-theme",
+      );
+
+      window.localStorage.setItem(
+        "hikari-theme",
+        "Escuro",
+      );
+    }
+  }, [theme]);
 
   return (
     <div className="min-h-screen pb-20 pt-5">
@@ -65,7 +118,9 @@ function SettingsAppearance() {
           {/* ESCURO */}
           <button
             type="button"
-            onClick={() => setTheme("Escuro")}
+            onClick={() =>
+              setTheme("Escuro")
+            }
             className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -90,7 +145,9 @@ function SettingsAppearance() {
           {/* CLARO */}
           <button
             type="button"
-            onClick={() => setTheme("Claro")}
+            onClick={() =>
+              setTheme("Claro")
+            }
             className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
