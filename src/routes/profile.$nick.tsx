@@ -38,6 +38,322 @@ type PublicComment = Awaited<
   >
 >[number];
 
+function rgbToHex(
+  red: number,
+  green: number,
+  blue: number,
+) {
+  return `#${[red, green, blue]
+    .map((value) =>
+      Math.max(
+        0,
+        Math.min(
+          255,
+          Math.round(value),
+        ),
+      )
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+function hexToRgba(
+  hex: string,
+  alpha: number,
+) {
+  const value = hex.replace(
+    "#",
+    "",
+  );
+
+  const red = parseInt(
+    value.slice(0, 2),
+    16,
+  );
+
+  const green = parseInt(
+    value.slice(2, 4),
+    16,
+  );
+
+  const blue = parseInt(
+    value.slice(4, 6),
+    16,
+  );
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function darkenHex(
+  hex: string,
+  amount = 0.55,
+) {
+  const value = hex.replace(
+    "#",
+    "",
+  );
+
+  const red = Math.round(
+    parseInt(
+      value.slice(0, 2),
+      16,
+    ) * amount,
+  );
+
+  const green = Math.round(
+    parseInt(
+      value.slice(2, 4),
+      16,
+    ) * amount,
+  );
+
+  const blue = Math.round(
+    parseInt(
+      value.slice(4, 6),
+      16,
+    ) * amount,
+  );
+
+  return rgbToHex(
+    red,
+    green,
+    blue,
+  );
+}
+
+function getDominantColors(
+  imageUrl: string,
+): Promise<[string, string] | null> {
+  return new Promise(
+    (resolve) => {
+      const image =
+        new Image();
+
+      image.crossOrigin =
+        "anonymous";
+
+      image.onload = () => {
+        try {
+          const canvas =
+            document.createElement(
+              "canvas",
+            );
+
+          const size = 48;
+
+          canvas.width = size;
+          canvas.height = size;
+
+          const context =
+            canvas.getContext(
+              "2d",
+            );
+
+          if (!context) {
+            resolve(null);
+            return;
+          }
+
+          context.drawImage(
+            image,
+            0,
+            0,
+            size,
+            size,
+          );
+
+          const pixels =
+            context.getImageData(
+              0,
+              0,
+              size,
+              size,
+            ).data;
+
+          const buckets =
+            new Map<
+              string,
+              {
+                count: number;
+                saturation: number;
+              }
+            >();
+
+          for (
+            let index = 0;
+            index <
+            pixels.length;
+            index += 4
+          ) {
+            const red =
+              pixels[index] ?? 0;
+
+            const green =
+              pixels[index + 1] ??
+              0;
+
+            const blue =
+              pixels[index + 2] ??
+              0;
+
+            const alpha =
+              pixels[index + 3] ??
+              0;
+
+            if (alpha < 180) {
+              continue;
+            }
+
+            const brightness =
+              (red +
+                green +
+                blue) /
+              3;
+
+            if (
+              brightness < 18 ||
+              brightness > 245
+            ) {
+              continue;
+            }
+
+            const max = Math.max(
+              red,
+              green,
+              blue,
+            );
+
+            const min = Math.min(
+              red,
+              green,
+              blue,
+            );
+
+            const saturation =
+              max === 0
+                ? 0
+                : (max - min) /
+                  max;
+
+            const bucketRed =
+              Math.round(
+                red / 32,
+              ) * 32;
+
+            const bucketGreen =
+              Math.round(
+                green / 32,
+              ) * 32;
+
+            const bucketBlue =
+              Math.round(
+                blue / 32,
+              ) * 32;
+
+            const key = `${bucketRed},${bucketGreen},${bucketBlue}`;
+
+            const current =
+              buckets.get(key);
+
+            if (current) {
+              current.count += 1;
+              current.saturation +=
+                saturation;
+            } else {
+              buckets.set(key, {
+                count: 1,
+                saturation,
+              });
+            }
+          }
+
+          const colors =
+            Array.from(
+              buckets.entries(),
+            )
+              .map(
+                ([
+                  key,
+                  value,
+                ]) => ({
+                  color: `#${key
+                    .split(",")
+                    .map((part) =>
+                      Number(part)
+                        .toString(
+                          16,
+                        )
+                        .padStart(
+                          2,
+                          "0",
+                        ),
+                    )
+                    .join("")}`,
+                  count:
+                    value.count,
+                  saturation:
+                    value.saturation /
+                    value.count,
+                }),
+              )
+              .sort(
+                (first, second) =>
+                  second.count *
+                    (1 +
+                      second.saturation) -
+                  first.count *
+                    (1 +
+                      first.saturation),
+              );
+
+          if (
+            colors.length === 0
+          ) {
+            resolve(null);
+            return;
+          }
+
+          const first =
+            colors[0]?.color;
+
+          if (!first) {
+            resolve(null);
+            return;
+          }
+
+          const second =
+            colors.find(
+              (item) =>
+                item.color !==
+                  first &&
+                Math.abs(
+                  item.count -
+                    (colors[0]?.count ??
+                      0),
+                ) < 50,
+            )?.color ??
+            colors[1]?.color ??
+            first;
+
+          resolve([
+            first,
+            second,
+          ]);
+        } catch {
+          resolve(null);
+        }
+      };
+
+      image.onerror = () => {
+        resolve(null);
+      };
+
+      image.src = imageUrl;
+    },
+  );
+}
+
 function PublicProfile() {
   const { nick } =
     Route.useParams();
@@ -92,6 +408,13 @@ function PublicProfile() {
     followLoading,
     setFollowLoading,
   ] = useState(false);
+
+  const [
+    profileColors,
+    setProfileColors,
+  ] = useState<
+    [string, string] | null
+  >(null);
 
   useEffect(() => {
     let active = true;
@@ -177,6 +500,33 @@ function PublicProfile() {
       active = false;
     };
   }, [nick]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!profile?.image) {
+      setProfileColors(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setProfileColors(null);
+
+    void getDominantColors(
+      profile.image,
+    ).then((colors) => {
+      if (!active) {
+        return;
+      }
+
+      setProfileColors(colors);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [profile?.image]);
 
   async function toggleFollow() {
     if (!profile) {
@@ -416,18 +766,29 @@ function PublicProfile() {
           <div className="relative h-48 overflow-hidden sm:h-64">
 
             <div
-              className="absolute inset-0"
+              className="absolute inset-0 transition-[background] duration-700"
               style={{
-                background:
-                  "radial-gradient(circle at 50% 120%, rgba(88,54,255,0.95) 0%, rgba(39,48,145,0.75) 35%, rgba(6,19,41,0.3) 70%), linear-gradient(135deg, #152f72 0%, #4025a3 45%, #741bc7 100%)",
+                background: profileColors
+                  ? `radial-gradient(circle at 20% 30%, ${hexToRgba(
+                      profileColors[0],
+                      0.88,
+                    )} 0%, transparent 48%), radial-gradient(circle at 82% 20%, ${hexToRgba(
+                      profileColors[1],
+                      0.8,
+                    )} 0%, transparent 52%), linear-gradient(135deg, ${darkenHex(
+                      profileColors[0],
+                      0.52,
+                    )} 0%, ${darkenHex(
+                      profileColors[1],
+                      0.5,
+                    )} 55%, #061329 100%)`
+                  : "radial-gradient(circle at 50% 120%, rgba(88,54,255,0.95) 0%, rgba(39,48,145,0.75) 35%, rgba(6,19,41,0.3) 70%), linear-gradient(135deg, #152f72 0%, #4025a3 45%, #741bc7 100%)",
               }}
             />
 
-            <div className="absolute -left-20 top-10 size-[260px] rounded-full bg-blue-500/20 blur-3xl" />
+            <div className="absolute inset-0 bg-black/10" />
 
-            <div className="absolute right-0 top-0 size-[300px] rounded-full bg-purple-500/20 blur-3xl" />
-
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#061329]" />
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#061329]" />
 
           </div>
 
@@ -812,4 +1173,4 @@ function PublicStat({
 
     </div>
   );
-          }
+        }
