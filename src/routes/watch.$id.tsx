@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   MessageCircle,
   MoreVertical,
+  Search,
   Send,
   Trash2,
   X,
@@ -598,6 +599,38 @@ function CommentsSection({
     useRef<HTMLInputElement | null>(null);
 
   /* ====================================================== */
+  /* GIF                                                     */
+  /* ====================================================== */
+
+  const [gifOpen, setGifOpen] =
+    useState(false);
+
+  const [gifSearch, setGifSearch] =
+    useState("");
+
+  const [gifResults, setGifResults] =
+    useState<
+      Array<{
+        id: string;
+        url: string;
+        preview: string;
+        title: string;
+      }>
+    >([]);
+
+  const [gifLoading, setGifLoading] =
+    useState(false);
+
+  const [gifError, setGifError] =
+    useState("");
+
+  const [selectedGifUrl, setSelectedGifUrl] =
+    useState<string | null>(null);
+
+  const gifSearchInputRef =
+    useRef<HTMLInputElement | null>(null);
+
+  /* ====================================================== */
   /* USUÁRIO ATUAL                                          */
   /* ====================================================== */
 
@@ -760,6 +793,7 @@ function CommentsSection({
     }
 
     setError("");
+    setSelectedGifUrl(null);
 
     setCommentImage(
       file,
@@ -816,6 +850,164 @@ function CommentsSection({
 
       return blob.url;
     };
+
+  /* ====================================================== */
+  /* GIF                                                      */
+  /* ====================================================== */
+
+  const searchGifs =
+    async (query = gifSearch) => {
+      const apiKey =
+        import.meta.env.VITE_GIPHY_API_KEY;
+
+      if (!apiKey) {
+        setGifError(
+          "Configure VITE_GIPHY_API_KEY no Vercel para usar a busca de GIFs.",
+        );
+        setGifResults([]);
+        return;
+      }
+
+      try {
+        setGifLoading(true);
+        setGifError("");
+
+        const trimmed =
+          query.trim();
+
+        const endpoint =
+          trimmed
+            ? "https://api.giphy.com/v1/gifs/search"
+            : "https://api.giphy.com/v1/gifs/trending";
+
+        const params =
+          new URLSearchParams({
+            api_key: apiKey,
+            limit: "24",
+            rating: "pg-13",
+            lang: "pt",
+          });
+
+        if (trimmed) {
+          params.set("q", trimmed);
+        }
+
+        const response =
+          await fetch(
+            `${endpoint}?${params.toString()}`,
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.message ||
+              "Não foi possível buscar GIFs.",
+          );
+        }
+
+        const results =
+          Array.isArray(data?.data)
+            ? data.data
+                .map((gif: any) => {
+                  const images =
+                    gif?.images;
+
+                  const url =
+                    images?.fixed_width?.url ||
+                    images?.original?.url;
+
+                  const preview =
+                    images?.fixed_width_small?.url ||
+                    images?.fixed_width?.url ||
+                    images?.original?.url;
+
+                  if (
+                    typeof gif?.id !==
+                      "string" ||
+                    typeof url !==
+                      "string" ||
+                    typeof preview !==
+                      "string"
+                  ) {
+                    return null;
+                  }
+
+                  return {
+                    id: gif.id,
+                    url,
+                    preview,
+                    title:
+                      typeof gif?.title ===
+                      "string"
+                        ? gif.title
+                        : "GIF",
+                  };
+                })
+                .filter(
+                  (gif): gif is {
+                    id: string;
+                    url: string;
+                    preview: string;
+                    title: string;
+                  } => Boolean(gif),
+                )
+            : [];
+
+        setGifResults(results);
+      } catch (err) {
+        console.error(
+          "ERRO AO BUSCAR GIFS:",
+          err,
+        );
+
+        setGifResults([]);
+        setGifError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível buscar GIFs.",
+        );
+      } finally {
+        setGifLoading(false);
+      }
+    };
+
+  const openGifPicker = () => {
+    setGifOpen(true);
+    setGifError("");
+
+    if (gifResults.length === 0) {
+      void searchGifs("");
+    }
+
+    window.setTimeout(() => {
+      gifSearchInputRef.current?.focus();
+    }, 0);
+  };
+
+  const closeGifPicker = () => {
+    setGifOpen(false);
+    setGifError("");
+  };
+
+  const handleSelectGif = (
+    url: string,
+  ) => {
+    setSelectedGifUrl(url);
+    setCommentImage(null);
+    setCommentImagePreview(null);
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+
+    closeGifPicker();
+  };
+
+  const handleRemoveGif = () => {
+    setSelectedGifUrl(null);
+  };
 
   /* ====================================================== */
   /* CARREGAR SESSÃO                                         */
@@ -1065,7 +1257,9 @@ function CommentsSection({
         text.trim();
 
       if (
-        (!value && !commentImage) ||
+        (!value &&
+          !commentImage &&
+          !selectedGifUrl) ||
         !animeId ||
         !episodeId ||
         sending ||
@@ -1089,6 +1283,9 @@ function CommentsSection({
             await uploadCommentImage(
               commentImage,
             );
+        } else if (selectedGifUrl) {
+          imageUrl =
+            selectedGifUrl;
         }
 
         const response =
@@ -1135,6 +1332,7 @@ function CommentsSection({
         setText("");
         setIsSpoiler(false);
         handleRemoveImage();
+        setSelectedGifUrl(null);
       } catch (err) {
         console.error(err);
 
@@ -2049,18 +2247,143 @@ function CommentsSection({
 
               <button
                 type="button"
-                disabled
+                onClick={() => {
+                  openGifPicker();
+                }}
+                disabled={
+                  sending ||
+                  imageUploading
+                }
                 aria-label="Adicionar GIF"
                 title="GIF"
-                className="flex min-h-10 items-center gap-2 rounded-lg border border-white/5 bg-bg px-3 text-xs font-medium text-muted opacity-60"
+                className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-white/5 bg-bg px-3 text-xs font-medium text-muted transition-colors hover:border-white/10 hover:bg-elevated hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="text-[10px] font-bold tracking-wide">
                   GIF
                 </span>
-                GIF
               </button>
 
             </div>
+
+            {gifOpen && (
+              <div
+                className="fixed inset-0 z-[110] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) {
+                    closeGifPicker();
+                  }
+                }}
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="gif-dialog-title"
+                  className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#17171a] shadow-2xl"
+                >
+                  <div className="flex items-center gap-3 border-b border-white/10 p-4">
+                    <div className="min-w-0 flex-1">
+                      <h3
+                        id="gif-dialog-title"
+                        className="font-display text-xl"
+                      >
+                        Escolher GIF
+                      </h3>
+                      <p className="mt-1 text-xs text-subtle">
+                        Busque um GIF para anexar ao comentário.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={closeGifPicker}
+                      className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
+                      aria-label="Fechar GIFs"
+                    >
+                      <X className="size-5" />
+                    </button>
+                  </div>
+
+                  <div className="border-b border-white/10 p-4">
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void searchGifs();
+                      }}
+                      className="flex gap-2"
+                    >
+                      <div className="relative min-w-0 flex-1">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+                        <input
+                          ref={gifSearchInputRef}
+                          value={gifSearch}
+                          onChange={(event) =>
+                            setGifSearch(event.target.value)
+                          }
+                          placeholder="Buscar GIF..."
+                          className="min-h-11 w-full rounded-lg border border-white/5 bg-bg pl-10 pr-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
+                        />
+                      </div>
+
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={gifLoading}
+                        className="min-h-11 shrink-0"
+                      >
+                        {gifLoading ? "Buscando..." : "Buscar"}
+                      </Button>
+                    </form>
+                  </div>
+
+                  <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                    {gifError && (
+                      <div className="rounded-lg border border-white/5 bg-surface p-4 text-sm text-red-400">
+                        {gifError}
+                      </div>
+                    )}
+
+                    {!gifError && gifLoading && gifResults.length === 0 && (
+                      <div className="py-10 text-center text-sm text-muted">
+                        Buscando GIFs...
+                      </div>
+                    )}
+
+                    {!gifError && !gifLoading && gifResults.length === 0 && (
+                      <div className="py-10 text-center text-sm text-muted">
+                        Nenhum GIF encontrado.
+                      </div>
+                    )}
+
+                    {gifResults.length > 0 && (
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                        {gifResults.map((gif) => (
+                          <button
+                            key={gif.id}
+                            type="button"
+                            onClick={() =>
+                              handleSelectGif(gif.url)
+                            }
+                            className="group aspect-square overflow-hidden rounded-lg border border-white/5 bg-bg transition-colors hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/20"
+                            title={gif.title || "GIF"}
+                          >
+                            <img
+                              src={gif.preview}
+                              alt={gif.title || "GIF"}
+                              loading="lazy"
+                              className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <p className="mt-3 text-center text-[10px] text-subtle">
+                      Powered by GIPHY
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ============================================= */}
             {/* PRÉVIA DA IMAGEM                               */}
@@ -2093,6 +2416,27 @@ function CommentsSection({
                   <X className="size-4" />
                 </button>
 
+              </div>
+            )}
+
+            {selectedGifUrl && (
+              <div className="relative mt-3 w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-bg">
+                <img
+                  src={selectedGifUrl}
+                  alt="GIF selecionado"
+                  className="max-h-64 max-w-full object-contain"
+                />
+
+                <button
+                  type="button"
+                  onClick={handleRemoveGif}
+                  disabled={sending || imageUploading}
+                  aria-label="Remover GIF"
+                  title="Remover GIF"
+                  className="absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/75 text-white backdrop-blur-sm transition-colors hover:bg-black disabled:opacity-50"
+                >
+                  <X className="size-4" />
+                </button>
               </div>
             )}
 
@@ -2131,7 +2475,9 @@ function CommentsSection({
                   void handleComment()
                 }
                 disabled={
-                  (!text.trim() && !commentImage) ||
+                  (!text.trim() &&
+                    !commentImage &&
+                    !selectedGifUrl) ||
                   sending ||
                   imageUploading
                 }
