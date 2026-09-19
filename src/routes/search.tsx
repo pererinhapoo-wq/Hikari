@@ -42,9 +42,7 @@ type Search = {
   sort?: string;
 };
 
-export const Route = createFileRoute(
-  "/search",
-)({
+export const Route = createFileRoute("/search")({
   validateSearch: (
     raw: Record<string, unknown>,
   ): Search => ({
@@ -106,11 +104,9 @@ export const Route = createFileRoute(
     };
   },
 
-  pendingComponent:
-    SearchPending,
+  pendingComponent: SearchPending,
 
-  component:
-    SearchPage,
+  component: SearchPage,
 });
 
 function SearchPending() {
@@ -119,9 +115,7 @@ function SearchPending() {
       {Array.from(
         { length: 12 },
         (_, i) => (
-          <AnimeCardSkeleton
-            key={i}
-          />
+          <AnimeCardSkeleton key={i} />
         ),
       )}
     </div>
@@ -129,22 +123,17 @@ function SearchPending() {
 }
 
 function SearchPage() {
-  const search =
-    Route.useSearch();
-
-  const navigate =
-    Route.useNavigate();
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
 
   const {
     result,
     genres,
-  } =
-    Route.useLoaderData();
+  } = Route.useLoaderData();
 
-  const locals =
-    useHikariStore(
-      (s) => s.animes,
-    );
+  const locals = useHikariStore(
+    (s) => s.animes,
+  );
 
   const [
     draft,
@@ -163,6 +152,33 @@ function SearchPage() {
       search.q ?? "",
     );
   }, [search.q]);
+
+  useEffect(() => {
+    const q = draft.trim();
+
+    const timer = window.setTimeout(() => {
+      const current = (
+        search.q ?? ""
+      ).trim();
+
+      if (q === current) return;
+
+      void navigate({
+        search: {
+          ...search,
+          q: q || undefined,
+        },
+        replace: true,
+      });
+    }, 400);
+
+    return () =>
+      window.clearTimeout(timer);
+  }, [
+    draft,
+    navigate,
+    search,
+  ]);
 
   const items =
     useMemo(() => {
@@ -235,17 +251,6 @@ function SearchPage() {
     });
   }
 
-  function submitSearch() {
-    const q =
-      draft.trim();
-
-    apply({
-      q:
-        q ||
-        undefined,
-    });
-  }
-
   const genreOptions =
     genres.length
       ? genres
@@ -255,6 +260,11 @@ function SearchPage() {
 
   const hasAnimes =
     items.length > 0;
+
+  const hasQuery =
+    Boolean(
+      search.q?.trim(),
+    );
 
   return (
     <div className="space-y-6 pt-6">
@@ -268,13 +278,7 @@ function SearchPage() {
         </h1>
       </header>
 
-      <form
-        className="relative flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submitSearch();
-        }}
-      >
+      <div className="relative flex gap-2">
         <div className="relative flex-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-subtle" />
 
@@ -291,10 +295,6 @@ function SearchPage() {
           />
         </div>
 
-        <Button type="submit">
-          Buscar
-        </Button>
-
         <Button
           type="button"
           variant="outline"
@@ -308,7 +308,7 @@ function SearchPage() {
         >
           <SlidersHorizontal className="size-4" />
         </Button>
-      </form>
+      </div>
 
       <div
         className={
@@ -320,8 +320,7 @@ function SearchPage() {
         <Field label="Gênero">
           <NativeSelect
             value={
-              search.genre ??
-              ""
+              search.genre ?? ""
             }
             onChange={(e) =>
               apply({
@@ -353,8 +352,7 @@ function SearchPage() {
         <Field label="Ano">
           <NativeSelect
             value={
-              search.year ??
-              ""
+              search.year ?? ""
             }
             onChange={(e) =>
               apply({
@@ -385,8 +383,7 @@ function SearchPage() {
         <Field label="Formato">
           <NativeSelect
             value={
-              search.format ??
-              ""
+              search.format ?? ""
             }
             onChange={(e) =>
               apply({
@@ -431,8 +428,7 @@ function SearchPage() {
         <Field label="Status">
           <NativeSelect
             value={
-              search.status ??
-              ""
+              search.status ?? ""
             }
             onChange={(e) =>
               apply({
@@ -484,9 +480,7 @@ function SearchPage() {
               (o) => (
                 <option
                   key={o.value}
-                  value={
-                    o.value
-                  }
+                  value={o.value}
                 >
                   {o.label}
                 </option>
@@ -496,20 +490,22 @@ function SearchPage() {
         </Field>
       </div>
 
-      {hasAnimes && (
+      {hasQuery && hasAnimes && (
         <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <h2 className="font-display text-xl">
-              Animes
-            </h2>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-xl">
+                Animes
+              </h2>
 
-            <span className="text-xs text-muted">
-              {items.length} resultado
-              {items.length ===
-              1
-                ? ""
-                : "s"}
-            </span>
+              <span className="text-xs text-muted">
+                {items.length} resultado
+                {items.length ===
+                1
+                  ? ""
+                  : "s"}
+              </span>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
@@ -525,7 +521,21 @@ function SearchPage() {
         </section>
       )}
 
-      {!hasAnimes && (
+      {!hasQuery && (
+        <div className="py-20 text-center">
+          <SearchIcon className="mx-auto size-8 text-subtle" />
+
+          <p className="mt-4 font-display text-2xl">
+            Pesquise um anime
+          </p>
+
+          <p className="mt-2 text-sm text-muted">
+            Digite o nome do anime para ver os resultados.
+          </p>
+        </div>
+      )}
+
+      {hasQuery && !hasAnimes && (
         <div className="py-20 text-center">
           <p className="font-display text-2xl">
             Nada encontrado
@@ -559,11 +569,7 @@ function Field({
   className?: string;
 }) {
   return (
-    <label
-      className={
-        className
-      }
-    >
+    <label className={className}>
       <Label className="mb-1.5 block">
         {label}
       </Label>
@@ -571,4 +577,4 @@ function Field({
       {children}
     </label>
   );
-         }
+    }
