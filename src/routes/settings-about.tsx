@@ -11,6 +11,8 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { useState } from "react";
+
 export const Route = createFileRoute(
   "/settings-about",
 )({
@@ -18,6 +20,8 @@ export const Route = createFileRoute(
 });
 
 function SettingsAbout() {
+  const [aboutOpen, setAboutOpen] = useState(false);
+
   return (
     <div className="min-h-screen pb-20 pt-5">
 
@@ -55,6 +59,7 @@ function SettingsAbout() {
 
         <div className="overflow-hidden rounded-xl border border-border bg-bg">
 
+          {/* HIKARI */}
           <div className="flex items-center gap-4 border-b border-border px-4 py-4">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
               <Sparkles className="size-5" />
@@ -71,6 +76,7 @@ function SettingsAbout() {
             </div>
           </div>
 
+          {/* VERSÃO */}
           <div className="flex items-center gap-4 border-b border-border px-4 py-4">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
               <Code2 className="size-5" />
@@ -91,7 +97,12 @@ function SettingsAbout() {
             </span>
           </div>
 
-          <div className="flex items-center gap-4 px-4 py-4">
+          {/* FEITO COM CARINHO */}
+          <button
+            type="button"
+            onClick={() => setAboutOpen(true)}
+            className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
+          >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
               <Heart className="size-5" />
             </div>
@@ -107,11 +118,49 @@ function SettingsAbout() {
             </div>
 
             <ChevronRight className="size-5 shrink-0 text-muted" />
-          </div>
+          </button>
 
         </div>
       </section>
 
+      {/* MODAL */}
+      {aboutOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-bg p-5">
+
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-elevated">
+                <Heart className="size-5 text-fg" />
+              </div>
+
+              <h2 className="text-lg font-semibold text-fg">
+                Sobre o Hikari
+              </h2>
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-muted">
+              O Hikari é um projeto em desenvolvimento,
+              criado para oferecer uma experiência completa
+              para quem gosta de anime.
+            </p>
+
+            <p className="mt-3 text-sm leading-6 text-muted">
+              Novos recursos e melhorias continuarão sendo
+              adicionados ao longo do desenvolvimento.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setAboutOpen(false)}
+              className="mt-5 w-full rounded-xl border border-border px-4 py-3 text-sm text-muted"
+            >
+              Fechar
+            </button>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
-                }
+}
