@@ -16,10 +16,16 @@ export function Hero({
   animes?: SlimAnime[];
 }) {
   const [index, setIndex] = useState(0);
+
   const [visibleBackdrop, setVisibleBackdrop] = useState(
     anime.cover || anime.banner || "",
   );
+
   const [isLandscape, setIsLandscape] = useState(false);
+
+  const [imageRatio, setImageRatio] = useState<number | null>(
+    null,
+  );
 
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
@@ -32,13 +38,45 @@ export function Hero({
 
   const backdrop = current.cover || current.banner || "";
 
+  function loadBackdrop(
+    url: string,
+    onLoaded?: () => void,
+  ) {
+    if (!url) {
+      setImageRatio(null);
+      setIsLandscape(false);
+      onLoaded?.();
+      return;
+    }
+
+    const image = new Image();
+
+    image.onload = () => {
+      const width = image.naturalWidth;
+      const height = image.naturalHeight;
+
+      if (width > 0 && height > 0) {
+        setIsLandscape(width > height);
+        setImageRatio(width / height);
+      }
+
+      onLoaded?.();
+    };
+
+    image.src = url;
+  }
+
+  useEffect(() => {
+    loadBackdrop(visibleBackdrop);
+  }, [visibleBackdrop]);
+
   useEffect(() => {
     if (animes.length < 2) return;
 
     const timer = window.setInterval(() => {
       const nextIndex = (index + 1) % animes.length;
-
       const nextAnime = animes[nextIndex];
+
       const nextBackdrop =
         nextAnime?.cover || nextAnime?.banner || "";
 
@@ -50,10 +88,14 @@ export function Hero({
       const image = new Image();
 
       image.onload = () => {
-        const landscape =
-          image.naturalWidth > image.naturalHeight;
+        const width = image.naturalWidth;
+        const height = image.naturalHeight;
 
-        setIsLandscape(landscape);
+        if (width > 0 && height > 0) {
+          setIsLandscape(width > height);
+          setImageRatio(width / height);
+        }
+
         setVisibleBackdrop(nextBackdrop);
         setIndex(nextIndex);
       };
@@ -63,20 +105,6 @@ export function Hero({
 
     return () => window.clearInterval(timer);
   }, [animes, index]);
-
-  useEffect(() => {
-    if (!backdrop) return;
-
-    const image = new Image();
-
-    image.onload = () => {
-      setIsLandscape(
-        image.naturalWidth > image.naturalHeight,
-      );
-    };
-
-    image.src = backdrop;
-  }, [backdrop]);
 
   return (
     <section
@@ -92,15 +120,12 @@ export function Hero({
       {visibleBackdrop ? (
         <div
           className={
-            isLandscape
+            isLandscape && imageRatio
               ? `
                 relative
-                h-[15rem]
                 w-full
                 overflow-hidden
                 bg-bg
-                sm:h-[21rem]
-                lg:h-[23rem]
               `
               : `
                 relative
@@ -111,6 +136,13 @@ export function Hero({
                 sm:h-[21rem]
                 lg:h-[23rem]
               `
+          }
+          style={
+            isLandscape && imageRatio
+              ? {
+                  aspectRatio: `${imageRatio}`,
+                }
+              : undefined
           }
         >
           <img
@@ -315,10 +347,13 @@ export function Hero({
                   const image = new Image();
 
                   image.onload = () => {
-                    setIsLandscape(
-                      image.naturalWidth >
-                        image.naturalHeight,
-                    );
+                    const width = image.naturalWidth;
+                    const height = image.naturalHeight;
+
+                    if (width > 0 && height > 0) {
+                      setIsLandscape(width > height);
+                      setImageRatio(width / height);
+                    }
 
                     setVisibleBackdrop(nextBackdrop);
                     setIndex(i);
