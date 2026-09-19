@@ -33,19 +33,15 @@ type NotificationItem = {
   actorName: string | null;
   actorImage: string | null;
 
-  // Destino da notificação
   commentId: string | null;
   animeId: string | null;
   episodeId: string | null;
 
-  // Informações do anime
   animeTitle: string | null;
   animeCover: string | null;
 
-  // Quantidade atual de curtidas do comentário
   commentLikes: number;
 
-  // Pessoas que curtiram
   likeAvatars: Array<{
     id: string;
     name: string | null;
@@ -58,8 +54,7 @@ const BASE_NAV = [
     to: "/",
     label: "Início",
     icon: House,
-    match: (p: string) =>
-      p === "/",
+    match: (p: string) => p === "/",
   },
   {
     to: "/search",
@@ -151,9 +146,6 @@ export function Shell() {
           },
         ]
       : BASE_NAV;
-
-  const bottomNav =
-    BASE_NAV;
 
   useEffect(() => {
     if (!user) {
@@ -869,7 +861,7 @@ export function Shell() {
       {/* =========================================================
           CONTEÚDO PRINCIPAL
       ========================================================== */}
-      <main className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6 sm:pb-16">
+      <main className="mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8">
         <Outlet />
       </main>
 
@@ -887,47 +879,6 @@ export function Shell() {
           Trailers e episódios com URL própria
         </p>
       </footer>
-
-      {/* =========================================================
-          NAVEGAÇÃO MOBILE
-      ========================================================== */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 backdrop-blur-md md:hidden">
-        <ul className="grid grid-cols-4">
-
-          {bottomNav.map(
-            (item) => {
-              const active =
-                item.match(
-                  pathname,
-                );
-
-              const Icon =
-                item.icon;
-
-              return (
-                <li
-                  key={item.to}
-                >
-                  <Link
-                    to={item.to}
-                    className={cn(
-                      "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] tracking-wide uppercase",
-                      active
-                        ? "text-fg"
-                        : "text-subtle",
-                    )}
-                  >
-                    <Icon className="size-5" />
-
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            },
-          )}
-
-        </ul>
-      </nav>
     </div>
   );
-  }
+}
