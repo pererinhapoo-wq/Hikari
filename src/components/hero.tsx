@@ -16,13 +16,9 @@ export function Hero({
   animes?: SlimAnime[];
 }) {
   const [index, setIndex] = useState(0);
-
   const [visibleBackdrop, setVisibleBackdrop] = useState(
     anime.banner || anime.cover || "",
   );
-
-  const [nextBackdrop, setNextBackdrop] = useState("");
-  const [showNext, setShowNext] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
 
   const current = animes[index] ?? anime;
@@ -47,7 +43,7 @@ export function Hero({
   }, [animes.length]);
 
   useEffect(() => {
-    if (!backdrop || backdrop === visibleBackdrop) return;
+    if (!backdrop) return;
 
     let cancelled = false;
 
@@ -56,20 +52,11 @@ export function Hero({
     image.onload = () => {
       if (cancelled) return;
 
-      setNextBackdrop(backdrop);
-      setShowNext(true);
-
       const landscape =
         image.naturalWidth > image.naturalHeight;
 
-      window.setTimeout(() => {
-        if (cancelled) return;
-
-        setIsLandscape(landscape);
-        setVisibleBackdrop(backdrop);
-        setShowNext(false);
-        setNextBackdrop("");
-      }, 450);
+      setIsLandscape(landscape);
+      setVisibleBackdrop(backdrop);
     };
 
     image.src = backdrop;
@@ -77,7 +64,7 @@ export function Hero({
     return () => {
       cancelled = true;
     };
-  }, [backdrop, visibleBackdrop]);
+  }, [backdrop]);
 
   return (
     <section
@@ -123,30 +110,6 @@ export function Hero({
               object-center
             "
           />
-
-          {nextBackdrop && (
-            <img
-              src={nextBackdrop}
-              alt=""
-              aria-hidden="true"
-              className={`
-                absolute
-                inset-0
-                h-full
-                w-full
-                object-contain
-                object-center
-                transition-opacity
-                duration-500
-                ease-in-out
-                ${
-                  showNext
-                    ? "opacity-100"
-                    : "opacity-0"
-                }
-              `}
-            />
-          )}
 
           {/* TRANSIÇÃO SUAVE */}
           <div
