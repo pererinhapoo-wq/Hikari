@@ -99,14 +99,14 @@ function SettingsNotifications() {
               }
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 likes
-                  ? "bg-fg"
+                  ? "bg-green-500"
                   : "bg-elevated"
               }`}
             >
               <span
                 className={`absolute top-1 size-4 rounded-full transition-transform ${
                   likes
-                    ? "translate-x-6 bg-bg"
+                    ? "translate-x-6 bg-white"
                     : "translate-x-1 bg-muted"
                 }`}
               />
@@ -140,14 +140,14 @@ function SettingsNotifications() {
               }
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 replies
-                  ? "bg-fg"
+                  ? "bg-green-500"
                   : "bg-elevated"
               }`}
             >
               <span
                 className={`absolute top-1 size-4 rounded-full transition-transform ${
                   replies
-                    ? "translate-x-6 bg-bg"
+                    ? "translate-x-6 bg-white"
                     : "translate-x-1 bg-muted"
                 }`}
               />
@@ -181,14 +181,14 @@ function SettingsNotifications() {
               }
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 followers
-                  ? "bg-fg"
+                  ? "bg-green-500"
                   : "bg-elevated"
               }`}
             >
               <span
                 className={`absolute top-1 size-4 rounded-full transition-transform ${
                   followers
-                    ? "translate-x-6 bg-bg"
+                    ? "translate-x-6 bg-white"
                     : "translate-x-1 bg-muted"
                 }`}
               />
