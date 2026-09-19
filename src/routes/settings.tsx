@@ -31,8 +31,7 @@ type SettingItem = {
     | "/settings-profile"
     | "/settings-privacy"
     | "/settings-notifications"
-    | "/settings-player"
-    | "/settings-appearance";
+    | "/settings-player";
 };
 
 const sections: Array<{
@@ -107,7 +106,6 @@ const sections: Array<{
         title: "Aparência",
         description:
           "Tema, tamanho da fonte e animações",
-        to: "/settings-appearance",
       },
     ],
   },
@@ -184,11 +182,14 @@ function Settings() {
                     const Icon =
                       item.icon;
 
-                    if (item.to) {
+                    if (
+                      item.title ===
+                      "Aparência"
+                    ) {
                       return (
                         <a
                           key={item.title}
-                          href={item.to}
+                          href="https://grokhikari.vercel.app/settings-appearance"
                           className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
                         >
                           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -207,6 +208,32 @@ function Settings() {
 
                           <ChevronRight className="size-5 shrink-0 text-muted" />
                         </a>
+                      );
+                    }
+
+                    if (item.to) {
+                      return (
+                        <Link
+                          key={item.title}
+                          to={item.to}
+                          className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
+                        >
+                          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
+                            <Icon className="size-5" />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-fg">
+                              {item.title}
+                            </p>
+
+                            <p className="mt-1 text-xs leading-5 text-muted">
+                              {item.description}
+                            </p>
+                          </div>
+
+                          <ChevronRight className="size-5 shrink-0 text-muted" />
+                        </Link>
                       );
                     }
 
@@ -265,4 +292,4 @@ function Settings() {
 
     </div>
   );
-                      }
+  }
