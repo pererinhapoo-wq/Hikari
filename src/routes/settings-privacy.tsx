@@ -44,6 +44,11 @@ function SettingsPrivacy() {
     setFollowers,
   ] = useState("Todos");
 
+  const [
+    settingsLoaded,
+    setSettingsLoaded,
+  ] = useState(false);
+
   useEffect(() => {
     const savedPublicProfile =
       localStorage.getItem(
@@ -66,6 +71,8 @@ function SettingsPrivacy() {
     if (savedFollowers) {
       setFollowers(savedFollowers);
     }
+
+    setSettingsLoaded(true);
   }, []);
 
   function handlePublicProfileToggle() {
@@ -92,6 +99,10 @@ function SettingsPrivacy() {
     );
 
     setFollowersOpen(false);
+  }
+
+  if (!settingsLoaded) {
+    return null;
   }
 
   return (
