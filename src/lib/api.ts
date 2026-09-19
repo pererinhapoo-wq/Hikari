@@ -1628,72 +1628,159 @@ async function searchJikan(
   };
 }
 
+/* =========================================================
+ * BUSCA RELAXADA
+ *
+ * Tenta várias versões da pesquisa para encontrar
+ * resultados mesmo quando o usuário digita somente
+ * parte do nome.
+ *
+ * Exemplos:
+ *
+ * narut
+ * naru
+ * nar
+ *
+ * one p
+ * one
+ *
+ * Também tenta a busca sem espaços.
+ * ========================================================= */
+
 async function searchRelaxed(
   params: SearchParams,
 ): Promise<SlimAnime[]> {
-  const q =
+  const original =
     params.q?.trim() ?? "";
 
+  const normalized =
+    normalizeSearchText(
+      original,
+    );
+
+  if (
+    normalized.length < 2
+  ) {
+    return [];
+  }
+
+  const compact =
+    normalized.replace(
+      /\s/g,
+      "",
+    );
+
   const words =
-    q.split(/\s+/)
+    normalized
+      .split(/\s+/)
       .filter(Boolean);
 
-  if (
-    words.length <= 1
-  ) {
-    return [];
+  const variants =
+    new Set<string>();
+
+  variants.add(original);
+  variants.add(normalized);
+
+  if (compact) {
+    variants.add(compact);
   }
 
-  const relaxedQuery =
-    words[0];
-
-  if (
-    normalizeSearchText(
-      relaxedQuery,
-    ) ===
-    normalizeSearchText(q)
-  ) {
-    return [];
+  if (words.length > 1) {
+    variants.add(words[0]);
   }
 
-  const relaxedParams: SearchParams =
-    {
-      ...params,
-
-      q: relaxedQuery,
-
-      page: 1,
-    };
-
-  const results =
-    await Promise.allSettled([
-      searchAni(
-        relaxedParams,
+  if (
+    normalized.length >= 4
+  ) {
+    variants.add(
+      normalized.slice(
+        0,
+        -1,
       ),
+    );
+  }
 
-      searchJikan(
-        relaxedParams,
+  if (
+    normalized.length >= 5
+  ) {
+    variants.add(
+      normalized.slice(
+        0,
+        -2,
       ),
-    ]);
+    );
+  }
 
-  const ani =
-    results[0].status ===
-    "fulfilled"
-      ? results[0].value.items
-      : [];
+  const validVariants =
+    [...variants].filter(
+      (value) =>
+        value.trim().length >= 2,
+    );
 
-  const jikan =
-    results[1].status ===
-    "fulfilled"
-      ? results[1].value.items
-      : [];
+  const allResults =
+    await Promise.all(
+      validVariants.map(
+        async (variant) => {
+          const searchParams:
+            SearchParams = {
+            ...params,
+
+            q: variant,
+
+            page: 1,
+          };
+
+          const results =
+            await Promise.allSettled(
+              [
+                searchAni(
+                  searchParams,
+                ),
+
+                searchJikan(
+                  searchParams,
+                ),
+              ],
+            );
+
+          const ani =
+            results[0].status ===
+            "fulfilled"
+              ? results[0].value
+                  .items
+              : [];
+
+          const jikan =
+            results[1].status ===
+            "fulfilled"
+              ? results[1].value
+                  .items
+              : [];
+
+          return mergeSearchItems(
+            ani,
+            jikan,
+          );
+        },
+      ),
+    );
+
+  const merged =
+    allResults.reduce(
+      (
+        accumulated,
+        current,
+      ) =>
+        mergeSearchItems(
+          accumulated,
+          current,
+        ),
+      [] as SlimAnime[],
+    );
 
   return rankSearchResults(
-    mergeSearchItems(
-      ani,
-      jikan,
-    ),
-    q,
+    merged,
+    original,
   );
 }
 
@@ -1723,13 +1810,6 @@ export const searchCatalog =
         const q =
           data.q?.trim() ?? "";
 
-        /*
-         * Quando existe texto de busca,
-         * consulta AniList e Jikan juntos.
-         *
-         * Assim não dependemos de apenas
-         * uma API para encontrar o anime.
-         */
         if (q) {
           const results =
             await Promise.allSettled([
@@ -1760,18 +1840,6 @@ export const searchCatalog =
               q,
             );
 
-          /*
-           * Busca relaxada.
-           *
-           * Exemplo:
-           * "one p"
-           *
-           * Se a busca exata não
-           * encontrar o anime, também
-           * pesquisamos "one" e depois
-           * usamos a busca completa
-           * para ordenar os resultados.
-           */
           if (
             items.length === 0
           ) {
@@ -1827,11 +1895,6 @@ export const searchCatalog =
           );
         }
 
-        /*
-         * Sem texto de busca:
-         * mantém o comportamento
-         * normal do AniList.
-         */
         try {
           return toCache(
             key,
