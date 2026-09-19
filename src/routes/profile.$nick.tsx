@@ -33,35 +33,27 @@ export const Route =
   });
 
 type PublicComment = Awaited<
-  ReturnType<
-    typeof getPublicComments
-  >
+  ReturnType<typeof getPublicComments>
 >[number];
 
 async function getProfileBackgroundColor(
   imageUrl: string,
 ): Promise<string | null> {
   return new Promise((resolve) => {
-    const image =
-      new Image();
+    const image = new Image();
 
-    image.crossOrigin =
-      "anonymous";
+    image.crossOrigin = "anonymous";
 
     image.onload = () => {
       try {
         const canvas =
-          document.createElement(
-            "canvas",
-          );
+          document.createElement("canvas");
 
         canvas.width = 32;
         canvas.height = 32;
 
         const context =
-          canvas.getContext(
-            "2d",
-          );
+          canvas.getContext("2d");
 
         if (!context) {
           resolve(null);
@@ -94,19 +86,19 @@ async function getProfileBackgroundColor(
           index < data.length;
           index += 4
         ) {
-          const r =
-            data[index];
-
-          const g =
-            data[index + 1];
-
-          const b =
-            data[index + 2];
-
-          const alpha =
-            data[index + 3];
+          const r = data[index];
+          const g = data[index + 1];
+          const b = data[index + 2];
+          const alpha = data[index + 3];
 
           if (alpha < 80) {
+            continue;
+          }
+
+          const brightness =
+            (r + g + b) / 3;
+
+          if (brightness > 235) {
             continue;
           }
 
@@ -122,27 +114,15 @@ async function getProfileBackgroundColor(
         }
 
         red = Math.round(
-          red / count,
+          (red / count) * 0.35,
         );
 
         green = Math.round(
-          green / count,
+          (green / count) * 0.35,
         );
 
         blue = Math.round(
-          blue / count,
-        );
-
-        red = Math.round(
-          red * 0.28,
-        );
-
-        green = Math.round(
-          green * 0.28,
-        );
-
-        blue = Math.round(
-          blue * 0.28,
+          (blue / count) * 0.35,
         );
 
         resolve(
@@ -166,14 +146,10 @@ function PublicProfile() {
     Route.useParams();
 
   const getPublicProfileFn =
-    useServerFn(
-      getPublicProfile,
-    );
+    useServerFn(getPublicProfile);
 
   const getPublicCommentsFn =
-    useServerFn(
-      getPublicComments,
-    );
+    useServerFn(getPublicComments);
 
   const [profile, setProfile] =
     useState<
@@ -219,9 +195,7 @@ function PublicProfile() {
   const [
     profileBgColor,
     setProfileBgColor,
-  ] = useState(
-    "#030817",
-  );
+  ] = useState("#030817");
 
   useEffect(() => {
     let active = true;
@@ -230,9 +204,7 @@ function PublicProfile() {
     setError("");
     setCommentsError("");
     setComments([]);
-    setProfileBgColor(
-      "#030817",
-    );
+    setProfileBgColor("#030817");
 
     void getPublicProfileFn({
       data: {
@@ -264,9 +236,7 @@ function PublicProfile() {
             active &&
             color
           ) {
-            setProfileBgColor(
-              color,
-            );
+            setProfileBgColor(color);
           }
         }
 
@@ -300,9 +270,7 @@ function PublicProfile() {
           );
         } finally {
           if (active) {
-            setCommentsLoading(
-              false,
-            );
+            setCommentsLoading(false);
           }
         }
       })
@@ -414,9 +382,7 @@ function PublicProfile() {
           : "Não foi possível alterar o seguimento.",
       );
     } finally {
-      setFollowLoading(
-        false,
-      );
+      setFollowLoading(false);
     }
   }
 
@@ -556,7 +522,7 @@ function PublicProfile() {
           Voltar
         </Link>
 
-        <section className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-[0_0_50px_rgba(0,0,0,0.18)] backdrop-blur-sm">
+        <section className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-black/20 shadow-[0_0_50px_rgba(0,0,0,0.18)]">
           <div className="relative px-5 pb-7 pt-7 sm:px-8 sm:pt-8">
             <div>
               <div className="grid size-28 place-items-center overflow-hidden rounded-full border-[5px] border-white/10 bg-[#15284b] text-5xl font-semibold shadow-xl sm:size-32">
@@ -686,11 +652,9 @@ function PublicProfile() {
           {commentsLoading ? (
             <div className="space-y-3">
               <CommentSkeleton />
-
               <CommentSkeleton />
             </div>
-          ) : comments.length ===
-            0 ? (
+          ) : comments.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
               <MessageCircle className="mx-auto size-9 text-[#8190ad]" />
 
@@ -888,4 +852,4 @@ function PublicStat({
       </span>
     </div>
   );
-          }
+  }
