@@ -17,7 +17,7 @@ export function Hero({
 }) {
   const [index, setIndex] = useState(0);
   const [visibleBackdrop, setVisibleBackdrop] = useState(
-    anime.banner || anime.cover || "",
+    anime.cover || anime.banner || "",
   );
   const [isLandscape, setIsLandscape] = useState(false);
 
@@ -30,7 +30,7 @@ export function Hero({
 
   const toggleList = useHikariStore((s) => s.toggleList);
 
-  const backdrop = current.banner || current.cover || "";
+  const backdrop = current.cover || current.banner || "";
 
   useEffect(() => {
     if (animes.length < 2) return;
@@ -40,7 +40,7 @@ export function Hero({
 
       const nextAnime = animes[nextIndex];
       const nextBackdrop =
-        nextAnime?.banner || nextAnime?.cover || "";
+        nextAnime?.cover || nextAnime?.banner || "";
 
       if (!nextBackdrop) {
         setIndex(nextIndex);
@@ -305,7 +305,7 @@ export function Hero({
                   if (i === index) return;
 
                   const nextBackdrop =
-                    item.banner || item.cover || "";
+                    item.cover || item.banner || "";
 
                   if (!nextBackdrop) {
                     setIndex(i);
