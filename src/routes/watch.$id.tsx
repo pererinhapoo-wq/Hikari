@@ -1065,7 +1065,7 @@ function CommentsSection({
         text.trim();
 
       if (
-        !value ||
+        (!value && !commentImage) ||
         !animeId ||
         !episodeId ||
         sending ||
@@ -2131,7 +2131,7 @@ function CommentsSection({
                   void handleComment()
                 }
                 disabled={
-                  !text.trim() ||
+                  (!text.trim() && !commentImage) ||
                   sending ||
                   imageUploading
                 }
@@ -3408,16 +3408,24 @@ function CommentCard({
           {/* =============================================== */}
 
           {comment.imageUrl && (
-            <div className="mt-3 overflow-hidden rounded-xl border border-white/5 bg-bg">
+            <div className="mt-3 w-fit max-w-full overflow-hidden rounded-xl border border-white/5 bg-bg">
 
-              <img
-                src={
-                  comment.imageUrl
-                }
-                alt="Imagem anexada ao comentário"
-                loading="lazy"
-                className="max-h-[520px] w-auto max-w-full object-contain"
-              />
+              <a
+                href={comment.imageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block w-fit max-w-full cursor-zoom-in"
+                aria-label="Abrir imagem em tamanho maior"
+              >
+                <img
+                  src={
+                    comment.imageUrl
+                  }
+                  alt="Imagem anexada ao comentário"
+                  loading="lazy"
+                  className="block max-h-[520px] w-auto max-w-full object-contain"
+                />
+              </a>
 
             </div>
           )}
