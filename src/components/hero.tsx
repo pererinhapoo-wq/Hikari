@@ -20,7 +20,10 @@ export function Hero({
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
 
-  const inList = useHikariStore((s) => s.myList.includes(current.id));
+  const inList = useHikariStore((s) =>
+    s.myList.includes(current.id),
+  );
+
   const toggleList = useHikariStore((s) => s.toggleList);
 
   const backdrop = current.banner || current.cover;
@@ -47,94 +50,53 @@ export function Hero({
         lg:h-[34rem]
       "
     >
+      {/* IMAGEM PRINCIPAL */}
       {backdrop && (
-        <>
-          {/* Fundo suave para preencher toda a área sem faixas pretas */}
-          <div className="absolute inset-0 overflow-hidden bg-bg">
-            <img
-              src={backdrop}
-              alt=""
-              aria-hidden="true"
-              className="
-                absolute inset-0
-                size-full
-                object-cover
-                scale-105
-                opacity-60
-                blur-2xl
-              "
-            />
-
-            <div className="absolute inset-0 bg-black/25" />
-          </div>
-
-          {/* Imagem principal inteira, sem zoom excessivo */}
-          <div
+        <div className="absolute inset-x-0 top-0 overflow-hidden">
+          <img
+            key={current.id}
+            src={backdrop}
+            alt=""
+            aria-hidden="true"
             className="
-              absolute inset-0
-              overflow-hidden
+              block
+              h-auto
+              w-full
+              object-contain
+              object-top
             "
-          >
-            <img
-              key={current.id}
-              src={backdrop}
-              alt=""
-              className="
-                absolute
-                inset-x-0
-                top-0
-                h-full
-                w-full
-                object-contain
-                object-top
-              "
-            />
-
-            {/* Escurecimento suave */}
-            <div className="absolute inset-0 bg-black/10" />
-
-            {/* Gradiente para misturar a imagem com o conteúdo */}
-            <div
-              className="
-                absolute inset-x-0 bottom-0
-                h-3/4
-                bg-linear-to-t
-                from-bg
-                via-bg/60
-                to-transparent
-              "
-            />
-          </div>
-        </>
+          />
+        </div>
       )}
 
       {!backdrop && (
         <div className="absolute inset-0 bg-bg" />
       )}
 
-      {/* Gradiente lateral */}
+      {/* DEGRADÊ SUAVE SOBRE A PARTE INFERIOR */}
+      <div
+        className="
+          absolute inset-x-0 bottom-0
+          h-[65%]
+          bg-linear-to-t
+          from-bg
+          via-bg/75
+          to-transparent
+        "
+      />
+
+      {/* DEGRADÊ LATERAL SUAVE */}
       <div
         className="
           absolute inset-0
           bg-linear-to-r
-          from-bg/70
-          via-bg/15
+          from-bg/25
+          via-transparent
           to-transparent
         "
       />
 
-      {/* Gradiente inferior */}
-      <div
-        className="
-          absolute inset-x-0 bottom-0
-          h-2/3
-          bg-linear-to-t
-          from-bg
-          via-bg/65
-          to-transparent
-        "
-      />
-
+      {/* CONTEÚDO */}
       <div
         className="
           relative z-10
