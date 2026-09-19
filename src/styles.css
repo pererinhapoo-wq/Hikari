@@ -35,7 +35,7 @@
    TEMA CLARO
 ========================================================= */
 
-html.light {
+html[data-theme="light"] {
   --color-bg: #f7f7f5;
   --color-surface: #ffffff;
   --color-elevated: #eeeeec;
@@ -94,7 +94,7 @@ html.light {
     outline-offset: -1px;
   }
 
-  html.light img {
+  html[data-theme="light"] img {
     outline-color: rgb(0 0 0 / 0.08);
   }
 }
@@ -142,4 +142,4 @@ html.light {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-}
+    }
