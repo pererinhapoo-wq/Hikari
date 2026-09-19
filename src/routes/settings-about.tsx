@@ -20,7 +20,8 @@ export const Route = createFileRoute(
 });
 
 function SettingsAbout() {
-  const [aboutOpen, setAboutOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] =
+    useState(false);
 
   return (
     <div className="min-h-screen pb-20 pt-5">
@@ -100,10 +101,18 @@ function SettingsAbout() {
           {/* FEITO COM CARINHO */}
           <button
             type="button"
-            onClick={() => setAboutOpen(true)}
+            onClick={() =>
+              setAboutOpen(true)
+            }
             className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
+            <div
+              className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${
+                aboutOpen
+                  ? "bg-green-500/15 text-green-500"
+                  : "bg-elevated text-muted"
+              }`}
+            >
               <Heart className="size-5" />
             </div>
 
@@ -129,8 +138,8 @@ function SettingsAbout() {
           <div className="w-full max-w-sm rounded-2xl border border-border bg-bg p-5">
 
             <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-elevated">
-                <Heart className="size-5 text-fg" />
+              <div className="flex size-10 items-center justify-center rounded-xl bg-green-500/15">
+                <Heart className="size-5 text-green-500" />
               </div>
 
               <h2 className="text-lg font-semibold text-fg">
@@ -151,7 +160,9 @@ function SettingsAbout() {
 
             <button
               type="button"
-              onClick={() => setAboutOpen(false)}
+              onClick={() =>
+                setAboutOpen(false)
+              }
               className="mt-5 w-full rounded-xl border border-border px-4 py-3 text-sm text-muted"
             >
               Fechar
