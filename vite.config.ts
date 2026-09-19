@@ -74,10 +74,12 @@ function authPopupPlugin(): Plugin {
         try {
           const rawUrl = req.url ?? "";
           const pathOnly = rawUrl.split("?", 1)[0] ?? "";
+
           if (pathOnly !== "/auth/popup") {
             next();
             return;
           }
+
           if ((req.method ?? "GET").toUpperCase() !== "GET") {
             res.statusCode = 405;
             res.setHeader("content-type", "text/plain; charset=utf-8");
@@ -90,17 +92,23 @@ function authPopupPlugin(): Plugin {
               req.headers.host ??
               "localhost:8080",
           );
+
           const proto = String(
             req.headers["x-forwarded-proto"] ??
               ((req.socket as { encrypted?: boolean } | undefined)?.encrypted
                 ? "https"
                 : "http"),
           );
+
           const requestHeaders = new Headers();
+
           for (const [key, value] of Object.entries(req.headers)) {
             if (value === undefined) continue;
+
             if (Array.isArray(value)) {
-              for (const v of value) requestHeaders.append(key, v);
+              for (const v of value) {
+                requestHeaders.append(key, v);
+              }
             } else {
               requestHeaders.set(key, value);
             }
@@ -146,6 +154,7 @@ function authPopupPlugin(): Plugin {
           res.end(body);
         } catch (err) {
           console.error("[app-builder] /auth/popup handler failed:", err);
+
           if (!res.headersSent) {
             res.statusCode = 500;
             res.setHeader("content-type", "text/plain; charset=utf-8");
@@ -160,50 +169,60 @@ function authPopupPlugin(): Plugin {
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
-export default defineConfig(({ command, isPreview }) => ({
-  server: {
-    host: "0.0.0.0",
-    port: 8080,
-    strictPort: true,
-  },
-  preview: {
-    host: "127.0.0.1",
-    port: 8081,
-    strictPort: true,
-  },
-  resolve: { tsconfigPaths: true },
-  plugins: [
-    pgliteBootstrapPlugin(),
+export default defineConfig(({ command, isPreview }) => {
+  const isNetlify = process.env.NETLIFY === "true";
 
-    // Before tanstackStart so /auth/popup never falls through to the SPA.
-    authPopupPlugin(),
+  return {
+    server: {
+      host: "0.0.0.0",
+      port: 8080,
+      strictPort: true,
+    },
 
-    // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
-    appEnvPlugin(),
+    preview: {
+      host: "127.0.0.1",
+      port: 8081,
+      strictPort: true,
+    },
 
-    // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
-    grokPwaPlugin(),
+    resolve: {
+      tsconfigPaths: true,
+    },
 
-    tailwindcss(),
+    plugins: [
+      pgliteBootstrapPlugin(),
 
-    tanstackStart(),
+      // Before tanstackStart so /auth/popup never falls through to the SPA.
+      authPopupPlugin(),
 
-    // Official Netlify integration for TanStack Start.
-    netlify(),
+      // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
+      appEnvPlugin(),
 
-    ...(command === "build" || isPreview
-      ? [
-          nitro({
-            preset: "vercel",
+      // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
+      grokPwaPlugin(),
 
-            // Auto-registers server/middleware/* (the PWA install page +
-            // manifest + head-tag middleware). Nitro v3 defaults serverDir to
-            // false, so removing this silently unwires /?install=1 on deploys.
-            serverDir: "./server",
-          }),
-        ]
-      : []),
+      tailwindcss(),
 
-    viteReact(),
-  ],
-}));
+      tanstackStart(),
+
+      // Official Netlify integration for TanStack Start.
+      netlify(),
+
+      // Keep Nitro/Vercel for Vercel deployments.
+      // Netlify uses the official Netlify TanStack Start plugin instead.
+      ...(!isNetlify && (command === "build" || isPreview)
+        ? [
+            nitro({
+              preset: "vercel",
+
+              // Auto-registers server/middleware/* (the PWA install page +
+              // manifest + head-tag middleware).
+              serverDir: "./server",
+            }),
+          ]
+        : []),
+
+      viteReact(),
+    ],
+  };
+});
