@@ -20,13 +20,8 @@ export function Hero({
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
 
-  const inList = useHikariStore((s) =>
-    s.myList.includes(current.id),
-  );
-
-  const toggleList = useHikariStore(
-    (s) => s.toggleList,
-  );
+  const inList = useHikariStore((s) => s.myList.includes(current.id));
+  const toggleList = useHikariStore((s) => s.toggleList);
 
   const backdrop = current.banner || current.cover;
 
@@ -54,7 +49,7 @@ export function Hero({
     >
       {backdrop && (
         <>
-          {/* FUNDO DESFOCADO */}
+          {/* Fundo suave para preencher toda a área sem faixas pretas */}
           <div className="absolute inset-0 overflow-hidden bg-bg">
             <img
               src={backdrop}
@@ -63,24 +58,21 @@ export function Hero({
               className="
                 absolute inset-0
                 size-full
-                scale-110
                 object-cover
-                opacity-70
+                scale-105
+                opacity-60
                 blur-2xl
               "
             />
 
-            <div className="absolute inset-0 bg-black/30" />
+            <div className="absolute inset-0 bg-black/25" />
           </div>
 
-          {/* IMAGEM COMPLETA */}
+          {/* Imagem principal inteira, sem zoom excessivo */}
           <div
             className="
-              absolute inset-x-0 top-0
-              h-[14rem]
+              absolute inset-0
               overflow-hidden
-              sm:h-[20rem]
-              lg:h-[23rem]
             "
           >
             <img
@@ -88,24 +80,27 @@ export function Hero({
               src={backdrop}
               alt=""
               className="
-                absolute inset-0
-                size-full
+                absolute
+                inset-x-0
+                top-0
+                h-full
+                w-full
                 object-contain
-                object-center
+                object-top
               "
             />
 
-            {/* ESCURECIMENTO MUITO LEVE */}
-            <div className="absolute inset-0 bg-black/5" />
+            {/* Escurecimento suave */}
+            <div className="absolute inset-0 bg-black/10" />
 
-            {/* TRANSIÇÃO PARA O CONTEÚDO */}
+            {/* Gradiente para misturar a imagem com o conteúdo */}
             <div
               className="
                 absolute inset-x-0 bottom-0
-                h-1/3
+                h-3/4
                 bg-linear-to-t
                 from-bg
-                via-bg/20
+                via-bg/60
                 to-transparent
               "
             />
@@ -117,30 +112,29 @@ export function Hero({
         <div className="absolute inset-0 bg-bg" />
       )}
 
-      {/* GRADIENTE LATERAL */}
+      {/* Gradiente lateral */}
       <div
         className="
           absolute inset-0
           bg-linear-to-r
-          from-bg/55
-          via-transparent
+          from-bg/70
+          via-bg/15
           to-transparent
         "
       />
 
-      {/* GRADIENTE INFERIOR */}
+      {/* Gradiente inferior */}
       <div
         className="
           absolute inset-x-0 bottom-0
           h-2/3
           bg-linear-to-t
           from-bg
-          via-bg/60
+          via-bg/65
           to-transparent
         "
       />
 
-      {/* CONTEÚDO */}
       <div
         className="
           relative z-10
@@ -303,4 +297,4 @@ export function Hero({
       </div>
     </section>
   );
-            }
+        }
