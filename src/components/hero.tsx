@@ -36,34 +36,47 @@ export function Hero({
     if (animes.length < 2) return;
 
     const timer = window.setInterval(() => {
-      setIndex((i) => (i + 1) % animes.length);
+      const nextIndex =
+        (index + 1) % animes.length;
+
+      const nextAnime = animes[nextIndex];
+      const nextBackdrop =
+        nextAnime?.banner || nextAnime?.cover || "";
+
+      if (!nextBackdrop) {
+        setIndex(nextIndex);
+        return;
+      }
+
+      const image = new Image();
+
+      image.onload = () => {
+        const landscape =
+          image.naturalWidth > image.naturalHeight;
+
+        setIsLandscape(landscape);
+        setVisibleBackdrop(nextBackdrop);
+        setIndex(nextIndex);
+      };
+
+      image.src = nextBackdrop;
     }, 8000);
 
     return () => window.clearInterval(timer);
-  }, [animes.length]);
+  }, [animes, index]);
 
   useEffect(() => {
     if (!backdrop) return;
 
-    let cancelled = false;
-
     const image = new Image();
 
     image.onload = () => {
-      if (cancelled) return;
-
-      const landscape =
-        image.naturalWidth > image.naturalHeight;
-
-      setIsLandscape(landscape);
-      setVisibleBackdrop(backdrop);
+      setIsLandscape(
+        image.naturalWidth > image.naturalHeight,
+      );
     };
 
     image.src = backdrop;
-
-    return () => {
-      cancelled = true;
-    };
   }, [backdrop]);
 
   return (
@@ -286,7 +299,31 @@ export function Hero({
                 key={item.id}
                 type="button"
                 aria-label={`Mostrar destaque ${i + 1}`}
-                onClick={() => setIndex(i)}
+                onClick={() => {
+                  if (i === index) return;
+
+                  const nextBackdrop =
+                    item.banner || item.cover || "";
+
+                  if (!nextBackdrop) {
+                    setIndex(i);
+                    return;
+                  }
+
+                  const image = new Image();
+
+                  image.onload = () => {
+                    setIsLandscape(
+                      image.naturalWidth >
+                        image.naturalHeight,
+                    );
+
+                    setVisibleBackdrop(nextBackdrop);
+                    setIndex(i);
+                  };
+
+                  image.src = nextBackdrop;
+                }}
                 className={`
                   h-1.5
                   rounded-full
