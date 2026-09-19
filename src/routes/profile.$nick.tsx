@@ -195,7 +195,7 @@ function PublicProfile() {
   const [
     profileBgColor,
     setProfileBgColor,
-  ] = useState("#061329");
+  ] = useState("#030817");
 
   useEffect(() => {
     let active = true;
@@ -204,7 +204,7 @@ function PublicProfile() {
     setError("");
     setCommentsError("");
     setComments([]);
-    setProfileBgColor("#061329");
+    setProfileBgColor("#030817");
 
     void getPublicProfileFn({
       data: {
@@ -506,24 +506,26 @@ function PublicProfile() {
       .toUpperCase();
 
   return (
-    <main className="min-h-screen bg-[#030817] px-3 pb-24 pt-5 text-white sm:px-5 lg:px-8">
-      <div className="mx-auto max-w-5xl">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2 text-sm text-[#d0d9ea] transition hover:text-white"
-        >
-          <ArrowLeft className="size-4" />
-          Voltar
-        </Link>
+    <main
+      className="min-h-screen pb-24 pt-5 text-white transition-colors duration-700"
+      style={{
+        backgroundColor:
+          profileBgColor,
+      }}
+    >
+      <div className="w-full">
+        <div className="px-5 sm:px-8 lg:px-10">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-sm text-[#d0d9ea] transition hover:text-white"
+          >
+            <ArrowLeft className="size-4" />
+            Voltar
+          </Link>
+        </div>
 
-        <section
-          className="mt-5 overflow-hidden rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.18)] transition-colors duration-700"
-          style={{
-            backgroundColor:
-              profileBgColor,
-          }}
-        >
-          <div className="relative px-5 pb-7 pt-7 sm:px-8 sm:pt-8">
+        <section className="mt-5 w-full">
+          <div className="px-5 pb-7 pt-7 sm:px-8 sm:pt-8 lg:px-10">
             <div>
               <div className="grid size-28 place-items-center overflow-hidden rounded-full border-[5px] border-white/10 bg-[#15284b] text-5xl font-semibold shadow-xl sm:size-32">
                 {profile.image ? (
@@ -633,7 +635,7 @@ function PublicProfile() {
           </div>
         </section>
 
-        <section className="mt-6">
+        <section className="mt-6 px-5 sm:px-8 lg:px-10">
           <div className="mb-4 flex items-center gap-2">
             <MessageCircle className="size-5 text-[#b2bfff]" />
 
@@ -852,4 +854,4 @@ function PublicStat({
       </span>
     </div>
   );
-        }
+              }
