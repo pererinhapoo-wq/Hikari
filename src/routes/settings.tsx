@@ -10,7 +10,6 @@ import {
   Play,
   Shield,
   User,
-  UserCircle,
   Info,
 } from "lucide-react";
 
@@ -26,12 +25,6 @@ const items = [
     description: "Gerencie informações da sua conta.",
     icon: User,
     href: "https://grokhikari.vercel.app/settings-account",
-  },
-  {
-    title: "Perfil",
-    description: "Altere suas informações públicas.",
-    icon: UserCircle,
-    href: "https://grokhikari.vercel.app/settings-profile",
   },
   {
     title: "Privacidade",
@@ -121,4 +114,4 @@ function Settings() {
 
     </div>
   );
-  }
+}
