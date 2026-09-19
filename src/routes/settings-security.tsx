@@ -219,7 +219,7 @@ function SettingsSecurity() {
               <button
                 type="button"
                 onClick={handleLogoutOtherSessions}
-                className="flex-1 rounded-xl bg-fg px-4 py-3 text-sm font-medium text-bg"
+                className="flex-1 rounded-xl bg-red-500 px-4 py-3 text-sm font-medium text-white"
               >
                 Encerrar
               </button>
@@ -231,4 +231,4 @@ function SettingsSecurity() {
 
     </div>
   );
-      }
+}
