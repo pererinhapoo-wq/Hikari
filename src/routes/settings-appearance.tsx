@@ -12,6 +12,8 @@ import {
   Type,
 } from "lucide-react";
 
+import { useState } from "react";
+
 export const Route = createFileRoute(
   "/settings-appearance",
 )({
@@ -19,6 +21,10 @@ export const Route = createFileRoute(
 });
 
 function SettingsAppearance() {
+  const [theme, setTheme] = useState("Escuro");
+  const [fontSize, setFontSize] = useState("Médio");
+  const [animations, setAnimations] = useState(true);
+
   return (
     <div className="min-h-screen pb-20 pt-5">
 
@@ -59,6 +65,7 @@ function SettingsAppearance() {
           {/* ESCURO */}
           <button
             type="button"
+            onClick={() => setTheme("Escuro")}
             className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -75,12 +82,15 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            <Check className="size-5 shrink-0 text-fg" />
+            {theme === "Escuro" && (
+              <Check className="size-5 shrink-0 text-fg" />
+            )}
           </button>
 
           {/* CLARO */}
           <button
             type="button"
+            onClick={() => setTheme("Claro")}
             className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -96,6 +106,10 @@ function SettingsAppearance() {
                 Usar o tema claro no Hikari.
               </p>
             </div>
+
+            {theme === "Claro" && (
+              <Check className="size-5 shrink-0 text-fg" />
+            )}
           </button>
 
         </div>
@@ -111,6 +125,11 @@ function SettingsAppearance() {
 
           <button
             type="button"
+            onClick={() => {
+              const sizes = ["Pequeno", "Médio", "Grande"];
+              const current = sizes.indexOf(fontSize);
+              setFontSize(sizes[(current + 1) % sizes.length]);
+            }}
             className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -123,7 +142,7 @@ function SettingsAppearance() {
               </p>
 
               <p className="mt-1 text-xs leading-5 text-muted">
-                Ajuste o tamanho dos textos do Hikari.
+                Tamanho atual: {fontSize}
               </p>
             </div>
           </button>
@@ -157,10 +176,19 @@ function SettingsAppearance() {
             <button
               type="button"
               role="switch"
-              aria-checked="true"
-              className="relative h-6 w-11 shrink-0 rounded-full bg-fg"
+              aria-checked={animations}
+              onClick={() => setAnimations(!animations)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                animations ? "bg-fg" : "bg-elevated"
+              }`}
             >
-              <span className="absolute right-1 top-1 size-4 rounded-full bg-bg" />
+              <span
+                className={`absolute top-1 size-4 rounded-full transition-transform ${
+                  animations
+                    ? "translate-x-6 bg-bg"
+                    : "translate-x-1 bg-muted"
+                }`}
+              />
             </button>
           </div>
 
