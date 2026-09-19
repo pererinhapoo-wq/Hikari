@@ -1,8 +1,15 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  createFileRoute,
+  Link,
+} from "@tanstack/react-router";
+
+import {
+  ChevronLeft,
+  ChevronRight,
   Search as SearchIcon,
   SlidersHorizontal,
 } from "lucide-react";
+
 import {
   useEffect,
   useMemo,
@@ -37,7 +44,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 
 const YEARS = Array.from(
   { length: 37 },
-  (_, i) => String(2026 - i),
+  (_, i) =>
+    String(2026 - i),
 );
 
 type Search = {
@@ -47,82 +55,108 @@ type Search = {
   format?: string;
   status?: string;
   sort?: string;
+  page?: number;
 };
 
-export const Route = createFileRoute("/search")({
-  validateSearch: (
-    raw: Record<string, unknown>,
-  ): Search => ({
-    q:
-      typeof raw.q === "string" &&
-      raw.q
-        ? raw.q
-        : undefined,
+export const Route =
+  createFileRoute("/search")({
+    validateSearch: (
+      raw: Record<string, unknown>,
+    ): Search => ({
+      q:
+        typeof raw.q === "string" &&
+        raw.q
+          ? raw.q
+          : undefined,
 
-    genre:
-      typeof raw.genre === "string" &&
-      raw.genre
-        ? raw.genre
-        : undefined,
+      genre:
+        typeof raw.genre === "string" &&
+        raw.genre
+          ? raw.genre
+          : undefined,
 
-    year:
-      typeof raw.year === "string" &&
-      raw.year
-        ? raw.year
-        : undefined,
+      year:
+        typeof raw.year === "string" &&
+        raw.year
+          ? raw.year
+          : undefined,
 
-    format:
-      typeof raw.format === "string" &&
-      raw.format
-        ? raw.format
-        : undefined,
+      format:
+        typeof raw.format === "string" &&
+        raw.format
+          ? raw.format
+          : undefined,
 
-    status:
-      typeof raw.status === "string" &&
-      raw.status
-        ? raw.status
-        : undefined,
+      status:
+        typeof raw.status === "string" &&
+        raw.status
+          ? raw.status
+          : undefined,
 
-    sort:
-      typeof raw.sort === "string" &&
-      raw.sort
-        ? raw.sort
-        : undefined,
-  }),
+      sort:
+        typeof raw.sort === "string" &&
+        raw.sort
+          ? raw.sort
+          : undefined,
 
-  loaderDeps: ({ search }) => search,
+      page:
+        typeof raw.page === "string" &&
+        /^\d+$/.test(raw.page)
+          ? Math.max(
+              1,
+              Number(raw.page),
+            )
+          : 1,
+    }),
 
-  loader: async ({ deps }) => {
-    const [result, home] =
-      await Promise.all([
+    loaderDeps: ({
+      search,
+    }) => search,
+
+    loader: async ({
+      deps,
+    }) => {
+      const [
+        result,
+        home,
+      ] = await Promise.all([
         searchCatalog({
           data: {
             ...deps,
-            page: 1,
+            page:
+              deps.page ?? 1,
           },
         }),
 
         fetchHomeCatalog(),
       ]);
 
-    return {
-      result,
-      genres: home.genres,
-    };
-  },
+      return {
+        result,
+        genres:
+          home.genres,
+      };
+    },
 
-  pendingComponent: SearchPending,
+    pendingComponent:
+      SearchPending,
 
-  component: SearchPage,
-});
+    component:
+      SearchPage,
+  });
 
 function SearchPending() {
   return (
-    <div className="grid grid-cols-2 gap-3 pt-20 sm:grid-cols-4 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 pt-6 sm:grid-cols-4 lg:grid-cols-6">
       {Array.from(
         { length: 12 },
         (_, i) => (
-          <AnimeCardSkeleton key={i} />
+          <div
+            key={i}
+            className="[&>div]:w-full"
+          >
+            <AnimeCardSkeleton />
+          </div>
         ),
       )}
     </div>
@@ -130,17 +164,22 @@ function SearchPending() {
 }
 
 function SearchPage() {
-  const search = Route.useSearch();
-  const navigate = Route.useNavigate();
+  const search =
+    Route.useSearch();
+
+  const navigate =
+    Route.useNavigate();
 
   const {
     result,
     genres,
-  } = Route.useLoaderData();
+  } =
+    Route.useLoaderData();
 
-  const locals = useHikariStore(
-    (s) => s.animes,
-  );
+  const locals =
+    useHikariStore(
+      (s) => s.animes,
+    );
 
   const [
     draft,
@@ -154,22 +193,12 @@ function SearchPage() {
     setFiltersOpen,
   ] = useState(false);
 
-  const [
-    allRemoteItems,
-    setAllRemoteItems,
-  ] = useState<typeof result.items>(
-    [],
-  );
+  const currentPage =
+    search.page ?? 1;
 
-  const [
-    loadingAll,
-    setLoadingAll,
-  ] = useState(false);
-
-  const [
-    allLoaded,
-    setAllLoaded,
-  ] = useState(false);
+  /* =========================================================
+     MANTER O CAMPO SINCRONIZADO COM A URL
+  ========================================================== */
 
   useEffect(() => {
     setDraft(
@@ -177,193 +206,131 @@ function SearchPage() {
     );
   }, [search.q]);
 
-  useEffect(() => {
-    setAllRemoteItems([]);
-    setAllLoaded(false);
-    setLoadingAll(false);
-  }, [
-    search.q,
-    search.genre,
-    search.year,
-    search.format,
-    search.status,
-    search.sort,
-  ]);
+  /* =========================================================
+     BUSCA AUTOMÁTICA
+  ========================================================== */
 
   useEffect(() => {
-    const q = draft.trim();
+    const q =
+      draft.trim();
 
-    const timer = window.setTimeout(() => {
-      const current = (
-        search.q ?? ""
-      ).trim();
+    const timer =
+      window.setTimeout(() => {
+        const current =
+          (
+            search.q ?? ""
+          ).trim();
 
-      if (q === current) return;
+        if (
+          q === current
+        ) {
+          return;
+        }
 
-      void navigate({
-        search: {
-          ...search,
-          q: q || undefined,
-        },
-        replace: true,
-      });
-    }, 400);
+        void navigate({
+          search: {
+            ...search,
+            q:
+              q || undefined,
+            page: 1,
+          },
+          replace: true,
+        });
+      }, 400);
 
     return () =>
-      window.clearTimeout(timer);
+      window.clearTimeout(
+        timer,
+      );
   }, [
     draft,
     navigate,
     search,
   ]);
 
-  async function loadAllResults() {
-    if (
-      loadingAll ||
-      allLoaded ||
-      !result.hasNext
-    ) {
-      return;
-    }
-
-    setLoadingAll(true);
-
-    try {
-      const collected = [
-        ...result.items,
-      ];
-
-      let page =
-        result.page + 1;
-
-      let hasNext =
-        result.hasNext;
-
-      /*
-       * Limite de segurança para evitar
-       * uma quantidade absurda de requisições.
-       *
-       * Cada página possui até 24 animes.
-       */
-      let requests = 0;
-
-      while (
-        hasNext &&
-        requests < 50
-      ) {
-        const next =
-          await searchCatalog({
-            data: {
-              ...search,
-              page,
-            },
-          });
-
-        collected.push(
-          ...next.items,
-        );
-
-        hasNext =
-          next.hasNext;
-
-        page += 1;
-        requests += 1;
-      }
-
-      const unique =
-        Array.from(
-          new Map(
-            collected.map(
-              (anime) => [
-                anime.id,
-                anime,
-              ],
-            ),
-          ).values(),
-        );
-
-      setAllRemoteItems(
-        unique,
-      );
-
-      setAllLoaded(true);
-    } catch {
-      /*
-       * Mantém os resultados que já
-       * estavam carregados caso alguma
-       * página adicional falhe.
-       */
-      setAllLoaded(false);
-    } finally {
-      setLoadingAll(false);
-    }
-  }
+  /* =========================================================
+     RESULTADOS
+  ========================================================== */
 
   const items =
     useMemo(() => {
       const q =
-        (search.q ?? "")
+        (
+          search.q ?? ""
+        )
           .trim()
           .toLowerCase();
 
+      /*
+       * Os animes locais entram apenas
+       * na primeira página para não
+       * aparecerem repetidos em todas
+       * as páginas da busca.
+       */
       const localHits =
-        overlayList(
-          [],
-          locals,
-        ).filter((a) => {
-          if (
-            q &&
-            !`${a.titles.romaji} ${a.titles.english} ${a.titles.native}`
-              .toLowerCase()
-              .includes(q)
-          ) {
-            return false;
-          }
+        currentPage === 1
+          ? overlayList(
+              [],
+              locals,
+            ).filter(
+              (anime) => {
+                if (
+                  q &&
+                  !`${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
+                    .toLowerCase()
+                    .includes(q)
+                ) {
+                  return false;
+                }
 
-          if (
-            search.genre &&
-            !a.genres.includes(
-              search.genre,
+                if (
+                  search.genre &&
+                  !anime.genres.includes(
+                    search.genre,
+                  )
+                ) {
+                  return false;
+                }
+
+                return true;
+              },
             )
-          ) {
-            return false;
-          }
-
-          return true;
-        });
-
-      const remoteSource =
-        allRemoteItems.length
-          ? allRemoteItems
-          : result.items;
+          : [];
 
       const remote =
         overlayList(
-          remoteSource,
+          result.items,
           locals,
         );
 
       const seen =
         new Set(
           localHits.map(
-            (a) => a.id,
+            (anime) =>
+              anime.id,
           ),
         );
 
       return [
         ...localHits,
         ...remote.filter(
-          (a) =>
-            !seen.has(a.id),
+          (anime) =>
+            !seen.has(
+              anime.id,
+            ),
         ),
       ];
     }, [
-      result.items,
+      currentPage,
       locals,
+      result.items,
       search.q,
       search.genre,
-      allRemoteItems,
     ]);
+
+  /* =========================================================
+     FILTROS
+  ========================================================== */
 
   function apply(
     next: Partial<Search>,
@@ -372,6 +339,7 @@ function SearchPage() {
       search: {
         ...search,
         ...next,
+        page: 1,
       },
     });
   }
@@ -391,25 +359,102 @@ function SearchPage() {
       search.q?.trim(),
     );
 
-  const showLoadAll =
-    hasQuery &&
-    result.hasNext &&
-    !allLoaded;
+  /* =========================================================
+     PAGINAÇÃO
+  ========================================================== */
+
+  /*
+   * Mantemos uma faixa simples
+   * de páginas visível.
+   *
+   * A API informa quando existe
+   * uma próxima página através
+   * de result.hasNext.
+   */
+  const pageNumbers =
+    useMemo(() => {
+      const pages =
+        new Set<number>();
+
+      pages.add(1);
+
+      if (
+        currentPage <= 3
+      ) {
+        pages.add(2);
+        pages.add(3);
+        pages.add(4);
+        pages.add(5);
+      } else {
+        pages.add(
+          currentPage - 2,
+        );
+
+        pages.add(
+          currentPage - 1,
+        );
+
+        pages.add(
+          currentPage,
+        );
+
+        if (
+          result.hasNext
+        ) {
+          pages.add(
+            currentPage + 1,
+          );
+        }
+      }
+
+      return Array.from(
+        pages,
+      )
+        .filter(
+          (page) =>
+            page >= 1,
+        )
+        .sort(
+          (a, b) =>
+            a - b,
+        );
+    }, [
+      currentPage,
+      result.hasNext,
+    ]);
+
+  function goToPage(
+    page: number,
+  ) {
+    if (
+      page < 1 ||
+      page === currentPage
+    ) {
+      return;
+    }
+
+    void navigate({
+      search: {
+        ...search,
+        page,
+      },
+    });
+  }
+
+  /* =========================================================
+     RENDER
+  ========================================================== */
 
   return (
     <div className="space-y-6 pt-6">
-      <header className="space-y-1">
-        <p className="text-[11px] tracking-[0.28em] text-muted uppercase">
-          Catálogo
-        </p>
 
-        <h1 className="font-display text-3xl tracking-tight">
-          Buscar
-        </h1>
-      </header>
+      {/* =====================================================
+          BUSCA
+      ====================================================== */}
 
       <div className="relative flex gap-2">
         <div className="relative flex-1">
+
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-subtle" />
 
           <Input
@@ -423,6 +468,7 @@ function SearchPage() {
             className="pl-10"
             aria-label="Buscar animes"
           />
+
         </div>
 
         <Button
@@ -432,13 +478,18 @@ function SearchPage() {
           aria-label="Filtros"
           onClick={() =>
             setFiltersOpen(
-              (v) => !v,
+              (value) =>
+                !value,
             )
           }
         >
           <SlidersHorizontal className="size-4" />
         </Button>
       </div>
+
+      {/* =====================================================
+          FILTROS
+      ====================================================== */}
 
       <div
         className={
@@ -447,10 +498,13 @@ function SearchPage() {
             : "hidden lg:grid lg:grid-cols-4 lg:gap-3"
         }
       >
+
+        {/* GÊNERO */}
         <Field label="Gênero">
           <NativeSelect
             value={
-              search.genre ?? ""
+              search.genre ??
+              ""
             }
             onChange={(e) =>
               apply({
@@ -466,23 +520,26 @@ function SearchPage() {
             </option>
 
             {genreOptions.map(
-              (g) => (
+              (genre) => (
                 <option
-                  key={g}
-                  value={g}
+                  key={genre}
+                  value={genre}
                 >
-                  {GENRE_PT[g] ??
-                    g}
+                  {GENRE_PT[
+                    genre
+                  ] ?? genre}
                 </option>
               ),
             )}
           </NativeSelect>
         </Field>
 
+        {/* ANO */}
         <Field label="Ano">
           <NativeSelect
             value={
-              search.year ?? ""
+              search.year ??
+              ""
             }
             onChange={(e) =>
               apply({
@@ -498,22 +555,24 @@ function SearchPage() {
             </option>
 
             {YEARS.map(
-              (y) => (
+              (year) => (
                 <option
-                  key={y}
-                  value={y}
+                  key={year}
+                  value={year}
                 >
-                  {y}
+                  {year}
                 </option>
               ),
             )}
           </NativeSelect>
         </Field>
 
+        {/* FORMATO */}
         <Field label="Formato">
           <NativeSelect
             value={
-              search.format ?? ""
+              search.format ??
+              ""
             }
             onChange={(e) =>
               apply({
@@ -532,7 +591,7 @@ function SearchPage() {
               FORMAT_PT,
             )
               .filter(
-                ([k]) =>
+                ([key]) =>
                   [
                     "TV",
                     "MOVIE",
@@ -540,25 +599,32 @@ function SearchPage() {
                     "ONA",
                     "SPECIAL",
                     "TV_SHORT",
-                  ].includes(k),
+                  ].includes(
+                    key,
+                  ),
               )
               .map(
-                ([k, v]) => (
+                ([
+                  key,
+                  value,
+                ]) => (
                   <option
-                    key={k}
-                    value={k}
+                    key={key}
+                    value={key}
                   >
-                    {v}
+                    {value}
                   </option>
                 ),
               )}
           </NativeSelect>
         </Field>
 
+        {/* STATUS */}
         <Field label="Status">
           <NativeSelect
             value={
-              search.status ?? ""
+              search.status ??
+              ""
             }
             onChange={(e) =>
               apply({
@@ -576,18 +642,22 @@ function SearchPage() {
             {Object.entries(
               STATUS_PT,
             ).map(
-              ([k, v]) => (
+              ([
+                key,
+                value,
+              ]) => (
                 <option
-                  key={k}
-                  value={k}
+                  key={key}
+                  value={key}
                 >
-                  {v}
+                  {value}
                 </option>
               ),
             )}
           </NativeSelect>
         </Field>
 
+        {/* ORDENAR */}
         <Field
           label="Ordenar"
           className="lg:col-span-2"
@@ -607,77 +677,181 @@ function SearchPage() {
             }
           >
             {SORT_OPTIONS.map(
-              (o) => (
+              (option) => (
                 <option
-                  key={o.value}
-                  value={o.value}
+                  key={
+                    option.value
+                  }
+                  value={
+                    option.value
+                  }
                 >
-                  {o.label}
+                  {
+                    option.label
+                  }
                 </option>
               ),
             )}
           </NativeSelect>
         </Field>
+
       </div>
 
-      {hasQuery && hasAnimes && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <h2 className="font-display text-xl">
-                Animes
-              </h2>
+      {/* =====================================================
+          RESULTADOS
+      ====================================================== */}
 
-              <span className="text-xs text-muted">
-                {items.length} resultado
-                {items.length ===
-                1
-                  ? ""
-                  : "s"}
-              </span>
+      {hasQuery &&
+        hasAnimes && (
+          <section className="space-y-5">
+
+            {/* TÍTULO + CONTAGEM */}
+            <div className="flex items-end justify-between gap-3">
+
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+
+                <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+                  Resultados da busca
+                </h1>
+
+                <span className="text-sm text-muted">
+                  {items.length}{" "}
+                  {items.length ===
+                  1
+                    ? "anime encontrado"
+                    : "animes encontrados"}
+                </span>
+
+              </div>
+
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-            {items.map(
-              (a) => (
-                <AnimeCard
-                  key={a.id}
-                  anime={a}
-                />
-              ),
+            {/* GRID */}
+            <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-4 lg:grid-cols-6">
+
+              {items.map(
+                (anime) => (
+                  <div
+                    key={
+                      anime.id
+                    }
+                    className="min-w-0 [&>article]:w-full"
+                  >
+                    <AnimeCard
+                      anime={
+                        anime
+                      }
+                    />
+                  </div>
+                ),
+              )}
+
+            </div>
+
+            {/* =================================================
+                PAGINAÇÃO
+            ================================================== */}
+
+            {(currentPage >
+              1 ||
+              result.hasNext) && (
+              <div className="flex items-center justify-center gap-1 pt-4">
+
+                {/* ANTERIOR */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    goToPage(
+                      currentPage -
+                        1,
+                    )
+                  }
+                  disabled={
+                    currentPage ===
+                    1
+                  }
+                  aria-label="Página anterior"
+                  className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
+
+                {/* NÚMEROS */}
+                <div className="flex items-center gap-1">
+
+                  {pageNumbers.map(
+                    (page) => (
+                      <button
+                        key={
+                          page
+                        }
+                        type="button"
+                        onClick={() =>
+                          goToPage(
+                            page,
+                          )
+                        }
+                        aria-current={
+                          page ===
+                          currentPage
+                            ? "page"
+                            : undefined
+                        }
+                        className={
+                          page ===
+                          currentPage
+                            ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
+                            : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+                        }
+                      >
+                        {
+                          page
+                        }
+                      </button>
+                    ),
+                  )}
+
+                  {result.hasNext &&
+                    currentPage <=
+                      3 && (
+                      <span className="flex size-10 items-center justify-center text-sm text-muted">
+                        …
+                      </span>
+                    )}
+
+                </div>
+
+                {/* PRÓXIMA */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    goToPage(
+                      currentPage +
+                        1,
+                    )
+                  }
+                  disabled={
+                    !result.hasNext
+                  }
+                  aria-label="Próxima página"
+                  className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+                >
+                  <ChevronRight className="size-5" />
+                </button>
+
+              </div>
             )}
-          </div>
 
-          {showLoadAll && (
-            <div className="flex justify-center pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={
-                  loadAllResults
-                }
-                disabled={
-                  loadingAll
-                }
-              >
-                {loadingAll
-                  ? "Carregando todos os resultados…"
-                  : "Ver todos os resultados"}
-              </Button>
-            </div>
-          )}
+          </section>
+        )}
 
-          {allLoaded && (
-            <p className="pt-2 text-center text-xs text-muted">
-              Todos os resultados foram carregados.
-            </p>
-          )}
-        </section>
-      )}
+      {/* =====================================================
+          SEM BUSCA
+      ====================================================== */}
 
       {!hasQuery && (
         <div className="py-20 text-center">
+
           <SearchIcon className="mx-auto size-8 text-subtle" />
 
           <p className="mt-4 font-display text-2xl">
@@ -687,32 +861,45 @@ function SearchPage() {
           <p className="mt-2 text-sm text-muted">
             Digite o nome do anime para ver os resultados.
           </p>
+
         </div>
       )}
 
-      {hasQuery && !hasAnimes && (
-        <div className="py-20 text-center">
-          <p className="font-display text-2xl">
-            Nada encontrado
-          </p>
+      {/* =====================================================
+          NADA ENCONTRADO
+      ====================================================== */}
 
-          <p className="mt-2 text-sm text-muted">
-            Tente outro título
-            ou limpe os
-            filtros.
-          </p>
+      {hasQuery &&
+        !hasAnimes && (
+          <div className="py-20 text-center">
 
-          <Link
-            to="/search"
-            className="mt-4 inline-block text-sm text-fg underline"
-          >
-            Limpar busca
-          </Link>
-        </div>
-      )}
+            <p className="font-display text-2xl">
+              Nada encontrado
+            </p>
+
+            <p className="mt-2 text-sm text-muted">
+              Tente outro título
+              ou limpe os
+              filtros.
+            </p>
+
+            <Link
+              to="/search"
+              className="mt-4 inline-block text-sm text-fg underline"
+            >
+              Limpar busca
+            </Link>
+
+          </div>
+        )}
+
     </div>
   );
 }
+
+/* =========================================================
+   CAMPO DE FILTRO
+========================================================= */
 
 function Field({
   label,
@@ -724,7 +911,11 @@ function Field({
   className?: string;
 }) {
   return (
-    <label className={className}>
+    <label
+      className={
+        className
+      }
+    >
       <Label className="mb-1.5 block">
         {label}
       </Label>
@@ -732,4 +923,4 @@ function Field({
       {children}
     </label>
   );
-      }
+  }
