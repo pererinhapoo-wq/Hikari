@@ -186,7 +186,6 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {/* BOTÃO DE ANIMAÇÕES */}
             <button
               type="button"
               role="switch"
