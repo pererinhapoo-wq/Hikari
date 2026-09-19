@@ -16,9 +16,13 @@ export function Hero({
   animes?: SlimAnime[];
 }) {
   const [index, setIndex] = useState(0);
+
   const [visibleBackdrop, setVisibleBackdrop] = useState(
     anime.banner || anime.cover || "",
   );
+
+  const [nextBackdrop, setNextBackdrop] = useState("");
+  const [showNext, setShowNext] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
 
   const current = animes[index] ?? anime;
@@ -43,7 +47,7 @@ export function Hero({
   }, [animes.length]);
 
   useEffect(() => {
-    if (!backdrop) return;
+    if (!backdrop || backdrop === visibleBackdrop) return;
 
     let cancelled = false;
 
@@ -52,11 +56,20 @@ export function Hero({
     image.onload = () => {
       if (cancelled) return;
 
-      setIsLandscape(
-        image.naturalWidth > image.naturalHeight,
-      );
+      setNextBackdrop(backdrop);
+      setShowNext(true);
 
-      setVisibleBackdrop(backdrop);
+      const landscape =
+        image.naturalWidth > image.naturalHeight;
+
+      window.setTimeout(() => {
+        if (cancelled) return;
+
+        setIsLandscape(landscape);
+        setVisibleBackdrop(backdrop);
+        setShowNext(false);
+        setNextBackdrop("");
+      }, 450);
     };
 
     image.src = backdrop;
@@ -64,7 +77,7 @@ export function Hero({
     return () => {
       cancelled = true;
     };
-  }, [backdrop]);
+  }, [backdrop, visibleBackdrop]);
 
   return (
     <section
@@ -111,14 +124,27 @@ export function Hero({
             "
           />
 
-          {!isLandscape && (
-            <div
-              className="
-                pointer-events-none
+          {nextBackdrop && (
+            <img
+              src={nextBackdrop}
+              alt=""
+              aria-hidden="true"
+              className={`
                 absolute
                 inset-0
-                bg-bg/0
-              "
+                h-full
+                w-full
+                object-contain
+                object-center
+                transition-opacity
+                duration-500
+                ease-in-out
+                ${
+                  showNext
+                    ? "opacity-100"
+                    : "opacity-0"
+                }
+              `}
             />
           )}
 
