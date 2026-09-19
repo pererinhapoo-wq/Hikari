@@ -341,13 +341,13 @@ function Account() {
             ? `Confira o perfil de @${nick} no HIKARI.`
             : "Confira este perfil no HIKARI.",
 
-          url: window.location.href,
+          url: `${window.location.origin}/profile/${encodeURIComponent(nick)}`,
         });
       } else if (
         navigator.clipboard
       ) {
         await navigator.clipboard.writeText(
-          window.location.href,
+          `${window.location.origin}/profile/${encodeURIComponent(nick)}`,
         );
       }
     } catch {
@@ -1886,4 +1886,4 @@ function ProfileTabButton({
 
     </button>
   );
-}
+  }
