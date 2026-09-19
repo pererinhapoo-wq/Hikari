@@ -45,17 +45,26 @@ function SettingsPrivacy() {
   ] = useState("Todos");
 
   useEffect(() => {
-    const saved =
+    const savedPublicProfile =
       localStorage.getItem(
         "hikari-public-profile",
       );
 
-    if (saved === "true") {
+    if (savedPublicProfile === "true") {
       setPublicProfile(true);
     }
 
-    if (saved === "false") {
+    if (savedPublicProfile === "false") {
       setPublicProfile(false);
+    }
+
+    const savedFollowers =
+      localStorage.getItem(
+        "hikari-followers",
+      );
+
+    if (savedFollowers) {
+      setFollowers(savedFollowers);
     }
   }, []);
 
@@ -70,6 +79,19 @@ function SettingsPrivacy() {
 
       return next;
     });
+  }
+
+  function handleFollowersChange(
+    option: string,
+  ) {
+    setFollowers(option);
+
+    localStorage.setItem(
+      "hikari-followers",
+      option,
+    );
+
+    setFollowersOpen(false);
   }
 
   return (
@@ -111,7 +133,9 @@ function SettingsPrivacy() {
 
           <button
             type="button"
-            onClick={handlePublicProfileToggle}
+            onClick={
+              handlePublicProfileToggle
+            }
             className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors hover:bg-elevated"
           >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -255,10 +279,11 @@ function SettingsPrivacy() {
                 <button
                   key={option}
                   type="button"
-                  onClick={() => {
-                    setFollowers(option);
-                    setFollowersOpen(false);
-                  }}
+                  onClick={() =>
+                    handleFollowersChange(
+                      option,
+                    )
+                  }
                   className="flex w-full items-center justify-between rounded-xl border border-border bg-bg px-4 py-4 text-left hover:bg-elevated"
                 >
                   <span className="text-sm text-fg">
@@ -266,7 +291,7 @@ function SettingsPrivacy() {
                   </span>
 
                   {followers === option && (
-                    <span className="text-sm font-semibold text-fg">
+                    <span className="text-sm font-semibold text-green-500">
                       ✓
                     </span>
                   )}
