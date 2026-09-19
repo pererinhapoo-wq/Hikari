@@ -1198,6 +1198,28 @@ export function Shell() {
                   </Link>
                 )}
 
+                {/* CONFIGURAÇÕES */}
+                <Link
+                  to="/settings"
+                  onClick={() =>
+                    setMenuOpen(false)
+                  }
+                  className={cn(
+                    "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                    pathname.startsWith(
+                      "/settings",
+                    )
+                      ? "bg-elevated text-fg"
+                      : "text-muted hover:bg-elevated hover:text-fg",
+                  )}
+                >
+                  <Settings2 className="size-5" />
+
+                  <span>
+                    Configurações
+                  </span>
+                </Link>
+
                 {/* +18 */}
                 <Link
                   to={ADULT_NAV.to}
@@ -1254,4 +1276,4 @@ export function Shell() {
 
     </div>
   );
-  }
+      }
