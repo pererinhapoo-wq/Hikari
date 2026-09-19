@@ -54,7 +54,7 @@ export function Hero({
     >
       {backdrop && (
         <>
-          {/* FUNDO */}
+          {/* FUNDO DESFOCADO */}
           <div className="absolute inset-0 overflow-hidden bg-bg">
             <img
               src={backdrop}
@@ -65,22 +65,22 @@ export function Hero({
                 size-full
                 scale-110
                 object-cover
-                opacity-55
-                blur-xl
+                opacity-70
+                blur-2xl
               "
             />
 
-            <div className="absolute inset-0 bg-black/20" />
+            <div className="absolute inset-0 bg-black/30" />
           </div>
 
-          {/* IMAGEM PRINCIPAL */}
+          {/* IMAGEM COMPLETA */}
           <div
             className="
               absolute inset-x-0 top-0
-              h-[13rem]
+              h-[14rem]
               overflow-hidden
-              sm:h-[19rem]
-              lg:h-[22rem]
+              sm:h-[20rem]
+              lg:h-[23rem]
             "
           >
             <img
@@ -90,22 +90,22 @@ export function Hero({
               className="
                 absolute inset-0
                 size-full
-                object-cover
+                object-contain
                 object-center
               "
             />
 
-            {/* ESCURECIMENTO LEVE */}
+            {/* ESCURECIMENTO MUITO LEVE */}
             <div className="absolute inset-0 bg-black/5" />
 
-            {/* TRANSIÇÃO SUAVE */}
+            {/* TRANSIÇÃO PARA O CONTEÚDO */}
             <div
               className="
                 absolute inset-x-0 bottom-0
-                h-2/5
+                h-1/3
                 bg-linear-to-t
                 from-bg
-                via-bg/35
+                via-bg/20
                 to-transparent
               "
             />
@@ -122,7 +122,7 @@ export function Hero({
         className="
           absolute inset-0
           bg-linear-to-r
-          from-bg/65
+          from-bg/55
           via-transparent
           to-transparent
         "
@@ -135,7 +135,7 @@ export function Hero({
           h-2/3
           bg-linear-to-t
           from-bg
-          via-bg/65
+          via-bg/60
           to-transparent
         "
       />
@@ -303,4 +303,4 @@ export function Hero({
       </div>
     </section>
   );
-          }
+            }
