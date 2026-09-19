@@ -180,8 +180,7 @@ export function Shell() {
   ========================================================== */
 
   useEffect(() => {
-    const q =
-      searchQuery.trim();
+    const q = searchQuery.trim();
 
     if (!searchOpen || !q) {
       setSearchResults([]);
@@ -191,251 +190,135 @@ export function Shell() {
 
     let cancelled = false;
 
-    const timer =
-      window.setTimeout(
-        async () => {
-          setSearchLoading(true);
+    const timer = window.setTimeout(async () => {
+      setSearchLoading(true);
 
-          try {
-            /*
-             * Tentamos algumas formas da mesma pesquisa.
-             *
-             * Exemplo:
-             * "naru"  -> "naru", "nar"
-             * "narut" -> "narut", "naru"
-             * "one p" -> "one p", "onep", "one"
-             */
+      try {
+        const normalized = q
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
 
-            const normalized =
-              q
-                .normalize("NFD")
-                .replace(
-                  /[\u0300-\u036f]/g,
-                  "",
-                )
-                .toLowerCase();
+        /*
+         * Para o autocomplete fazemos somente UMA consulta.
+         *
+         * Antes eram feitas até 4 consultas simultâneas para
+         * cada tecla digitada. Isso deixava a busca lenta.
+         */
+        const result = await searchCatalog({
+          data: {
+            q,
+            page: 1,
+          },
+        });
 
-            const compact =
-              normalized.replace(
-                /\s+/g,
-                "",
-              );
+        if (cancelled) {
+          return;
+        }
 
-            const firstWord =
-              normalized.split(
-                /\s+/,
-              )[0] ?? normalized;
+        /*
+         * Resultados locais do Hikari.
+         */
+        const localHits = overlayList(
+          [],
+          localAnimes,
+        ).filter((anime) => {
+          const title =
+            `${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase();
 
-            const variants =
-              Array.from(
-                new Set([
-                  q,
-                  compact !== normalized
-                    ? compact
-                    : "",
-                  firstWord,
-                  normalized.length >= 4
-                    ? normalized.slice(
-                        0,
-                        normalized.length - 1,
-                      )
-                    : "",
-                ]),
-              ).filter(
-                Boolean,
-              );
+          return title.includes(normalized);
+        });
 
-            const results =
-              await Promise.all(
-                variants
-                  .slice(0, 4)
-                  .map(
-                    async (variant) => {
-                      try {
-                        return await searchCatalog(
-                          {
-                            data: {
-                              q: variant,
-                              page: 1,
-                            },
-                          },
-                        );
-                      } catch {
-                        return {
-                          items: [],
-                        };
-                      }
-                    },
-                  ),
-              );
+        /*
+         * Junta os resultados remotos com os locais
+         * e remove duplicados.
+         */
+        const remote = overlayList(
+          result.items ?? [],
+          localAnimes,
+        );
 
-            if (cancelled) {
-              return;
-            }
+        const seen = new Set<string>();
+        const merged: SlimAnime[] = [];
 
-            /*
-             * Resultados locais do Hikari.
-             */
-            const localHits =
-              overlayList(
-                [],
-                localAnimes,
-              ).filter(
-                (anime) => {
-                  const title =
-                    `${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
-                      .normalize("NFD")
-                      .replace(
-                        /[\u0300-\u036f]/g,
-                        "",
-                      )
-                      .toLowerCase();
-
-                  return title.includes(
-                    normalized,
-                  );
-                },
-              );
-
-            /*
-             * Junta todos os resultados remotos.
-             */
-            const remoteItems =
-              results.flatMap(
-                (result) =>
-                  result.items ?? [],
-              );
-
-            const remote =
-              overlayList(
-                remoteItems,
-                localAnimes,
-              );
-
-            /*
-             * Remove duplicados.
-             */
-            const seen =
-              new Set<string>();
-
-            const merged: SlimAnime[] =
-              [];
-
-            for (const anime of [
-              ...localHits,
-              ...remote,
-            ]) {
-              if (
-                seen.has(anime.id)
-              ) {
-                continue;
-              }
-
-              seen.add(anime.id);
-              merged.push(anime);
-            }
-
-            /*
-             * Coloca primeiro os títulos que realmente
-             * começam com o texto digitado.
-             */
-            const ranked =
-              merged.sort(
-                (a, b) => {
-                  const aTitle =
-                    `${a.titles.romaji} ${a.titles.english} ${a.titles.native}`
-                      .normalize("NFD")
-                      .replace(
-                        /[\u0300-\u036f]/g,
-                        "",
-                      )
-                      .toLowerCase();
-
-                  const bTitle =
-                    `${b.titles.romaji} ${b.titles.english} ${b.titles.native}`
-                      .normalize("NFD")
-                      .replace(
-                        /[\u0300-\u036f]/g,
-                        "",
-                      )
-                      .toLowerCase();
-
-                  const aStarts =
-                    aTitle.startsWith(
-                      normalized,
-                    );
-
-                  const bStarts =
-                    bTitle.startsWith(
-                      normalized,
-                    );
-
-                  if (
-                    aStarts &&
-                    !bStarts
-                  ) {
-                    return -1;
-                  }
-
-                  if (
-                    !aStarts &&
-                    bStarts
-                  ) {
-                    return 1;
-                  }
-
-                  const aContains =
-                    aTitle.includes(
-                      normalized,
-                    );
-
-                  const bContains =
-                    bTitle.includes(
-                      normalized,
-                    );
-
-                  if (
-                    aContains &&
-                    !bContains
-                  ) {
-                    return -1;
-                  }
-
-                  if (
-                    !aContains &&
-                    bContains
-                  ) {
-                    return 1;
-                  }
-
-                  return 0;
-                },
-              );
-
-            setSearchResults(
-              ranked,
-            );
-          } catch {
-            if (!cancelled) {
-              setSearchResults([]);
-            }
-          } finally {
-            if (!cancelled) {
-              setSearchLoading(
-                false,
-              );
-            }
+        for (const anime of [
+          ...localHits,
+          ...remote,
+        ]) {
+          if (seen.has(anime.id)) {
+            continue;
           }
-        },
-        350,
-      );
+
+          seen.add(anime.id);
+          merged.push(anime);
+        }
+
+        /*
+         * Prioriza títulos que começam exatamente com
+         * aquilo que foi digitado.
+         */
+        const ranked = merged.sort((a, b) => {
+          const aTitle =
+            `${a.titles.romaji} ${a.titles.english} ${a.titles.native}`
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase();
+
+          const bTitle =
+            `${b.titles.romaji} ${b.titles.english} ${b.titles.native}`
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase();
+
+          const aStarts =
+            aTitle.startsWith(normalized);
+
+          const bStarts =
+            bTitle.startsWith(normalized);
+
+          if (aStarts && !bStarts) {
+            return -1;
+          }
+
+          if (!aStarts && bStarts) {
+            return 1;
+          }
+
+          const aContains =
+            aTitle.includes(normalized);
+
+          const bContains =
+            bTitle.includes(normalized);
+
+          if (aContains && !bContains) {
+            return -1;
+          }
+
+          if (!aContains && bContains) {
+            return 1;
+          }
+
+          return 0;
+        });
+
+        setSearchResults(ranked);
+      } catch {
+        if (!cancelled) {
+          setSearchResults([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setSearchLoading(false);
+        }
+      }
+    }, 450);
 
     return () => {
       cancelled = true;
-
-      window.clearTimeout(
-        timer,
-      );
+      window.clearTimeout(timer);
     };
   }, [
     searchOpen,
@@ -1339,4 +1222,3 @@ export function Shell() {
 
     </div>
   );
-  }
