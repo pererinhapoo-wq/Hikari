@@ -197,54 +197,224 @@ export function Shell() {
           setSearchLoading(true);
 
           try {
-            const result =
-              await searchCatalog({
-                data: {
+            /*
+             * Tentamos algumas formas da mesma pesquisa.
+             *
+             * Exemplo:
+             * "naru"  -> "naru", "nar"
+             * "narut" -> "narut", "naru"
+             * "one p" -> "one p", "onep", "one"
+             */
+
+            const normalized =
+              q
+                .normalize("NFD")
+                .replace(
+                  /[\u0300-\u036f]/g,
+                  "",
+                )
+                .toLowerCase();
+
+            const compact =
+              normalized.replace(
+                /\s+/g,
+                "",
+              );
+
+            const firstWord =
+              normalized.split(
+                /\s+/,
+              )[0] ?? normalized;
+
+            const variants =
+              Array.from(
+                new Set([
                   q,
-                  page: 1,
-                },
-              });
+                  compact !== normalized
+                    ? compact
+                    : "",
+                  firstWord,
+                  normalized.length >= 4
+                    ? normalized.slice(
+                        0,
+                        normalized.length - 1,
+                      )
+                    : "",
+                ]),
+              ).filter(
+                Boolean,
+              );
+
+            const results =
+              await Promise.all(
+                variants
+                  .slice(0, 4)
+                  .map(
+                    async (variant) => {
+                      try {
+                        return await searchCatalog(
+                          {
+                            data: {
+                              q: variant,
+                              page: 1,
+                            },
+                          },
+                        );
+                      } catch {
+                        return {
+                          items: [],
+                        };
+                      }
+                    },
+                  ),
+              );
 
             if (cancelled) {
               return;
             }
 
+            /*
+             * Resultados locais do Hikari.
+             */
             const localHits =
               overlayList(
                 [],
                 localAnimes,
               ).filter(
-                (anime) =>
-                  `${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
-                    .toLowerCase()
-                    .includes(
-                      q.toLowerCase(),
-                    ),
+                (anime) => {
+                  const title =
+                    `${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
+                      .normalize("NFD")
+                      .replace(
+                        /[\u0300-\u036f]/g,
+                        "",
+                      )
+                      .toLowerCase();
+
+                  return title.includes(
+                    normalized,
+                  );
+                },
+              );
+
+            /*
+             * Junta todos os resultados remotos.
+             */
+            const remoteItems =
+              results.flatMap(
+                (result) =>
+                  result.items ?? [],
               );
 
             const remote =
               overlayList(
-                result.items,
+                remoteItems,
                 localAnimes,
               );
 
+            /*
+             * Remove duplicados.
+             */
             const seen =
-              new Set(
-                localHits.map(
-                  (anime) =>
-                    anime.id,
-                ),
+              new Set<string>();
+
+            const merged: SlimAnime[] =
+              [];
+
+            for (const anime of [
+              ...localHits,
+              ...remote,
+            ]) {
+              if (
+                seen.has(anime.id)
+              ) {
+                continue;
+              }
+
+              seen.add(anime.id);
+              merged.push(anime);
+            }
+
+            /*
+             * Coloca primeiro os títulos que realmente
+             * começam com o texto digitado.
+             */
+            const ranked =
+              merged.sort(
+                (a, b) => {
+                  const aTitle =
+                    `${a.titles.romaji} ${a.titles.english} ${a.titles.native}`
+                      .normalize("NFD")
+                      .replace(
+                        /[\u0300-\u036f]/g,
+                        "",
+                      )
+                      .toLowerCase();
+
+                  const bTitle =
+                    `${b.titles.romaji} ${b.titles.english} ${b.titles.native}`
+                      .normalize("NFD")
+                      .replace(
+                        /[\u0300-\u036f]/g,
+                        "",
+                      )
+                      .toLowerCase();
+
+                  const aStarts =
+                    aTitle.startsWith(
+                      normalized,
+                    );
+
+                  const bStarts =
+                    bTitle.startsWith(
+                      normalized,
+                    );
+
+                  if (
+                    aStarts &&
+                    !bStarts
+                  ) {
+                    return -1;
+                  }
+
+                  if (
+                    !aStarts &&
+                    bStarts
+                  ) {
+                    return 1;
+                  }
+
+                  const aContains =
+                    aTitle.includes(
+                      normalized,
+                    );
+
+                  const bContains =
+                    bTitle.includes(
+                      normalized,
+                    );
+
+                  if (
+                    aContains &&
+                    !bContains
+                  ) {
+                    return -1;
+                  }
+
+                  if (
+                    !aContains &&
+                    bContains
+                  ) {
+                    return 1;
+                  }
+
+                  return 0;
+                },
               );
 
-            setSearchResults([
-              ...localHits,
-              ...remote.filter(
-                (anime) =>
-                  !seen.has(
-                    anime.id,
-                  ),
-              ),
-            ]);
+            setSearchResults(
+              ranked,
+            );
           } catch {
             if (!cancelled) {
               setSearchResults([]);
@@ -262,6 +432,7 @@ export function Shell() {
 
     return () => {
       cancelled = true;
+
       window.clearTimeout(
         timer,
       );
