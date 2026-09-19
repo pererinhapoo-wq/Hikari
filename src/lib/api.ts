@@ -1197,19 +1197,243 @@ export const fetchHomeCatalog =
 const searchSchema =
   z.object({
     q: z.string().optional(),
+
     genre:
       z.string().optional(),
+
     year:
       z.string().optional(),
+
     format:
       z.string().optional(),
+
     status:
       z.string().optional(),
+
     sort:
       z.string().optional(),
+
     page:
       z.number().optional(),
   });
+
+function normalizeSearchText(
+  value: string,
+): string {
+  return value
+    .normalize("NFD")
+    .replace(
+      /[\u0300-\u036f]/g,
+      "",
+    )
+    .toLowerCase()
+    .replace(
+      /[^\p{L}\p{N}]+/gu,
+      " ",
+    )
+    .replace(
+      /\s+/g,
+      " ",
+    )
+    .trim();
+}
+
+function searchScore(
+  anime: SlimAnime,
+  query: string,
+): number {
+  const q =
+    normalizeSearchText(
+      query,
+    );
+
+  if (!q) {
+    return 0;
+  }
+
+  const titles = [
+    anime.titles.romaji,
+    anime.titles.english,
+    anime.titles.native,
+  ]
+    .filter(Boolean)
+    .map(
+      normalizeSearchText,
+    );
+
+  const compactQuery =
+    q.replace(/\s/g, "");
+
+  let score = 0;
+
+  for (
+    const title of titles
+  ) {
+    const compactTitle =
+      title.replace(
+        /\s/g,
+        "",
+      );
+
+    if (title === q) {
+      score = Math.max(
+        score,
+        1000,
+      );
+      continue;
+    }
+
+    if (
+      title.startsWith(q)
+    ) {
+      score = Math.max(
+        score,
+        900,
+      );
+    }
+
+    if (
+      compactTitle.startsWith(
+        compactQuery,
+      )
+    ) {
+      score = Math.max(
+        score,
+        850,
+      );
+    }
+
+    if (
+      title.includes(q)
+    ) {
+      score = Math.max(
+        score,
+        750,
+      );
+    }
+
+    const queryWords =
+      q.split(" ");
+
+    const titleWords =
+      title.split(" ");
+
+    const allWordsMatch =
+      queryWords.every(
+        (queryWord) =>
+          titleWords.some(
+            (titleWord) =>
+              titleWord.startsWith(
+                queryWord,
+              ),
+          ),
+      );
+
+    if (allWordsMatch) {
+      score = Math.max(
+        score,
+        800,
+      );
+    }
+
+    if (
+      compactTitle.includes(
+        compactQuery,
+      )
+    ) {
+      score = Math.max(
+        score,
+        700,
+      );
+    }
+  }
+
+  if (score === 0) {
+    const firstWord =
+      q.split(" ")[0];
+
+    if (
+      firstWord &&
+      titles.some(
+        (title) =>
+          title.includes(
+            firstWord,
+          ),
+      )
+    ) {
+      score = 100;
+    }
+  }
+
+  return score;
+}
+
+function rankSearchResults(
+  items: SlimAnime[],
+  query?: string,
+): SlimAnime[] {
+  if (!query?.trim()) {
+    return items;
+  }
+
+  return [...items]
+    .map(
+      (anime, index) => ({
+        anime,
+
+        score:
+          searchScore(
+            anime,
+            query,
+          ),
+
+        index,
+      }),
+    )
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.index - b.index,
+    )
+    .map(
+      (item) =>
+        item.anime,
+    );
+}
+
+function mergeSearchItems(
+  first: SlimAnime[],
+  second: SlimAnime[],
+): SlimAnime[] {
+  const seen =
+    new Set<string>();
+
+  const result: SlimAnime[] =
+    [];
+
+  for (
+    const anime of [
+      ...first,
+      ...second,
+    ]
+  ) {
+    const key =
+      anime.anilistId
+        ? `ani-${anime.anilistId}`
+        : anime.malId
+          ? `mal-${anime.malId}`
+          : anime.id;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(anime);
+  }
+
+  return result;
+}
 
 async function searchAni(
   params: SearchParams,
@@ -1304,19 +1528,22 @@ async function searchAni(
     );
 
   return {
-    items: (
-      data.Page.media ??
-      []
-    )
-      .filter(
-        (anime) =>
-          !isAdultAnime(
-            anime,
-          ),
+    items: rankSearchResults(
+      (
+        data.Page.media ??
+        []
       )
-      .map(
-        mapAniSlim,
-      ),
+        .filter(
+          (anime) =>
+            !isAdultAnime(
+              anime,
+            ),
+        )
+        .map(
+          mapAniSlim,
+        ),
+      params.q,
+    ),
 
     page,
 
@@ -1380,10 +1607,13 @@ async function searchJikan(
     );
 
   return {
-    items: (
-      json.data ?? []
-    ).map(
-      mapJikanSlim,
+    items: rankSearchResults(
+      (
+        json.data ?? []
+      ).map(
+        mapJikanSlim,
+      ),
+      params.q,
     ),
 
     page,
@@ -1396,6 +1626,75 @@ async function searchJikan(
 
     source: "jikan",
   };
+}
+
+async function searchRelaxed(
+  params: SearchParams,
+): Promise<SlimAnime[]> {
+  const q =
+    params.q?.trim() ?? "";
+
+  const words =
+    q.split(/\s+/)
+      .filter(Boolean);
+
+  if (
+    words.length <= 1
+  ) {
+    return [];
+  }
+
+  const relaxedQuery =
+    words[0];
+
+  if (
+    normalizeSearchText(
+      relaxedQuery,
+    ) ===
+    normalizeSearchText(q)
+  ) {
+    return [];
+  }
+
+  const relaxedParams: SearchParams =
+    {
+      ...params,
+
+      q: relaxedQuery,
+
+      page: 1,
+    };
+
+  const results =
+    await Promise.allSettled([
+      searchAni(
+        relaxedParams,
+      ),
+
+      searchJikan(
+        relaxedParams,
+      ),
+    ]);
+
+  const ani =
+    results[0].status ===
+    "fulfilled"
+      ? results[0].value.items
+      : [];
+
+  const jikan =
+    results[1].status ===
+    "fulfilled"
+      ? results[1].value.items
+      : [];
+
+  return rankSearchResults(
+    mergeSearchItems(
+      ani,
+      jikan,
+    ),
+    q,
+  );
 }
 
 export const searchCatalog =
@@ -1421,48 +1720,124 @@ export const searchCatalog =
           return cached;
         }
 
-        try {
+        const q =
+          data.q?.trim() ?? "";
+
+        /*
+         * Quando existe texto de busca,
+         * consulta AniList e Jikan juntos.
+         *
+         * Assim não dependemos de apenas
+         * uma API para encontrar o anime.
+         */
+        if (q) {
+          const results =
+            await Promise.allSettled([
+              searchAni(data),
+              searchJikan(data),
+            ]);
+
           const aniResult =
-            await searchAni(
-              data,
+            results[0].status ===
+            "fulfilled"
+              ? results[0].value
+              : null;
+
+          const jikanResult =
+            results[1].status ===
+            "fulfilled"
+              ? results[1].value
+              : null;
+
+          let items =
+            rankSearchResults(
+              mergeSearchItems(
+                aniResult?.items ??
+                  [],
+                jikanResult?.items ??
+                  [],
+              ),
+              q,
             );
 
           /*
-           * Se o AniList responder normalmente,
-           * mas não encontrar nenhum resultado,
-           * tenta o Jikan.
+           * Busca relaxada.
            *
-           * Isso ajuda em buscas parciais como:
-           * "naru"  -> Naruto
-           * "one p" -> One Piece
+           * Exemplo:
+           * "one p"
+           *
+           * Se a busca exata não
+           * encontrar o anime, também
+           * pesquisamos "one" e depois
+           * usamos a busca completa
+           * para ordenar os resultados.
            */
           if (
-            data.q?.trim() &&
-            aniResult.items.length === 0
+            items.length === 0
           ) {
             try {
-              const jikanResult =
-                await searchJikan(
+              const relaxed =
+                await searchRelaxed(
                   data,
                 );
 
-              if (
-                jikanResult.items.length > 0
-              ) {
-                return toCache(
-                  key,
-                  jikanResult,
+              items =
+                rankSearchResults(
+                  mergeSearchItems(
+                    items,
+                    relaxed,
+                  ),
+                  q,
                 );
-              }
             } catch {
-              // Mantém o resultado
-              // vazio do AniList.
+              // Continua com os resultados atuais.
             }
           }
 
+          const result: SearchResult =
+            {
+              items:
+                items.slice(
+                  0,
+                  24,
+                ),
+
+              page:
+                data.page ??
+                1,
+
+              hasNext:
+                Boolean(
+                  aniResult?.hasNext ||
+                    jikanResult?.hasNext,
+                ),
+
+              source:
+                aniResult &&
+                jikanResult
+                  ? "anilist"
+                  : aniResult
+                    ? "anilist"
+                    : "jikan",
+            };
+
           return toCache(
             key,
-            aniResult,
+            result,
+          );
+        }
+
+        /*
+         * Sem texto de busca:
+         * mantém o comportamento
+         * normal do AniList.
+         */
+        try {
+          return toCache(
+            key,
+            await searchAni(
+              data,
+            ),
           );
         } catch {
           return toCache(
