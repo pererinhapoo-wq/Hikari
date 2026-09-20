@@ -80,21 +80,32 @@ export const Route = createRootRoute({
           dangerouslySetInnerHTML={{
             __html: `
               (function () {
-                try {
-                  var theme =
-                    localStorage.getItem("hikari-theme");
+                function applyTheme() {
+                  try {
+                    var theme =
+                      localStorage.getItem("hikari-theme");
 
-                  if (theme === "Claro") {
-                    document.documentElement.setAttribute(
-                      "data-theme",
-                      "light"
-                    );
-                  } else {
-                    document.documentElement.removeAttribute(
-                      "data-theme"
-                    );
+                    if (theme === "Claro") {
+                      document.documentElement.setAttribute(
+                        "data-theme",
+                        "light"
+                      );
+                    } else {
+                      document.documentElement.removeAttribute(
+                        "data-theme"
+                      );
+                    }
+                  } catch (e) {}
+                }
+
+                applyTheme();
+
+                window.addEventListener(
+                  "pageshow",
+                  function () {
+                    applyTheme();
                   }
-                } catch (e) {}
+                );
               })();
             `,
           }}
