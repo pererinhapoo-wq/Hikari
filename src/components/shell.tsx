@@ -877,7 +877,9 @@ export function Shell() {
 
               <div className="max-h-[70vh] overflow-y-auto">
 
-                {notifications.map(
+                {notifications
+                  .slice(0, 7)
+                  .map(
                   (
                     notification,
                   ) => {
@@ -1357,4 +1359,4 @@ export function Shell() {
 
     </div>
   );
-  }
+}
