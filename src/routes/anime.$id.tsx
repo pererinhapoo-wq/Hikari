@@ -75,10 +75,10 @@ function AnimePage() {
 
   useEffect(() => {
     setBannerLoaded(false);
-  }, [anime?.id, anime?.banner]);
+  }, [id]);
 
   useEffect(() => {
-    if (!anime) {
+    if (!anime || anime.id !== id) {
       return;
     }
 
@@ -98,19 +98,20 @@ function AnimePage() {
     return () => {
       preloadImages.length = 0;
     };
-  }, [anime]);
+  }, [anime, id]);
 
-  if (!anime) {
+  /*
+   * Durante a troca de anime, o loader pode manter os dados
+   * anteriores por um instante.
+   *
+   * Nunca usamos esses dados para renderizar a página nova.
+   */
+  if (!anime || anime.id !== id) {
     return (
-      <div className="py-24 text-center">
-        <p className="font-display text-2xl">Anime não encontrado</p>
-
-        <Link
-          to="/"
-          className="mt-3 inline-block text-sm text-muted underline"
-        >
-          Voltar ao início
-        </Link>
+      <div className="space-y-4 pt-4">
+        <div className="-mx-4 h-48 animate-pulse bg-elevated sm:-mx-6 sm:h-64" />
+        <div className="h-8 w-2/3 animate-pulse rounded bg-elevated" />
+        <div className="h-24 animate-pulse rounded bg-elevated" />
       </div>
     );
   }
