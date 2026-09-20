@@ -246,7 +246,7 @@ function NotificationsPage() {
                 const content = (
                   <div
                     className={cn(
-                      "border-b border-border px-4 py-5 last:border-b-0 sm:px-5",
+                      "border-b border-border px-4 py-4 last:border-b-0 sm:px-5",
                       !notification.read &&
                         "border-l-4 border-l-blue-500 bg-blue-500/10",
                     )}
@@ -259,11 +259,11 @@ function NotificationsPage() {
                             notification.actorImage
                           }
                           alt=""
-                          className="size-11 shrink-0 rounded-full object-cover"
+                          className="size-10 shrink-0 rounded-full object-cover"
                         />
                       ) : (
-                        <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
-                          <UserCircle className="size-6" />
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
+                          <UserCircle className="size-5" />
                         </div>
                       )}
 
@@ -305,7 +305,7 @@ function NotificationsPage() {
                                           avatar.id
                                         }
                                         className={cn(
-                                          "relative size-7 overflow-hidden rounded-full border-2 border-bg bg-elevated",
+                                          "relative size-6 overflow-hidden rounded-full border-2 border-bg bg-elevated",
                                           index >
                                             0 &&
                                             "-ml-2",
@@ -325,7 +325,7 @@ function NotificationsPage() {
                                             className="size-full object-cover"
                                           />
                                         ) : (
-                                          <div className="flex size-full items-center justify-center text-[10px] font-semibold text-muted">
+                                          <div className="flex size-full items-center justify-center text-[9px] font-semibold text-muted">
                                             {(
                                               avatar.name ??
                                               "U"
@@ -355,7 +355,7 @@ function NotificationsPage() {
 
                         {(notification.animeCover ||
                           notification.animeTitle) && (
-                          <div className="mt-3 flex items-center gap-3">
+                          <div className="mt-2 flex items-center gap-3">
 
                             {notification.animeCover ? (
                               <img
@@ -363,7 +363,7 @@ function NotificationsPage() {
                                   notification.animeCover
                                 }
                                 alt=""
-                                className="h-20 w-14 shrink-0 rounded-md object-cover"
+                                className="h-16 w-12 shrink-0 rounded-md object-cover"
                               />
                             ) : null}
 
@@ -480,4 +480,4 @@ function NotificationsPage() {
 
     </div>
   );
-      }
+              }
