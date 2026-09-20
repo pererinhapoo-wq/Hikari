@@ -132,7 +132,8 @@ function AnimePage() {
               src={anime.banner || anime.cover}
               alt=""
               loading="eager"
-              decoding="async"
+              fetchPriority="high"
+              decoding="sync"
               className="size-full object-cover"
             />
           )}
@@ -479,4 +480,4 @@ function EpisodeGrid({
       )}
     </>
   );
-                                      }
+        }
