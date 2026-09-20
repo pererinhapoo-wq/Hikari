@@ -1,6 +1,5 @@
 import {
   createFileRoute,
-  Link,
 } from "@tanstack/react-router";
 
 import {
@@ -25,43 +24,43 @@ const items = [
     title: "Conta",
     description: "Gerencie informações da sua conta.",
     icon: User,
-    to: "/settings-account",
+    href: "https://grokhikari.vercel.app/settings-account",
   },
   {
     title: "Privacidade",
     description: "Controle sua privacidade no Hikari.",
     icon: Eye,
-    to: "/settings-privacy",
+    href: "https://grokhikari.vercel.app/settings-privacy",
   },
   {
     title: "Notificações",
     description: "Escolha quais notificações receber.",
     icon: Bell,
-    to: "/settings-notifications",
+    href: "https://grokhikari.vercel.app/settings-notifications",
   },
   {
     title: "Player",
     description: "Configure suas preferências de reprodução.",
     icon: Play,
-    to: "/settings-player",
+    href: "https://grokhikari.vercel.app/settings-player",
   },
   {
     title: "Aparência",
     description: "Personalize a aparência do Hikari.",
     icon: Palette,
-    to: "/settings-appearance",
+    href: "https://grokhikari.vercel.app/settings-appearance",
   },
   {
     title: "Segurança",
     description: "Gerencie os dispositivos e sessões da sua conta.",
     icon: Shield,
-    to: "/settings-security",
+    href: "https://grokhikari.vercel.app/settings-security",
   },
   {
     title: "Sobre",
     description: "Informações sobre o Hikari.",
     icon: Info,
-    to: "/settings-about",
+    href: "https://grokhikari.vercel.app/settings-about",
   },
 ];
 
@@ -87,9 +86,9 @@ function Settings() {
           const Icon = item.icon;
 
           return (
-            <Link
+            <a
               key={item.title}
-              to={item.to}
+              href={item.href}
               className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-elevated"
             >
               <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
@@ -107,7 +106,7 @@ function Settings() {
               </div>
 
               <ChevronRight className="size-5 shrink-0 text-muted" />
-            </Link>
+            </a>
           );
         })}
 
@@ -115,4 +114,4 @@ function Settings() {
 
     </div>
   );
-}
+                   }
