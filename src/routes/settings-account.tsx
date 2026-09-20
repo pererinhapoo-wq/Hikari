@@ -29,11 +29,12 @@ function getSavedEmail() {
     return "";
   }
 
-  return (
+  const savedEmail =
     window.localStorage.getItem(
       "hikari-account-email",
-    ) ?? ""
-  );
+    );
+
+  return savedEmail ?? "";
 }
 
 function SettingsAccount() {
@@ -41,13 +42,11 @@ function SettingsAccount() {
     useCurrentUserState();
 
   const [
-    accountEmail,
-    setAccountEmail,
+    email,
+    setEmail,
   ] = useState<string>(
     getSavedEmail(),
   );
-
-  const email = accountEmail;
 
   const [
     emailOpen,
@@ -104,9 +103,7 @@ function SettingsAccount() {
       return;
     }
 
-    setAccountEmail(currentEmail);
-
-    setNewEmail(currentEmail);
+    setEmail(currentEmail);
 
     window.localStorage.setItem(
       "hikari-account-email",
@@ -186,8 +183,8 @@ function SettingsAccount() {
 
         setEmailOpen(false);
 
+        setEmail(value);
         setNewEmail(value);
-        setAccountEmail(value);
 
         window.localStorage.setItem(
           "hikari-account-email",
@@ -362,8 +359,7 @@ function SettingsAccount() {
             </p>
 
             <p className="mt-1 truncate text-sm text-muted">
-              {email ||
-                "E-mail não disponível"}
+              {email}
             </p>
           </div>
 
@@ -633,4 +629,4 @@ function SettingsAccount() {
       )}
     </div>
   );
-}
+    }
