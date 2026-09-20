@@ -50,7 +50,7 @@ function saveThemeCookie(theme: string) {
 
 function SettingsAppearance() {
   const [theme, setTheme] =
-    useState("Escuro");
+    useState(getSavedTheme);
 
   const [fontSize, setFontSize] =
     useState("Médio");
@@ -58,25 +58,7 @@ function SettingsAppearance() {
   const [animations, setAnimations] =
     useState(true);
 
-  const [hydrated, setHydrated] =
-    useState(false);
-
   useEffect(() => {
-    const savedTheme =
-      getSavedTheme();
-
-    setTheme(savedTheme);
-
-    saveThemeCookie(savedTheme);
-
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) {
-      return;
-    }
-
     if (theme === "Claro") {
       document.documentElement.setAttribute(
         "data-theme",
@@ -101,7 +83,7 @@ function SettingsAppearance() {
 
       saveThemeCookie("Escuro");
     }
-  }, [theme, hydrated]);
+  }, [theme]);
 
   return (
     <div className="min-h-screen pb-20 pt-5">
@@ -159,10 +141,9 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {hydrated &&
-              theme === "Escuro" && (
-                <Check className="size-5 shrink-0 text-fg" />
-              )}
+            {theme === "Escuro" && (
+              <Check className="size-5 shrink-0 text-fg" />
+            )}
           </button>
 
           <button
@@ -186,10 +167,9 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {hydrated &&
-              theme === "Claro" && (
-                <Check className="size-5 shrink-0 text-fg" />
-              )}
+            {theme === "Claro" && (
+              <Check className="size-5 shrink-0 text-fg" />
+            )}
           </button>
 
         </div>
@@ -293,4 +273,4 @@ function SettingsAppearance() {
 
     </div>
   );
-            }
+}
