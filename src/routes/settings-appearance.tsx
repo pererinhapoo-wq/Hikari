@@ -23,37 +23,35 @@ export const Route = createFileRoute(
   component: SettingsAppearance,
 });
 
+function getSavedTheme() {
+  if (typeof window === "undefined") {
+    return "Escuro";
+  }
+
+  const savedTheme =
+    window.localStorage.getItem(
+      "hikari-theme",
+    );
+
+  if (
+    savedTheme === "Claro" ||
+    savedTheme === "Escuro"
+  ) {
+    return savedTheme;
+  }
+
+  return "Escuro";
+}
+
 function SettingsAppearance() {
   const [theme, setTheme] =
-    useState("Escuro");
+    useState(getSavedTheme);
 
   const [fontSize, setFontSize] =
     useState("Médio");
 
   const [animations, setAnimations] =
     useState(true);
-
-  /* =========================================================
-     CARREGA O TEMA SALVO
-  ========================================================== */
-
-  useEffect(() => {
-    const savedTheme =
-      window.localStorage.getItem(
-        "hikari-theme",
-      );
-
-    if (
-      savedTheme === "Claro" ||
-      savedTheme === "Escuro"
-    ) {
-      setTheme(savedTheme);
-    }
-  }, []);
-
-  /* =========================================================
-     APLICA O TEMA NO SITE
-  ========================================================== */
 
   useEffect(() => {
     if (theme === "Claro") {
@@ -81,7 +79,6 @@ function SettingsAppearance() {
   return (
     <div className="min-h-screen pb-20 pt-5">
 
-      {/* CABEÇALHO */}
       <div className="mb-6">
         <Link
           to="/settings"
@@ -107,7 +104,6 @@ function SettingsAppearance() {
         </div>
       </div>
 
-      {/* TEMA */}
       <section className="mb-7">
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
           Tema
@@ -115,7 +111,6 @@ function SettingsAppearance() {
 
         <div className="overflow-hidden rounded-xl border border-border bg-bg">
 
-          {/* ESCURO */}
           <button
             type="button"
             onClick={() =>
@@ -142,7 +137,6 @@ function SettingsAppearance() {
             )}
           </button>
 
-          {/* CLARO */}
           <button
             type="button"
             onClick={() =>
@@ -172,7 +166,6 @@ function SettingsAppearance() {
         </div>
       </section>
 
-      {/* FONTE */}
       <section className="mb-7">
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
           Texto
@@ -219,7 +212,6 @@ function SettingsAppearance() {
         </div>
       </section>
 
-      {/* ANIMAÇÕES */}
       <section>
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
           Efeitos
@@ -272,4 +264,4 @@ function SettingsAppearance() {
 
     </div>
   );
-}
+              }
