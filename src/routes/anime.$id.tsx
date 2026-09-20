@@ -39,11 +39,9 @@ export const Route = createFileRoute("/anime/$id")({
     return { remote };
   },
 
-  pendingMs: 0,
-
   pendingComponent: () => (
     <div className="space-y-4 pt-4">
-      <div className="-mx-4 h-48 animate-pulse bg-elevated sm:-mx-6 sm:h-64" />
+      <div className="-mx-4 h-56 animate-pulse bg-elevated sm:-mx-6 sm:h-72" />
       <div className="h-8 w-2/3 animate-pulse rounded bg-elevated" />
       <div className="h-24 animate-pulse rounded bg-elevated" />
     </div>
@@ -71,47 +69,48 @@ function AnimePage() {
 
   const anime = mergeDetail(remote, id, locals);
 
-  const [bannerLoaded, setBannerLoaded] = useState(false);
+  const [loadedBanner, setLoadedBanner] = useState<{
+    id: string;
+    src: string;
+  } | null>(null);
 
   useEffect(() => {
-    setBannerLoaded(false);
-  }, [id]);
+    setLoadedBanner(null);
 
-  useEffect(() => {
-    if (!anime || anime.id !== id) {
+    if (!anime?.banner) {
       return;
     }
 
-    const preloadImages: HTMLImageElement[] = [];
+    const bannerId = anime.id;
+    const bannerSrc = anime.banner;
 
-    for (const recommendation of anime.recommendations) {
-      if (!recommendation.banner) {
-        continue;
-      }
+    const image = new Image();
 
-      const image = new Image();
-      image.fetchPriority = "high";
-      image.src = recommendation.banner;
-      preloadImages.push(image);
-    }
+    image.onload = () => {
+      setLoadedBanner({
+        id: bannerId,
+        src: bannerSrc,
+      });
+    };
+
+    image.src = bannerSrc;
 
     return () => {
-      preloadImages.length = 0;
+      image.onload = null;
     };
-  }, [anime, id]);
+  }, [id, anime?.id, anime?.banner]);
 
-  /*
-   * Durante a troca de anime, o loader pode manter os dados
-   * anteriores por um instante.
-   *
-   * Nunca usamos esses dados para renderizar a página nova.
-   */
-  if (!anime || anime.id !== id) {
+  if (!anime) {
     return (
-      <div className="space-y-4 pt-4">
-        <div className="-mx-4 h-48 animate-pulse bg-elevated sm:-mx-6 sm:h-64" />
-        <div className="h-8 w-2/3 animate-pulse rounded bg-elevated" />
-        <div className="h-24 animate-pulse rounded bg-elevated" />
+      <div className="py-24 text-center">
+        <p className="font-display text-2xl">Anime não encontrado</p>
+
+        <Link
+          to="/"
+          className="mt-3 inline-block text-sm text-muted underline"
+        >
+          Voltar ao início
+        </Link>
       </div>
     );
   }
@@ -148,31 +147,26 @@ function AnimePage() {
     }
   };
 
+  const bannerIsReady =
+    loadedBanner?.id === anime.id &&
+    loadedBanner.id === id;
+
   return (
     <article className="pb-12">
       {/* HERO */}
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[9rem] bg-cover bg-center sm:h-[18rem]"
-          style={{
-            backgroundImage: anime.cover
-              ? `url("${anime.cover}")`
-              : undefined,
-          }}
+          className="relative h-[18rem] sm:h-[26rem]"
         >
-          {(anime.banner || anime.cover) && (
+          {bannerIsReady && (
             <img
-              key={`${anime.id}-${anime.banner || anime.cover}`}
-              src={anime.banner || anime.cover}
+              key={`${loadedBanner.id}-${loadedBanner.src}`}
+              src={loadedBanner.src}
               alt=""
               loading="eager"
-              fetchPriority="high"
               decoding="async"
-              onLoad={() => setBannerLoaded(true)}
-              className={`size-full object-cover transition-opacity duration-200 ${
-                bannerLoaded ? "opacity-100" : "opacity-0"
-              }`}
+              className="size-full object-cover"
             />
           )}
 
@@ -180,7 +174,7 @@ function AnimePage() {
           <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
         </div>
 
-        <div className="relative z-10 -mt-12 px-4 sm:-mt-24 sm:px-6">
+        <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
           <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row">
             {/* CAPA */}
             <div className="mx-auto w-32 shrink-0 overflow-hidden rounded-xl bg-elevated shadow-2xl ring-1 ring-white/10 sm:mx-0 sm:w-44">
@@ -518,4 +512,4 @@ function EpisodeGrid({
       )}
     </>
   );
-}
+        }
