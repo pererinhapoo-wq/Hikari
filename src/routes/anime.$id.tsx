@@ -166,7 +166,7 @@ function AnimePage() {
               alt=""
               loading="eager"
               decoding="async"
-              className="size-full object-scale-down object-center"
+              className="size-full object-cover"
             />
           )}
 
@@ -512,4 +512,4 @@ function EpisodeGrid({
       )}
     </>
   );
-            }
+      }
