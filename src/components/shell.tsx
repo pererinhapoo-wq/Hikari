@@ -234,11 +234,6 @@ export function Shell() {
       setSearchLoading(true);
 
       try {
-        /*
-         * Faz somente uma consulta por pesquisa.
-         * Isso evita várias requisições simultâneas
-         * enquanto o usuário está digitando.
-         */
         const result = await searchCatalog({
           data: {
             q,
@@ -248,9 +243,6 @@ export function Shell() {
 
         if (cancelled) return;
 
-        /*
-         * Resultados locais do Hikari.
-         */
         const normalized = q
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
@@ -269,9 +261,6 @@ export function Shell() {
           return title.includes(normalized);
         });
 
-        /*
-         * Junta resultados locais e remotos.
-         */
         const remote = overlayList(
           result.items ?? [],
           localAnimes,
@@ -290,9 +279,6 @@ export function Shell() {
           merged.push(anime);
         }
 
-        /*
-         * Prioriza títulos que começam com o texto digitado.
-         */
         const ranked = merged.sort((a, b) => {
           const aTitle =
             `${a.titles.romaji} ${a.titles.english} ${a.titles.native}`
@@ -457,11 +443,42 @@ export function Shell() {
           data.notifications ?? [],
         );
 
-        setUnreadCount(
+        const currentUnreadCount =
           Number(
             data.unreadCount ?? 0,
-          ),
+          );
+
+        setUnreadCount(
+          currentUnreadCount,
         );
+
+        if (
+          currentUnreadCount > 0
+        ) {
+          const markAsReadResponse =
+            await fetch(
+              "/api/notifications",
+              {
+                method: "PATCH",
+              },
+            );
+
+          if (
+            markAsReadResponse.ok
+          ) {
+            setUnreadCount(0);
+
+            setNotifications(
+              (current) =>
+                current.map(
+                  (notification) => ({
+                    ...notification,
+                    read: true,
+                  }),
+                ),
+            );
+          }
+        }
       } catch {
         // Mantém os dados atuais.
       } finally {
@@ -1276,4 +1293,4 @@ export function Shell() {
 
     </div>
   );
-      }
+  }
