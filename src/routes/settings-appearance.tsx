@@ -50,7 +50,7 @@ function saveThemeCookie(theme: string) {
 
 function SettingsAppearance() {
   const [theme, setTheme] =
-    useState(getSavedTheme);
+    useState<string | null>(null);
 
   const [fontSize, setFontSize] =
     useState("Médio");
@@ -59,6 +59,14 @@ function SettingsAppearance() {
     useState(true);
 
   useEffect(() => {
+    setTheme(getSavedTheme());
+  }, []);
+
+  useEffect(() => {
+    if (theme === null) {
+      return;
+    }
+
     if (theme === "Claro") {
       document.documentElement.setAttribute(
         "data-theme",
@@ -273,4 +281,4 @@ function SettingsAppearance() {
 
     </div>
   );
-}
+          }
