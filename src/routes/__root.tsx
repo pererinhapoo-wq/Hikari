@@ -81,12 +81,17 @@ export const Route = createRootRoute({
             __html: `
               (function () {
                 try {
-                  if (
-                    localStorage.getItem("hikari-theme") === "Claro"
-                  ) {
+                  var theme =
+                    localStorage.getItem("hikari-theme");
+
+                  if (theme === "Claro") {
                     document.documentElement.setAttribute(
                       "data-theme",
                       "light"
+                    );
+                  } else {
+                    document.documentElement.removeAttribute(
+                      "data-theme"
                     );
                   }
                 } catch (e) {}
