@@ -392,7 +392,7 @@ export function Shell() {
         }
       };
 
-    loadNotifications();
+    void loadNotifications();
 
     const interval =
       window.setInterval(
@@ -408,6 +408,73 @@ export function Shell() {
       );
     };
   }, [user?.id]);
+
+  const markNotificationAsRead =
+    async (
+      id: string,
+    ) => {
+      const target =
+        notifications.find(
+          (notification) =>
+            notification.id === id,
+        );
+
+      if (!target || target.read) {
+        return;
+      }
+
+      setNotifications(
+        (current) =>
+          current.map(
+            (notification) =>
+              notification.id === id
+                ? {
+                    ...notification,
+                    read: true,
+                  }
+                : notification,
+          ),
+      );
+
+      setUnreadCount(
+        (current) =>
+          Math.max(0, current - 1),
+      );
+
+      try {
+        const response =
+          await fetch(
+            "/api/notifications",
+            {
+              method: "PATCH",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                id,
+              }),
+            },
+          );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data =
+          (await response.json()) as {
+            unreadCount?: number;
+          };
+
+        setUnreadCount(
+          Number(
+            data.unreadCount ?? 0,
+          ),
+        );
+      } catch {
+        // Mantém a alteração visual.
+      }
+    };
 
   const openNotifications =
     async () => {
@@ -443,42 +510,11 @@ export function Shell() {
           data.notifications ?? [],
         );
 
-        const currentUnreadCount =
+        setUnreadCount(
           Number(
             data.unreadCount ?? 0,
-          );
-
-        setUnreadCount(
-          currentUnreadCount,
+          ),
         );
-
-        if (
-          currentUnreadCount > 0
-        ) {
-          const markAsReadResponse =
-            await fetch(
-              "/api/notifications",
-              {
-                method: "PATCH",
-              },
-            );
-
-          if (
-            markAsReadResponse.ok
-          ) {
-            setUnreadCount(0);
-
-            setNotifications(
-              (current) =>
-                current.map(
-                  (notification) => ({
-                    ...notification,
-                    read: true,
-                  }),
-                ),
-            );
-          }
-        }
       } catch {
         // Mantém os dados atuais.
       } finally {
@@ -557,7 +593,7 @@ export function Shell() {
                     false,
                   );
                 } else {
-                  openNotifications();
+                  void openNotifications();
                 }
               }}
               className="relative hidden size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:flex"
@@ -605,7 +641,7 @@ export function Shell() {
                     false,
                   );
                 } else {
-                  openNotifications();
+                  void openNotifications();
                 }
               }}
               className="relative flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
@@ -891,9 +927,9 @@ export function Shell() {
                       (
                         <div
                           className={cn(
-                            "border-b border-border px-4 py-4 last:border-b-0",
+                            "border-b border-border px-4 py-4 last:border-b-0 transition-colors",
                             !notification.read &&
-                              "bg-elevated/50",
+                              "border-l-4 border-l-blue-500 bg-blue-500/10",
                           )}
                         >
                           <div className="flex gap-3">
@@ -1060,7 +1096,7 @@ export function Shell() {
                             </div>
 
                             {!notification.read && (
-                              <span className="mt-1 size-2 shrink-0 rounded-full bg-red-500" />
+                              <span className="mt-1 size-2 shrink-0 rounded-full bg-blue-500" />
                             )}
 
                           </div>
@@ -1087,11 +1123,15 @@ export function Shell() {
                               notification.commentId ??
                               undefined,
                           }}
-                          onClick={() =>
+                          onClick={() => {
+                            void markNotificationAsRead(
+                              notification.id,
+                            );
+
                             setNotificationsOpen(
                               false,
-                            )
-                          }
+                            );
+                          }}
                           className="block transition-colors hover:bg-elevated/70"
                         >
                           {
@@ -1102,15 +1142,22 @@ export function Shell() {
                     }
 
                     return (
-                      <div
+                      <button
                         key={
                           notification.id
                         }
+                        type="button"
+                        onClick={() => {
+                          void markNotificationAsRead(
+                            notification.id,
+                          );
+                        }}
+                        className="block w-full text-left transition-colors hover:bg-elevated/70"
                       >
                         {
                           notificationContent
                         }
-                      </div>
+                      </button>
                     );
                   },
                 )}
