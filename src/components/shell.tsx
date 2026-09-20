@@ -895,7 +895,7 @@ export function Shell() {
               </div>
             ) : (
 
-              <div className="max-h-[70vh] overflow-y-auto">
+              <div className="max-h-[55vh] overflow-y-auto">
 
                 {notifications
                   .slice(0, 7)
