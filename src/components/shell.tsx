@@ -1117,6 +1117,23 @@ export function Shell() {
 
               </div>
             )}
+
+            {/* VER TODAS AS NOTIFICAÇÕES */}
+            {!notificationsLoading &&
+              notifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNotificationsOpen(
+                      false,
+                    )
+                  }
+                  className="block w-full border-t border-border px-4 py-4 text-center text-sm font-medium text-fg transition-colors hover:bg-elevated"
+                >
+                  Ver todas as notificações
+                </button>
+              )}
+
           </div>
         </>
       )}
