@@ -14,6 +14,7 @@ import {
 
 import {
   useEffect,
+  useLayoutEffect,
   useState,
 } from "react";
 
@@ -58,7 +59,7 @@ function SettingsAppearance() {
   const [animations, setAnimations] =
     useState(true);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const savedTheme = getSavedTheme();
 
     setTheme(savedTheme);
@@ -294,4 +295,4 @@ function SettingsAppearance() {
 
     </div>
   );
-}
+            }
