@@ -153,7 +153,7 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[12rem] bg-cover bg-center sm:h-[22rem]"
+          className="relative h-[9rem] bg-cover bg-center sm:h-[18rem]"
           style={{
             backgroundImage: anime.cover
               ? `url("${anime.cover}")`
@@ -179,7 +179,7 @@ function AnimePage() {
           <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
         </div>
 
-        <div className="relative z-10 -mt-16 px-4 sm:-mt-28 sm:px-6">
+        <div className="relative z-10 -mt-12 px-4 sm:-mt-24 sm:px-6">
           <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row">
             {/* CAPA */}
             <div className="mx-auto w-32 shrink-0 overflow-hidden rounded-xl bg-elevated shadow-2xl ring-1 ring-white/10 sm:mx-0 sm:w-44">
@@ -517,4 +517,4 @@ function EpisodeGrid({
       )}
     </>
   );
-      }
+}
