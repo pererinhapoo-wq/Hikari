@@ -62,7 +62,9 @@ function SettingsAccount() {
   const [
     newEmail,
     setNewEmail,
-  ] = useState("");
+  ] = useState(
+    getSavedEmail(),
+  );
 
   const [
     currentPassword,
@@ -96,13 +98,15 @@ function SettingsAccount() {
 
   useEffect(() => {
     const currentEmail =
-      user?.primaryEmail ?? "";
+      user?.primaryEmail;
 
     if (!currentEmail) {
       return;
     }
 
     setAccountEmail(currentEmail);
+
+    setNewEmail(currentEmail);
 
     window.localStorage.setItem(
       "hikari-account-email",
@@ -181,6 +185,7 @@ function SettingsAccount() {
         }
 
         setEmailOpen(false);
+
         setNewEmail(value);
         setAccountEmail(value);
 
@@ -436,7 +441,6 @@ function SettingsAccount() {
       {emailOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl">
-
             <div className="flex items-start gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated">
                 <Mail className="size-5" />
@@ -509,7 +513,6 @@ function SettingsAccount() {
                   : "Continuar"}
               </button>
             </div>
-
           </div>
         </div>
       )}
@@ -518,7 +521,6 @@ function SettingsAccount() {
       {passwordOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl">
-
             <div className="flex items-start gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated">
                 <Lock className="size-5" />
@@ -545,7 +547,6 @@ function SettingsAccount() {
             </div>
 
             <div className="mt-5 space-y-4">
-
               <div>
                 <label className="text-sm text-muted">
                   Senha atual
@@ -596,7 +597,6 @@ function SettingsAccount() {
                   className="mt-2 w-full rounded-xl border border-white/10 bg-bg px-4 py-3 text-sm text-fg outline-none focus:border-white/20"
                 />
               </div>
-
             </div>
 
             {error && (
@@ -628,10 +628,9 @@ function SettingsAccount() {
                   : "Alterar senha"}
               </button>
             </div>
-
           </div>
         </div>
       )}
     </div>
   );
-               }
+}
