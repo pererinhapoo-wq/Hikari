@@ -1,6 +1,6 @@
 import {
-  Link,
   createFileRoute,
+  Link,
 } from "@tanstack/react-router";
 
 import {
@@ -89,18 +89,6 @@ function NotificationsPage() {
           setNotifications(
             data.notifications ?? [],
           );
-
-          /*
-           * Ao abrir a página completa,
-           * marca todas as notificações
-           * como lidas.
-           */
-          void fetch(
-            "/api/notifications",
-            {
-              method: "PATCH",
-            },
-          );
         } catch {
           if (!cancelled) {
             setNotifications([]);
@@ -118,6 +106,41 @@ function NotificationsPage() {
       cancelled = true;
     };
   }, []);
+
+  async function markNotificationAsRead(
+    id: string,
+  ) {
+    setNotifications(
+      (current) =>
+        current.map(
+          (notification) =>
+            notification.id === id
+              ? {
+                  ...notification,
+                  read: true,
+                }
+              : notification,
+        ),
+    );
+
+    try {
+      await fetch(
+        "/api/notifications",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            id,
+          }),
+        },
+      );
+    } catch {
+      // A alteração visual permanece.
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-3xl py-6 sm:py-8">
@@ -225,7 +248,7 @@ function NotificationsPage() {
                     className={cn(
                       "border-b border-border px-4 py-5 last:border-b-0 sm:px-5",
                       !notification.read &&
-                        "bg-elevated/50",
+                        "border-l-4 border-l-blue-500 bg-blue-500/10",
                     )}
                   >
                     <div className="flex gap-3">
@@ -255,12 +278,11 @@ function NotificationsPage() {
                           </p>
 
                           {!notification.read && (
-                            <span className="mt-1 size-2 shrink-0 rounded-full bg-red-500" />
+                            <span className="mt-1 size-2 shrink-0 rounded-full bg-blue-500" />
                           )}
 
                         </div>
 
-                        {/* CURTIDAS */}
                         {isLikeNotification && (
                           <div className="mt-2 flex items-center gap-2">
 
@@ -331,7 +353,6 @@ function NotificationsPage() {
                           </div>
                         )}
 
-                        {/* ANIME */}
                         {(notification.animeCover ||
                           notification.animeTitle) && (
                           <div className="mt-3 flex items-center gap-3">
@@ -370,7 +391,6 @@ function NotificationsPage() {
                           </div>
                         )}
 
-                        {/* ALVO SEM IMAGEM */}
                         {hasEpisodeTarget &&
                           (isLikeNotification ||
                             isReplyNotification) &&
@@ -385,7 +405,6 @@ function NotificationsPage() {
                             </div>
                           )}
 
-                        {/* DATA */}
                         <p className="mt-2 text-[11px] text-muted">
                           {new Date(
                             notification.createdAt,
@@ -405,10 +424,6 @@ function NotificationsPage() {
                   </div>
                 );
 
-                /*
-                 * Notificações ligadas a episódio
-                 * ou comentário continuam clicáveis.
-                 */
                 if (
                   hasEpisodeTarget
                 ) {
@@ -429,6 +444,11 @@ function NotificationsPage() {
                           notification.commentId ??
                           undefined,
                       }}
+                      onClick={() => {
+                        void markNotificationAsRead(
+                          notification.id,
+                        );
+                      }}
                       className="block transition-colors hover:bg-elevated/70"
                     >
                       {content}
@@ -437,13 +457,20 @@ function NotificationsPage() {
                 }
 
                 return (
-                  <div
+                  <button
                     key={
                       notification.id
                     }
+                    type="button"
+                    onClick={() => {
+                      void markNotificationAsRead(
+                        notification.id,
+                      );
+                    }}
+                    className="block w-full text-left transition-colors hover:bg-elevated/70"
                   >
                     {content}
-                  </div>
+                  </button>
                 );
               },
             )}
