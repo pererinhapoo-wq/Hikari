@@ -1121,8 +1121,8 @@ export function Shell() {
             {/* VER TODAS AS NOTIFICAÇÕES */}
             {!notificationsLoading &&
               notifications.length > 0 && (
-                <button
-                  type="button"
+                <Link
+                  to="/notifications"
                   onClick={() =>
                     setNotificationsOpen(
                       false,
@@ -1131,7 +1131,7 @@ export function Shell() {
                   className="block w-full border-t border-border px-4 py-4 text-center text-sm font-medium text-fg transition-colors hover:bg-elevated"
                 >
                   Ver todas as notificações
-                </button>
+                </Link>
               )}
 
           </div>
