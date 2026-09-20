@@ -43,6 +43,11 @@ function getSavedTheme() {
   return "Escuro";
 }
 
+function saveThemeCookie(theme: string) {
+  document.cookie =
+    `hikari-theme=${theme}; path=/; max-age=31536000; samesite=lax`;
+}
+
 function SettingsAppearance() {
   const [theme, setTheme] =
     useState("Escuro");
@@ -57,9 +62,13 @@ function SettingsAppearance() {
     useState(false);
 
   useEffect(() => {
-    const savedTheme = getSavedTheme();
+    const savedTheme =
+      getSavedTheme();
 
     setTheme(savedTheme);
+
+    saveThemeCookie(savedTheme);
+
     setHydrated(true);
   }, []);
 
@@ -78,6 +87,8 @@ function SettingsAppearance() {
         "hikari-theme",
         "Claro",
       );
+
+      saveThemeCookie("Claro");
     } else {
       document.documentElement.removeAttribute(
         "data-theme",
@@ -87,6 +98,8 @@ function SettingsAppearance() {
         "hikari-theme",
         "Escuro",
       );
+
+      saveThemeCookie("Escuro");
     }
   }, [theme, hydrated]);
 
@@ -146,9 +159,10 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {hydrated && theme === "Escuro" && (
-              <Check className="size-5 shrink-0 text-fg" />
-            )}
+            {hydrated &&
+              theme === "Escuro" && (
+                <Check className="size-5 shrink-0 text-fg" />
+              )}
           </button>
 
           <button
@@ -172,9 +186,10 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {hydrated && theme === "Claro" && (
-              <Check className="size-5 shrink-0 text-fg" />
-            )}
+            {hydrated &&
+              theme === "Claro" && (
+                <Check className="size-5 shrink-0 text-fg" />
+              )}
           </button>
 
         </div>
