@@ -25,7 +25,6 @@ export const Route = createFileRoute(
 
 function SettingsPlayer() {
   const [autoplay, setAutoplay] = useState(true);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const [qualityOpen, setQualityOpen] = useState(false);
   const [quality, setQuality] = useState("Automática");
@@ -37,9 +36,10 @@ function SettingsPlayer() {
   const [fullscreen, setFullscreen] = useState("Perguntar");
 
   useEffect(() => {
-    const savedAutoplay = localStorage.getItem(
-      "hikari-player-autoplay",
-    );
+    const savedAutoplay =
+      localStorage.getItem(
+        "hikari-player-autoplay",
+      );
 
     if (savedAutoplay === "true") {
       setAutoplay(true);
@@ -48,8 +48,6 @@ function SettingsPlayer() {
     if (savedAutoplay === "false") {
       setAutoplay(false);
     }
-
-    setSettingsLoaded(true);
   }, []);
 
   function handleAutoplayToggle() {
@@ -63,10 +61,6 @@ function SettingsPlayer() {
 
       return next;
     });
-  }
-
-  if (!settingsLoaded) {
-    return null;
   }
 
   return (
@@ -244,7 +238,12 @@ function SettingsPlayer() {
             </h2>
 
             <div className="mt-4 space-y-2">
-              {["Automática", "1080p", "720p", "480p"].map((option) => (
+              {[
+                "Automática",
+                "1080p",
+                "720p",
+                "480p",
+              ].map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -257,7 +256,9 @@ function SettingsPlayer() {
                   {option}
 
                   {quality === option && (
-                    <span className="text-green-500">✓</span>
+                    <span className="text-green-500">
+                      ✓
+                    </span>
                   )}
                 </button>
               ))}
@@ -265,7 +266,9 @@ function SettingsPlayer() {
 
             <button
               type="button"
-              onClick={() => setQualityOpen(false)}
+              onClick={() =>
+                setQualityOpen(false)
+              }
               className="mt-4 w-full rounded-xl border border-border px-4 py-3 text-sm text-muted"
             >
               Cancelar
@@ -283,7 +286,10 @@ function SettingsPlayer() {
             </h2>
 
             <div className="mt-4 space-y-2">
-              {["Ativadas", "Desativadas"].map((option) => (
+              {[
+                "Ativadas",
+                "Desativadas",
+              ].map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -296,7 +302,9 @@ function SettingsPlayer() {
                   {option}
 
                   {captions === option && (
-                    <span className="text-green-500">✓</span>
+                    <span className="text-green-500">
+                      ✓
+                    </span>
                   )}
                 </button>
               ))}
@@ -304,7 +312,9 @@ function SettingsPlayer() {
 
             <button
               type="button"
-              onClick={() => setCaptionsOpen(false)}
+              onClick={() =>
+                setCaptionsOpen(false)
+              }
               className="mt-4 w-full rounded-xl border border-border px-4 py-3 text-sm text-muted"
             >
               Cancelar
@@ -322,7 +332,10 @@ function SettingsPlayer() {
             </h2>
 
             <div className="mt-4 space-y-2">
-              {["Perguntar", "Entrar automaticamente"].map((option) => (
+              {[
+                "Perguntar",
+                "Entrar automaticamente",
+              ].map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -335,7 +348,9 @@ function SettingsPlayer() {
                   {option}
 
                   {fullscreen === option && (
-                    <span className="text-green-500">✓</span>
+                    <span className="text-green-500">
+                      ✓
+                    </span>
                   )}
                 </button>
               ))}
@@ -343,7 +358,9 @@ function SettingsPlayer() {
 
             <button
               type="button"
-              onClick={() => setFullscreenOpen(false)}
+              onClick={() =>
+                setFullscreenOpen(false)
+              }
               className="mt-4 w-full rounded-xl border border-border px-4 py-3 text-sm text-muted"
             >
               Cancelar
@@ -354,4 +371,4 @@ function SettingsPlayer() {
 
     </div>
   );
-        }
+      }
