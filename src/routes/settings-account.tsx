@@ -342,8 +342,7 @@ function SettingsAccount() {
             </p>
 
             <p className="mt-1 truncate text-sm text-muted">
-              {email ||
-                "E-mail não disponível"}
+              {email}
             </p>
           </div>
 
@@ -620,4 +619,4 @@ function SettingsAccount() {
 
     </div>
   );
-          }
+      }
