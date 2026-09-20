@@ -74,13 +74,8 @@ function AnimePage() {
     src: string;
   } | null>(null);
 
-  const [bannerTabColor, setBannerTabColor] = useState<string | null>(
-    null,
-  );
-
   useEffect(() => {
     setLoadedBanner(null);
-    setBannerTabColor(null);
 
     if (!anime?.banner) {
       return;
@@ -90,108 +85,12 @@ function AnimePage() {
     const bannerSrc = anime.banner;
 
     const image = new Image();
-    image.crossOrigin = "anonymous";
 
     image.onload = () => {
       setLoadedBanner({
         id: bannerId,
         src: bannerSrc,
       });
-
-      try {
-        /*
-         * Pegamos somente uma pequena região do banner:
-         * uma faixa central na parte superior da imagem.
-         *
-         * Isso serve apenas para escolher a cor da aba.
-         * A imagem do banner não é alterada.
-         */
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-
-        if (!context || !image.naturalWidth || !image.naturalHeight) {
-          return;
-        }
-
-        const sampleWidth = Math.max(
-          1,
-          Math.floor(image.naturalWidth * 0.2),
-        );
-
-        const sampleHeight = Math.max(
-          1,
-          Math.floor(image.naturalHeight * 0.12),
-        );
-
-        const sampleX = Math.floor(
-          (image.naturalWidth - sampleWidth) / 2,
-        );
-
-        const sampleY = Math.floor(image.naturalHeight * 0.08);
-
-        canvas.width = sampleWidth;
-        canvas.height = sampleHeight;
-
-        context.drawImage(
-          image,
-          sampleX,
-          sampleY,
-          sampleWidth,
-          sampleHeight,
-          0,
-          0,
-          sampleWidth,
-          sampleHeight,
-        );
-
-        const pixels = context.getImageData(
-          0,
-          0,
-          sampleWidth,
-          sampleHeight,
-        ).data;
-
-        let red = 0;
-        let green = 0;
-        let blue = 0;
-        let count = 0;
-
-        for (let i = 0; i < pixels.length; i += 4) {
-          const r = pixels[i];
-          const g = pixels[i + 1];
-          const b = pixels[i + 2];
-          const alpha = pixels[i + 3];
-
-          if (alpha < 180) {
-            continue;
-          }
-
-          red += r;
-          green += g;
-          blue += b;
-          count += 1;
-        }
-
-        if (count === 0) {
-          return;
-        }
-
-        red = Math.round(red / count);
-        green = Math.round(green / count);
-        blue = Math.round(blue / count);
-
-        /*
-         * Escurecemos a cor para ela funcionar como fundo
-         * sem alterar a imagem original do banner.
-         */
-        red = Math.round(red * 0.45);
-        green = Math.round(green * 0.45);
-        blue = Math.round(blue * 0.45);
-
-        setBannerTabColor(`rgb(${red}, ${green}, ${blue})`);
-      } catch {
-        setBannerTabColor(null);
-      }
     };
 
     image.src = bannerSrc;
@@ -253,16 +152,7 @@ function AnimePage() {
     loadedBanner.id === id;
 
   return (
-    <article
-      className="pb-12"
-      style={
-        bannerTabColor
-          ? {
-              backgroundColor: bannerTabColor,
-            }
-          : undefined
-      }
-    >
+    <article className="pb-12">
       {/* HERO */}
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
@@ -517,7 +407,7 @@ function AnimePage() {
         </section>
       )}
 
-      {/* COMENTÁRIOS */}
+      {/* COMENTÁRIOS — ESPAÇO RESERVADO PARA A PRÓXIMA ETAPA */}
       <section className="mt-12 border-t border-white/5 pt-10">
         <div className="flex items-center justify-between">
           <div>
@@ -622,4 +512,4 @@ function EpisodeGrid({
       )}
     </>
   );
-                                   }
+  }
