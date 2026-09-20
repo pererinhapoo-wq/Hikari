@@ -138,8 +138,7 @@ export const Route = createFileRoute(
             animeCover:
               string | null;
 
-            commentLikes:
-              number;
+            commentLikes: number;
 
             likeAvatars: Array<{
               id: string;
@@ -515,20 +514,70 @@ export const Route = createFileRoute(
           });
         }
 
-        await sql`
-          update "notification"
-          set
-            "read" = true
-          where
-            "userId" =
-              ${session.user.id}
-            and
-            "read" = false
-        `;
+        let body: {
+          id?: string;
+        } = {};
+
+        try {
+          body =
+            (await request.json()) as {
+              id?: string;
+            };
+        } catch {
+          body = {};
+        }
+
+        if (
+          body.id
+        ) {
+          await sql`
+            update "notification"
+            set
+              "read" = true
+            where
+              "id" =
+                ${body.id}
+              and
+              "userId" =
+                ${session.user.id}
+          `;
+        } else {
+          await sql`
+            update "notification"
+            set
+              "read" = true
+            where
+              "userId" =
+                ${session.user.id}
+              and
+              "read" = false
+          `;
+        }
+
+        const unreadRows =
+          await sql<{
+            count: string;
+          }>`
+            select
+              count(*)::text as count
+
+            from "notification"
+
+            where
+              "userId" =
+                ${session.user.id}
+
+              and
+              "read" = false
+          `;
 
         return Response.json({
           success: true,
-          unreadCount: 0,
+          unreadCount:
+            Number(
+              unreadRows[0]
+                ?.count ?? "0",
+            ),
         });
       },
     },
