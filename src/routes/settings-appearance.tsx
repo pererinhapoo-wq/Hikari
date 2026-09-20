@@ -25,7 +25,7 @@ export const Route = createFileRoute(
 
 function getSavedTheme() {
   if (typeof window === "undefined") {
-    return "Escuro";
+    return null;
   }
 
   const savedTheme =
@@ -59,7 +59,20 @@ function SettingsAppearance() {
     useState(true);
 
   useEffect(() => {
-    setTheme(getSavedTheme());
+    const savedTheme = getSavedTheme();
+
+    setTheme(savedTheme);
+
+    if (savedTheme === "Claro") {
+      document.documentElement.setAttribute(
+        "data-theme",
+        "light",
+      );
+    } else {
+      document.documentElement.removeAttribute(
+        "data-theme",
+      );
+    }
   }, []);
 
   useEffect(() => {
@@ -281,4 +294,4 @@ function SettingsAppearance() {
 
     </div>
   );
-          }
+}
