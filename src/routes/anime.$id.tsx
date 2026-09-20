@@ -157,34 +157,21 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[14rem] sm:h-[22rem]"
+          className="relative aspect-video w-full overflow-hidden"
         >
           {bannerIsReady && (
-            <>
-              {/* FUNDO DO PRÓPRIO BANNER */}
-              <img
-                src={loadedBanner.src}
-                alt=""
-                aria-hidden="true"
-                className="absolute inset-0 size-full scale-110 object-cover opacity-60 blur-2xl"
-              />
-
-              {/* BANNER COMPLETO */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <img
-                  key={`${loadedBanner.id}-${loadedBanner.src}`}
-                  src={loadedBanner.src}
-                  alt=""
-                  loading="eager"
-                  decoding="async"
-                  className="max-h-full max-w-full object-contain"
-                />
-              </div>
-            </>
+            <img
+              key={`${loadedBanner.id}-${loadedBanner.src}`}
+              src={loadedBanner.src}
+              alt=""
+              loading="eager"
+              decoding="async"
+              className="size-full object-contain"
+            />
           )}
 
-          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/40 to-transparent" />
-          <div className="absolute inset-0 bg-linear-to-r from-bg/30 via-transparent to-bg/20" />
+          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/20 to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-r from-bg/20 via-transparent to-bg/10" />
         </div>
 
         <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
@@ -525,4 +512,4 @@ function EpisodeGrid({
       )}
     </>
   );
-            }
+         }
