@@ -1,6 +1,7 @@
 import {
   createRootRoute,
   HeadContent,
+  Outlet,
   Scripts,
 } from "@tanstack/react-router";
 
@@ -67,6 +68,12 @@ export const Route = createRootRoute({
       },
 
       {
+        rel: "preconnect",
+        href: "https://fonts.gstatic.com",
+        crossOrigin: "anonymous",
+      },
+
+      {
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600&family=Noto+Serif+JP:wght@500;600&display=swap",
       },
@@ -91,6 +98,10 @@ export const Route = createRootRoute({
                     document.documentElement.setAttribute(
                       "data-theme",
                       "light"
+                    );
+                  } else {
+                    document.documentElement.removeAttribute(
+                      "data-theme"
                     );
                   }
                 } catch (e) {}
