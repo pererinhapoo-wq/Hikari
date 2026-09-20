@@ -323,31 +323,33 @@ function SettingsAccount() {
           E-mail
         </h2>
 
-        <button
-          type="button"
-          onClick={() => {
-            setNewEmail(email);
-            setError("");
-            setEmailOpen(true);
-          }}
-          className="flex w-full items-center gap-4 rounded-xl border border-border bg-bg p-4 text-left transition-colors hover:bg-elevated"
-        >
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
-            <Mail className="size-5" />
-          </div>
+        {email && (
+          <button
+            type="button"
+            onClick={() => {
+              setNewEmail(email);
+              setError("");
+              setEmailOpen(true);
+            }}
+            className="flex w-full items-center gap-4 rounded-xl border border-border bg-bg p-4 text-left transition-colors hover:bg-elevated"
+          >
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
+              <Mail className="size-5" />
+            </div>
 
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-fg">
-              E-mail da conta
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-fg">
+                E-mail da conta
+              </p>
 
-            <p className="mt-1 truncate text-sm text-muted">
-              {email}
-            </p>
-          </div>
+              <p className="mt-1 truncate text-sm text-muted">
+                {email}
+              </p>
+            </div>
 
-          <ChevronRight className="size-5 shrink-0 text-muted" />
-        </button>
+            <ChevronRight className="size-5 shrink-0 text-muted" />
+          </button>
+        )}
       </section>
 
       {/* SENHA */}
@@ -619,4 +621,4 @@ function SettingsAccount() {
 
     </div>
   );
-      }
+}
