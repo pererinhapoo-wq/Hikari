@@ -157,7 +157,7 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[18rem] sm:h-[26rem]"
+          className="relative h-[14rem] sm:h-[22rem]"
         >
           {bannerIsReady && (
             <img
@@ -512,4 +512,4 @@ function EpisodeGrid({
       )}
     </>
   );
-        }
+  }
