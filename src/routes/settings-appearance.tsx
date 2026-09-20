@@ -45,7 +45,7 @@ function getSavedTheme() {
 
 function SettingsAppearance() {
   const [theme, setTheme] =
-    useState(getSavedTheme);
+    useState("Escuro");
 
   const [fontSize, setFontSize] =
     useState("Médio");
@@ -53,7 +53,21 @@ function SettingsAppearance() {
   const [animations, setAnimations] =
     useState(true);
 
+  const [hydrated, setHydrated] =
+    useState(false);
+
   useEffect(() => {
+    const savedTheme = getSavedTheme();
+
+    setTheme(savedTheme);
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+
     if (theme === "Claro") {
       document.documentElement.setAttribute(
         "data-theme",
@@ -74,7 +88,7 @@ function SettingsAppearance() {
         "Escuro",
       );
     }
-  }, [theme]);
+  }, [theme, hydrated]);
 
   return (
     <div className="min-h-screen pb-20 pt-5">
@@ -132,7 +146,7 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {theme === "Escuro" && (
+            {hydrated && theme === "Escuro" && (
               <Check className="size-5 shrink-0 text-fg" />
             )}
           </button>
@@ -158,7 +172,7 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {theme === "Claro" && (
+            {hydrated && theme === "Claro" && (
               <Check className="size-5 shrink-0 text-fg" />
             )}
           </button>
@@ -264,4 +278,4 @@ function SettingsAppearance() {
 
     </div>
   );
-              }
+            }
