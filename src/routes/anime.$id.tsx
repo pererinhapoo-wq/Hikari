@@ -77,6 +77,29 @@ function AnimePage() {
     setBannerLoaded(false);
   }, [anime?.id, anime?.banner]);
 
+  useEffect(() => {
+    if (!anime) {
+      return;
+    }
+
+    const preloadImages: HTMLImageElement[] = [];
+
+    for (const recommendation of anime.recommendations) {
+      if (!recommendation.banner) {
+        continue;
+      }
+
+      const image = new Image();
+      image.fetchPriority = "high";
+      image.src = recommendation.banner;
+      preloadImages.push(image);
+    }
+
+    return () => {
+      preloadImages.length = 0;
+    };
+  }, [anime]);
+
   if (!anime) {
     return (
       <div className="py-24 text-center">
@@ -494,4 +517,4 @@ function EpisodeGrid({
       )}
     </>
   );
-    }
+      }
