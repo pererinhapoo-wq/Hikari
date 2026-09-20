@@ -53,6 +53,9 @@ function SettingsAppearance() {
   const [theme, setTheme] =
     useState<string | null>(null);
 
+  const [themeReady, setThemeReady] =
+    useState(false);
+
   const [fontSize, setFontSize] =
     useState("Médio");
 
@@ -74,6 +77,8 @@ function SettingsAppearance() {
         "data-theme",
       );
     }
+
+    setThemeReady(true);
   }, []);
 
   useEffect(() => {
@@ -163,9 +168,10 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {theme === "Escuro" && (
-              <Check className="size-5 shrink-0 text-fg" />
-            )}
+            {themeReady &&
+              theme === "Escuro" && (
+                <Check className="size-5 shrink-0 text-fg" />
+              )}
           </button>
 
           <button
@@ -189,9 +195,10 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {theme === "Claro" && (
-              <Check className="size-5 shrink-0 text-fg" />
-            )}
+            {themeReady &&
+              theme === "Claro" && (
+                <Check className="size-5 shrink-0 text-fg" />
+              )}
           </button>
 
         </div>
@@ -295,4 +302,4 @@ function SettingsAppearance() {
 
     </div>
   );
-            }
+        }
