@@ -89,6 +89,18 @@ function NotificationsPage() {
           setNotifications(
             data.notifications ?? [],
           );
+
+          /*
+           * Ao abrir a página completa,
+           * marca todas as notificações
+           * como lidas.
+           */
+          void fetch(
+            "/api/notifications",
+            {
+              method: "PATCH",
+            },
+          );
         } catch {
           if (!cancelled) {
             setNotifications([]);
@@ -248,6 +260,7 @@ function NotificationsPage() {
 
                         </div>
 
+                        {/* CURTIDAS */}
                         {isLikeNotification && (
                           <div className="mt-2 flex items-center gap-2">
 
@@ -318,6 +331,7 @@ function NotificationsPage() {
                           </div>
                         )}
 
+                        {/* ANIME */}
                         {(notification.animeCover ||
                           notification.animeTitle) && (
                           <div className="mt-3 flex items-center gap-3">
@@ -356,6 +370,7 @@ function NotificationsPage() {
                           </div>
                         )}
 
+                        {/* ALVO SEM IMAGEM */}
                         {hasEpisodeTarget &&
                           (isLikeNotification ||
                             isReplyNotification) &&
@@ -370,6 +385,7 @@ function NotificationsPage() {
                             </div>
                           )}
 
+                        {/* DATA */}
                         <p className="mt-2 text-[11px] text-muted">
                           {new Date(
                             notification.createdAt,
@@ -389,6 +405,10 @@ function NotificationsPage() {
                   </div>
                 );
 
+                /*
+                 * Notificações ligadas a episódio
+                 * ou comentário continuam clicáveis.
+                 */
                 if (
                   hasEpisodeTarget
                 ) {
@@ -433,4 +453,4 @@ function NotificationsPage() {
 
     </div>
   );
-}
+      }
