@@ -157,21 +157,32 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[14rem] sm:h-[22rem] overflow-hidden bg-bg"
+          className="relative h-[14rem] overflow-hidden bg-bg sm:h-[22rem]"
         >
           {bannerIsReady && (
-            <img
-              key={`${loadedBanner.id}-${loadedBanner.src}`}
-              src={loadedBanner.src}
-              alt=""
-              loading="eager"
-              decoding="async"
-              className="absolute inset-0 size-full object-cover"
-            />
+            <>
+              {/* FUNDO DO PRÓPRIO BANNER — EVITA BORDAS PRETAS */}
+              <img
+                src={loadedBanner.src}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 size-full scale-105 object-cover blur-sm"
+              />
+
+              {/* BANNER PRINCIPAL COM ZOOM REDUZIDO */}
+              <img
+                key={`${loadedBanner.id}-${loadedBanner.src}`}
+                src={loadedBanner.src}
+                alt=""
+                loading="eager"
+                decoding="async"
+                className="absolute inset-0 size-full object-contain"
+              />
+            </>
           )}
 
-          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/40 to-transparent" />
-          <div className="absolute inset-0 bg-linear-to-r from-bg/30 via-transparent to-bg/20" />
+          <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-bg via-bg/30 to-transparent" />
+          <div className="pointer-events-none absolute inset-0 bg-linear-to-r from-bg/20 via-transparent to-bg/10" />
         </div>
 
         <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
@@ -512,4 +523,4 @@ function EpisodeGrid({
       )}
     </>
   );
-        }
+}
