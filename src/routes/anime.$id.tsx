@@ -161,28 +161,28 @@ function AnimePage() {
         >
           {bannerIsReady && (
             <>
-              {/* FUNDO DO PRÓPRIO BANNER, SEM BORDA PRETA */}
+              {/* FUNDO DO PRÓPRIO BANNER */}
               <img
                 src={loadedBanner.src}
                 alt=""
                 aria-hidden="true"
-                className="absolute inset-0 size-full scale-110 object-cover blur-xl"
+                className="absolute inset-0 size-full scale-110 object-cover blur-2xl"
               />
 
-              {/* IMAGEM PRINCIPAL COM MENOS ZOOM */}
+              {/* IMAGEM PRINCIPAL — SEM CORTAR */}
               <img
                 key={`${loadedBanner.id}-${loadedBanner.src}`}
                 src={loadedBanner.src}
                 alt=""
                 loading="eager"
                 decoding="async"
-                className="relative z-10 size-full object-contain object-center"
+                className="absolute inset-0 size-full object-contain object-center"
               />
             </>
           )}
 
-          <div className="absolute inset-0 z-20 bg-linear-to-t from-bg via-bg/40 to-bg/5" />
-          <div className="absolute inset-0 z-20 bg-linear-to-r from-bg/60 via-transparent to-bg/20" />
+          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
+          <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
         </div>
 
         <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
