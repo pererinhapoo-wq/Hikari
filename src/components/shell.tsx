@@ -844,9 +844,9 @@ export function Shell() {
             aria-label="Fechar notificações"
           />
 
-          <div className="fixed right-4 top-16 z-50 w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:right-6 md:top-20">
+          <div className="fixed right-4 top-16 z-50 flex max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-sm flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:right-6 md:top-20">
 
-            <div className="flex items-center justify-between border-b border-border px-4 py-4">
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-4">
               <div>
                 <h2 className="font-semibold">
                   Notificações
@@ -872,7 +872,7 @@ export function Shell() {
             </div>
 
             {notificationsLoading ? (
-              <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
+              <div className="flex min-h-32 flex-1 items-center justify-center px-5 py-8 text-center">
                 <p className="text-sm text-muted">
                   Carregando...
                 </p>
@@ -880,7 +880,7 @@ export function Shell() {
             ) : notifications.length ===
               0 ? (
 
-              <div className="flex min-h-32 items-center justify-center px-5 py-8 text-center">
+              <div className="flex min-h-32 flex-1 items-center justify-center px-5 py-8 text-center">
                 <div>
                   <Bell className="mx-auto mb-3 size-7 text-muted" />
 
@@ -895,7 +895,7 @@ export function Shell() {
               </div>
             ) : (
 
-              <div className="max-h-[55vh] overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto">
 
                 {notifications
                   .slice(0, 7)
@@ -1197,7 +1197,7 @@ export function Shell() {
                       false,
                     )
                   }
-                  className="block w-full border-t border-border px-4 py-4 text-center text-sm font-medium text-fg transition-colors hover:bg-elevated"
+                  className="block shrink-0 border-t border-border px-4 py-4 text-center text-sm font-medium text-fg transition-colors hover:bg-elevated"
                 >
                   Ver todas as notificações
                 </Link>
