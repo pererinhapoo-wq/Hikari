@@ -25,7 +25,7 @@ export const Route = createFileRoute(
 
 function getSavedTheme() {
   if (typeof window === "undefined") {
-    return null;
+    return "Escuro";
   }
 
   const savedTheme =
@@ -50,10 +50,7 @@ function saveThemeCookie(theme: string) {
 
 function SettingsAppearance() {
   const [theme, setTheme] =
-    useState<string | null>(null);
-
-  const [hydrated, setHydrated] =
-    useState(false);
+    useState<string>("Escuro");
 
   const [fontSize, setFontSize] =
     useState("Médio");
@@ -65,7 +62,6 @@ function SettingsAppearance() {
     const savedTheme = getSavedTheme();
 
     setTheme(savedTheme);
-    setHydrated(true);
 
     if (savedTheme === "Claro") {
       document.documentElement.setAttribute(
@@ -80,10 +76,6 @@ function SettingsAppearance() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated || theme === null) {
-      return;
-    }
-
     if (theme === "Claro") {
       document.documentElement.setAttribute(
         "data-theme",
@@ -108,7 +100,7 @@ function SettingsAppearance() {
 
       saveThemeCookie("Escuro");
     }
-  }, [theme, hydrated]);
+  }, [theme]);
 
   return (
     <div className="min-h-screen pb-20 pt-5">
@@ -166,10 +158,9 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {hydrated &&
-              theme === "Escuro" && (
-                <Check className="size-5 shrink-0 text-fg" />
-              )}
+            {theme === "Escuro" && (
+              <Check className="size-5 shrink-0 text-fg" />
+            )}
           </button>
 
           <button
@@ -193,10 +184,9 @@ function SettingsAppearance() {
               </p>
             </div>
 
-            {hydrated &&
-              theme === "Claro" && (
-                <Check className="size-5 shrink-0 text-fg" />
-              )}
+            {theme === "Claro" && (
+              <Check className="size-5 shrink-0 text-fg" />
+            )}
           </button>
 
         </div>
@@ -300,4 +290,4 @@ function SettingsAppearance() {
 
     </div>
   );
-                }
+      }
