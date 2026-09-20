@@ -100,6 +100,136 @@ function AnimePage() {
     };
   }, [id, anime?.id, anime?.banner]);
 
+  /*
+   * COR DA ABA DO NAVEGADOR
+   *
+   * Pega somente uma pequena região do banner para calcular
+   * uma cor predominante. Não altera a imagem do banner.
+   */
+  useEffect(() => {
+    const defaultColor = "#09090b";
+
+    let meta = document.querySelector(
+      'meta[name="theme-color"]',
+    ) as HTMLMetaElement | null;
+
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+
+    meta.content = defaultColor;
+
+    if (!anime?.banner) {
+      return;
+    }
+
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d", {
+          willReadFrequently: true,
+        });
+
+        if (!context) {
+          return;
+        }
+
+        const width = image.naturalWidth;
+        const height = image.naturalHeight;
+
+        if (!width || !height) {
+          return;
+        }
+
+        canvas.width = 80;
+        canvas.height = 40;
+
+        /*
+         * Usa somente uma parte central/superior do banner,
+         * e não a imagem inteira.
+         */
+        const sourceX = width * 0.25;
+        const sourceY = height * 0.1;
+        const sourceWidth = width * 0.5;
+        const sourceHeight = height * 0.35;
+
+        context.drawImage(
+          image,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+
+        const pixels = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        ).data;
+
+        let red = 0;
+        let green = 0;
+        let blue = 0;
+        let count = 0;
+
+        for (let i = 0; i < pixels.length; i += 4) {
+          const r = pixels[i];
+          const g = pixels[i + 1];
+          const b = pixels[i + 2];
+          const alpha = pixels[i + 3];
+
+          if (alpha < 180) {
+            continue;
+          }
+
+          red += r;
+          green += g;
+          blue += b;
+          count++;
+        }
+
+        if (!count) {
+          return;
+        }
+
+        /*
+         * Deixa a cor um pouco mais escura para funcionar
+         * melhor na barra do navegador.
+         */
+        const factor = 0.72;
+
+        const finalRed = Math.round((red / count) * factor);
+        const finalGreen = Math.round((green / count) * factor);
+        const finalBlue = Math.round((blue / count) * factor);
+
+        meta.content = `rgb(${finalRed}, ${finalGreen}, ${finalBlue})`;
+      } catch {
+        meta.content = defaultColor;
+      }
+    };
+
+    image.onerror = () => {
+      meta.content = defaultColor;
+    };
+
+    image.src = anime.banner;
+
+    return () => {
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [anime?.id, anime?.banner]);
+
   if (!anime) {
     return (
       <div className="py-24 text-center">
@@ -407,7 +537,7 @@ function AnimePage() {
         </section>
       )}
 
-      {/* COMENTÁRIOS — ESPAÇO RESERVADO PARA A PRÓXIMA ETAPA */}
+      {/* COMENTÁRIOS */}
       <section className="mt-12 border-t border-white/5 pt-10">
         <div className="flex items-center justify-between">
           <div>
@@ -512,4 +642,4 @@ function EpisodeGrid({
       )}
     </>
   );
-  }
+             }
