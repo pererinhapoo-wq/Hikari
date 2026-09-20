@@ -6,7 +6,7 @@ import {
   Play,
   Share2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +71,12 @@ function AnimePage() {
 
   const anime = mergeDetail(remote, id, locals);
 
+  const [bannerLoaded, setBannerLoaded] = useState(false);
+
+  useEffect(() => {
+    setBannerLoaded(false);
+  }, [anime?.id, anime?.banner]);
+
   if (!anime) {
     return (
       <div className="py-24 text-center">
@@ -124,7 +130,12 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[12rem] sm:h-[22rem]"
+          className="relative h-[12rem] bg-cover bg-center sm:h-[22rem]"
+          style={{
+            backgroundImage: anime.cover
+              ? `url("${anime.cover}")`
+              : undefined,
+          }}
         >
           {(anime.banner || anime.cover) && (
             <img
@@ -133,8 +144,11 @@ function AnimePage() {
               alt=""
               loading="eager"
               fetchPriority="high"
-              decoding="sync"
-              className="size-full object-cover"
+              decoding="async"
+              onLoad={() => setBannerLoaded(true)}
+              className={`size-full object-cover transition-opacity duration-200 ${
+                bannerLoaded ? "opacity-100" : "opacity-0"
+              }`}
             />
           )}
 
@@ -480,4 +494,4 @@ function EpisodeGrid({
       )}
     </>
   );
-        }
+    }
