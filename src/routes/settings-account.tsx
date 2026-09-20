@@ -11,7 +11,10 @@ import {
   X,
 } from "lucide-react";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
@@ -25,8 +28,15 @@ function SettingsAccount() {
   const { user } =
     useCurrentUserState();
 
+  const [
+    accountEmail,
+    setAccountEmail,
+  ] = useState(
+    () => user?.primaryEmail ?? "",
+  );
+
   const email =
-    user?.primaryEmail ?? "";
+    accountEmail;
 
   const [
     emailOpen,
@@ -41,7 +51,9 @@ function SettingsAccount() {
   const [
     newEmail,
     setNewEmail,
-  ] = useState(email);
+  ] = useState(
+    () => user?.primaryEmail ?? "",
+  );
 
   const [
     currentPassword,
@@ -72,6 +84,20 @@ function SettingsAccount() {
     success,
     setSuccess,
   ] = useState("");
+
+  useEffect(() => {
+    const currentEmail =
+      user?.primaryEmail;
+
+    if (!currentEmail) {
+      return;
+    }
+
+    setAccountEmail(currentEmail);
+    setNewEmail((previous) =>
+      previous || currentEmail,
+    );
+  }, [user?.primaryEmail]);
 
   const closeModals = () => {
     if (saving) {
@@ -144,6 +170,7 @@ function SettingsAccount() {
         }
 
         setEmailOpen(false);
+        setAccountEmail(value);
         setNewEmail(value);
 
         setSuccess(
@@ -593,4 +620,4 @@ function SettingsAccount() {
 
     </div>
   );
-    }
+          }
