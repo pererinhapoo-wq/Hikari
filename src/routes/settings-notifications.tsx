@@ -37,11 +37,6 @@ function SettingsNotifications() {
     setFollowers,
   ] = useState(true);
 
-  const [
-    settingsLoaded,
-    setSettingsLoaded,
-  ] = useState(false);
-
   useEffect(() => {
     const savedLikes =
       localStorage.getItem(
@@ -81,8 +76,6 @@ function SettingsNotifications() {
     if (savedFollowers === "false") {
       setFollowers(false);
     }
-
-    setSettingsLoaded(true);
   }, []);
 
   function handleLikesToggle() {
@@ -122,10 +115,6 @@ function SettingsNotifications() {
 
       return next;
     });
-  }
-
-  if (!settingsLoaded) {
-    return null;
   }
 
   return (
@@ -287,4 +276,4 @@ function SettingsNotifications() {
 
     </div>
   );
-              }
+            }
