@@ -157,28 +157,17 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[14rem] overflow-hidden sm:h-[22rem]"
+          className="relative h-[14rem] sm:h-[22rem]"
         >
           {bannerIsReady && (
-            <>
-              {/* FUNDO DO PRÓPRIO BANNER */}
-              <img
-                src={loadedBanner.src}
-                alt=""
-                aria-hidden="true"
-                className="absolute inset-0 size-full scale-110 object-cover blur-2xl"
-              />
-
-              {/* IMAGEM PRINCIPAL — SEM CORTAR */}
-              <img
-                key={`${loadedBanner.id}-${loadedBanner.src}`}
-                src={loadedBanner.src}
-                alt=""
-                loading="eager"
-                decoding="async"
-                className="absolute inset-0 size-full object-contain object-center"
-              />
-            </>
+            <img
+              key={`${loadedBanner.id}-${loadedBanner.src}`}
+              src={loadedBanner.src}
+              alt=""
+              loading="eager"
+              decoding="async"
+              className="size-full object-cover"
+            />
           )}
 
           <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
@@ -523,4 +512,4 @@ function EpisodeGrid({
       )}
     </>
   );
-  }
+}
