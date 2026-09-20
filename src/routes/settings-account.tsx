@@ -11,10 +11,7 @@ import {
   X,
 } from "lucide-react";
 
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useState } from "react";
 
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
@@ -25,18 +22,11 @@ export const Route = createFileRoute(
 });
 
 function SettingsAccount() {
-  const { user } =
+  const { user, isPending } =
     useCurrentUserState();
 
-  const [
-    accountEmail,
-    setAccountEmail,
-  ] = useState(
-    () => user?.primaryEmail ?? "",
-  );
-
   const email =
-    accountEmail;
+    user?.primaryEmail ?? "";
 
   const [
     emailOpen,
@@ -51,9 +41,7 @@ function SettingsAccount() {
   const [
     newEmail,
     setNewEmail,
-  ] = useState(
-    () => user?.primaryEmail ?? "",
-  );
+  ] = useState(email);
 
   const [
     currentPassword,
@@ -84,20 +72,6 @@ function SettingsAccount() {
     success,
     setSuccess,
   ] = useState("");
-
-  useEffect(() => {
-    const currentEmail =
-      user?.primaryEmail;
-
-    if (!currentEmail) {
-      return;
-    }
-
-    setAccountEmail(currentEmail);
-    setNewEmail((previous) =>
-      previous || currentEmail,
-    );
-  }, [user?.primaryEmail]);
 
   const closeModals = () => {
     if (saving) {
@@ -170,7 +144,6 @@ function SettingsAccount() {
         }
 
         setEmailOpen(false);
-        setAccountEmail(value);
         setNewEmail(value);
 
         setSuccess(
@@ -281,6 +254,10 @@ function SettingsAccount() {
       }
     };
 
+  if (isPending) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen pb-20 pt-5">
 
@@ -323,33 +300,31 @@ function SettingsAccount() {
           E-mail
         </h2>
 
-        {email && (
-          <button
-            type="button"
-            onClick={() => {
-              setNewEmail(email);
-              setError("");
-              setEmailOpen(true);
-            }}
-            className="flex w-full items-center gap-4 rounded-xl border border-border bg-bg p-4 text-left transition-colors hover:bg-elevated"
-          >
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
-              <Mail className="size-5" />
-            </div>
+        <button
+          type="button"
+          onClick={() => {
+            setNewEmail(email);
+            setError("");
+            setEmailOpen(true);
+          }}
+          className="flex w-full items-center gap-4 rounded-xl border border-border bg-bg p-4 text-left transition-colors hover:bg-elevated"
+        >
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
+            <Mail className="size-5" />
+          </div>
 
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-fg">
-                E-mail da conta
-              </p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-fg">
+              E-mail da conta
+            </p>
 
-              <p className="mt-1 truncate text-sm text-muted">
-                {email}
-              </p>
-            </div>
+            <p className="mt-1 truncate text-sm text-muted">
+              {email}
+            </p>
+          </div>
 
-            <ChevronRight className="size-5 shrink-0 text-muted" />
-          </button>
-        )}
+          <ChevronRight className="size-5 shrink-0 text-muted" />
+        </button>
       </section>
 
       {/* SENHA */}
@@ -621,4 +596,4 @@ function SettingsAccount() {
 
     </div>
   );
-}
+    }
