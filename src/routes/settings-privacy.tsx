@@ -27,7 +27,7 @@ function SettingsPrivacy() {
   const [
     publicProfile,
     setPublicProfile,
-  ] = useState<boolean | null>(null);
+  ] = useState(true);
 
   const [
     followersOpen,
@@ -42,7 +42,7 @@ function SettingsPrivacy() {
   const [
     followers,
     setFollowers,
-  ] = useState<string | null>(null);
+  ] = useState("Todos");
 
   useEffect(() => {
     const savedPublicProfile =
@@ -55,25 +55,21 @@ function SettingsPrivacy() {
         "hikari-followers",
       );
 
-    setPublicProfile(
-      savedPublicProfile === "false"
-        ? false
-        : true,
-    );
+    if (
+      savedPublicProfile !== null
+    ) {
+      setPublicProfile(
+        savedPublicProfile !== "false",
+      );
+    }
 
-    setFollowers(
-      savedFollowers ||
-        "Todos",
-    );
+    if (savedFollowers) {
+      setFollowers(savedFollowers);
+    }
   }, []);
 
   function handlePublicProfileToggle() {
-    if (publicProfile === null) {
-      return;
-    }
-
-    const next =
-      !publicProfile;
+    const next = !publicProfile;
 
     setPublicProfile(next);
 
@@ -96,17 +92,9 @@ function SettingsPrivacy() {
     setFollowersOpen(false);
   }
 
-  if (
-    publicProfile === null ||
-    followers === null
-  ) {
-    return null;
-  }
-
   return (
     <div className="min-h-screen pb-20 pt-5">
 
-      {/* CABEÇALHO */}
       <div className="mb-6">
         <Link
           to="/settings"
@@ -132,14 +120,12 @@ function SettingsPrivacy() {
         </div>
       </div>
 
-      {/* VISIBILIDADE */}
       <section className="mb-7">
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
           Visibilidade
         </h2>
 
         <div className="overflow-hidden rounded-xl border border-border bg-bg">
-
           <button
             type="button"
             onClick={
@@ -177,18 +163,15 @@ function SettingsPrivacy() {
               />
             </div>
           </button>
-
         </div>
       </section>
 
-      {/* SEGUIDORES */}
       <section className="mb-7">
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
           Seguidores
         </h2>
 
         <div className="overflow-hidden rounded-xl border border-border bg-bg">
-
           <button
             type="button"
             onClick={() =>
@@ -212,18 +195,15 @@ function SettingsPrivacy() {
 
             <ChevronRight className="size-5 shrink-0 text-muted" />
           </button>
-
         </div>
       </section>
 
-      {/* BLOQUEADOS */}
       <section>
         <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
           Usuários bloqueados
         </h2>
 
         <div className="overflow-hidden rounded-xl border border-border bg-bg">
-
           <button
             type="button"
             onClick={() =>
@@ -247,11 +227,9 @@ function SettingsPrivacy() {
 
             <ChevronRight className="size-5 shrink-0 text-muted" />
           </button>
-
         </div>
       </section>
 
-      {/* MODAL — SEGUIDORES */}
       {followersOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl">
@@ -279,7 +257,6 @@ function SettingsPrivacy() {
             </div>
 
             <div className="mt-5 space-y-2">
-
               {[
                 "Todos",
                 "Somente pessoas que você aprovar",
@@ -306,14 +283,12 @@ function SettingsPrivacy() {
                   )}
                 </button>
               ))}
-
             </div>
 
           </div>
         </div>
       )}
 
-      {/* MODAL — BLOQUEADOS */}
       {blockedOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl">
@@ -341,7 +316,6 @@ function SettingsPrivacy() {
             </div>
 
             <div className="mt-5 rounded-xl border border-border bg-bg p-5 text-center">
-
               <Ban className="mx-auto size-8 text-muted" />
 
               <p className="mt-3 text-sm font-medium text-fg">
@@ -351,7 +325,6 @@ function SettingsPrivacy() {
               <p className="mt-1 text-xs leading-5 text-muted">
                 Os usuários que você bloquear aparecerão aqui.
               </p>
-
             </div>
 
           </div>
