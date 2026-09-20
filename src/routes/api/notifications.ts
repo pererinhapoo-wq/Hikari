@@ -455,6 +455,82 @@ export const Route = createFileRoute(
           },
         });
       },
+
+      PATCH: async ({
+        request,
+      }) => {
+        const session =
+          await auth.api.getSession({
+            headers:
+              request.headers,
+          });
+
+        if (!session?.user) {
+          return Response.json(
+            {
+              success: false,
+              unreadCount: 0,
+            },
+            {
+              status: 401,
+            },
+          );
+        }
+
+        const sql =
+          await getSql();
+
+        let notificationTableExists =
+          false;
+
+        try {
+          const tableRows =
+            await sql<{
+              exists: boolean;
+            }>`
+              select exists (
+                select 1
+                from information_schema.tables
+                where
+                  table_schema = 'public'
+                  and table_name = 'notification'
+              ) as exists
+            `;
+
+          notificationTableExists =
+            Boolean(
+              tableRows[0]?.exists,
+            );
+        } catch {
+          notificationTableExists =
+            false;
+        }
+
+        if (
+          !notificationTableExists
+        ) {
+          return Response.json({
+            success: true,
+            unreadCount: 0,
+          });
+        }
+
+        await sql`
+          update "notification"
+          set
+            "read" = true
+          where
+            "userId" =
+              ${session.user.id}
+            and
+            "read" = false
+        `;
+
+        return Response.json({
+          success: true,
+          unreadCount: 0,
+        });
+      },
     },
   },
 });
