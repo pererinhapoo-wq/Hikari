@@ -2,6 +2,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin } from "vite";
 import { defineConfig } from "vite";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import netlify from "@netlify/vite-plugin-tanstack-start";
 import viteReact from "@vitejs/plugin-react";
@@ -28,8 +29,8 @@ function hasGlobbedMigrations(root: string): boolean {
  * on import.
  *
  * Vite awaiting the hook puts this on time-to-first-render, so an app with no
- * migrations — no schema to apply — skips it entirely rather than paying for
- * a PGLite instance it never queries.
+ * migrations — no schema to apply — skips it entirely rather than paying for a
+ * PGLite instance it never queries.
  */
 function pgliteBootstrapPlugin(): Plugin {
   return {
@@ -67,9 +68,6 @@ function authPopupPlugin(): Plugin {
     name: "app-builder:auth-popup",
     apply: "serve",
     configureServer(server) {
-      // Register immediately (not in a returned post-hook) so we run BEFORE
-      // TanStack Start / the SPA HTML fallback. A model-authored
-      // `src/routes/auth/popup.tsx` React page must never win this path.
       server.middlewares.use(async (req, res, next) => {
         try {
           const rawUrl = req.url ?? "";
@@ -114,8 +112,6 @@ function authPopupPlugin(): Plugin {
             }
           }
 
-          // Ensure Host is the public preview host so Better Auth's dynamic
-          // baseURL / redirect_uri match the popup origin.
           if (!requestHeaders.has("host")) {
             requestHeaders.set("host", host);
           }
@@ -135,7 +131,6 @@ function authPopupPlugin(): Plugin {
 
           res.statusCode = response.status;
 
-          // Preserve multiple Set-Cookie headers (OAuth state + session).
           const setCookies =
             typeof response.headers.getSetCookie === "function"
               ? response.headers.getSetCookie()
@@ -166,11 +161,9 @@ function authPopupPlugin(): Plugin {
   };
 }
 
-// `0.0.0.0:8080` is the live-preview contract — don't change host/port.
-// The dev server starts once `src/router.tsx` and `src/routes/` exist — see
-// AGENTS.md § "First scaffold".
 export default defineConfig(({ command, isPreview }) => {
   const isNetlify = process.env.NETLIFY === "true";
+  const isCloudflare = process.env.CLOUDFLARE === "true";
 
   return {
     server: {
@@ -190,38 +183,24 @@ export default defineConfig(({ command, isPreview }) => {
     },
 
     plugins: [
+      ...(isCloudflare
+        ? [cloudflare({ viteEnvironment: { name: "ssr" } })]
+        : []),
       pgliteBootstrapPlugin(),
-
-      // Before tanstackStart so /auth/popup never falls through to the SPA.
       authPopupPlugin(),
-
-      // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
       appEnvPlugin(),
-
-      // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
       grokPwaPlugin(),
-
       tailwindcss(),
-
       tanstackStart(),
-
-      // Official Netlify integration for TanStack Start.
       netlify(),
-
-      // Keep Nitro/Vercel for Vercel deployments.
-      // Netlify uses the official Netlify TanStack Start plugin instead.
-      ...(!isNetlify && (command === "build" || isPreview)
+      ...(!isNetlify && !isCloudflare && (command === "build" || isPreview)
         ? [
             nitro({
               preset: "vercel",
-
-              // Auto-registers server/middleware/* (the PWA install page +
-              // manifest + head-tag middleware).
               serverDir: "./server",
             }),
           ]
         : []),
-
       viteReact(),
     ],
   };
