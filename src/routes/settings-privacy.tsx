@@ -23,11 +23,42 @@ export const Route = createFileRoute(
   component: SettingsPrivacy,
 });
 
+function getSavedPublicProfile() {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  const savedPublicProfile =
+    window.localStorage.getItem(
+      "hikari-public-profile",
+    );
+
+  if (savedPublicProfile === null) {
+    return true;
+  }
+
+  return savedPublicProfile !== "false";
+}
+
+function getSavedFollowers() {
+  if (typeof window === "undefined") {
+    return "Todos";
+  }
+
+  return (
+    window.localStorage.getItem(
+      "hikari-followers",
+    ) ?? "Todos"
+  );
+}
+
 function SettingsPrivacy() {
   const [
     publicProfile,
     setPublicProfile,
-  ] = useState(true);
+  ] = useState<boolean>(
+    getSavedPublicProfile,
+  );
 
   const [
     followersOpen,
@@ -42,26 +73,15 @@ function SettingsPrivacy() {
   const [
     followers,
     setFollowers,
-  ] = useState("Todos");
+  ] = useState(
+    getSavedFollowers,
+  );
 
   useEffect(() => {
-    const savedPublicProfile =
-      localStorage.getItem(
-        "hikari-public-profile",
-      );
-
     const savedFollowers =
       localStorage.getItem(
         "hikari-followers",
       );
-
-    if (
-      savedPublicProfile !== null
-    ) {
-      setPublicProfile(
-        savedPublicProfile !== "false",
-      );
-    }
 
     if (savedFollowers) {
       setFollowers(savedFollowers);
@@ -94,7 +114,6 @@ function SettingsPrivacy() {
 
   return (
     <div className="min-h-screen pb-20 pt-5">
-
       <div className="mb-6">
         <Link
           to="/settings"
@@ -233,7 +252,6 @@ function SettingsPrivacy() {
       {followersOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl">
-
             <div className="flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-full bg-elevated">
                 <Users className="size-5" />
@@ -284,7 +302,6 @@ function SettingsPrivacy() {
                 </button>
               ))}
             </div>
-
           </div>
         </div>
       )}
@@ -292,7 +309,6 @@ function SettingsPrivacy() {
       {blockedOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl">
-
             <div className="flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-full bg-elevated">
                 <Ban className="size-5" />
@@ -326,11 +342,9 @@ function SettingsPrivacy() {
                 Os usuários que você bloquear aparecerão aqui.
               </p>
             </div>
-
           </div>
         </div>
       )}
-
     </div>
   );
-          }
+}
