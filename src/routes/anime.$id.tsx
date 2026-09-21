@@ -576,7 +576,8 @@ function EpisodeGrid({
   animeId: string;
   cover: string;
 }) {
-  const [shown, setShown] = useState(24);
+  const [shown, setShown] = useState(10);
+
   const visible = episodes.slice(0, shown);
 
   return (
@@ -635,11 +636,11 @@ function EpisodeGrid({
           type="button"
           variant="outline"
           className="mt-4 w-full"
-          onClick={() => setShown((n) => n + 24)}
+          onClick={() => setShown((n) => n + 10)}
         >
           Mais episódios ({episodes.length - shown} restantes)
         </Button>
       )}
     </>
   );
-             }
+    }
