@@ -26,6 +26,8 @@ import { useHikariStore } from "@/lib/store";
 import { displayTitle } from "@/lib/types";
 import { youtubeIdFrom } from "@/lib/utils";
 
+const EMPTY_WATCHED_EPISODES: string[] = [];
+
 export const Route = createFileRoute("/anime/$id")({
   loader: async ({ params }) => {
     if (params.id.startsWith("local-")) {
@@ -74,7 +76,9 @@ function AnimePage() {
   );
 
   const watchedEpisodes = useHikariStore(
-    (s) => s.watchedEpisodes[id] ?? [],
+    (s) =>
+      s.watchedEpisodes[id] ??
+      EMPTY_WATCHED_EPISODES,
   );
 
   const anime = mergeDetail(remote, id, locals);
@@ -825,4 +829,4 @@ function EpisodeGrid({
       </ol>
     </div>
   );
-    }
+      }
