@@ -11,9 +11,16 @@ import {
   Image as ImageIcon,
   MessageCircle,
   MoreVertical,
+  Pause,
+  Play,
+  RotateCcw,
   Search,
   Send,
+  Settings,
+  SkipBack,
+  SkipForward,
   Trash2,
+  Maximize,
   X,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
@@ -22,6 +29,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type TouchEvent,
 } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -175,6 +183,121 @@ function WatchPage() {
     setPlayerIndex(0);
   }, [current?.id]);
 
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerRef = useRef<HTMLDivElement | null>(null);
+  const lastTapRef = useRef<{
+    time: number;
+    side: "left" | "right";
+  } | null>(null);
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
+  const [playbackRate, setPlaybackRate] = useState(1);
+
+  const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return "00:00";
+
+    const total = Math.floor(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    }
+
+    return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const seekBy = (seconds: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const nextTime = Math.min(
+      Math.max(video.currentTime + seconds, 0),
+      Number.isFinite(video.duration) ? video.duration : video.currentTime + seconds,
+    );
+
+    video.currentTime = nextTime;
+    setCurrentTime(nextTime);
+  };
+
+  const togglePlay = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      try {
+        await video.play();
+      } catch {
+        // O navegador pode bloquear autoplay/interação programática.
+      }
+    } else {
+      video.pause();
+    }
+  };
+
+  const handlePlayerTap = (event: TouchEvent<HTMLVideoElement>) => {
+    const now = Date.now();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const side =
+      event.changedTouches[0].clientX - rect.left < rect.width / 2
+        ? "left"
+        : "right";
+    const previous = lastTapRef.current;
+
+    if (
+      previous &&
+      previous.side === side &&
+      now - previous.time < 320
+    ) {
+      seekBy(side === "left" ? -10 : 10);
+      lastTapRef.current = null;
+      return;
+    }
+
+    lastTapRef.current = { time: now, side };
+  };
+
+  const handleFullscreen = async () => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await player.requestFullscreen();
+      }
+    } catch {
+      // Alguns navegadores móveis não permitem fullscreen em todos os contextos.
+    }
+  };
+
+  const restartEpisode = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.currentTime = 0;
+    setCurrentTime(0);
+    setSettingsOpen(false);
+
+    try {
+      await video.play();
+    } catch {
+      // O usuário pode tocar em play manualmente.
+    }
+  };
+
+  const changePlaybackRate = (rate: number) => {
+    const video = videoRef.current;
+    setPlaybackRate(rate);
+    if (video) video.playbackRate = rate;
+  };
+
   if (!anime) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-bg text-fg">
@@ -282,7 +405,10 @@ function WatchPage() {
         {/* PLAYER */}
         {/* ================================================== */}
 
-        <div className="aspect-video overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-border)]">
+        <div
+          ref={playerRef}
+          className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]"
+        >
 
           {yt ? (
             <iframe
@@ -293,12 +419,170 @@ function WatchPage() {
               allowFullScreen
             />
           ) : file ? (
-            <video
-              src={file}
-              controls
-              autoPlay
-              className="size-full bg-bg object-contain"
-            />
+            <>
+              <video
+                ref={videoRef}
+                src={file}
+                autoPlay={autoPlayEnabled}
+                playsInline
+                disablePictureInPicture
+                controlsList="nodownload noremoteplayback"
+                onTouchEnd={handlePlayerTap}
+                className="size-full bg-black object-contain"
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onLoadedMetadata={(event) => {
+                  setDuration(event.currentTarget.duration);
+                  event.currentTarget.playbackRate = playbackRate;
+                }}
+                onTimeUpdate={(event) =>
+                  setCurrentTime(event.currentTarget.currentTime)
+                }
+                onDurationChange={(event) =>
+                  setDuration(event.currentTarget.duration)
+                }
+              />
+
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/10" />
+
+              <div className="absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-5 sm:pb-4">
+                <input
+                  aria-label="Progresso do episódio"
+                  type="range"
+                  min={0}
+                  max={duration || 0}
+                  step={0.1}
+                  value={Math.min(currentTime, duration || 0)}
+                  onChange={(event) => {
+                    const nextTime = Number(event.target.value);
+                    if (videoRef.current) videoRef.current.currentTime = nextTime;
+                    setCurrentTime(nextTime);
+                  }}
+                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-[#b56cff]"
+                  style={{
+                    background: `linear-gradient(to right, #b56cff 0%, #b56cff ${
+                      duration > 0 ? (currentTime / duration) * 100 : 0
+                    }%, rgba(255,255,255,0.22) ${
+                      duration > 0 ? (currentTime / duration) * 100 : 0
+                    }%, rgba(255,255,255,0.22) 100%)`,
+                  }}
+                />
+
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[11px] font-medium tracking-wide text-white/90 backdrop-blur-md sm:text-xs">
+                    <span>{formatTime(currentTime)}</span>
+                    <span className="text-white/30">/</span>
+                    <span className="text-white/60">{formatTime(duration)}</span>
+                  </div>
+
+                  <div className="pointer-events-auto flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => seekBy(-10)}
+                      className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95"
+                      aria-label="Voltar 10 segundos"
+                    >
+                      <span className="relative flex items-center justify-center">
+                        <SkipBack className="size-4" />
+                        <span className="absolute text-[7px] font-bold">10</span>
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      className="flex size-11 items-center justify-center rounded-full border border-[#c98cff]/70 bg-[#a855f7]/90 text-white shadow-[0_0_24px_rgba(168,85,247,0.35)] transition hover:bg-[#b56cff] active:scale-95"
+                      aria-label={isPlaying ? "Pausar" : "Reproduzir"}
+                    >
+                      {isPlaying ? (
+                        <Pause className="size-5 fill-current" />
+                      ) : (
+                        <Play className="ml-0.5 size-5 fill-current" />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => seekBy(10)}
+                      className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95"
+                      aria-label="Avançar 10 segundos"
+                    >
+                      <span className="relative flex items-center justify-center">
+                        <SkipForward className="size-4" />
+                        <span className="absolute text-[7px] font-bold">10</span>
+                      </span>
+                    </button>
+
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setSettingsOpen((open) => !open)}
+                        className={`flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 ${
+                          settingsOpen ? "bg-white/15" : ""
+                        }`}
+                        aria-label="Configurações do player"
+                        aria-expanded={settingsOpen}
+                      >
+                        <Settings className="size-4" />
+                      </button>
+
+                      {settingsOpen && (
+                        <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
+                          <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                            Player
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setAutoPlayEnabled((value) => !value)}
+                            className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-white/85 hover:bg-white/5"
+                          >
+                            <span>Reprodução automática</span>
+                            <span className={`h-5 w-9 rounded-full p-0.5 ${autoPlayEnabled ? "bg-[#a855f7]" : "bg-white/15"}`}>
+                              <span className={`block size-4 rounded-full bg-white transition-transform ${autoPlayEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                            </span>
+                          </button>
+
+                          <div className="mt-1 rounded-xl px-3 py-2.5">
+                            <div className="mb-2 text-white/75">Velocidade</div>
+                            <div className="grid grid-cols-5 gap-1">
+                              {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                                <button
+                                  key={rate}
+                                  type="button"
+                                  onClick={() => changePlaybackRate(rate)}
+                                  className={`rounded-lg px-1 py-1.5 text-[11px] ${playbackRate === rate ? "bg-[#a855f7] text-white" : "bg-white/5 text-white/65 hover:bg-white/10"}`}
+                                >
+                                  {rate}x
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={restartEpisode}
+                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-white/85 hover:bg-white/5"
+                          >
+                            <RotateCcw className="size-4" />
+                            Reiniciar episódio
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleFullscreen}
+                      className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95"
+                      aria-label="Tela cheia"
+                    >
+                      <Maximize className="size-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
           ) : external ? (
             <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
 
@@ -4014,4 +4298,4 @@ function CommentCard({
 
     </article>
   );
-        }
+    }
