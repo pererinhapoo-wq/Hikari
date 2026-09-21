@@ -315,15 +315,8 @@ function WatchPage() {
     }
 
     tapTimeoutRef.current = setTimeout(() => {
-      setControlsVisible((visible) => {
-        if (visible) {
-          clearControlsHideTimer();
-          return false;
-        }
-
-        showControls();
-        return true;
-      });
+      togglePlay();
+      showControls();
       lastTapRef.current = null;
       tapTimeoutRef.current = null;
     }, 220);
@@ -523,7 +516,7 @@ function WatchPage() {
                   <button
                     type="button"
                     onClick={() => seekBy(-10)}
-                    className="flex h-8 min-w-12 items-center justify-center rounded-full border border-white/10 bg-black/55 px-2 text-[11px] font-semibold text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:h-9 sm:min-w-14 sm:text-xs"
+                    className="flex h-8 min-w-12 items-center justify-center rounded-full border-0 bg-transparent px-1 text-[11px] font-semibold text-white transition hover:bg-white/10 active:scale-95 sm:h-9 sm:min-w-14 sm:text-xs"
                     aria-label="Voltar 10 segundos"
                   >
                     -10s
@@ -545,7 +538,7 @@ function WatchPage() {
                   <button
                     type="button"
                     onClick={() => seekBy(10)}
-                    className="flex h-8 min-w-12 items-center justify-center rounded-full border border-white/10 bg-black/55 px-2 text-[11px] font-semibold text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:h-9 sm:min-w-14 sm:text-xs"
+                    className="flex h-8 min-w-12 items-center justify-center rounded-full border-0 bg-transparent px-1 text-[11px] font-semibold text-white transition hover:bg-white/10 active:scale-95 sm:h-9 sm:min-w-14 sm:text-xs"
                     aria-label="Avançar 10 segundos"
                   >
                     +10s
