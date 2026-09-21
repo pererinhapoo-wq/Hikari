@@ -20,7 +20,7 @@ import type {
   StreamingLink,
 } from "@/lib/types";
 
-const ANILIST = "https://graphql.anilist.co";
+const ANILIST = "https://grokhikari.vercel.app/api/anilist";
 const JIKAN = "https://api.jikan.moe/v4";
 
 const CARD_FIELDS = `
