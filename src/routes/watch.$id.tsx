@@ -303,7 +303,7 @@ function WatchPage() {
       }
 
       seekBy(side === "left" ? -10 : 10);
-      hideControls();
+      showControls();
       lastTapRef.current = null;
       return;
     }
@@ -315,7 +315,8 @@ function WatchPage() {
     }
 
     tapTimeoutRef.current = setTimeout(() => {
-      togglePlay();
+      // Um toque simples apenas mostra os controles.
+      // Pausar/reproduzir fica somente no botão central.
       showControls();
       lastTapRef.current = null;
       tapTimeoutRef.current = null;
@@ -4368,4 +4369,4 @@ function CommentCard({
 
     </article>
   );
-      }
+    }
