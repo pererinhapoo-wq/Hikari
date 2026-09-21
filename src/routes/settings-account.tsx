@@ -105,6 +105,10 @@ function SettingsAccount() {
 
     setEmail(currentEmail);
 
+    setNewEmail((currentValue) =>
+      currentValue || currentEmail,
+    );
+
     window.localStorage.setItem(
       "hikari-account-email",
       currentEmail,
@@ -343,7 +347,9 @@ function SettingsAccount() {
         <button
           type="button"
           onClick={() => {
-            setNewEmail(email);
+            setNewEmail(
+              email || user?.primaryEmail || "",
+            );
             setError("");
             setEmailOpen(true);
           }}
@@ -359,7 +365,7 @@ function SettingsAccount() {
             </p>
 
             <p className="mt-1 truncate text-sm text-muted">
-              {email || "Carregando..."}
+              {email}
             </p>
           </div>
 
