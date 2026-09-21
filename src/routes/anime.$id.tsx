@@ -576,14 +576,20 @@ function EpisodeGrid({
   animeId: string;
   cover: string;
 }) {
-  const [shown, setShown] = useState(10);
-
-  const visible = episodes.slice(0, shown);
-
   return (
-    <>
+    <div
+      className="
+        max-h-[28rem]
+        overflow-y-auto
+        overscroll-contain
+        rounded-xl
+        pr-1
+        touch-pan-y
+        sm:max-h-[34rem]
+      "
+    >
       <ol className="grid gap-3 sm:grid-cols-2">
-        {visible.map((ep) => (
+        {episodes.map((ep) => (
           <li key={ep.id}>
             <Link
               to="/watch/$id"
@@ -630,17 +636,6 @@ function EpisodeGrid({
           </li>
         ))}
       </ol>
-
-      {shown < episodes.length && (
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-4 w-full"
-          onClick={() => setShown((n) => n + 10)}
-        >
-          Mais episódios ({episodes.length - shown} restantes)
-        </Button>
-      )}
-    </>
+    </div>
   );
-    }
+  }
