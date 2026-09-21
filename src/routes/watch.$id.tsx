@@ -496,8 +496,9 @@ function WatchPage() {
                 playsInline
                 disablePictureInPicture
                 controlsList="nodownload noremoteplayback"
+                onContextMenu={(event) => event.preventDefault()}
                 onTouchEnd={handlePlayerTap}
-                className="size-full bg-black object-contain"
+                className="size-full select-none bg-black object-contain"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onLoadedMetadata={(event) => {
@@ -4374,4 +4375,4 @@ function CommentCard({
 
     </article>
   );
-        }
+      }
