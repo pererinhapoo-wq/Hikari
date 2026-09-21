@@ -43,7 +43,7 @@ export const Route = createFileRoute("/anime/$id")({
     <div className="space-y-4 pt-4">
       <div className="-mx-4 h-56 animate-pulse bg-elevated sm:-mx-6 sm:h-72" />
       <div className="h-8 w-2/3 animate-pulse rounded bg-elevated" />
-      <div className="h-24 animate-pulse rounded bg-elevated" />
+      <div className="h-24 rounded bg-elevated" />
     </div>
   ),
 
@@ -213,9 +213,11 @@ function AnimePage() {
         const finalRed = Math.round(
           (red / count) * factor,
         );
+
         const finalGreen = Math.round(
           (green / count) * factor,
         );
+
         const finalBlue = Math.round(
           (blue / count) * factor,
         );
@@ -237,6 +239,26 @@ function AnimePage() {
       image.onerror = null;
     };
   }, [anime?.id, anime?.banner]);
+
+  /*
+   * IMPORTANTE:
+   *
+   * Este cálculo fica ANTES do "if (!anime)" porque
+   * useMemo é um Hook e os Hooks precisam ser executados
+   * sempre na mesma ordem, antes de qualquer retorno.
+   */
+  const seasons = anime?.seasons ?? [];
+
+  const allEpisodes = useMemo(
+    () =>
+      seasons.flatMap((season) =>
+        season.episodes.map((episode) => ({
+          ...episode,
+          seasonId: season.id,
+        })),
+      ),
+    [seasons],
+  );
 
   if (!anime) {
     return (
@@ -265,8 +287,6 @@ function AnimePage() {
         a.anilistId === anime.anilistId),
   );
 
-  const seasons = anime.seasons;
-
   const episodeCount =
     seasons.reduce(
       (n, s) => n + s.episodes.length,
@@ -274,23 +294,6 @@ function AnimePage() {
     ) ||
     anime.episodesCount ||
     0;
-
-  /*
-   * Junta todos os episódios das temporadas.
-   *
-   * Isso permite descobrir qual é o próximo episódio
-   * mesmo quando o anime possui mais de uma temporada.
-   */
-  const allEpisodes = useMemo(
-    () =>
-      seasons.flatMap((season) =>
-        season.episodes.map((episode) => ({
-          ...episode,
-          seasonId: season.id,
-        })),
-      ),
-    [seasons],
-  );
 
   /*
    * Conta somente episódios que realmente existem
@@ -307,8 +310,7 @@ function AnimePage() {
   const continueEpisodeIndex = continueEntry
     ? allEpisodes.findIndex(
         (episode) =>
-          episode.id ===
-          continueEntry.episodeId,
+          episode.id === continueEntry.episodeId,
       )
     : -1;
 
@@ -327,8 +329,7 @@ function AnimePage() {
     (continueEntry
       ? allEpisodes.find(
           (episode) =>
-            episode.id ===
-            continueEntry.episodeId,
+            episode.id === continueEntry.episodeId,
         )
       : allEpisodes[0]);
 
@@ -824,4 +825,4 @@ function EpisodeGrid({
       </ol>
     </div>
   );
-  }
+    }
