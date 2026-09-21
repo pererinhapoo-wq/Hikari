@@ -17,8 +17,6 @@ import {
   Search,
   Send,
   Settings,
-  SkipBack,
-  SkipForward,
   Trash2,
   Maximize,
   X,
@@ -189,13 +187,55 @@ function WatchPage() {
     time: number;
     side: "left" | "right";
   } | null>(null);
+  const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controlsHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
+
+  const clearControlsHideTimer = () => {
+    if (controlsHideTimeoutRef.current) {
+      clearTimeout(controlsHideTimeoutRef.current);
+      controlsHideTimeoutRef.current = null;
+    }
+  };
+
+  const showControls = () => {
+    clearControlsHideTimer();
+    setControlsVisible(true);
+
+    if (isPlaying) {
+      controlsHideTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false);
+        controlsHideTimeoutRef.current = null;
+      }, 3000);
+    }
+  };
+
+  const hideControls = () => {
+    clearControlsHideTimer();
+    setControlsVisible(false);
+  };
+
+  useEffect(() => {
+    clearControlsHideTimer();
+
+    if (isPlaying) {
+      controlsHideTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false);
+        controlsHideTimeoutRef.current = null;
+      }, 3000);
+    } else {
+      setControlsVisible(true);
+    }
+
+    return clearControlsHideTimer;
+  }, [isPlaying]);
 
   const formatTime = (seconds: number) => {
     if (!Number.isFinite(seconds) || seconds < 0) return "00:00";
@@ -243,8 +283,11 @@ function WatchPage() {
   const handlePlayerTap = (event: TouchEvent<HTMLVideoElement>) => {
     const now = Date.now();
     const rect = event.currentTarget.getBoundingClientRect();
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+
     const side =
-      event.changedTouches[0].clientX - rect.left < rect.width / 2
+      touch.clientX - rect.left < rect.width / 2
         ? "left"
         : "right";
     const previous = lastTapRef.current;
@@ -254,12 +297,36 @@ function WatchPage() {
       previous.side === side &&
       now - previous.time < 320
     ) {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = null;
+      }
+
       seekBy(side === "left" ? -10 : 10);
+      hideControls();
       lastTapRef.current = null;
       return;
     }
 
     lastTapRef.current = { time: now, side };
+
+    if (tapTimeoutRef.current) {
+      clearTimeout(tapTimeoutRef.current);
+    }
+
+    tapTimeoutRef.current = setTimeout(() => {
+      setControlsVisible((visible) => {
+        if (visible) {
+          clearControlsHideTimer();
+          return false;
+        }
+
+        showControls();
+        return true;
+      });
+      lastTapRef.current = null;
+      tapTimeoutRef.current = null;
+    }, 220);
   };
 
   const handleFullscreen = async () => {
@@ -407,6 +474,8 @@ function WatchPage() {
 
         <div
           ref={playerRef}
+          onPointerMove={showControls}
+          onPointerDown={showControls}
           className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]"
         >
 
@@ -445,18 +514,18 @@ function WatchPage() {
 
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/10" />
 
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="pointer-events-auto flex items-center gap-2 sm:gap-3">
+              {controlsVisible && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div
+                    onPointerDown={showControls}
+                    className="pointer-events-auto flex items-center gap-2 sm:gap-3">
                   <button
                     type="button"
                     onClick={() => seekBy(-10)}
-                    className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-9"
+                    className="flex h-8 min-w-12 items-center justify-center rounded-full border border-white/10 bg-black/55 px-2 text-[11px] font-semibold text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:h-9 sm:min-w-14 sm:text-xs"
                     aria-label="Voltar 10 segundos"
                   >
-                    <span className="relative flex items-center justify-center">
-                      <SkipBack className="size-3.5 sm:size-4" />
-                      <span className="absolute text-[6px] font-bold sm:text-[7px]">10</span>
-                    </span>
+                    -10s
                   </button>
 
                   <button
@@ -475,18 +544,20 @@ function WatchPage() {
                   <button
                     type="button"
                     onClick={() => seekBy(10)}
-                    className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-9"
+                    className="flex h-8 min-w-12 items-center justify-center rounded-full border border-white/10 bg-black/55 px-2 text-[11px] font-semibold text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:h-9 sm:min-w-14 sm:text-xs"
                     aria-label="Avançar 10 segundos"
                   >
-                    <span className="relative flex items-center justify-center">
-                      <SkipForward className="size-3.5 sm:size-4" />
-                      <span className="absolute text-[6px] font-bold sm:text-[7px]">10</span>
-                    </span>
+                    +10s
                   </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-5 sm:pb-4">
+              {controlsVisible && (
+                <div
+                  onPointerDown={showControls}
+                  className="absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-5 sm:pb-4"
+                >
                 <input
                   aria-label="Progresso do episódio"
                   type="range"
@@ -585,7 +656,8 @@ function WatchPage() {
                     </button>
                   </div>
                 </div>
-              </div>
+                </div>
+              )}
             </>
           ) : external ? (
             <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -4302,4 +4374,4 @@ function CommentCard({
 
     </article>
   );
-      }
+        }
