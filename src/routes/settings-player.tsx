@@ -13,9 +13,25 @@ import {
 } from "lucide-react";
 
 import {
-  useEffect,
   useState,
 } from "react";
+
+function getSavedAutoplay() {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  const savedAutoplay =
+    window.localStorage.getItem(
+      "hikari-player-autoplay",
+    );
+
+  if (savedAutoplay === null) {
+    return true;
+  }
+
+  return savedAutoplay !== "false";
+}
 
 export const Route = createFileRoute(
   "/settings-player",
@@ -24,31 +40,40 @@ export const Route = createFileRoute(
 });
 
 function SettingsPlayer() {
-  const [autoplay, setAutoplay] = useState(true);
+  const [
+    autoplay,
+    setAutoplay,
+  ] = useState<boolean>(getSavedAutoplay);
 
-  const [qualityOpen, setQualityOpen] = useState(false);
-  const [quality, setQuality] = useState("Automática");
+  const [
+    qualityOpen,
+    setQualityOpen,
+  ] = useState(false);
 
-  const [captionsOpen, setCaptionsOpen] = useState(false);
-  const [captions, setCaptions] = useState("Ativadas");
+  const [
+    quality,
+    setQuality,
+  ] = useState("Automática");
 
-  const [fullscreenOpen, setFullscreenOpen] = useState(false);
-  const [fullscreen, setFullscreen] = useState("Perguntar");
+  const [
+    captionsOpen,
+    setCaptionsOpen,
+  ] = useState(false);
 
-  useEffect(() => {
-    const savedAutoplay =
-      localStorage.getItem(
-        "hikari-player-autoplay",
-      );
+  const [
+    captions,
+    setCaptions,
+  ] = useState("Ativadas");
 
-    if (savedAutoplay === "true") {
-      setAutoplay(true);
-    }
+  const [
+    fullscreenOpen,
+    setFullscreenOpen,
+  ] = useState(false);
 
-    if (savedAutoplay === "false") {
-      setAutoplay(false);
-    }
-  }, []);
+  const [
+    fullscreen,
+    setFullscreen,
+  ] = useState("Perguntar");
 
   function handleAutoplayToggle() {
     setAutoplay((current) => {
@@ -371,4 +396,4 @@ function SettingsPlayer() {
 
     </div>
   );
-      }
+              }
