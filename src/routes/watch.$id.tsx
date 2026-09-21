@@ -213,7 +213,7 @@ function WatchPage() {
       controlsHideTimeoutRef.current = setTimeout(() => {
         setControlsVisible(false);
         controlsHideTimeoutRef.current = null;
-      }, 3000);
+      }, 5000);
     }
   };
 
@@ -229,7 +229,7 @@ function WatchPage() {
       controlsHideTimeoutRef.current = setTimeout(() => {
         setControlsVisible(false);
         controlsHideTimeoutRef.current = null;
-      }, 3000);
+      }, 5000);
     } else {
       setControlsVisible(true);
     }
@@ -315,9 +315,13 @@ function WatchPage() {
     }
 
     tapTimeoutRef.current = setTimeout(() => {
-      // Um toque simples apenas mostra os controles.
+      // Um toque simples apenas alterna a visibilidade dos controles.
       // Pausar/reproduzir fica somente no botão central.
-      showControls();
+      if (controlsVisible) {
+        hideControls();
+      } else {
+        showControls();
+      }
       lastTapRef.current = null;
       tapTimeoutRef.current = null;
     }, 220);
@@ -4369,4 +4373,4 @@ function CommentCard({
 
     </article>
   );
-    }
+  }
