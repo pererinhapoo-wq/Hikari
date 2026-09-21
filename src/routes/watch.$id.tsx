@@ -217,64 +217,77 @@ function WatchPage() {
       {/* CABEÇALHO */}
       {/* ================================================== */}
 
-      <header className="flex h-14 items-center gap-2 px-3 sm:px-5">
+      <header className="border-b border-white/5 bg-bg/95 px-3 py-2 backdrop-blur sm:px-5">
 
-        <Link
-          to="/anime/$id"
-          params={{
-            id: anime.id,
-          }}
-          className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
-          aria-label="Fechar player"
-        >
-          <X className="size-5" />
-        </Link>
+        <div className="mx-auto flex min-h-12 max-w-6xl items-center gap-2">
 
-        <div className="min-w-0 flex-1">
+          <Link
+            to="/anime/$id"
+            params={{
+              id: anime.id,
+            }}
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-elevated hover:text-fg"
+            aria-label="Fechar player"
+          >
+            <X className="size-5" />
+          </Link>
 
-          <p className="truncate text-sm font-medium">
-            {title}
-          </p>
+          <div className="min-w-0 flex-1">
 
-          <p className="truncate text-xs text-muted">
-            {current
-              ? `Episódio ${current.number} · ${current.title}`
-              : "Trailer"}
-          </p>
+            <p className="truncate text-sm font-semibold">
+              {title}
+            </p>
+
+            <p className="truncate text-xs text-muted">
+              {current
+                ? `Episódio ${current.number} · ${current.title}`
+                : "Trailer"}
+            </p>
+
+          </div>
 
         </div>
 
       </header>
 
-      <div className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 sm:px-5">
+      <div className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 pt-3 sm:px-5 sm:pt-4">
 
         {/* ================================================== */}
         {/* PLAYERS */}
         {/* ================================================== */}
 
         {playerUrls.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
+          <div className="mb-3 rounded-2xl border border-white/5 bg-surface/70 p-2 shadow-[var(--shadow-border)]">
 
-            {playerUrls.map(
-              (url, index) =>
-                url ? (
-                  <Button
-                    key={index}
-                    type="button"
-                    size="sm"
-                    variant={
-                      playerIndex === index
-                        ? "default"
-                        : "outline"
-                    }
-                    onClick={() =>
-                      setPlayerIndex(index)
-                    }
-                  >
-                    Player {index + 1}
-                  </Button>
-                ) : null,
-            )}
+            <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+
+              <span className="shrink-0 px-2 text-[10px] font-semibold uppercase tracking-wider text-subtle">
+                Servidor
+              </span>
+
+              {playerUrls.map(
+                (url, index) =>
+                  url ? (
+                    <Button
+                      key={index}
+                      type="button"
+                      size="sm"
+                      variant={
+                        playerIndex === index
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={() =>
+                        setPlayerIndex(index)
+                      }
+                      className="shrink-0 rounded-xl px-4"
+                    >
+                      Play {index + 1}
+                    </Button>
+                  ) : null,
+              )}
+
+            </div>
 
           </div>
         )}
@@ -283,7 +296,9 @@ function WatchPage() {
         {/* PLAYER */}
         {/* ================================================== */}
 
-        <div className="aspect-video overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-border)]">
+        <div className="overflow-hidden rounded-2xl border border-white/5 bg-black shadow-[0_12px_40px_rgba(0,0,0,0.28)]">
+
+          <div className="aspect-video">
 
           {yt ? (
             <iframe
@@ -359,6 +374,8 @@ function WatchPage() {
 
             </div>
           )}
+
+          </div>
 
         </div>
 
@@ -4015,4 +4032,4 @@ function CommentCard({
 
     </article>
   );
-}
+      }
