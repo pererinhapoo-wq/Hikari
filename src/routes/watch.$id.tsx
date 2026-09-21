@@ -472,8 +472,11 @@ function WatchPage() {
 
         <div
           ref={playerRef}
-          onPointerMove={showControls}
-          onPointerDown={showControls}
+          onPointerMove={(event) => {
+            if (event.pointerType !== "touch") {
+              showControls();
+            }
+          }}
           className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]"
         >
 
@@ -4373,4 +4376,4 @@ function CommentCard({
 
     </article>
   );
-  }
+      }
