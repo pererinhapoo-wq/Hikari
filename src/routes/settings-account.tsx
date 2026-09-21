@@ -41,11 +41,15 @@ function SettingsAccount() {
   const { user } =
     useCurrentUserState();
 
+  const initialEmail =
+    user?.primaryEmail ||
+    getSavedEmail();
+
   const [
     email,
     setEmail,
   ] = useState<string>(
-    getSavedEmail(),
+    initialEmail,
   );
 
   const [
@@ -62,7 +66,7 @@ function SettingsAccount() {
     newEmail,
     setNewEmail,
   ] = useState(
-    getSavedEmail(),
+    initialEmail,
   );
 
   const [
@@ -635,4 +639,4 @@ function SettingsAccount() {
       )}
     </div>
   );
-    }
+                }
