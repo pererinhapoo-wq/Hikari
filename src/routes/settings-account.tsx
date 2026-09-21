@@ -3,6 +3,9 @@ import {
   Link,
 } from "@tanstack/react-router";
 
+import { createServerFn } from "@tanstack/react-start";
+import { getRequestHeaders } from "@tanstack/react-start/server";
+
 import {
   AlertTriangle,
   ChevronRight,
@@ -16,11 +19,37 @@ import {
   useState,
 } from "react";
 
+import { auth } from "@/lib/auth/server";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+
+const getAccountSession = createServerFn({
+  method: "GET",
+}).handler(async () => {
+  try {
+    const session =
+      await auth.api.getSession({
+        headers: getRequestHeaders(),
+      });
+
+    return {
+      email:
+        session?.user?.email ??
+        null,
+    };
+  } catch {
+    return {
+      email: null,
+    };
+  }
+});
 
 export const Route = createFileRoute(
   "/settings-account",
 )({
+  loader: async () => {
+    return getAccountSession();
+  },
+
   component: SettingsAccount,
 });
 
@@ -38,10 +67,16 @@ function getSavedEmail() {
 }
 
 function SettingsAccount() {
+  const {
+    email: serverEmail,
+  } =
+    Route.useLoaderData();
+
   const { user } =
     useCurrentUserState();
 
   const initialEmail =
+    serverEmail ||
     user?.primaryEmail ||
     getSavedEmail();
 
@@ -352,7 +387,10 @@ function SettingsAccount() {
           type="button"
           onClick={() => {
             setNewEmail(
-              email || user?.primaryEmail || "",
+              email ||
+                user?.primaryEmail ||
+                serverEmail ||
+                "",
             );
             setError("");
             setEmailOpen(true);
@@ -639,4 +677,4 @@ function SettingsAccount() {
       )}
     </div>
   );
-                }
+    }
