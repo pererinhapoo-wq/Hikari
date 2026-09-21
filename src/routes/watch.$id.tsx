@@ -151,8 +151,8 @@ function WatchPage() {
       updatedAt: Date.now(),
     });
   }, [
-    anime,
-    current,
+    anime?.id,
+    current?.id,
     markContinue,
   ]);
 
@@ -4032,4 +4032,4 @@ function CommentCard({
 
     </article>
   );
-      }
+          }
