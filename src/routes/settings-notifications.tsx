@@ -11,9 +11,25 @@ import {
 } from "lucide-react";
 
 import {
-  useEffect,
   useState,
 } from "react";
+
+function getSavedNotificationSetting(
+  key: string,
+) {
+  if (typeof window === "undefined") {
+    return true;
+  }
+
+  const saved =
+    window.localStorage.getItem(key);
+
+  if (saved === null) {
+    return true;
+  }
+
+  return saved !== "false";
+}
 
 export const Route = createFileRoute(
   "/settings-notifications",
@@ -25,58 +41,29 @@ function SettingsNotifications() {
   const [
     likes,
     setLikes,
-  ] = useState(true);
+  ] = useState<boolean>(() =>
+    getSavedNotificationSetting(
+      "hikari-notifications-likes",
+    ),
+  );
 
   const [
     replies,
     setReplies,
-  ] = useState(true);
+  ] = useState<boolean>(() =>
+    getSavedNotificationSetting(
+      "hikari-notifications-replies",
+    ),
+  );
 
   const [
     followers,
     setFollowers,
-  ] = useState(true);
-
-  useEffect(() => {
-    const savedLikes =
-      localStorage.getItem(
-        "hikari-notifications-likes",
-      );
-
-    if (savedLikes === "true") {
-      setLikes(true);
-    }
-
-    if (savedLikes === "false") {
-      setLikes(false);
-    }
-
-    const savedReplies =
-      localStorage.getItem(
-        "hikari-notifications-replies",
-      );
-
-    if (savedReplies === "true") {
-      setReplies(true);
-    }
-
-    if (savedReplies === "false") {
-      setReplies(false);
-    }
-
-    const savedFollowers =
-      localStorage.getItem(
-        "hikari-notifications-followers",
-      );
-
-    if (savedFollowers === "true") {
-      setFollowers(true);
-    }
-
-    if (savedFollowers === "false") {
-      setFollowers(false);
-    }
-  }, []);
+  ] = useState<boolean>(() =>
+    getSavedNotificationSetting(
+      "hikari-notifications-followers",
+    ),
+  );
 
   function handleLikesToggle() {
     setLikes((current) => {
@@ -276,4 +263,4 @@ function SettingsNotifications() {
 
     </div>
   );
-            }
+}
