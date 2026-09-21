@@ -4,6 +4,14 @@ import {
 } from "@tanstack/react-router";
 
 import {
+  createServerFn,
+} from "@tanstack/react-start";
+
+import {
+  getCookie,
+} from "@tanstack/react-start/server";
+
+import {
   Check,
   Moon,
   Palette,
@@ -17,9 +25,29 @@ import {
   useState,
 } from "react";
 
+const getAppearanceTheme =
+  createServerFn({
+    method: "GET",
+  }).handler(() => {
+    const savedTheme =
+      getCookie("hikari-theme");
+
+    if (
+      savedTheme === "Claro" ||
+      savedTheme === "Escuro"
+    ) {
+      return savedTheme;
+    }
+
+    return "Escuro";
+  });
+
 export const Route = createFileRoute(
   "/settings-appearance",
 )({
+  loader: async () => {
+    return getAppearanceTheme();
+  },
   component: SettingsAppearance,
 });
 
@@ -49,8 +77,14 @@ function saveThemeCookie(theme: string) {
 }
 
 function SettingsAppearance() {
+  const serverTheme =
+    Route.useLoaderData();
+
+  const initialTheme =
+    serverTheme || getSavedTheme();
+
   const [theme, setTheme] =
-    useState<string>(getSavedTheme);
+    useState<string>(initialTheme);
 
   const [fontSize, setFontSize] =
     useState("Médio");
@@ -273,4 +307,4 @@ function SettingsAppearance() {
 
     </div>
   );
-              }
+          }
