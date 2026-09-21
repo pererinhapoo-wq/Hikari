@@ -17,7 +17,20 @@ type HikariState = {
   myList: string[];
   snapshots: Record<string, SlimAnime>;
   continueWatching: ContinueWatch[];
+
+  /**
+   * Episódios que o usuário já abriu/assistiu.
+   *
+   * Chave:
+   *   animeId
+   *
+   * Valor:
+   *   lista de episodeId
+   */
+  watchedEpisodes: Record<string, string[]>;
+
   hydrated: boolean;
+
   setHydrated: (v: boolean) => void;
   upsertAnime: (anime: LocalAnime) => void;
   removeAnime: (id: string) => void;
@@ -25,8 +38,25 @@ type HikariState = {
   importAll: (animes: LocalAnime[]) => void;
   isInList: (id: string) => boolean;
   toggleList: (anime: SlimAnime) => void;
+
   markContinue: (entry: ContinueWatch) => void;
   clearContinue: (animeId: string) => void;
+
+  /**
+   * Marca um episódio como assistido.
+   */
+  markEpisodeWatched: (
+    animeId: string,
+    episodeId: string,
+  ) => void;
+
+  /**
+   * Verifica se um episódio foi assistido.
+   */
+  isEpisodeWatched: (
+    animeId: string,
+    episodeId: string,
+  ) => boolean;
 };
 
 export const useHikariStore = create<HikariState>()(
@@ -36,6 +66,7 @@ export const useHikariStore = create<HikariState>()(
       myList: [],
       snapshots: {},
       continueWatching: [],
+      watchedEpisodes: {},
       hydrated: false,
 
       setHydrated: (v) => set({ hydrated: v }),
@@ -45,48 +76,89 @@ export const useHikariStore = create<HikariState>()(
           const idx = s.animes.findIndex(
             (a) =>
               a.id === anime.id ||
-              (anime.anilistId && a.anilistId === anime.anilistId),
+              (anime.anilistId &&
+                a.anilistId === anime.anilistId),
           );
 
           if (idx === -1) {
-            return { animes: [anime, ...s.animes] };
+            return {
+              animes: [anime, ...s.animes],
+            };
           }
 
           const next = s.animes.slice();
-          next[idx] = { ...next[idx], ...anime, id: next[idx].id };
+          next[idx] = {
+            ...next[idx],
+            ...anime,
+            id: next[idx].id,
+          };
 
-          return { animes: next };
+          return {
+            animes: next,
+          };
         }),
 
       removeAnime: (id) =>
-        set((s) => ({
-          animes: s.animes.filter((a) => a.id !== id),
-          myList: s.myList.filter((x) => x !== id),
-          continueWatching: s.continueWatching.filter(
-            (c) => c.animeId !== id,
-          ),
-        })),
+        set((s) => {
+          const watchedEpisodes = {
+            ...s.watchedEpisodes,
+          };
+
+          delete watchedEpisodes[id];
+
+          return {
+            animes: s.animes.filter(
+              (a) => a.id !== id,
+            ),
+
+            myList: s.myList.filter(
+              (x) => x !== id,
+            ),
+
+            continueWatching:
+              s.continueWatching.filter(
+                (c) => c.animeId !== id,
+              ),
+
+            watchedEpisodes,
+          };
+        }),
 
       toggleHidden: (id) =>
         set((s) => ({
           animes: s.animes.map((a) =>
-            a.id === id ? { ...a, hidden: !a.hidden } : a,
+            a.id === id
+              ? {
+                  ...a,
+                  hidden: !a.hidden,
+                }
+              : a,
           ),
         })),
 
-      importAll: (animes) => set({ animes }),
+      importAll: (animes) =>
+        set({
+          animes,
+        }),
 
-      isInList: (id) => get().myList.includes(id),
+      isInList: (id) =>
+        get().myList.includes(id),
 
       toggleList: (anime) =>
         set((s) => {
-          const on = s.myList.includes(anime.id);
+          const on = s.myList.includes(
+            anime.id,
+          );
 
           const myList = on
-            ? s.myList.filter((x) => x !== anime.id)
+            ? s.myList.filter(
+                (x) => x !== anime.id,
+              )
             : [anime.id, ...s.myList];
 
-          const snapshots = { ...s.snapshots };
+          const snapshots = {
+            ...s.snapshots,
+          };
 
           if (on) {
             delete snapshots[anime.id];
@@ -94,25 +166,92 @@ export const useHikariStore = create<HikariState>()(
             snapshots[anime.id] = anime;
           }
 
-          return { myList, snapshots };
+          return {
+            myList,
+            snapshots,
+          };
         }),
 
       markContinue: (entry) =>
-        set((s) => ({
-          continueWatching: [
-            entry,
-            ...s.continueWatching.filter(
-              (c) => c.animeId !== entry.animeId,
-            ),
-          ].slice(0, 12),
-        })),
+        set((s) => {
+          const currentWatched =
+            s.watchedEpisodes[
+              entry.animeId
+            ] ?? [];
+
+          const alreadyWatched =
+            currentWatched.includes(
+              entry.episodeId,
+            );
+
+          const watchedEpisodes = {
+            ...s.watchedEpisodes,
+            [entry.animeId]:
+              alreadyWatched
+                ? currentWatched
+                : [
+                    ...currentWatched,
+                    entry.episodeId,
+                  ],
+          };
+
+          return {
+            continueWatching: [
+              entry,
+              ...s.continueWatching.filter(
+                (c) =>
+                  c.animeId !==
+                  entry.animeId,
+              ),
+            ].slice(0, 12),
+
+            watchedEpisodes,
+          };
+        }),
 
       clearContinue: (animeId) =>
         set((s) => ({
-          continueWatching: s.continueWatching.filter(
-            (c) => c.animeId !== animeId,
-          ),
+          continueWatching:
+            s.continueWatching.filter(
+              (c) => c.animeId !== animeId,
+            ),
         })),
+
+      markEpisodeWatched: (
+        animeId,
+        episodeId,
+      ) =>
+        set((s) => {
+          const current =
+            s.watchedEpisodes[animeId] ??
+            [];
+
+          if (current.includes(episodeId)) {
+            return s;
+          }
+
+          return {
+            watchedEpisodes: {
+              ...s.watchedEpisodes,
+              [animeId]: [
+                ...current,
+                episodeId,
+              ],
+            },
+          };
+        }),
+
+      isEpisodeWatched: (
+        animeId,
+        episodeId,
+      ) => {
+        return (
+          get().watchedEpisodes[
+            animeId
+          ]?.includes(episodeId) ??
+          false
+        );
+      },
     }),
     {
       name: "hikari-catalog-v1",
@@ -125,43 +264,67 @@ export const useHikariStore = create<HikariState>()(
         animes: s.animes,
         myList: s.myList,
         snapshots: s.snapshots,
-        continueWatching: s.continueWatching,
+        continueWatching:
+          s.continueWatching,
+        watchedEpisodes:
+          s.watchedEpisodes,
       }),
     },
   ),
 );
 
 if (typeof window !== "undefined") {
-  const persistApi = useHikariStore.persist;
+  const persistApi =
+    useHikariStore.persist;
 
   persistApi.onFinishHydration(() => {
-    useHikariStore.getState().setHydrated(true);
+    useHikariStore
+      .getState()
+      .setHydrated(true);
   });
 
   if (persistApi.hasHydrated()) {
-    useHikariStore.getState().setHydrated(true);
+    useHikariStore
+      .getState()
+      .setHydrated(true);
   }
 }
 
-export function overlaySlim<T extends {
-  id: string;
-  anilistId?: number;
-}>(
+export function overlaySlim<
+  T extends {
+    id: string;
+    anilistId?: number;
+  },
+>(
   remote: T[],
   locals: LocalAnime[],
   toLocalItem: (l: LocalAnime) => T,
 ): T[] {
   const hiddenAnilist = new Set(
     locals
-      .filter((a) => a.hidden && a.anilistId)
-      .map((a) => a.anilistId as number),
+      .filter(
+        (a) =>
+          a.hidden &&
+          a.anilistId,
+      )
+      .map(
+        (a) =>
+          a.anilistId as number,
+      ),
   );
 
-  const override = new Map<number, LocalAnime>();
+  const override =
+    new Map<number, LocalAnime>();
 
   for (const a of locals) {
-    if (a.anilistId && !a.hidden) {
-      override.set(a.anilistId, a);
+    if (
+      a.anilistId &&
+      !a.hidden
+    ) {
+      override.set(
+        a.anilistId,
+        a,
+      );
     }
   }
 
@@ -169,17 +332,28 @@ export function overlaySlim<T extends {
     .filter(
       (r) =>
         !r.anilistId ||
-        !hiddenAnilist.has(r.anilistId),
+        !hiddenAnilist.has(
+          r.anilistId,
+        ),
     )
     .map((r) => {
-      if (r.anilistId && override.has(r.anilistId)) {
-        return toLocalItem(override.get(r.anilistId)!);
+      if (
+        r.anilistId &&
+        override.has(r.anilistId)
+      ) {
+        return toLocalItem(
+          override.get(
+            r.anilistId,
+          )!,
+        );
       }
 
       return r;
     });
 
-  const remoteIds = new Set(mapped.map((m) => m.id));
+  const remoteIds = new Set(
+    mapped.map((m) => m.id),
+  );
 
   const extras = locals
     .filter(
@@ -190,5 +364,8 @@ export function overlaySlim<T extends {
     )
     .map(toLocalItem);
 
-  return [...extras, ...mapped];
-    }
+  return [
+    ...extras,
+    ...mapped,
+  ];
+            }
