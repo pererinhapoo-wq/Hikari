@@ -2,11 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Bookmark,
   BookmarkCheck,
+  Check,
   Pencil,
   Play,
   Share2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,6 @@ import {
   formatLabel,
   genreLabel,
   scoreLabel,
-  seasonLabel,
   statusLabel,
 } from "@/lib/labels";
 import { mergeDetail } from "@/lib/overlay";
@@ -66,6 +66,16 @@ function AnimePage() {
   );
 
   const toggleList = useHikariStore((s) => s.toggleList);
+
+  const continueEntry = useHikariStore((s) =>
+    s.continueWatching.find(
+      (entry) => entry.animeId === id,
+    ),
+  );
+
+  const watchedEpisodes = useHikariStore(
+    (s) => s.watchedEpisodes[id] ?? [],
+  );
 
   const anime = mergeDetail(remote, id, locals);
 
@@ -149,10 +159,6 @@ function AnimePage() {
         canvas.width = 80;
         canvas.height = 40;
 
-        /*
-         * Usa somente uma parte central/superior do banner,
-         * e não a imagem inteira.
-         */
         const sourceX = width * 0.25;
         const sourceY = height * 0.1;
         const sourceWidth = width * 0.5;
@@ -202,15 +208,17 @@ function AnimePage() {
           return;
         }
 
-        /*
-         * Deixa a cor um pouco mais escura para funcionar
-         * melhor na barra do navegador.
-         */
         const factor = 0.72;
 
-        const finalRed = Math.round((red / count) * factor);
-        const finalGreen = Math.round((green / count) * factor);
-        const finalBlue = Math.round((blue / count) * factor);
+        const finalRed = Math.round(
+          (red / count) * factor,
+        );
+        const finalGreen = Math.round(
+          (green / count) * factor,
+        );
+        const finalBlue = Math.round(
+          (blue / count) * factor,
+        );
 
         meta.content = `rgb(${finalRed}, ${finalGreen}, ${finalBlue})`;
       } catch {
@@ -233,7 +241,9 @@ function AnimePage() {
   if (!anime) {
     return (
       <div className="py-24 text-center">
-        <p className="font-display text-2xl">Anime não encontrado</p>
+        <p className="font-display text-2xl">
+          Anime não encontrado
+        </p>
 
         <Link
           to="/"
@@ -251,15 +261,84 @@ function AnimePage() {
   const localRecord = locals.find(
     (a) =>
       a.id === anime.id ||
-      (anime.anilistId && a.anilistId === anime.anilistId),
+      (anime.anilistId &&
+        a.anilistId === anime.anilistId),
   );
 
   const seasons = anime.seasons;
 
   const episodeCount =
-    seasons.reduce((n, s) => n + s.episodes.length, 0) ||
+    seasons.reduce(
+      (n, s) => n + s.episodes.length,
+      0,
+    ) ||
     anime.episodesCount ||
     0;
+
+  /*
+   * Junta todos os episódios das temporadas.
+   *
+   * Isso permite descobrir qual é o próximo episódio
+   * mesmo quando o anime possui mais de uma temporada.
+   */
+  const allEpisodes = useMemo(
+    () =>
+      seasons.flatMap((season) =>
+        season.episodes.map((episode) => ({
+          ...episode,
+          seasonId: season.id,
+        })),
+      ),
+    [seasons],
+  );
+
+  /*
+   * Conta somente episódios que realmente existem
+   * na página do anime.
+   */
+  const watchedCount = allEpisodes.filter((episode) =>
+    watchedEpisodes.includes(episode.id),
+  ).length;
+
+  /*
+   * Descobre o próximo episódio depois do último
+   * episódio registrado em "Continuar".
+   */
+  const continueEpisodeIndex = continueEntry
+    ? allEpisodes.findIndex(
+        (episode) =>
+          episode.id ===
+          continueEntry.episodeId,
+      )
+    : -1;
+
+  const nextEpisode =
+    continueEpisodeIndex >= 0
+      ? allEpisodes[continueEpisodeIndex + 1]
+      : allEpisodes[0];
+
+  /*
+   * Se o usuário já chegou ao último episódio,
+   * usamos o próprio último episódio para permitir
+   * assistir novamente.
+   */
+  const continueTarget =
+    nextEpisode ??
+    (continueEntry
+      ? allEpisodes.find(
+          (episode) =>
+            episode.id ===
+            continueEntry.episodeId,
+        )
+      : allEpisodes[0]);
+
+  const continueLabel = continueEntry
+    ? nextEpisode
+      ? `Continuar — Episódio ${nextEpisode.number}`
+      : `Reassistir — Episódio ${
+          continueEntry.episodeNumber
+        }`
+    : "Começar pelo episódio 1";
 
   const handleShare = async () => {
     try {
@@ -270,7 +349,9 @@ function AnimePage() {
           url: window.location.href,
         });
       } else {
-        await navigator.clipboard.writeText(window.location.href);
+        await navigator.clipboard.writeText(
+          window.location.href,
+        );
       }
     } catch {
       // Usuário cancelou o compartilhamento.
@@ -346,7 +427,9 @@ function AnimePage() {
                 )}
 
                 {anime.year && (
-                  <span className="text-muted">{anime.year}</span>
+                  <span className="text-muted">
+                    {anime.year}
+                  </span>
                 )}
 
                 <span className="text-muted">
@@ -381,7 +464,9 @@ function AnimePage() {
                       sort: "TRENDING_DESC",
                     }}
                   >
-                    <Badge>{genreLabel(g)}</Badge>
+                    <Badge>
+                      {genreLabel(g)}
+                    </Badge>
                   </Link>
                 ))}
               </div>
@@ -389,7 +474,10 @@ function AnimePage() {
               {/* BOTÕES */}
               <div className="mt-5 flex flex-wrap gap-2">
                 <Button asChild size="lg">
-                  <Link to="/watch/$id" params={{ id: anime.id }}>
+                  <Link
+                    to="/watch/$id"
+                    params={{ id: anime.id }}
+                  >
                     <Play className="size-4 fill-current" />
                     Assistir
                   </Link>
@@ -399,7 +487,9 @@ function AnimePage() {
                   type="button"
                   variant="outline"
                   size="lg"
-                  onClick={() => toggleList(anime)}
+                  onClick={() =>
+                    toggleList(anime)
+                  }
                 >
                   {inList ? (
                     <BookmarkCheck className="size-4" />
@@ -407,7 +497,9 @@ function AnimePage() {
                     <Bookmark className="size-4" />
                   )}
 
-                  {inList ? "Na lista" : "Minha Lista"}
+                  {inList
+                    ? "Na lista"
+                    : "Minha Lista"}
                 </Button>
 
                 <Button
@@ -421,11 +513,20 @@ function AnimePage() {
                 </Button>
 
                 {canEdit && (
-                  <Button asChild variant="ghost">
+                  <Button
+                    asChild
+                    variant="ghost"
+                  >
                     <Link
                       to="/admin/$id"
-                      params={{ id: localRecord?.id ?? "new" }}
-                      search={{ importId: anime.id }}
+                      params={{
+                        id:
+                          localRecord?.id ??
+                          "new",
+                      }}
+                      search={{
+                        importId: anime.id,
+                      }}
                     >
                       <Pencil className="size-4" />
                       Editar
@@ -481,11 +582,54 @@ function AnimePage() {
                 Episódios
               </h2>
 
-              <p className="mt-1 text-sm text-muted">
-                {episodeCount} episódios disponíveis
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+                <span>
+                  {episodeCount} episódios disponíveis
+                </span>
+
+                <span className="text-subtle">
+                  •
+                </span>
+
+                <span>
+                  {watchedCount}/{episodeCount}{" "}
+                  assistidos
+                </span>
+              </div>
             </div>
           </div>
+
+          {/* CONTINUAR */}
+          {continueTarget && (
+            <Link
+              to="/watch/$id"
+              params={{ id: anime.id }}
+              search={{
+                ep: continueTarget.id,
+              }}
+              className="mt-5 flex items-center gap-4 rounded-xl border border-white/10 bg-surface p-4 shadow-[var(--shadow-border)] transition-colors hover:bg-elevated"
+            >
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-white text-black">
+                <Play className="ml-0.5 size-5 fill-current" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium tracking-[0.15em] text-subtle uppercase">
+                  {continueEntry
+                    ? "Continuar assistindo"
+                    : "Começar"}
+                </p>
+
+                <p className="mt-1 truncate text-sm font-medium text-fg sm:text-base">
+                  {continueLabel}
+                </p>
+              </div>
+
+              <span className="shrink-0 text-sm text-muted">
+                →
+              </span>
+            </Link>
+          )}
 
           <div className="mt-5 space-y-8">
             {seasons.map((season) => (
@@ -500,6 +644,9 @@ function AnimePage() {
                   episodes={season.episodes}
                   animeId={anime.id}
                   cover={anime.cover}
+                  watchedEpisodes={
+                    watchedEpisodes
+                  }
                 />
               </div>
             ))}
@@ -531,7 +678,10 @@ function AnimePage() {
 
           <div className="rail -mx-4 px-4 sm:-mx-6 sm:px-6">
             {anime.recommendations.map((r) => (
-              <AnimeCard key={r.id} anime={r} />
+              <AnimeCard
+                key={r.id}
+                anime={r}
+              />
             ))}
           </div>
         </section>
@@ -553,7 +703,8 @@ function AnimePage() {
 
         <div className="mt-5 rounded-xl border border-white/5 bg-surface p-6 text-center">
           <p className="text-sm text-muted">
-            Os comentários do Hikari serão adicionados aqui.
+            Os comentários do Hikari serão
+            adicionados aqui.
           </p>
         </div>
       </section>
@@ -565,6 +716,7 @@ function EpisodeGrid({
   episodes,
   animeId,
   cover,
+  watchedEpisodes,
 }: {
   episodes: {
     id: string;
@@ -575,6 +727,7 @@ function EpisodeGrid({
   }[];
   animeId: string;
   cover: string;
+  watchedEpisodes: string[];
 }) {
   return (
     <div
@@ -589,52 +742,85 @@ function EpisodeGrid({
       "
     >
       <ol className="grid gap-3 sm:grid-cols-2">
-        {episodes.map((ep) => (
-          <li key={ep.id}>
-            <Link
-              to="/watch/$id"
-              params={{ id: animeId }}
-              search={{ ep: ep.id }}
-              className="group flex gap-3 rounded-xl border border-white/5 bg-surface p-2.5 shadow-[var(--shadow-border)] transition-all hover:-translate-y-0.5 hover:bg-elevated"
-            >
-              {/* THUMBNAIL */}
-              <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
-                {ep.thumbnail || cover ? (
-                  <img
-                    src={ep.thumbnail || cover}
-                    alt=""
-                    className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : null}
+        {episodes.map((ep) => {
+          const watched =
+            watchedEpisodes.includes(
+              ep.id,
+            );
 
-                <div className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/5" />
+          return (
+            <li key={ep.id}>
+              <Link
+                to="/watch/$id"
+                params={{ id: animeId }}
+                search={{ ep: ep.id }}
+                className={`group flex gap-3 rounded-xl border p-2.5 shadow-[var(--shadow-border)] transition-all hover:-translate-y-0.5 ${
+                  watched
+                    ? "border-white/10 bg-elevated"
+                    : "border-white/5 bg-surface hover:bg-elevated"
+                }`}
+              >
+                {/* THUMBNAIL */}
+                <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
+                  {ep.thumbnail ||
+                  cover ? (
+                    <img
+                      src={
+                        ep.thumbnail ||
+                        cover
+                      }
+                      alt=""
+                      className={`size-full object-cover transition-transform duration-300 group-hover:scale-105 ${
+                        watched
+                          ? "opacity-70"
+                          : ""
+                      }`}
+                    />
+                  ) : null}
 
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                  <div className="flex size-9 items-center justify-center rounded-full bg-white text-black shadow-lg">
-                    <Play className="ml-0.5 size-4 fill-current" />
+                  <div className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/5" />
+
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="flex size-9 items-center justify-center rounded-full bg-white text-black shadow-lg">
+                      <Play className="ml-0.5 size-4 fill-current" />
+                    </div>
                   </div>
+
+                  {watched && (
+                    <div className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full bg-black/75 text-white">
+                      <Check className="size-4" />
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              {/* INFORMAÇÕES */}
-              <div className="min-w-0 flex-1 py-1">
-                <p className="text-[11px] font-medium tracking-wide text-subtle uppercase">
-                  Episódio {ep.number}
-                </p>
+                {/* INFORMAÇÕES */}
+                <div className="min-w-0 flex-1 py-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-medium tracking-wide text-subtle uppercase">
+                      Episódio {ep.number}
+                    </p>
 
-                <p className="mt-1 line-clamp-2 text-sm leading-snug text-fg">
-                  {ep.title}
-                </p>
+                    {watched && (
+                      <span className="shrink-0 text-[10px] font-medium tracking-wide text-subtle uppercase">
+                        Assistido
+                      </span>
+                    )}
+                  </div>
 
-                {ep.duration && (
-                  <p className="mt-1 text-xs text-subtle">
-                    {ep.duration}
+                  <p className="mt-1 line-clamp-2 text-sm leading-snug text-fg">
+                    {ep.title}
                   </p>
-                )}
-              </div>
-            </Link>
-          </li>
-        ))}
+
+                  {ep.duration && (
+                    <p className="mt-1 text-xs text-subtle">
+                      {ep.duration}
+                    </p>
+                  )}
+                </div>
+              </Link>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );
