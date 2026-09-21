@@ -50,30 +50,13 @@ function saveThemeCookie(theme: string) {
 
 function SettingsAppearance() {
   const [theme, setTheme] =
-    useState<string>("Escuro");
+    useState<string>(getSavedTheme);
 
   const [fontSize, setFontSize] =
     useState("Médio");
 
   const [animations, setAnimations] =
     useState(true);
-
-  useEffect(() => {
-    const savedTheme = getSavedTheme();
-
-    setTheme(savedTheme);
-
-    if (savedTheme === "Claro") {
-      document.documentElement.setAttribute(
-        "data-theme",
-        "light",
-      );
-    } else {
-      document.documentElement.removeAttribute(
-        "data-theme",
-      );
-    }
-  }, []);
 
   useEffect(() => {
     if (theme === "Claro") {
@@ -290,4 +273,4 @@ function SettingsAppearance() {
 
     </div>
   );
-      }
+              }
