@@ -445,6 +445,47 @@ function WatchPage() {
 
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/10" />
 
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="pointer-events-auto flex items-center gap-2 sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={() => seekBy(-10)}
+                    className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-9"
+                    aria-label="Voltar 10 segundos"
+                  >
+                    <span className="relative flex items-center justify-center">
+                      <SkipBack className="size-3.5 sm:size-4" />
+                      <span className="absolute text-[6px] font-bold sm:text-[7px]">10</span>
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={togglePlay}
+                    className="flex size-10 items-center justify-center rounded-full border border-[#c98cff]/70 bg-[#a855f7]/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition hover:bg-[#b56cff] active:scale-95 sm:size-12"
+                    aria-label={isPlaying ? "Pausar" : "Reproduzir"}
+                  >
+                    {isPlaying ? (
+                      <Pause className="size-4 fill-current sm:size-5" />
+                    ) : (
+                      <Play className="ml-0.5 size-4 fill-current sm:size-5" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => seekBy(10)}
+                    className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-9"
+                    aria-label="Avançar 10 segundos"
+                  >
+                    <span className="relative flex items-center justify-center">
+                      <SkipForward className="size-3.5 sm:size-4" />
+                      <span className="absolute text-[6px] font-bold sm:text-[7px]">10</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               <div className="absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-5 sm:pb-4">
                 <input
                   aria-label="Progresso do episódio"
@@ -476,43 +517,6 @@ function WatchPage() {
                   </div>
 
                   <div className="pointer-events-auto flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => seekBy(-10)}
-                      className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95"
-                      aria-label="Voltar 10 segundos"
-                    >
-                      <span className="relative flex items-center justify-center">
-                        <SkipBack className="size-4" />
-                        <span className="absolute text-[7px] font-bold">10</span>
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={togglePlay}
-                      className="flex size-11 items-center justify-center rounded-full border border-[#c98cff]/70 bg-[#a855f7]/90 text-white shadow-[0_0_24px_rgba(168,85,247,0.35)] transition hover:bg-[#b56cff] active:scale-95"
-                      aria-label={isPlaying ? "Pausar" : "Reproduzir"}
-                    >
-                      {isPlaying ? (
-                        <Pause className="size-5 fill-current" />
-                      ) : (
-                        <Play className="ml-0.5 size-5 fill-current" />
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => seekBy(10)}
-                      className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95"
-                      aria-label="Avançar 10 segundos"
-                    >
-                      <span className="relative flex items-center justify-center">
-                        <SkipForward className="size-4" />
-                        <span className="absolute text-[7px] font-bold">10</span>
-                      </span>
-                    </button>
-
                     <div className="relative">
                       <button
                         type="button"
@@ -4298,4 +4302,4 @@ function CommentCard({
 
     </article>
   );
-    }
+      }
