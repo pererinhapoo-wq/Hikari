@@ -646,164 +646,6 @@ function mapJikanSlim(
   };
 }
 
-type JikanRelationEntry = {
-  mal_id: number;
-  name?: string;
-  type?: string;
-};
-
-type JikanRelation = {
-  relation?: string;
-  entry?: JikanRelationEntry[];
-};
-
-async function buildJikanSeasonNavigation(
-  malId: number,
-  title?: string,
-): Promise<SeasonNavigation> {
-  const current: SeasonNavigationItem = {
-    id: `mal-${malId}`,
-    title: title || undefined,
-  };
-
-  const fetchRelations = async (
-    id: number,
-  ): Promise<JikanRelation[]> => {
-    const json =
-      await jikanFetch<{
-        data?: JikanRelation[];
-      }>(`/anime/${id}/relations`);
-
-    return json.data ?? [];
-  };
-
-  const findRelated = (
-    relations: JikanRelation[],
-    relationName: "Prequel" | "Sequel",
-  ): JikanRelationEntry | undefined =>
-    relations
-      .find(
-        (relation) =>
-          relation.relation === relationName &&
-          Boolean(
-            relation.entry?.some(
-              (entry) =>
-                entry.type === "anime" &&
-                Number.isFinite(entry.mal_id),
-            ),
-          ),
-      )
-      ?.entry?.find(
-        (entry) =>
-          entry.type === "anime" &&
-          Number.isFinite(entry.mal_id),
-      );
-
-  const previous: SeasonNavigationItem[] = [];
-  const next: SeasonNavigationItem[] = [];
-  const visited = new Set<string>([
-    current.id,
-  ]);
-
-  let relations =
-    await fetchRelations(malId);
-
-  let cursor = findRelated(
-    relations,
-    "Prequel",
-  );
-
-  let steps = 0;
-
-  while (
-    cursor?.mal_id &&
-    steps < 10
-  ) {
-    const item: SeasonNavigationItem = {
-      id: `mal-${cursor.mal_id}`,
-      title:
-        cursor.name ||
-        undefined,
-    };
-
-    if (visited.has(item.id)) {
-      break;
-    }
-
-    visited.add(item.id);
-    previous.unshift(item);
-    steps++;
-
-    try {
-      relations =
-        await fetchRelations(
-          cursor.mal_id,
-        );
-    } catch {
-      break;
-    }
-
-    cursor = findRelated(
-      relations,
-      "Prequel",
-    );
-  }
-
-  relations =
-    await fetchRelations(malId);
-
-  cursor = findRelated(
-    relations,
-    "Sequel",
-  );
-
-  steps = 0;
-
-  while (
-    cursor?.mal_id &&
-    steps < 10
-  ) {
-    const item: SeasonNavigationItem = {
-      id: `mal-${cursor.mal_id}`,
-      title:
-        cursor.name ||
-        undefined,
-    };
-
-    if (visited.has(item.id)) {
-      break;
-    }
-
-    visited.add(item.id);
-    next.push(item);
-    steps++;
-
-    try {
-      relations =
-        await fetchRelations(
-          cursor.mal_id,
-        );
-    } catch {
-      break;
-    }
-
-    cursor = findRelated(
-      relations,
-      "Sequel",
-    );
-  }
-
-  return {
-    items: [
-      ...previous,
-      current,
-      ...next,
-    ],
-    previous: previous.at(-1),
-    next: next[0],
-  };
-}
-
 async function jikanEpisodes(
   malId: number,
 ): Promise<Season[]> {
@@ -914,6 +756,47 @@ function streamingFromAni(
           episode.site ?? "",
       }),
     );
+}
+
+async function fetchAniMediaByMalId(
+  malId: number,
+): Promise<AniMedia | null> {
+  const result =
+    await anilistGraphQL<{
+      Media: AniMedia | null;
+    }>(
+      `
+      query MediaByMalId($malId: Int) {
+        Media(
+          idMal: $malId,
+          type: ANIME
+        ) {
+          id
+          idMal
+          title {
+            romaji
+            english
+            native
+          }
+          relations {
+            edges {
+              relationType
+              node {
+                id
+                title {
+                  romaji
+                  english
+                }
+              }
+            }
+          }
+        }
+      }
+      `,
+      { malId },
+    );
+
+  return result.Media;
 }
 
 async function buildSeasonNavigation(
@@ -2459,31 +2342,49 @@ export const fetchAnimeDetail =
           }
 
           let seasonNavigation:
-            SeasonNavigation;
+            SeasonNavigation | undefined;
 
           try {
-            seasonNavigation =
-              await buildJikanSeasonNavigation(
+            const aniMedia =
+              await fetchAniMediaByMalId(
                 malId,
-                slim.titles.english ||
-                  slim.titles.romaji,
               );
+
+            if (aniMedia) {
+              const navigation =
+                await buildSeasonNavigation(
+                  aniMedia,
+                );
+
+              // A página MAL usa `mal-<id>` como URL
+              // atual. Mantemos esse ID no item atual
+              // para que ele fique selecionado, enquanto
+              // as outras temporadas continuam apontando
+              // para os IDs do AniList.
+              const currentAniId =
+                String(aniMedia.id);
+
+              seasonNavigation = {
+                ...navigation,
+
+                items: navigation.items.map(
+                  (item) =>
+                    item.id === currentAniId
+                      ? {
+                          ...item,
+                          id: `mal-${malId}`,
+                        }
+                      : item,
+                ),
+              };
+            }
           } catch {
-            seasonNavigation = {
-              items: [
-                {
-                  id: `mal-${malId}`,
-                  title:
-                    slim.titles.english ||
-                    slim.titles.romaji ||
-                    undefined,
-                },
-              ],
-            };
+            seasonNavigation =
+              undefined;
           }
 
           const anime: Anime & {
-            seasonNavigation: SeasonNavigation;
+            seasonNavigation?: SeasonNavigation;
           } =
             {
               ...slim,
@@ -2501,10 +2402,10 @@ export const fetchAnimeDetail =
 
               seasons,
 
-              seasonNavigation,
-
               recommendations:
                 [],
+
+              seasonNavigation,
             };
 
           return toCache(
