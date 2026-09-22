@@ -37,6 +37,7 @@ type BrowseSearch = {
   season?: AnimeSeason;
   year?: number;
   page?: number;
+  genre?: string;
 };
 
 const SEASONS: Array<{
@@ -160,6 +161,23 @@ function normalizePage(
   return 1;
 }
 
+function normalizeGenre(
+  value: unknown,
+): string | undefined {
+  if (
+    typeof value !== "string"
+  ) {
+    return undefined;
+  }
+
+  const genre =
+    value.trim();
+
+  return genre
+    ? genre
+    : undefined;
+}
+
 function cnCalendarSeason(
   active: boolean,
 ) {
@@ -225,6 +243,10 @@ export const Route = createFileRoute(
       page: normalizePage(
         raw.page,
       ),
+
+      genre: normalizeGenre(
+        raw.genre,
+      ),
     };
   },
 
@@ -239,23 +261,69 @@ export const Route = createFileRoute(
     /*
      * GÊNEROS
      *
-     * Essa rota não usa o catálogo/paginação
-     * das temporadas.
+     * Sem gênero selecionado:
+     * mostra a lista de gêneros.
+     *
+     * Com gênero selecionado:
+     * mostra os animes daquele gênero.
      */
     if (
       params.section ===
       "genres"
     ) {
-      const genres =
-        await fetchGenres();
+      const genre =
+        normalizeGenre(
+          deps.genre,
+        );
+
+      if (!genre) {
+        const genres =
+          await fetchGenres();
+
+        return {
+          section:
+            "genres" as const,
+
+          genres,
+
+          result: null,
+
+          season:
+            undefined,
+
+          year:
+            undefined,
+
+          page: 1,
+
+          genre:
+            undefined,
+        };
+      }
+
+      const result =
+        await fetchBrowse({
+          data: {
+            section:
+              "popular",
+
+            page:
+              normalizePage(
+                deps.page,
+              ),
+
+            genre,
+          },
+        });
 
       return {
         section:
           "genres" as const,
 
-        genres,
+        genres:
+          [] as string[],
 
-        result: null,
+        result,
 
         season:
           undefined,
@@ -263,7 +331,12 @@ export const Route = createFileRoute(
         year:
           undefined,
 
-        page: 1,
+        page:
+          normalizePage(
+            deps.page,
+          ),
+
+        genre,
       };
     }
 
@@ -328,6 +401,9 @@ export const Route = createFileRoute(
 
       genres:
         [] as string[],
+
+      genre:
+        undefined,
     };
   },
 
@@ -359,15 +435,22 @@ function BrowsePage() {
     year,
     page,
     genres,
+    genre,
   } =
     Route.useLoaderData();
 
+  const locals =
+    useHikariStore(
+      (s) => s.animes,
+    );
+
   /*
-   * GÊNEROS
+   * GÊNEROS — LISTA
    */
   if (
     section ===
-    "genres"
+      "genres" &&
+    !genre
   ) {
     return (
       <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
@@ -397,16 +480,29 @@ function BrowsePage() {
           <section>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {genres.map(
-                (genre) => (
+                (item) => (
                   <button
-                    key={genre}
+                    key={item}
                     type="button"
+                    onClick={() => {
+                      void navigate({
+                        to: "/browse/$section",
+                        params: {
+                          section:
+                            "genres",
+                        },
+                        search: {
+                          genre: item,
+                          page: 1,
+                        },
+                      });
+                    }}
                     className={cnGenre()}
                   >
                     <Tags className="size-4 shrink-0 text-muted" />
 
                     <span className="truncate">
-                      {genre}
+                      {item}
                     </span>
                   </button>
                 ),
@@ -418,10 +514,211 @@ function BrowsePage() {
     );
   }
 
-  const locals =
-    useHikariStore(
-      (s) => s.animes,
+  /*
+   * GÊNEROS — ANIMES DO GÊNERO
+   */
+  if (
+    section ===
+      "genres" &&
+    genre
+  ) {
+    const items =
+      overlayList(
+        result?.items ?? [],
+        locals,
+      );
+
+    const showPagination =
+      page > 1 ||
+      Boolean(
+        result?.hasNext,
+      );
+
+    const pageNumbers =
+      (() => {
+        const pages =
+          new Set<number>();
+
+        pages.add(1);
+        pages.add(page);
+
+        if (
+          result?.hasNext
+        ) {
+          pages.add(
+            page + 1,
+          );
+        }
+
+        return Array.from(
+          pages,
+        )
+          .filter(
+            (value) =>
+              value >= 1,
+          )
+          .sort(
+            (a, b) =>
+              a - b,
+          );
+      })();
+
+    function goToGenrePage(
+      nextPage: number,
+    ) {
+      if (
+        nextPage < 1 ||
+        nextPage === page
+      ) {
+        return;
+      }
+
+      if (
+        nextPage >
+          page + 1 &&
+        !result?.hasNext
+      ) {
+        return;
+      }
+
+      void navigate({
+        to: "/browse/$section",
+        params: {
+          section:
+            "genres",
+        },
+        search: {
+          genre,
+          page: nextPage,
+        },
+      });
+    }
+
+    return (
+      <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
+        <section>
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-elevated">
+              <Tags className="size-5 text-fg" />
+            </div>
+
+            <div>
+              <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+                {genre}
+              </h1>
+
+              <p className="mt-1 text-sm text-muted">
+                Animes do gênero {genre}.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {items.length === 0 ? (
+          <p className="py-16 text-center text-muted">
+            Nenhum anime encontrado para este gênero.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+            {items.map(
+              (anime) => (
+                <AnimeCard
+                  key={anime.id}
+                  anime={anime}
+                  size="lg"
+                />
+              ),
+            )}
+          </div>
+        )}
+
+        {showPagination && (
+          <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
+            <button
+              type="button"
+              onClick={() =>
+                goToGenrePage(
+                  page - 1,
+                )
+              }
+              disabled={
+                page === 1
+              }
+              aria-label="Página anterior"
+              className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {pageNumbers.map(
+                (
+                  pageNumber,
+                ) => (
+                  <button
+                    key={
+                      pageNumber
+                    }
+                    type="button"
+                    onClick={() =>
+                      goToGenrePage(
+                        pageNumber,
+                      )
+                    }
+                    aria-current={
+                      pageNumber ===
+                      page
+                        ? "page"
+                        : undefined
+                    }
+                    className={
+                      pageNumber ===
+                      page
+                        ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
+                        : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+                    }
+                  >
+                    {
+                      pageNumber
+                    }
+                  </button>
+                ),
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                goToGenrePage(
+                  page + 1,
+                )
+              }
+              disabled={
+                !result?.hasNext
+              }
+              aria-label="Próxima página"
+              className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          </div>
+        )}
+
+        <div className="pt-1">
+          <Link
+            to="/browse/$section"
+            params={{
+              section:
+                "genres",
+            }}
+            className="text-sm text-muted underline underline-offset-4 hover:text-fg"
+          >
+            ← Voltar para gêneros
+          </Link>
+        </div>
+      </div>
     );
+  }
 
   const items =
     overlayList(
@@ -479,7 +776,8 @@ function BrowsePage() {
     }
 
     if (
-      nextPage > page + 1 &&
+      nextPage >
+        page + 1 &&
       !result?.hasNext
     ) {
       return;
