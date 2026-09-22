@@ -8,7 +8,6 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Search,
   Tags,
 } from "lucide-react";
 
@@ -27,12 +26,6 @@ import {
 } from "@/components/anime-card";
 
 import { NativeSelect } from "@/components/ui/native-select";
-
-import {
-  useEffect,
-  useState,
-  type FormEvent,
-} from "react";
 
 type AnimeSeason =
   | "WINTER"
@@ -452,152 +445,6 @@ function BrowsePage() {
     );
 
   /*
-   * ESTADO DA BUSCA
-   */
-  const [
-    searchQuery,
-    setSearchQuery,
-  ] = useState("");
-
-  /*
-   * GUARDA A ÚLTIMA PESQUISA
-   *
-   * Evita navegar novamente para
-   * exatamente a mesma pesquisa.
-   */
-  const [
-    lastSearch,
-    setLastSearch,
-  ] = useState("");
-
-  /*
-   * NAVEGAÇÃO DA BUSCA
-   *
-   * Usa a navegação interna do TanStack Router.
-   * Não abre outra aba.
-   */
-  function goToSearch(
-    value: string,
-  ) {
-    const query =
-      value.trim();
-
-    /*
-     * Não pesquisa vazio.
-     */
-    if (!query) {
-      return;
-    }
-
-    /*
-     * Evita pesquisa com apenas
-     * uma letra.
-     *
-     * Isso também impede que a tela
-     * seja recarregada logo no primeiro
-     * caractere digitado.
-     */
-    if (query.length < 2) {
-      return;
-    }
-
-    /*
-     * Se já estamos enviando exatamente
-     * a mesma pesquisa, não faz outra
-     * navegação.
-     */
-    if (
-      query === lastSearch
-    ) {
-      return;
-    }
-
-    setLastSearch(query);
-
-    void navigate({
-      to: "/search",
-      search: {
-        q: query,
-      },
-    });
-  }
-
-  /*
-   * ENTER / BOTÃO IR
-   *
-   * Funciona imediatamente.
-   */
-  function handleAnimeSearch(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
-
-    goToSearch(
-      searchQuery,
-    );
-  }
-
-  /*
-   * PESQUISA AUTOMÁTICA
-   *
-   * Agora espera 700ms depois que
-   * o usuário parar de digitar.
-   *
-   * Isso evita que a página fique
-   * navegando/carregando entre cada
-   * letra digitada.
-   */
-  useEffect(() => {
-    if (
-      section !==
-        "genres" ||
-      !genre
-    ) {
-      return;
-    }
-
-    const query =
-      searchQuery.trim();
-
-    /*
-     * Não faz nada com menos de
-     * duas letras.
-     */
-    if (
-      query.length < 2
-    ) {
-      return;
-    }
-
-    /*
-     * Se já foi pesquisado,
-     * não navega novamente.
-     */
-    if (
-      query === lastSearch
-    ) {
-      return;
-    }
-
-    const timer =
-      window.setTimeout(() => {
-        goToSearch(
-          query,
-        );
-      }, 700);
-
-    return () =>
-      window.clearTimeout(
-        timer,
-      );
-  }, [
-    searchQuery,
-    section,
-    genre,
-    lastSearch,
-  ]);
-
-  /*
    * GÊNEROS — LISTA
    */
   if (
@@ -750,55 +597,38 @@ function BrowsePage() {
     return (
       <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
         <section>
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-elevated">
-              <Tags className="size-5 text-fg" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-elevated">
+                <Tags className="size-5 text-fg" />
+              </div>
+
+              <div className="min-w-0">
+                <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+                  {genre}
+                </h1>
+
+                <p className="mt-1 text-sm text-muted">
+                  Animes do gênero {genre}.
+                </p>
+              </div>
             </div>
 
-            <div>
-              <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-                {genre}
-              </h1>
-
-              <p className="mt-1 text-sm text-muted">
-                Animes do gênero {genre}.
-              </p>
-            </div>
+            <Link
+              to="/browse/$section"
+              params={{
+                section: "genres",
+              }}
+              aria-label="Fechar gênero"
+              title="Voltar para gêneros"
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-elevated hover:text-fg"
+            >
+              <span className="text-2xl leading-none" aria-hidden="true">
+                ×
+              </span>
+            </Link>
           </div>
         </section>
-
-        {/* BARRA DE PESQUISA */}
-        <form
-          onSubmit={
-            handleAnimeSearch
-          }
-          className="flex items-center gap-2 rounded-2xl border border-border bg-bg p-1.5"
-        >
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted" />
-
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) =>
-                setSearchQuery(
-                  event.target.value,
-                )
-              }
-              placeholder="Buscar animes..."
-              aria-label="Buscar animes"
-              className="h-12 w-full rounded-xl border border-border bg-surface pl-10 pr-3 text-base text-fg outline-none placeholder:text-muted focus:border-fg/20 focus:ring-1 focus:ring-fg/10"
-            />
-          </div>
-
-          <button
-            type="submit"
-            aria-label="Pesquisar anime"
-            className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-elevated text-fg transition-colors hover:bg-elevated/80 active:scale-95"
-          >
-            <Search className="size-5" />
-          </button>
-        </form>
 
         {items.length === 0 ? (
           <p className="py-16 text-center text-muted">
@@ -890,18 +720,6 @@ function BrowsePage() {
           </div>
         )}
 
-        <div className="pt-1">
-          <Link
-            to="/browse/$section"
-            params={{
-              section:
-                "genres",
-            }}
-            className="text-sm text-muted underline underline-offset-4 hover:text-fg"
-          >
-            ← Voltar para gêneros
-          </Link>
-        </div>
       </div>
     );
   }
@@ -1217,4 +1035,4 @@ function BrowsePage() {
       )}
     </div>
   );
-  }
+}
