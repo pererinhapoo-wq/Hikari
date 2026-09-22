@@ -185,14 +185,8 @@ function SearchPage() {
    * =========================================================
    * RELOAD REAL DA PÁGINA
    * =========================================================
-   *
-   * O performance.navigation.type sozinho não é suficiente,
-   * porque o TanStack Router pode reutilizar a rota durante
-   * uma navegação interna.
-   *
-   * Esta marca existe somente durante o carregamento atual
-   * do documento.
    */
+
   const [
     clearingOnReload,
     setClearingOnReload,
@@ -246,29 +240,6 @@ function SearchPage() {
       return "";
     }
 
-    const navigation =
-      window.performance.getEntriesByType(
-        "navigation",
-      )[0] as
-        | PerformanceNavigationTiming
-        | undefined;
-
-    const alreadyHandled =
-      Boolean(
-        (
-          window as Window & {
-            __hikariSearchReloadHandled?: boolean;
-          }
-        ).__hikariSearchReloadHandled,
-      );
-
-    if (
-      navigation?.type === "reload" &&
-      !alreadyHandled
-    ) {
-      return "";
-    }
-
     return search.q ?? "";
   });
 
@@ -287,6 +258,7 @@ function SearchPage() {
    *
    * O gênero é preservado.
    */
+
   useEffect(() => {
     if (!clearingOnReload) {
       return;
@@ -300,9 +272,9 @@ function SearchPage() {
           search.genre,
       },
       replace: true,
+    }).finally(() => {
+      setClearingOnReload(false);
     });
-
-    setClearingOnReload(false);
   }, [
     clearingOnReload,
     navigate,
@@ -334,8 +306,8 @@ function SearchPage() {
    * =========================================================
    *
    * Não precisa apertar Enter.
-   * Não precisa apertar o botão físico do celular.
    */
+
   useEffect(() => {
     if (clearingOnReload) {
       return;
@@ -344,9 +316,6 @@ function SearchPage() {
     const q =
       draft.trim();
 
-    /*
-     * Não pesquisa uma única letra.
-     */
     if (
       q.length > 0 &&
       q.length < 2
@@ -406,9 +375,6 @@ function SearchPage() {
           .trim()
           .toLowerCase();
 
-      /*
-       * Animes locais somente na primeira página.
-       */
       const localHits =
         currentPage === 1
           ? overlayList(
@@ -499,14 +465,6 @@ function SearchPage() {
   const hasAnimes =
     items.length > 0;
 
-  /*
-   * =========================================================
-   * GÊNERO + PESQUISA
-   * =========================================================
-   *
-   * Se houver gênero, os resultados continuam aparecendo
-   * mesmo quando a pesquisa for apagada.
-   */
   const hasQuery =
     Boolean(
       search.q?.trim() ||
@@ -595,8 +553,60 @@ function SearchPage() {
    * =========================================================
    */
 
+  /*
+   * IMPORTANTE:
+   *
+   * Durante o reload real não mostramos:
+   *
+   * "Pesquise um anime"
+   * "Nada encontrado"
+   *
+   * Isso elimina o flash visual.
+   */
+  if (clearingOnReload) {
+    return (
+      <div className="space-y-6 pt-6">
+
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              window.history.back()
+            }
+          >
+            <ChevronLeft className="size-4" />
+            Voltar
+          </Button>
+        </div>
+
+        <SearchPending />
+
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pt-6">
+
+      {/* =====================================================
+          VOLTAR
+      ====================================================== */}
+
+      <div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            window.history.back()
+          }
+        >
+          <ChevronLeft className="size-4" />
+          Voltar
+        </Button>
+      </div>
 
       {/* =====================================================
           BUSCA
@@ -855,7 +865,6 @@ function SearchPage() {
         hasAnimes && (
           <section className="space-y-5">
 
-            {/* TÍTULO + CONTAGEM */}
             <div className="flex items-end justify-between gap-3">
 
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -876,7 +885,6 @@ function SearchPage() {
 
             </div>
 
-            {/* GRID */}
             <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-4 lg:grid-cols-6">
 
               {items.map(
@@ -898,7 +906,6 @@ function SearchPage() {
 
             </div>
 
-            {/* PAGINAÇÃO */}
             {(currentPage >
               1 ||
               result.hasNext) && (
@@ -1059,4 +1066,4 @@ function Field({
       {children}
     </label>
   );
-  }
+            }
