@@ -8,7 +8,9 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Star,
   Tags,
+  TrendingUp,
 } from "lucide-react";
 
 import {
@@ -730,6 +732,42 @@ function BrowsePage() {
       locals,
     );
 
+  const isSeasonPage =
+    section === "season";
+
+  const sectionMeta = {
+    popular: {
+      title: "Populares",
+      description:
+        "Os animes mais populares.",
+      Icon: Star,
+    },
+    top: {
+      title: "Mais bem avaliados",
+      description:
+        "Animes com as melhores avaliações.",
+      Icon: Star,
+    },
+    trending: {
+      title: "Em alta",
+      description:
+        "Animes que estão em alta no momento.",
+      Icon: TrendingUp,
+    },
+    season: {
+      title: "Calendário de animes",
+      description:
+        "Confira os animes de cada temporada.",
+      Icon: CalendarDays,
+    },
+  } as const;
+
+  const meta =
+    sectionMeta[section as keyof typeof sectionMeta] ??
+    sectionMeta.popular;
+
+  const SectionIcon = meta.Icon;
+
   const currentSeason =
     SEASONS.find(
       (item) =>
@@ -780,9 +818,7 @@ function BrowsePage() {
     }
 
     if (
-      nextPage >
-        page + 1 &&
-      !result?.hasNext
+      nextPage > page + 1
     ) {
       return;
     }
@@ -805,28 +841,24 @@ function BrowsePage() {
       const pages =
         new Set<number>();
 
-      pages.add(1);
-      pages.add(page);
-
-      if (
-        result?.hasNext
+      for (
+        let value = 1;
+        value <=
+          Math.min(page + 1, 5);
+        value += 1
       ) {
-        pages.add(
-          page + 1,
-        );
+        pages.add(value);
       }
 
-      return Array.from(
-        pages,
-      )
-        .filter(
-          (value) =>
-            value >= 1,
-        )
-        .sort(
-          (a, b) =>
-            a - b,
-        );
+      pages.add(page);
+
+      if (result?.hasNext) {
+        pages.add(page + 1);
+      }
+
+      return Array.from(pages).sort(
+        (a, b) => a - b,
+      );
     })();
 
   const showPagination =
@@ -841,100 +873,102 @@ function BrowsePage() {
       <section>
         <div className="flex items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-elevated">
-            <CalendarDays className="size-5 text-fg" />
+            <SectionIcon className="size-5 text-fg" />
           </div>
 
           <div>
             <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-              Calendário de animes
+              {meta.title}
             </h1>
 
             <p className="mt-1 text-sm text-muted">
-              Confira os animes de cada temporada.
+              {meta.description}
             </p>
           </div>
         </div>
       </section>
 
-      {/* ANO */}
-      <section className="space-y-3">
-        <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
-          Ano
-        </p>
+      {/* FILTROS — SOMENTE NO CALENDÁRIO */}
+      {isSeasonPage && (
+        <>
+          <section className="space-y-3">
+            <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
+              Ano
+            </p>
 
-        <NativeSelect
-          value={String(year)}
-          onChange={(event) => {
-            handleYearChange(
-              Number(
-                event.target.value,
-              ),
-            );
-          }}
-          aria-label="Selecionar ano"
-        >
-          {YEARS.map(
-            (yearOption) => (
-              <option
-                key={yearOption}
-                value={yearOption}
-              >
-                {yearOption}
-              </option>
-            ),
-          )}
-        </NativeSelect>
-      </section>
+            <NativeSelect
+              value={String(year)}
+              onChange={(event) => {
+                handleYearChange(
+                  Number(
+                    event.target.value,
+                  ),
+                );
+              }}
+              aria-label="Selecionar ano"
+            >
+              {YEARS.map(
+                (yearOption) => (
+                  <option
+                    key={yearOption}
+                    value={yearOption}
+                  >
+                    {yearOption}
+                  </option>
+                ),
+              )}
+            </NativeSelect>
+          </section>
 
-      {/* TEMPORADA */}
-      <section className="space-y-3">
-        <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
-          Temporada
-        </p>
+          <section className="space-y-3">
+            <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
+              Temporada
+            </p>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {SEASONS.map(
-            (item) => (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() =>
-                  handleSeasonChange(
-                    item.value,
-                  )
-                }
-                className={cnCalendarSeason(
-                  item.value ===
-                    season,
-                )}
-              >
-                <span className="text-lg">
-                  {item.icon}
-                </span>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {SEASONS.map(
+                (item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    onClick={() =>
+                      handleSeasonChange(
+                        item.value,
+                      )
+                    }
+                    className={cnCalendarSeason(
+                      item.value ===
+                        season,
+                    )}
+                  >
+                    <span className="text-lg">
+                      {item.icon}
+                    </span>
 
-                <span>
-                  {item.label}
-                </span>
-              </button>
-            ),
-          )}
-        </div>
-      </section>
+                    <span>
+                      {item.label}
+                    </span>
+                  </button>
+                ),
+              )}
+            </div>
+          </section>
 
-      {/* TÍTULO */}
-      <section className="border-b border-border pb-4">
-        <h2 className="font-display text-xl tracking-tight sm:text-2xl">
-          Animes da temporada de{" "}
-          {currentSeason?.label ??
-            "Temporada"}{" "}
-          {year}
-        </h2>
+          <section className="border-b border-border pb-4">
+            <h2 className="font-display text-xl tracking-tight sm:text-2xl">
+              Animes da temporada de{" "}
+              {currentSeason?.label ??
+                "Temporada"}{" "}
+              {year}
+            </h2>
 
-        <p className="mt-1 text-sm text-muted">
-          Confira a lista dos animes
-          programados para esta temporada.
-        </p>
-      </section>
+            <p className="mt-1 text-sm text-muted">
+              Confira a lista dos animes
+              programados para esta temporada.
+            </p>
+          </section>
+        </>
+      )}
 
       {/* LISTA */}
       {items.length === 0 ? (
@@ -961,7 +995,7 @@ function BrowsePage() {
         </div>
       )}
 
-      {/* PAGINAÇÃO — MANTIDA */}
+      {/* PAGINAÇÃO */}
       {showPagination && (
         <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
           <button
