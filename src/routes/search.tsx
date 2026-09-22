@@ -101,13 +101,13 @@ export const Route =
           : undefined,
 
       page:
-        typeof raw.page === "string" &&
-        /^\d+$/.test(raw.page)
-          ? Math.max(
-              1,
-              Number(raw.page),
-            )
-          : 1,
+  typeof raw.page === "string" &&
+  /^\d+$/.test(raw.page)
+    ? Math.max(
+        1,
+        Number(raw.page),
+      )
+    : undefined,
     }),
 
     loaderDeps: ({
