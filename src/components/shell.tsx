@@ -9,11 +9,14 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   Bell,
   Bookmark,
+  CalendarDays,
   Clapperboard,
   House,
   Menu,
+  Newspaper,
   Search,
   Settings2,
+  Tags,
   UserCircle,
   X,
 } from "lucide-react";
@@ -71,10 +74,38 @@ const BASE_NAV = [
   },
   {
     to: "/my-list",
-    label: "Lista",
+    label: "Minha Lista",
     icon: Bookmark,
     match: (p: string) =>
       p.startsWith("/my-list"),
+  },
+  {
+    to: "/browse/season",
+    label: "Temporadas",
+    icon: CalendarDays,
+    match: (p: string) =>
+      p.startsWith("/browse/season"),
+  },
+  {
+    to: "/browse/genres",
+    label: "Gêneros",
+    icon: Tags,
+    match: (p: string) =>
+      p.startsWith("/browse/genres"),
+  },
+  {
+    to: "/news",
+    label: "Notícias",
+    icon: Newspaper,
+    match: (p: string) =>
+      p.startsWith("/news"),
+  },
+  {
+    to: "/calendar",
+    label: "Calendário de animes",
+    icon: CalendarDays,
+    match: (p: string) =>
+      p.startsWith("/calendar"),
   },
   {
     to: "/account",
@@ -1199,12 +1230,12 @@ export function Shell() {
             aria-label="Fechar menu"
           />
 
-          <aside className="fixed inset-y-0 left-0 z-[60] w-[82%] max-w-sm bg-bg shadow-2xl">
+          <aside className="fixed inset-y-0 left-0 z-[60] w-[82%] max-w-sm overflow-y-auto bg-bg shadow-2xl">
 
+            {/* CABEÇALHO DO MENU */}
             <div className="flex h-20 items-center justify-between border-b border-border px-5">
               <Logo />
 
-              {/* X PARA FECHAR */}
               <button
                 type="button"
                 onClick={() =>
@@ -1218,22 +1249,218 @@ export function Shell() {
             </div>
 
             <nav className="p-4">
-              <div className="space-y-1">
 
-                {nav.map(
-                  (item) => {
-                    const active =
-                      item.match(
-                        pathname,
-                      );
+              {/* =================================================
+                  NAVEGAÇÃO
+              ================================================== */}
+              <div>
+                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
+                  Navegação
+                </p>
 
-                    const Icon =
-                      item.icon;
+                <div className="space-y-1">
 
-                    return (
+                  {nav
+                    .filter(
+                      (item) =>
+                        item.to === "/" ||
+                        item.to === "/my-list" ||
+                        item.to === "/account" ||
+                        item.to === "/admin",
+                    )
+                    .map(
+                      (item) => {
+                        const active =
+                          item.match(
+                            pathname,
+                          );
+
+                        const Icon =
+                          item.icon;
+
+                        return (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() =>
+                              setMenuOpen(
+                                false,
+                              )
+                            }
+                            className={cn(
+                              "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                              active
+                                ? "bg-elevated text-fg"
+                                : "text-muted hover:bg-elevated hover:text-fg",
+                            )}
+                          >
+                            <Icon className="size-5" />
+
+                            {item.label}
+                          </Link>
+                        );
+                      },
+                    )}
+
+                  {/* BUSCAR */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setSearchOpen(true);
+                    }}
+                    className="flex w-full items-center gap-4 rounded-lg px-4 py-4 text-left text-base font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  >
+                    <Search className="size-5" />
+
+                    <span>
+                      Buscar
+                    </span>
+                  </button>
+
+                </div>
+              </div>
+
+              {/* =================================================
+                  ANIMES
+              ================================================== */}
+              <div className="mt-6">
+                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
+                  Animes
+                </p>
+
+                <div className="space-y-1">
+
+                  <Link
+                    to="/browse/season"
+                    onClick={() =>
+                      setMenuOpen(false)
+                    }
+                    className={cn(
+                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      pathname.startsWith(
+                        "/browse/season",
+                      )
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <CalendarDays className="size-5" />
+
+                    <span>
+                      Temporadas
+                    </span>
+                  </Link>
+
+                  <Link
+                    to="/browse/genres"
+                    onClick={() =>
+                      setMenuOpen(false)
+                    }
+                    className={cn(
+                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      pathname.startsWith(
+                        "/browse/genres",
+                      )
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <Tags className="size-5" />
+
+                    <span>
+                      Gêneros
+                    </span>
+                  </Link>
+
+                </div>
+              </div>
+
+              {/* =================================================
+                  NOTÍCIAS
+              ================================================== */}
+              <div className="mt-6">
+                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
+                  Notícias
+                </p>
+
+                <div className="space-y-1">
+
+                  <Link
+                    to="/news"
+                    onClick={() =>
+                      setMenuOpen(false)
+                    }
+                    className={cn(
+                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      pathname.startsWith(
+                        "/news",
+                      )
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <Newspaper className="size-5" />
+
+                    <span>
+                      Notícias
+                    </span>
+                  </Link>
+
+                </div>
+              </div>
+
+              {/* =================================================
+                  TEMPORADAS DE ANIME
+              ================================================== */}
+              <div className="mt-6">
+                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
+                  Temporadas de anime
+                </p>
+
+                <div className="space-y-1">
+
+                  <Link
+                    to="/calendar"
+                    onClick={() =>
+                      setMenuOpen(false)
+                    }
+                    className={cn(
+                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      pathname.startsWith(
+                        "/calendar",
+                      )
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <CalendarDays className="size-5" />
+
+                    <span>
+                      Calendário de animes
+                    </span>
+                  </Link>
+
+                </div>
+              </div>
+
+              {/* =================================================
+                  PERFIL
+              ================================================== */}
+              <div className="mt-6">
+                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
+                  Perfil
+                </p>
+
+                <div className="space-y-1">
+
+                  {user &&
+                    profileNick && (
                       <Link
-                        key={item.to}
-                        to={item.to}
+                        to="/profile/$nick"
+                        params={{
+                          nick: profileNick,
+                        }}
                         onClick={() =>
                           setMenuOpen(
                             false,
@@ -1241,94 +1468,84 @@ export function Shell() {
                         }
                         className={cn(
                           "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                          active
+                          pathname ===
+                            `/profile/${profileNick}`
                             ? "bg-elevated text-fg"
                             : "text-muted hover:bg-elevated hover:text-fg",
                         )}
                       >
-                        <Icon className="size-5" />
+                        <UserCircle className="size-5" />
 
-                        {item.label}
+                        <span>
+                          Meu perfil público
+                        </span>
                       </Link>
-                    );
-                  },
-                )}
+                    )}
 
-                {/* PERFIL PÚBLICO */}
-                {user && profileNick && (
                   <Link
-                    to="/profile/$nick"
-                    params={{
-                      nick: profileNick,
-                    }}
+                    to="/settings"
                     onClick={() =>
-                      setMenuOpen(false)
+                      setMenuOpen(
+                        false,
+                      )
                     }
                     className={cn(
                       "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      pathname ===
-                        `/profile/${profileNick}`
+                      pathname.startsWith(
+                        "/settings",
+                      )
                         ? "bg-elevated text-fg"
                         : "text-muted hover:bg-elevated hover:text-fg",
                     )}
                   >
-                    <UserCircle className="size-5" />
+                    <Settings2 className="size-5" />
 
                     <span>
-                      Meu perfil público
+                      Configurações
                     </span>
                   </Link>
-                )}
 
-                {/* CONFIGURAÇÕES */}
-                <Link
-                  to="/settings"
-                  onClick={() =>
-                    setMenuOpen(false)
-                  }
-                  className={cn(
-                    "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                    pathname.startsWith(
-                      "/settings",
-                    )
-                      ? "bg-elevated text-fg"
-                      : "text-muted hover:bg-elevated hover:text-fg",
-                  )}
-                >
-                  <Settings2 className="size-5" />
-
-                  <span>
-                    Configurações
-                  </span>
-                </Link>
-
-                {/* +18 */}
-                <Link
-                  to={ADULT_NAV.to}
-                  onClick={() =>
-                    setMenuOpen(
-                      false,
-                    )
-                  }
-                  className={cn(
-                    "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                    ADULT_NAV.match(
-                      pathname,
-                    )
-                      ? "bg-elevated text-fg"
-                      : "text-muted hover:bg-elevated hover:text-fg",
-                  )}
-                >
-                  <span className="flex size-5 items-center justify-center text-base">
-                    🔞
-                  </span>
-
-                  <span>
-                    +18
-                  </span>
-                </Link>
-
+                </div>
               </div>
+
+              {/* =================================================
+                  OUTROS
+              ================================================== */}
+              <div className="mt-6">
+                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
+                  Outros
+                </p>
+
+                <div className="space-y-1">
+
+                  <Link
+                    to={ADULT_NAV.to}
+                    onClick={() =>
+                      setMenuOpen(
+                        false,
+                      )
+                    }
+                    className={cn(
+                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      ADULT_NAV.match(
+                        pathname,
+                      )
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <span className="flex size-5 items-center justify-center text-base">
+                      🔞
+                    </span>
+
+                    <span>
+                      +18
+                    </span>
+                  </Link>
+
+                </div>
+              </div>
+
             </nav>
           </aside>
         </>
