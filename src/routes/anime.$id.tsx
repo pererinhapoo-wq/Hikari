@@ -88,6 +88,9 @@ function AnimePage() {
     src: string;
   } | null>(null);
 
+  const [seasonMenuOpen, setSeasonMenuOpen] =
+    useState(false);
+
   useEffect(() => {
     setLoadedBanner(null);
 
@@ -243,6 +246,10 @@ function AnimePage() {
 
   /*
    * TEMPORADAS
+   *
+   * A API traz as temporadas relacionadas.
+   * A temporada atual também é adicionada manualmente
+   * para garantir que a Season 1 nunca fique de fora.
    */
   const seasonNavigation =
     remote?.seasonNavigation?.items ?? [];
@@ -258,6 +265,115 @@ function AnimePage() {
 
   const currentEpisodes =
     currentSeason?.episodes ?? [];
+
+  /*
+   * MONTA A LISTA COMPLETA DE TEMPORADAS
+   *
+   * Remove duplicados pelo ID.
+   */
+  const seasonOptions = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        title: string;
+        cover?: string;
+        episodesCount?: number;
+        label?: string;
+      }
+    >();
+
+    /*
+     * Primeiro adicionamos a temporada atual.
+     * Isso garante que a Season 1 apareça.
+     */
+    if (anime?.id) {
+      map.set(anime.id, {
+        id: anime.id,
+        title,
+        cover: anime.cover,
+        episodesCount:
+          currentEpisodes.length ||
+          anime.episodesCount ||
+          0,
+      });
+    }
+
+    /*
+     * Depois adicionamos todas as temporadas
+     * vindas da API.
+     */
+    for (const season of seasonNavigation) {
+      if (!season?.id) {
+        continue;
+      }
+
+      map.set(season.id, {
+        id: season.id,
+        title:
+          season.title ||
+          season.label ||
+          "Temporada",
+        cover: season.cover,
+        episodesCount:
+          season.episodesCount,
+        label: season.label,
+      });
+    }
+
+    return Array.from(map.values());
+  }, [
+    anime?.id,
+    anime?.cover,
+    anime?.episodesCount,
+    title,
+    currentEpisodes.length,
+    seasonNavigation,
+  ]);
+
+  /*
+   * Nome curto da temporada.
+   *
+   * Exemplos:
+   * "Attack on Titan Season 1" -> "1"
+   * "Attack on Titan Season 2" -> "2"
+   * "Attack on Titan Season 3 Part 2" -> "3 Part 2"
+   *
+   * Se não conseguir identificar, usa o número
+   * da posição da temporada.
+   */
+  const getSeasonShortLabel = (
+    season: {
+      title: string;
+      label?: string;
+    },
+    index: number,
+  ) => {
+    const source =
+      season.label ||
+      season.title ||
+      "";
+
+    const match = source.match(
+      /season\s+(\d+)(?:\s+part\s+(\d+))?/i,
+    );
+
+    if (match) {
+      return match[2]
+        ? `${match[1]} Part ${match[2]}`
+        : match[1];
+    }
+
+    const partMatch = source.match(
+      /(?:part|cour)\s+(\d+)/i,
+    );
+
+    if (partMatch) {
+      return `${index + 1} Part ${partMatch[1]}`;
+    }
+
+    return String(index + 1);
+  };
 
   const allEpisodes = useMemo(
     () =>
@@ -286,7 +402,6 @@ function AnimePage() {
     );
   }
 
-  const title = displayTitle(anime);
   const yt = youtubeIdFrom(anime.trailerId);
 
   const localRecord = locals.find(
@@ -571,60 +686,78 @@ function AnimePage() {
       )}
 
       {/* TEMPORADAS */}
-      {seasonNavigation.length > 1 && (
+      {seasonOptions.length > 0 && (
         <section className="mt-10">
-          <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
-            Temporadas
-          </h2>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() =>
+                setSeasonMenuOpen(
+                  (open) => !open,
+                )
+              }
+              aria-expanded={seasonMenuOpen}
+              className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-surface px-4 py-3 text-left transition-colors hover:bg-elevated sm:w-auto sm:min-w-[220px]"
+            >
+              <span className="font-display text-xl tracking-tight">
+                Temporadas
+              </span>
 
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
-            {seasonNavigation.map(
-              (season) => {
-                const selected =
-                  season.id === anime.id;
+              <span
+                className={`ml-4 text-lg text-muted transition-transform ${
+                  seasonMenuOpen
+                    ? "rotate-180"
+                    : ""
+                }`}
+              >
+                ▼
+              </span>
+            </button>
 
-                return (
-                  <Link
-                    key={season.id}
-                    to="/anime/$id"
-                    params={{
-                      id: season.id,
-                    }}
-                    className={`shrink-0 overflow-hidden rounded-xl border transition-all ${
-                      selected
-                        ? "border-white/30 bg-elevated"
-                        : "border-white/5 bg-surface hover:bg-elevated"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 p-2">
-                      {season.cover && (
-                        <img
-                          src={season.cover}
-                          alt=""
-                          className="h-16 w-11 rounded-lg object-cover"
-                        />
-                      )}
+            {seasonMenuOpen && (
+              <div className="mt-2 w-full rounded-xl border border-white/10 bg-surface p-2 shadow-2xl sm:absolute sm:left-0 sm:z-30 sm:w-[280px]">
+                <div className="grid grid-cols-3 gap-2">
+                  {seasonOptions.map(
+                    (season, index) => {
+                      const selected =
+                        season.id === anime.id;
 
-                      <div className="min-w-0 pr-2">
-                        <p className="text-xs font-medium tracking-wide text-subtle uppercase">
-                          {season.label ??
-                            season.title}
-                        </p>
+                      return (
+                        <Link
+                          key={season.id}
+                          to="/anime/$id"
+                          params={{
+                            id: season.id,
+                          }}
+                          onClick={() =>
+                            setSeasonMenuOpen(
+                              false,
+                            )
+                          }
+                          className={`flex min-h-11 items-center justify-center rounded-lg border px-2 text-center transition-colors ${
+                            selected
+                              ? "border-white/20 bg-elevated text-fg"
+                              : "border-white/5 bg-bg text-muted hover:bg-elevated hover:text-fg"
+                          }`}
+                        >
+                          <span className="text-sm font-medium">
+                            {getSeasonShortLabel(
+                              season,
+                              index,
+                            )}
+                          </span>
+                        </Link>
+                      );
+                    },
+                  )}
+                </div>
 
-                        <p className="mt-1 max-w-[10rem] truncate text-sm font-medium">
-                          {season.title}
-                        </p>
-
-                        {season.episodesCount != null && (
-                          <p className="mt-1 text-xs text-muted">
-                            {season.episodesCount} episódios
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                );
-              },
+                <div className="mt-2 border-t border-white/5 pt-2">
+                  <p className="px-2 text-[10px] tracking-[0.15em] text-subtle uppercase">
+                    Selecione uma temporada
+                  </p>
+                </div>
+              </div>
             )}
           </div>
         </section>
