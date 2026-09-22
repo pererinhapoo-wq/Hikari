@@ -62,33 +62,20 @@ type AniMedia = {
   description?: string | null;
 };
 
-type AniListPageInfo = {
-  currentPage?: number;
-  hasNextPage?: boolean;
-  perPage?: number;
-};
-
 type AniListResponse = {
   data?: {
     Page?: {
       media?: AniMedia[];
-      pageInfo?: AniListPageInfo;
+
+      pageInfo?: {
+        currentPage?: number;
+        lastPage?: number;
+        hasNextPage?: boolean;
+        total?: number;
+      };
     };
   };
 };
-
-type AniListCountResponse = {
-  data?: {
-    Page?: {
-      media?: Array<{
-        id: number;
-      }>;
-      pageInfo?: AniListPageInfo;
-    };
-  };
-};
-
-const PER_PAGE = 24;
 
 const SEASONS: Array<{
   value: AnimeSeason;
@@ -289,159 +276,16 @@ function mapAnime(
   };
 }
 
-const COUNT_QUERY = `
-  query CalendarSeasonCount(
-    $season: MediaSeason,
-    $year: Int,
-    $page: Int
-  ) {
-    Page(
-      page: $page,
-      perPage: 24
-    ) {
-      pageInfo {
-        currentPage
-        hasNextPage
-        perPage
-      }
-
-      media(
-        type: ANIME,
-        season: $season,
-        seasonYear: $year,
-        isAdult: false,
-        sort: POPULARITY_DESC
-      ) {
-        id
-      }
-    }
-  }
-`;
-
-const FULL_QUERY = `
-  query CalendarSeason(
-    $season: MediaSeason,
-    $year: Int,
-    $page: Int
-  ) {
-    Page(
-      page: $page,
-      perPage: 24
-    ) {
-      pageInfo {
-        currentPage
-        hasNextPage
-        perPage
-      }
-
-      media(
-        type: ANIME,
-        season: $season,
-        seasonYear: $year,
-        isAdult: false,
-        sort: POPULARITY_DESC
-      ) {
-        id
-        idMal
-        isAdult
-
-        title {
-          romaji
-          english
-          native
-        }
-
-        coverImage {
-          extraLarge
-          large
-          color
-        }
-
-        bannerImage
-
-        averageScore
-
-        genres
-
-        format
-
-        status
-
-        episodes
-
-        season
-
-        seasonYear
-
-        description(asHtml: false)
-      }
-    }
-  }
-`;
-
-async function fetchAniListCountPage(
-  season: AnimeSeason,
-  year: number,
-  page: number,
-): Promise<{
-  count: number;
-  hasNext: boolean;
-}> {
-  const response =
-    await fetch(
-      "https://graphql.anilist.co",
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-
-        body: JSON.stringify({
-          query: COUNT_QUERY,
-
-          variables: {
-            season,
-            year,
-            page,
-          },
-        }),
-      },
-    );
-
-  if (!response.ok) {
-    throw new Error(
-      "Não foi possível contar os animes da temporada.",
-    );
-  }
-
-  const json =
-    (await response.json()) as AniListCountResponse;
-
-  const pageData =
-    json.data?.Page;
-
-  const items =
-    pageData?.media ?? [];
-
-  return {
-    count: items.length,
-
-    hasNext:
-      pageData?.pageInfo
-        ?.hasNextPage ??
-      false,
-  };
-}
-
-async function fetchAniListFullPage(
+async function fetchSeason(
   season: AnimeSeason,
   year: number,
   page: number,
 ): Promise<{
   items: SlimAnime[];
+  currentPage: number;
+  lastPage: number;
   hasNext: boolean;
+  total: number;
 }> {
   const response =
     await fetch(
@@ -455,7 +299,67 @@ async function fetchAniListFullPage(
         },
 
         body: JSON.stringify({
-          query: FULL_QUERY,
+          query: `
+            query CalendarSeason(
+              $season: MediaSeason,
+              $year: Int,
+              $page: Int
+            ) {
+              Page(
+                page: $page,
+                perPage: 24
+              ) {
+                pageInfo {
+                  currentPage
+                  lastPage
+                  hasNextPage
+                  total
+                }
+
+                media(
+                  type: ANIME,
+                  season: $season,
+                  seasonYear: $year,
+                  isAdult: false,
+                  sort: POPULARITY_DESC
+                ) {
+                  id
+                  idMal
+                  isAdult
+
+                  title {
+                    romaji
+                    english
+                    native
+                  }
+
+                  coverImage {
+                    extraLarge
+                    large
+                    color
+                  }
+
+                  bannerImage
+
+                  averageScore
+
+                  genres
+
+                  format
+
+                  status
+
+                  episodes
+
+                  season
+
+                  seasonYear
+
+                  description(asHtml: false)
+                }
+              }
+            }
+          `,
 
           variables: {
             season,
@@ -478,96 +382,41 @@ async function fetchAniListFullPage(
   const pageData =
     json.data?.Page;
 
+  const pageInfo =
+    pageData?.pageInfo;
+
   const items =
     (pageData?.media ?? [])
       .map(mapAnime);
 
-  return {
-    items,
-
-    hasNext:
-      pageData?.pageInfo
-        ?.hasNextPage ??
-      false,
-  };
-}
-
-async function fetchSeason(
-  season: AnimeSeason,
-  year: number,
-  requestedPage: number,
-): Promise<{
-  items: SlimAnime[];
-  currentPage: number;
-  lastPage: number;
-  hasNext: boolean;
-  total: number;
-}> {
-  let total = 0;
-  let countPage = 1;
-
-  while (true) {
-    const result =
-      await fetchAniListCountPage(
-        season,
-        year,
-        countPage,
-      );
-
-    total += result.count;
-
-    if (
-      !result.hasNext ||
-      result.count < PER_PAGE
-    ) {
-      break;
-    }
-
-    countPage += 1;
-
-    if (
-      countPage * PER_PAGE >
-      5000
-    ) {
-      break;
-    }
-  }
+  const total =
+    pageInfo?.total ??
+    items.length;
 
   const lastPage =
     Math.max(
       1,
       Math.ceil(
-        total / PER_PAGE,
+        total / 24,
       ),
     );
 
   const currentPage =
-    Math.min(
-      Math.max(
-        requestedPage,
-        1,
-      ),
-      lastPage,
-    );
+    pageInfo?.currentPage ??
+    page;
 
-  const pageResult =
-    await fetchAniListFullPage(
-      season,
-      year,
-      currentPage,
-    );
+  const hasNext =
+    currentPage <
+    lastPage;
 
   return {
-    items:
-      pageResult.items,
+    items,
 
     currentPage,
 
     lastPage,
 
-    hasNext:
-      currentPage <
-      lastPage,
+    hasNext,
 
     total,
   };
@@ -640,8 +489,7 @@ export const Route =
         ...result,
         season,
         year,
-        page:
-          result.currentPage,
+        page,
       };
     },
 
@@ -977,7 +825,13 @@ function CalendarPage() {
                   flex
                   min-w-0
                   h-full
-                  items-start
+                  [&>article]:flex
+                  [&>article]:h-full
+                  [&>article]:w-full
+                  [&>article>a]:flex
+                  [&>article>a]:h-full
+                  [&>article>a]:w-full
+                  [&>article>a]:flex-col
                 "
               >
                 <AnimeCard
