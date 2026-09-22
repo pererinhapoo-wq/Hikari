@@ -479,19 +479,23 @@ function CalendarPage() {
   } =
     Route.useLoaderData();
 
-  const years =
-    Array.from(
-      {
-        length: 5,
-      },
-      (_, index) =>
-        year - 2 + index,
-    );
-
   const currentSeason =
     SEASONS.find(
       (item) =>
         item.value === season,
+    );
+
+  const currentYear =
+    new Date().getFullYear();
+
+  const availableYears =
+    Array.from(
+      {
+        length:
+          currentYear + 2 - 2000 + 1,
+      },
+      (_, index) =>
+        2000 + index,
     );
 
   return (
@@ -526,25 +530,70 @@ function CalendarPage() {
           Ano
         </p>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {years.map(
-            (yearOption) => (
-              <Link
-                key={yearOption}
-                to="/calendar"
-                search={{
-                  season,
-                  year:
-                    yearOption,
-                }}
-                className={cnCalendarButton(
-                  yearOption === year,
-                )}
-              >
-                {yearOption}
-              </Link>
-            ),
-          )}
+        <div className="relative">
+          <select
+            value={year}
+            onChange={(event) => {
+              const nextYear =
+                Number(
+                  event.target.value,
+                );
+
+              if (
+                !Number.isInteger(
+                  nextYear,
+                )
+              ) {
+                return;
+              }
+
+              window.location.href =
+                `/calendar?season=${season}&year=${nextYear}`;
+            }}
+            className="
+              h-12
+              w-full
+              appearance-none
+              rounded-lg
+              border
+              border-border
+              bg-bg
+              px-4
+              pr-10
+              text-sm
+              font-medium
+              text-fg
+              outline-none
+              transition-colors
+              focus:border-fg/30
+              sm:max-w-xs
+            "
+            aria-label="Selecionar ano"
+          >
+            {availableYears.map(
+              (yearOption) => (
+                <option
+                  key={yearOption}
+                  value={yearOption}
+                >
+                  {yearOption}
+                </option>
+              ),
+            )}
+          </select>
+
+          <span
+            className="
+              pointer-events-none
+              absolute
+              right-4
+              top-1/2
+              -translate-y-1/2
+              text-muted
+            "
+          >
+            ▼
+          </span>
         </div>
       </section>
 
@@ -634,27 +683,6 @@ function CalendarPage() {
   );
 }
 
-function cnCalendarButton(
-  active: boolean,
-) {
-  return [
-    "inline-flex",
-    "min-h-11",
-    "shrink-0",
-    "items-center",
-    "justify-center",
-    "rounded-lg",
-    "border",
-    "px-5",
-    "text-sm",
-    "font-medium",
-    "transition-colors",
-    active
-      ? "border-fg/20 bg-elevated text-fg"
-      : "border-border text-muted hover:bg-elevated hover:text-fg",
-  ].join(" ");
-}
-
 function cnCalendarSeason(
   active: boolean,
 ) {
@@ -674,4 +702,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-  }
+}
