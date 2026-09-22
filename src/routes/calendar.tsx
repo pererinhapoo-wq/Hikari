@@ -4,11 +4,20 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 
-import { CalendarDays } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  Check,
+} from "lucide-react";
+
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { AnimeCard } from "@/components/anime-card";
 import type { SlimAnime } from "@/lib/types";
-import { NativeSelect } from "@/components/ui/native-select";
 
 type AnimeSeason =
   | "WINTER"
@@ -485,15 +494,74 @@ function CalendarPage() {
   } =
     Route.useLoaderData();
 
+  const [
+    yearOpen,
+    setYearOpen,
+  ] = useState(false);
+
+  const yearRef =
+    useRef<HTMLDivElement>(
+      null,
+    );
+
   const currentSeason =
     SEASONS.find(
       (item) =>
         item.value === season,
     );
 
+  useEffect(() => {
+    function handleOutsideClick(
+      event: MouseEvent,
+    ) {
+      if (
+        yearRef.current &&
+        !yearRef.current.contains(
+          event.target as Node,
+        )
+      ) {
+        setYearOpen(false);
+      }
+    }
+
+    function handleEscape(
+      event: KeyboardEvent,
+    ) {
+      if (
+        event.key === "Escape"
+      ) {
+        setYearOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleOutsideClick,
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleEscape,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleOutsideClick,
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleEscape,
+      );
+    };
+  }, []);
+
   function handleYearChange(
     nextYear: number,
   ) {
+    setYearOpen(false);
+
     void navigate({
       to: "/calendar",
       search: {
@@ -530,26 +598,127 @@ function CalendarPage() {
           Ano
         </p>
 
-        <NativeSelect
-          value={String(year)}
-          onChange={(event) => {
-            handleYearChange(
-              Number(event.target.value),
-            );
-          }}
-          aria-label="Selecionar ano"
+        <div
+          ref={yearRef}
+          className="relative"
         >
-          {YEARS.map(
-            (yearOption) => (
-              <option
-                key={yearOption}
-                value={yearOption}
-              >
-                {yearOption}
-              </option>
-            ),
+          <button
+            type="button"
+            onClick={() =>
+              setYearOpen(
+                (value) => !value,
+              )
+            }
+            aria-haspopup="listbox"
+            aria-expanded={yearOpen}
+            className="
+              flex
+              min-h-12
+              w-full
+              items-center
+              justify-between
+              rounded-xl
+              border
+              border-border
+              bg-bg
+              px-5
+              text-base
+              font-medium
+              text-fg
+              outline-none
+              transition-colors
+              hover:bg-elevated
+              focus:border-fg/30
+            "
+          >
+            <span>
+              {year}
+            </span>
+
+            <ChevronDown
+              className={[
+                "size-5",
+                "text-muted",
+                "transition-transform",
+                yearOpen
+                  ? "rotate-180"
+                  : "",
+              ].join(" ")}
+            />
+          </button>
+
+          {yearOpen && (
+            <div
+              role="listbox"
+              aria-label="Selecionar ano"
+              className="
+                absolute
+                top-[calc(100%+8px)]
+                left-0
+                z-50
+                max-h-80
+                w-full
+                overflow-y-auto
+                rounded-xl
+                border
+                border-border
+                bg-elevated
+                p-1
+                shadow-2xl
+              "
+            >
+              {YEARS.map(
+                (yearOption) => {
+                  const active =
+                    yearOption ===
+                    year;
+
+                  return (
+                    <button
+                      key={
+                        yearOption
+                      }
+                      type="button"
+                      role="option"
+                      aria-selected={
+                        active
+                      }
+                      onClick={() =>
+                        handleYearChange(
+                          yearOption,
+                        )
+                      }
+                      className="
+                        flex
+                        min-h-11
+                        w-full
+                        items-center
+                        justify-between
+                        rounded-lg
+                        px-4
+                        text-left
+                        text-base
+                        text-fg
+                        transition-colors
+                        hover:bg-bg
+                      "
+                    >
+                      <span>
+                        {
+                          yearOption
+                        }
+                      </span>
+
+                      {active && (
+                        <Check className="size-5 text-fg" />
+                      )}
+                    </button>
+                  );
+                },
+              )}
+            </div>
           )}
-        </NativeSelect>
+        </div>
       </section>
 
       {/* TEMPORADA */}
@@ -603,7 +772,7 @@ function CalendarPage() {
 
       {/* LISTA */}
       {items.length > 0 ? (
-        <section className="grid grid-cols-2 items-start gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        <section className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {items.map(
             (anime) => (
               <AnimeCard
@@ -652,4 +821,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-      }
+}
