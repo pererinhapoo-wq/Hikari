@@ -13,6 +13,7 @@ import {
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -183,34 +184,18 @@ function SearchPage() {
 
   /*
    * =========================================================
-   * INICIALIZAÇÃO
-   * =========================================================
-   *
-   * Mantemos a página bloqueada durante a primeira
-   * renderização para evitar o flash do estado vazio.
-   */
-
-  const [
-    initializing,
-    setInitializing,
-  ] = useState(true);
-
-  /*
-   * =========================================================
-   * RELOAD REAL
+   * RELOAD REAL DA PÁGINA
    * =========================================================
    */
 
   const [
     clearingOnReload,
     setClearingOnReload,
-  ] = useState(false);
-
-  useEffect(() => {
+  ] = useState(() => {
     if (
       typeof window === "undefined"
     ) {
-      return;
+      return false;
     }
 
     const navigation =
@@ -229,12 +214,10 @@ function SearchPage() {
         ).__hikariSearchReloadHandled,
       );
 
-    const isRealReload =
-      navigation?.type ===
-        "reload" &&
-      !alreadyHandled;
-
-    if (isRealReload) {
+    if (
+      navigation?.type === "reload" &&
+      !alreadyHandled
+    ) {
       (
         window as Window & {
           __hikariSearchReloadHandled?: boolean;
@@ -242,13 +225,11 @@ function SearchPage() {
       ).__hikariSearchReloadHandled =
         true;
 
-      setClearingOnReload(
-        true,
-      );
+      return true;
     }
 
-    setInitializing(false);
-  }, []);
+    return false;
+  });
 
   /*
    * =========================================================
@@ -263,6 +244,16 @@ function SearchPage() {
     search.q ?? "",
   );
 
+  /*
+   * Guarda a primeira execução do efeito de sincronização.
+   *
+   * Isso impede que o React apague "jujut" logo depois
+   * que o usuário começa a digitar.
+   */
+
+  const firstSearchSync =
+    useRef(true);
+
   const [
     filtersOpen,
     setFiltersOpen,
@@ -273,7 +264,7 @@ function SearchPage() {
 
   /*
    * =========================================================
-   * LIMPAR BUSCA SOMENTE NO RELOAD
+   * LIMPAR BUSCA SOMENTE NO RELOAD REAL
    * =========================================================
    *
    * O gênero é preservado.
@@ -305,13 +296,25 @@ function SearchPage() {
    * =========================================================
    * SINCRONIZAR CAMPO COM A URL
    * =========================================================
+   *
+   * IMPORTANTE:
+   * Não executamos esta sincronização na primeira montagem.
+   *
+   * Assim, o valor inicial do campo continua sendo o valor
+   * correto e o usuário pode digitar normalmente.
    */
 
   useEffect(() => {
     if (
-      initializing ||
-      clearingOnReload
+      firstSearchSync.current
     ) {
+      firstSearchSync.current =
+        false;
+
+      return;
+    }
+
+    if (clearingOnReload) {
       return;
     }
 
@@ -320,7 +323,6 @@ function SearchPage() {
     );
   }, [
     search.q,
-    initializing,
     clearingOnReload,
   ]);
 
@@ -330,18 +332,21 @@ function SearchPage() {
    * =========================================================
    *
    * Não precisa apertar Enter.
+   *
+   * A partir de 2 caracteres, aguarda 700ms.
    */
 
   useEffect(() => {
-    if (
-      initializing ||
-      clearingOnReload
-    ) {
+    if (clearingOnReload) {
       return;
     }
 
     const q =
       draft.trim();
+
+    /*
+     * Não pesquisa uma única letra.
+     */
 
     if (
       q.length > 0 &&
@@ -380,7 +385,6 @@ function SearchPage() {
     draft,
     navigate,
     search,
-    initializing,
     clearingOnReload,
   ]);
 
@@ -392,10 +396,7 @@ function SearchPage() {
 
   const items =
     useMemo(() => {
-      if (
-        initializing ||
-        clearingOnReload
-      ) {
+      if (clearingOnReload) {
         return [];
       }
 
@@ -405,6 +406,10 @@ function SearchPage() {
         )
           .trim()
           .toLowerCase();
+
+      /*
+       * Animes locais somente na primeira página.
+       */
 
       const localHits =
         currentPage === 1
@@ -465,7 +470,6 @@ function SearchPage() {
       result.items,
       search.q,
       search.genre,
-      initializing,
       clearingOnReload,
     ]);
 
@@ -581,17 +585,13 @@ function SearchPage() {
 
   /*
    * =========================================================
-   * BLOQUEIO DURANTE A INICIALIZAÇÃO
+   * BLOQUEIO DURANTE RELOAD
    * =========================================================
    *
-   * Evita mostrar "Pesquise um anime" ou "Nada encontrado"
-   * durante o reload.
+   * Não mostra "Pesquise um anime" durante o reload.
    */
 
-  if (
-    initializing ||
-    clearingOnReload
-  ) {
+  if (clearingOnReload) {
     return (
       <div className="space-y-6 pt-6">
 
@@ -1104,4 +1104,4 @@ function Field({
       {children}
     </label>
   );
-}
+  }
