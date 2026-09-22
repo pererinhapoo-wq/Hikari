@@ -2812,6 +2812,9 @@ const browseSchema =
 
     year:
       z.number().optional(),
+
+    genre:
+      z.string().optional(),
   });
 
 export const fetchBrowse =
@@ -2839,8 +2842,11 @@ export const fetchBrowse =
           data.year ??
           current.year;
 
+        const genre =
+          data.genre?.trim() || undefined;
+
         const key =
-          `browse:${data.section}:${season}:${year}:${page}`;
+          `browse:${data.section}:${season}:${year}:${genre ?? "all"}:${page}`;
 
         const cached =
           fromCache<SearchResult>(
@@ -2910,7 +2916,8 @@ export const fetchBrowse =
                 : `
             query Browse(
               $page: Int,
-              $sort: [MediaSort]
+              $sort: [MediaSort],
+              $genre: String
             ) {
               Page(
                 page: $page,
@@ -2922,7 +2929,8 @@ export const fetchBrowse =
 
                 media(
                   type: ANIME,
-                  sort: $sort
+                  sort: $sort,
+                  genre: $genre
                 ) {
                   ${CARD_FIELDS}
                 }
@@ -2949,6 +2957,8 @@ export const fetchBrowse =
                         data.section
                       ],
                     ],
+
+                    genre,
                   },
             );
 
