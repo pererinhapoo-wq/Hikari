@@ -244,17 +244,36 @@ function AnimePage() {
     };
   }, [anime?.id, anime?.banner]);
 
+  if (!anime) {
+    return (
+      <div className="py-24 text-center">
+        <p className="font-display text-2xl">
+          Anime não encontrado
+        </p>
+
+        <Link
+          to="/"
+          className="mt-3 inline-block text-sm text-muted underline"
+        >
+          Voltar ao início
+        </Link>
+      </div>
+    );
+  }
+
+  /*
+   * O título precisa existir antes de ser usado
+   * na lista de temporadas.
+   */
+  const title = displayTitle(anime);
+
   /*
    * TEMPORADAS
-   *
-   * A API traz as temporadas relacionadas.
-   * A temporada atual também é adicionada manualmente
-   * para garantir que a Season 1 nunca fique de fora.
    */
   const seasonNavigation =
     remote?.seasonNavigation?.items ?? [];
 
-  const seasons = anime?.seasons ?? [];
+  const seasons = anime.seasons ?? [];
 
   /*
    * A página representa uma temporada.
@@ -266,10 +285,23 @@ function AnimePage() {
   const currentEpisodes =
     currentSeason?.episodes ?? [];
 
+  const allEpisodes = useMemo(
+    () =>
+      currentEpisodes.map((episode) => ({
+        ...episode,
+        seasonId:
+          currentSeason?.id ?? "",
+      })),
+    [currentEpisodes, currentSeason?.id],
+  );
+
   /*
    * MONTA A LISTA COMPLETA DE TEMPORADAS
    *
-   * Remove duplicados pelo ID.
+   * A temporada atual é adicionada primeiro.
+   * Depois entram as temporadas vindas da API.
+   *
+   * O Map remove duplicados pelo ID.
    */
   const seasonOptions = useMemo(() => {
     const map = new Map<
@@ -284,24 +316,23 @@ function AnimePage() {
     >();
 
     /*
-     * Primeiro adicionamos a temporada atual.
-     * Isso garante que a Season 1 apareça.
+     * Temporada atual.
+     *
+     * Isso garante que a Season 1 também apareça
+     * quando estamos dentro dela.
      */
-    if (anime?.id) {
-      map.set(anime.id, {
-        id: anime.id,
-        title,
-        cover: anime.cover,
-        episodesCount:
-          currentEpisodes.length ||
-          anime.episodesCount ||
-          0,
-      });
-    }
+    map.set(anime.id, {
+      id: anime.id,
+      title,
+      cover: anime.cover,
+      episodesCount:
+        currentEpisodes.length ||
+        anime.episodesCount ||
+        0,
+    });
 
     /*
-     * Depois adicionamos todas as temporadas
-     * vindas da API.
+     * Temporadas relacionadas vindas da API.
      */
     for (const season of seasonNavigation) {
       if (!season?.id) {
@@ -323,9 +354,9 @@ function AnimePage() {
 
     return Array.from(map.values());
   }, [
-    anime?.id,
-    anime?.cover,
-    anime?.episodesCount,
+    anime.id,
+    anime.cover,
+    anime.episodesCount,
     title,
     currentEpisodes.length,
     seasonNavigation,
@@ -335,12 +366,9 @@ function AnimePage() {
    * Nome curto da temporada.
    *
    * Exemplos:
-   * "Attack on Titan Season 1" -> "1"
-   * "Attack on Titan Season 2" -> "2"
-   * "Attack on Titan Season 3 Part 2" -> "3 Part 2"
-   *
-   * Se não conseguir identificar, usa o número
-   * da posição da temporada.
+   * Attack on Titan Season 1 -> 1
+   * Attack on Titan Season 2 -> 2
+   * Attack on Titan Season 3 Part 2 -> 3 Part 2
    */
   const getSeasonShortLabel = (
     season: {
@@ -374,33 +402,6 @@ function AnimePage() {
 
     return String(index + 1);
   };
-
-  const allEpisodes = useMemo(
-    () =>
-      currentEpisodes.map((episode) => ({
-        ...episode,
-        seasonId:
-          currentSeason?.id ?? "",
-      })),
-    [currentEpisodes, currentSeason?.id],
-  );
-
-  if (!anime) {
-    return (
-      <div className="py-24 text-center">
-        <p className="font-display text-2xl">
-          Anime não encontrado
-        </p>
-
-        <Link
-          to="/"
-          className="mt-3 inline-block text-sm text-muted underline"
-        >
-          Voltar ao início
-        </Link>
-      </div>
-    );
-  }
 
   const yt = youtubeIdFrom(anime.trailerId);
 
@@ -974,4 +975,4 @@ function EpisodeGrid({
       </ol>
     </div>
   );
-      }
+}
