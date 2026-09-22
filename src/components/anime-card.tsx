@@ -19,10 +19,10 @@ export function AnimeCard({
 
   const width =
     size === "sm"
-      ? "w-28 sm:w-28"
+      ? "w-28 sm:w-28 md:w-40 lg:w-44"
       : size === "lg"
-        ? "w-36 sm:w-40"
-        : "w-32 sm:w-34";
+        ? "w-36 sm:w-40 md:w-48 lg:w-52"
+        : "w-32 sm:w-34 md:w-44 lg:w-48";
 
   return (
     <article className={cn("group relative shrink-0", width)}>
@@ -149,10 +149,10 @@ export function AnimeCardSkeleton({
 }) {
   const width =
     size === "sm"
-      ? "w-28 sm:w-28"
+      ? "w-28 sm:w-28 md:w-40 lg:w-44"
       : size === "lg"
-        ? "w-36 sm:w-40"
-        : "w-32 sm:w-34";
+        ? "w-36 sm:w-40 md:w-48 lg:w-52"
+        : "w-32 sm:w-34 md:w-44 lg:w-48";
 
   return (
     <div className={cn(width, "shrink-0")}>
@@ -163,4 +163,4 @@ export function AnimeCardSkeleton({
       <div className="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-elevated" />
     </div>
   );
-      }
+}
