@@ -184,12 +184,6 @@ function SearchPage() {
   /*
    * Detecta somente um recarregamento
    * real da página.
-   *
-   * Em um reload de /search?q=...
-   * limpamos a URL e o campo.
-   *
-   * Navegações normais dentro do app
-   * continuam funcionando normalmente.
    */
   const [
     clearingOnReload,
@@ -254,12 +248,10 @@ function SearchPage() {
    * LIMPAR BUSCA APENAS NO RELOAD
    * =========================================================
    *
-   * Importante:
-   * não usamos navigate enquanto o usuário
-   * está digitando.
+   * Se a página foi recarregada dentro de um gênero,
+   * preservamos o gênero.
    *
-   * Isso evita o ciclo que estava causando
-   * a tela preta.
+   * Se não havia gênero, a URL fica simplesmente /search.
    */
   useEffect(() => {
     if (!clearingOnReload) {
@@ -269,7 +261,10 @@ function SearchPage() {
     setDraft("");
 
     void navigate({
-      search: {},
+      search: {
+        genre:
+          search.genre,
+      },
       replace: true,
     }).finally(() => {
       setClearingOnReload(false);
@@ -277,16 +272,15 @@ function SearchPage() {
   }, [
     clearingOnReload,
     navigate,
+    search.genre,
   ]);
 
   /*
    * =========================================================
    * SINCRONIZAR CAMPO COM A URL
    * =========================================================
-   *
-   * Não sobrescrevemos o texto enquanto o usuário
-   * estiver digitando.
    */
+
   useEffect(() => {
     if (clearingOnReload) {
       return;
@@ -305,10 +299,8 @@ function SearchPage() {
    * BUSCA AUTOMÁTICA
    * =========================================================
    *
-   * O usuário NÃO precisa apertar Enter.
-   *
-   * Depois que parar de digitar por 700 ms,
-   * a busca é atualizada automaticamente.
+   * Continua automática.
+   * Não precisa apertar Enter.
    */
   useEffect(() => {
     if (clearingOnReload) {
@@ -319,7 +311,7 @@ function SearchPage() {
       draft.trim();
 
     /*
-     * Não dispara busca para uma letra.
+     * Não dispara busca para uma única letra.
      */
     if (
       q.length > 0 &&
@@ -369,10 +361,6 @@ function SearchPage() {
 
   const items =
     useMemo(() => {
-      /*
-       * Durante o reload, não mostramos os resultados
-       * antigos enquanto a URL está sendo limpa.
-       */
       if (clearingOnReload) {
         return [];
       }
@@ -385,10 +373,7 @@ function SearchPage() {
           .toLowerCase();
 
       /*
-       * Os animes locais entram apenas
-       * na primeira página para não
-       * aparecerem repetidos em todas
-       * as páginas da busca.
+       * Animes locais somente na primeira página.
        */
       const localHits =
         currentPage === 1
@@ -481,15 +466,15 @@ function SearchPage() {
     items.length > 0;
 
   /*
-   * =========================================================
-   * ALTERAÇÃO:
+   * IMPORTANTE:
    *
-   * Se existir uma pesquisa OU um gênero selecionado,
-   * mostramos os resultados.
+   * Se houver um gênero selecionado, a tela continua
+   * mostrando os animes mesmo quando q estiver vazio.
    *
-   * Assim, ao apagar o texto da pesquisa dentro de um
-   * gênero, os animes daquele gênero voltam a aparecer.
-   * =========================================================
+   * Portanto:
+   *
+   * gênero + pesquisa = resultados da pesquisa
+   * gênero + pesquisa apagada = animes do gênero
    */
   const hasQuery =
     Boolean(
@@ -1043,4 +1028,4 @@ function Field({
       {children}
     </label>
   );
-      }
+  }
