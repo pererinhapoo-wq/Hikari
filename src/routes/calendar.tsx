@@ -441,13 +441,6 @@ export const Route =
       };
     },
 
-    /*
-     * IMPORTANTE:
-     *
-     * Isso faz o loader ser executado
-     * novamente quando mudamos ano,
-     * temporada ou página.
-     */
     loaderDeps: ({
       search,
     }) => search,
@@ -636,15 +629,6 @@ function CalendarPage() {
     });
   }
 
-  /*
-   * Mostra:
-   *
-   * 1 2 3 4 5
-   *
-   * ou, quando já estamos mais longe:
-   *
-   * 1 ... 4 5 6 7 8 ...
-   */
   const pageNumbers =
     (() => {
       if (lastPage <= 1) {
@@ -823,7 +807,18 @@ function CalendarPage() {
             (anime) => (
               <div
                 key={anime.id}
-                className="min-w-0 [&>article]:h-full [&>article]:w-full"
+                className="
+                  flex
+                  min-w-0
+                  h-full
+                  [&>article]:flex
+                  [&>article]:h-full
+                  [&>article]:w-full
+                  [&>article>a]:flex
+                  [&>article>a]:h-full
+                  [&>article>a]:w-full
+                  [&>article>a]:flex-col
+                "
               >
                 <AnimeCard
                   anime={anime}
@@ -850,7 +845,6 @@ function CalendarPage() {
       {/* PAGINAÇÃO */}
       {showPagination && (
         <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
-          {/* ANTERIOR */}
           <button
             type="button"
             onClick={() =>
@@ -865,7 +859,6 @@ function CalendarPage() {
             <ChevronLeft className="size-5" />
           </button>
 
-          {/* NÚMEROS */}
           <div className="flex items-center gap-1">
             {pageNumbers.map(
               (
@@ -926,7 +919,6 @@ function CalendarPage() {
             )}
           </div>
 
-          {/* PRÓXIMA */}
           <button
             type="button"
             onClick={() =>
@@ -943,7 +935,6 @@ function CalendarPage() {
         </div>
       )}
 
-      {/* CONTAGEM */}
       {total > 0 && (
         <p className="text-center text-xs text-subtle">
           Página {page} de{" "}
@@ -975,4 +966,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-  }
+    }
