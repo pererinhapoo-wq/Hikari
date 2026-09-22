@@ -181,12 +181,73 @@ function SearchPage() {
       (s) => s.animes,
     );
 
+  /*
+   * DETECTA RECARREGAMENTO
+   *
+   * Se o usuário recarregou diretamente
+   * a página /search, limpamos a pesquisa
+   * anterior.
+   *
+   * A pesquisa normal feita pela navegação
+   * do Hikari não é afetada.
+   */
+  const [
+    clearingOnReload,
+    setClearingOnReload,
+  ] = useState(() => {
+    if (
+      typeof window ===
+      "undefined"
+    ) {
+      return false;
+    }
+
+    const navigation =
+      window.performance
+        .getEntriesByType(
+          "navigation",
+        )[0] as
+        | PerformanceNavigationTiming
+        | undefined;
+
+    return (
+      navigation?.type ===
+      "reload"
+    );
+  });
+
+  /*
+   * CAMPO DE BUSCA
+   *
+   * Quando a página foi recarregada,
+   * começa vazio.
+   */
   const [
     draft,
     setDraft,
-  ] = useState(
-    search.q ?? "",
-  );
+  ] = useState(() => {
+    if (
+      typeof window !==
+      "undefined"
+    ) {
+      const navigation =
+        window.performance
+          .getEntriesByType(
+            "navigation",
+          )[0] as
+          | PerformanceNavigationTiming
+          | undefined;
+
+      if (
+        navigation?.type ===
+        "reload"
+      ) {
+        return "";
+      }
+    }
+
+    return search.q ?? "";
+  });
 
   const [
     filtersOpen,
@@ -197,20 +258,76 @@ function SearchPage() {
     search.page ?? 1;
 
   /* =========================================================
+     LIMPAR BUSCA AO RECARREGAR
+  ========================================================== */
+
+  useEffect(() => {
+    if (
+      !clearingOnReload
+    ) {
+      return;
+    }
+
+    /*
+     * Limpa completamente os parâmetros
+     * da busca anterior.
+     */
+    void navigate({
+      search: {},
+      replace: true,
+    });
+
+    /*
+     * Depois que a URL foi limpa,
+     * libera a tela novamente.
+     */
+    setClearingOnReload(
+      false,
+    );
+  }, [
+    clearingOnReload,
+    navigate,
+  ]);
+
+  /* =========================================================
      MANTER O CAMPO SINCRONIZADO COM A URL
   ========================================================== */
 
   useEffect(() => {
+    /*
+     * Durante a limpeza do reload,
+     * não colocamos novamente o valor
+     * antigo dentro do campo.
+     */
+    if (
+      clearingOnReload
+    ) {
+      return;
+    }
+
     setDraft(
       search.q ?? "",
     );
-  }, [search.q]);
+  }, [
+    search.q,
+    clearingOnReload,
+  ]);
 
   /* =========================================================
      BUSCA AUTOMÁTICA
   ========================================================== */
 
   useEffect(() => {
+    /*
+     * Durante o reload não fazemos
+     * nenhuma pesquisa automática.
+     */
+    if (
+      clearingOnReload
+    ) {
+      return;
+    }
+
     const q =
       draft.trim();
 
@@ -246,6 +363,7 @@ function SearchPage() {
     draft,
     navigate,
     search,
+    clearingOnReload,
   ]);
 
   /* =========================================================
@@ -254,6 +372,17 @@ function SearchPage() {
 
   const items =
     useMemo(() => {
+      /*
+       * Enquanto estamos limpando um
+       * reload, não mostramos os resultados
+       * antigos.
+       */
+      if (
+        clearingOnReload
+      ) {
+        return [];
+      }
+
       const q =
         (
           search.q ?? ""
@@ -321,6 +450,7 @@ function SearchPage() {
         ),
       ];
     }, [
+      clearingOnReload,
       currentPage,
       locals,
       result.items,
@@ -355,6 +485,7 @@ function SearchPage() {
     items.length > 0;
 
   const hasQuery =
+    !clearingOnReload &&
     Boolean(
       search.q?.trim(),
     );
@@ -363,14 +494,6 @@ function SearchPage() {
      PAGINAÇÃO
   ========================================================== */
 
-  /*
-   * Mantemos uma faixa simples
-   * de páginas visível.
-   *
-   * A API informa quando existe
-   * uma próxima página através
-   * de result.hasNext.
-   */
   const pageNumbers =
     useMemo(() => {
       const pages =
@@ -458,7 +581,11 @@ function SearchPage() {
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-subtle" />
 
           <Input
-            value={draft}
+            value={
+              clearingOnReload
+                ? ""
+                : draft
+            }
             onChange={(e) => {
               setDraft(
                 e.target.value,
@@ -849,7 +976,8 @@ function SearchPage() {
           SEM BUSCA
       ====================================================== */}
 
-      {!hasQuery && (
+      {(!hasQuery ||
+        clearingOnReload) && (
         <div className="py-20 text-center">
 
           <SearchIcon className="mx-auto size-8 text-subtle" />
@@ -923,4 +1051,4 @@ function Field({
       {children}
     </label>
   );
-  }
+      }
