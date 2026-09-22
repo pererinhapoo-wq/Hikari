@@ -590,7 +590,7 @@ function AnimePage() {
       {/* TEMPORADAS */}
       {seasonNavigation.length > 1 && (
         <section className="mt-8">
-          <div className="relative max-w-xs">
+          <div className="relative w-[220px] max-w-full">
             <button
               type="button"
               onClick={() =>
@@ -598,10 +598,10 @@ function AnimePage() {
                   (open) => !open,
                 )
               }
-              className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-surface px-3 py-2 text-left transition-colors hover:bg-elevated"
+              className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-surface px-3 py-1.5 text-left transition-colors hover:bg-elevated"
               aria-expanded={seasonsOpen}
             >
-              <span className="font-display text-lg tracking-tight">
+              <span className="font-display text-base tracking-tight">
                 Temporadas
               </span>
 
@@ -615,7 +615,7 @@ function AnimePage() {
             </button>
 
             {seasonsOpen && (
-              <div className="absolute left-0 right-0 z-30 mt-1.5 overflow-hidden rounded-lg border border-white/10 bg-surface p-1 shadow-2xl">
+              <div className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-lg border border-white/10 bg-surface p-1 shadow-2xl">
                 {seasonNavigation.map(
                   (season, index) => {
                     const selected =
@@ -638,7 +638,7 @@ function AnimePage() {
                             false,
                           )
                         }
-                        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${
+                        className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs leading-snug transition-colors ${
                           selected
                             ? "bg-elevated font-medium text-fg"
                             : "text-muted hover:bg-elevated hover:text-fg"
@@ -649,7 +649,7 @@ function AnimePage() {
                         </span>
 
                         {selected && (
-                          <Check className="size-4" />
+                          <Check className="ml-2 size-3.5 shrink-0" />
                         )}
                       </Link>
                     );
@@ -879,4 +879,4 @@ function EpisodeGrid({
       </ol>
     </div>
   );
-    }
+      }
