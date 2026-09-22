@@ -8,6 +8,7 @@ import { CalendarDays } from "lucide-react";
 
 import { AnimeCard } from "@/components/anime-card";
 import type { SlimAnime } from "@/lib/types";
+import { NativeSelect } from "@/components/ui/native-select";
 
 type AnimeSeason =
   | "WINTER"
@@ -433,7 +434,7 @@ function CalendarPending() {
           (_, index) => (
             <div
               key={index}
-              className="min-w-0 overflow-hidden rounded-xl"
+              className="overflow-hidden rounded-xl"
             >
               <div className="aspect-2/3 animate-pulse bg-elevated" />
 
@@ -529,29 +530,13 @@ function CalendarPage() {
           Ano
         </p>
 
-        <select
-          value={year}
+        <NativeSelect
+          value={String(year)}
           onChange={(event) => {
             handleYearChange(
               Number(event.target.value),
             );
           }}
-          className="
-            min-h-12
-            w-full
-            appearance-none
-            rounded-xl
-            border
-            border-border
-            bg-bg
-            px-5
-            text-base
-            font-medium
-            text-fg
-            outline-none
-            transition-colors
-            focus:border-fg/30
-          "
           aria-label="Selecionar ano"
         >
           {YEARS.map(
@@ -564,7 +549,7 @@ function CalendarPage() {
               </option>
             ),
           )}
-        </select>
+        </NativeSelect>
       </section>
 
       {/* TEMPORADA */}
@@ -621,14 +606,11 @@ function CalendarPage() {
         <section className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {items.map(
             (anime) => (
-              <div
+              <AnimeCard
                 key={anime.id}
-                className="min-w-0 [&>article]:w-full"
-              >
-                <AnimeCard
-                  anime={anime}
-                />
-              </div>
+                anime={anime}
+                fullWidth
+              />
             ),
           )}
         </section>
