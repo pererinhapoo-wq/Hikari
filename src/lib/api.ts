@@ -2092,13 +2092,14 @@ export const searchCatalog =
           );
 
           /*
-           * Se as fontes diretas não encontrarem uma correspondência forte,
+           * Se as fontes diretas não encontrarem uma correspondência forte e
+           * direta (não apenas uma aproximação por erro de digitação),
            * aí sim fazemos a busca flexível para erros e abreviações.
            * Ex.: "naru", "narut", "jujut".
            */
           const hasStrongMatch = items.some(
             (anime) =>
-              searchScore(anime, q) >= 820,
+              searchScore(anime, q) >= 950,
           );
 
           if (!hasStrongMatch) {
