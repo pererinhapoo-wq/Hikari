@@ -589,8 +589,8 @@ function AnimePage() {
 
       {/* TEMPORADAS */}
       {seasonNavigation.length > 1 && (
-        <section className="mt-10">
-          <div className="relative max-w-sm">
+        <section className="mt-8">
+          <div className="relative max-w-xs">
             <button
               type="button"
               onClick={() =>
@@ -598,15 +598,15 @@ function AnimePage() {
                   (open) => !open,
                 )
               }
-              className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-surface px-4 py-3 text-left transition-colors hover:bg-elevated"
+              className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-surface px-3 py-2 text-left transition-colors hover:bg-elevated"
               aria-expanded={seasonsOpen}
             >
-              <span className="font-display text-xl tracking-tight">
+              <span className="font-display text-lg tracking-tight">
                 Temporadas
               </span>
 
               <ChevronDown
-                className={`size-5 text-muted transition-transform ${
+                className={`size-4 text-muted transition-transform ${
                   seasonsOpen
                     ? "rotate-180"
                     : ""
@@ -615,7 +615,7 @@ function AnimePage() {
             </button>
 
             {seasonsOpen && (
-              <div className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-xl border border-white/10 bg-surface p-1 shadow-2xl">
+              <div className="absolute left-0 right-0 z-30 mt-1.5 overflow-hidden rounded-lg border border-white/10 bg-surface p-1 shadow-2xl">
                 {seasonNavigation.map(
                   (season, index) => {
                     const selected =
@@ -638,7 +638,7 @@ function AnimePage() {
                             false,
                           )
                         }
-                        className={`flex w-full items-center justify-between rounded-lg px-4 py-3 text-sm transition-colors ${
+                        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${
                           selected
                             ? "bg-elevated font-medium text-fg"
                             : "text-muted hover:bg-elevated hover:text-fg"
