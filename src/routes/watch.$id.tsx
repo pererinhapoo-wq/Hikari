@@ -327,6 +327,57 @@ function WatchPage() {
     }, 220);
   };
 
+  const lockLandscape = async () => {
+    try {
+      if (
+        typeof screen !== "undefined" &&
+        screen.orientation &&
+        typeof screen.orientation.lock === "function"
+      ) {
+        await screen.orientation.lock("landscape");
+      }
+    } catch {
+      // Alguns navegadores móveis não permitem travar a orientação.
+    }
+  };
+
+  const unlockOrientation = async () => {
+    try {
+      if (
+        typeof screen !== "undefined" &&
+        screen.orientation &&
+        typeof screen.orientation.unlock === "function"
+      ) {
+        screen.orientation.unlock();
+      }
+    } catch {
+      // Alguns navegadores não permitem liberar a orientação por script.
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (document.fullscreenElement) {
+        void lockLandscape();
+      } else {
+        void unlockOrientation();
+      }
+    };
+
+    document.addEventListener(
+      "fullscreenchange",
+      handleFullscreenChange,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "fullscreenchange",
+        handleFullscreenChange,
+      );
+      void unlockOrientation();
+    };
+  }, []);
+
   const handleFullscreen = async () => {
     const player = playerRef.current;
     if (!player) return;
@@ -334,11 +385,13 @@ function WatchPage() {
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
+        await unlockOrientation();
       } else {
         await player.requestFullscreen();
+        await lockLandscape();
       }
     } catch {
-      // Alguns navegadores móveis não permitem fullscreen em todos os contextos.
+      // Alguns navegadores móveis não permitem fullscreen/orientação.
     }
   };
 
@@ -4405,4 +4458,4 @@ function CommentCard({
 
     </article>
   );
-    }
+                      }
