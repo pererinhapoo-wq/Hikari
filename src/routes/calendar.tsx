@@ -4,19 +4,11 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 
-import {
-  CalendarDays,
-  ChevronDown,
-} from "lucide-react";
-
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { CalendarDays } from "lucide-react";
 
 import { AnimeCard } from "@/components/anime-card";
 import type { SlimAnime } from "@/lib/types";
+import { NativeSelect } from "@/components/ui/native-select";
 
 type AnimeSeason =
   | "WINTER"
@@ -436,13 +428,13 @@ function CalendarPending() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="flex flex-wrap gap-3">
         {Array.from(
           { length: 12 },
           (_, index) => (
             <div
               key={index}
-              className="overflow-hidden rounded-xl"
+              className="w-32 overflow-hidden rounded-xl"
             >
               <div className="aspect-2/3 animate-pulse bg-elevated" />
 
@@ -493,58 +485,15 @@ function CalendarPage() {
   } =
     Route.useLoaderData();
 
-  const [
-    yearOpen,
-    setYearOpen,
-  ] = useState(false);
-
-  const yearListRef =
-    useRef<HTMLDivElement | null>(
-      null,
-    );
-
   const currentSeason =
     SEASONS.find(
       (item) =>
         item.value === season,
     );
 
-  /*
-   * Quando o seletor de ano abre,
-   * posiciona a lista no ano atual.
-   */
-  useEffect(() => {
-    if (!yearOpen) {
-      return;
-    }
-
-    const timer =
-      window.setTimeout(() => {
-        const selected =
-          yearListRef.current?.querySelector<HTMLElement>(
-            `[data-year="${year}"]`,
-          );
-
-        selected?.scrollIntoView({
-          block: "center",
-          behavior: "instant",
-        });
-      }, 0);
-
-    return () =>
-      window.clearTimeout(
-        timer,
-      );
-  }, [
-    yearOpen,
-    year,
-  ]);
-
   function handleYearChange(
     nextYear: number,
   ) {
-    setYearOpen(false);
-
     void navigate({
       to: "/calendar",
       search: {
@@ -576,152 +525,31 @@ function CalendarPage() {
       </section>
 
       {/* ANO */}
-      <section className="relative space-y-3">
+      <section className="space-y-3">
         <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
           Ano
         </p>
 
-        <button
-          type="button"
-          onClick={() =>
-            setYearOpen(
-              (value) => !value,
-            )
-          }
-          aria-haspopup="listbox"
-          aria-expanded={yearOpen}
-          className="
-            flex
-            min-h-12
-            w-full
-            items-center
-            justify-between
-            rounded-xl
-            border
-            border-border
-            bg-bg
-            px-5
-            text-left
-            text-base
-            font-medium
-            text-fg
-            outline-none
-            transition-colors
-            hover:bg-elevated
-            focus:border-fg/30
-          "
+        <NativeSelect
+          value={String(year)}
+          onChange={(event) => {
+            handleYearChange(
+              Number(event.target.value),
+            );
+          }}
+          aria-label="Selecionar ano"
         >
-          <span>
-            {year}
-          </span>
-
-          <ChevronDown
-            className={`
-              size-5
-              text-muted
-              transition-transform
-              ${
-                yearOpen
-                  ? "rotate-180"
-                  : ""
-              }
-            `}
-          />
-        </button>
-
-        {yearOpen && (
-          <>
-            <button
-              type="button"
-              aria-label="Fechar seleção de ano"
-              className="fixed inset-0 z-40 cursor-default"
-              onClick={() =>
-                setYearOpen(false)
-              }
-            />
-
-            <div
-              ref={yearListRef}
-              role="listbox"
-              aria-label="Selecionar ano"
-              className="
-                absolute
-                top-full
-                right-0
-                left-0
-                z-50
-                mt-2
-                max-h-72
-                overflow-y-auto
-                overscroll-contain
-                rounded-xl
-                border
-                border-border
-                bg-elevated
-                p-1
-                shadow-2xl
-              "
-            >
-              {YEARS.map(
-                (yearOption) => {
-                  const active =
-                    yearOption ===
-                    year;
-
-                  return (
-                    <button
-                      key={
-                        yearOption
-                      }
-                      type="button"
-                      role="option"
-                      aria-selected={
-                        active
-                      }
-                      data-year={
-                        yearOption
-                      }
-                      onClick={() =>
-                        handleYearChange(
-                          yearOption,
-                        )
-                      }
-                      className={`
-                        flex
-                        min-h-12
-                        w-full
-                        items-center
-                        justify-between
-                        rounded-lg
-                        px-4
-                        text-left
-                        text-base
-                        transition-colors
-                        ${
-                          active
-                            ? "bg-bg font-semibold text-fg"
-                            : "text-muted hover:bg-bg hover:text-fg"
-                        }
-                      `}
-                    >
-                      <span>
-                        {
-                          yearOption
-                        }
-                      </span>
-
-                      {active && (
-                        <span className="text-xs text-muted">
-                          Selecionado
-                        </span>
-                      )}
-                    </button>
-                  );
-                },
-              )}
-            </div>
-          </>
-        )}
+          {YEARS.map(
+            (yearOption) => (
+              <option
+                key={yearOption}
+                value={yearOption}
+              >
+                {yearOption}
+              </option>
+            ),
+          )}
+        </NativeSelect>
       </section>
 
       {/* TEMPORADA */}
@@ -775,27 +603,14 @@ function CalendarPage() {
 
       {/* LISTA */}
       {items.length > 0 ? (
-        <section className="grid grid-cols-2 items-stretch gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        <section className="flex flex-wrap gap-3">
           {items.map(
             (anime) => (
-              <div
+              <AnimeCard
                 key={anime.id}
-                className="
-                  flex
-                  min-w-0
-                  [&>article]:flex
-                  [&>article]:h-full
-                  [&>article>a]:flex
-                  [&>article>a]:h-full
-                  [&>article>a]:flex-col
-                  [&>article>a>div:last-child]:min-h-18
-                "
-              >
-                <AnimeCard
-                  anime={anime}
-                  fullWidth
-                />
-              </div>
+                anime={anime}
+                fullWidth
+              />
             ),
           )}
         </section>
@@ -837,4 +652,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-      }
+    }
