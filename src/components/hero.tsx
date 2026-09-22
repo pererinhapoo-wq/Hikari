@@ -17,16 +17,6 @@ export function Hero({
 }) {
   const [index, setIndex] = useState(0);
 
-  const [visibleBackdrop, setVisibleBackdrop] = useState(
-    anime.cover || anime.banner || "",
-  );
-
-  const [isLandscape, setIsLandscape] = useState(false);
-
-  const [imageRatio, setImageRatio] = useState<number | null>(
-    null,
-  );
-
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
 
@@ -36,89 +26,23 @@ export function Hero({
 
   const toggleList = useHikariStore((s) => s.toggleList);
 
-  /*
-   * MOBILE:
-   * mantém a capa vertical como prioridade.
-   *
-   * DESKTOP:
-   * o <picture> abaixo usa o banner horizontal quando
-   * o anime possuir um banner.
-   */
   const mobileBackdrop =
     current.cover || current.banner || "";
 
   const desktopBackdrop =
     current.banner || current.cover || "";
 
-  function loadBackdrop(
-    url: string,
-    onLoaded?: () => void,
-  ) {
-    if (!url) {
-      setImageRatio(null);
-      setIsLandscape(false);
-      onLoaded?.();
-      return;
-    }
-
-    const image = new Image();
-
-    image.onload = () => {
-      const width = image.naturalWidth;
-      const height = image.naturalHeight;
-
-      if (width > 0 && height > 0) {
-        setIsLandscape(width > height);
-        setImageRatio(width / height);
-      }
-
-      onLoaded?.();
-    };
-
-    image.src = url;
-  }
-
-  useEffect(() => {
-    loadBackdrop(visibleBackdrop);
-  }, [visibleBackdrop]);
-
   useEffect(() => {
     if (animes.length < 2) return;
 
     const timer = window.setInterval(() => {
-      const nextIndex = (index + 1) % animes.length;
-      const nextAnime = animes[nextIndex];
-
-      const nextBackdrop =
-        nextAnime?.cover ||
-        nextAnime?.banner ||
-        "";
-
-      if (!nextBackdrop) {
-        setIndex(nextIndex);
-        return;
-      }
-
-      const image = new Image();
-
-      image.onload = () => {
-        const width = image.naturalWidth;
-        const height = image.naturalHeight;
-
-        if (width > 0 && height > 0) {
-          setIsLandscape(width > height);
-          setImageRatio(width / height);
-        }
-
-        setVisibleBackdrop(nextBackdrop);
-        setIndex(nextIndex);
-      };
-
-      image.src = nextBackdrop;
+      setIndex((currentIndex) => {
+        return (currentIndex + 1) % animes.length;
+      });
     }, 8000);
 
     return () => window.clearInterval(timer);
-  }, [animes, index]);
+  }, [animes.length]);
 
   return (
     <section
@@ -130,89 +54,104 @@ export function Hero({
         sm:-mx-6
       "
     >
-      {/* IMAGEM PRINCIPAL */}
-      {visibleBackdrop ? (
-        <div
-          className="
-            relative
-            w-full
-            overflow-hidden
-            bg-bg
-            h-[14rem]
-            sm:h-[21rem]
-            lg:h-[30rem]
-          "
-          style={
-            !isLandscape && imageRatio
-              ? undefined
-              : undefined
-          }
-        >
-          <picture>
-            {/* DESKTOP: usa banner horizontal */}
-            <source
-              media="(min-width: 1024px)"
-              srcSet={desktopBackdrop}
-            />
+      {/* =====================================================
+          BANNER / IMAGEM PRINCIPAL
+          ===================================================== */}
 
-            {/* MOBILE: mantém a capa atual */}
-            <img
-              src={mobileBackdrop}
-              alt=""
-              aria-hidden="true"
-              className="
-                absolute
-                inset-0
-                size-full
-                object-contain
-                object-center
-                lg:object-cover
-              "
-            />
-          </picture>
-
-          {/* TRANSIÇÃO SUAVE */}
-          <div
-            className="
-              pointer-events-none
-              absolute
-              inset-x-0
-              bottom-0
-              h-1/2
-              bg-linear-to-t
-              from-bg
-              via-bg/40
-              to-transparent
-            "
+      <div
+        className="
+          relative
+          w-full
+          overflow-hidden
+          bg-bg
+          h-[14rem]
+          sm:h-[21rem]
+          lg:h-[30rem]
+        "
+      >
+        <picture>
+          {/* =================================================
+              DESKTOP
+              Usa exclusivamente o banner horizontal
+              ================================================= */}
+          <source
+            media="(min-width: 1024px)"
+            srcSet={desktopBackdrop}
           />
 
-          {/* ESCURECIMENTO LATERAL NO DESKTOP */}
-          <div
+          {/* =================================================
+              MOBILE
+              Continua usando a capa vertical
+              ================================================= */}
+          <img
+            src={mobileBackdrop}
+            alt=""
+            aria-hidden="true"
             className="
-              pointer-events-none
               absolute
               inset-0
-              hidden
-              lg:block
-              bg-linear-to-r
-              from-bg/80
-              via-bg/20
-              to-transparent
+              size-full
+              object-contain
+              object-center
+              lg:hidden
             "
           />
-        </div>
-      ) : (
-        <div
+        </picture>
+
+        {/* =================================================
+            IMAGEM DESKTOP
+            ================================================= */}
+
+        <img
+          src={desktopBackdrop}
+          alt=""
+          aria-hidden="true"
           className="
-            h-[14rem]
-            bg-bg
-            sm:h-[21rem]
-            lg:h-[30rem]
+            absolute
+            inset-0
+            hidden
+            size-full
+            object-cover
+            object-center
+            lg:block
           "
         />
-      )}
 
-      {/* CONTEÚDO */}
+        {/* Gradiente inferior */}
+        <div
+          className="
+            pointer-events-none
+            absolute
+            inset-x-0
+            bottom-0
+            h-2/3
+            bg-linear-to-t
+            from-bg
+            via-bg/45
+            to-transparent
+          "
+        />
+
+        {/* Gradiente lateral somente desktop */}
+        <div
+          className="
+            pointer-events-none
+            absolute
+            inset-0
+            hidden
+            lg:block
+            bg-linear-to-r
+            from-bg/85
+            via-bg/35
+            to-transparent
+          "
+        />
+      </div>
+
+      {/* =====================================================
+          CONTEÚDO
+          ===================================================== */}
+
       <div
         className="
           relative
@@ -223,7 +162,7 @@ export function Hero({
           sm:px-6
           sm:pb-7
           sm:pt-2
-          lg:-mt-44
+          lg:-mt-48
           lg:px-10
           lg:pb-10
         "
@@ -351,6 +290,10 @@ export function Hero({
           </Button>
         </div>
 
+        {/* =====================================================
+            INDICADORES
+            ===================================================== */}
+
         {animes.length > 1 && (
           <div
             className="
@@ -367,36 +310,7 @@ export function Hero({
                 key={item.id}
                 type="button"
                 aria-label={`Mostrar destaque ${i + 1}`}
-                onClick={() => {
-                  if (i === index) return;
-
-                  const nextBackdrop =
-                    item.cover ||
-                    item.banner ||
-                    "";
-
-                  if (!nextBackdrop) {
-                    setIndex(i);
-                    return;
-                  }
-
-                  const image = new Image();
-
-                  image.onload = () => {
-                    const width = image.naturalWidth;
-                    const height = image.naturalHeight;
-
-                    if (width > 0 && height > 0) {
-                      setIsLandscape(width > height);
-                      setImageRatio(width / height);
-                    }
-
-                    setVisibleBackdrop(nextBackdrop);
-                    setIndex(i);
-                  };
-
-                  image.src = nextBackdrop;
-                }}
+                onClick={() => setIndex(i)}
                 className={`
                   h-1.5
                   rounded-full
@@ -414,4 +328,4 @@ export function Hero({
       </div>
     </section>
   );
-                                     }
+        }
