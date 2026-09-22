@@ -36,7 +36,19 @@ export function Hero({
 
   const toggleList = useHikariStore((s) => s.toggleList);
 
-  const backdrop = current.cover || current.banner || "";
+  /*
+   * MOBILE:
+   * mantém a capa vertical como prioridade.
+   *
+   * DESKTOP:
+   * o <picture> abaixo usa o banner horizontal quando
+   * o anime possuir um banner.
+   */
+  const mobileBackdrop =
+    current.cover || current.banner || "";
+
+  const desktopBackdrop =
+    current.banner || current.cover || "";
 
   function loadBackdrop(
     url: string,
@@ -78,7 +90,9 @@ export function Hero({
       const nextAnime = animes[nextIndex];
 
       const nextBackdrop =
-        nextAnime?.cover || nextAnime?.banner || "";
+        nextAnime?.cover ||
+        nextAnime?.banner ||
+        "";
 
       if (!nextBackdrop) {
         setIndex(nextIndex);
@@ -119,47 +133,43 @@ export function Hero({
       {/* IMAGEM PRINCIPAL */}
       {visibleBackdrop ? (
         <div
-          className={
-            isLandscape && imageRatio
-              ? `
-                relative
-                w-full
-                overflow-hidden
-                bg-bg
-                lg:h-[28rem]
-                lg:!aspect-auto
-              `
-              : `
-                relative
-                h-[14rem]
-                w-full
-                overflow-hidden
-                bg-bg
-                sm:h-[21rem]
-                lg:h-[28rem]
-              `
-          }
+          className="
+            relative
+            w-full
+            overflow-hidden
+            bg-bg
+            h-[14rem]
+            sm:h-[21rem]
+            lg:h-[30rem]
+          "
           style={
-            isLandscape && imageRatio
-              ? {
-                  aspectRatio: `${imageRatio}`,
-                }
+            !isLandscape && imageRatio
+              ? undefined
               : undefined
           }
         >
-          <img
-            src={visibleBackdrop}
-            alt=""
-            aria-hidden="true"
-            className="
-              absolute
-              inset-0
-              size-full
-              object-contain
-              object-center
-              lg:object-cover
-            "
-          />
+          <picture>
+            {/* DESKTOP: usa banner horizontal */}
+            <source
+              media="(min-width: 1024px)"
+              srcSet={desktopBackdrop}
+            />
+
+            {/* MOBILE: mantém a capa atual */}
+            <img
+              src={mobileBackdrop}
+              alt=""
+              aria-hidden="true"
+              className="
+                absolute
+                inset-0
+                size-full
+                object-contain
+                object-center
+                lg:object-cover
+              "
+            />
+          </picture>
 
           {/* TRANSIÇÃO SUAVE */}
           <div
@@ -168,10 +178,25 @@ export function Hero({
               absolute
               inset-x-0
               bottom-0
-              h-1/3
+              h-1/2
               bg-linear-to-t
               from-bg
-              via-bg/30
+              via-bg/40
+              to-transparent
+            "
+          />
+
+          {/* ESCURECIMENTO LATERAL NO DESKTOP */}
+          <div
+            className="
+              pointer-events-none
+              absolute
+              inset-0
+              hidden
+              lg:block
+              bg-linear-to-r
+              from-bg/80
+              via-bg/20
               to-transparent
             "
           />
@@ -182,7 +207,7 @@ export function Hero({
             h-[14rem]
             bg-bg
             sm:h-[21rem]
-            lg:h-[28rem]
+            lg:h-[30rem]
           "
         />
       )}
@@ -198,6 +223,9 @@ export function Hero({
           sm:px-6
           sm:pb-7
           sm:pt-2
+          lg:-mt-44
+          lg:px-10
+          lg:pb-10
         "
       >
         <p
@@ -208,6 +236,7 @@ export function Hero({
             text-muted
             uppercase
             sm:text-[9px]
+            lg:text-xs
           "
         >
           Em destaque
@@ -272,6 +301,8 @@ export function Hero({
               sm:mt-4
               sm:line-clamp-3
               sm:text-sm
+              lg:max-w-2xl
+              lg:text-base
             "
           >
             {current.synopsis}
@@ -340,7 +371,9 @@ export function Hero({
                   if (i === index) return;
 
                   const nextBackdrop =
-                    item.cover || item.banner || "";
+                    item.cover ||
+                    item.banner ||
+                    "";
 
                   if (!nextBackdrop) {
                     setIndex(i);
@@ -381,4 +414,4 @@ export function Hero({
       </div>
     </section>
   );
-          }
+                                     }
