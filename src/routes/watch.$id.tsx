@@ -447,11 +447,29 @@ function WatchPage() {
         })()
       : null;
 
+  const muxEmbedSource =
+    playerIndex === 2 && current?.videoUrl3
+      ? (() => {
+          const value = current.videoUrl3.trim();
+
+          if (value.includes("player.mux.com/")) {
+            return value;
+          }
+
+          if (value) {
+            return `https://player.mux.com/${value}`;
+          }
+
+          return null;
+        })()
+      : null;
+
   const external =
     playUrl &&
     !yt &&
     !file &&
-    !bunnyEmbedSource
+    !bunnyEmbedSource &&
+    !muxEmbedSource
       ? playUrl
       : null;
 
@@ -553,6 +571,15 @@ function WatchPage() {
               loading="lazy"
               className="size-full border-0 bg-black"
               allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
+            />
+          ) : muxEmbedSource ? (
+            <iframe
+              title={`${title} — Mux Player`}
+              src={muxEmbedSource}
+              loading="lazy"
+              className="size-full border-0 bg-black"
+              allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
               allowFullScreen
             />
           ) : file ? (
