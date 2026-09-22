@@ -14,7 +14,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react";
 
@@ -101,13 +100,13 @@ export const Route =
           : undefined,
 
       page:
-  typeof raw.page === "string" &&
-  /^\d+$/.test(raw.page)
-    ? Math.max(
-        1,
-        Number(raw.page),
-      )
-    : undefined,
+        typeof raw.page === "string" &&
+        /^\d+$/.test(raw.page)
+          ? Math.max(
+              1,
+              Number(raw.page),
+            )
+          : undefined,
     }),
 
     loaderDeps: ({
@@ -287,8 +286,6 @@ function SearchPage() {
    *
    * Não sobrescrevemos o texto enquanto o usuário
    * estiver digitando.
-   *
-   * Isso é importante para a busca automática.
    */
   useEffect(() => {
     if (clearingOnReload) {
@@ -312,9 +309,6 @@ function SearchPage() {
    *
    * Depois que parar de digitar por 700 ms,
    * a busca é atualizada automaticamente.
-   *
-   * A navegação só acontece quando o texto realmente
-   * mudou em relação à URL.
    */
   useEffect(() => {
     if (clearingOnReload) {
@@ -326,8 +320,6 @@ function SearchPage() {
 
     /*
      * Não dispara busca para uma letra.
-     * Isso evita requisições excessivas enquanto
-     * o usuário ainda está começando a digitar.
      */
     if (
       q.length > 0 &&
@@ -488,9 +480,21 @@ function SearchPage() {
   const hasAnimes =
     items.length > 0;
 
+  /*
+   * =========================================================
+   * ALTERAÇÃO:
+   *
+   * Se existir uma pesquisa OU um gênero selecionado,
+   * mostramos os resultados.
+   *
+   * Assim, ao apagar o texto da pesquisa dentro de um
+   * gênero, os animes daquele gênero voltam a aparecer.
+   * =========================================================
+   */
   const hasQuery =
     Boolean(
-      search.q?.trim(),
+      search.q?.trim() ||
+      search.genre,
     );
 
   /*
@@ -1039,4 +1043,4 @@ function Field({
       {children}
     </label>
   );
-  }
+      }
