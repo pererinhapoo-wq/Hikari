@@ -428,13 +428,13 @@ function CalendarPending() {
         )}
       </div>
 
-      <div className="flex flex-wrap items-start gap-3">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {Array.from(
           { length: 12 },
           (_, index) => (
             <div
               key={index}
-              className="w-32 shrink-0 overflow-hidden rounded-xl sm:w-34"
+              className="w-full overflow-hidden rounded-xl"
             >
               <div className="aspect-2/3 animate-pulse bg-elevated" />
 
@@ -603,12 +603,13 @@ function CalendarPage() {
 
       {/* LISTA */}
       {items.length > 0 ? (
-        <section className="flex flex-wrap items-start gap-3">
+        <section className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {items.map(
             (anime) => (
               <AnimeCard
                 key={anime.id}
                 anime={anime}
+                fullWidth
               />
             ),
           )}
@@ -651,4 +652,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-  }
+        }
