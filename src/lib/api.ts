@@ -20,7 +20,7 @@ import type {
   StreamingLink,
 } from "@/lib/types";
 
-const ANILIST = "https://grokhikari.vercel.app/api/anilist";
+const ANILIST = "https://graphql.anilist.co";
 const JIKAN = "https://api.jikan.moe/v4";
 
 const CARD_FIELDS = `
@@ -119,6 +119,16 @@ type AniMedia = {
   recommendations?: {
     nodes?: {
       mediaRecommendation?: AniMedia | null;
+    }[] | null;
+  } | null;
+
+  relations?: {
+    edges?: {
+      relationType?: string | null;
+      node?: {
+        id: number;
+        title?: AniTitle | null;
+      } | null;
     }[] | null;
   } | null;
 };
@@ -740,9 +750,37 @@ function streamingFromAni(
 function mapAniFull(
   media: AniMedia,
   seasons: Season[],
-): Anime {
+): Anime & {
+  seasonNavigation: {
+    previous?: {
+      id: string;
+      title?: string;
+    };
+    next?: {
+      id: string;
+      title?: string;
+    };
+  };
+} {
   const slim =
     mapAniSlim(media);
+
+  const relations =
+    media.relations?.edges ?? [];
+
+  const previousRelation =
+    relations.find(
+      (relation) =>
+        relation.relationType ===
+        "PREQUEL",
+    );
+
+  const nextRelation =
+    relations.find(
+      (relation) =>
+        relation.relationType ===
+        "SEQUEL",
+    );
 
   return {
     ...slim,
@@ -769,6 +807,38 @@ function mapAniFull(
       ),
 
     seasons,
+
+    seasonNavigation: {
+      previous:
+        previousRelation?.node?.id
+          ? {
+              id: String(
+                previousRelation.node.id,
+              ),
+              title:
+                previousRelation.node
+                  .title?.english ??
+                previousRelation.node
+                  .title?.romaji ??
+                undefined,
+            }
+          : undefined,
+
+      next:
+        nextRelation?.node?.id
+          ? {
+              id: String(
+                nextRelation.node.id,
+              ),
+              title:
+                nextRelation.node
+                  .title?.english ??
+                nextRelation.node
+                  .title?.romaji ??
+                undefined,
+            }
+          : undefined,
+    },
 
     recommendations: (
       media.recommendations
@@ -2043,7 +2113,7 @@ export const fetchAnimeDetail =
         }
 
         const key =
-          `detail:${id}`;
+          `detail:v2:${id}`;
 
         const cached =
           fromCache<Anime>(
@@ -2164,6 +2234,19 @@ export const fetchAnimeDetail =
                     thumbnail
                     url
                     site
+                  }
+
+                  relations {
+                    edges {
+                      relationType
+                      node {
+                        id
+                        title {
+                          romaji
+                          english
+                        }
+                      }
+                    }
                   }
 
                   recommendations(
