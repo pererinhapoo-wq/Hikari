@@ -525,14 +525,6 @@ async function fetchSeason(
 
     countPage += 1;
 
-    /*
-     * Segurança contra um eventual
-     * comportamento inesperado da API.
-     *
-     * A AniList limita Page a uma
-     * profundidade máxima de 5000
-     * resultados.
-     */
     if (
       countPage * PER_PAGE >
       5000
@@ -985,13 +977,7 @@ function CalendarPage() {
                   flex
                   min-w-0
                   h-full
-                  [&>article]:flex
-                  [&>article]:h-full
-                  [&>article]:w-full
-                  [&>article>a]:flex
-                  [&>article>a]:h-full
-                  [&>article>a]:w-full
-                  [&>article>a]:flex-col
+                  items-start
                 "
               >
                 <AnimeCard
@@ -1140,4 +1126,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-  }
+    }
