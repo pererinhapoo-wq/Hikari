@@ -193,57 +193,108 @@ async function anilistGraphQL<T>(
     unknown
   >,
 ): Promise<T> {
-  const res = await fetch(
-    ANILIST,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-        Accept:
-          "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        variables,
-      }),
-      signal:
-        AbortSignal.timeout(
-          12000,
-        ),
-    },
-  );
+  let lastError: unknown;
 
-  if (!res.ok) {
-    throw new Error(
-      `AniList indisponível (${res.status})`,
-    );
-  }
-
-  const json =
-    (await res.json()) as {
-      data?: T;
-      errors?: {
-        message: string;
-      }[];
-    };
-
-  if (
-    json.errors?.length
+  for (
+    let attempt = 0;
+    attempt < 2;
+    attempt++
   ) {
-    throw new Error(
-      json.errors[0]?.message ??
-        "AniList error",
-    );
+    try {
+      const res = await fetch(
+        ANILIST,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+            Accept:
+              "application/json",
+          },
+          body: JSON.stringify({
+            query,
+            variables,
+          }),
+          signal:
+            AbortSignal.timeout(
+              12000,
+            ),
+        },
+      );
+
+      if (!res.ok) {
+        const shouldRetry =
+          res.status === 429 ||
+          res.status >= 500;
+
+        if (
+          shouldRetry &&
+          attempt === 0
+        ) {
+          await new Promise(
+            (resolve) =>
+              setTimeout(
+                resolve,
+                350,
+              ),
+          );
+          continue;
+        }
+
+        throw new Error(
+          `AniList indisponível (${res.status})`,
+        );
+      }
+
+      const json =
+        (await res.json()) as {
+          data?: T;
+          errors?: {
+            message: string;
+          }[];
+        };
+
+      if (
+        json.errors?.length
+      ) {
+        throw new Error(
+          json.errors[0]?.message ??
+            "AniList error",
+        );
+      }
+
+      if (!json.data) {
+        throw new Error(
+          "AniList sem dados",
+        );
+      }
+
+      return json.data;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === 0) {
+        await new Promise(
+          (resolve) =>
+            setTimeout(
+              resolve,
+              350,
+            ),
+        );
+        continue;
+      }
+
+      throw error;
+    }
   }
 
-  if (!json.data) {
-    throw new Error(
-      "AniList sem dados",
-    );
-  }
-
-  return json.data;
+  throw (
+    lastError instanceof Error
+      ? lastError
+      : new Error(
+          "AniList indisponível",
+        )
+  );
 }
 
 async function jikanFetch<T>(
