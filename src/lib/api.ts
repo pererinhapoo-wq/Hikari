@@ -1539,14 +1539,53 @@ function normalizeSearchText(
     .trim();
 }
 
+function searchDistance(
+  a: string,
+  b: string,
+): number {
+  if (a === b) {
+    return 0;
+  }
+
+  if (!a) {
+    return b.length;
+  }
+
+  if (!b) {
+    return a.length;
+  }
+
+  const previous = Array.from(
+    { length: b.length + 1 },
+    (_, i) => i,
+  );
+
+  for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = previous[0];
+    previous[0] = i;
+
+    for (let j = 1; j <= b.length; j += 1) {
+      const above = previous[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+
+      previous[j] = Math.min(
+        previous[j] + 1,
+        previous[j - 1] + 1,
+        diagonal + cost,
+      );
+
+      diagonal = above;
+    }
+  }
+
+  return previous[b.length];
+}
+
 function searchScore(
   anime: SlimAnime,
   query: string,
 ): number {
-  const q =
-    normalizeSearchText(
-      query,
-    );
+  const q = normalizeSearchText(query);
 
   if (!q) {
     return 0;
@@ -1558,111 +1597,87 @@ function searchScore(
     anime.titles.native,
   ]
     .filter(Boolean)
-    .map(
-      normalizeSearchText,
-    );
+    .map(normalizeSearchText);
 
-  const compactQuery =
-    q.replace(/\s/g, "");
-
+  const compactQuery = q.replace(/\s/g, "");
+  const queryWords = q.split(" ").filter(Boolean);
   let score = 0;
 
-  for (
-    const title of titles
-  ) {
-    const compactTitle =
-      title.replace(
-        /\s/g,
-        "",
-      );
+  for (const title of titles) {
+    const compactTitle = title.replace(/\s/g, "");
+    const titleWords = title.split(" ").filter(Boolean);
 
     if (title === q) {
-      score = Math.max(
-        score,
-        1000,
-      );
+      score = Math.max(score, 1200);
       continue;
     }
 
-    if (
-      title.startsWith(q)
-    ) {
-      score = Math.max(
-        score,
-        900,
-      );
+    if (title.startsWith(q)) {
+      score = Math.max(score, 1100);
     }
 
-    if (
-      compactTitle.startsWith(
-        compactQuery,
-      )
-    ) {
-      score = Math.max(
-        score,
-        850,
-      );
+    if (compactTitle.startsWith(compactQuery)) {
+      score = Math.max(score, 1050);
     }
 
-    if (
-      title.includes(q)
-    ) {
-      score = Math.max(
-        score,
-        750,
-      );
+    if (title.includes(q)) {
+      score = Math.max(score, 950);
     }
 
-    const queryWords =
-      q.split(" ");
+    if (compactTitle.includes(compactQuery)) {
+      score = Math.max(score, 900);
+    }
 
-    const titleWords =
-      title.split(" ");
-
-    const allWordsMatch =
-      queryWords.every(
-        (queryWord) =>
-          titleWords.some(
-            (titleWord) =>
-              titleWord.startsWith(
-                queryWord,
-              ),
-          ),
-      );
+    const allWordsMatch = queryWords.every((queryWord) =>
+      titleWords.some((titleWord) => titleWord.startsWith(queryWord)),
+    );
 
     if (allWordsMatch) {
-      score = Math.max(
-        score,
-        800,
-      );
+      score = Math.max(score, 1000);
     }
 
-    if (
-      compactTitle.includes(
-        compactQuery,
-      )
-    ) {
-      score = Math.max(
-        score,
-        700,
-      );
+    /*
+     * Tolerância pequena para erros de digitação.
+     * Só entra quando a palavra pesquisada é razoavelmente grande,
+     * evitando resultados aleatórios para buscas muito curtas.
+     */
+    if (compactQuery.length >= 4) {
+      const closeWord = titleWords.some((titleWord) => {
+        if (titleWord.length < compactQuery.length - 1) {
+          return false;
+        }
+
+        const sample = titleWord.slice(0, compactQuery.length);
+        const distance = searchDistance(compactQuery, sample);
+
+        return distance <= (compactQuery.length >= 7 ? 2 : 1);
+      });
+
+      if (closeWord) {
+        score = Math.max(score, 820);
+      }
     }
-  }
 
-  if (score === 0) {
-    const firstWord =
-      q.split(" ")[0];
+    /*
+     * Também aceita uma sequência de caracteres que aparece na ordem
+     * correta dentro do título, mesmo com caracteres intermediários.
+     */
+    if (compactQuery.length >= 4) {
+      let queryIndex = 0;
 
-    if (
-      firstWord &&
-      titles.some(
-        (title) =>
-          title.includes(
-            firstWord,
-          ),
-      )
-    ) {
-      score = 100;
+      for (const character of compactTitle) {
+        if (character === compactQuery[queryIndex]) {
+          queryIndex += 1;
+
+          if (queryIndex === compactQuery.length) {
+            break;
+          }
+        }
+      }
+
+      if (queryIndex === compactQuery.length) {
+        score = Math.max(score, 650);
+      }
     }
   }
 
@@ -1932,38 +1947,21 @@ async function searchJikan(
 async function searchRelaxed(
   params: SearchParams,
 ): Promise<SlimAnime[]> {
-  const original =
-    params.q?.trim() ?? "";
+  const original = params.q?.trim() ?? "";
+  const normalized = normalizeSearchText(original);
 
-  const normalized =
-    normalizeSearchText(
-      original,
-    );
-
-  if (
-    normalized.length < 2
-  ) {
+  if (normalized.length < 2) {
     return [];
   }
 
-  const compact =
-    normalized.replace(
-      /\s/g,
-      "",
-    );
-
-  const words =
-    normalized
-      .split(/\s+/)
-      .filter(Boolean);
-
-  const variants =
-    new Set<string>();
+  const compact = normalized.replace(/\s/g, "");
+  const words = normalized.split(/\s+/).filter(Boolean);
+  const variants = new Set<string>();
 
   variants.add(original);
   variants.add(normalized);
 
-  if (compact) {
+  if (compact && compact !== normalized) {
     variants.add(compact);
   }
 
@@ -1971,99 +1969,63 @@ async function searchRelaxed(
     variants.add(words[0]);
   }
 
-  if (
-    normalized.length >= 4
-  ) {
-    variants.add(
-      normalized.slice(
-        0,
-        -1,
-      ),
-    );
+  /*
+   * Para buscas parciais, tenta também prefixos menores.
+   * Ex.: "narut" -> "naru" -> "nar".
+   * Não reduz abaixo de 3 caracteres para evitar resultados muito amplos.
+   */
+  const compactBase = compact || normalized;
+
+  if (compactBase.length >= 4) {
+    variants.add(compactBase.slice(0, -1));
   }
 
-  if (
-    normalized.length >= 5
-  ) {
-    variants.add(
-      normalized.slice(
-        0,
-        -2,
-      ),
-    );
+  if (compactBase.length >= 5) {
+    variants.add(compactBase.slice(0, -2));
   }
 
-  const validVariants =
-    [...variants].filter(
-      (value) =>
-        value.trim().length >= 2,
-    );
+  if (compactBase.length >= 6) {
+    variants.add(compactBase.slice(0, -3));
+  }
 
-  const allResults =
-    await Promise.all(
-      validVariants.map(
-        async (variant) => {
-          const searchParams:
-            SearchParams = {
-            ...params,
-
-            q: variant,
-
-            page: 1,
-          };
-
-          const results =
-            await Promise.allSettled(
-              [
-                searchAni(
-                  searchParams,
-                ),
-
-                searchJikan(
-                  searchParams,
-                ),
-              ],
-            );
-
-          const ani =
-            results[0].status ===
-            "fulfilled"
-              ? results[0].value
-                  .items
-              : [];
-
-          const jikan =
-            results[1].status ===
-            "fulfilled"
-              ? results[1].value
-                  .items
-              : [];
-
-          return mergeSearchItems(
-            ani,
-            jikan,
-          );
-        },
-      ),
-    );
-
-  const merged =
-    allResults.reduce(
-      (
-        accumulated,
-        current,
-      ) =>
-        mergeSearchItems(
-          accumulated,
-          current,
-        ),
-      [] as SlimAnime[],
-    );
-
-  return rankSearchResults(
-    merged,
-    original,
+  const validVariants = [...variants].filter(
+    (value) => value.trim().length >= 3,
   );
+
+  const allResults = await Promise.all(
+    validVariants.map(async (variant) => {
+      const searchParams: SearchParams = {
+        ...params,
+        q: variant,
+        page: 1,
+      };
+
+      const results = await Promise.allSettled([
+        searchAni(searchParams),
+        searchJikan(searchParams),
+      ]);
+
+      const ani =
+        results[0].status === "fulfilled"
+          ? results[0].value.items
+          : [];
+
+      const jikan =
+        results[1].status === "fulfilled"
+          ? results[1].value.items
+          : [];
+
+      return mergeSearchItems(ani, jikan);
+    }),
+  );
+
+  const merged = allResults.reduce(
+    (accumulated, current) =>
+      mergeSearchItems(accumulated, current),
+    [] as SlimAnime[],
+  );
+
+  return rankSearchResults(merged, original);
 }
 
 export const searchCatalog =
@@ -2093,119 +2055,75 @@ export const searchCatalog =
           data.q?.trim() ?? "";
 
         if (q) {
-          /*
-           * Para buscas normais usamos primeiro
-           * apenas o AniList. Isso deixa o autocomplete
-           * bem mais rápido, porque não precisamos esperar
-           * duas APIs em toda tecla digitada.
-           *
-           * O Jikan continua como fallback quando o
-           * AniList falhar ou não encontrar nada.
-           */
-          let aniResult: SearchResult | null =
-            null;
-          let jikanResult: SearchResult | null =
-            null;
+          let aniResult: SearchResult | null = null;
+          let jikanResult: SearchResult | null = null;
 
           try {
-            aniResult =
-              await searchAni(data);
+            aniResult = await searchAni(data);
           } catch {
             aniResult = null;
           }
 
-          let items =
-            rankSearchResults(
-              aniResult?.items ?? [],
-              q,
-            );
+          let items = rankSearchResults(
+            aniResult?.items ?? [],
+            q,
+          );
 
-          if (items.length === 0) {
+          /*
+           * Se a busca direta não produziu uma correspondência forte,
+           * amplia a pesquisa automaticamente.
+           */
+          const hasStrongMatch = items.some(
+            (anime) => searchScore(anime, q) >= 820,
+          );
+
+          if (!hasStrongMatch) {
             try {
-              jikanResult =
-                await searchJikan(data);
+              jikanResult = await searchJikan(data);
 
-              items =
-                rankSearchResults(
+              items = rankSearchResults(
+                mergeSearchItems(
+                  items,
                   jikanResult.items,
-                  q,
-                );
+                ),
+                q,
+              );
             } catch {
               jikanResult = null;
             }
           }
 
-          /*
-           * Só consideramos que a busca
-           * encontrou algo diretamente quando
-           * existe uma correspondência forte.
-           *
-           * Isso evita casos como "Narut"
-           * retornando "Ane Naru Mono" e
-           * impedindo a busca relaxada.
-           */
-          const hasStrongMatch =
-            items.some(
-              (anime) =>
-                searchScore(
-                  anime,
-                  q,
-                ) >= 700,
-            );
+          const stillWeak = !items.some(
+            (anime) => searchScore(anime, q) >= 820,
+          );
 
-          if (
-            !hasStrongMatch
-          ) {
+          if (stillWeak) {
             try {
-              const relaxed =
-                await searchRelaxed(
-                  data,
-                );
+              const relaxed = await searchRelaxed(data);
 
-              items =
-                rankSearchResults(
-                  mergeSearchItems(
-                    items,
-                    relaxed,
-                  ),
-                  q,
-                );
+              items = rankSearchResults(
+                mergeSearchItems(items, relaxed),
+                q,
+              );
             } catch {
-              // Continua com os resultados atuais.
+              // Mantém os resultados já encontrados.
             }
           }
 
-          const result: SearchResult =
-            {
-              items:
-                items.slice(
-                  0,
-                  24,
-                ),
+          const result: SearchResult = {
+            items: items.slice(0, 24),
+            page: data.page ?? 1,
+            hasNext: Boolean(
+              aniResult?.hasNext ||
+              jikanResult?.hasNext,
+            ),
+            source:
+              aniResult || !jikanResult
+                ? "anilist"
+                : "jikan",
+          };
 
-              page:
-                data.page ??
-                1,
-
-              hasNext:
-                Boolean(
-                  aniResult?.hasNext ||
-                    jikanResult?.hasNext,
-                ),
-
-              source:
-                aniResult &&
-                jikanResult
-                  ? "anilist"
-                  : aniResult
-                    ? "anilist"
-                    : "jikan",
-            };
-
-          return toCache(
-            key,
-            result,
-          );
+          return toCache(key, result);
         }
 
         try {
