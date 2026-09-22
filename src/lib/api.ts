@@ -1976,14 +1976,17 @@ async function searchRelaxed(
   }
 
   /*
-   * Para buscas parciais, tenta também prefixos menores.
-   * Ex.: "narut" -> "naru" -> "nar".
-   * Não reduz abaixo de 3 caracteres para evitar resultados muito amplos.
+   * Para buscas parciais ou com pequenas diferenças, também fazemos uma
+   * consulta ampla usando o começo do termo. Isso é importante porque a
+   * busca do provedor pode não devolver o título correto para uma grafia
+   * incompleta como "narut", mesmo que "Naruto" seja a correspondência
+   * óbvia para o usuário.
    */
   const compactBase = compact || normalized;
 
   if (compactBase.length >= 4) {
     variants.add(compactBase.slice(0, -1));
+    variants.add(compactBase.slice(0, 3));
   }
 
   if (compactBase.length >= 5) {
@@ -1992,6 +1995,12 @@ async function searchRelaxed(
 
   if (compactBase.length >= 6) {
     variants.add(compactBase.slice(0, -3));
+  }
+
+  for (const word of words) {
+    if (word.length >= 4) {
+      variants.add(word.slice(0, 3));
+    }
   }
 
   const validVariants = [...variants].filter(
@@ -2046,7 +2055,7 @@ export const searchCatalog =
         data,
       }) => {
         const key =
-          `search:${JSON.stringify(data)}`;
+          `search:v2:${JSON.stringify(data)}`;
 
         const cached =
           fromCache<SearchResult>(
