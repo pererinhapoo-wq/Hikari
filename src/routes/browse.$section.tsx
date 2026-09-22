@@ -26,6 +26,8 @@ type AnimeSeason =
   | "FALL";
 
 type BrowseSearch = {
+  season?: AnimeSeason;
+  year?: number;
   page?: number;
 };
 
@@ -97,6 +99,39 @@ function getCurrentSeason(): {
   };
 }
 
+function isAnimeSeason(
+  value: unknown,
+): value is AnimeSeason {
+  return (
+    value === "WINTER" ||
+    value === "SPRING" ||
+    value === "SUMMER" ||
+    value === "FALL"
+  );
+}
+
+function normalizeYear(
+  value: unknown,
+  fallback: number,
+): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : NaN;
+
+  if (
+    Number.isInteger(parsed) &&
+    parsed >= 2000 &&
+    parsed <= 2028
+  ) {
+    return parsed;
+  }
+
+  return fallback;
+}
+
 function normalizePage(
   value: unknown,
 ): number {
@@ -145,7 +180,21 @@ export const Route = createFileRoute(
   validateSearch: (
     raw: Record<string, unknown>,
   ): BrowseSearch => {
+    const current =
+      getCurrentSeason();
+
     return {
+      season: isAnimeSeason(
+        raw.season,
+      )
+        ? raw.season
+        : current.season,
+
+      year: normalizeYear(
+        raw.year,
+        current.year,
+      ),
+
       page: normalizePage(
         raw.page,
       ),
@@ -169,6 +218,22 @@ export const Route = createFileRoute(
       ? params.section
       : "popular";
 
+    const current =
+      getCurrentSeason();
+
+    const season =
+      isAnimeSeason(
+        deps.season,
+      )
+        ? deps.season
+        : current.season;
+
+    const year =
+      normalizeYear(
+        deps.year,
+        current.year,
+      );
+
     const page =
       normalizePage(
         deps.page,
@@ -183,13 +248,20 @@ export const Route = createFileRoute(
               | "season"
               | "top"
               | "trending",
+
           page,
+
+          season,
+
+          year,
         },
       });
 
     return {
       result,
       section,
+      season,
+      year,
       page,
     };
   },
@@ -218,6 +290,8 @@ function BrowsePage() {
   const {
     result,
     section,
+    season,
+    year,
     page,
   } =
     Route.useLoaderData();
@@ -233,19 +307,44 @@ function BrowsePage() {
       locals,
     );
 
-  const current =
-    getCurrentSeason();
-
   const currentSeason =
     SEASONS.find(
       (item) =>
         item.value ===
-        current.season,
+        season,
     );
 
-  const title =
-    currentSeason?.label ??
-    "Temporada";
+  function handleYearChange(
+    nextYear: number,
+  ) {
+    void navigate({
+      to: "/browse/$section",
+      params: {
+        section,
+      },
+      search: {
+        season,
+        year: nextYear,
+        page: 1,
+      },
+    });
+  }
+
+  function handleSeasonChange(
+    nextSeason: AnimeSeason,
+  ) {
+    void navigate({
+      to: "/browse/$section",
+      params: {
+        section,
+      },
+      search: {
+        season: nextSeason,
+        year,
+        page: 1,
+      },
+    });
+  }
 
   function goToPage(
     nextPage: number,
@@ -270,6 +369,8 @@ function BrowsePage() {
         section,
       },
       search: {
+        season,
+        year,
         page: nextPage,
       },
     });
@@ -336,22 +437,23 @@ function BrowsePage() {
         </p>
 
         <NativeSelect
-          value={String(
-            current.year,
-          )}
-          onChange={() => {
-            // O filtro de ano será ligado
-            // à API na próxima etapa.
+          value={String(year)}
+          onChange={(event) => {
+            handleYearChange(
+              Number(
+                event.target.value,
+              ),
+            );
           }}
           aria-label="Selecionar ano"
         >
           {YEARS.map(
-            (year) => (
+            (yearOption) => (
               <option
-                key={year}
-                value={year}
+                key={yearOption}
+                value={yearOption}
               >
-                {year}
+                {yearOption}
               </option>
             ),
           )}
@@ -370,14 +472,15 @@ function BrowsePage() {
               <button
                 key={item.value}
                 type="button"
+                onClick={() =>
+                  handleSeasonChange(
+                    item.value,
+                  )
+                }
                 className={cnCalendarSeason(
                   item.value ===
-                    current.season,
+                    season,
                 )}
-                onClick={() => {
-                  // A troca real da temporada
-                  // será ligada à API na próxima etapa.
-                }}
               >
                 <span className="text-lg">
                   {item.icon}
@@ -396,8 +499,9 @@ function BrowsePage() {
       <section className="border-b border-border pb-4">
         <h2 className="font-display text-xl tracking-tight sm:text-2xl">
           Animes da temporada de{" "}
-          {title}{" "}
-          {current.year}
+          {currentSeason?.label ??
+            "Temporada"}{" "}
+          {year}
         </h2>
 
         <p className="mt-1 text-sm text-muted">
@@ -430,7 +534,7 @@ function BrowsePage() {
         </div>
       )}
 
-      {/* PAGINAÇÃO — NÃO ALTERADA */}
+      {/* PAGINAÇÃO — MANTIDA */}
       {showPagination && (
         <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
           <button
@@ -504,4 +608,4 @@ function BrowsePage() {
       )}
     </div>
   );
-    }
+  }
