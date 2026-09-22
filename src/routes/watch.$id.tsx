@@ -13,7 +13,6 @@ import {
   MoreVertical,
   Pause,
   Play,
-  RotateCcw,
   Search,
   Send,
   Settings,
@@ -195,7 +194,6 @@ function WatchPage() {
   const [duration, setDuration] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
 
   const clearControlsHideTimer = () => {
@@ -395,20 +393,7 @@ function WatchPage() {
     }
   };
 
-  const restartEpisode = async () => {
-    const video = videoRef.current;
-    if (!video) return;
 
-    video.currentTime = 0;
-    setCurrentTime(0);
-    setSettingsOpen(false);
-
-    try {
-      await video.play();
-    } catch {
-      // O usuário pode tocar em play manualmente.
-    }
-  };
 
   const changePlaybackRate = (rate: number) => {
     const video = videoRef.current;
@@ -575,7 +560,7 @@ function WatchPage() {
               <video
                 ref={videoRef}
                 src={file ?? undefined}
-                autoPlay={autoPlayEnabled}
+                autoPlay={false}
                 playsInline
                 disablePictureInPicture
                 controlsList="nodownload noremoteplayback"
@@ -691,17 +676,6 @@ function WatchPage() {
                             Player
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => setAutoPlayEnabled((value) => !value)}
-                            className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-white/85 hover:bg-white/5"
-                          >
-                            <span>Reprodução automática</span>
-                            <span className={`h-5 w-9 rounded-full p-0.5 ${autoPlayEnabled ? "bg-[#a855f7]" : "bg-white/15"}`}>
-                              <span className={`block size-4 rounded-full bg-white transition-transform ${autoPlayEnabled ? "translate-x-4" : "translate-x-0"}`} />
-                            </span>
-                          </button>
-
                           <div className="mt-1 rounded-xl px-3 py-2.5">
                             <div className="mb-2 text-white/75">Velocidade</div>
                             <div className="grid grid-cols-5 gap-1">
@@ -718,14 +692,7 @@ function WatchPage() {
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={restartEpisode}
-                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-white/85 hover:bg-white/5"
-                          >
-                            <RotateCcw className="size-4" />
-                            Reiniciar episódio
-                          </button>
+
                         </div>
                       )}
                     </div>
@@ -4458,4 +4425,4 @@ function CommentCard({
 
     </article>
   );
-                      }
+}
