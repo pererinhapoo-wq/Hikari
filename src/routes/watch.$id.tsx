@@ -175,6 +175,8 @@ function WatchPage() {
 
   const [playerIndex, setPlayerIndex] =
     useState(0);
+  const [episodesOpen, setEpisodesOpen] =
+    useState(false);
 
   useEffect(() => {
     setPlayerIndex(0);
@@ -801,16 +803,17 @@ function WatchPage() {
         </div>
 
         {/* ================================================== */}
-        {/* ANTERIOR / PRÓXIMO */}
+        {/* NAVEGAÇÃO DOS EPISÓDIOS */}
         {/* ================================================== */}
 
-        <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="mt-4 flex items-center gap-2">
 
           {prev ? (
             <Button
               asChild
               variant="outline"
               size="sm"
+              className="flex-1 sm:flex-none"
             >
               <Link
                 to="/watch/$id"
@@ -826,13 +829,40 @@ function WatchPage() {
               </Link>
             </Button>
           ) : (
-            <span />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled
+              className="flex-1 sm:flex-none"
+            >
+              <ChevronLeft className="size-4" />
+              Anterior
+            </Button>
           )}
 
-          {next && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setEpisodesOpen((open) => !open)}
+            aria-expanded={episodesOpen}
+            className="flex-1 sm:flex-none"
+          >
+            Episódios
+            <ChevronDown
+              className={cn(
+                "size-4 transition-transform",
+                episodesOpen && "rotate-180",
+              )}
+            />
+          </Button>
+
+          {next ? (
             <Button
               asChild
               size="sm"
+              className="flex-1 sm:flex-none"
             >
               <Link
                 to="/watch/$id"
@@ -847,61 +877,65 @@ function WatchPage() {
                 <ChevronRight className="size-4" />
               </Link>
             </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              disabled
+              className="flex-1 sm:flex-none"
+            >
+              Próximo
+              <ChevronRight className="size-4" />
+            </Button>
           )}
 
         </div>
 
         {/* ================================================== */}
-        {/* LISTA DE EPISÓDIOS */}
+        {/* BARRINHA DE EPISÓDIOS */}
         {/* ================================================== */}
 
-        {episodes.length > 0 && (
-          <section className="mt-6">
+        {episodesOpen && episodes.length > 0 && (
+          <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-surface shadow-xl">
 
-            <h2 className="mb-3 font-display text-xl">
-              Episódios
-            </h2>
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <span className="font-medium">Episódios</span>
+              <span className="text-xs text-muted">
+                {episodes.length} episódios
+              </span>
+            </div>
 
-            <ol className="grid max-h-[40vh] gap-1 overflow-y-auto sm:grid-cols-2">
-
-              {episodes.map(
-                (ep) => (
-                  <li key={ep.id}>
-
-                    <Link
-                      to="/watch/$id"
-                      params={{
-                        id: anime.id,
-                      }}
-                      search={{
-                        ep: ep.id,
-                      }}
-                      className={cn(
-                        "flex min-h-12 items-center gap-3 rounded-md px-3 text-sm",
-                        current?.id ===
-                          ep.id
-                          ? "bg-elevated text-fg"
-                          : "text-muted hover:bg-surface hover:text-fg",
-                      )}
-                    >
-
-                      <span className="w-8 tabular-nums text-xs text-subtle">
-                        {ep.number}
-                      </span>
-
-                      <span className="truncate">
-                        {ep.title}
-                      </span>
-
-                    </Link>
-
-                  </li>
-                ),
-              )}
-
+            <ol className="max-h-[45vh] overflow-y-auto p-2">
+              {episodes.map((ep) => (
+                <li key={ep.id}>
+                  <Link
+                    to="/watch/$id"
+                    params={{
+                      id: anime.id,
+                    }}
+                    search={{
+                      ep: ep.id,
+                    }}
+                    onClick={() => setEpisodesOpen(false)}
+                    className={cn(
+                      "flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm transition-colors",
+                      current?.id === ep.id
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated/70 hover:text-fg",
+                    )}
+                  >
+                    <span className="w-8 shrink-0 tabular-nums text-xs text-subtle">
+                      {ep.number}
+                    </span>
+                    <span className="truncate">
+                      {ep.title}
+                    </span>
+                  </Link>
+                </li>
+              ))}
             </ol>
 
-          </section>
+          </div>
         )}
 
         {/* ================================================== */}
