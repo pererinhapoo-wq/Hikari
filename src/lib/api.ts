@@ -2061,58 +2061,60 @@ export const searchCatalog =
           data.q?.trim() ?? "";
 
         if (q) {
-          let aniResult: SearchResult | null = null;
-          let jikanResult: SearchResult | null = null;
+          /*
+           * Pesquisa direta nas duas fontes ao mesmo tempo.
+           * Antes o Hikari esperava o AniList terminar para só então
+           * consultar o Jikan. Se o AniList demorasse, a busca inteira
+           * ficava lenta ou podia terminar sem resultado.
+           */
+          const [aniAttempt, jikanAttempt] =
+            await Promise.allSettled([
+              searchAni(data),
+              searchJikan(data),
+            ]);
 
-          try {
-            aniResult = await searchAni(data);
-          } catch {
-            aniResult = null;
-          }
+          const aniResult =
+            aniAttempt.status === "fulfilled"
+              ? aniAttempt.value
+              : null;
+
+          const jikanResult =
+            jikanAttempt.status === "fulfilled"
+              ? jikanAttempt.value
+              : null;
 
           let items = rankSearchResults(
-            aniResult?.items ?? [],
+            mergeSearchItems(
+              aniResult?.items ?? [],
+              jikanResult?.items ?? [],
+            ),
             q,
           );
 
           /*
-           * Se a busca direta não produziu uma correspondência forte,
-           * amplia a pesquisa automaticamente.
+           * Se as fontes diretas não encontrarem uma correspondência forte,
+           * aí sim fazemos a busca flexível para erros e abreviações.
+           * Ex.: "naru", "narut", "jujut".
            */
           const hasStrongMatch = items.some(
-            (anime) => searchScore(anime, q) >= 820,
+            (anime) =>
+              searchScore(anime, q) >= 820,
           );
 
           if (!hasStrongMatch) {
             try {
-              jikanResult = await searchJikan(data);
+              const relaxed =
+                await searchRelaxed(data);
 
               items = rankSearchResults(
                 mergeSearchItems(
                   items,
-                  jikanResult.items,
+                  relaxed,
                 ),
                 q,
               );
             } catch {
-              jikanResult = null;
-            }
-          }
-
-          const stillWeak = !items.some(
-            (anime) => searchScore(anime, q) >= 820,
-          );
-
-          if (stillWeak) {
-            try {
-              const relaxed = await searchRelaxed(data);
-
-              items = rankSearchResults(
-                mergeSearchItems(items, relaxed),
-                q,
-              );
-            } catch {
-              // Mantém os resultados já encontrados.
+              // Mantém os resultados diretos já encontrados.
             }
           }
 
@@ -2124,12 +2126,15 @@ export const searchCatalog =
               jikanResult?.hasNext,
             ),
             source:
-              aniResult || !jikanResult
+              aniResult
                 ? "anilist"
                 : "jikan",
           };
 
-          return toCache(key, result);
+          return toCache(
+            key,
+            result,
+          );
         }
 
         try {
