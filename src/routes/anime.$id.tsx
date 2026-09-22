@@ -3,6 +3,7 @@ import {
   Bookmark,
   BookmarkCheck,
   Check,
+  ChevronDown,
   Pencil,
   Play,
   Share2,
@@ -44,7 +45,9 @@ export const Route = createFileRoute("/anime/$id")({
   pendingComponent: () => (
     <div className="space-y-4 pt-4">
       <div className="-mx-4 h-56 animate-pulse bg-elevated sm:-mx-6 sm:h-72" />
+
       <div className="h-8 w-2/3 animate-pulse rounded bg-elevated" />
+
       <div className="h-24 rounded bg-elevated" />
     </div>
   ),
@@ -88,7 +91,7 @@ function AnimePage() {
     src: string;
   } | null>(null);
 
-  const [seasonMenuOpen, setSeasonMenuOpen] =
+  const [seasonsOpen, setSeasonsOpen] =
     useState(false);
 
   useEffect(() => {
@@ -145,6 +148,7 @@ function AnimePage() {
     image.onload = () => {
       try {
         const canvas = document.createElement("canvas");
+
         const context = canvas.getContext("2d", {
           willReadFrequently: true,
         });
@@ -192,7 +196,11 @@ function AnimePage() {
         let blue = 0;
         let count = 0;
 
-        for (let i = 0; i < pixels.length; i += 4) {
+        for (
+          let i = 0;
+          i < pixels.length;
+          i += 4
+        ) {
           const r = pixels[i];
           const g = pixels[i + 1];
           const b = pixels[i + 2];
@@ -244,36 +252,13 @@ function AnimePage() {
     };
   }, [anime?.id, anime?.banner]);
 
-  if (!anime) {
-    return (
-      <div className="py-24 text-center">
-        <p className="font-display text-2xl">
-          Anime não encontrado
-        </p>
-
-        <Link
-          to="/"
-          className="mt-3 inline-block text-sm text-muted underline"
-        >
-          Voltar ao início
-        </Link>
-      </div>
-    );
-  }
-
-  /*
-   * O título precisa existir antes de ser usado
-   * na lista de temporadas.
-   */
-  const title = displayTitle(anime);
-
   /*
    * TEMPORADAS
    */
   const seasonNavigation =
     remote?.seasonNavigation?.items ?? [];
 
-  const seasons = anime.seasons ?? [];
+  const seasons = anime?.seasons ?? [];
 
   /*
    * A página representa uma temporada.
@@ -295,114 +280,24 @@ function AnimePage() {
     [currentEpisodes, currentSeason?.id],
   );
 
-  /*
-   * MONTA A LISTA COMPLETA DE TEMPORADAS
-   *
-   * A temporada atual é adicionada primeiro.
-   * Depois entram as temporadas vindas da API.
-   *
-   * O Map remove duplicados pelo ID.
-   */
-  const seasonOptions = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        id: string;
-        title: string;
-        cover?: string;
-        episodesCount?: number;
-        label?: string;
-      }
-    >();
+  if (!anime) {
+    return (
+      <div className="py-24 text-center">
+        <p className="font-display text-2xl">
+          Anime não encontrado
+        </p>
 
-    /*
-     * Temporada atual.
-     *
-     * Isso garante que a Season 1 também apareça
-     * quando estamos dentro dela.
-     */
-    map.set(anime.id, {
-      id: anime.id,
-      title,
-      cover: anime.cover,
-      episodesCount:
-        currentEpisodes.length ||
-        anime.episodesCount ||
-        0,
-    });
-
-    /*
-     * Temporadas relacionadas vindas da API.
-     */
-    for (const season of seasonNavigation) {
-      if (!season?.id) {
-        continue;
-      }
-
-      map.set(season.id, {
-        id: season.id,
-        title:
-          season.title ||
-          season.label ||
-          "Temporada",
-        cover: season.cover,
-        episodesCount:
-          season.episodesCount,
-        label: season.label,
-      });
-    }
-
-    return Array.from(map.values());
-  }, [
-    anime.id,
-    anime.cover,
-    anime.episodesCount,
-    title,
-    currentEpisodes.length,
-    seasonNavigation,
-  ]);
-
-  /*
-   * Nome curto da temporada.
-   *
-   * Exemplos:
-   * Attack on Titan Season 1 -> 1
-   * Attack on Titan Season 2 -> 2
-   * Attack on Titan Season 3 Part 2 -> 3 Part 2
-   */
-  const getSeasonShortLabel = (
-    season: {
-      title: string;
-      label?: string;
-    },
-    index: number,
-  ) => {
-    const source =
-      season.label ||
-      season.title ||
-      "";
-
-    const match = source.match(
-      /season\s+(\d+)(?:\s+part\s+(\d+))?/i,
+        <Link
+          to="/"
+          className="mt-3 inline-block text-sm text-muted underline"
+        >
+          Voltar ao início
+        </Link>
+      </div>
     );
+  }
 
-    if (match) {
-      return match[2]
-        ? `${match[1]} Part ${match[2]}`
-        : match[1];
-    }
-
-    const partMatch = source.match(
-      /(?:part|cour)\s+(\d+)/i,
-    );
-
-    if (partMatch) {
-      return `${index + 1} Part ${partMatch[1]}`;
-    }
-
-    return String(index + 1);
-  };
-
+  const title = displayTitle(anime);
   const yt = youtubeIdFrom(anime.trailerId);
 
   const localRecord = locals.find(
@@ -488,6 +383,7 @@ function AnimePage() {
           )}
 
           <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
+
           <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
         </div>
 
@@ -582,7 +478,9 @@ function AnimePage() {
                 <Button asChild size="lg">
                   <Link
                     to="/watch/$id"
-                    params={{ id: anime.id }}
+                    params={{
+                      id: anime.id,
+                    }}
                     search={
                       continueTarget
                         ? {
@@ -592,6 +490,7 @@ function AnimePage() {
                     }
                   >
                     <Play className="size-4 fill-current" />
+
                     {watchButtonLabel}
                   </Link>
                 </Button>
@@ -622,6 +521,7 @@ function AnimePage() {
                   onClick={handleShare}
                 >
                   <Share2 className="size-4" />
+
                   Compartilhar
                 </Button>
 
@@ -642,6 +542,7 @@ function AnimePage() {
                       }}
                     >
                       <Pencil className="size-4" />
+
                       Editar
                     </Link>
                   </Button>
@@ -687,77 +588,73 @@ function AnimePage() {
       )}
 
       {/* TEMPORADAS */}
-      {seasonOptions.length > 0 && (
+      {seasonNavigation.length > 1 && (
         <section className="mt-10">
-          <div className="relative">
+          <div className="relative max-w-sm">
             <button
               type="button"
               onClick={() =>
-                setSeasonMenuOpen(
+                setSeasonsOpen(
                   (open) => !open,
                 )
               }
-              aria-expanded={seasonMenuOpen}
-              className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-surface px-4 py-3 text-left transition-colors hover:bg-elevated sm:w-auto sm:min-w-[220px]"
+              className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-surface px-4 py-3 text-left transition-colors hover:bg-elevated"
+              aria-expanded={seasonsOpen}
             >
               <span className="font-display text-xl tracking-tight">
                 Temporadas
               </span>
 
-              <span
-                className={`ml-4 text-lg text-muted transition-transform ${
-                  seasonMenuOpen
+              <ChevronDown
+                className={`size-5 text-muted transition-transform ${
+                  seasonsOpen
                     ? "rotate-180"
                     : ""
                 }`}
-              >
-                ▼
-              </span>
+              />
             </button>
 
-            {seasonMenuOpen && (
-              <div className="mt-2 w-full rounded-xl border border-white/10 bg-surface p-2 shadow-2xl sm:absolute sm:left-0 sm:z-30 sm:w-[280px]">
-                <div className="grid grid-cols-3 gap-2">
-                  {seasonOptions.map(
-                    (season, index) => {
-                      const selected =
-                        season.id === anime.id;
+            {seasonsOpen && (
+              <div className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-xl border border-white/10 bg-surface p-1 shadow-2xl">
+                {seasonNavigation.map(
+                  (season, index) => {
+                    const selected =
+                      season.id === anime.id;
 
-                      return (
-                        <Link
-                          key={season.id}
-                          to="/anime/$id"
-                          params={{
-                            id: season.id,
-                          }}
-                          onClick={() =>
-                            setSeasonMenuOpen(
-                              false,
-                            )
-                          }
-                          className={`flex min-h-11 items-center justify-center rounded-lg border px-2 text-center transition-colors ${
-                            selected
-                              ? "border-white/20 bg-elevated text-fg"
-                              : "border-white/5 bg-bg text-muted hover:bg-elevated hover:text-fg"
-                          }`}
-                        >
-                          <span className="text-sm font-medium">
-                            {getSeasonShortLabel(
-                              season,
-                              index,
-                            )}
-                          </span>
-                        </Link>
-                      );
-                    },
-                  )}
-                </div>
+                    const seasonName =
+                      season.label ??
+                      season.title ??
+                      `Temporada ${index + 1}`;
 
-                <div className="mt-2 border-t border-white/5 pt-2">
-                  <p className="px-2 text-[10px] tracking-[0.15em] text-subtle uppercase">
-                    Selecione uma temporada
-                  </p>
-                </div>
+                    return (
+                      <Link
+                        key={season.id}
+                        to="/anime/$id"
+                        params={{
+                          id: season.id,
+                        }}
+                        onClick={() =>
+                          setSeasonsOpen(
+                            false,
+                          )
+                        }
+                        className={`flex w-full items-center justify-between rounded-lg px-4 py-3 text-sm transition-colors ${
+                          selected
+                            ? "bg-elevated font-medium text-fg"
+                            : "text-muted hover:bg-elevated hover:text-fg"
+                        }`}
+                      >
+                        <span>
+                          {seasonName}
+                        </span>
+
+                        {selected && (
+                          <Check className="size-4" />
+                        )}
+                      </Link>
+                    );
+                  },
+                )}
               </div>
             )}
           </div>
@@ -828,12 +725,14 @@ function AnimePage() {
           </div>
 
           <div className="rail -mx-4 px-4 sm:-mx-6 sm:px-6">
-            {anime.recommendations.map((r) => (
-              <AnimeCard
-                key={r.id}
-                anime={r}
-              />
-            ))}
+            {anime.recommendations.map(
+              (r) => (
+                <AnimeCard
+                  key={r.id}
+                  anime={r}
+                />
+              ),
+            )}
           </div>
         </section>
       )}
@@ -903,8 +802,12 @@ function EpisodeGrid({
             <li key={ep.id}>
               <Link
                 to="/watch/$id"
-                params={{ id: animeId }}
-                search={{ ep: ep.id }}
+                params={{
+                  id: animeId,
+                }}
+                search={{
+                  ep: ep.id,
+                }}
                 className={`group flex gap-3 rounded-xl border p-2.5 shadow-[var(--shadow-border)] transition-all hover:-translate-y-0.5 ${
                   watched
                     ? "border-white/10 bg-elevated"
@@ -948,7 +851,8 @@ function EpisodeGrid({
                 <div className="min-w-0 flex-1 py-1">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[11px] font-medium tracking-wide text-subtle uppercase">
-                      Episódio {ep.number}
+                      Episódio{" "}
+                      {ep.number}
                     </p>
 
                     {watched && (
@@ -975,4 +879,4 @@ function EpisodeGrid({
       </ol>
     </div>
   );
-}
+    }
