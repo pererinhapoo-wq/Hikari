@@ -3,7 +3,7 @@ import {
   Link,
 } from "@tanstack/react-router";
 
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, ChevronDown } from "lucide-react";
 
 import { AnimeCard } from "@/components/anime-card";
 import type { SlimAnime } from "@/lib/types";
@@ -132,8 +132,7 @@ function mapAnime(
   return {
     id: String(anime.id),
 
-    anilistId:
-      anime.id,
+    anilistId: anime.id,
 
     malId:
       anime.idMal ??
@@ -413,13 +412,15 @@ function CalendarPending() {
         <div className="h-4 w-80 animate-pulse rounded bg-elevated" />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      <div className="h-12 animate-pulse rounded-xl bg-elevated" />
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {Array.from(
           { length: 4 },
           (_, index) => (
             <div
               key={index}
-              className="h-11 w-32 shrink-0 animate-pulse rounded-lg bg-elevated"
+              className="h-12 animate-pulse rounded-lg bg-elevated"
             />
           ),
         )}
@@ -486,17 +487,25 @@ function CalendarPage() {
     );
 
   const currentYear =
-    new Date().getFullYear();
+    getCurrentSeason().year;
 
-  const availableYears =
-    Array.from(
-      {
-        length:
-          currentYear + 2 - 2000 + 1,
-      },
-      (_, index) =>
-        2000 + index,
-    );
+  /*
+   * Anos disponíveis:
+   * 2000 até 2 anos à frente.
+   *
+   * Assim é possível escolher:
+   * 2015, 2016, 2017...
+   * sem precisar ficar apertando
+   * o último botão.
+   */
+  const years = Array.from(
+    {
+      length:
+        currentYear + 2 - 2000 + 1,
+    },
+    (_, index) =>
+      currentYear + 2 - index,
+  );
 
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
@@ -533,44 +542,10 @@ function CalendarPage() {
         <div className="relative">
           <select
             value={year}
-            onChange={(event) => {
-              const nextYear =
-                Number(
-                  event.target.value,
-                );
-
-              if (
-                !Number.isInteger(
-                  nextYear,
-                )
-              ) {
-                return;
-              }
-
-              window.location.href =
-                `/calendar?season=${season}&year=${nextYear}`;
-            }}
-            className="
-              h-12
-              w-full
-              appearance-none
-              rounded-lg
-              border
-              border-border
-              bg-bg
-              px-4
-              pr-10
-              text-sm
-              font-medium
-              text-fg
-              outline-none
-              transition-colors
-              focus:border-fg/30
-              sm:max-w-xs
-            "
-            aria-label="Selecionar ano"
+            onChange={() => {}}
+            className="h-14 w-full appearance-none rounded-xl border border-border bg-bg px-4 pr-12 text-base font-medium text-fg outline-none transition-colors focus:border-fg/30"
           >
-            {availableYears.map(
+            {years.map(
               (yearOption) => (
                 <option
                   key={yearOption}
@@ -582,18 +557,57 @@ function CalendarPage() {
             )}
           </select>
 
-          <span
-            className="
-              pointer-events-none
-              absolute
-              right-4
-              top-1/2
-              -translate-y-1/2
-              text-muted
-            "
+          <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-muted" />
+        </div>
+
+        {/*
+         * Links invisíveis visualmente usados para manter
+         * a navegação do Router disponível.
+         */}
+        <div className="hidden">
+          {years.map(
+            (yearOption) => (
+              <Link
+                key={yearOption}
+                to="/calendar"
+                search={{
+                  season,
+                  year:
+                    yearOption,
+                }}
+              >
+                {yearOption}
+              </Link>
+            ),
+          )}
+        </div>
+
+        <div className="grid grid-cols-1">
+          <select
+            aria-label="Selecionar ano"
+            value={year}
+            onChange={(event) => {
+              const selectedYear =
+                Number(
+                  event.target.value,
+                );
+
+              window.location.href =
+                `/calendar?season=${season}&year=${selectedYear}`;
+            }}
+            className="absolute inset-0 h-14 w-full cursor-pointer opacity-0"
           >
-            ▼
-          </span>
+            {years.map(
+              (yearOption) => (
+                <option
+                  key={yearOption}
+                  value={yearOption}
+                >
+                  {yearOption}
+                </option>
+              ),
+            )}
+          </select>
         </div>
       </section>
 
@@ -702,4 +716,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-}
+    }
