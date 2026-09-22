@@ -1,7 +1,14 @@
 import { Link } from "@tanstack/react-router";
-import { Bookmark, BookmarkCheck } from "lucide-react";
+import {
+  Bookmark,
+  BookmarkCheck,
+} from "lucide-react";
 
-import { displayTitle, type SlimAnime } from "@/lib/types";
+import {
+  displayTitle,
+  type SlimAnime,
+} from "@/lib/types";
+
 import { scoreLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useHikariStore } from "@/lib/store";
@@ -13,22 +20,38 @@ export function AnimeCard({
   anime: SlimAnime;
   size?: "sm" | "md" | "lg";
 }) {
-  const inList = useHikariStore((s) => s.myList.includes(anime.id));
-  const toggleList = useHikariStore((s) => s.toggleList);
-  const title = displayTitle(anime);
+  const inList =
+    useHikariStore((s) =>
+      s.myList.includes(anime.id),
+    );
+
+  const toggleList =
+    useHikariStore(
+      (s) => s.toggleList,
+    );
+
+  const title =
+    displayTitle(anime);
 
   const width =
     size === "sm"
-      ? "w-28 sm:w-28 md:w-40 lg:w-44"
+      ? "w-28 sm:w-28"
       : size === "lg"
-        ? "w-36 sm:w-40 md:w-48 lg:w-52"
-        : "w-32 sm:w-34 md:w-44 lg:w-48";
+        ? "w-full sm:w-full"
+        : "w-32 sm:w-34";
 
   return (
-    <article className={cn("group relative shrink-0", width)}>
+    <article
+      className={cn(
+        "group relative shrink-0",
+        width,
+      )}
+    >
       <Link
         to="/anime/$id"
-        params={{ id: anime.id }}
+        params={{
+          id: anime.id,
+        }}
         className="
           block
           overflow-hidden
@@ -80,7 +103,9 @@ export function AnimeCard({
                 backdrop-blur-sm
               "
             >
-              {scoreLabel(anime.score)}
+              {scoreLabel(
+                anime.score,
+              )}
             </span>
           )}
         </div>
@@ -92,10 +117,15 @@ export function AnimeCard({
 
           <p className="mt-0.5 truncate text-[10px] text-subtle sm:text-[11px]">
             {anime.year ?? ""}
-            {anime.year && anime.format ? " · " : ""}
-            {anime.format === "TV"
+            {anime.year &&
+            anime.format
+              ? " · "
+              : ""}
+            {anime.format ===
+            "TV"
               ? "Série"
-              : anime.format === "MOVIE"
+              : anime.format ===
+                  "MOVIE"
                 ? "Filme"
                 : ""}
           </p>
@@ -149,13 +179,18 @@ export function AnimeCardSkeleton({
 }) {
   const width =
     size === "sm"
-      ? "w-28 sm:w-28 md:w-40 lg:w-44"
+      ? "w-28 sm:w-28"
       : size === "lg"
-        ? "w-36 sm:w-40 md:w-48 lg:w-52"
-        : "w-32 sm:w-34 md:w-44 lg:w-48";
+        ? "w-full sm:w-full"
+        : "w-32 sm:w-34";
 
   return (
-    <div className={cn(width, "shrink-0")}>
+    <div
+      className={cn(
+        width,
+        "shrink-0",
+      )}
+    >
       <div className="aspect-2/3 animate-pulse rounded-xl bg-elevated" />
 
       <div className="mt-2 h-3 w-4/5 animate-pulse rounded bg-elevated" />
@@ -163,4 +198,4 @@ export function AnimeCardSkeleton({
       <div className="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-elevated" />
     </div>
   );
-}
+          }
