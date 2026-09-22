@@ -608,7 +608,7 @@ function CalendarPage() {
             (anime) => (
               <div
                 key={anime.id}
-                className="min-w-0 [&>article]:w-full"
+                className="min-w-0 [&>article]:h-full [&>article]:w-full"
               >
                 <AnimeCard
                   anime={anime}
@@ -655,4 +655,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-}
+    }
