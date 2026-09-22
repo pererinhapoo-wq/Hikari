@@ -1961,10 +1961,8 @@ async function searchRelaxed(
   }
 
   const compact = normalized.replace(/\s/g, "");
-  const words = normalized.split(/\s+/).filter(Boolean);
   const variants = new Set<string>();
 
-  // Poucas variantes, mas muito úteis: evitamos dezenas de chamadas lentas.
   variants.add(original);
   variants.add(normalized);
 
@@ -1972,61 +1970,168 @@ async function searchRelaxed(
     variants.add(compact);
   }
 
-  if (words.length > 1) {
-    variants.add(words[0]);
-  }
-
-  // Busca pelo prefixo encurtado. Isso cobre casos como "narut" -> "naru" -> "nar".
+  // Para pesquisas curtas, uma única redução já é suficiente.
+  // Evitamos várias consultas em cascata que deixavam a busca lenta.
   if (compact.length >= 4) {
     variants.add(compact.slice(0, -1));
   }
 
-  if (compact.length >= 5) {
-    variants.add(compact.slice(0, -2));
-  }
-
   if (compact.length >= 6) {
-    variants.add(compact.slice(0, -3));
+    variants.add(compact.slice(0, -2));
   }
 
   const validVariants = [...variants].filter(
     (value) => value.trim().length >= 3,
   );
 
-  const allResults = await Promise.all(
-    validVariants.map(async (variant) => {
-      const searchParams: SearchParams = {
-        ...params,
-        q: variant,
-        page: 1,
-      };
+  const attempts = validVariants.map(async (variant) => {
+    const searchParams: SearchParams = {
+      ...params,
+      q: variant,
+      page: 1,
+    };
 
-      const results = await Promise.allSettled([
-        searchAni(searchParams),
-        searchJikan(searchParams),
-      ]);
+    const results = await Promise.allSettled([
+      searchAni(searchParams),
+      searchJikan(searchParams),
+    ]);
 
-      const ani =
-        results[0].status === "fulfilled"
-          ? results[0].value.items
-          : [];
+    const ani =
+      results[0].status === "fulfilled"
+        ? results[0].value.items
+        : [];
 
-      const jikan =
-        results[1].status === "fulfilled"
-          ? results[1].value.items
-          : [];
+    const jikan =
+      results[1].status === "fulfilled"
+        ? results[1].value.items
+        : [];
 
-      return mergeSearchItems(ani, jikan);
-    }),
+    const items = rankSearchResults(
+      mergeSearchItems(ani, jikan),
+      original,
+    );
+
+    return items;
+  });
+
+  // Assim que uma variante produzir uma correspondência forte,
+  // podemos responder sem esperar as outras consultas.
+  const pending = new Set(attempts);
+
+  while (pending.size > 0) {
+    const settled = await Promise.race(
+      [...pending].map(async (promise) => ({
+        promise,
+        items: await promise,
+      })),
+    );
+
+    pending.delete(settled.promise);
+
+    if (
+      settled.items.some(
+        (anime) =>
+          searchScore(anime, original) >= 1100,
+      )
+    ) {
+      return settled.items;
+    }
+  }
+
+  // Se nenhuma variante encontrou correspondência forte,
+  // combina os resultados que já terminaram.
+  const completed = await Promise.all(attempts);
+
+  return rankSearchResults(
+    completed.reduce(
+      (accumulated, current) =>
+        mergeSearchItems(accumulated, current),
+      [] as SlimAnime[],
+    ),
+    original,
   );
+}
 
-  const merged = allResults.reduce(
+function isStrongSearchResult(
+  items: SlimAnime[],
+  query: string,
+): boolean {
+  return items.some(
+    (anime) =>
+      searchScore(anime, query) >= 1100,
+  );
+}
+
+async function searchDirectFast(
+  params: SearchParams,
+): Promise<{
+  items: SlimAnime[];
+  hasNext: boolean;
+  source: "anilist" | "jikan";
+}> {
+  const attempts = [
+    searchAni(params).catch(() => null),
+    searchJikan(params).catch(() => null),
+  ];
+
+  const pending = new Set(attempts);
+  const results: SearchResult[] = [];
+
+  while (pending.size > 0) {
+    const settled = await Promise.race(
+      [...pending].map(async (promise) => ({
+        promise,
+        result: await promise,
+      })),
+    );
+
+    pending.delete(settled.promise);
+
+    if (!settled.result) {
+      continue;
+    }
+
+    results.push(settled.result);
+
+    // Se uma fonte já encontrou o título certo, não precisamos esperar
+    // uma segunda API mais lenta para mostrar o resultado ao usuário.
+    if (
+      params.q &&
+      isStrongSearchResult(
+        settled.result.items,
+        params.q,
+      )
+    ) {
+      return {
+        items: rankSearchResults(
+          settled.result.items,
+          params.q,
+        ),
+        hasNext: settled.result.hasNext,
+        source: settled.result.source,
+      };
+    }
+  }
+
+  const merged = results.reduce(
     (accumulated, current) =>
-      mergeSearchItems(accumulated, current),
+      mergeSearchItems(
+        accumulated,
+        current.items,
+      ),
     [] as SlimAnime[],
   );
 
-  return rankSearchResults(merged, original);
+  return {
+    items: rankSearchResults(
+      merged,
+      params.q,
+    ),
+    hasNext: results.some(
+      (result) => result.hasNext,
+    ),
+    source: results[0]?.source ?? "anilist",
+  };
 }
 
 export const searchCatalog =
@@ -2041,7 +2146,7 @@ export const searchCatalog =
         data,
       }) => {
         const key =
-          `search:v3:${JSON.stringify(data)}`;
+          `search:v4:${JSON.stringify(data)}`;
 
         const cached =
           fromCache<SearchResult>(
@@ -2062,29 +2167,9 @@ export const searchCatalog =
            * consultar o Jikan. Se o AniList demorasse, a busca inteira
            * ficava lenta ou podia terminar sem resultado.
            */
-          const [aniAttempt, jikanAttempt] =
-            await Promise.allSettled([
-              searchAni(data),
-              searchJikan(data),
-            ]);
+          const direct = await searchDirectFast(data);
 
-          const aniResult =
-            aniAttempt.status === "fulfilled"
-              ? aniAttempt.value
-              : null;
-
-          const jikanResult =
-            jikanAttempt.status === "fulfilled"
-              ? jikanAttempt.value
-              : null;
-
-          let items = rankSearchResults(
-            mergeSearchItems(
-              aniResult?.items ?? [],
-              jikanResult?.items ?? [],
-            ),
-            q,
-          );
+          let items = direct.items;
 
           /*
            * Se as fontes diretas não encontrarem uma correspondência forte e
@@ -2117,14 +2202,8 @@ export const searchCatalog =
           const result: SearchResult = {
             items: items.slice(0, 24),
             page: data.page ?? 1,
-            hasNext: Boolean(
-              aniResult?.hasNext ||
-              jikanResult?.hasNext,
-            ),
-            source:
-              aniResult
-                ? "anilist"
-                : "jikan",
+            hasNext: direct.hasNext,
+            source: direct.source,
           };
 
           return toCache(
