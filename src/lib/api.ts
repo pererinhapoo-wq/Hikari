@@ -59,6 +59,17 @@ type AniTitle = {
   native?: string | null;
 };
 
+type SeasonNavigationItem = {
+  id: string;
+  title?: string;
+};
+
+type SeasonNavigation = {
+  seasons: SeasonNavigationItem[];
+  previous?: SeasonNavigationItem;
+  next?: SeasonNavigationItem;
+};
+
 type AniMedia = {
   id: number;
   idMal?: number | null;
@@ -747,20 +758,137 @@ function streamingFromAni(
     );
 }
 
+async function buildSeasonNavigation(
+  media: AniMedia,
+): Promise<SeasonNavigation> {
+  const current: SeasonNavigationItem = {
+    id: String(media.id),
+    title:
+      media.title?.english ??
+      media.title?.romaji ??
+      undefined,
+  };
+
+  const findRelation = (
+    source: AniMedia,
+    type: "PREQUEL" | "SEQUEL",
+  ) =>
+    (source.relations?.edges ?? []).find(
+      (relation) =>
+        relation.relationType === type &&
+        Boolean(relation.node?.id),
+    )?.node;
+
+  const fetchRelations = async (
+    id: number,
+  ): Promise<AniMedia["relations"]> => {
+    const result =
+      await anilistGraphQL<{
+        Media:
+          | Pick<AniMedia, "relations">
+          | null;
+      }>(
+        `
+        query SeasonRelations($id: Int) {
+          Media(id: $id, type: ANIME) {
+            relations {
+              edges {
+                relationType
+                node {
+                  id
+                  title {
+                    romaji
+                    english
+                  }
+                }
+              }
+            }
+          }
+        }
+        `,
+        { id },
+      );
+
+    return result.Media?.relations;
+  };
+
+  const previous: SeasonNavigationItem[] = [];
+  const next: SeasonNavigationItem[] = [];
+  const visited = new Set<string>([current.id]);
+
+  let cursor = findRelation(media, "PREQUEL");
+  let steps = 0;
+
+  while (cursor?.id && steps < 10) {
+    const item: SeasonNavigationItem = {
+      id: String(cursor.id),
+      title:
+        cursor.title?.english ??
+        cursor.title?.romaji ??
+        undefined,
+    };
+
+    if (visited.has(item.id)) break;
+    visited.add(item.id);
+    previous.unshift(item);
+    steps++;
+
+    const relations = await fetchRelations(cursor.id);
+    cursor = relations
+      ? (relations.edges ?? []).find(
+          (relation) =>
+            relation.relationType ===
+              "PREQUEL" &&
+            Boolean(relation.node?.id),
+        )?.node
+      : undefined;
+  }
+
+  cursor = findRelation(media, "SEQUEL");
+  steps = 0;
+
+  while (cursor?.id && steps < 10) {
+    const item: SeasonNavigationItem = {
+      id: String(cursor.id),
+      title:
+        cursor.title?.english ??
+        cursor.title?.romaji ??
+        undefined,
+    };
+
+    if (visited.has(item.id)) break;
+    visited.add(item.id);
+    next.push(item);
+    steps++;
+
+    const relations = await fetchRelations(cursor.id);
+    cursor = relations
+      ? (relations.edges ?? []).find(
+          (relation) =>
+            relation.relationType ===
+              "SEQUEL" &&
+            Boolean(relation.node?.id),
+        )?.node
+      : undefined;
+  }
+
+  return {
+    seasons: [
+      ...previous,
+      current,
+      ...next,
+    ],
+    previous: previous.at(-1),
+    next: next[0],
+  };
+}
+
 function mapAniFull(
   media: AniMedia,
   seasons: Season[],
+  seasonNavigation?: SeasonNavigation,
 ): Anime & {
-  seasonNavigation: {
-    previous?: {
-      id: string;
-      title?: string;
-    };
-    next?: {
-      id: string;
-      title?: string;
-    };
-  };
+  seasonNavigation: SeasonNavigation;
 } {
   const slim =
     mapAniSlim(media);
@@ -808,37 +936,48 @@ function mapAniFull(
 
     seasons,
 
-    seasonNavigation: {
-      previous:
-        previousRelation?.node?.id
-          ? {
-              id: String(
-                previousRelation.node.id,
-              ),
-              title:
-                previousRelation.node
-                  .title?.english ??
-                previousRelation.node
-                  .title?.romaji ??
-                undefined,
-            }
-          : undefined,
+    seasonNavigation:
+      seasonNavigation ?? {
+        seasons: [
+          {
+            id: String(media.id),
+            title:
+              media.title?.english ??
+              media.title?.romaji ??
+              undefined,
+          },
+        ],
 
-      next:
-        nextRelation?.node?.id
-          ? {
-              id: String(
-                nextRelation.node.id,
-              ),
-              title:
-                nextRelation.node
-                  .title?.english ??
-                nextRelation.node
-                  .title?.romaji ??
-                undefined,
-            }
-          : undefined,
-    },
+        previous:
+          previousRelation?.node?.id
+            ? {
+                id: String(
+                  previousRelation.node.id,
+                ),
+                title:
+                  previousRelation.node
+                    .title?.english ??
+                  previousRelation.node
+                    .title?.romaji ??
+                  undefined,
+              }
+            : undefined,
+
+        next:
+          nextRelation?.node?.id
+            ? {
+                id: String(
+                  nextRelation.node.id,
+                ),
+                title:
+                  nextRelation.node
+                    .title?.english ??
+                  nextRelation.node
+                    .title?.romaji ??
+                  undefined,
+              }
+            : undefined,
+      },
 
     recommendations: (
       media.recommendations
@@ -2113,7 +2252,7 @@ export const fetchAnimeDetail =
         }
 
         const key =
-          `detail:v2:${id}`;
+          `detail:v3:${id}`;
 
         const cached =
           fromCache<Anime>(
@@ -2402,11 +2541,17 @@ export const fetchAnimeDetail =
             ];
           }
 
+          const seasonNavigation =
+            await buildSeasonNavigation(
+              media,
+            );
+
           return toCache(
             key,
             mapAniFull(
               media,
               seasons,
+              seasonNavigation,
             ),
           );
         } catch {
