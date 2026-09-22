@@ -4,8 +4,8 @@ import type { Plugin } from "vite";
 import { defineConfig } from "vite";
 
 import { cloudflare } from "@cloudflare/vite-plugin";
-import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import netlify from "@netlify/vite-plugin-tanstack-start";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -184,6 +184,8 @@ export default defineConfig(({ command, isPreview }) => {
 
       tanstackRouter({
         target: "react",
+        routesDirectory: "./src/routes",
+        generatedRouteTree: "./src/routeTree.gen.ts",
         autoCodeSplitting: true,
       }),
 
