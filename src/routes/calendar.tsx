@@ -822,6 +822,7 @@ function CalendarPage() {
               >
                 <AnimeCard
                   anime={anime}
+                  size="lg"
                 />
               </div>
             ),
@@ -966,4 +967,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-    }
+      }
