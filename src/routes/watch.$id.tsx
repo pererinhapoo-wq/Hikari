@@ -22,7 +22,6 @@ import {
   X,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
-import Hls from "hls.js";
 import {
   useEffect,
   useMemo,
@@ -198,43 +197,6 @@ function WatchPage() {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
-
-  // Player 2 usa Bunny Stream via HLS. Player 1 continua usando
-  // exatamente a fonte direta atual.
-  const hlsUrl =
-    playerIndex === 1
-      ? current?.videoUrl2 ?? null
-      : null;
-
-  useEffect(() => {
-    const video = videoRef.current;
-
-    if (!video || !hlsUrl) {
-      return;
-    }
-
-    let hls: Hls | null = null;
-
-    if (Hls.isSupported()) {
-      hls = new Hls();
-      hls.loadSource(hlsUrl);
-      hls.attachMedia(video);
-    } else if (
-      video.canPlayType(
-        "application/vnd.apple.mpegurl",
-      )
-    ) {
-      video.src = hlsUrl;
-    }
-
-    return () => {
-      hls?.destroy();
-
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    };
-  }, [hlsUrl]);
 
   const clearControlsHideTimer = () => {
     if (controlsHideTimeoutRef.current) {
@@ -428,16 +390,30 @@ function WatchPage() {
       ? playUrl
       : null;
 
-  const hlsSource =
-    playerIndex === 1
-      ? current?.videoUrl2 ?? null
+  const bunnyEmbedSource =
+    playerIndex === 1 && current?.videoUrl2
+      ? (() => {
+          const value = current.videoUrl2;
+
+          if (value.includes("player.mediadelivery.net/embed/")) {
+            return value;
+          }
+
+          const match = value.match(
+            /b-cdn\.net\/(?:[^/]+\/)?([0-9a-f-]{36})\/playlist\.m3u8/i,
+          );
+
+          return match
+            ? `https://player.mediadelivery.net/embed/759317/${match[1]}?autoplay=false&loop=false&muted=false&preload=true&responsive=true`
+            : null;
+        })()
       : null;
 
   const external =
     playUrl &&
     !yt &&
     !file &&
-    !hlsSource
+    !bunnyEmbedSource
       ? playUrl
       : null;
 
@@ -532,7 +508,16 @@ function WatchPage() {
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
-          ) : file || hlsSource ? (
+          ) : bunnyEmbedSource ? (
+            <iframe
+              title={`${title} — Bunny Player`}
+              src={bunnyEmbedSource}
+              loading="lazy"
+              className="size-full border-0 bg-black"
+              allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
+            />
+          ) : file ? (
             <>
               <video
                 ref={videoRef}
