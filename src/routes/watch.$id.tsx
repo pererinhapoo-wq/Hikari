@@ -46,9 +46,6 @@ import {
   type Episode,
 } from "@/lib/types";
 
-const HIKARI_PLAYER_2_HLS_URL =
-  "https://vz-cbb522b4-0b4.b-cdn.net/837caf3d-8f05-4a02-b63e-0909c12dc041/playlist.m3u8";
-
 export const Route = createFileRoute("/watch/$id")({
   validateSearch: (
     raw: Record<string, unknown>,
@@ -172,7 +169,7 @@ function WatchPage() {
   const playerUrls = useMemo(
     () => [
       current?.videoUrl,
-      HIKARI_PLAYER_2_HLS_URL,
+      current?.videoUrl2,
       current?.videoUrl3,
     ],
     [current],
@@ -206,7 +203,7 @@ function WatchPage() {
   // exatamente a fonte direta atual.
   const hlsUrl =
     playerIndex === 1
-      ? HIKARI_PLAYER_2_HLS_URL
+      ? current?.videoUrl2 ?? null
       : null;
 
   useEffect(() => {
@@ -433,7 +430,7 @@ function WatchPage() {
 
   const hlsSource =
     playerIndex === 1
-      ? HIKARI_PLAYER_2_HLS_URL
+      ? current?.videoUrl2 ?? null
       : null;
 
   const external =
