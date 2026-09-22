@@ -433,7 +433,7 @@ function CalendarPending() {
           (_, index) => (
             <div
               key={index}
-              className="overflow-hidden rounded-xl"
+              className="min-w-0 overflow-hidden rounded-xl"
             >
               <div className="aspect-2/3 animate-pulse bg-elevated" />
 
@@ -621,11 +621,14 @@ function CalendarPage() {
         <section className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {items.map(
             (anime) => (
-              <AnimeCard
+              <div
                 key={anime.id}
-                anime={anime}
-                fullWidth
-              />
+                className="min-w-0 [&>article]:w-full"
+              >
+                <AnimeCard
+                  anime={anime}
+                />
+              </div>
             ),
           )}
         </section>
@@ -667,4 +670,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-  }
+    }
