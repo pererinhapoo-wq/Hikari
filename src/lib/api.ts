@@ -1964,6 +1964,7 @@ async function searchRelaxed(
   const words = normalized.split(/\s+/).filter(Boolean);
   const variants = new Set<string>();
 
+  // Poucas variantes, mas muito úteis: evitamos dezenas de chamadas lentas.
   variants.add(original);
   variants.add(normalized);
 
@@ -1975,32 +1976,17 @@ async function searchRelaxed(
     variants.add(words[0]);
   }
 
-  /*
-   * Para buscas parciais ou com pequenas diferenças, também fazemos uma
-   * consulta ampla usando o começo do termo. Isso é importante porque a
-   * busca do provedor pode não devolver o título correto para uma grafia
-   * incompleta como "narut", mesmo que "Naruto" seja a correspondência
-   * óbvia para o usuário.
-   */
-  const compactBase = compact || normalized;
-
-  if (compactBase.length >= 4) {
-    variants.add(compactBase.slice(0, -1));
-    variants.add(compactBase.slice(0, 3));
+  // Busca pelo prefixo encurtado. Isso cobre casos como "narut" -> "naru" -> "nar".
+  if (compact.length >= 4) {
+    variants.add(compact.slice(0, -1));
   }
 
-  if (compactBase.length >= 5) {
-    variants.add(compactBase.slice(0, -2));
+  if (compact.length >= 5) {
+    variants.add(compact.slice(0, -2));
   }
 
-  if (compactBase.length >= 6) {
-    variants.add(compactBase.slice(0, -3));
-  }
-
-  for (const word of words) {
-    if (word.length >= 4) {
-      variants.add(word.slice(0, 3));
-    }
+  if (compact.length >= 6) {
+    variants.add(compact.slice(0, -3));
   }
 
   const validVariants = [...variants].filter(
@@ -2055,7 +2041,7 @@ export const searchCatalog =
         data,
       }) => {
         const key =
-          `search:v2:${JSON.stringify(data)}`;
+          `search:v3:${JSON.stringify(data)}`;
 
         const cached =
           fromCache<SearchResult>(
@@ -2108,7 +2094,7 @@ export const searchCatalog =
            */
           const hasStrongMatch = items.some(
             (anime) =>
-              searchScore(anime, q) >= 950,
+              searchScore(anime, q) >= 1100,
           );
 
           if (!hasStrongMatch) {
