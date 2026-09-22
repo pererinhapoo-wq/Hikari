@@ -2747,7 +2747,7 @@ export const fetchAnimeDetail =
       },
     );
 
-const fetchGenres = createServerFn({
+export const fetchGenres = createServerFn({
   method: "GET",
 }).handler(async () => {
   const key = "genres:all";
