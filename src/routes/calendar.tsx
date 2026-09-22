@@ -7,7 +7,6 @@ import {
 import {
   CalendarDays,
   ChevronDown,
-  Check,
 } from "lucide-react";
 
 import {
@@ -499,8 +498,8 @@ function CalendarPage() {
     setYearOpen,
   ] = useState(false);
 
-  const yearRef =
-    useRef<HTMLDivElement>(
+  const yearListRef =
+    useRef<HTMLDivElement | null>(
       null,
     );
 
@@ -510,52 +509,36 @@ function CalendarPage() {
         item.value === season,
     );
 
+  /*
+   * Quando o seletor de ano abre,
+   * posiciona a lista no ano atual.
+   */
   useEffect(() => {
-    function handleOutsideClick(
-      event: MouseEvent,
-    ) {
-      if (
-        yearRef.current &&
-        !yearRef.current.contains(
-          event.target as Node,
-        )
-      ) {
-        setYearOpen(false);
-      }
+    if (!yearOpen) {
+      return;
     }
 
-    function handleEscape(
-      event: KeyboardEvent,
-    ) {
-      if (
-        event.key === "Escape"
-      ) {
-        setYearOpen(false);
-      }
-    }
+    const timer =
+      window.setTimeout(() => {
+        const selected =
+          yearListRef.current?.querySelector<HTMLElement>(
+            `[data-year="${year}"]`,
+          );
 
-    document.addEventListener(
-      "mousedown",
-      handleOutsideClick,
-    );
+        selected?.scrollIntoView({
+          block: "center",
+          behavior: "instant",
+        });
+      }, 0);
 
-    document.addEventListener(
-      "keydown",
-      handleEscape,
-    );
-
-    return () => {
-      document.removeEventListener(
-        "mousedown",
-        handleOutsideClick,
+    return () =>
+      window.clearTimeout(
+        timer,
       );
-
-      document.removeEventListener(
-        "keydown",
-        handleEscape,
-      );
-    };
-  }, []);
+  }, [
+    yearOpen,
+    year,
+  ]);
 
   function handleYearChange(
     nextYear: number,
@@ -593,72 +576,84 @@ function CalendarPage() {
       </section>
 
       {/* ANO */}
-      <section className="space-y-3">
+      <section className="relative space-y-3">
         <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
           Ano
         </p>
 
-        <div
-          ref={yearRef}
-          className="relative"
+        <button
+          type="button"
+          onClick={() =>
+            setYearOpen(
+              (value) => !value,
+            )
+          }
+          aria-haspopup="listbox"
+          aria-expanded={yearOpen}
+          className="
+            flex
+            min-h-12
+            w-full
+            items-center
+            justify-between
+            rounded-xl
+            border
+            border-border
+            bg-bg
+            px-5
+            text-left
+            text-base
+            font-medium
+            text-fg
+            outline-none
+            transition-colors
+            hover:bg-elevated
+            focus:border-fg/30
+          "
         >
-          <button
-            type="button"
-            onClick={() =>
-              setYearOpen(
-                (value) => !value,
-              )
-            }
-            aria-haspopup="listbox"
-            aria-expanded={yearOpen}
-            className="
-              flex
-              min-h-12
-              w-full
-              items-center
-              justify-between
-              rounded-xl
-              border
-              border-border
-              bg-bg
-              px-5
-              text-base
-              font-medium
-              text-fg
-              outline-none
-              transition-colors
-              hover:bg-elevated
-              focus:border-fg/30
-            "
-          >
-            <span>
-              {year}
-            </span>
+          <span>
+            {year}
+          </span>
 
-            <ChevronDown
-              className={[
-                "size-5",
-                "text-muted",
-                "transition-transform",
+          <ChevronDown
+            className={`
+              size-5
+              text-muted
+              transition-transform
+              ${
                 yearOpen
                   ? "rotate-180"
-                  : "",
-              ].join(" ")}
-            />
-          </button>
+                  : ""
+              }
+            `}
+          />
+        </button>
 
-          {yearOpen && (
+        {yearOpen && (
+          <>
+            <button
+              type="button"
+              aria-label="Fechar seleção de ano"
+              className="fixed inset-0 z-40 cursor-default"
+              onClick={() =>
+                setYearOpen(false)
+              }
+            />
+
             <div
+              ref={yearListRef}
               role="listbox"
               aria-label="Selecionar ano"
               className="
                 absolute
-                top-[calc(100%+8px)]
+                top-full
+                right-0
                 left-0
                 z-50
-                max-h-80
-                w-full
+                mt-2
+                max-h-72
                 overflow-y-auto
+                overscroll-contain
                 rounded-xl
                 border
                 border-border
@@ -683,14 +678,17 @@ function CalendarPage() {
                       aria-selected={
                         active
                       }
+                      data-year={
+                        yearOption
+                      }
                       onClick={() =>
                         handleYearChange(
                           yearOption,
                         )
                       }
-                      className="
+                      className={`
                         flex
-                        min-h-11
+                        min-h-12
                         w-full
                         items-center
                         justify-between
@@ -698,10 +696,13 @@ function CalendarPage() {
                         px-4
                         text-left
                         text-base
-                        text-fg
                         transition-colors
-                        hover:bg-bg
-                      "
+                        ${
+                          active
+                            ? "bg-bg font-semibold text-fg"
+                            : "text-muted hover:bg-bg hover:text-fg"
+                        }
+                      `}
                     >
                       <span>
                         {
@@ -710,15 +711,17 @@ function CalendarPage() {
                       </span>
 
                       {active && (
-                        <Check className="size-5 text-fg" />
+                        <span className="text-xs text-muted">
+                          Selecionado
+                        </span>
                       )}
                     </button>
                   );
                 },
               )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </section>
 
       {/* TEMPORADA */}
@@ -772,14 +775,27 @@ function CalendarPage() {
 
       {/* LISTA */}
       {items.length > 0 ? (
-        <section className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        <section className="grid grid-cols-2 items-stretch gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {items.map(
             (anime) => (
-              <AnimeCard
+              <div
                 key={anime.id}
-                anime={anime}
-                fullWidth
-              />
+                className="
+                  flex
+                  min-w-0
+                  [&>article]:flex
+                  [&>article]:h-full
+                  [&>article>a]:flex
+                  [&>article>a]:h-full
+                  [&>article>a]:flex-col
+                  [&>article>a>div:last-child]:min-h-18
+                "
+              >
+                <AnimeCard
+                  anime={anime}
+                  fullWidth
+                />
+              </div>
             ),
           )}
         </section>
@@ -821,4 +837,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-}
+      }
