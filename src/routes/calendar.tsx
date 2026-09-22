@@ -644,38 +644,37 @@ function CalendarPage() {
         for (
           let value = 2;
           value <=
-            Math.min(5, lastPage);
+            Math.min(
+              5,
+              lastPage,
+            );
           value += 1
         ) {
           pages.add(value);
         }
       } else {
         pages.add(
-          Math.max(2, page - 2),
-        );
-
-        pages.add(
-          Math.max(2, page - 1),
+          Math.max(
+            2,
+            page - 1,
+          ),
         );
 
         pages.add(page);
 
-        pages.add(
-          Math.min(
-            lastPage,
+        if (
+          page + 1 <=
+          lastPage
+        ) {
+          pages.add(
             page + 1,
-          ),
-        );
-
-        pages.add(
-          Math.min(
-            lastPage,
-            page + 2,
-          ),
-        );
+          );
+        }
       }
 
-      pages.add(lastPage);
+      if (lastPage > 5) {
+        pages.add(lastPage);
+      }
 
       return Array.from(
         pages,
@@ -844,7 +843,7 @@ function CalendarPage() {
 
       {/* PAGINAÇÃO */}
       {showPagination && (
-        <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
+        <div className="flex items-center justify-center gap-1 pt-2">
           <button
             type="button"
             onClick={() =>
@@ -966,4 +965,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-    }
+}
