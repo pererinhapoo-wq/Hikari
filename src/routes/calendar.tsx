@@ -4,7 +4,11 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 
-import { CalendarDays } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 import { AnimeCard } from "@/components/anime-card";
 import type { SlimAnime } from "@/lib/types";
@@ -19,6 +23,7 @@ type AnimeSeason =
 type CalendarSearch = {
   season?: AnimeSeason;
   year?: number;
+  page?: number;
 };
 
 type AniMedia = {
@@ -61,6 +66,13 @@ type AniListResponse = {
   data?: {
     Page?: {
       media?: AniMedia[];
+
+      pageInfo?: {
+        currentPage?: number;
+        lastPage?: number;
+        hasNextPage?: boolean;
+        total?: number;
+      };
     };
   };
 };
@@ -166,6 +178,26 @@ function normalizeYear(
   return fallback;
 }
 
+function normalizePage(
+  value: unknown,
+): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : NaN;
+
+  if (
+    Number.isInteger(parsed) &&
+    parsed >= 1
+  ) {
+    return parsed;
+  }
+
+  return 1;
+}
+
 function mapAnime(
   anime: AniMedia,
 ): SlimAnime {
@@ -247,7 +279,14 @@ function mapAnime(
 async function fetchSeason(
   season: AnimeSeason,
   year: number,
-): Promise<SlimAnime[]> {
+  page: number,
+): Promise<{
+  items: SlimAnime[];
+  currentPage: number;
+  lastPage: number;
+  hasNext: boolean;
+  total: number;
+}> {
   const response =
     await fetch(
       "https://graphql.anilist.co",
@@ -263,12 +302,20 @@ async function fetchSeason(
           query: `
             query CalendarSeason(
               $season: MediaSeason,
-              $year: Int
+              $year: Int,
+              $page: Int
             ) {
               Page(
-                page: 1,
-                perPage: 50
+                page: $page,
+                perPage: 24
               ) {
+                pageInfo {
+                  currentPage
+                  lastPage
+                  hasNextPage
+                  total
+                }
+
                 media(
                   type: ANIME,
                   season: $season,
@@ -316,6 +363,7 @@ async function fetchSeason(
           variables: {
             season,
             year,
+            page,
           },
         }),
       },
@@ -330,15 +378,39 @@ async function fetchSeason(
   const json =
     (await response.json()) as AniListResponse;
 
-  return (
-    json.data?.Page?.media ??
-    []
-  )
-    .filter(
-      (anime) =>
-        !anime.isAdult,
-    )
-    .map(mapAnime);
+  const pageData =
+    json.data?.Page;
+
+  const pageInfo =
+    pageData?.pageInfo;
+
+  const items =
+    (pageData?.media ?? [])
+      .filter(
+        (anime) =>
+          !anime.isAdult,
+      )
+      .map(mapAnime);
+
+  return {
+    items,
+
+    currentPage:
+      pageInfo?.currentPage ??
+      page,
+
+    lastPage:
+      pageInfo?.lastPage ??
+      1,
+
+    hasNext:
+      pageInfo?.hasNextPage ??
+      false,
+
+    total:
+      pageInfo?.total ??
+      items.length,
+  };
 }
 
 export const Route =
@@ -362,38 +434,60 @@ export const Route =
           raw.year,
           current.year,
         ),
+
+        page: normalizePage(
+          raw.page,
+        ),
       };
     },
 
+    /*
+     * IMPORTANTE:
+     *
+     * Isso faz o loader ser executado
+     * novamente quando mudamos ano,
+     * temporada ou página.
+     */
+    loaderDeps: ({
+      search,
+    }) => search,
+
     loader: async ({
-      location,
+      deps,
     }) => {
       const current =
         getCurrentSeason();
 
       const season =
         isAnimeSeason(
-          location.search.season,
+          deps.season,
         )
-          ? location.search.season
+          ? deps.season
           : current.season;
 
       const year =
         normalizeYear(
-          location.search.year,
+          deps.year,
           current.year,
         );
 
-      const items =
+      const page =
+        normalizePage(
+          deps.page,
+        );
+
+      const result =
         await fetchSeason(
           season,
           year,
+          page,
         );
 
       return {
-        items,
+        ...result,
         season,
         year,
+        page,
       };
     },
 
@@ -428,7 +522,7 @@ function CalendarPending() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-4 sm:grid-cols-4 lg:grid-cols-6">
         {Array.from(
           { length: 12 },
           (_, index) => (
@@ -482,6 +576,10 @@ function CalendarPage() {
     items,
     season,
     year,
+    page,
+    lastPage,
+    hasNext,
+    total,
   } =
     Route.useLoaderData();
 
@@ -499,9 +597,118 @@ function CalendarPage() {
       search: {
         season,
         year: nextYear,
+        page: 1,
       },
     });
   }
+
+  function handleSeasonChange(
+    nextSeason: AnimeSeason,
+  ) {
+    void navigate({
+      to: "/calendar",
+      search: {
+        season: nextSeason,
+        year,
+        page: 1,
+      },
+    });
+  }
+
+  function goToPage(
+    nextPage: number,
+  ) {
+    if (
+      nextPage < 1 ||
+      nextPage === page ||
+      nextPage > lastPage
+    ) {
+      return;
+    }
+
+    void navigate({
+      to: "/calendar",
+      search: {
+        season,
+        year,
+        page: nextPage,
+      },
+    });
+  }
+
+  /*
+   * Mostra:
+   *
+   * 1 2 3 4 5
+   *
+   * ou, quando já estamos mais longe:
+   *
+   * 1 ... 4 5 6 7 8 ...
+   */
+  const pageNumbers =
+    (() => {
+      if (lastPage <= 1) {
+        return [1];
+      }
+
+      const pages =
+        new Set<number>();
+
+      pages.add(1);
+
+      if (page <= 3) {
+        for (
+          let value = 2;
+          value <=
+            Math.min(5, lastPage);
+          value += 1
+        ) {
+          pages.add(value);
+        }
+      } else {
+        pages.add(
+          Math.max(2, page - 2),
+        );
+
+        pages.add(
+          Math.max(2, page - 1),
+        );
+
+        pages.add(page);
+
+        pages.add(
+          Math.min(
+            lastPage,
+            page + 1,
+          ),
+        );
+
+        pages.add(
+          Math.min(
+            lastPage,
+            page + 2,
+          ),
+        );
+      }
+
+      pages.add(lastPage);
+
+      return Array.from(
+        pages,
+      )
+        .filter(
+          (value) =>
+            value >= 1 &&
+            value <= lastPage,
+        )
+        .sort(
+          (a, b) =>
+            a - b,
+        );
+    })();
+
+  const showPagination =
+    lastPage > 1;
 
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
@@ -534,7 +741,9 @@ function CalendarPage() {
           value={String(year)}
           onChange={(event) => {
             handleYearChange(
-              Number(event.target.value),
+              Number(
+                event.target.value,
+              ),
             );
           }}
           aria-label="Selecionar ano"
@@ -568,7 +777,13 @@ function CalendarPage() {
                   season:
                     item.value,
                   year,
+                  page: 1,
                 }}
+                onClick={() =>
+                  handleSeasonChange(
+                    item.value,
+                  )
+                }
                 className={cnCalendarSeason(
                   item.value === season,
                 )}
@@ -603,7 +818,7 @@ function CalendarPage() {
 
       {/* LISTA */}
       {items.length > 0 ? (
-        <section className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-4 lg:grid-cols-6">
+        <section className="grid grid-cols-2 items-stretch gap-x-2 gap-y-4 sm:grid-cols-4 sm:gap-x-3 sm:gap-y-6 lg:grid-cols-6">
           {items.map(
             (anime) => (
               <div
@@ -631,6 +846,111 @@ function CalendarPage() {
           </p>
         </section>
       )}
+
+      {/* PAGINAÇÃO */}
+      {showPagination && (
+        <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
+          {/* ANTERIOR */}
+          <button
+            type="button"
+            onClick={() =>
+              goToPage(page - 1)
+            }
+            disabled={
+              page === 1
+            }
+            aria-label="Página anterior"
+            className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+          >
+            <ChevronLeft className="size-5" />
+          </button>
+
+          {/* NÚMEROS */}
+          <div className="flex items-center gap-1">
+            {pageNumbers.map(
+              (
+                pageNumber,
+                index,
+              ) => {
+                const previous =
+                  pageNumbers[
+                    index - 1
+                  ];
+
+                const showEllipsis =
+                  previous != null &&
+                  pageNumber -
+                    previous >
+                    1;
+
+                return (
+                  <div
+                    key={
+                      pageNumber
+                    }
+                    className="flex items-center gap-1"
+                  >
+                    {showEllipsis && (
+                      <span className="flex size-10 items-center justify-center text-sm text-muted">
+                        …
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        goToPage(
+                          pageNumber,
+                        )
+                      }
+                      aria-current={
+                        pageNumber ===
+                        page
+                          ? "page"
+                          : undefined
+                      }
+                      className={
+                        pageNumber ===
+                        page
+                          ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
+                          : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+                      }
+                    >
+                      {
+                        pageNumber
+                      }
+                    </button>
+                  </div>
+                );
+              },
+            )}
+          </div>
+
+          {/* PRÓXIMA */}
+          <button
+            type="button"
+            onClick={() =>
+              goToPage(page + 1)
+            }
+            disabled={
+              !hasNext
+            }
+            aria-label="Próxima página"
+            className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+          >
+            <ChevronRight className="size-5" />
+          </button>
+        </div>
+      )}
+
+      {/* CONTAGEM */}
+      {total > 0 && (
+        <p className="text-center text-xs text-subtle">
+          Página {page} de{" "}
+          {lastPage} · {total}{" "}
+          animes
+        </p>
+      )}
     </div>
   );
 }
@@ -655,4 +975,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-    }
+  }
