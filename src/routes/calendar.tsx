@@ -428,15 +428,15 @@ function CalendarPending() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
         {Array.from(
           { length: 12 },
           (_, index) => (
             <div
               key={index}
-              className="w-full overflow-hidden rounded-xl"
+              className="min-w-0"
             >
-              <div className="aspect-2/3 animate-pulse bg-elevated" />
+              <div className="aspect-2/3 w-full animate-pulse rounded-xl bg-elevated" />
 
               <div className="mt-2 h-3 w-4/5 animate-pulse rounded bg-elevated" />
 
@@ -603,14 +603,17 @@ function CalendarPage() {
 
       {/* LISTA */}
       {items.length > 0 ? (
-        <section className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        <section className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-4 lg:grid-cols-6">
           {items.map(
             (anime) => (
-              <AnimeCard
+              <div
                 key={anime.id}
-                anime={anime}
-                fullWidth
-              />
+                className="min-w-0 [&>article]:w-full"
+              >
+                <AnimeCard
+                  anime={anime}
+                />
+              </div>
             ),
           )}
         </section>
@@ -652,4 +655,4 @@ function cnCalendarSeason(
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
   ].join(" ");
-        }
+}
