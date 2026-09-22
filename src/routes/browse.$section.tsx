@@ -869,6 +869,18 @@ function BrowsePage() {
 
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
+      {!isSeasonPage && (
+        <div>
+          <Link
+            to="/"
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+          >
+            <ChevronLeft className="size-4" />
+            Voltar
+          </Link>
+        </div>
+      )}
+
       {/* CABEÇALHO */}
       <section>
         <div className="flex items-center gap-3">
@@ -1069,4 +1081,4 @@ function BrowsePage() {
       )}
     </div>
   );
-}
+      }
