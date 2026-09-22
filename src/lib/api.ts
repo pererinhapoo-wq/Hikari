@@ -65,7 +65,7 @@ type SeasonNavigationItem = {
 };
 
 type SeasonNavigation = {
-  seasons: SeasonNavigationItem[];
+  items: SeasonNavigationItem[];
   previous?: SeasonNavigationItem;
   next?: SeasonNavigationItem;
 };
@@ -873,7 +873,7 @@ async function buildSeasonNavigation(
   }
 
   return {
-    seasons: [
+    items: [
       ...previous,
       current,
       ...next,
@@ -938,7 +938,7 @@ function mapAniFull(
 
     seasonNavigation:
       seasonNavigation ?? {
-        seasons: [
+        items: [
           {
             id: String(media.id),
             title:
