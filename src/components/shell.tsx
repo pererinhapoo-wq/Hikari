@@ -101,13 +101,6 @@ const BASE_NAV = [
       p.startsWith("/news"),
   },
   {
-    to: "/calendar",
-    label: "Calendário de animes",
-    icon: CalendarDays,
-    match: (p: string) =>
-      p.startsWith("/calendar"),
-  },
-  {
     to: "/account",
     label: "Conta",
     icon: UserCircle,
@@ -1575,4 +1568,4 @@ export function Shell() {
 
     </div>
   );
-  }
+      }
