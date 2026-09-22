@@ -116,9 +116,6 @@ function AnimePage() {
 
   /*
    * COR DA ABA DO NAVEGADOR
-   *
-   * Pega somente uma pequena região do banner para calcular
-   * uma cor predominante. Não altera a imagem do banner.
    */
   useEffect(() => {
     const defaultColor = "#09090b";
@@ -245,20 +242,25 @@ function AnimePage() {
   }, [anime?.id, anime?.banner]);
 
   /*
-   * Cada página /anime/$id representa uma temporada.
-   * Portanto, usamos somente os episódios da temporada atual.
+   * TEMPORADAS
+   *
+   * A API agora entrega todas as temporadas
+   * relacionadas em seasonNavigation.items.
    */
+  const seasonNavigation =
+    remote?.seasonNavigation?.items ?? [];
+
   const seasons = anime?.seasons ?? [];
-  const currentSeason = seasons[0];
-  const currentEpisodes = currentSeason?.episodes ?? [];
 
   const allEpisodes = useMemo(
     () =>
-      currentEpisodes.map((episode) => ({
-        ...episode,
-        seasonId: currentSeason?.id,
-      })),
-    [currentEpisodes, currentSeason?.id],
+      seasons.flatMap((season) =>
+        season.episodes.map((episode) => ({
+          ...episode,
+          seasonId: season.id,
+        })),
+      ),
+    [seasons],
   );
 
   if (!anime) {
@@ -288,56 +290,46 @@ function AnimePage() {
         a.anilistId === anime.anilistId),
   );
 
+  /*
+   * Conta somente os episódios da temporada atual.
+   */
   const episodeCount =
-    currentEpisodes.length ||
+    seasons.reduce(
+      (n, s) => n + s.episodes.length,
+      0,
+    ) ||
     anime.episodesCount ||
     0;
 
-  /*
-   * Conta somente episódios que realmente existem
-   * na página da temporada atual.
-   */
   const watchedCount = allEpisodes.filter((episode) =>
     watchedEpisodes.includes(episode.id),
   ).length;
 
   /*
-   * Descobre o próximo episódio depois do último
-   * episódio registrado em "Continuar".
+   * CONTINUAR ASSISTINDO
+   *
+   * Se existe progresso, usamos exatamente o episódio
+   * onde a pessoa parou.
+   *
+   * Se não existe progresso, começamos pelo episódio 1.
    */
-  const continueEpisodeIndex = continueEntry
-    ? allEpisodes.findIndex(
-        (episode) =>
-          episode.id === continueEntry.episodeId,
-      )
-    : -1;
-
-  const nextEpisode =
-    continueEpisodeIndex >= 0
-      ? allEpisodes[continueEpisodeIndex + 1]
-      : allEpisodes[0];
-
-  /*
-   * Se o usuário já chegou ao último episódio,
-   * usamos o próprio último episódio para permitir
-   * assistir novamente.
-   */
-  const continueTarget =
-    nextEpisode ??
-    (continueEntry
+  const continueEpisode =
+    continueEntry
       ? allEpisodes.find(
           (episode) =>
-            episode.id === continueEntry.episodeId,
+            episode.id ===
+            continueEntry.episodeId,
         )
-      : allEpisodes[0]);
+      : undefined;
 
-  const continueLabel = continueEntry
-    ? nextEpisode
-      ? `Continuar — Episódio ${nextEpisode.number}`
-      : `Reassistir — Episódio ${
-          continueEntry.episodeNumber
-        }`
-    : "Começar pelo episódio 1";
+  const continueTarget =
+    continueEpisode ??
+    allEpisodes[0];
+
+  const continueLabel =
+    continueEpisode
+      ? `Continuar no episódio ${continueEpisode.number}`
+      : "Começar pelo episódio 1";
 
   const handleShare = async () => {
     try {
@@ -476,6 +468,13 @@ function AnimePage() {
                   <Link
                     to="/watch/$id"
                     params={{ id: anime.id }}
+                    search={
+                      continueTarget
+                        ? {
+                            ep: continueTarget.id,
+                          }
+                        : undefined
+                    }
                   >
                     <Play className="size-4 fill-current" />
                     Assistir
@@ -572,6 +571,65 @@ function AnimePage() {
         </section>
       )}
 
+      {/* TEMPORADAS */}
+      {seasonNavigation.length > 1 && (
+        <section className="mt-10">
+          <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
+            Temporadas
+          </h2>
+
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+            {seasonNavigation.map(
+              (season, index) => {
+                const selected =
+                  season.id === anime.id;
+
+                return (
+                  <Link
+                    key={season.id}
+                    to="/anime/$id"
+                    params={{
+                      id: season.id,
+                    }}
+                    className={`shrink-0 overflow-hidden rounded-xl border transition-all ${
+                      selected
+                        ? "border-white/30 bg-elevated"
+                        : "border-white/5 bg-surface hover:bg-elevated"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 p-2">
+                      {season.cover && (
+                        <img
+                          src={season.cover}
+                          alt=""
+                          className="h-16 w-11 rounded-lg object-cover"
+                        />
+                      )}
+
+                      <div className="min-w-0 pr-2">
+                        <p className="text-xs font-medium tracking-wide text-subtle uppercase">
+                          Temporada {index + 1}
+                        </p>
+
+                        <p className="mt-1 max-w-[10rem] truncate text-sm font-medium">
+                          {season.title}
+                        </p>
+
+                        {season.episodesCount != null && (
+                          <p className="mt-1 text-xs text-muted">
+                            {season.episodesCount} episódios
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              },
+            )}
+          </div>
+        </section>
+      )}
+
       {/* EPISÓDIOS */}
       {seasons.length > 0 && (
         <section className="mt-12">
@@ -598,7 +656,7 @@ function AnimePage() {
             </div>
           </div>
 
-          {/* CONTINUAR */}
+          {/* CONTINUAR / COMEÇAR */}
           {continueTarget && (
             <Link
               to="/watch/$id"
@@ -614,7 +672,7 @@ function AnimePage() {
 
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium tracking-[0.15em] text-subtle uppercase">
-                  {continueEntry
+                  {continueEpisode
                     ? "Continuar assistindo"
                     : "Começar"}
                 </p>
@@ -630,49 +688,26 @@ function AnimePage() {
             </Link>
           )}
 
-          <div className="mt-5">
-            <EpisodeGrid
-              episodes={currentEpisodes}
-              animeId={anime.id}
-              cover={anime.cover}
-              watchedEpisodes={watchedEpisodes}
-            />
+          <div className="mt-5 space-y-8">
+            {seasons.map((season) => (
+              <div key={season.id}>
+                {seasons.length > 1 && (
+                  <h3 className="mb-3 text-sm font-medium text-muted">
+                    {season.title}
+                  </h3>
+                )}
+
+                <EpisodeGrid
+                  episodes={season.episodes}
+                  animeId={anime.id}
+                  cover={anime.cover}
+                  watchedEpisodes={
+                    watchedEpisodes
+                  }
+                />
+              </div>
+            ))}
           </div>
-
-          {/* NAVEGAÇÃO ENTRE TEMPORADAS */}
-          {(anime.seasonNavigation?.previous ||
-            anime.seasonNavigation?.next) && (
-            <div className="mt-6 flex flex-wrap gap-2">
-              {anime.seasonNavigation?.previous && (
-                <Button
-                  asChild
-                  variant="outline"
-                >
-                  <Link
-                    to="/anime/$id"
-                    params={{
-                      id: anime.seasonNavigation.previous.id,
-                    }}
-                  >
-                    ← Temporada anterior
-                  </Link>
-                </Button>
-              )}
-
-              {anime.seasonNavigation?.next && (
-                <Button asChild>
-                  <Link
-                    to="/anime/$id"
-                    params={{
-                      id: anime.seasonNavigation.next.id,
-                    }}
-                  >
-                    Próxima temporada →
-                  </Link>
-                </Button>
-              )}
-            </div>
-          )}
         </section>
       )}
 
@@ -784,7 +819,8 @@ function EpisodeGrid({
               >
                 {/* THUMBNAIL */}
                 <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
-                  {ep.thumbnail || cover ? (
+                  {ep.thumbnail ||
+                  cover ? (
                     <img
                       src={
                         ep.thumbnail ||
@@ -845,4 +881,4 @@ function EpisodeGrid({
       </ol>
     </div>
   );
-        }
+      }
