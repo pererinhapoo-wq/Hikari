@@ -182,7 +182,7 @@ export default defineConfig(({ command, isPreview }) => {
       tailwindcss(),
 
       tanstackStart({
-        router: {
+        tsr: {
           routesDirectory: "./src/routes",
           generatedRouteTree: "./src/routeTree.gen.ts",
           autoCodeSplitting: true,
