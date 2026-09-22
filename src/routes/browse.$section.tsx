@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Search,
   Tags,
 } from "lucide-react";
 
@@ -26,6 +27,11 @@ import {
 } from "@/components/anime-card";
 
 import { NativeSelect } from "@/components/ui/native-select";
+
+import {
+  useState,
+  type FormEvent,
+} from "react";
 
 type AnimeSeason =
   | "WINTER"
@@ -594,6 +600,30 @@ function BrowsePage() {
       });
     }
 
+    /*
+     * BUSCA DE ANIMES
+     */
+    const [searchQuery, setSearchQuery] =
+      useState("");
+
+    function handleAnimeSearch(
+      event: FormEvent<HTMLFormElement>,
+    ) {
+      event.preventDefault();
+
+      const query =
+        searchQuery.trim();
+
+      if (!query) {
+        return;
+      }
+
+      window.location.href =
+        `/search?q=${encodeURIComponent(
+          query,
+        )}`;
+    }
+
     return (
       <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
         <section>
@@ -613,6 +643,39 @@ function BrowsePage() {
             </div>
           </div>
         </section>
+
+        {/* BARRA DE PESQUISA */}
+        <form
+          onSubmit={
+            handleAnimeSearch
+          }
+          className="flex items-center gap-2 rounded-2xl border border-border bg-bg p-1.5"
+        >
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted" />
+
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) =>
+                setSearchQuery(
+                  event.target.value,
+                )
+              }
+              placeholder="Buscar animes..."
+              aria-label="Buscar animes"
+              className="h-12 w-full rounded-xl border border-border bg-surface pl-10 pr-3 text-base text-fg outline-none placeholder:text-muted focus:border-fg/20 focus:ring-1 focus:ring-fg/10"
+            />
+          </div>
+
+          <button
+            type="submit"
+            aria-label="Pesquisar anime"
+            className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-elevated text-fg transition-colors hover:bg-elevated/80 active:scale-95"
+          >
+            <Search className="size-5" />
+          </button>
+        </form>
 
         {items.length === 0 ? (
           <p className="py-16 text-center text-muted">
@@ -1031,4 +1094,4 @@ function BrowsePage() {
       )}
     </div>
   );
-}
+  }
