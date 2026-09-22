@@ -1,16 +1,10 @@
 import {
   createFileRoute,
   Link,
+  useNavigate,
 } from "@tanstack/react-router";
 
-import {
-  CalendarDays,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
-
-import { useMemo, useState } from "react";
+import { CalendarDays } from "lucide-react";
 
 import { AnimeCard } from "@/components/anime-card";
 import type { SlimAnime } from "@/lib/types";
@@ -97,8 +91,10 @@ const SEASONS: Array<{
   },
 ];
 
-const FIRST_YEAR = 2000;
-const PAGE_SIZE = 12;
+const YEARS = Array.from(
+  { length: 29 },
+  (_, index) => 2000 + index,
+);
 
 function getCurrentSeason(): {
   season: AnimeSeason;
@@ -136,7 +132,42 @@ function getCurrentSeason(): {
   };
 }
 
-function mapAnime(anime: AniMedia): SlimAnime {
+function isAnimeSeason(
+  value: unknown,
+): value is AnimeSeason {
+  return (
+    value === "WINTER" ||
+    value === "SPRING" ||
+    value === "SUMMER" ||
+    value === "FALL"
+  );
+}
+
+function normalizeYear(
+  value: unknown,
+  fallback: number,
+): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : NaN;
+
+  if (
+    Number.isInteger(parsed) &&
+    parsed >= 2000 &&
+    parsed <= 2028
+  ) {
+    return parsed;
+  }
+
+  return fallback;
+}
+
+function mapAnime(
+  anime: AniMedia,
+): SlimAnime {
   return {
     id: String(anime.id),
 
@@ -192,7 +223,7 @@ function mapAnime(anime: AniMedia): SlimAnime {
       anime.status ??
       "",
 
-    episodes:
+    episodesCount:
       anime.episodes ??
       null,
 
@@ -319,39 +350,17 @@ export const Route =
       const current =
         getCurrentSeason();
 
-      const rawSeason =
-        raw.season;
-
-      const rawYear =
-        raw.year;
-
-      const validSeason =
-        rawSeason === "WINTER" ||
-        rawSeason === "SPRING" ||
-        rawSeason === "SUMMER" ||
-        rawSeason === "FALL";
-
-      const parsedYear =
-        typeof rawYear === "number"
-          ? rawYear
-          : typeof rawYear === "string"
-            ? Number(rawYear)
-            : NaN;
-
       return {
-        season: validSeason
-          ? rawSeason
+        season: isAnimeSeason(
+          raw.season,
+        )
+          ? raw.season
           : current.season,
 
-        year:
-          Number.isInteger(
-            parsedYear,
-          ) &&
-          parsedYear >= FIRST_YEAR &&
-          parsedYear <=
-            current.year + 2
-            ? parsedYear
-            : current.year,
+        year: normalizeYear(
+          raw.year,
+          current.year,
+        ),
       };
     },
 
@@ -361,34 +370,18 @@ export const Route =
       const current =
         getCurrentSeason();
 
-      const rawSeason =
-        location.search
-          .season;
-
-      const rawYear =
-        location.search
-          .year;
-
       const season =
-        rawSeason === "WINTER" ||
-        rawSeason === "SPRING" ||
-        rawSeason === "SUMMER" ||
-        rawSeason === "FALL"
-          ? rawSeason
+        isAnimeSeason(
+          location.search.season,
+        )
+          ? location.search.season
           : current.season;
 
-      const parsedYear =
-        Number(rawYear);
-
       const year =
-        Number.isInteger(
-          parsedYear,
-        ) &&
-        parsedYear >= FIRST_YEAR &&
-        parsedYear <=
-          current.year + 2
-          ? parsedYear
-          : current.year;
+        normalizeYear(
+          location.search.year,
+          current.year,
+        );
 
       const items =
         await fetchSeason(
@@ -422,15 +415,13 @@ function CalendarPending() {
         <div className="h-4 w-80 animate-pulse rounded bg-elevated" />
       </div>
 
-      <div className="h-12 animate-pulse rounded-xl bg-elevated" />
-
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {Array.from(
           { length: 4 },
           (_, index) => (
             <div
               key={index}
-              className="h-12 animate-pulse rounded-xl bg-elevated"
+              className="h-12 animate-pulse rounded-lg bg-elevated"
             />
           ),
         )}
@@ -483,6 +474,9 @@ function CalendarError({
 }
 
 function CalendarPage() {
+  const navigate =
+    useNavigate();
+
   const {
     items,
     season,
@@ -490,86 +484,27 @@ function CalendarPage() {
   } =
     Route.useLoaderData();
 
-  const [page, setPage] =
-    useState(1);
-
   const currentSeason =
     SEASONS.find(
       (item) =>
         item.value === season,
     );
 
-  const currentYear =
-    getCurrentSeason().year;
-
-  const years = useMemo(
-    () =>
-      Array.from(
-        {
-          length:
-            currentYear -
-            FIRST_YEAR +
-            3,
-        },
-        (_, index) =>
-          FIRST_YEAR + index,
-      ),
-    [currentYear],
-  );
-
-  const totalPages =
-    Math.max(
-      1,
-      Math.ceil(
-        items.length /
-          PAGE_SIZE,
-      ),
-    );
-
-  const safePage =
-    Math.min(
-      page,
-      totalPages,
-    );
-
-  const startIndex =
-    (safePage - 1) *
-    PAGE_SIZE;
-
-  const visibleItems =
-    items.slice(
-      startIndex,
-      startIndex +
-        PAGE_SIZE,
-    );
-
-  const changeSeason = (
-    nextSeason: AnimeSeason,
-  ) => {
-    setPage(1);
-
-    return {
-      season: nextSeason,
-      year,
-    };
-  };
-
-  const changeYear = (
+  function handleYearChange(
     nextYear: number,
-  ) => {
-    setPage(1);
-
-    return {
-      season,
-      year: nextYear,
-    };
-  };
+  ) {
+    void navigate({
+      to: "/calendar",
+      search: {
+        season,
+        year: nextYear,
+      },
+    });
+  }
 
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
-
       {/* CABEÇALHO */}
-
       <section>
         <div className="flex items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-elevated">
@@ -589,71 +524,50 @@ function CalendarPage() {
       </section>
 
       {/* ANO */}
-
       <section className="space-y-3">
         <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
           Ano
         </p>
 
-        <div className="relative">
-          <select
-            value={year}
-            onChange={(event) =>
-              void changeYear(
-                Number(
-                  event.target.value,
-                ),
-              )
-            }
-            className="
-              h-12
-              w-full
-              appearance-none
-              rounded-xl
-              border
-              border-border
-              bg-bg
-              px-4
-              pr-12
-              text-base
-              font-medium
-              text-fg
-              outline-none
-              transition-colors
-              focus:border-fg/30
-              sm:h-14
-              sm:text-lg
-            "
-            aria-label="Selecionar ano"
-          >
-            {years.map(
-              (yearOption) => (
-                <option
-                  key={yearOption}
-                  value={yearOption}
-                >
-                  {yearOption}
-                </option>
-              ),
-            )}
-          </select>
-
-          <ChevronDown
-            className="
-              pointer-events-none
-              absolute
-              top-1/2
-              right-4
-              size-5
-              -translate-y-1/2
-              text-muted
-            "
-          />
-        </div>
+        <select
+          value={year}
+          onChange={(event) => {
+            handleYearChange(
+              Number(event.target.value),
+            );
+          }}
+          className="
+            min-h-12
+            w-full
+            appearance-none
+            rounded-xl
+            border
+            border-border
+            bg-bg
+            px-5
+            text-base
+            font-medium
+            text-fg
+            outline-none
+            transition-colors
+            focus:border-fg/30
+          "
+          aria-label="Selecionar ano"
+        >
+          {YEARS.map(
+            (yearOption) => (
+              <option
+                key={yearOption}
+                value={yearOption}
+              >
+                {yearOption}
+              </option>
+            ),
+          )}
+        </select>
       </section>
 
       {/* TEMPORADA */}
-
       <section className="space-y-3">
         <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
           Temporada
@@ -665,12 +579,13 @@ function CalendarPage() {
               <Link
                 key={item.value}
                 to="/calendar"
-                search={changeSeason(
-                  item.value,
-                )}
+                search={{
+                  season:
+                    item.value,
+                  year,
+                }}
                 className={cnCalendarSeason(
-                  item.value ===
-                    season,
+                  item.value === season,
                 )}
               >
                 <span className="text-lg">
@@ -687,171 +602,33 @@ function CalendarPage() {
       </section>
 
       {/* TÍTULO */}
-
       <section className="border-b border-border pb-4">
         <h2 className="font-display text-xl tracking-tight sm:text-2xl">
           Animes da temporada de{" "}
           {currentSeason?.label ??
-            "Anime"}{" "}
+            "anime"}{" "}
           {year}
         </h2>
 
         <p className="mt-1 text-sm text-muted">
           Confira a lista dos animes
-          programados para esta
-          temporada.
+          programados para esta temporada.
         </p>
       </section>
 
       {/* LISTA */}
-
       {items.length > 0 ? (
-        <>
-          <section className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {visibleItems.map(
-              (anime) => (
-                <AnimeCard
-                  key={anime.id}
-                  anime={anime}
-                  fullWidth
-                />
-              ),
-            )}
-          </section>
-
-          {/* PAGINAÇÃO */}
-
-          {totalPages > 1 && (
-            <nav
-              className="
-                flex
-                flex-wrap
-                items-center
-                justify-center
-                gap-2
-                border-t
-                border-border
-                pt-6
-              "
-              aria-label="Paginação"
-            >
-              <button
-                type="button"
-                disabled={
-                  safePage === 1
-                }
-                onClick={() =>
-                  setPage(
-                    (current) =>
-                      Math.max(
-                        1,
-                        current - 1,
-                      ),
-                  )
-                }
-                className="
-                  flex
-                  size-10
-                  items-center
-                  justify-center
-                  rounded-lg
-                  border
-                  border-border
-                  text-muted
-                  transition-colors
-                  hover:bg-elevated
-                  hover:text-fg
-                  disabled:pointer-events-none
-                  disabled:opacity-40
-                "
-                aria-label="Página anterior"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-
-              {Array.from(
-                {
-                  length:
-                    totalPages,
-                },
-                (_, index) =>
-                  index + 1,
-              ).map(
-                (pageNumber) => (
-                  <button
-                    key={
-                      pageNumber
-                    }
-                    type="button"
-                    onClick={() =>
-                      setPage(
-                        pageNumber,
-                      )
-                    }
-                    className={[
-                      "flex",
-                      "size-10",
-                      "items-center",
-                      "justify-center",
-                      "rounded-lg",
-                      "border",
-                      "text-sm",
-                      "font-medium",
-                      "transition-colors",
-                      pageNumber ===
-                      safePage
-                        ? "border-fg/20 bg-elevated text-fg"
-                        : "border-border text-muted hover:bg-elevated hover:text-fg",
-                    ].join(" ")}
-                    aria-current={
-                      pageNumber ===
-                      safePage
-                        ? "page"
-                        : undefined
-                    }
-                  >
-                    {pageNumber}
-                  </button>
-                ),
-              )}
-
-              <button
-                type="button"
-                disabled={
-                  safePage ===
-                  totalPages
-                }
-                onClick={() =>
-                  setPage(
-                    (current) =>
-                      Math.min(
-                        totalPages,
-                        current + 1,
-                      ),
-                  )
-                }
-                className="
-                  flex
-                  size-10
-                  items-center
-                  justify-center
-                  rounded-lg
-                  border
-                  border-border
-                  text-muted
-                  transition-colors
-                  hover:bg-elevated
-                  hover:text-fg
-                  disabled:pointer-events-none
-                  disabled:opacity-40
-                "
-                aria-label="Próxima página"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </nav>
+        <section className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {items.map(
+            (anime) => (
+              <AnimeCard
+                key={anime.id}
+                anime={anime}
+                fullWidth
+              />
+            ),
           )}
-        </>
+        </section>
       ) : (
         <section className="rounded-xl border border-border bg-elevated/40 px-5 py-14 text-center">
           <CalendarDays className="mx-auto size-8 text-muted" />
@@ -861,12 +638,11 @@ function CalendarPage() {
           </h3>
 
           <p className="mt-1 text-sm text-muted">
-            Não encontramos animes
-            para esta temporada.
+            Não encontramos animes para
+            esta temporada.
           </p>
         </section>
       )}
-
     </div>
   );
 }
@@ -880,12 +656,13 @@ function cnCalendarSeason(
     "items-center",
     "justify-center",
     "gap-2",
-    "rounded-xl",
+    "rounded-lg",
     "border",
     "px-4",
     "text-sm",
     "font-medium",
     "transition-colors",
+
     active
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
