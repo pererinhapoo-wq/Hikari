@@ -453,13 +453,21 @@ function BrowsePage() {
 
   /*
    * ESTADO DA BUSCA
-   *
-   * Fica no nível principal do componente
-   * para não quebrar as regras dos Hooks.
    */
   const [
     searchQuery,
     setSearchQuery,
+  ] = useState("");
+
+  /*
+   * GUARDA A ÚLTIMA PESQUISA
+   *
+   * Evita navegar novamente para
+   * exatamente a mesma pesquisa.
+   */
+  const [
+    lastSearch,
+    setLastSearch,
   ] = useState("");
 
   /*
@@ -474,9 +482,37 @@ function BrowsePage() {
     const query =
       value.trim();
 
+    /*
+     * Não pesquisa vazio.
+     */
     if (!query) {
       return;
     }
+
+    /*
+     * Evita pesquisa com apenas
+     * uma letra.
+     *
+     * Isso também impede que a tela
+     * seja recarregada logo no primeiro
+     * caractere digitado.
+     */
+    if (query.length < 2) {
+      return;
+    }
+
+    /*
+     * Se já estamos enviando exatamente
+     * a mesma pesquisa, não faz outra
+     * navegação.
+     */
+    if (
+      query === lastSearch
+    ) {
+      return;
+    }
+
+    setLastSearch(query);
 
     void navigate({
       to: "/search",
@@ -488,6 +524,8 @@ function BrowsePage() {
 
   /*
    * ENTER / BOTÃO IR
+   *
+   * Funciona imediatamente.
    */
   function handleAnimeSearch(
     event: FormEvent<HTMLFormElement>,
@@ -502,8 +540,12 @@ function BrowsePage() {
   /*
    * PESQUISA AUTOMÁTICA
    *
-   * Aguarda 300ms depois que o usuário
-   * para de digitar.
+   * Agora espera 700ms depois que
+   * o usuário parar de digitar.
+   *
+   * Isso evita que a página fique
+   * navegando/carregando entre cada
+   * letra digitada.
    */
   useEffect(() => {
     if (
@@ -517,7 +559,23 @@ function BrowsePage() {
     const query =
       searchQuery.trim();
 
-    if (!query) {
+    /*
+     * Não faz nada com menos de
+     * duas letras.
+     */
+    if (
+      query.length < 2
+    ) {
+      return;
+    }
+
+    /*
+     * Se já foi pesquisado,
+     * não navega novamente.
+     */
+    if (
+      query === lastSearch
+    ) {
       return;
     }
 
@@ -526,7 +584,7 @@ function BrowsePage() {
         goToSearch(
           query,
         );
-      }, 300);
+      }, 700);
 
     return () =>
       window.clearTimeout(
@@ -536,6 +594,7 @@ function BrowsePage() {
     searchQuery,
     section,
     genre,
+    lastSearch,
   ]);
 
   /*
@@ -1158,4 +1217,4 @@ function BrowsePage() {
       )}
     </div>
   );
-    }
+  }
