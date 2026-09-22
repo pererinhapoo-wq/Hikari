@@ -8,15 +8,23 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Tags,
 } from "lucide-react";
 
-import { fetchBrowse } from "@/lib/api";
+import {
+  fetchBrowse,
+  fetchGenres,
+} from "@/lib/api";
+
 import { overlayList } from "@/lib/overlay";
+
 import { useHikariStore } from "@/lib/store";
+
 import {
   AnimeCard,
   AnimeCardSkeleton,
 } from "@/components/anime-card";
+
 import { NativeSelect } from "@/components/ui/native-select";
 
 type AnimeSeason =
@@ -174,6 +182,25 @@ function cnCalendarSeason(
   ].join(" ");
 }
 
+function cnGenre() {
+  return [
+    "flex",
+    "min-h-12",
+    "items-center",
+    "gap-3",
+    "rounded-xl",
+    "border",
+    "border-border",
+    "bg-surface",
+    "px-4",
+    "text-sm",
+    "font-medium",
+    "text-fg",
+    "transition-colors",
+    "hover:bg-elevated",
+  ].join(" ");
+}
+
 export const Route = createFileRoute(
   "/browse/$section",
 )({
@@ -209,6 +236,37 @@ export const Route = createFileRoute(
     params,
     deps,
   }) => {
+    /*
+     * GÊNEROS
+     *
+     * Essa rota não usa o catálogo/paginação
+     * das temporadas.
+     */
+    if (
+      params.section ===
+      "genres"
+    ) {
+      const genres =
+        await fetchGenres();
+
+      return {
+        section:
+          "genres" as const,
+
+        genres,
+
+        result: null,
+
+        season:
+          undefined,
+
+        year:
+          undefined,
+
+        page: 1,
+      };
+    }
+
     const section = [
       "popular",
       "season",
@@ -259,10 +317,17 @@ export const Route = createFileRoute(
 
     return {
       result,
+
       section,
+
       season,
+
       year,
+
       page,
+
+      genres:
+        [] as string[],
     };
   },
 
@@ -293,8 +358,65 @@ function BrowsePage() {
     season,
     year,
     page,
+    genres,
   } =
     Route.useLoaderData();
+
+  /*
+   * GÊNEROS
+   */
+  if (
+    section ===
+    "genres"
+  ) {
+    return (
+      <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
+        <section>
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-elevated">
+              <Tags className="size-5 text-fg" />
+            </div>
+
+            <div>
+              <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+                Gêneros
+              </h1>
+
+              <p className="mt-1 text-sm text-muted">
+                Explore os animes por gênero.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {genres.length === 0 ? (
+          <p className="py-16 text-center text-muted">
+            Nenhum gênero disponível no momento.
+          </p>
+        ) : (
+          <section>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {genres.map(
+                (genre) => (
+                  <button
+                    key={genre}
+                    type="button"
+                    className={cnGenre()}
+                  >
+                    <Tags className="size-4 shrink-0 text-muted" />
+
+                    <span className="truncate">
+                      {genre}
+                    </span>
+                  </button>
+                ),
+              )}
+            </div>
+          </section>
+        )}
+      </div>
+    );
+  }
 
   const locals =
     useHikariStore(
@@ -303,7 +425,7 @@ function BrowsePage() {
 
   const items =
     overlayList(
-      result.items,
+      result?.items ?? [],
       locals,
     );
 
@@ -358,7 +480,7 @@ function BrowsePage() {
 
     if (
       nextPage > page + 1 &&
-      !result.hasNext
+      !result?.hasNext
     ) {
       return;
     }
@@ -384,7 +506,9 @@ function BrowsePage() {
       pages.add(1);
       pages.add(page);
 
-      if (result.hasNext) {
+      if (
+        result?.hasNext
+      ) {
         pages.add(
           page + 1,
         );
@@ -406,7 +530,7 @@ function BrowsePage() {
   const showPagination =
     page > 1 ||
     Boolean(
-      result.hasNext,
+      result?.hasNext,
     );
 
   return (
@@ -598,7 +722,7 @@ function BrowsePage() {
               )
             }
             disabled={
-              !result.hasNext
+              !result?.hasNext
             }
             aria-label="Próxima página"
             className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
@@ -609,4 +733,4 @@ function BrowsePage() {
       )}
     </div>
   );
-    }
+}
