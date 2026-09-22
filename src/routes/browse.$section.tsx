@@ -29,6 +29,7 @@ import {
 import { NativeSelect } from "@/components/ui/native-select";
 
 import {
+  useEffect,
   useState,
   type FormEvent,
 } from "react";
@@ -451,6 +452,93 @@ function BrowsePage() {
     );
 
   /*
+   * ESTADO DA BUSCA
+   *
+   * Fica no nível principal do componente
+   * para não quebrar as regras dos Hooks.
+   */
+  const [
+    searchQuery,
+    setSearchQuery,
+  ] = useState("");
+
+  /*
+   * NAVEGAÇÃO DA BUSCA
+   *
+   * Usa a navegação interna do TanStack Router.
+   * Não abre outra aba.
+   */
+  function goToSearch(
+    value: string,
+  ) {
+    const query =
+      value.trim();
+
+    if (!query) {
+      return;
+    }
+
+    void navigate({
+      to: "/search",
+      search: {
+        q: query,
+      },
+    });
+  }
+
+  /*
+   * ENTER / BOTÃO IR
+   */
+  function handleAnimeSearch(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    goToSearch(
+      searchQuery,
+    );
+  }
+
+  /*
+   * PESQUISA AUTOMÁTICA
+   *
+   * Aguarda 300ms depois que o usuário
+   * para de digitar.
+   */
+  useEffect(() => {
+    if (
+      section !==
+        "genres" ||
+      !genre
+    ) {
+      return;
+    }
+
+    const query =
+      searchQuery.trim();
+
+    if (!query) {
+      return;
+    }
+
+    const timer =
+      window.setTimeout(() => {
+        goToSearch(
+          query,
+        );
+      }, 300);
+
+    return () =>
+      window.clearTimeout(
+        timer,
+      );
+  }, [
+    searchQuery,
+    section,
+    genre,
+  ]);
+
+  /*
    * GÊNEROS — LISTA
    */
   if (
@@ -598,30 +686,6 @@ function BrowsePage() {
           page: nextPage,
         },
       });
-    }
-
-    /*
-     * BUSCA DE ANIMES
-     */
-    const [searchQuery, setSearchQuery] =
-      useState("");
-
-    function handleAnimeSearch(
-      event: FormEvent<HTMLFormElement>,
-    ) {
-      event.preventDefault();
-
-      const query =
-        searchQuery.trim();
-
-      if (!query) {
-        return;
-      }
-
-      window.location.href =
-        `/search?q=${encodeURIComponent(
-          query,
-        )}`;
     }
 
     return (
@@ -1094,4 +1158,4 @@ function BrowsePage() {
       )}
     </div>
   );
-  }
+    }
