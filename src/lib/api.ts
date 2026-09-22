@@ -1697,18 +1697,24 @@ function rankSearchResults(
       (anime, index) => ({
         anime,
 
-        score:
+        relevance:
           searchScore(
             anime,
             query,
           ),
+
+        rating:
+          anime.score ??
+          -1,
 
         index,
       }),
     )
     .sort(
       (a, b) =>
-        b.score - a.score ||
+        b.relevance -
+          a.relevance ||
+        b.rating - a.rating ||
         a.index - b.index,
     )
     .map(
