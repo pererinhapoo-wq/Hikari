@@ -183,18 +183,40 @@ function SearchPage() {
 
   /*
    * =========================================================
-   * RELOAD REAL DA PÁGINA
+   * INICIALIZAÇÃO
+   * =========================================================
+   *
+   * Começamos em "true" para impedir que o conteúdo normal
+   * apareça durante a primeira renderização.
+   *
+   * Isso evita o flash de:
+   *
+   * "Pesquise um anime"
+   * "Nada encontrado"
+   *
+   * antes do React descobrir o estado real da página.
+   */
+  const [
+    initializing,
+    setInitializing,
+  ] = useState(true);
+
+  /*
+   * =========================================================
+   * RELOAD REAL
    * =========================================================
    */
 
   const [
     clearingOnReload,
     setClearingOnReload,
-  ] = useState(() => {
+  ] = useState(false);
+
+  useEffect(() => {
     if (
       typeof window === "undefined"
     ) {
-      return false;
+      return;
     }
 
     const navigation =
@@ -213,10 +235,12 @@ function SearchPage() {
         ).__hikariSearchReloadHandled,
       );
 
-    if (
-      navigation?.type === "reload" &&
-      !alreadyHandled
-    ) {
+    const isRealReload =
+      navigation?.type ===
+        "reload" &&
+      !alreadyHandled;
+
+    if (isRealReload) {
       (
         window as Window & {
           __hikariSearchReloadHandled?: boolean;
@@ -224,24 +248,23 @@ function SearchPage() {
       ).__hikariSearchReloadHandled =
         true;
 
-      return true;
+      setClearingOnReload(
+        true,
+      );
     }
 
-    return false;
-  });
+    /*
+     * A primeira renderização terminou.
+     */
+    setInitializing(false);
+  }, []);
 
   const [
     draft,
     setDraft,
-  ] = useState(() => {
-    if (
-      typeof window === "undefined"
-    ) {
-      return "";
-    }
-
-    return search.q ?? "";
-  });
+  ] = useState(() =>
+    search.q ?? "",
+  );
 
   const [
     filtersOpen,
@@ -253,7 +276,7 @@ function SearchPage() {
 
   /*
    * =========================================================
-   * LIMPAR BUSCA SOMENTE NO RELOAD REAL
+   * LIMPAR BUSCA SOMENTE NO RELOAD
    * =========================================================
    *
    * O gênero é preservado.
@@ -288,7 +311,10 @@ function SearchPage() {
    */
 
   useEffect(() => {
-    if (clearingOnReload) {
+    if (
+      initializing ||
+      clearingOnReload
+    ) {
       return;
     }
 
@@ -297,6 +323,7 @@ function SearchPage() {
     );
   }, [
     search.q,
+    initializing,
     clearingOnReload,
   ]);
 
@@ -304,12 +331,13 @@ function SearchPage() {
    * =========================================================
    * BUSCA AUTOMÁTICA
    * =========================================================
-   *
-   * Não precisa apertar Enter.
    */
 
   useEffect(() => {
-    if (clearingOnReload) {
+    if (
+      initializing ||
+      clearingOnReload
+    ) {
       return;
     }
 
@@ -353,6 +381,7 @@ function SearchPage() {
     draft,
     navigate,
     search,
+    initializing,
     clearingOnReload,
   ]);
 
@@ -364,7 +393,10 @@ function SearchPage() {
 
   const items =
     useMemo(() => {
-      if (clearingOnReload) {
+      if (
+        initializing ||
+        clearingOnReload
+      ) {
         return [];
       }
 
@@ -434,6 +466,7 @@ function SearchPage() {
       result.items,
       search.q,
       search.genre,
+      initializing,
       clearingOnReload,
     ]);
 
@@ -549,21 +582,16 @@ function SearchPage() {
 
   /*
    * =========================================================
-   * RENDER
+   * BLOQUEIO DURANTE A INICIALIZAÇÃO
    * =========================================================
+   *
+   * Este é o ponto que elimina o flash.
    */
 
-  /*
-   * IMPORTANTE:
-   *
-   * Durante o reload real não mostramos:
-   *
-   * "Pesquise um anime"
-   * "Nada encontrado"
-   *
-   * Isso elimina o flash visual.
-   */
-  if (clearingOnReload) {
+  if (
+    initializing ||
+    clearingOnReload
+  ) {
     return (
       <div className="space-y-6 pt-6">
 
@@ -586,6 +614,12 @@ function SearchPage() {
       </div>
     );
   }
+
+  /*
+   * =========================================================
+   * RENDER
+   * =========================================================
+   */
 
   return (
     <div className="space-y-6 pt-6">
@@ -996,7 +1030,9 @@ function SearchPage() {
           </section>
         )}
 
-      {/* SEM BUSCA */}
+      {/* =====================================================
+          SEM BUSCA
+      ====================================================== */}
 
       {!hasQuery && (
         <div className="py-20 text-center">
@@ -1014,7 +1050,9 @@ function SearchPage() {
         </div>
       )}
 
-      {/* NADA ENCONTRADO */}
+      {/* =====================================================
+          NADA ENCONTRADO
+      ====================================================== */}
 
       {hasQuery &&
         !hasAnimes && (
@@ -1066,4 +1104,4 @@ function Field({
       {children}
     </label>
   );
-            }
+    }
