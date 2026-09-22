@@ -320,7 +320,6 @@ async function fetchSeason(
                   type: ANIME,
                   season: $season,
                   seasonYear: $year,
-                  isAdult: false,
                   sort: POPULARITY_DESC
                 ) {
                   id
@@ -387,38 +386,30 @@ async function fetchSeason(
 
   const items =
     (pageData?.media ?? [])
+      .filter(
+        (anime) =>
+          !anime.isAdult,
+      )
       .map(mapAnime);
-
-  const total =
-    pageInfo?.total ??
-    items.length;
-
-  const lastPage =
-    Math.max(
-      1,
-      Math.ceil(
-        total / 24,
-      ),
-    );
-
-  const currentPage =
-    pageInfo?.currentPage ??
-    page;
-
-  const hasNext =
-    currentPage <
-    lastPage;
 
   return {
     items,
 
-    currentPage,
+    currentPage:
+      pageInfo?.currentPage ??
+      page,
 
-    lastPage,
+    lastPage:
+      pageInfo?.lastPage ??
+      1,
 
-    hasNext,
+    hasNext:
+      pageInfo?.hasNextPage ??
+      false,
 
-    total,
+    total:
+      pageInfo?.total ??
+      items.length,
   };
 }
 
@@ -649,45 +640,39 @@ function CalendarPage() {
 
       pages.add(1);
 
-      if (lastPage <= 5) {
+      if (page <= 3) {
         for (
           let value = 2;
-          value <= lastPage;
+          value <=
+            Math.min(
+              5,
+              lastPage,
+            );
           value += 1
         ) {
           pages.add(value);
         }
-      } else if (page <= 3) {
-        pages.add(2);
-        pages.add(3);
-        pages.add(4);
-        pages.add(5);
-        pages.add(lastPage);
-      } else if (
-        page >=
-        lastPage - 2
-      ) {
-        pages.add(
-          lastPage - 4,
-        );
-
-        pages.add(
-          lastPage - 3,
-        );
-
-        pages.add(
-          lastPage - 2,
-        );
-
-        pages.add(
-          lastPage - 1,
-        );
-
-        pages.add(lastPage);
       } else {
-        pages.add(page - 1);
+        pages.add(
+          Math.max(
+            2,
+            page - 1,
+          ),
+        );
+
         pages.add(page);
-        pages.add(page + 1);
+
+        if (
+          page + 1 <=
+          lastPage
+        ) {
+          pages.add(
+            page + 1,
+          );
+        }
+      }
+
+      if (lastPage > 5) {
         pages.add(lastPage);
       }
 
