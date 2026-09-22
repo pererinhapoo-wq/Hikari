@@ -139,7 +139,7 @@ export function Hero({
             bg-bg
             h-[14rem]
             sm:h-[21rem]
-            md:h-[30rem]
+            md:h-[21rem]
           "
           style={
             !isLandscape && imageRatio
@@ -220,7 +220,7 @@ export function Hero({
             h-[14rem]
             bg-bg
             sm:h-[21rem]
-            md:h-[30rem]
+            md:h-[21rem]
           "
         />
       )}
@@ -236,7 +236,7 @@ export function Hero({
           sm:px-6
           sm:pb-7
           sm:pt-2
-          md:-mt-44
+          md:-mt-32
           md:px-10
           md:pb-10
         "
@@ -427,4 +427,4 @@ export function Hero({
       </div>
     </section>
   );
-    }
+      }
