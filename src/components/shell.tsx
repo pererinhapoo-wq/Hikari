@@ -1295,22 +1295,6 @@ export function Shell() {
                       },
                     )}
 
-                  {/* BUSCAR */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setSearchOpen(true);
-                    }}
-                    className="flex w-full items-center gap-4 rounded-lg px-4 py-4 text-left text-base font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
-                  >
-                    <Search className="size-5" />
-
-                    <span>
-                      Buscar
-                    </span>
-                  </button>
-
                 </div>
               </div>
 
@@ -1397,40 +1381,6 @@ export function Shell() {
 
                     <span>
                       Notícias
-                    </span>
-                  </Link>
-
-                </div>
-              </div>
-
-              {/* =================================================
-                  TEMPORADAS DE ANIME
-              ================================================== */}
-              <div className="mt-6">
-                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
-                  Temporadas de anime
-                </p>
-
-                <div className="space-y-1">
-
-                  <Link
-                    to="/calendar"
-                    onClick={() =>
-                      setMenuOpen(false)
-                    }
-                    className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      pathname.startsWith(
-                        "/calendar",
-                      )
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
-                    )}
-                  >
-                    <CalendarDays className="size-5" />
-
-                    <span>
-                      Calendário de animes
                     </span>
                   </Link>
 
