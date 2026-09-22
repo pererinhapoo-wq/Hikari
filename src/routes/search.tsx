@@ -14,6 +14,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type FormEvent,
   type ReactNode,
 } from "react";
 
@@ -182,31 +183,29 @@ function SearchPage() {
     );
 
   /*
-   * DETECTA RECARREGAMENTO
+   * Detecta somente um recarregamento
+   * real da página.
    *
-   * Se o usuário recarregou diretamente
-   * a página /search, limpamos a pesquisa
-   * anterior.
+   * Em um reload de /search?q=...
+   * limpamos a URL e o campo.
    *
-   * A pesquisa normal feita pela navegação
-   * do Hikari não é afetada.
+   * Navegações normais dentro do app
+   * continuam funcionando normalmente.
    */
   const [
     clearingOnReload,
     setClearingOnReload,
   ] = useState(() => {
     if (
-      typeof window ===
-      "undefined"
+      typeof window === "undefined"
     ) {
       return false;
     }
 
     const navigation =
-      window.performance
-        .getEntriesByType(
-          "navigation",
-        )[0] as
+      window.performance.getEntriesByType(
+        "navigation",
+      )[0] as
         | PerformanceNavigationTiming
         | undefined;
 
@@ -216,34 +215,28 @@ function SearchPage() {
     );
   });
 
-  /*
-   * CAMPO DE BUSCA
-   *
-   * Quando a página foi recarregada,
-   * começa vazio.
-   */
   const [
     draft,
     setDraft,
   ] = useState(() => {
     if (
-      typeof window !==
-      "undefined"
+      typeof window === "undefined"
     ) {
-      const navigation =
-        window.performance
-          .getEntriesByType(
-            "navigation",
-          )[0] as
-          | PerformanceNavigationTiming
-          | undefined;
+      return "";
+    }
 
-      if (
-        navigation?.type ===
-        "reload"
-      ) {
-        return "";
-      }
+    const navigation =
+      window.performance.getEntriesByType(
+        "navigation",
+      )[0] as
+        | PerformanceNavigationTiming
+        | undefined;
+
+    if (
+      navigation?.type ===
+      "reload"
+    ) {
+      return "";
     }
 
     return search.q ?? "";
@@ -257,51 +250,48 @@ function SearchPage() {
   const currentPage =
     search.page ?? 1;
 
-  /* =========================================================
-     LIMPAR BUSCA AO RECARREGAR
-  ========================================================== */
-
+  /*
+   * =========================================================
+   * LIMPAR BUSCA APENAS NO RELOAD
+   * =========================================================
+   *
+   * Importante:
+   * não usamos navigate enquanto o usuário
+   * está digitando.
+   *
+   * Isso evita o ciclo que estava causando
+   * a tela preta.
+   */
   useEffect(() => {
-    if (
-      !clearingOnReload
-    ) {
+    if (!clearingOnReload) {
       return;
     }
 
-    /*
-     * Limpa completamente os parâmetros
-     * da busca anterior.
-     */
+    setDraft("");
+
     void navigate({
       search: {},
       replace: true,
+    }).finally(() => {
+      setClearingOnReload(false);
     });
-
-    /*
-     * Depois que a URL foi limpa,
-     * libera a tela novamente.
-     */
-    setClearingOnReload(
-      false,
-    );
   }, [
     clearingOnReload,
     navigate,
   ]);
 
-  /* =========================================================
-     MANTER O CAMPO SINCRONIZADO COM A URL
-  ========================================================== */
-
+  /*
+   * =========================================================
+   * SINCRONIZAR CAMPO COM A URL
+   * =========================================================
+   *
+   * Não sobrescrevemos o texto enquanto o usuário
+   * estiver digitando.
+   *
+   * Isso é importante para a busca automática.
+   */
   useEffect(() => {
-    /*
-     * Durante a limpeza do reload,
-     * não colocamos novamente o valor
-     * antigo dentro do campo.
-     */
-    if (
-      clearingOnReload
-    ) {
+    if (clearingOnReload) {
       return;
     }
 
@@ -313,37 +303,50 @@ function SearchPage() {
     clearingOnReload,
   ]);
 
-  /* =========================================================
-     BUSCA AUTOMÁTICA
-  ========================================================== */
-
+  /*
+   * =========================================================
+   * BUSCA AUTOMÁTICA
+   * =========================================================
+   *
+   * O usuário NÃO precisa apertar Enter.
+   *
+   * Depois que parar de digitar por 700 ms,
+   * a busca é atualizada automaticamente.
+   *
+   * A navegação só acontece quando o texto realmente
+   * mudou em relação à URL.
+   */
   useEffect(() => {
-    /*
-     * Durante o reload não fazemos
-     * nenhuma pesquisa automática.
-     */
-    if (
-      clearingOnReload
-    ) {
+    if (clearingOnReload) {
       return;
     }
 
     const q =
       draft.trim();
 
+    /*
+     * Não dispara busca para uma letra.
+     * Isso evita requisições excessivas enquanto
+     * o usuário ainda está começando a digitar.
+     */
+    if (
+      q.length > 0 &&
+      q.length < 2
+    ) {
+      return;
+    }
+
+    const current =
+      (
+        search.q ?? ""
+      ).trim();
+
+    if (q === current) {
+      return;
+    }
+
     const timer =
       window.setTimeout(() => {
-        const current =
-          (
-            search.q ?? ""
-          ).trim();
-
-        if (
-          q === current
-        ) {
-          return;
-        }
-
         void navigate({
           search: {
             ...search,
@@ -353,7 +356,7 @@ function SearchPage() {
           },
           replace: true,
         });
-      }, 400);
+      }, 700);
 
     return () =>
       window.clearTimeout(
@@ -366,20 +369,19 @@ function SearchPage() {
     clearingOnReload,
   ]);
 
-  /* =========================================================
-     RESULTADOS
-  ========================================================== */
+  /*
+   * =========================================================
+   * RESULTADOS
+   * =========================================================
+   */
 
   const items =
     useMemo(() => {
       /*
-       * Enquanto estamos limpando um
-       * reload, não mostramos os resultados
-       * antigos.
+       * Durante o reload, não mostramos os resultados
+       * antigos enquanto a URL está sendo limpa.
        */
-      if (
-        clearingOnReload
-      ) {
+      if (clearingOnReload) {
         return [];
       }
 
@@ -450,17 +452,19 @@ function SearchPage() {
         ),
       ];
     }, [
-      clearingOnReload,
       currentPage,
       locals,
       result.items,
       search.q,
       search.genre,
+      clearingOnReload,
     ]);
 
-  /* =========================================================
-     FILTROS
-  ========================================================== */
+  /*
+   * =========================================================
+   * FILTROS
+   * =========================================================
+   */
 
   function apply(
     next: Partial<Search>,
@@ -485,14 +489,15 @@ function SearchPage() {
     items.length > 0;
 
   const hasQuery =
-    !clearingOnReload &&
     Boolean(
       search.q?.trim(),
     );
 
-  /* =========================================================
-     PAGINAÇÃO
-  ========================================================== */
+  /*
+   * =========================================================
+   * PAGINAÇÃO
+   * =========================================================
+   */
 
   const pageNumbers =
     useMemo(() => {
@@ -564,9 +569,11 @@ function SearchPage() {
     });
   }
 
-  /* =========================================================
-     RENDER
-  ========================================================== */
+  /*
+   * =========================================================
+   * RENDER
+   * =========================================================
+   */
 
   return (
     <div className="space-y-6 pt-6">
@@ -581,11 +588,7 @@ function SearchPage() {
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-subtle" />
 
           <Input
-            value={
-              clearingOnReload
-                ? ""
-                : draft
-            }
+            value={draft}
             onChange={(e) => {
               setDraft(
                 e.target.value,
@@ -875,16 +878,12 @@ function SearchPage() {
 
             </div>
 
-            {/* =================================================
-                PAGINAÇÃO
-            ================================================== */}
-
+            {/* PAGINAÇÃO */}
             {(currentPage >
               1 ||
               result.hasNext) && (
               <div className="flex items-center justify-center gap-1 pt-4">
 
-                {/* ANTERIOR */}
                 <button
                   type="button"
                   onClick={() =>
@@ -903,7 +902,6 @@ function SearchPage() {
                   <ChevronLeft className="size-5" />
                 </button>
 
-                {/* NÚMEROS */}
                 <div className="flex items-center gap-1">
 
                   {pageNumbers.map(
@@ -948,7 +946,6 @@ function SearchPage() {
 
                 </div>
 
-                {/* PRÓXIMA */}
                 <button
                   type="button"
                   onClick={() =>
@@ -972,12 +969,9 @@ function SearchPage() {
           </section>
         )}
 
-      {/* =====================================================
-          SEM BUSCA
-      ====================================================== */}
+      {/* SEM BUSCA */}
 
-      {(!hasQuery ||
-        clearingOnReload) && (
+      {!hasQuery && (
         <div className="py-20 text-center">
 
           <SearchIcon className="mx-auto size-8 text-subtle" />
@@ -993,9 +987,7 @@ function SearchPage() {
         </div>
       )}
 
-      {/* =====================================================
-          NADA ENCONTRADO
-      ====================================================== */}
+      {/* NADA ENCONTRADO */}
 
       {hasQuery &&
         !hasAnimes && (
@@ -1025,10 +1017,6 @@ function SearchPage() {
   );
 }
 
-/* =========================================================
-   CAMPO DE FILTRO
-========================================================= */
-
 function Field({
   label,
   children,
@@ -1051,4 +1039,4 @@ function Field({
       {children}
     </label>
   );
-      }
+  }
