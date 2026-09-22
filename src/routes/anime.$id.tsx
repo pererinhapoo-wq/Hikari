@@ -245,23 +245,20 @@ function AnimePage() {
   }, [anime?.id, anime?.banner]);
 
   /*
-   * IMPORTANTE:
-   *
-   * Este cálculo fica ANTES do "if (!anime)" porque
-   * useMemo é um Hook e os Hooks precisam ser executados
-   * sempre na mesma ordem, antes de qualquer retorno.
+   * Cada página /anime/$id representa uma temporada.
+   * Portanto, usamos somente os episódios da temporada atual.
    */
   const seasons = anime?.seasons ?? [];
+  const currentSeason = seasons[0];
+  const currentEpisodes = currentSeason?.episodes ?? [];
 
   const allEpisodes = useMemo(
     () =>
-      seasons.flatMap((season) =>
-        season.episodes.map((episode) => ({
-          ...episode,
-          seasonId: season.id,
-        })),
-      ),
-    [seasons],
+      currentEpisodes.map((episode) => ({
+        ...episode,
+        seasonId: currentSeason?.id,
+      })),
+    [currentEpisodes, currentSeason?.id],
   );
 
   if (!anime) {
@@ -292,16 +289,13 @@ function AnimePage() {
   );
 
   const episodeCount =
-    seasons.reduce(
-      (n, s) => n + s.episodes.length,
-      0,
-    ) ||
+    currentEpisodes.length ||
     anime.episodesCount ||
     0;
 
   /*
    * Conta somente episódios que realmente existem
-   * na página do anime.
+   * na página da temporada atual.
    */
   const watchedCount = allEpisodes.filter((episode) =>
     watchedEpisodes.includes(episode.id),
@@ -636,26 +630,49 @@ function AnimePage() {
             </Link>
           )}
 
-          <div className="mt-5 space-y-8">
-            {seasons.map((season) => (
-              <div key={season.id}>
-                {seasons.length > 1 && (
-                  <h3 className="mb-3 text-sm font-medium text-muted">
-                    {season.title}
-                  </h3>
-                )}
-
-                <EpisodeGrid
-                  episodes={season.episodes}
-                  animeId={anime.id}
-                  cover={anime.cover}
-                  watchedEpisodes={
-                    watchedEpisodes
-                  }
-                />
-              </div>
-            ))}
+          <div className="mt-5">
+            <EpisodeGrid
+              episodes={currentEpisodes}
+              animeId={anime.id}
+              cover={anime.cover}
+              watchedEpisodes={watchedEpisodes}
+            />
           </div>
+
+          {/* NAVEGAÇÃO ENTRE TEMPORADAS */}
+          {(anime.seasonNavigation?.previous ||
+            anime.seasonNavigation?.next) && (
+            <div className="mt-6 flex flex-wrap gap-2">
+              {anime.seasonNavigation?.previous && (
+                <Button
+                  asChild
+                  variant="outline"
+                >
+                  <Link
+                    to="/anime/$id"
+                    params={{
+                      id: anime.seasonNavigation.previous.id,
+                    }}
+                  >
+                    ← Temporada anterior
+                  </Link>
+                </Button>
+              )}
+
+              {anime.seasonNavigation?.next && (
+                <Button asChild>
+                  <Link
+                    to="/anime/$id"
+                    params={{
+                      id: anime.seasonNavigation.next.id,
+                    }}
+                  >
+                    Próxima temporada →
+                  </Link>
+                </Button>
+              )}
+            </div>
+          )}
         </section>
       )}
 
@@ -767,8 +784,7 @@ function EpisodeGrid({
               >
                 {/* THUMBNAIL */}
                 <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
-                  {ep.thumbnail ||
-                  cover ? (
+                  {ep.thumbnail || cover ? (
                     <img
                       src={
                         ep.thumbnail ||
@@ -829,4 +845,4 @@ function EpisodeGrid({
       </ol>
     </div>
   );
-      }
+        }
