@@ -525,10 +525,11 @@ function WatchPage() {
                     key={index}
                     type="button"
                     size="sm"
-                    variant={
+                    variant="outline"
+                    className={
                       playerIndex === index
-                        ? "default"
-                        : "outline"
+                        ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
+                        : "rounded-xl border-white/10 bg-white/[0.03] px-5 text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
                     }
                     onClick={() =>
                       setPlayerIndex(index)
@@ -4452,4 +4453,4 @@ function CommentCard({
 
     </article>
   );
-}
+    }
