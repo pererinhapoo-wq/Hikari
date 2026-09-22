@@ -243,24 +243,30 @@ function AnimePage() {
 
   /*
    * TEMPORADAS
-   *
-   * A API agora entrega todas as temporadas
-   * relacionadas em seasonNavigation.items.
    */
   const seasonNavigation =
     remote?.seasonNavigation?.items ?? [];
 
   const seasons = anime?.seasons ?? [];
 
+  /*
+   * A página representa uma temporada.
+   * Portanto usamos somente os episódios dessa página.
+   */
+  const currentSeason =
+    seasons[0] ?? null;
+
+  const currentEpisodes =
+    currentSeason?.episodes ?? [];
+
   const allEpisodes = useMemo(
     () =>
-      seasons.flatMap((season) =>
-        season.episodes.map((episode) => ({
-          ...episode,
-          seasonId: season.id,
-        })),
-      ),
-    [seasons],
+      currentEpisodes.map((episode) => ({
+        ...episode,
+        seasonId:
+          currentSeason?.id ?? "",
+      })),
+    [currentEpisodes, currentSeason?.id],
   );
 
   if (!anime) {
@@ -290,28 +296,21 @@ function AnimePage() {
         a.anilistId === anime.anilistId),
   );
 
-  /*
-   * Conta somente os episódios da temporada atual.
-   */
   const episodeCount =
-    seasons.reduce(
-      (n, s) => n + s.episodes.length,
-      0,
-    ) ||
+    currentEpisodes.length ||
     anime.episodesCount ||
     0;
 
-  const watchedCount = allEpisodes.filter((episode) =>
-    watchedEpisodes.includes(episode.id),
+  const watchedCount = allEpisodes.filter(
+    (episode) =>
+      watchedEpisodes.includes(episode.id),
   ).length;
 
   /*
-   * CONTINUAR ASSISTINDO
+   * CONTINUAR
    *
-   * Se existe progresso, usamos exatamente o episódio
-   * onde a pessoa parou.
-   *
-   * Se não existe progresso, começamos pelo episódio 1.
+   * Procura exatamente o episódio onde
+   * o usuário parou.
    */
   const continueEpisode =
     continueEntry
@@ -326,10 +325,10 @@ function AnimePage() {
     continueEpisode ??
     allEpisodes[0];
 
-  const continueLabel =
+  const watchButtonLabel =
     continueEpisode
       ? `Continuar no episódio ${continueEpisode.number}`
-      : "Começar pelo episódio 1";
+      : "Assistir";
 
   const handleShare = async () => {
     try {
@@ -477,7 +476,7 @@ function AnimePage() {
                     }
                   >
                     <Play className="size-4 fill-current" />
-                    Assistir
+                    {watchButtonLabel}
                   </Link>
                 </Button>
 
@@ -580,7 +579,7 @@ function AnimePage() {
 
           <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
             {seasonNavigation.map(
-              (season, index) => {
+              (season) => {
                 const selected =
                   season.id === anime.id;
 
@@ -608,7 +607,8 @@ function AnimePage() {
 
                       <div className="min-w-0 pr-2">
                         <p className="text-xs font-medium tracking-wide text-subtle uppercase">
-                          Temporada {index + 1}
+                          {season.label ??
+                            season.title}
                         </p>
 
                         <p className="mt-1 max-w-[10rem] truncate text-sm font-medium">
@@ -631,7 +631,7 @@ function AnimePage() {
       )}
 
       {/* EPISÓDIOS */}
-      {seasons.length > 0 && (
+      {currentSeason && (
         <section className="mt-12">
           <div className="flex items-end justify-between gap-4">
             <div>
@@ -656,57 +656,17 @@ function AnimePage() {
             </div>
           </div>
 
-          {/* CONTINUAR / COMEÇAR */}
-          {continueTarget && (
-            <Link
-              to="/watch/$id"
-              params={{ id: anime.id }}
-              search={{
-                ep: continueTarget.id,
-              }}
-              className="mt-5 flex items-center gap-4 rounded-xl border border-white/10 bg-surface p-4 shadow-[var(--shadow-border)] transition-colors hover:bg-elevated"
-            >
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-white text-black">
-                <Play className="ml-0.5 size-5 fill-current" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium tracking-[0.15em] text-subtle uppercase">
-                  {continueEpisode
-                    ? "Continuar assistindo"
-                    : "Começar"}
-                </p>
-
-                <p className="mt-1 truncate text-sm font-medium text-fg sm:text-base">
-                  {continueLabel}
-                </p>
-              </div>
-
-              <span className="shrink-0 text-sm text-muted">
-                →
-              </span>
-            </Link>
-          )}
-
-          <div className="mt-5 space-y-8">
-            {seasons.map((season) => (
-              <div key={season.id}>
-                {seasons.length > 1 && (
-                  <h3 className="mb-3 text-sm font-medium text-muted">
-                    {season.title}
-                  </h3>
-                )}
-
-                <EpisodeGrid
-                  episodes={season.episodes}
-                  animeId={anime.id}
-                  cover={anime.cover}
-                  watchedEpisodes={
-                    watchedEpisodes
-                  }
-                />
-              </div>
-            ))}
+          <div className="mt-5">
+            <EpisodeGrid
+              episodes={
+                currentSeason.episodes
+              }
+              animeId={anime.id}
+              cover={anime.cover}
+              watchedEpisodes={
+                watchedEpisodes
+              }
+            />
           </div>
         </section>
       )}
