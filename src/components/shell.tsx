@@ -22,10 +22,11 @@ import { Logo } from "@/components/logo";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { searchCatalog } from "@/lib/api";
+import { getProfile } from "@/lib/profile.functions";
 import {
-  getProfile,
-} from "@/lib/profile.functions";
-import { displayTitle, type SlimAnime } from "@/lib/types";
+  displayTitle,
+  type SlimAnime,
+} from "@/lib/types";
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -77,7 +78,7 @@ const BASE_NAV = [
   },
   {
     to: "/account",
-    label: "Perfil",
+    label: "Conta",
     icon: UserCircle,
     match: (p: string) =>
       p.startsWith("/account") ||
@@ -216,24 +217,13 @@ export function Shell() {
       "/watch",
     );
 
-  const nav =
-    user &&
-    isHikariAdmin(
-      user.primaryEmail,
-    )
-      ? [
-          ...BASE_NAV,
-          {
-            to: "/admin",
-            label: "Admin",
-            icon: Settings2,
-            match: (p: string) =>
-              p.startsWith(
-                "/admin",
-              ),
-          },
-        ]
-      : BASE_NAV;
+  const isAdmin =
+    Boolean(
+      user &&
+        isHikariAdmin(
+          user.primaryEmail,
+        ),
+    );
 
   /* =========================================================
      BUSCA AUTOMÁTICA
@@ -572,31 +562,89 @@ export function Shell() {
           {/* LOGO */}
           <Logo />
 
-          {/* NAVEGAÇÃO DESKTOP */}
+          {/* =====================================================
+              NAVEGAÇÃO DESKTOP
+              ===================================================== */}
           <nav className="hidden items-center gap-1 md:flex">
-            {nav.map(
-              (item) => {
-                const active =
-                  item.match(
-                    pathname,
-                  );
 
-                return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    className={cn(
-                      "inline-flex h-11 items-center px-3 text-sm transition-colors",
-                      active
-                        ? "text-fg"
-                        : "text-muted hover:text-fg",
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              },
-            )}
+            {/* INÍCIO */}
+            <Link
+              to="/"
+              className={cn(
+                "inline-flex h-11 items-center px-3 text-sm transition-colors",
+                pathname === "/"
+                  ? "text-fg"
+                  : "text-muted hover:text-fg",
+              )}
+            >
+              Início
+            </Link>
+
+            {/* BUSCAR */}
+            <button
+              type="button"
+              onClick={() =>
+                setSearchOpen(
+                  true,
+                )
+              }
+              className={cn(
+                "inline-flex h-11 items-center px-3 text-sm transition-colors",
+                searchOpen
+                  ? "text-fg"
+                  : "text-muted hover:text-fg",
+              )}
+            >
+              Buscar
+            </button>
+
+            {/* LISTA */}
+            <Link
+              to="/my-list"
+              className={cn(
+                "inline-flex h-11 items-center px-3 text-sm transition-colors",
+                pathname.startsWith(
+                  "/my-list",
+                )
+                  ? "text-fg"
+                  : "text-muted hover:text-fg",
+              )}
+            >
+              Lista
+            </Link>
+
+            {/* CONTA */}
+            <Link
+              to="/account"
+              className={cn(
+                "inline-flex h-11 items-center px-3 text-sm transition-colors",
+                pathname.startsWith(
+                  "/account",
+                ) ||
+                  pathname.startsWith(
+                    "/login",
+                  )
+                  ? "text-fg"
+                  : "text-muted hover:text-fg",
+              )}
+            >
+              Conta
+            </Link>
+
+            {/* CONFIGURAÇÕES */}
+            <Link
+              to="/settings"
+              className={cn(
+                "inline-flex h-11 items-center px-3 text-sm transition-colors",
+                pathname.startsWith(
+                  "/settings",
+                )
+                  ? "text-fg"
+                  : "text-muted hover:text-fg",
+              )}
+            >
+              Configurações
+            </Link>
           </nav>
 
           {/* AÇÕES DA DIREITA */}
@@ -633,7 +681,7 @@ export function Shell() {
               )}
             </button>
 
-            {/* BUSCA */}
+            {/* BUSCA MOBILE / ÍCONE */}
             <button
               type="button"
               onClick={() => {
@@ -641,7 +689,7 @@ export function Shell() {
                   (value) => !value,
                 );
               }}
-              className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
+              className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
               aria-label="Buscar"
               aria-expanded={
                 searchOpen
@@ -1241,7 +1289,8 @@ export function Shell() {
             <nav className="p-4">
               <div className="space-y-1">
 
-                {nav.map(
+                {/* INÍCIO */}
+                {BASE_NAV.map(
                   (item) => {
                     const active =
                       item.match(
@@ -1274,6 +1323,27 @@ export function Shell() {
                     );
                   },
                 )}
+
+                {/* BUSCAR */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(
+                      false,
+                    );
+
+                    setSearchOpen(
+                      true,
+                    );
+                  }}
+                  className="flex w-full items-center gap-4 rounded-lg px-4 py-4 text-left text-base font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+                >
+                  <Search className="size-5" />
+
+                  <span>
+                    Buscar
+                  </span>
+                </button>
 
                 {/* PERFIL PÚBLICO */}
                 {user && profileNick && (
@@ -1322,6 +1392,32 @@ export function Shell() {
                     Configurações
                   </span>
                 </Link>
+
+                {/* ADMIN */}
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    onClick={() =>
+                      setMenuOpen(
+                        false,
+                      )
+                    }
+                    className={cn(
+                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      pathname.startsWith(
+                        "/admin",
+                      )
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <Settings2 className="size-5" />
+
+                    <span>
+                      Admin
+                    </span>
+                  </Link>
+                )}
 
                 {/* +18 */}
                 <Link
