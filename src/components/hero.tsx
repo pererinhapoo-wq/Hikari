@@ -126,6 +126,8 @@ export function Hero({
                 w-full
                 overflow-hidden
                 bg-bg
+                lg:h-[28rem]
+                lg:!aspect-auto
               `
               : `
                 relative
@@ -134,7 +136,7 @@ export function Hero({
                 overflow-hidden
                 bg-bg
                 sm:h-[21rem]
-                lg:h-[23rem]
+                lg:h-[28rem]
               `
           }
           style={
@@ -155,6 +157,7 @@ export function Hero({
               size-full
               object-contain
               object-center
+              lg:object-cover
             "
           />
 
@@ -179,7 +182,7 @@ export function Hero({
             h-[14rem]
             bg-bg
             sm:h-[21rem]
-            lg:h-[23rem]
+            lg:h-[28rem]
           "
         />
       )}
@@ -378,4 +381,4 @@ export function Hero({
       </div>
     </section>
   );
-}
+          }
