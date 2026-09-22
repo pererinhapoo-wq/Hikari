@@ -528,6 +528,7 @@ function BrowsePage() {
               <AnimeCard
                 key={anime.id}
                 anime={anime}
+                size="lg"
               />
             ),
           )}
@@ -608,4 +609,4 @@ function BrowsePage() {
       )}
     </div>
   );
-  }
+    }
