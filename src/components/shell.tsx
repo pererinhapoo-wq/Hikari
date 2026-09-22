@@ -22,7 +22,9 @@ import { Logo } from "@/components/logo";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { searchCatalog } from "@/lib/api";
-import { getProfile } from "@/lib/profile.functions";
+import {
+  getProfile,
+} from "@/lib/profile.functions";
 import {
   displayTitle,
   type SlimAnime,
@@ -217,13 +219,24 @@ export function Shell() {
       "/watch",
     );
 
-  const isAdmin =
-    Boolean(
-      user &&
-        isHikariAdmin(
-          user.primaryEmail,
-        ),
-    );
+  const nav =
+    user &&
+    isHikariAdmin(
+      user.primaryEmail,
+    )
+      ? [
+          ...BASE_NAV,
+          {
+            to: "/admin",
+            label: "Admin",
+            icon: Settings2,
+            match: (p: string) =>
+              p.startsWith(
+                "/admin",
+              ),
+          },
+        ]
+      : BASE_NAV;
 
   /* =========================================================
      BUSCA AUTOMÁTICA
@@ -542,110 +555,174 @@ export function Shell() {
     <div className="min-h-dvh bg-bg text-fg">
 
       {/* =========================================================
-          HEADER
+          BARRA LATERAL DESKTOP
       ========================================================== */}
-      <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
 
-          {/* MENU */}
-          <button
-            type="button"
-            onClick={() =>
-              setMenuOpen(true)
-            }
-            className="flex size-11 items-center justify-center rounded-md text-fg hover:bg-elevated"
-            aria-label="Abrir menu"
-          >
-            <Menu className="size-6" />
-          </button>
+      <aside className="fixed inset-y-0 left-0 z-50 hidden w-60 border-r border-border bg-bg md:flex md:flex-col">
 
-          {/* LOGO */}
+        {/* LOGO */}
+        <div className="flex h-16 shrink-0 items-center border-b border-border px-5">
           <Logo />
+        </div>
 
-          {/* =====================================================
-              NAVEGAÇÃO DESKTOP
-              ===================================================== */}
-          <nav className="hidden items-center gap-1 md:flex">
+        {/* NAVEGAÇÃO */}
+        <nav className="flex-1 overflow-y-auto p-3">
 
-            {/* INÍCIO */}
-            <Link
-              to="/"
-              className={cn(
-                "inline-flex h-11 items-center px-3 text-sm transition-colors",
-                pathname === "/"
-                  ? "text-fg"
-                  : "text-muted hover:text-fg",
-              )}
-            >
-              Início
-            </Link>
+          <div className="space-y-1">
+
+            {nav.map(
+              (item) => {
+                const active =
+                  item.match(
+                    pathname,
+                  );
+
+                const Icon =
+                  item.icon;
+
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={cn(
+                      "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
+                      active
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <Icon className="size-5 shrink-0" />
+
+                    <span>
+                      {item.label}
+                    </span>
+                  </Link>
+                );
+              },
+            )}
 
             {/* BUSCAR */}
             <button
               type="button"
               onClick={() =>
-                setSearchOpen(
-                  true,
-                )
+                setSearchOpen(true)
               }
               className={cn(
-                "inline-flex h-11 items-center px-3 text-sm transition-colors",
+                "flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
                 searchOpen
-                  ? "text-fg"
-                  : "text-muted hover:text-fg",
+                  ? "bg-elevated text-fg"
+                  : "text-muted hover:bg-elevated hover:text-fg",
               )}
             >
-              Buscar
+              <Search className="size-5 shrink-0" />
+
+              <span>
+                Buscar
+              </span>
             </button>
 
-            {/* LISTA */}
-            <Link
-              to="/my-list"
-              className={cn(
-                "inline-flex h-11 items-center px-3 text-sm transition-colors",
-                pathname.startsWith(
-                  "/my-list",
-                )
-                  ? "text-fg"
-                  : "text-muted hover:text-fg",
-              )}
-            >
-              Lista
-            </Link>
+            {/* PERFIL PÚBLICO */}
+            {user && profileNick && (
+              <Link
+                to="/profile/$nick"
+                params={{
+                  nick: profileNick,
+                }}
+                className={cn(
+                  "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
+                  pathname ===
+                    `/profile/${profileNick}`
+                    ? "bg-elevated text-fg"
+                    : "text-muted hover:bg-elevated hover:text-fg",
+                )}
+              >
+                <UserCircle className="size-5 shrink-0" />
 
-            {/* CONTA */}
-            <Link
-              to="/account"
-              className={cn(
-                "inline-flex h-11 items-center px-3 text-sm transition-colors",
-                pathname.startsWith(
-                  "/account",
-                ) ||
-                  pathname.startsWith(
-                    "/login",
-                  )
-                  ? "text-fg"
-                  : "text-muted hover:text-fg",
-              )}
-            >
-              Conta
-            </Link>
+                <span>
+                  Meu perfil público
+                </span>
+              </Link>
+            )}
 
             {/* CONFIGURAÇÕES */}
             <Link
               to="/settings"
               className={cn(
-                "inline-flex h-11 items-center px-3 text-sm transition-colors",
+                "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
                 pathname.startsWith(
                   "/settings",
                 )
-                  ? "text-fg"
-                  : "text-muted hover:text-fg",
+                  ? "bg-elevated text-fg"
+                  : "text-muted hover:bg-elevated hover:text-fg",
               )}
             >
-              Configurações
+              <Settings2 className="size-5 shrink-0" />
+
+              <span>
+                Configurações
+              </span>
             </Link>
-          </nav>
+
+            {/* +18 */}
+            <Link
+              to={ADULT_NAV.to}
+              className={cn(
+                "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
+                ADULT_NAV.match(
+                  pathname,
+                )
+                  ? "bg-elevated text-fg"
+                  : "text-muted hover:bg-elevated hover:text-fg",
+              )}
+            >
+              <span className="flex size-5 shrink-0 items-center justify-center text-base">
+                🔞
+              </span>
+
+              <span>
+                +18
+              </span>
+            </Link>
+
+          </div>
+        </nav>
+
+        {/* RODAPÉ DA BARRA */}
+        <div className="shrink-0 border-t border-border px-4 py-4">
+          <p className="text-[10px] text-subtle">
+            Hikari 光
+          </p>
+        </div>
+
+      </aside>
+
+      {/* =========================================================
+          HEADER
+      ========================================================== */}
+
+      <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md md:ml-60">
+
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
+
+          {/* MENU MOBILE */}
+          <button
+            type="button"
+            onClick={() =>
+              setMenuOpen(true)
+            }
+            className="flex size-11 items-center justify-center rounded-md text-fg hover:bg-elevated md:hidden"
+            aria-label="Abrir menu"
+          >
+            <Menu className="size-6" />
+          </button>
+
+          {/* LOGO MOBILE */}
+          <div className="md:hidden">
+            <Logo />
+          </div>
+
+          {/* ESPAÇO NO DESKTOP */}
+          <div className="hidden md:block" />
 
           {/* AÇÕES DA DIREITA */}
           <div className="flex items-center gap-1">
@@ -681,7 +758,7 @@ export function Shell() {
               )}
             </button>
 
-            {/* BUSCA MOBILE / ÍCONE */}
+            {/* BUSCA MOBILE */}
             <button
               type="button"
               onClick={() => {
@@ -728,6 +805,7 @@ export function Shell() {
                 </span>
               )}
             </button>
+
           </div>
         </div>
       </header>
@@ -735,6 +813,7 @@ export function Shell() {
       {/* =========================================================
           PAINEL DE BUSCA
       ========================================================== */}
+
       {searchOpen && (
         <>
           <button
@@ -746,7 +825,7 @@ export function Shell() {
             aria-label="Fechar busca"
           />
 
-          <div className="fixed left-4 right-4 top-16 z-50 mx-auto max-w-2xl overflow-hidden rounded-xl border border-border bg-bg shadow-2xl">
+          <div className="fixed left-4 right-4 top-16 z-50 mx-auto max-w-2xl overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:left-[17rem] md:right-auto md:w-[calc(100%-19rem)]">
 
             <div className="border-b border-border p-3">
               <div className="relative">
@@ -879,6 +958,7 @@ export function Shell() {
       {/* =========================================================
           PAINEL DE NOTIFICAÇÕES
       ========================================================== */}
+
       {notificationsOpen && (
         <>
           <button
@@ -948,289 +1028,289 @@ export function Shell() {
                 {notifications
                   .slice(0, 7)
                   .map(
-                  (
-                    notification,
-                  ) => {
+                    (
+                      notification,
+                    ) => {
 
-                    const hasEpisodeTarget =
-                      Boolean(
-                        notification.animeId &&
-                        notification.episodeId,
-                      );
+                      const hasEpisodeTarget =
+                        Boolean(
+                          notification.animeId &&
+                          notification.episodeId,
+                        );
 
-                    const isLikeNotification =
-                      notification.type ===
-                      "comment_like";
+                      const isLikeNotification =
+                        notification.type ===
+                        "comment_like";
 
-                    const isReplyNotification =
-                      notification.type ===
-                      "comment_reply";
+                      const isReplyNotification =
+                        notification.type ===
+                        "comment_reply";
 
-                    const likeCount =
-                      Number(
-                        notification.commentLikes ??
-                          0,
-                      );
+                      const likeCount =
+                        Number(
+                          notification.commentLikes ??
+                            0,
+                        );
 
-                    const likeAvatars =
-                      Array.isArray(
-                        notification.likeAvatars,
-                      )
-                        ? notification.likeAvatars
-                        : [];
+                      const likeAvatars =
+                        Array.isArray(
+                          notification.likeAvatars,
+                        )
+                          ? notification.likeAvatars
+                          : [];
 
-                    const notificationMessage =
-                      isLikeNotification &&
-                      likeCount > 1 &&
-                      notification.actorName
-                        ? `${notification.actorName} e mais ${
-                            likeCount - 1
-                          } ${
-                            likeCount - 1 ===
-                            1
-                              ? "pessoa"
-                              : "pessoas"
-                          } curtiram seu comentário.`
-                        : notification.message;
+                      const notificationMessage =
+                        isLikeNotification &&
+                        likeCount > 1 &&
+                        notification.actorName
+                          ? `${notification.actorName} e mais ${
+                              likeCount - 1
+                            } ${
+                              likeCount - 1 ===
+                              1
+                                ? "pessoa"
+                                : "pessoas"
+                            } curtiram seu comentário.`
+                          : notification.message;
 
-                    const notificationContent =
-                      (
-                        <div
-                          className={cn(
-                            "border-b border-border px-4 py-4 last:border-b-0 transition-colors",
-                            !notification.read &&
-                              "border-l-4 border-l-blue-500 bg-blue-500/10",
-                          )}
-                        >
-                          <div className="flex gap-3">
-
-                            {notification.actorImage ? (
-                              <img
-                                src={
-                                  notification.actorImage
-                                }
-                                alt=""
-                                className="size-10 shrink-0 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
-                                <UserCircle className="size-6" />
-                              </div>
+                      const notificationContent =
+                        (
+                          <div
+                            className={cn(
+                              "border-b border-border px-4 py-4 last:border-b-0 transition-colors",
+                              !notification.read &&
+                                "border-l-4 border-l-blue-500 bg-blue-500/10",
                             )}
+                          >
+                            <div className="flex gap-3">
 
-                            <div className="min-w-0 flex-1">
-
-                              <p className="text-sm leading-5">
-                                {
-                                  notificationMessage
-                                }
-                              </p>
-
-                              {isLikeNotification && (
-                                <div className="mt-2 flex items-center gap-2">
-
-                                  {likeAvatars.length >
-                                    0 && (
-                                    <div className="flex items-center pl-1">
-
-                                      {likeAvatars
-                                        .slice(
-                                          0,
-                                          2,
-                                        )
-                                        .map(
-                                          (
-                                            avatar,
-                                            index,
-                                          ) => (
-                                            <div
-                                              key={
-                                                avatar.id
-                                              }
-                                              className={cn(
-                                                "relative size-7 overflow-hidden rounded-full border-2 border-bg bg-elevated",
-                                                index >
-                                                  0 &&
-                                                  "-ml-2",
-                                              )}
-                                              style={{
-                                                zIndex:
-                                                  10 -
-                                                  index,
-                                              }}
-                                            >
-                                              {avatar.image ? (
-                                                <img
-                                                  src={
-                                                    avatar.image
-                                                  }
-                                                  alt=""
-                                                  className="size-full object-cover"
-                                                />
-                                              ) : (
-                                                <div className="flex size-full items-center justify-center text-[10px] font-semibold text-muted">
-                                                  {(
-                                                    avatar.name ??
-                                                    "U"
-                                                  )
-                                                    .charAt(
-                                                      0,
-                                                    )
-                                                    .toUpperCase()}
-                                                </div>
-                                              )}
-                                            </div>
-                                          ),
-                                        )}
-
-                                    </div>
-                                  )}
-
-                                  <span className="text-xs font-medium text-muted">
-                                    {
-                                      likeCount
-                                    }{" "}
-                                    {likeCount ===
-                                    1
-                                      ? "curtida"
-                                      : "curtidas"}
-                                  </span>
+                              {notification.actorImage ? (
+                                <img
+                                  src={
+                                    notification.actorImage
+                                  }
+                                  alt=""
+                                  className="size-10 shrink-0 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
+                                  <UserCircle className="size-6" />
                                 </div>
                               )}
 
-                              {(notification.animeCover ||
-                                notification.animeTitle) && (
-                                <div className="mt-3 flex items-center gap-3">
+                              <div className="min-w-0 flex-1">
 
-                                  {notification.animeCover ? (
-                                    <img
-                                      src={
-                                        notification.animeCover
-                                      }
-                                      alt=""
-                                      className="h-16 w-11 shrink-0 rounded-md object-cover"
-                                    />
-                                  ) : null}
+                                <p className="text-sm leading-5">
+                                  {
+                                    notificationMessage
+                                  }
+                                </p>
 
-                                  <div className="min-w-0 flex-1">
+                                {isLikeNotification && (
+                                  <div className="mt-2 flex items-center gap-2">
 
-                                    {notification.animeTitle && (
-                                      <p className="truncate text-sm font-medium text-fg">
-                                        {
-                                          notification.animeTitle
-                                        }
-                                      </p>
+                                    {likeAvatars.length >
+                                      0 && (
+                                      <div className="flex items-center pl-1">
+
+                                        {likeAvatars
+                                          .slice(
+                                            0,
+                                            2,
+                                          )
+                                          .map(
+                                            (
+                                              avatar,
+                                              index,
+                                            ) => (
+                                              <div
+                                                key={
+                                                  avatar.id
+                                                }
+                                                className={cn(
+                                                  "relative size-7 overflow-hidden rounded-full border-2 border-bg bg-elevated",
+                                                  index >
+                                                    0 &&
+                                                    "-ml-2",
+                                                )}
+                                                style={{
+                                                  zIndex:
+                                                    10 -
+                                                    index,
+                                                }}
+                                              >
+                                                {avatar.image ? (
+                                                  <img
+                                                    src={
+                                                      avatar.image
+                                                    }
+                                                    alt=""
+                                                    className="size-full object-cover"
+                                                  />
+                                                ) : (
+                                                  <div className="flex size-full items-center justify-center text-[10px] font-semibold text-muted">
+                                                    {(
+                                                      avatar.name ??
+                                                      "U"
+                                                    )
+                                                      .charAt(
+                                                        0,
+                                                      )
+                                                      .toUpperCase()}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ),
+                                          )}
+
+                                      </div>
                                     )}
 
-                                    {hasEpisodeTarget &&
-                                      (isLikeNotification ||
-                                        isReplyNotification) && (
-                                        <p className="mt-1 text-xs font-medium text-muted">
-                                          {notification.commentId
-                                            ? "Ver comentário"
-                                            : "Ver episódio"}
-                                        </p>
-                                      )}
-
-                                  </div>
-                                </div>
-                              )}
-
-                              {hasEpisodeTarget &&
-                                (isLikeNotification ||
-                                  isReplyNotification) &&
-                                !notification.animeCover &&
-                                !notification.animeTitle && (
-                                  <div className="mt-2">
-                                    <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
-                                      {notification.commentId
-                                        ? "Ver comentário"
-                                        : "Ver episódio"}
+                                    <span className="text-xs font-medium text-muted">
+                                      {
+                                        likeCount
+                                      }{" "}
+                                      {likeCount ===
+                                      1
+                                        ? "curtida"
+                                        : "curtidas"}
                                     </span>
                                   </div>
                                 )}
 
-                              <p className="mt-1.5 text-[11px] text-muted">
-                                {new Date(
-                                  notification.createdAt,
-                                ).toLocaleString(
-                                  "pt-BR",
-                                  {
-                                    dateStyle:
-                                      "short",
-                                    timeStyle:
-                                      "short",
-                                  },
+                                {(notification.animeCover ||
+                                  notification.animeTitle) && (
+                                  <div className="mt-3 flex items-center gap-3">
+
+                                    {notification.animeCover ? (
+                                      <img
+                                        src={
+                                          notification.animeCover
+                                        }
+                                        alt=""
+                                        className="h-16 w-11 shrink-0 rounded-md object-cover"
+                                      />
+                                    ) : null}
+
+                                    <div className="min-w-0 flex-1">
+
+                                      {notification.animeTitle && (
+                                        <p className="truncate text-sm font-medium text-fg">
+                                          {
+                                            notification.animeTitle
+                                          }
+                                        </p>
+                                      )}
+
+                                      {hasEpisodeTarget &&
+                                        (isLikeNotification ||
+                                          isReplyNotification) && (
+                                          <p className="mt-1 text-xs font-medium text-muted">
+                                            {notification.commentId
+                                              ? "Ver comentário"
+                                              : "Ver episódio"}
+                                          </p>
+                                        )}
+
+                                    </div>
+                                  </div>
                                 )}
-                              </p>
+
+                                {hasEpisodeTarget &&
+                                  (isLikeNotification ||
+                                    isReplyNotification) &&
+                                  !notification.animeCover &&
+                                  !notification.animeTitle && (
+                                    <div className="mt-2">
+                                      <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
+                                        {notification.commentId
+                                          ? "Ver comentário"
+                                          : "Ver episódio"}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                <p className="mt-1.5 text-[11px] text-muted">
+                                  {new Date(
+                                    notification.createdAt,
+                                  ).toLocaleString(
+                                    "pt-BR",
+                                    {
+                                      dateStyle:
+                                        "short",
+                                      timeStyle:
+                                        "short",
+                                    },
+                                  )}
+                                </p>
+                              </div>
+
+                              {!notification.read && (
+                                <span className="mt-1 size-2 shrink-0 rounded-full bg-blue-500" />
+                              )}
+
                             </div>
-
-                            {!notification.read && (
-                              <span className="mt-1 size-2 shrink-0 rounded-full bg-blue-500" />
-                            )}
-
                           </div>
-                        </div>
-                      );
+                        );
 
-                    if (
-                      hasEpisodeTarget
-                    ) {
+                      if (
+                        hasEpisodeTarget
+                      ) {
+                        return (
+                          <Link
+                            key={
+                              notification.id
+                            }
+                            to="/watch/$id"
+                            params={{
+                              id:
+                                notification.animeId!,
+                            }}
+                            search={{
+                              ep:
+                                notification.episodeId!,
+                              comment:
+                                notification.commentId ??
+                                undefined,
+                            }}
+                            onClick={() => {
+                              void markNotificationAsRead(
+                                notification.id,
+                              );
+
+                              setNotificationsOpen(
+                                false,
+                              );
+                            }}
+                            className="block transition-colors hover:bg-elevated/70"
+                          >
+                            {
+                              notificationContent
+                            }
+                          </Link>
+                        );
+                      }
+
                       return (
-                        <Link
+                        <button
                           key={
                             notification.id
                           }
-                          to="/watch/$id"
-                          params={{
-                            id:
-                              notification.animeId!,
-                          }}
-                          search={{
-                            ep:
-                              notification.episodeId!,
-                            comment:
-                              notification.commentId ??
-                              undefined,
-                          }}
+                          type="button"
                           onClick={() => {
                             void markNotificationAsRead(
                               notification.id,
                             );
-
-                            setNotificationsOpen(
-                              false,
-                            );
                           }}
-                          className="block transition-colors hover:bg-elevated/70"
+                          className="block w-full text-left transition-colors hover:bg-elevated/70"
                         >
                           {
                             notificationContent
                           }
-                        </Link>
+                        </button>
                       );
-                    }
-
-                    return (
-                      <button
-                        key={
-                          notification.id
-                        }
-                        type="button"
-                        onClick={() => {
-                          void markNotificationAsRead(
-                            notification.id,
-                          );
-                        }}
-                        className="block w-full text-left transition-colors hover:bg-elevated/70"
-                      >
-                        {
-                          notificationContent
-                        }
-                      </button>
-                    );
-                  },
-                )}
+                    },
+                  )}
 
               </div>
             )}
@@ -1256,8 +1336,9 @@ export function Shell() {
       )}
 
       {/* =========================================================
-          MENU LATERAL
+          MENU LATERAL MOBILE
       ========================================================== */}
+
       {menuOpen && (
         <>
           <button
@@ -1269,7 +1350,7 @@ export function Shell() {
             aria-label="Fechar menu"
           />
 
-          <aside className="fixed inset-y-0 left-0 z-[60] w-[82%] max-w-sm bg-bg shadow-2xl">
+          <aside className="fixed inset-y-0 left-0 z-[60] w-[82%] max-w-sm bg-bg shadow-2xl md:hidden">
 
             <div className="flex h-20 items-center justify-between border-b border-border px-5">
               <Logo />
@@ -1289,8 +1370,7 @@ export function Shell() {
             <nav className="p-4">
               <div className="space-y-1">
 
-                {/* INÍCIO */}
-                {BASE_NAV.map(
+                {nav.map(
                   (item) => {
                     const active =
                       item.match(
@@ -1328,15 +1408,10 @@ export function Shell() {
                 <button
                   type="button"
                   onClick={() => {
-                    setMenuOpen(
-                      false,
-                    );
-
-                    setSearchOpen(
-                      true,
-                    );
+                    setMenuOpen(false);
+                    setSearchOpen(true);
                   }}
-                  className="flex w-full items-center gap-4 rounded-lg px-4 py-4 text-left text-base font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  className="flex w-full items-center gap-4 rounded-lg px-4 py-4 text-base font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
                 >
                   <Search className="size-5" />
 
@@ -1393,32 +1468,6 @@ export function Shell() {
                   </span>
                 </Link>
 
-                {/* ADMIN */}
-                {isAdmin && (
-                  <Link
-                    to="/admin"
-                    onClick={() =>
-                      setMenuOpen(
-                        false,
-                      )
-                    }
-                    className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      pathname.startsWith(
-                        "/admin",
-                      )
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
-                    )}
-                  >
-                    <Settings2 className="size-5" />
-
-                    <span>
-                      Admin
-                    </span>
-                  </Link>
-                )}
-
                 {/* +18 */}
                 <Link
                   to={ADULT_NAV.to}
@@ -1454,14 +1503,16 @@ export function Shell() {
       {/* =========================================================
           CONTEÚDO PRINCIPAL
       ========================================================== */}
-      <main className="mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8">
+
+      <main className="mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8 md:ml-60 md:max-w-[calc(100%-15rem)]">
         <Outlet />
       </main>
 
       {/* =========================================================
           FOOTER
       ========================================================== */}
-      <footer className="mx-auto hidden max-w-6xl items-center justify-between px-6 py-8 text-xs text-subtle md:flex">
+
+      <footer className="mx-auto hidden max-w-6xl items-center justify-between px-6 py-8 text-xs text-subtle md:ml-60 md:flex md:max-w-[calc(100%-15rem)]">
         <p>
           Hikari 光 — catálogo via AniList, com MyAnimeList como reserva.
         </p>
@@ -1475,4 +1526,4 @@ export function Shell() {
 
     </div>
   );
-  }
+        }
