@@ -22,9 +22,7 @@ import { Logo } from "@/components/logo";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { searchCatalog } from "@/lib/api";
-import {
-  getProfile,
-} from "@/lib/profile.functions";
+import { getProfile } from "@/lib/profile.functions";
 import {
   displayTitle,
   type SlimAnime,
@@ -108,11 +106,15 @@ export function Shell() {
   const getProfileFn =
     useServerFn(getProfile);
 
-  const [profileNick, setProfileNick] =
-    useState("");
-
+  /*
+   * MENU:
+   * começa sempre fechado.
+   */
   const [menuOpen, setMenuOpen] =
     useState(false);
+
+  const [profileNick, setProfileNick] =
+    useState("");
 
   const [
     notificationsOpen,
@@ -136,9 +138,41 @@ export function Shell() {
     setNotificationsLoading,
   ] = useState(false);
 
-  /* =========================================================
-     TRAVA ROLAGEM DO FUNDO AO ABRIR NOTIFICAÇÕES
-  ========================================================== */
+  /*
+   * =========================================================
+   * FECHAR MENU COM ESC
+   * =========================================================
+   */
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handleKeyDown = (
+      event: KeyboardEvent,
+    ) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown,
+      );
+    };
+  }, [menuOpen]);
+
+  /*
+   * =========================================================
+   * TRAVA ROLAGEM AO ABRIR NOTIFICAÇÕES
+   * =========================================================
+   */
 
   useEffect(() => {
     if (!notificationsOpen) {
@@ -148,7 +182,8 @@ export function Shell() {
     const previousOverflow =
       document.body.style.overflow;
 
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow =
+      "hidden";
 
     return () => {
       document.body.style.overflow =
@@ -156,9 +191,11 @@ export function Shell() {
     };
   }, [notificationsOpen]);
 
-  /* =========================================================
-     PERFIL PÚBLICO
-  ========================================================== */
+  /*
+   * =========================================================
+   * PERFIL PÚBLICO
+   * =========================================================
+   */
 
   useEffect(() => {
     if (!user?.id) {
@@ -185,9 +222,11 @@ export function Shell() {
     };
   }, [user?.id]);
 
-  /* =========================================================
-     BUSCA
-  ========================================================== */
+  /*
+   * =========================================================
+   * BUSCA
+   * =========================================================
+   */
 
   const [
     searchOpen,
@@ -215,9 +254,7 @@ export function Shell() {
     );
 
   const cinema =
-    pathname.startsWith(
-      "/watch",
-    );
+    pathname.startsWith("/watch");
 
   const nav =
     user &&
@@ -231,16 +268,16 @@ export function Shell() {
             label: "Admin",
             icon: Settings2,
             match: (p: string) =>
-              p.startsWith(
-                "/admin",
-              ),
+              p.startsWith("/admin"),
           },
         ]
       : BASE_NAV;
 
-  /* =========================================================
-     BUSCA AUTOMÁTICA
-  ========================================================== */
+  /*
+   * =========================================================
+   * BUSCA AUTOMÁTICA
+   * =========================================================
+   */
 
   useEffect(() => {
     const q = searchQuery.trim();
@@ -253,108 +290,166 @@ export function Shell() {
 
     let cancelled = false;
 
-    const timer = window.setTimeout(async () => {
-      setSearchLoading(true);
+    const timer =
+      window.setTimeout(
+        async () => {
+          setSearchLoading(true);
 
-      try {
-        const result = await searchCatalog({
-          data: {
-            q,
-            page: 1,
-          },
-        });
+          try {
+            const result =
+              await searchCatalog({
+                data: {
+                  q,
+                  page: 1,
+                },
+              });
 
-        if (cancelled) return;
+            if (cancelled) return;
 
-        const normalized = q
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase();
+            const normalized =
+              q
+                .normalize("NFD")
+                .replace(
+                  /[\u0300-\u036f]/g,
+                  "",
+                )
+                .toLowerCase();
 
-        const localHits = overlayList(
-          [],
-          localAnimes,
-        ).filter((anime) => {
-          const title =
-            `${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
+            const localHits =
+              overlayList(
+                [],
+                localAnimes,
+              ).filter((anime) => {
+                const title =
+                  `${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
+                    .normalize("NFD")
+                    .replace(
+                      /[\u0300-\u036f]/g,
+                      "",
+                    )
+                    .toLowerCase();
 
-          return title.includes(normalized);
-        });
+                return title.includes(
+                  normalized,
+                );
+              });
 
-        const remote = overlayList(
-          result.items ?? [],
-          localAnimes,
-        );
+            const remote =
+              overlayList(
+                result.items ?? [],
+                localAnimes,
+              );
 
-        const seen = new Set<string>();
-        const merged: SlimAnime[] = [];
+            const seen =
+              new Set<string>();
 
-        for (const anime of [
-          ...localHits,
-          ...remote,
-        ]) {
-          if (seen.has(anime.id)) continue;
+            const merged: SlimAnime[] =
+              [];
 
-          seen.add(anime.id);
-          merged.push(anime);
-        }
+            for (const anime of [
+              ...localHits,
+              ...remote,
+            ]) {
+              if (
+                seen.has(anime.id)
+              ) {
+                continue;
+              }
 
-        const ranked = merged.sort((a, b) => {
-          const aTitle =
-            `${a.titles.romaji} ${a.titles.english} ${a.titles.native}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
+              seen.add(anime.id);
+              merged.push(anime);
+            }
 
-          const bTitle =
-            `${b.titles.romaji} ${b.titles.english} ${b.titles.native}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
+            const ranked =
+              merged.sort(
+                (a, b) => {
+                  const aTitle =
+                    `${a.titles.romaji} ${a.titles.english} ${a.titles.native}`
+                      .normalize("NFD")
+                      .replace(
+                        /[\u0300-\u036f]/g,
+                        "",
+                      )
+                      .toLowerCase();
 
-          const aStarts =
-            aTitle.startsWith(
-              normalized,
+                  const bTitle =
+                    `${b.titles.romaji} ${b.titles.english} ${b.titles.native}`
+                      .normalize("NFD")
+                      .replace(
+                        /[\u0300-\u036f]/g,
+                        "",
+                      )
+                      .toLowerCase();
+
+                  const aStarts =
+                    aTitle.startsWith(
+                      normalized,
+                    );
+
+                  const bStarts =
+                    bTitle.startsWith(
+                      normalized,
+                    );
+
+                  if (
+                    aStarts &&
+                    !bStarts
+                  ) {
+                    return -1;
+                  }
+
+                  if (
+                    !aStarts &&
+                    bStarts
+                  ) {
+                    return 1;
+                  }
+
+                  const aContains =
+                    aTitle.includes(
+                      normalized,
+                    );
+
+                  const bContains =
+                    bTitle.includes(
+                      normalized,
+                    );
+
+                  if (
+                    aContains &&
+                    !bContains
+                  ) {
+                    return -1;
+                  }
+
+                  if (
+                    !aContains &&
+                    bContains
+                  ) {
+                    return 1;
+                  }
+
+                  return 0;
+                },
+              );
+
+            setSearchResults(
+              ranked,
             );
-
-          const bStarts =
-            bTitle.startsWith(
-              normalized,
-            );
-
-          if (aStarts && !bStarts) return -1;
-          if (!aStarts && bStarts) return 1;
-
-          const aContains =
-            aTitle.includes(
-              normalized,
-            );
-
-          const bContains =
-            bTitle.includes(
-              normalized,
-            );
-
-          if (aContains && !bContains) return -1;
-          if (!aContains && bContains) return 1;
-
-          return 0;
-        });
-
-        setSearchResults(ranked);
-      } catch {
-        if (!cancelled) {
-          setSearchResults([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setSearchLoading(false);
-        }
-      }
-    }, 300);
+          } catch {
+            if (!cancelled) {
+              setSearchResults([]);
+            }
+          } finally {
+            if (!cancelled) {
+              setSearchLoading(
+                false,
+              );
+            }
+          }
+        },
+        300,
+      );
 
     return () => {
       cancelled = true;
@@ -366,9 +461,11 @@ export function Shell() {
     localAnimes,
   ]);
 
-  /* =========================================================
-     NOTIFICAÇÕES
-  ========================================================== */
+  /*
+   * =========================================================
+   * NOTIFICAÇÕES
+   * =========================================================
+   */
 
   useEffect(() => {
     if (!user) {
@@ -411,7 +508,7 @@ export function Shell() {
             ),
           );
         } catch {
-          // Mantém o estado atual caso a API esteja indisponível.
+          // Mantém estado atual.
         }
       };
 
@@ -442,7 +539,10 @@ export function Shell() {
             notification.id === id,
         );
 
-      if (!target || target.read) {
+      if (
+        !target ||
+        target.read
+      ) {
         return;
       }
 
@@ -461,7 +561,10 @@ export function Shell() {
 
       setUnreadCount(
         (current) =>
-          Math.max(0, current - 1),
+          Math.max(
+            0,
+            current - 1,
+          ),
       );
 
       try {
@@ -495,7 +598,7 @@ export function Shell() {
           ),
         );
       } catch {
-        // Mantém a alteração visual.
+        // Mantém alteração visual.
       }
     };
 
@@ -539,13 +642,19 @@ export function Shell() {
           ),
         );
       } catch {
-        // Mantém os dados atuais.
+        // Mantém dados atuais.
       } finally {
         setNotificationsLoading(
           false,
         );
       }
     };
+
+  /*
+   * =========================================================
+   * PLAYER / WATCH
+   * =========================================================
+   */
 
   if (cinema) {
     return <Outlet />;
@@ -554,22 +663,33 @@ export function Shell() {
   return (
     <div className="min-h-dvh bg-bg text-fg">
 
-      {/* =========================================================
-          BARRA LATERAL DESKTOP
-      ========================================================== */}
+      {/* =====================================================
+          HEADER
+          ===================================================== */}
 
-      <aside className="fixed inset-y-0 left-0 z-50 hidden w-60 border-r border-border bg-bg md:flex md:flex-col">
+      <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
 
-        {/* LOGO */}
-        <div className="flex h-16 shrink-0 items-center border-b border-border px-5">
+          {/* MENU */}
+          <button
+            type="button"
+            onClick={() =>
+              setMenuOpen(true)
+            }
+            className="flex size-11 items-center justify-center rounded-md text-fg hover:bg-elevated"
+            aria-label="Abrir menu"
+            aria-expanded={
+              menuOpen
+            }
+          >
+            <Menu className="size-6" />
+          </button>
+
+          {/* LOGO */}
           <Logo />
-        </div>
 
-        {/* NAVEGAÇÃO */}
-        <nav className="flex-1 overflow-y-auto p-3">
-
-          <div className="space-y-1">
-
+          {/* NAVEGAÇÃO DESKTOP */}
+          <nav className="hidden items-center gap-1 md:flex">
             {nav.map(
               (item) => {
                 const active =
@@ -577,154 +697,25 @@ export function Shell() {
                     pathname,
                   );
 
-                const Icon =
-                  item.icon;
-
                 return (
                   <Link
                     key={item.to}
                     to={item.to}
                     className={cn(
-                      "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
+                      "inline-flex h-11 items-center px-3 text-sm transition-colors",
                       active
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
+                        ? "text-fg"
+                        : "text-muted hover:text-fg",
                     )}
                   >
-                    <Icon className="size-5 shrink-0" />
-
-                    <span>
-                      {item.label}
-                    </span>
+                    {item.label}
                   </Link>
                 );
               },
             )}
+          </nav>
 
-            {/* BUSCAR */}
-            <button
-              type="button"
-              onClick={() =>
-                setSearchOpen(true)
-              }
-              className={cn(
-                "flex h-11 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
-                searchOpen
-                  ? "bg-elevated text-fg"
-                  : "text-muted hover:bg-elevated hover:text-fg",
-              )}
-            >
-              <Search className="size-5 shrink-0" />
-
-              <span>
-                Buscar
-              </span>
-            </button>
-
-            {/* PERFIL PÚBLICO */}
-            {user && profileNick && (
-              <Link
-                to="/profile/$nick"
-                params={{
-                  nick: profileNick,
-                }}
-                className={cn(
-                  "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
-                  pathname ===
-                    `/profile/${profileNick}`
-                    ? "bg-elevated text-fg"
-                    : "text-muted hover:bg-elevated hover:text-fg",
-                )}
-              >
-                <UserCircle className="size-5 shrink-0" />
-
-                <span>
-                  Meu perfil público
-                </span>
-              </Link>
-            )}
-
-            {/* CONFIGURAÇÕES */}
-            <Link
-              to="/settings"
-              className={cn(
-                "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
-                pathname.startsWith(
-                  "/settings",
-                )
-                  ? "bg-elevated text-fg"
-                  : "text-muted hover:bg-elevated hover:text-fg",
-              )}
-            >
-              <Settings2 className="size-5 shrink-0" />
-
-              <span>
-                Configurações
-              </span>
-            </Link>
-
-            {/* +18 */}
-            <Link
-              to={ADULT_NAV.to}
-              className={cn(
-                "flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
-                ADULT_NAV.match(
-                  pathname,
-                )
-                  ? "bg-elevated text-fg"
-                  : "text-muted hover:bg-elevated hover:text-fg",
-              )}
-            >
-              <span className="flex size-5 shrink-0 items-center justify-center text-base">
-                🔞
-              </span>
-
-              <span>
-                +18
-              </span>
-            </Link>
-
-          </div>
-        </nav>
-
-        {/* RODAPÉ DA BARRA */}
-        <div className="shrink-0 border-t border-border px-4 py-4">
-          <p className="text-[10px] text-subtle">
-            Hikari 光
-          </p>
-        </div>
-
-      </aside>
-
-      {/* =========================================================
-          HEADER
-      ========================================================== */}
-
-      <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md md:ml-60">
-
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
-
-          {/* MENU MOBILE */}
-          <button
-            type="button"
-            onClick={() =>
-              setMenuOpen(true)
-            }
-            className="flex size-11 items-center justify-center rounded-md text-fg hover:bg-elevated md:hidden"
-            aria-label="Abrir menu"
-          >
-            <Menu className="size-6" />
-          </button>
-
-          {/* LOGO MOBILE */}
-          <div className="md:hidden">
-            <Logo />
-          </div>
-
-          {/* ESPAÇO NO DESKTOP */}
-          <div className="hidden md:block" />
-
-          {/* AÇÕES DA DIREITA */}
+          {/* AÇÕES */}
           <div className="flex items-center gap-1">
 
             {/* NOTIFICAÇÕES DESKTOP */}
@@ -750,7 +741,7 @@ export function Shell() {
               <Bell className="size-5" />
 
               {unreadCount > 0 && (
-                <span className="absolute right-0.5 top-0.5 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg">
+                <span className="absolute right-0.5 top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg">
                   {unreadCount > 99
                     ? "99+"
                     : unreadCount}
@@ -758,15 +749,15 @@ export function Shell() {
               )}
             </button>
 
-            {/* BUSCA MOBILE */}
+            {/* BUSCA */}
             <button
               type="button"
-              onClick={() => {
+              onClick={() =>
                 setSearchOpen(
                   (value) => !value,
-                );
-              }}
-              className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
+                )
+              }
+              className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
               aria-label="Buscar"
               aria-expanded={
                 searchOpen
@@ -798,21 +789,20 @@ export function Shell() {
               <Bell className="size-5" />
 
               {unreadCount > 0 && (
-                <span className="absolute right-0.5 top-0.5 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg">
+                <span className="absolute right-0.5 top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg">
                   {unreadCount > 99
                     ? "99+"
                     : unreadCount}
                 </span>
               )}
             </button>
-
           </div>
         </div>
       </header>
 
-      {/* =========================================================
-          PAINEL DE BUSCA
-      ========================================================== */}
+      {/* =====================================================
+          BUSCA
+          ===================================================== */}
 
       {searchOpen && (
         <>
@@ -825,7 +815,7 @@ export function Shell() {
             aria-label="Fechar busca"
           />
 
-          <div className="fixed left-4 right-4 top-16 z-50 mx-auto max-w-2xl overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:left-[17rem] md:right-auto md:w-[calc(100%-19rem)]">
+          <div className="fixed left-4 right-4 top-16 z-50 mx-auto max-w-2xl overflow-hidden rounded-xl border border-border bg-bg shadow-2xl">
 
             <div className="border-b border-border p-3">
               <div className="relative">
@@ -856,12 +846,10 @@ export function Shell() {
                   </div>
                 ) : searchResults.length ===
                   0 ? (
-
                   <div className="px-4 py-8 text-center text-sm text-muted">
                     Nenhum anime encontrado.
                   </div>
                 ) : (
-
                   <div>
 
                     {searchResults
@@ -874,8 +862,7 @@ export function Shell() {
                             }
                             to="/anime/$id"
                             params={{
-                              id:
-                                anime.id,
+                              id: anime.id,
                             }}
                             onClick={() =>
                               setSearchOpen(
@@ -955,9 +942,9 @@ export function Shell() {
         </>
       )}
 
-      {/* =========================================================
-          PAINEL DE NOTIFICAÇÕES
-      ========================================================== */}
+      {/* =====================================================
+          NOTIFICAÇÕES
+          ===================================================== */}
 
       {notificationsOpen && (
         <>
@@ -975,6 +962,7 @@ export function Shell() {
           <div className="fixed right-4 top-16 z-50 flex max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-sm flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:right-6 md:top-20">
 
             <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-4">
+
               <div>
                 <h2 className="font-semibold">
                   Notificações
@@ -997,6 +985,7 @@ export function Shell() {
               >
                 <X className="size-5" />
               </button>
+
             </div>
 
             {notificationsLoading ? (
@@ -1007,9 +996,10 @@ export function Shell() {
               </div>
             ) : notifications.length ===
               0 ? (
-
               <div className="flex min-h-32 flex-1 items-center justify-center px-5 py-8 text-center">
+
                 <div>
+
                   <Bell className="mx-auto mb-3 size-7 text-muted" />
 
                   <p className="text-sm font-medium">
@@ -1019,10 +1009,11 @@ export function Shell() {
                   <p className="mt-1 text-xs text-muted">
                     Quando alguém interagir com seu perfil, aparecerá aqui.
                   </p>
+
                 </div>
+
               </div>
             ) : (
-
               <div className="min-h-0 flex-1 overflow-y-auto">
 
                 {notifications
@@ -1082,6 +1073,7 @@ export function Shell() {
                                 "border-l-4 border-l-blue-500 bg-blue-500/10",
                             )}
                           >
+
                             <div className="flex gap-3">
 
                               {notification.actorImage ? (
@@ -1175,6 +1167,7 @@ export function Shell() {
                                         ? "curtida"
                                         : "curtidas"}
                                     </span>
+
                                   </div>
                                 )}
 
@@ -1213,6 +1206,7 @@ export function Shell() {
                                         )}
 
                                     </div>
+
                                   </div>
                                 )}
 
@@ -1222,11 +1216,13 @@ export function Shell() {
                                   !notification.animeCover &&
                                   !notification.animeTitle && (
                                     <div className="mt-2">
+
                                       <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
                                         {notification.commentId
                                           ? "Ver comentário"
                                           : "Ver episódio"}
                                       </span>
+
                                     </div>
                                   )}
 
@@ -1243,6 +1239,7 @@ export function Shell() {
                                     },
                                   )}
                                 </p>
+
                               </div>
 
                               {!notification.read && (
@@ -1250,6 +1247,7 @@ export function Shell() {
                               )}
 
                             </div>
+
                           </div>
                         );
 
@@ -1315,7 +1313,6 @@ export function Shell() {
               </div>
             )}
 
-            {/* VER TODAS AS NOTIFICAÇÕES */}
             {!notificationsLoading &&
               notifications.length > 0 && (
                 <Link
@@ -1335,12 +1332,19 @@ export function Shell() {
         </>
       )}
 
-      {/* =========================================================
-          MENU LATERAL MOBILE
-      ========================================================== */}
+      {/* =====================================================
+          MENU LATERAL
+          
+          IMPORTANTE:
+          - NÃO ocupa espaço no layout.
+          - Fica por cima do conteúdo.
+          - Começa fechado.
+          - Possui X para fechar.
+          ===================================================== */}
 
       {menuOpen && (
         <>
+          {/* FUNDO ESCURO */}
           <button
             type="button"
             onClick={() =>
@@ -1350,24 +1354,64 @@ export function Shell() {
             aria-label="Fechar menu"
           />
 
-          <aside className="fixed inset-y-0 left-0 z-[60] w-[82%] max-w-sm bg-bg shadow-2xl md:hidden">
+          {/* BARRA LATERAL */}
+          <aside
+            className="
+              fixed
+              inset-y-0
+              left-0
+              z-[60]
+              w-[82%]
+              max-w-sm
+              bg-bg
+              shadow-2xl
+              md:w-64
+              md:max-w-none
+            "
+          >
 
-            <div className="flex h-20 items-center justify-between border-b border-border px-5">
+            {/* CABEÇALHO DA BARRA */}
+            <div
+              className="
+                flex
+                h-20
+                items-center
+                justify-between
+                border-b
+                border-border
+                px-5
+              "
+            >
+
               <Logo />
 
+              {/* X PARA FECHAR */}
               <button
                 type="button"
                 onClick={() =>
                   setMenuOpen(false)
                 }
-                className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
+                className="
+                  flex
+                  size-11
+                  shrink-0
+                  items-center
+                  justify-center
+                  rounded-md
+                  text-muted
+                  hover:bg-elevated
+                  hover:text-fg
+                "
                 aria-label="Fechar menu"
               >
                 <X className="size-6" />
               </button>
+
             </div>
 
-            <nav className="p-4">
+            {/* ITENS */}
+            <nav className="p-3 md:p-4">
+
               <div className="space-y-1">
 
                 {nav.map(
@@ -1390,15 +1434,17 @@ export function Shell() {
                           )
                         }
                         className={cn(
-                          "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                          "flex items-center gap-4 rounded-lg px-4 py-3.5 text-base font-medium transition-colors",
                           active
                             ? "bg-elevated text-fg"
                             : "text-muted hover:bg-elevated hover:text-fg",
                         )}
                       >
-                        <Icon className="size-5" />
+                        <Icon className="size-5 shrink-0" />
 
-                        {item.label}
+                        <span>
+                          {item.label}
+                        </span>
                       </Link>
                     );
                   },
@@ -1408,12 +1454,32 @@ export function Shell() {
                 <button
                   type="button"
                   onClick={() => {
-                    setMenuOpen(false);
-                    setSearchOpen(true);
+                    setMenuOpen(
+                      false,
+                    );
+
+                    setSearchOpen(
+                      true,
+                    );
                   }}
-                  className="flex w-full items-center gap-4 rounded-lg px-4 py-4 text-base font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+                  className="
+                    flex
+                    w-full
+                    items-center
+                    gap-4
+                    rounded-lg
+                    px-4
+                    py-3.5
+                    text-left
+                    text-base
+                    font-medium
+                    text-muted
+                    transition-colors
+                    hover:bg-elevated
+                    hover:text-fg
+                  "
                 >
-                  <Search className="size-5" />
+                  <Search className="size-5 shrink-0" />
 
                   <span>
                     Buscar
@@ -1421,39 +1487,44 @@ export function Shell() {
                 </button>
 
                 {/* PERFIL PÚBLICO */}
-                {user && profileNick && (
-                  <Link
-                    to="/profile/$nick"
-                    params={{
-                      nick: profileNick,
-                    }}
-                    onClick={() =>
-                      setMenuOpen(false)
-                    }
-                    className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      pathname ===
-                        `/profile/${profileNick}`
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
-                    )}
-                  >
-                    <UserCircle className="size-5" />
+                {user &&
+                  profileNick && (
+                    <Link
+                      to="/profile/$nick"
+                      params={{
+                        nick: profileNick,
+                      }}
+                      onClick={() =>
+                        setMenuOpen(
+                          false,
+                        )
+                      }
+                      className={cn(
+                        "flex items-center gap-4 rounded-lg px-4 py-3.5 text-base font-medium transition-colors",
+                        pathname ===
+                          `/profile/${profileNick}`
+                          ? "bg-elevated text-fg"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      <UserCircle className="size-5 shrink-0" />
 
-                    <span>
-                      Meu perfil público
-                    </span>
-                  </Link>
-                )}
+                      <span>
+                        Meu perfil público
+                      </span>
+                    </Link>
+                  )}
 
                 {/* CONFIGURAÇÕES */}
                 <Link
                   to="/settings"
                   onClick={() =>
-                    setMenuOpen(false)
+                    setMenuOpen(
+                      false,
+                    )
                   }
                   className={cn(
-                    "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                    "flex items-center gap-4 rounded-lg px-4 py-3.5 text-base font-medium transition-colors",
                     pathname.startsWith(
                       "/settings",
                     )
@@ -1461,12 +1532,41 @@ export function Shell() {
                       : "text-muted hover:bg-elevated hover:text-fg",
                   )}
                 >
-                  <Settings2 className="size-5" />
+                  <Settings2 className="size-5 shrink-0" />
 
                   <span>
                     Configurações
                   </span>
                 </Link>
+
+                {/* ADMIN */}
+                {user &&
+                  isHikariAdmin(
+                    user.primaryEmail,
+                  ) && (
+                    <Link
+                      to="/admin"
+                      onClick={() =>
+                        setMenuOpen(
+                          false,
+                        )
+                      }
+                      className={cn(
+                        "flex items-center gap-4 rounded-lg px-4 py-3.5 text-base font-medium transition-colors",
+                        pathname.startsWith(
+                          "/admin",
+                        )
+                          ? "bg-elevated text-fg"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      <Settings2 className="size-5 shrink-0" />
+
+                      <span>
+                        Admin
+                      </span>
+                    </Link>
+                  )}
 
                 {/* +18 */}
                 <Link
@@ -1477,7 +1577,7 @@ export function Shell() {
                     )
                   }
                   className={cn(
-                    "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                    "flex items-center gap-4 rounded-lg px-4 py-3.5 text-base font-medium transition-colors",
                     ADULT_NAV.match(
                       pathname,
                     )
@@ -1485,7 +1585,7 @@ export function Shell() {
                       : "text-muted hover:bg-elevated hover:text-fg",
                   )}
                 >
-                  <span className="flex size-5 items-center justify-center text-base">
+                  <span className="flex size-5 shrink-0 items-center justify-center text-base">
                     🔞
                   </span>
 
@@ -1495,24 +1595,27 @@ export function Shell() {
                 </Link>
 
               </div>
+
             </nav>
+
           </aside>
         </>
       )}
 
-      {/* =========================================================
+      {/* =====================================================
           CONTEÚDO PRINCIPAL
-      ========================================================== */}
+          ===================================================== */}
 
-      <main className="mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8 md:ml-60 md:max-w-[calc(100%-15rem)]">
+      <main className="mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8">
         <Outlet />
       </main>
 
-      {/* =========================================================
+      {/* =====================================================
           FOOTER
-      ========================================================== */}
+          ===================================================== */}
 
-      <footer className="mx-auto hidden max-w-6xl items-center justify-between px-6 py-8 text-xs text-subtle md:ml-60 md:flex md:max-w-[calc(100%-15rem)]">
+      <footer className="mx-auto hidden max-w-6xl items-center justify-between px-6 py-8 text-xs text-subtle md:flex">
+
         <p>
           Hikari 光 — catálogo via AniList, com MyAnimeList como reserva.
         </p>
@@ -1522,8 +1625,9 @@ export function Shell() {
 
           Trailers e episódios com URL própria
         </p>
+
       </footer>
 
     </div>
   );
-        }
+      }
