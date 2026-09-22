@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
+import Hls from "hls.js";
 import {
   useEffect,
   useMemo,
@@ -44,6 +45,9 @@ import {
   displayTitle,
   type Episode,
 } from "@/lib/types";
+
+const HIKARI_PLAYER_2_HLS_URL =
+  "https://vz-cbb522b4-0b4.b-cdn.net/837caf3d-8f05-4a02-b63e-0909c12dc041/playlist.m3u8";
 
 export const Route = createFileRoute("/watch/$id")({
   validateSearch: (
@@ -168,7 +172,7 @@ function WatchPage() {
   const playerUrls = useMemo(
     () => [
       current?.videoUrl,
-      current?.videoUrl2,
+      HIKARI_PLAYER_2_HLS_URL,
       current?.videoUrl3,
     ],
     [current],
@@ -197,6 +201,43 @@ function WatchPage() {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
+
+  // Player 2 usa Bunny Stream via HLS. Player 1 continua usando
+  // exatamente a fonte direta atual.
+  const hlsUrl =
+    playerIndex === 1
+      ? HIKARI_PLAYER_2_HLS_URL
+      : null;
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video || !hlsUrl) {
+      return;
+    }
+
+    let hls: Hls | null = null;
+
+    if (Hls.isSupported()) {
+      hls = new Hls();
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(video);
+    } else if (
+      video.canPlayType(
+        "application/vnd.apple.mpegurl",
+      )
+    ) {
+      video.src = hlsUrl;
+    }
+
+    return () => {
+      hls?.destroy();
+
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [hlsUrl]);
 
   const clearControlsHideTimer = () => {
     if (controlsHideTimeoutRef.current) {
@@ -390,10 +431,16 @@ function WatchPage() {
       ? playUrl
       : null;
 
+  const hlsSource =
+    playerIndex === 1
+      ? HIKARI_PLAYER_2_HLS_URL
+      : null;
+
   const external =
     playUrl &&
     !yt &&
-    !file
+    !file &&
+    !hlsSource
       ? playUrl
       : null;
 
@@ -488,11 +535,11 @@ function WatchPage() {
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
-          ) : file ? (
+          ) : file || hlsSource ? (
             <>
               <video
                 ref={videoRef}
-                src={file}
+                src={file ?? undefined}
                 autoPlay={autoPlayEnabled}
                 playsInline
                 disablePictureInPicture
@@ -4376,4 +4423,4 @@ function CommentCard({
 
     </article>
   );
-      }
+    }
