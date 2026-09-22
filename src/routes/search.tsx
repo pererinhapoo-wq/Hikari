@@ -182,8 +182,16 @@ function SearchPage() {
     );
 
   /*
-   * Detecta somente um recarregamento
-   * real da página.
+   * =========================================================
+   * RELOAD REAL DA PÁGINA
+   * =========================================================
+   *
+   * O performance.navigation.type sozinho não é suficiente,
+   * porque o TanStack Router pode reutilizar a rota durante
+   * uma navegação interna.
+   *
+   * Esta marca existe somente durante o carregamento atual
+   * do documento.
    */
   const [
     clearingOnReload,
@@ -202,10 +210,30 @@ function SearchPage() {
         | PerformanceNavigationTiming
         | undefined;
 
-    return (
-      navigation?.type ===
-      "reload"
-    );
+    const alreadyHandled =
+      Boolean(
+        (
+          window as Window & {
+            __hikariSearchReloadHandled?: boolean;
+          }
+        ).__hikariSearchReloadHandled,
+      );
+
+    if (
+      navigation?.type === "reload" &&
+      !alreadyHandled
+    ) {
+      (
+        window as Window & {
+          __hikariSearchReloadHandled?: boolean;
+        }
+      ).__hikariSearchReloadHandled =
+        true;
+
+      return true;
+    }
+
+    return false;
   });
 
   const [
@@ -225,9 +253,18 @@ function SearchPage() {
         | PerformanceNavigationTiming
         | undefined;
 
+    const alreadyHandled =
+      Boolean(
+        (
+          window as Window & {
+            __hikariSearchReloadHandled?: boolean;
+          }
+        ).__hikariSearchReloadHandled,
+      );
+
     if (
-      navigation?.type ===
-      "reload"
+      navigation?.type === "reload" &&
+      !alreadyHandled
     ) {
       return "";
     }
@@ -245,13 +282,10 @@ function SearchPage() {
 
   /*
    * =========================================================
-   * LIMPAR BUSCA APENAS NO RELOAD
+   * LIMPAR BUSCA SOMENTE NO RELOAD REAL
    * =========================================================
    *
-   * Se a página foi recarregada dentro de um gênero,
-   * preservamos o gênero.
-   *
-   * Se não havia gênero, a URL fica simplesmente /search.
+   * O gênero é preservado.
    */
   useEffect(() => {
     if (!clearingOnReload) {
@@ -266,9 +300,9 @@ function SearchPage() {
           search.genre,
       },
       replace: true,
-    }).finally(() => {
-      setClearingOnReload(false);
     });
+
+    setClearingOnReload(false);
   }, [
     clearingOnReload,
     navigate,
@@ -299,8 +333,8 @@ function SearchPage() {
    * BUSCA AUTOMÁTICA
    * =========================================================
    *
-   * Continua automática.
    * Não precisa apertar Enter.
+   * Não precisa apertar o botão físico do celular.
    */
   useEffect(() => {
     if (clearingOnReload) {
@@ -311,7 +345,7 @@ function SearchPage() {
       draft.trim();
 
     /*
-     * Não dispara busca para uma única letra.
+     * Não pesquisa uma única letra.
      */
     if (
       q.length > 0 &&
@@ -466,15 +500,12 @@ function SearchPage() {
     items.length > 0;
 
   /*
-   * IMPORTANTE:
+   * =========================================================
+   * GÊNERO + PESQUISA
+   * =========================================================
    *
-   * Se houver um gênero selecionado, a tela continua
-   * mostrando os animes mesmo quando q estiver vazio.
-   *
-   * Portanto:
-   *
-   * gênero + pesquisa = resultados da pesquisa
-   * gênero + pesquisa apagada = animes do gênero
+   * Se houver gênero, os resultados continuam aparecendo
+   * mesmo quando a pesquisa for apagada.
    */
   const hasQuery =
     Boolean(
