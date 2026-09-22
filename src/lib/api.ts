@@ -2758,6 +2758,17 @@ const browseSchema =
 
     page:
       z.number().optional(),
+
+    season:
+      z.enum([
+        "WINTER",
+        "SPRING",
+        "SUMMER",
+        "FALL",
+      ]).optional(),
+
+    year:
+      z.number().optional(),
   });
 
 export const fetchBrowse =
@@ -2774,8 +2785,19 @@ export const fetchBrowse =
         const page =
           data.page ?? 1;
 
+        const current =
+          currentAnimeSeason();
+
+        const season =
+          data.season ??
+          current.season;
+
+        const year =
+          data.year ??
+          current.year;
+
         const key =
-          `browse:${data.section}:${page}`;
+          `browse:${data.section}:${season}:${year}:${page}`;
 
         const cached =
           fromCache<SearchResult>(
@@ -2785,12 +2807,6 @@ export const fetchBrowse =
         if (cached) {
           return cached;
         }
-
-        const {
-          season,
-          year,
-        } =
-          currentAnimeSeason();
 
         const sortMap = {
           popular:
