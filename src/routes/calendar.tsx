@@ -1,6 +1,6 @@
 import {
   createFileRoute,
-  useNavigate,
+  Link,
 } from "@tanstack/react-router";
 
 import {
@@ -20,6 +20,7 @@ type AnimeSeason =
 type CalendarSearch = {
   season?: AnimeSeason;
   year?: number;
+  page?: number;
 };
 
 type AniMedia = {
@@ -92,6 +93,11 @@ const SEASONS: Array<{
     icon: "🍂",
   },
 ];
+
+const FIRST_YEAR = 2000;
+const LAST_YEAR = 2028;
+
+const ITEMS_PER_PAGE = 24;
 
 function getCurrentSeason(): {
   season: AnimeSeason;
@@ -320,6 +326,9 @@ export const Route =
       const rawYear =
         raw.year;
 
+      const rawPage =
+        raw.page;
+
       const validSeason =
         rawSeason === "WINTER" ||
         rawSeason === "SPRING" ||
@@ -333,6 +342,13 @@ export const Route =
             ? Number(rawYear)
             : NaN;
 
+      const parsedPage =
+        typeof rawPage === "number"
+          ? rawPage
+          : typeof rawPage === "string"
+            ? Number(rawPage)
+            : NaN;
+
       return {
         season: validSeason
           ? rawSeason
@@ -342,10 +358,18 @@ export const Route =
           Number.isInteger(
             parsedYear,
           ) &&
-          parsedYear >= 2000 &&
-          parsedYear <= 2100
+          parsedYear >= FIRST_YEAR &&
+          parsedYear <= LAST_YEAR
             ? parsedYear
             : current.year,
+
+        page:
+          Number.isInteger(
+            parsedPage,
+          ) &&
+          parsedPage >= 1
+            ? parsedPage
+            : 1,
       };
     },
 
@@ -363,6 +387,10 @@ export const Route =
         location.search
           .year;
 
+      const rawPage =
+        location.search
+          .page;
+
       const season =
         rawSeason === "WINTER" ||
         rawSeason === "SPRING" ||
@@ -378,10 +406,21 @@ export const Route =
         Number.isInteger(
           parsedYear,
         ) &&
-        parsedYear >= 2000 &&
-        parsedYear <= 2100
+        parsedYear >= FIRST_YEAR &&
+        parsedYear <= LAST_YEAR
           ? parsedYear
           : current.year;
+
+      const parsedPage =
+        Number(rawPage);
+
+      const page =
+        Number.isInteger(
+          parsedPage,
+        ) &&
+        parsedPage >= 1
+          ? parsedPage
+          : 1;
 
       const items =
         await fetchSeason(
@@ -393,6 +432,7 @@ export const Route =
         items,
         season,
         year,
+        page,
       };
     },
 
@@ -408,32 +448,28 @@ export const Route =
 
 function CalendarPending() {
   return (
-    <div className="space-y-6 py-6">
-
+    <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
       <div className="space-y-2">
         <div className="h-8 w-64 animate-pulse rounded bg-elevated" />
 
         <div className="h-4 w-80 animate-pulse rounded bg-elevated" />
       </div>
 
-      {/* ANO */}
-      <div className="h-14 animate-pulse rounded-xl bg-elevated" />
+      <div className="h-12 animate-pulse rounded-xl bg-elevated" />
 
-      {/* TEMPORADAS */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {Array.from(
           { length: 4 },
           (_, index) => (
             <div
               key={index}
-              className="h-12 animate-pulse rounded-lg bg-elevated"
+              className="h-12 animate-pulse rounded-xl bg-elevated"
             />
           ),
         )}
       </div>
 
-      {/* ANIMES */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {Array.from(
           { length: 12 },
           (_, index) => (
@@ -450,7 +486,6 @@ function CalendarPending() {
           ),
         )}
       </div>
-
     </div>
   );
 }
@@ -467,7 +502,6 @@ function CalendarError({
 
   return (
     <div className="mx-auto max-w-md py-24 text-center">
-
       <CalendarDays className="mx-auto size-10 text-muted" />
 
       <h1 className="mt-4 font-display text-2xl">
@@ -477,7 +511,6 @@ function CalendarError({
       <p className="mt-2 text-sm text-muted">
         {message}
       </p>
-
     </div>
   );
 }
@@ -487,10 +520,35 @@ function CalendarPage() {
     items,
     season,
     year,
-  } = Route.useLoaderData();
+    page,
+  } =
+    Route.useLoaderData();
 
-  const navigate =
-    useNavigate();
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        items.length /
+          ITEMS_PER_PAGE,
+      ),
+    );
+
+  const safePage =
+    Math.min(
+      Math.max(page, 1),
+      totalPages,
+    );
+
+  const startIndex =
+    (safePage - 1) *
+    ITEMS_PER_PAGE;
+
+  const visibleItems =
+    items.slice(
+      startIndex,
+      startIndex +
+        ITEMS_PER_PAGE,
+    );
 
   const currentSeason =
     SEASONS.find(
@@ -498,35 +556,17 @@ function CalendarPage() {
         item.value === season,
     );
 
-  /*
-   * Mostra todos os anos desde 2000
-   * até 2 anos à frente.
-   *
-   * Exemplo em 2026:
-   * 2028
-   * 2027
-   * 2026
-   * ...
-   * 2015
-   * ...
-   * 2000
-   */
-  const currentYear =
-    getCurrentSeason().year;
-
-  const years = Array.from(
-    {
-      length:
-        currentYear +
-        2 -
-        2000 +
-        1,
-    },
-    (_, index) =>
-      currentYear +
-      2 -
-      index,
-  );
+  const years =
+    Array.from(
+      {
+        length:
+          LAST_YEAR -
+          FIRST_YEAR +
+          1,
+      },
+      (_, index) =>
+        FIRST_YEAR + index,
+    );
 
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
@@ -537,8 +577,7 @@ function CalendarPage() {
 
       <section>
         <div className="flex items-center gap-3">
-
-          <div className="flex size-10 items-center justify-center rounded-xl bg-elevated">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-elevated">
             <CalendarDays className="size-5 text-fg" />
           </div>
 
@@ -551,7 +590,6 @@ function CalendarPage() {
               Confira os animes de cada temporada.
             </p>
           </div>
-
         </div>
       </section>
 
@@ -560,113 +598,86 @@ function CalendarPage() {
       ====================================================== */}
 
       <section className="space-y-3">
-
         <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
           Ano
         </p>
 
         <div className="relative">
-
           <select
-            aria-label="Selecionar ano"
             value={year}
-            onChange={(event) => {
-              const selectedYear =
-                Number(
-                  event.target.value,
-                );
-
-              void navigate({
-                to: "/calendar",
-                search: {
-                  season,
-                  year:
-                    selectedYear,
-                },
-              });
-            }}
-            className="
-              h-14
-              w-full
-              appearance-none
-              rounded-xl
-              border
-              border-border
-              bg-bg
-              px-4
-              pr-12
-              text-base
-              font-medium
-              text-fg
-              outline-none
-              transition-colors
-              focus:border-fg/30
-            "
-          >
-            {years.map(
-              (yearOption) => (
-                <option
-                  key={yearOption}
-                  value={yearOption}
-                  className="bg-bg text-fg"
-                >
-                  {yearOption}
-                </option>
-              ),
-            )}
-          </select>
-
-          <ChevronDown
-            className="
-              pointer-events-none
-              absolute
-              right-4
-              top-1/2
-              size-5
-              -translate-y-1/2
-              text-muted
-            "
+            onChange={() => {}}
+            className="pointer-events-none absolute inset-0 size-full opacity-0"
+            aria-hidden="true"
+            tabIndex={-1}
           />
 
-        </div>
+          <details className="group">
+            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between rounded-xl border border-border px-4 text-base font-medium text-fg transition-colors hover:bg-elevated sm:min-h-14 sm:px-5 sm:text-lg">
+              <span>{year}</span>
 
+              <ChevronDown className="size-5 text-muted transition-transform group-open:rotate-180" />
+            </summary>
+
+            <div className="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-border bg-elevated shadow-2xl">
+              {years.map(
+                (yearOption) => (
+                  <Link
+                    key={yearOption}
+                    to="/calendar"
+                    search={{
+                      season,
+                      year:
+                        yearOption,
+                      page: 1,
+                    }}
+                    className={[
+                      "flex min-h-12 items-center justify-between border-b border-border px-4 text-base transition-colors last:border-b-0 sm:min-h-14 sm:px-5 sm:text-lg",
+                      yearOption === year
+                        ? "bg-bg text-fg"
+                        : "text-muted hover:bg-bg hover:text-fg",
+                    ].join(" ")}
+                  >
+                    <span>
+                      {yearOption}
+                    </span>
+
+                    {yearOption ===
+                      year && (
+                      <span className="size-2.5 rounded-full bg-fg" />
+                    )}
+                  </Link>
+                ),
+              )}
+            </div>
+          </details>
+        </div>
       </section>
 
       {/* =====================================================
-          SELETOR DE TEMPORADA
+          TEMPORADAS
       ====================================================== */}
 
       <section className="space-y-3">
-
         <p className="text-xs font-semibold tracking-[0.16em] text-subtle uppercase">
           Temporada
         </p>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-
           {SEASONS.map(
             (item) => (
-              <a
+              <Link
                 key={item.value}
-                href={`/calendar?season=${item.value}&year=${year}`}
-                onClick={(event) => {
-                  event.preventDefault();
-
-                  void navigate({
-                    to: "/calendar",
-                    search: {
-                      season:
-                        item.value,
-                      year,
-                    },
-                  });
+                to="/calendar"
+                search={{
+                  season:
+                    item.value,
+                  year,
+                  page: 1,
                 }}
                 className={cnCalendarSeason(
-                  item.value ===
-                    season,
+                  item.value === season,
                 )}
               >
-
                 <span className="text-lg">
                   {item.icon}
                 </span>
@@ -674,25 +685,21 @@ function CalendarPage() {
                 <span>
                   {item.label}
                 </span>
-
-              </a>
+              </Link>
             ),
           )}
-
         </div>
-
       </section>
 
       {/* =====================================================
-          TÍTULO DA TEMPORADA
+          TÍTULO
       ====================================================== */}
 
       <section className="border-b border-border pb-4">
-
         <h2 className="font-display text-xl tracking-tight sm:text-2xl">
           Animes da temporada de{" "}
           {currentSeason?.label ??
-            "anime"}{" "}
+            "Anime"}{" "}
           {year}
         </h2>
 
@@ -700,29 +707,15 @@ function CalendarPage() {
           Confira a lista dos animes
           programados para esta temporada.
         </p>
-
       </section>
 
       {/* =====================================================
           LISTA DE ANIMES
       ====================================================== */}
 
-      {items.length > 0 ? (
-
-        <section
-          className="
-            grid
-            grid-cols-2
-            gap-x-3
-            gap-y-6
-            sm:grid-cols-3
-            md:grid-cols-4
-            lg:grid-cols-5
-            xl:grid-cols-6
-          "
-        >
-
-          {items.map(
+      {visibleItems.length > 0 ? (
+        <section className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {visibleItems.map(
             (anime) => (
               <AnimeCard
                 key={anime.id}
@@ -730,13 +723,9 @@ function CalendarPage() {
               />
             ),
           )}
-
         </section>
-
       ) : (
-
         <section className="rounded-xl border border-border bg-elevated/40 px-5 py-14 text-center">
-
           <CalendarDays className="mx-auto size-8 text-muted" />
 
           <h3 className="mt-3 font-medium">
@@ -747,11 +736,51 @@ function CalendarPage() {
             Não encontramos animes para
             esta temporada.
           </p>
-
         </section>
-
       )}
 
+      {/* =====================================================
+          PAGINAÇÃO
+      ====================================================== */}
+
+      {totalPages > 1 && (
+        <nav
+          className="flex flex-wrap items-center justify-center gap-2 pt-2"
+          aria-label="Paginação do calendário"
+        >
+          {Array.from(
+            {
+              length: totalPages,
+            },
+            (_, index) =>
+              index + 1,
+          ).map(
+            (pageNumber) => (
+              <Link
+                key={pageNumber}
+                to="/calendar"
+                search={{
+                  season,
+                  year,
+                  page:
+                    pageNumber,
+                }}
+                className={[
+                  "flex size-10 items-center justify-center rounded-lg border text-sm font-medium transition-colors",
+                  pageNumber ===
+                  safePage
+                    ? "border-fg/20 bg-elevated text-fg"
+                    : "border-border text-muted hover:bg-elevated hover:text-fg",
+                ].join(" ")}
+              >
+                {pageNumber}
+              </Link>
+            ),
+          )}
+        </nav>
+      )}
+
+      <div className="h-2" />
     </div>
   );
 }
@@ -765,13 +794,14 @@ function cnCalendarSeason(
     "items-center",
     "justify-center",
     "gap-2",
-    "rounded-lg",
+    "rounded-xl",
     "border",
     "px-4",
     "text-sm",
     "font-medium",
     "transition-colors",
-
+    "sm:min-h-14",
+    "sm:text-base",
     active
       ? "border-fg/20 bg-elevated text-fg"
       : "border-border text-muted hover:bg-elevated hover:text-fg",
