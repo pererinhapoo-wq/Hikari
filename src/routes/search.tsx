@@ -186,16 +186,10 @@ function SearchPage() {
    * INICIALIZAÇÃO
    * =========================================================
    *
-   * Começamos em "true" para impedir que o conteúdo normal
-   * apareça durante a primeira renderização.
-   *
-   * Isso evita o flash de:
-   *
-   * "Pesquise um anime"
-   * "Nada encontrado"
-   *
-   * antes do React descobrir o estado real da página.
+   * Mantemos a página bloqueada durante a primeira
+   * renderização para evitar o flash do estado vazio.
    */
+
   const [
     initializing,
     setInitializing,
@@ -253,11 +247,14 @@ function SearchPage() {
       );
     }
 
-    /*
-     * A primeira renderização terminou.
-     */
     setInitializing(false);
   }, []);
+
+  /*
+   * =========================================================
+   * CAMPO DE BUSCA
+   * =========================================================
+   */
 
   const [
     draft,
@@ -331,6 +328,8 @@ function SearchPage() {
    * =========================================================
    * BUSCA AUTOMÁTICA
    * =========================================================
+   *
+   * Não precisa apertar Enter.
    */
 
   useEffect(() => {
@@ -585,7 +584,8 @@ function SearchPage() {
    * BLOQUEIO DURANTE A INICIALIZAÇÃO
    * =========================================================
    *
-   * Este é o ponto que elimina o flash.
+   * Evita mostrar "Pesquise um anime" ou "Nada encontrado"
+   * durante o reload.
    */
 
   if (
@@ -1104,4 +1104,4 @@ function Field({
       {children}
     </label>
   );
-    }
+}
