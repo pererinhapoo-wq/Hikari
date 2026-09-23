@@ -297,20 +297,25 @@ function NewsPage() {
                       className="
                         relative
                         aspect-[16/9]
+                        w-full
                         overflow-hidden
-                        bg-elevated
+                        bg-black
+                        sm:aspect-[16/9]
                       "
                     >
                       <img
                         src={item.image}
                         alt={item.title}
                         className="
+                          absolute
+                          inset-0
                           h-full
                           w-full
-                          object-cover
+                          object-contain
+                          object-center
                           transition-transform
                           duration-300
-                          group-hover:scale-[1.02]
+                          group-hover:scale-[1.01]
                         "
                         loading="lazy"
                       />
@@ -560,4 +565,4 @@ function NewsPage() {
       </div>
     </main>
   );
-        }
+}
