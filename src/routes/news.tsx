@@ -285,7 +285,7 @@ function NewsPage() {
   ]);
 
   /* =========================================================
-     AÇÕES DA BUSCA
+     AÇÃO DA BUSCA
   ========================================================== */
 
   const handleSearchSubmit =
@@ -301,28 +301,11 @@ function NewsPage() {
         return;
       }
 
-      void navigate({
-        to: "/news/search",
-        search: {
-          q: query,
-          page: 1,
-        },
-      });
-    };
-
-  /*
-   * Abre TODOS os resultados da pesquisa
-   * na mesma aba.
-   */
-  const handleViewAllResults =
-    () => {
-      const query =
-        searchQuery.trim();
-
-      if (!query) {
-        return;
-      }
-
+      /*
+       * Pesquisa completa.
+       *
+       * Abre /news/search na mesma aba.
+       */
       void navigate({
         to: "/news/search",
         search: {
@@ -739,11 +722,12 @@ function NewsPage() {
 
                     {searchResults.length >
                       5 && (
-                      <button
-                        type="button"
-                        onClick={
-                          handleViewAllResults
-                        }
+                      <Link
+                        to="/news/search"
+                        search={{
+                          q: searchQuery.trim(),
+                          page: 1,
+                        }}
                         className="
                           flex
                           w-full
@@ -767,7 +751,7 @@ function NewsPage() {
                           searchResults.length
                         }
                         {")"}
-                      </button>
+                      </Link>
                     )}
                   </div>
                 )}
@@ -1183,4 +1167,4 @@ function NewsPage() {
       </div>
     </main>
   );
-        }
+  }
