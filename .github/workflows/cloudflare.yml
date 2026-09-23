@@ -16,11 +16,23 @@ jobs:
     steps:
       - name: Baixar repositorio
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Verificar arquivo no Git
+      - name: Verificar arquivo news no Git
         run: |
+          echo "Commit atual:"
           git rev-parse HEAD
-          git ls-tree -r HEAD --name-only | grep '^src/routes/news.tsx$'
+
+          echo ""
+          echo "Verificando news.tsx diretamente no commit:"
+          git cat-file -e HEAD:src/routes/news.tsx
+
+          echo ""
+          echo "Arquivo news.tsx encontrado no commit."
+          git show --stat --oneline HEAD
+          echo ""
+          git ls-tree HEAD src/routes/news.tsx
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
@@ -35,13 +47,16 @@ jobs:
         run: npx tsr --version
 
       - name: Verificar arquivo news
-        run: ls -la src/routes/news.tsx
+        run: |
+          test -f src/routes/news.tsx
+          echo "news.tsx encontrado no workspace."
 
       - name: Gerar rotas
         run: npm run generate-routes
 
       - name: Verificar rota news
-        run: grep -n 'news' src/routeTree.gen.ts
+        run: |
+          grep -n 'news' src/routeTree.gen.ts
 
       - name: Build Cloudflare
         run: npm run build:cloudflare
