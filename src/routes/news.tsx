@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 
 import {
-  useEffect,
   useMemo,
   useState,
   type FormEvent,
@@ -226,11 +225,11 @@ function NewsPage() {
       searchQuery,
     ]);
 
+  /*
+   * Mostra TODOS os resultados.
+   */
   const newsSearchResults =
-    searchResults.slice(
-      0,
-      10,
-    );
+    searchResults;
 
   const totalPages =
     Math.max(
@@ -240,6 +239,10 @@ function NewsPage() {
           NEWS_PER_PAGE,
       ),
     );
+
+  /* =========================================================
+     SINCRONIZAÇÃO DA PAGINAÇÃO
+  ========================================================== */
 
   useEffect(() => {
     if (
@@ -277,6 +280,10 @@ function NewsPage() {
     navigate,
   ]);
 
+  /* =========================================================
+     AÇÕES DA BUSCA
+  ========================================================== */
+
   const handleSearchSubmit =
     (
       event: FormEvent<HTMLFormElement>,
@@ -288,6 +295,10 @@ function NewsPage() {
     setSearchOpen(false);
     setSearchQuery("");
   };
+
+  /* =========================================================
+     NOTÍCIAS VISÍVEIS
+  ========================================================== */
 
   const visibleNews =
     useMemo(() => {
@@ -304,6 +315,10 @@ function NewsPage() {
       news,
       currentPage,
     ]);
+
+  /* =========================================================
+     PAGINAÇÃO
+  ========================================================== */
 
   const goToPage = (
     page: number,
