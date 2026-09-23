@@ -14,6 +14,13 @@ import {
 } from "@/lib/news-api";
 
 export const Route = createFileRoute("/news")({
+  validateSearch: (search) => ({
+    page: Math.max(
+      1,
+      Number(search.page) || 1,
+    ),
+  }),
+
   loader: async () => {
     return await fetchAutomaticNews();
   },
@@ -32,7 +39,6 @@ function parseNewsDate(date: string) {
     .trim()
     .toLowerCase();
 
-  // Formato: DD/MM/YYYY
   const numericMatch = normalized.match(
     /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
   );
@@ -48,7 +54,6 @@ function parseNewsDate(date: string) {
     ).getTime();
   }
 
-  // Formato: DD de mês de YYYY
   const monthNames: Record<
     string,
     number
@@ -87,7 +92,6 @@ function parseNewsDate(date: string) {
     }
   }
 
-  // Fallback para outros formatos de data
   const parsed = Date.parse(date);
 
   if (!Number.isNaN(parsed)) {
@@ -101,8 +105,11 @@ function NewsPage() {
   const loaderNews =
     Route.useLoaderData() as AutomaticNewsItem[];
 
+  const { page: urlPage } =
+    Route.useSearch();
+
   const [currentPage, setCurrentPage] =
-    useState(1);
+    useState(urlPage);
 
   const news = useMemo(() => {
     return [...(loaderNews ?? [])].sort(
@@ -118,6 +125,17 @@ function NewsPage() {
       news.length / NEWS_PER_PAGE,
     ),
   );
+
+  useEffect(() => {
+    if (
+      currentPage !== urlPage
+    ) {
+      setCurrentPage(urlPage);
+    }
+  }, [
+    urlPage,
+    currentPage,
+  ]);
 
   useEffect(() => {
     if (
@@ -155,6 +173,27 @@ function NewsPage() {
     );
 
     setCurrentPage(nextPage);
+
+    const url = new URL(
+      window.location.href,
+    );
+
+    if (nextPage === 1) {
+      url.searchParams.delete(
+        "page",
+      );
+    } else {
+      url.searchParams.set(
+        "page",
+        String(nextPage),
+      );
+    }
+
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
 
     window.scrollTo({
       top: 0,
@@ -236,6 +275,9 @@ function NewsPage() {
                     to="/news/$id"
                     params={{
                       id: item.id,
+                    }}
+                    search={{
+                      page: currentPage,
                     }}
                     className="
                       group
@@ -518,4 +560,4 @@ function NewsPage() {
       </div>
     </main>
   );
-    }
+        }
