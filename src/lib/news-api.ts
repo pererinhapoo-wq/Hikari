@@ -9,7 +9,8 @@ export type AutomaticNewsItem = {
   id: string;
   type:
     | "NOVA TEMPORADA"
-    | "TRAILER";
+    | "TRAILER"
+    | "NOVO EPISÓDIO";
   title: string;
   description: string;
   date: string;
@@ -53,6 +54,13 @@ type AniMedia = {
     id?: string | null;
     site?: string | null;
     thumbnail?: string | null;
+  } | null;
+
+  airingSchedule?: {
+    nodes?: {
+      airingAt?: number | null;
+      episode?: number | null;
+    }[];
   } | null;
 };
 
@@ -146,6 +154,23 @@ function formatDate(
   );
 }
 
+function formatAiringDate(
+  airingAt: number,
+): string {
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    },
+  ).format(
+    new Date(
+      airingAt * 1000,
+    ),
+  );
+}
+
 function titleOf(
   media: AniMedia,
 ): string {
@@ -158,7 +183,10 @@ function titleOf(
 }
 
 function cleanDescription(
-  value: string | null | undefined,
+  value:
+    | string
+    | null
+    | undefined,
 ): string {
   return stripHtml(
     value,
@@ -290,6 +318,38 @@ function trailerOf(
   return `https://www.youtube.com/embed/${trailer.id}`;
 }
 
+function latestAiredEpisodeOf(
+  media: AniMedia,
+): {
+  episode: number;
+  airingAt: number;
+} | null {
+  const nodes =
+    media.airingSchedule
+      ?.nodes ?? [];
+
+  const latest =
+    nodes.find(
+      (item) =>
+        typeof item.airingAt ===
+          "number" &&
+        typeof item.episode ===
+          "number",
+    );
+
+  if (!latest) {
+    return null;
+  }
+
+  return {
+    episode:
+      latest.episode as number,
+
+    airingAt:
+      latest.airingAt as number,
+  };
+}
+
 async function fetchSeason(
   season: string,
   year: number,
@@ -357,6 +417,18 @@ async function fetchSeason(
                     id
                     site
                     thumbnail
+                  }
+
+                  airingSchedule(
+                    notYetAired: false
+                    page: 1
+                    perPage: 1
+                    sort: TIME_DESC
+                  ) {
+                    nodes {
+                      airingAt
+                      episode
+                    }
                   }
                 }
               }
@@ -449,71 +521,182 @@ export const fetchAutomaticNews =
               "MUSIC",
         );
 
-      const news =
-        await Promise.all(
-          filtered.map(
-            async (
-              anime,
-            ): Promise<AutomaticNewsItem> => {
-              const trailerUrl =
-                trailerOf(
-                  anime,
-                );
+      const news:
+        AutomaticNewsItem[] =
+        [];
 
-              const description =
-                await descriptionOf(
-                  anime,
-                );
+      for (const anime of filtered) {
+        const title =
+          titleOf(
+            anime,
+          );
 
-              return {
-                id: `auto-${anime.id}`,
+        const trailerUrl =
+          trailerOf(
+            anime,
+          );
 
-                type:
-                  trailerUrl
-                    ? "TRAILER"
-                    : "NOVA TEMPORADA",
+        const description =
+          await descriptionOf(
+            anime,
+          );
 
-                title:
-                  `${titleOf(
-                    anime,
-                  )} — ${
-                    trailerUrl
-                      ? "novo trailer"
-                      : "nova temporada"
-                  }`,
+        /*
+         * NOTÍCIA DE NOVO EPISÓDIO
+         *
+         * Criamos uma notícia para o
+         * último episódio que o AniList
+         * registra como já exibido.
+         */
+        const latestEpisode =
+          latestAiredEpisodeOf(
+            anime,
+          );
 
-                description,
+        if (
+          latestEpisode &&
+          latestEpisode.episode > 0 &&
+          latestEpisode.airingAt * 1000 <=
+            Date.now()
+        ) {
+          news.push({
+            id:
+              `auto-episode-${anime.id}-${latestEpisode.episode}`,
 
-                date:
-                  formatDate(
-                    anime,
-                  ),
+            type:
+              "NOVO EPISÓDIO",
 
-                image:
-                  anime.coverImage
-                    ?.extraLarge ||
-                  anime.coverImage
-                    ?.large ||
-                  "",
+            title:
+              `${title} — episódio ${latestEpisode.episode}`,
 
-                animeId:
-                  String(
-                    anime.id,
-                  ),
+            description:
+              `O episódio ${latestEpisode.episode} de ${title} foi ao ar em ${formatAiringDate(
+                latestEpisode.airingAt,
+              )}. ${description}`,
 
-                trailerUrl,
-              };
-            },
-          ),
-        );
+            date:
+              formatAiringDate(
+                latestEpisode.airingAt,
+              ),
+
+            image:
+              anime.coverImage
+                ?.extraLarge ||
+              anime.coverImage
+                ?.large ||
+              "",
+
+            animeId:
+              String(
+                anime.id,
+              ),
+
+            trailerUrl,
+          });
+        }
+
+        /*
+         * NOTÍCIA DE TRAILER
+         */
+        if (trailerUrl) {
+          news.push({
+            id:
+              `auto-trailer-${anime.id}`,
+
+            type:
+              "TRAILER",
+
+            title:
+              `${title} — novo trailer`,
+
+            description,
+
+            date:
+              formatDate(
+                anime,
+              ),
+
+            image:
+              anime.coverImage
+                ?.extraLarge ||
+              anime.coverImage
+                ?.large ||
+              "",
+
+            animeId:
+              String(
+                anime.id,
+              ),
+
+            trailerUrl,
+          });
+        } else {
+          /*
+           * NOTÍCIA DE NOVA TEMPORADA
+           */
+          news.push({
+            id:
+              `auto-season-${anime.id}`,
+
+            type:
+              "NOVA TEMPORADA",
+
+            title:
+              `${title} — nova temporada`,
+
+            description,
+
+            date:
+              formatDate(
+                anime,
+              ),
+
+            image:
+              anime.coverImage
+                ?.extraLarge ||
+              anime.coverImage
+                ?.large ||
+              "",
+
+            animeId:
+              String(
+                anime.id,
+              ),
+          });
+        }
+      }
 
       const validNews =
         news.filter(
-          (news) =>
+          (item) =>
             Boolean(
-              news.image,
+              item.image,
             ),
         );
+
+      validNews.sort(
+        (a, b) => {
+          const dateA =
+            Date.parse(
+              a.date
+                .split("/")
+                .reverse()
+                .join("-"),
+            );
+
+          const dateB =
+            Date.parse(
+              b.date
+                .split("/")
+                .reverse()
+                .join("-"),
+            );
+
+          return (
+            dateB - dateA
+          );
+        },
+      );
 
       return toCache(
         key,
