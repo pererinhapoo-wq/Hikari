@@ -207,7 +207,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * BUSCA ENQUANTO DIGITA
+   * RESULTADOS ENQUANTO DIGITA
    * =========================================================
    */
 
@@ -248,7 +248,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * BUSCA DA URL
+   * RESULTADOS DA URL
    * =========================================================
    */
 
@@ -289,7 +289,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * PRÉVIA
+   * PRIMEIROS 5 RESULTADOS
    * =========================================================
    */
 
@@ -326,7 +326,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * SINCRONIZA BUSCA COM URL
+   * SINCRONIZAR BUSCA
    * =========================================================
    */
 
@@ -346,7 +346,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * BUSCAR
+   * PESQUISAR
    * =========================================================
    */
 
@@ -365,6 +365,31 @@ function NewsPage() {
 
       void navigate({
         to: "/news",
+        search: {
+          q: query,
+          page: 1,
+        },
+        resetScroll: false,
+      });
+    };
+
+  /*
+   * =========================================================
+   * VER TODOS OS RESULTADOS
+   * =========================================================
+   */
+
+  const handleViewAllResults =
+    () => {
+      const query =
+        searchQuery.trim();
+
+      if (!query) {
+        return;
+      }
+
+      void navigate({
+        to: "/news/search",
         search: {
           q: query,
           page: 1,
@@ -480,7 +505,9 @@ function NewsPage() {
         "
       >
 
-        {/* TOPO */}
+        {/* =====================================================
+            TOPO
+        ====================================================== */}
 
         <div
           className="
@@ -549,6 +576,7 @@ function NewsPage() {
             {searchOpen ? (
               <>
                 <X className="size-4" />
+
                 <span>
                   Fechar
                 </span>
@@ -556,6 +584,7 @@ function NewsPage() {
             ) : (
               <>
                 <Search className="size-4" />
+
                 <span>
                   Buscar
                 </span>
@@ -564,7 +593,9 @@ function NewsPage() {
           </button>
         </div>
 
-        {/* BUSCA */}
+        {/* =====================================================
+            BUSCA
+        ====================================================== */}
 
         {searchOpen && (
           <section
@@ -600,7 +631,8 @@ function NewsPage() {
                     event,
                   ) =>
                     setSearchQuery(
-                      event.target.value,
+                      event.target
+                        .value,
                     )
                   }
                   placeholder="Buscar notícias..."
@@ -621,6 +653,7 @@ function NewsPage() {
                     placeholder:text-muted
                     focus:border-fg/30
                   "
+                  aria-label="Buscar notícias"
                 />
 
                 <button
@@ -639,14 +672,16 @@ function NewsPage() {
                     hover:text-fg
                     active:scale-95
                   "
-                  aria-label="Pesquisar"
+                  aria-label="Pesquisar notícias"
                 >
                   <Search className="size-5" />
                 </button>
               </div>
             </form>
 
-            {/* RESULTADOS DA PRÉVIA */}
+            {/* =================================================
+                RESULTADOS
+            ================================================== */}
 
             {searchQuery.trim() && (
               <div className="mt-3">
@@ -675,6 +710,9 @@ function NewsPage() {
                       bg-surface
                     "
                   >
+
+                    {/* PRIMEIROS 5 */}
+
                     {previewSearchResults.map(
                       (
                         item,
@@ -748,7 +786,9 @@ function NewsPage() {
                               {
                                 item.type
                               }
+
                               {" · "}
+
                               {
                                 item.date
                               }
@@ -764,15 +804,15 @@ function NewsPage() {
 
                     {liveSearchResults.length >
                       5 && (
-                      <Link
-                        to="/news/search"
-                        search={{
-                          q: searchQuery.trim(),
-                          page: 1,
-                        }}
+                      <button
+                        type="button"
+                        onClick={
+                          handleViewAllResults
+                        }
                         className="
                           flex
                           w-full
+                          cursor-pointer
                           items-center
                           justify-center
                           border-t
@@ -793,7 +833,7 @@ function NewsPage() {
                           liveSearchResults.length
                         }
                         {")"}
-                      </Link>
+                      </button>
                     )}
                   </div>
                 )}
@@ -802,7 +842,9 @@ function NewsPage() {
           </section>
         )}
 
-        {/* CABEÇALHO */}
+        {/* =====================================================
+            CABEÇALHO
+        ====================================================== */}
 
         <section className="mb-7">
           <div
@@ -816,6 +858,7 @@ function NewsPage() {
               className="
                 flex
                 size-10
+                shrink-0
                 items-center
                 justify-center
                 rounded-full
@@ -860,7 +903,9 @@ function NewsPage() {
           </div>
         </section>
 
-        {/* CONTADOR */}
+        {/* =====================================================
+            CONTADOR
+        ====================================================== */}
 
         {isSearchMode && (
           <div
@@ -885,7 +930,9 @@ function NewsPage() {
           </div>
         )}
 
-        {/* NOTÍCIAS */}
+        {/* =====================================================
+            NOTÍCIAS
+        ====================================================== */}
 
         {visibleNews.length > 0 ? (
           <>
@@ -1035,7 +1082,9 @@ function NewsPage() {
               )}
             </section>
 
-            {/* PAGINAÇÃO */}
+            {/* =================================================
+                PAGINAÇÃO
+            ================================================== */}
 
             {totalPages > 1 && (
               <nav
@@ -1197,12 +1246,7 @@ function NewsPage() {
           >
             <Newspaper className="mb-3 size-8 text-muted" />
 
-            <p
-              className="
-                text-base
-                font-medium
-              "
-            >
+            <p className="text-base font-medium">
               Nenhuma notícia encontrada.
             </p>
 
@@ -1226,4 +1270,4 @@ function NewsPage() {
       </div>
     </main>
   );
-  }
+          }
