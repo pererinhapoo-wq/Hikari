@@ -361,11 +361,17 @@ async function jikanFetch<T>(
 function isAdultAnime(
   media: AniMedia,
 ): boolean {
+  return media.isAdult === true;
+}
+
+function isHentaiAnime(
+  media: AniMedia,
+): boolean {
   return (
     media.isAdult === true &&
-    (media.tags ?? []).some(
-      (tag) =>
-        tag.name.trim().toLowerCase() ===
+    (media.genres ?? []).some(
+      (genre) =>
+        genre.trim().toLowerCase() ===
         "hentai",
     )
   );
@@ -2297,7 +2303,7 @@ export const fetchAdultCatalog =
               media(
                 type: ANIME,
                 isAdult: true,
-                tag: "Hentai",
+                genre: "Hentai",
                 sort: TRENDING_DESC
               ) {
                 ${CARD_FIELDS}
@@ -2314,7 +2320,7 @@ export const fetchAdultCatalog =
         )
           .filter(
             (anime) =>
-              isAdultAnime(
+              isHentaiAnime(
                 anime,
               ),
           )
