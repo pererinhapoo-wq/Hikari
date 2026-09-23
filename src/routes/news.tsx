@@ -263,7 +263,8 @@ function NewsPage() {
         {currentNews.map((news) => (
           <Link
             key={news.id}
-            to="/"
+            to="/news/$id"
+            params={{ id: news.id }}
             className="
               group
               block
@@ -505,4 +506,4 @@ function NewsPage() {
       </section>
     </div>
   );
-    }
+  }
