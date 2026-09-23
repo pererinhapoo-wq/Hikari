@@ -9,7 +9,6 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Clapperboard,
   Newspaper,
   Search,
   X,
@@ -19,21 +18,13 @@ import {
   useEffect,
   useMemo,
   useState,
+  type FormEvent,
 } from "react";
 
 import {
   fetchAutomaticNews,
   type AutomaticNewsItem,
 } from "@/lib/news-api";
-
-import {
-  searchCatalog,
-} from "@/lib/api";
-
-import {
-  displayTitle,
-  type SlimAnime,
-} from "@/lib/types";
 
 export const Route = createFileRoute(
   "/news",
@@ -137,6 +128,19 @@ function parseNewsDate(
   return 0;
 }
 
+function normalizeSearchText(
+  value: string,
+) {
+  return value
+    .normalize("NFD")
+    .replace(
+      /[\u0300-\u036f]/g,
+      "",
+    )
+    .toLowerCase()
+    .trim();
+}
+
 function NewsPage() {
   const navigate =
     useNavigate({
@@ -169,16 +173,6 @@ function NewsPage() {
     setSearchQuery,
   ] = useState("");
 
-  const [
-    searchResults,
-    setSearchResults,
-  ] = useState<SlimAnime[]>([]);
-
-  const [
-    searchLoading,
-    setSearchLoading,
-  ] = useState(false);
-
   const news = useMemo(() => {
     return [
       ...(loaderNews ?? []),
@@ -192,6 +186,51 @@ function NewsPage() {
         ),
     );
   }, [loaderNews]);
+
+  /*
+   * A busca procura somente nas notícias carregadas.
+   * Não consulta o catálogo de animes.
+   */
+  const searchResults =
+    useMemo(() => {
+      const query =
+        normalizeSearchText(
+          searchQuery,
+        );
+
+      if (!query) {
+        return [];
+      }
+
+      return news.filter(
+        (item) => {
+          const searchableText =
+            normalizeSearchText(
+              [
+                item.title,
+                item.description,
+                item.type,
+                item.date,
+              ]
+                .filter(Boolean)
+                .join(" "),
+            );
+
+          return searchableText.includes(
+            query,
+          );
+        },
+      );
+    }, [
+      news,
+      searchQuery,
+    ]);
+
+  const newsSearchResults =
+    searchResults.slice(
+      0,
+      10,
+    );
 
   const totalPages =
     Math.max(
@@ -238,139 +277,16 @@ function NewsPage() {
     navigate,
   ]);
 
-  /* =========================================================
-     BUSCA AUTOMÁTICA
-  ========================================================== */
-
-  useEffect(() => {
-    const query =
-      searchQuery.trim();
-
-    if (
-      !searchOpen ||
-      !query
-    ) {
-      setSearchResults([]);
-      setSearchLoading(false);
-      return;
-    }
-
-    let cancelled =
-      false;
-
-    const timer =
-      window.setTimeout(
-        async () => {
-          setSearchLoading(
-            true,
-          );
-
-          try {
-            const result =
-              await searchCatalog({
-                data: {
-                  q: query,
-                  page: 1,
-                },
-              });
-
-            if (
-              cancelled
-            ) {
-              return;
-            }
-
-            setSearchResults(
-              result.items ??
-                [],
-            );
-          } catch {
-            if (
-              !cancelled
-            ) {
-              setSearchResults(
-                [],
-              );
-            }
-          } finally {
-            if (
-              !cancelled
-            ) {
-              setSearchLoading(
-                false,
-              );
-            }
-          }
-        },
-        250,
-      );
-
-    return () => {
-      cancelled = true;
-
-      window.clearTimeout(
-        timer,
-      );
-    };
-  }, [
-    searchOpen,
-    searchQuery,
-  ]);
-
-  const performSearch =
-    async () => {
-      const query =
-        searchQuery.trim();
-
-      if (!query) {
-        setSearchResults([]);
-        return;
-      }
-
-      setSearchLoading(
-        true,
-      );
-
-      try {
-        const result =
-          await searchCatalog({
-            data: {
-              q: query,
-              page: 1,
-            },
-          });
-
-        setSearchResults(
-          result.items ??
-            [],
-        );
-      } catch {
-        setSearchResults([]);
-      } finally {
-        setSearchLoading(
-          false,
-        );
-      }
-    };
-
   const handleSearchSubmit =
     (
-      event: React.FormEvent<HTMLFormElement>,
+      event: FormEvent<HTMLFormElement>,
     ) => {
       event.preventDefault();
-
-      void performSearch();
     };
-
-  const clearSearch = () => {
-    setSearchQuery("");
-    setSearchResults([]);
-    setSearchLoading(false);
-  };
 
   const closeSearch = () => {
     setSearchOpen(false);
-    clearSearch();
+    setSearchQuery("");
   };
 
   const visibleNews =
@@ -576,7 +492,7 @@ function NewsPage() {
                         .value,
                     )
                   }
-                  placeholder="Buscar animes..."
+                  placeholder="Buscar notícias..."
                   enterKeyHint="search"
                   autoComplete="off"
                   className="
@@ -587,53 +503,25 @@ function NewsPage() {
                     border-border
                     bg-elevated
                     pl-4
-                    pr-24
+                    pr-16
                     text-base
                     text-fg
                     outline-none
                     placeholder:text-muted
                     focus:border-fg/30
                   "
-                  aria-label="Buscar animes"
+                  aria-label="Buscar notícias"
                 />
 
-                {/* AÇÕES DO CAMPO */}
+                {/* LUPA */}
                 <div
                   className="
                     absolute
                     right-2
                     flex
                     items-center
-                    gap-1
                   "
                 >
-
-                  {/* LIMPAR */}
-                  {searchQuery.trim() && (
-                    <button
-                      type="button"
-                      onClick={
-                        clearSearch
-                      }
-                      className="
-                        flex
-                        size-10
-                        items-center
-                        justify-center
-                        rounded-xl
-                        text-muted
-                        transition-colors
-                        hover:bg-background
-                        hover:text-fg
-                        active:scale-95
-                      "
-                      aria-label="Limpar busca"
-                    >
-                      <X className="size-5" />
-                    </button>
-                  )}
-
-                  {/* LUPA */}
                   <button
                     type="submit"
                     className="
@@ -648,7 +536,7 @@ function NewsPage() {
                       hover:text-fg
                       active:scale-95
                     "
-                    aria-label="Pesquisar"
+                    aria-label="Pesquisar notícias"
                   >
                     <Search className="size-5" />
                   </button>
@@ -663,7 +551,8 @@ function NewsPage() {
             {searchQuery.trim() && (
               <div className="mt-3">
 
-                {searchLoading ? (
+                {newsSearchResults.length ===
+                0 ? (
                   <div
                     className="
                       rounded-2xl
@@ -675,22 +564,7 @@ function NewsPage() {
                       text-muted
                     "
                   >
-                    Buscando...
-                  </div>
-                ) : searchResults.length ===
-                  0 ? (
-                  <div
-                    className="
-                      rounded-2xl
-                      bg-surface
-                      px-4
-                      py-6
-                      text-center
-                      text-sm
-                      text-muted
-                    "
-                  >
-                    Nenhum anime encontrado.
+                    Nenhuma notícia encontrada.
                   </div>
                 ) : (
                   <div
@@ -703,113 +577,97 @@ function NewsPage() {
                       bg-surface
                     "
                   >
-                    {searchResults
-                      .slice(
-                        0,
-                        10,
-                      )
-                      .map(
-                        (
-                          anime,
-                        ) => (
-                          <Link
-                            key={
-                              anime.id
-                            }
-                            to="/anime/$id"
-                            params={{
-                              id: anime.id,
-                            }}
-                            onClick={
-                              closeSearch
-                            }
+                    {newsSearchResults.map(
+                      (
+                        item,
+                      ) => (
+                        <Link
+                          key={
+                            item.id
+                          }
+                          to="/news/$id"
+                          params={{
+                            id: item.id,
+                          }}
+                          search={{
+                            page: currentPage,
+                          }}
+                          onClick={
+                            closeSearch
+                          }
+                          className="
+                            flex
+                            items-center
+                            gap-3
+                            border-b
+                            border-border
+                            px-4
+                            py-3
+                            transition-colors
+                            last:border-b-0
+                            hover:bg-elevated
+                          "
+                        >
+
+                          {/* IMAGEM */}
+                          <div
                             className="
-                              flex
-                              items-center
-                              gap-3
-                              border-b
-                              border-border
-                              px-4
-                              py-3
-                              transition-colors
-                              last:border-b-0
-                              hover:bg-elevated
+                              size-14
+                              shrink-0
+                              overflow-hidden
+                              rounded-lg
+                              bg-black
                             "
                           >
+                            <img
+                              src={
+                                item.image
+                              }
+                              alt=""
+                              className="
+                                h-full
+                                w-full
+                                object-cover
+                              "
+                            />
+                          </div>
 
-                            {/* CAPA */}
-                            {anime.cover ? (
-                              <img
-                                src={
-                                  anime.cover
-                                }
-                                alt=""
-                                className="
-                                  size-14
-                                  shrink-0
-                                  rounded-lg
-                                  object-cover
-                                "
-                              />
-                            ) : (
-                              <div
-                                className="
-                                  flex
-                                  size-14
-                                  shrink-0
-                                  items-center
-                                  justify-center
-                                  rounded-lg
-                                  bg-elevated
-                                  text-muted
-                                "
-                              >
-                                <Clapperboard className="size-5" />
-                              </div>
-                            )}
+                          {/* INFORMAÇÕES */}
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="
+                                line-clamp-2
+                                text-sm
+                                font-semibold
+                                text-fg
+                              "
+                            >
+                              {
+                                item.title
+                              }
+                            </p>
 
-                            {/* INFORMAÇÕES */}
-                            <div className="min-w-0 flex-1">
-                              <p
-                                className="
-                                  truncate
-                                  text-sm
-                                  font-semibold
-                                  text-fg
-                                "
-                              >
-                                {displayTitle(
-                                  anime,
-                                )}
-                              </p>
+                            <p
+                              className="
+                                mt-1
+                                text-xs
+                                text-muted
+                              "
+                            >
+                              {
+                                item.type
+                              }
 
-                              <p
-                                className="
-                                  mt-1
-                                  text-xs
-                                  text-muted
-                                "
-                              >
-                                {anime.year ??
-                                  ""}
+                              {" · "}
 
-                                {anime.year &&
-                                anime.format
-                                  ? " · "
-                                  : ""}
-
-                                {anime.format ===
-                                "TV"
-                                  ? "Série"
-                                  : anime.format ===
-                                      "MOVIE"
-                                    ? "Filme"
-                                    : ""}
-                              </p>
-                            </div>
-                          </Link>
-                        ),
-                      )}
+                              {
+                                item.date
+                              }
+                            </p>
+                          </div>
+                        </Link>
+                      ),
+                    )}
                   </div>
                 )}
               </div>
@@ -1221,4 +1079,4 @@ function NewsPage() {
       </div>
     </main>
   );
-          }
+        }
