@@ -66,7 +66,7 @@ const NEWS: NewsItem[] = [
   {
     id: "demon-slayer",
     type: "FILME",
-    title: "Demon Slayer recebe novidades",
+    title: "Demon Slayer recebe novidades do próximo projeto",
     description:
       "Confira as últimas informações relacionadas ao universo de Demon Slayer.",
     date: "19/09/2026",
@@ -76,7 +76,7 @@ const NEWS: NewsItem[] = [
   {
     id: "solo-leveling",
     type: "NOVIDADE",
-    title: "Solo Leveling ganha novidades",
+    title: "Solo Leveling ganha atualização da produção",
     description:
       "Novas informações sobre Solo Leveling foram divulgadas.",
     date: "18/09/2026",
@@ -86,7 +86,7 @@ const NEWS: NewsItem[] = [
   {
     id: "bleach",
     type: "NOVIDADE",
-    title: "Bleach ganha novo visual",
+    title: "Bleach revela detalhes dos próximos episódios",
     description:
       "Confira as novidades de Bleach e o que vem pela frente no anime.",
     date: "17/09/2026",
@@ -96,7 +96,7 @@ const NEWS: NewsItem[] = [
   {
     id: "chainsaw-man",
     type: "FILME",
-    title: "Chainsaw Man recebe novo material",
+    title: "Chainsaw Man recebe novo material promocional",
     description:
       "Novas imagens e informações sobre Chainsaw Man foram divulgadas.",
     date: "16/09/2026",
@@ -106,7 +106,7 @@ const NEWS: NewsItem[] = [
   {
     id: "my-hero-academia",
     type: "NOVIDADE",
-    title: "My Hero Academia ganha novidades",
+    title: "My Hero Academia ganha detalhes da próxima fase",
     description:
       "Confira as últimas informações sobre My Hero Academia.",
     date: "15/09/2026",
@@ -116,7 +116,7 @@ const NEWS: NewsItem[] = [
   {
     id: "dragon-ball",
     type: "NOVIDADE",
-    title: "Dragon Ball recebe novidades",
+    title: "Dragon Ball recebe anúncio para os fãs",
     description:
       "Novas informações sobre o universo de Dragon Ball foram divulgadas.",
     date: "14/09/2026",
@@ -126,7 +126,7 @@ const NEWS: NewsItem[] = [
   {
     id: "one-punch-man",
     type: "TRAILER",
-    title: "One Punch Man ganha novidades",
+    title: "One Punch Man ganha novo vídeo promocional",
     description:
       "Confira as últimas informações e novidades de One Punch Man.",
     date: "13/09/2026",
@@ -136,9 +136,9 @@ const NEWS: NewsItem[] = [
   {
     id: "anime-news",
     type: "NOVIDADE",
-    title: "Novidades no mundo dos animes",
+    title: "Principais novidades do mundo dos animes",
     description:
-      "Confira mais uma seleção de novidades do mundo dos animes.",
+      "Confira uma seleção de notícias e anúncios recentes.",
     date: "12/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
@@ -146,7 +146,7 @@ const NEWS: NewsItem[] = [
   {
     id: "frieren-novidades",
     type: "NOVIDADE",
-    title: "Frieren recebe novas informações",
+    title: "Frieren recebe detalhes sobre sua continuação",
     description:
       "Novos detalhes sobre o universo de Frieren foram divulgados.",
     date: "11/09/2026",
@@ -156,7 +156,7 @@ const NEWS: NewsItem[] = [
   {
     id: "one-piece-novidades",
     type: "NOVIDADE",
-    title: "One Piece ganha novas informações",
+    title: "One Piece revela detalhes de seus próximos acontecimentos",
     description:
       "Novos detalhes sobre os próximos acontecimentos da série.",
     date: "10/09/2026",
@@ -176,7 +176,7 @@ const NEWS: NewsItem[] = [
   {
     id: "my-hero-news",
     type: "NOVA TEMPORADA",
-    title: "My Hero Academia recebe novidades",
+    title: "My Hero Academia prepara novidades para a nova temporada",
     description:
       "Novas informações sobre a próxima fase do anime foram divulgadas.",
     date: "08/09/2026",
@@ -186,7 +186,7 @@ const NEWS: NewsItem[] = [
   {
     id: "bleach-novidades",
     type: "NOVIDADE",
-    title: "Bleach recebe novas informações",
+    title: "Bleach apresenta novas informações da produção",
     description:
       "Confira as novidades relacionadas aos próximos episódios.",
     date: "07/09/2026",
@@ -196,7 +196,7 @@ const NEWS: NewsItem[] = [
   {
     id: "chainsaw-man-novidades",
     type: "FILME",
-    title: "Chainsaw Man ganha novas imagens",
+    title: "Chainsaw Man ganha novas imagens promocionais",
     description:
       "Novas imagens promocionais do projeto foram divulgadas.",
     date: "06/09/2026",
@@ -206,7 +206,7 @@ const NEWS: NewsItem[] = [
   {
     id: "one-punch-man-novidades",
     type: "NOVIDADE",
-    title: "One Punch Man recebe novas informações",
+    title: "One Punch Man recebe detalhes sobre a produção",
     description:
       "Confira as novidades sobre a próxima fase da série.",
     date: "05/09/2026",
@@ -216,7 +216,7 @@ const NEWS: NewsItem[] = [
   {
     id: "demon-slayer-novidades",
     type: "FILME",
-    title: "Demon Slayer ganha novo material promocional",
+    title: "Demon Slayer apresenta novo material promocional",
     description:
       "Novas informações sobre o projeto foram divulgadas.",
     date: "04/09/2026",
@@ -544,4 +544,4 @@ function NewsPage() {
       </div>
     </div>
   );
-      }
+    }
