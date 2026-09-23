@@ -196,6 +196,10 @@ function NewsDetailsPage() {
     throw notFound();
   }
 
+  const relatedNews = NEWS.filter(
+    (item) => item.id !== news.id,
+  ).slice(0, 3);
+
   return (
     <div className="space-y-6 pb-10">
       {/* VOLTAR */}
@@ -392,6 +396,133 @@ function NewsDetailsPage() {
           </div>
         </div>
       </article>
+
+      {/* MAIS NOTÍCIAS */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Newspaper className="size-5 text-accent" />
+
+          <h2
+            className="
+              font-display
+              text-xl
+              tracking-tight
+              text-fg
+              sm:text-2xl
+            "
+          >
+            Mais notícias
+          </h2>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          {relatedNews.map((item) => (
+            <Link
+              key={item.id}
+              to="/news/$id"
+              params={{
+                id: item.id,
+              }}
+              className="
+                group
+                overflow-hidden
+                rounded-xl
+                bg-elevated
+                shadow-[var(--shadow-border)]
+                transition-all
+                duration-200
+                hover:-translate-y-0.5
+                hover:bg-elevated/80
+              "
+            >
+              <div
+                className="
+                  relative
+                  aspect-video
+                  w-full
+                  overflow-hidden
+                  bg-surface
+                "
+              >
+                <img
+                  src={item.image}
+                  alt=""
+                  className="
+                    size-full
+                    object-cover
+                    transition-transform
+                    duration-300
+                    group-hover:scale-105
+                  "
+                />
+
+                <div
+                  className="
+                    pointer-events-none
+                    absolute
+                    inset-0
+                    bg-linear-to-t
+                    from-black/70
+                    via-black/10
+                    to-transparent
+                  "
+                />
+
+                <span
+                  className="
+                    absolute
+                    bottom-3
+                    left-3
+                    rounded-md
+                    bg-black/60
+                    px-2
+                    py-1
+                    text-[9px]
+                    font-semibold
+                    tracking-[0.1em]
+                    text-white
+                    uppercase
+                    backdrop-blur-sm
+                  "
+                >
+                  {item.type}
+                </span>
+              </div>
+
+              <div className="p-4">
+                <h3
+                  className="
+                    line-clamp-2
+                    text-sm
+                    font-semibold
+                    leading-6
+                    text-fg
+                    transition-colors
+                    group-hover:text-accent
+                  "
+                >
+                  {item.title}
+                </h3>
+
+                <div
+                  className="
+                    mt-3
+                    flex
+                    items-center
+                    gap-2
+                    text-[11px]
+                    text-subtle
+                  "
+                >
+                  <CalendarDays className="size-3.5" />
+
+                  <span>{item.date}</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
     }
