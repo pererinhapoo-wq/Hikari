@@ -30,6 +30,11 @@ export const Route = createFileRoute(
   "/news",
 )({
   validateSearch: (search) => ({
+    q:
+      typeof search.q === "string"
+        ? search.q
+        : "",
+
     page: Math.max(
       1,
       Number(search.page) || 1,
@@ -150,9 +155,19 @@ function NewsPage() {
   const loaderNews =
     Route.useLoaderData() as AutomaticNewsItem[];
 
-  const {
-    page: urlPage,
-  } = Route.useSearch();
+  const search =
+    Route.useSearch();
+
+  const urlPage =
+    Math.max(
+      1,
+      Number(search.page) || 1,
+    );
+
+  const urlQuery =
+    typeof search.q === "string"
+      ? search.q
+      : "";
 
   const [
     currentPage,
@@ -166,12 +181,20 @@ function NewsPage() {
   const [
     searchOpen,
     setSearchOpen,
-  ] = useState(false);
+  ] = useState(
+    Boolean(
+      urlQuery.trim(),
+    ),
+  );
 
   const [
     searchQuery,
     setSearchQuery,
-  ] = useState("");
+  ] = useState(urlQuery);
+
+  /* =========================================================
+     TODAS AS NOTÍCIAS
+  ========================================================== */
 
   const news = useMemo(() => {
     return [
@@ -187,14 +210,15 @@ function NewsPage() {
     );
   }, [loaderNews]);
 
-  /*
-   * A busca procura somente nas notícias.
-   */
+  /* =========================================================
+     RESULTADOS DA BUSCA
+  ========================================================== */
+
   const searchResults =
     useMemo(() => {
       const query =
         normalizeSearchText(
-          searchQuery,
+          urlQuery,
         );
 
       if (!query) {
@@ -222,30 +246,75 @@ function NewsPage() {
       );
     }, [
       news,
-      searchQuery,
+      urlQuery,
     ]);
 
   /*
-   * Mostra somente alguns resultados
-   * dentro da caixa de busca.
+   * Resultados usados na caixa
+   * de pesquisa enquanto o usuário digita.
    */
   const previewSearchResults =
-    searchResults.slice(
-      0,
-      5,
+    useMemo(() => {
+      const query =
+        normalizeSearchText(
+          searchQuery,
+        );
+
+      if (!query) {
+        return [];
+      }
+
+      return news
+        .filter(
+          (item) => {
+            const searchableText =
+              normalizeSearchText(
+                [
+                  item.title,
+                  item.description,
+                  item.type,
+                  item.date,
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              );
+
+            return searchableText.includes(
+              query,
+            );
+          },
+        )
+        .slice(0, 5);
+    }, [
+      news,
+      searchQuery,
+    ]);
+
+  /* =========================================================
+     MODO NORMAL OU MODO PESQUISA
+  ========================================================== */
+
+  const isSearchMode =
+    Boolean(
+      urlQuery.trim(),
     );
+
+  const displayedNews =
+    isSearchMode
+      ? searchResults
+      : news;
 
   const totalPages =
     Math.max(
       1,
       Math.ceil(
-        news.length /
+        displayedNews.length /
           NEWS_PER_PAGE,
       ),
     );
 
   /* =========================================================
-     SINCRONIZAÇÃO DA PAGINAÇÃO
+     SINCRONIZAÇÃO
   ========================================================== */
 
   useEffect(() => {
@@ -258,13 +327,27 @@ function NewsPage() {
       );
     }
   }, [
-    urlPage,
     currentPage,
+    urlPage,
   ]);
 
   useEffect(() => {
+    setSearchQuery(
+      urlQuery,
+    );
+
     if (
-      currentPage >
+      urlQuery.trim()
+    ) {
+      setSearchOpen(
+        true,
+      );
+    }
+  }, [urlQuery]);
+
+  useEffect(() => {
+    if (
+      urlPage >
       totalPages
     ) {
       setCurrentPage(
@@ -273,19 +356,21 @@ function NewsPage() {
 
       void navigate({
         search: {
+          q: urlQuery,
           page: totalPages,
         },
         resetScroll: false,
       });
     }
   }, [
-    currentPage,
+    urlPage,
     totalPages,
+    urlQuery,
     navigate,
   ]);
 
   /* =========================================================
-     AÇÃO DA BUSCA
+     BUSCA
   ========================================================== */
 
   const handleSearchSubmit =
@@ -301,22 +386,43 @@ function NewsPage() {
         return;
       }
 
+      setSearchOpen(
+        true,
+      );
+
+      setCurrentPage(
+        1,
+      );
+
       void navigate({
-        to: "/news/search",
         search: {
           q: query,
           page: 1,
         },
+        resetScroll: false,
+      });
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
       });
     };
 
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchQuery("");
+
+    void navigate({
+      search: {
+        q: "",
+        page: 1,
+      },
+      resetScroll: false,
+    });
   };
 
   /* =========================================================
-     NOTÍCIAS VISÍVEIS
+     RESULTADOS VISÍVEIS
   ========================================================== */
 
   const visibleNews =
@@ -325,13 +431,13 @@ function NewsPage() {
         (currentPage - 1) *
         NEWS_PER_PAGE;
 
-      return news.slice(
+      return displayedNews.slice(
         start,
         start +
           NEWS_PER_PAGE,
       );
     }, [
-      news,
+      displayedNews,
       currentPage,
     ]);
 
@@ -357,6 +463,7 @@ function NewsPage() {
 
     void navigate({
       search: {
+        q: urlQuery,
         page: nextPage,
       },
       resetScroll: false,
@@ -365,6 +472,21 @@ function NewsPage() {
     window.scrollTo({
       top: 0,
       behavior: "smooth",
+    });
+  };
+
+  /* =========================================================
+     VOLTAR
+  ========================================================== */
+
+  const handleBack = () => {
+    if (isSearchMode) {
+      closeSearch();
+      return;
+    }
+
+    void navigate({
+      to: "/",
     });
   };
 
@@ -399,8 +521,11 @@ function NewsPage() {
 
           {/* VOLTAR */}
 
-          <Link
-            to="/"
+          <button
+            type="button"
+            onClick={
+              handleBack
+            }
             className="
               inline-flex
               w-fit
@@ -424,7 +549,7 @@ function NewsPage() {
             <span>
               Voltar
             </span>
-          </Link>
+          </button>
 
           {/* BUSCAR / FECHAR */}
 
@@ -485,7 +610,7 @@ function NewsPage() {
         </div>
 
         {/* =====================================================
-            BUSCA
+            CAIXA DE BUSCA
         ====================================================== */}
 
         {searchOpen && (
@@ -512,8 +637,6 @@ function NewsPage() {
                   items-center
                 "
               >
-
-                {/* CAMPO */}
 
                 <input
                   autoFocus
@@ -550,8 +673,6 @@ function NewsPage() {
                   aria-label="Buscar notícias"
                 />
 
-                {/* LUPA */}
-
                 <div
                   className="
                     absolute
@@ -583,7 +704,7 @@ function NewsPage() {
             </form>
 
             {/* =================================================
-                RESULTADOS DA BUSCA
+                PRÉVIA DA BUSCA
             ================================================== */}
 
             {searchQuery.trim() && (
@@ -615,8 +736,6 @@ function NewsPage() {
                     "
                   >
 
-                    {/* RESULTADOS DE PRÉVIA */}
-
                     {previewSearchResults.map(
                       (
                         item,
@@ -632,8 +751,10 @@ function NewsPage() {
                           search={{
                             page: currentPage,
                           }}
-                          onClick={
-                            closeSearch
+                          onClick={() =>
+                            setSearchOpen(
+                              false,
+                            )
                           }
                           className="
                             flex
@@ -648,9 +769,6 @@ function NewsPage() {
                             hover:bg-elevated
                           "
                         >
-
-                          {/* IMAGEM */}
-
                           <div
                             className="
                               size-14
@@ -672,8 +790,6 @@ function NewsPage() {
                               "
                             />
                           </div>
-
-                          {/* INFORMAÇÕES */}
 
                           <div className="min-w-0 flex-1">
                             <p
@@ -712,15 +828,22 @@ function NewsPage() {
                     )}
 
                     {/* =================================================
-                        VER TODOS OS RESULTADOS
+                        VER TODOS
                     ================================================== */}
 
-                    {searchResults.length >
-                      5 && (
-                      <a
-                        href={`/news/search?q=${encodeURIComponent(
-                          searchQuery.trim(),
-                        )}&page=1`}
+                    {previewSearchResults.length <
+                      searchResults.length && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void navigate({
+                            search: {
+                              q: searchQuery.trim(),
+                              page: 1,
+                            },
+                            resetScroll: false,
+                          })
+                        }
                         className="
                           flex
                           w-full
@@ -744,7 +867,7 @@ function NewsPage() {
                           searchResults.length
                         }
                         {")"}
-                      </a>
+                      </button>
                     )}
                   </div>
                 )}
@@ -754,7 +877,7 @@ function NewsPage() {
         )}
 
         {/* =====================================================
-            TÍTULO
+            CABEÇALHO
         ====================================================== */}
 
         <section className="mb-7">
@@ -788,7 +911,9 @@ function NewsPage() {
                   tracking-tight
                 "
               >
-                Notícias
+                {isSearchMode
+                  ? "Resultados da busca"
+                  : "Notícias"}
               </h1>
 
               <p
@@ -798,11 +923,47 @@ function NewsPage() {
                   text-muted
                 "
               >
-                Fique por dentro das novidades do mundo dos animes.
+                {isSearchMode ? (
+                  <>
+                    Resultados para:{" "}
+                    <span className="font-medium text-fg">
+                      "{urlQuery}"
+                    </span>
+                  </>
+                ) : (
+                  "Fique por dentro das novidades do mundo dos animes."
+                )}
               </p>
             </div>
           </div>
         </section>
+
+        {/* =====================================================
+            CONTADOR DA BUSCA
+        ====================================================== */}
+
+        {isSearchMode && (
+          <div
+            className="
+              mb-5
+              flex
+              items-center
+              gap-2
+              text-sm
+              text-muted
+            "
+          >
+            <Search className="size-4 shrink-0" />
+
+            <span>
+              {searchResults.length}{" "}
+              {searchResults.length ===
+              1
+                ? "resultado encontrado"
+                : "resultados encontrados"}
+            </span>
+          </div>
+        )}
 
         {/* =====================================================
             NOTÍCIAS
@@ -852,7 +1013,6 @@ function NewsPage() {
                         w-full
                         overflow-hidden
                         bg-black
-                        sm:aspect-[16/9]
                       "
                     >
                       <img
@@ -977,7 +1137,11 @@ function NewsPage() {
                   items-center
                   gap-3
                 "
-                aria-label="Paginação das notícias"
+                aria-label={
+                  isSearchMode
+                    ? "Paginação dos resultados da busca"
+                    : "Paginação das notícias"
+                }
               >
                 <div
                   className="
@@ -990,9 +1154,6 @@ function NewsPage() {
                     pb-1
                   "
                 >
-
-                  {/* ANTERIOR */}
-
                   <button
                     type="button"
                     onClick={() =>
@@ -1026,8 +1187,6 @@ function NewsPage() {
                   >
                     <ChevronLeft className="size-4" />
                   </button>
-
-                  {/* PÁGINAS */}
 
                   {Array.from(
                     {
@@ -1087,8 +1246,6 @@ function NewsPage() {
                     ),
                   )}
 
-                  {/* PRÓXIMA */}
-
                   <button
                     type="button"
                     onClick={() =>
@@ -1141,7 +1298,8 @@ function NewsPage() {
           <section
             className="
               flex
-              min-h-[160px]
+              min-h-[220px]
+              flex-col
               items-center
               justify-center
               rounded-3xl
@@ -1152,9 +1310,39 @@ function NewsPage() {
               text-center
             "
           >
-            <p className="text-sm text-muted">
-              Nenhuma notícia disponível no momento.
-            </p>
+            <Newspaper className="mb-3 size-8 text-muted" />
+
+            {isSearchMode ? (
+              <>
+                <p
+                  className="
+                    text-base
+                    font-medium
+                    text-fg
+                  "
+                >
+                  Nenhuma notícia encontrada.
+                </p>
+
+                <p
+                  className="
+                    mt-2
+                    text-sm
+                    text-muted
+                  "
+                >
+                  Não encontramos notícias para{" "}
+                  <span className="font-medium text-fg">
+                    "{urlQuery}"
+                  </span>
+                  .
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted">
+                Nenhuma notícia disponível no momento.
+              </p>
+            )}
           </section>
         )}
       </div>
