@@ -174,10 +174,6 @@ function NewsPage() {
     setCurrentPage,
   ] = useState(urlPage);
 
-  /* =========================================================
-     BUSCA
-  ========================================================== */
-
   const [
     searchOpen,
     setSearchOpen,
@@ -192,9 +188,11 @@ function NewsPage() {
     setSearchQuery,
   ] = useState(urlQuery);
 
-  /* =========================================================
-     TODAS AS NOTÍCIAS
-  ========================================================== */
+  /*
+   * =========================================================
+   * TODAS AS NOTÍCIAS
+   * =========================================================
+   */
 
   const news = useMemo(() => {
     return [
@@ -210,9 +208,52 @@ function NewsPage() {
     );
   }, [loaderNews]);
 
-  /* =========================================================
-     RESULTADOS DA BUSCA
-  ========================================================== */
+  /*
+   * =========================================================
+   * RESULTADOS AO DIGITAR
+   * =========================================================
+   */
+
+  const liveSearchResults =
+    useMemo(() => {
+      const query =
+        normalizeSearchText(
+          searchQuery,
+        );
+
+      if (!query) {
+        return [];
+      }
+
+      return news.filter(
+        (item) => {
+          const searchableText =
+            normalizeSearchText(
+              [
+                item.title,
+                item.description,
+                item.type,
+                item.date,
+              ]
+                .filter(Boolean)
+                .join(" "),
+            );
+
+          return searchableText.includes(
+            query,
+          );
+        },
+      );
+    }, [
+      news,
+      searchQuery,
+    ]);
+
+  /*
+   * =========================================================
+   * RESULTADOS DA URL
+   * =========================================================
+   */
 
   const searchResults =
     useMemo(() => {
@@ -249,50 +290,23 @@ function NewsPage() {
       urlQuery,
     ]);
 
-  /* =========================================================
-     PRÉVIA DOS RESULTADOS
-  ========================================================== */
+  /*
+   * =========================================================
+   * PRÉVIA — 5 RESULTADOS
+   * =========================================================
+   */
 
   const previewSearchResults =
-    useMemo(() => {
-      const query =
-        normalizeSearchText(
-          searchQuery,
-        );
+    liveSearchResults.slice(
+      0,
+      5,
+    );
 
-      if (!query) {
-        return [];
-      }
-
-      return news
-        .filter(
-          (item) => {
-            const searchableText =
-              normalizeSearchText(
-                [
-                  item.title,
-                  item.description,
-                  item.type,
-                  item.date,
-                ]
-                  .filter(Boolean)
-                  .join(" "),
-              );
-
-            return searchableText.includes(
-              query,
-            );
-          },
-        )
-        .slice(0, 5);
-    }, [
-      news,
-      searchQuery,
-    ]);
-
-  /* =========================================================
-     MODO DE PESQUISA
-  ========================================================== */
+  /*
+   * =========================================================
+   * MODO DE BUSCA
+   * =========================================================
+   */
 
   const isSearchMode =
     Boolean(
@@ -313,9 +327,11 @@ function NewsPage() {
       ),
     );
 
-  /* =========================================================
-     SINCRONIZAÇÃO DA URL
-  ========================================================== */
+  /*
+   * =========================================================
+   * SINCRONIZAÇÃO DA PÁGINA
+   * =========================================================
+   */
 
   useEffect(() => {
     if (
@@ -331,6 +347,12 @@ function NewsPage() {
     urlPage,
   ]);
 
+  /*
+   * =========================================================
+   * SINCRONIZAÇÃO DA BUSCA
+   * =========================================================
+   */
+
   useEffect(() => {
     setSearchQuery(
       urlQuery,
@@ -345,6 +367,12 @@ function NewsPage() {
     }
   }, [urlQuery]);
 
+  /*
+   * =========================================================
+   * CORRIGE PÁGINA INVÁLIDA
+   * =========================================================
+   */
+
   useEffect(() => {
     if (
       urlPage >
@@ -355,6 +383,7 @@ function NewsPage() {
       );
 
       void navigate({
+        to: "/news",
         search: {
           q: urlQuery,
           page: totalPages,
@@ -369,9 +398,11 @@ function NewsPage() {
     navigate,
   ]);
 
-  /* =========================================================
-     ENVIAR BUSCA
-  ========================================================== */
+  /*
+   * =========================================================
+   * ENVIAR BUSCA
+   * =========================================================
+   */
 
   const handleSearchSubmit =
     (
@@ -409,9 +440,49 @@ function NewsPage() {
       });
     };
 
-  /* =========================================================
-     FECHAR BUSCA
-  ========================================================== */
+  /*
+   * =========================================================
+   * VER TODOS OS RESULTADOS
+   * =========================================================
+   */
+
+  const handleViewAllResults =
+    () => {
+      const query =
+        searchQuery.trim();
+
+      if (!query) {
+        return;
+      }
+
+      setSearchOpen(
+        true,
+      );
+
+      setCurrentPage(
+        1,
+      );
+
+      void navigate({
+        to: "/news",
+        search: {
+          q: query,
+          page: 1,
+        },
+        resetScroll: false,
+      });
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    };
+
+  /*
+   * =========================================================
+   * FECHAR BUSCA
+   * =========================================================
+   */
 
   const closeSearch = () => {
     setSearchOpen(false);
@@ -427,9 +498,11 @@ function NewsPage() {
     });
   };
 
-  /* =========================================================
-     VOLTAR
-  ========================================================== */
+  /*
+   * =========================================================
+   * VOLTAR
+   * =========================================================
+   */
 
   const handleBack = () => {
     if (isSearchMode) {
@@ -442,9 +515,11 @@ function NewsPage() {
     });
   };
 
-  /* =========================================================
-     NOTÍCIAS VISÍVEIS
-  ========================================================== */
+  /*
+   * =========================================================
+   * NOTÍCIAS VISÍVEIS
+   * =========================================================
+   */
 
   const visibleNews =
     useMemo(() => {
@@ -462,9 +537,11 @@ function NewsPage() {
       currentPage,
     ]);
 
-  /* =========================================================
-     PAGINAÇÃO
-  ========================================================== */
+  /*
+   * =========================================================
+   * PAGINAÇÃO
+   * =========================================================
+   */
 
   const goToPage = (
     page: number,
@@ -525,9 +602,6 @@ function NewsPage() {
             gap-3
           "
         >
-
-          {/* VOLTAR */}
-
           <button
             type="button"
             onClick={
@@ -557,8 +631,6 @@ function NewsPage() {
               Voltar
             </span>
           </button>
-
-          {/* BUSCAR / FECHAR */}
 
           <button
             type="button"
@@ -617,7 +689,7 @@ function NewsPage() {
         </div>
 
         {/* =====================================================
-            CAIXA DE BUSCA
+            BUSCA
         ====================================================== */}
 
         {searchOpen && (
@@ -644,7 +716,6 @@ function NewsPage() {
                   items-center
                 "
               >
-
                 <input
                   autoFocus
                   type="search"
@@ -680,8 +751,6 @@ function NewsPage() {
                   aria-label="Buscar notícias"
                 />
 
-                {/* LUPA */}
-
                 <div
                   className="
                     absolute
@@ -713,7 +782,7 @@ function NewsPage() {
             </form>
 
             {/* =================================================
-                RESULTADOS DA BUSCA
+                PRÉVIA DA BUSCA
             ================================================== */}
 
             {searchQuery.trim() && (
@@ -745,7 +814,7 @@ function NewsPage() {
                     "
                   >
 
-                    {/* RESULTADOS */}
+                    {/* 5 PRIMEIROS RESULTADOS */}
 
                     {previewSearchResults.map(
                       (
@@ -834,17 +903,16 @@ function NewsPage() {
                     )}
 
                     {/* =================================================
-                        VER TODOS OS RESULTADOS
+                        VER TODOS
                     ================================================== */}
 
-                    {previewSearchResults.length <
-                      searchResults.length && (
-                      <Link
-                        to="/news"
-                        search={{
-                          q: searchQuery.trim(),
-                          page: 1,
-                        }}
+                    {liveSearchResults.length >
+                      5 && (
+                      <button
+                        type="button"
+                        onClick={
+                          handleViewAllResults
+                        }
                         className="
                           flex
                           w-full
@@ -865,10 +933,10 @@ function NewsPage() {
                         Ver todos os resultados
                         {" ("}
                         {
-                          searchResults.length
+                          liveSearchResults.length
                         }
                         {")"}
-                      </Link>
+                      </button>
                     )}
                   </div>
                 )}
@@ -967,7 +1035,7 @@ function NewsPage() {
         )}
 
         {/* =====================================================
-            NOTÍCIAS
+            LISTA DE NOTÍCIAS
         ====================================================== */}
 
         {visibleNews.length > 0 ? (
@@ -1155,9 +1223,6 @@ function NewsPage() {
                     pb-1
                   "
                 >
-
-                  {/* ANTERIOR */}
-
                   <button
                     type="button"
                     onClick={() =>
@@ -1191,8 +1256,6 @@ function NewsPage() {
                   >
                     <ChevronLeft className="size-4" />
                   </button>
-
-                  {/* NÚMEROS */}
 
                   {Array.from(
                     {
@@ -1251,8 +1314,6 @@ function NewsPage() {
                       </button>
                     ),
                   )}
-
-                  {/* PRÓXIMA */}
 
                   <button
                     type="button"
