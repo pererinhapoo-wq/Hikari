@@ -7,7 +7,9 @@ import {
 
 export type AutomaticNewsItem = {
   id: string;
-  type: "NOVA TEMPORADA";
+  type:
+    | "NOVA TEMPORADA"
+    | "TRAILER";
   title: string;
   description: string;
   date: string;
