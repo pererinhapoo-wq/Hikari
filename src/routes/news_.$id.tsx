@@ -547,6 +547,29 @@ export const Route = createFileRoute(
   loader: async ({
     params,
   }) => {
+    /*
+     * Notícias fixas não precisam consultar o AniList.
+     * Isso evita uma chamada externa desnecessária ao abrir
+     * qualquer notícia estática.
+     */
+    const staticItem =
+      NEWS.find(
+        (item) =>
+          item.id ===
+          params.id,
+      );
+
+    if (staticItem) {
+      return {
+        automaticNews: [],
+        automaticAnime: null,
+      };
+    }
+
+    /*
+     * Para notícias automáticas, buscamos o catálogo somente
+     * quando realmente precisamos dele para localizar a notícia.
+     */
     const automaticNews =
       await fetchAutomaticNews();
 
@@ -1464,4 +1487,4 @@ function NewsDetailsPage() {
       </section>
     </div>
   );
-      }
+    }
