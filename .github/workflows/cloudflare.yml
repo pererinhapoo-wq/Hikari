@@ -29,6 +29,9 @@ jobs:
       - name: Gerar rotas
         run: npm run generate-routes
 
+      - name: Verificar rota news
+        run: grep -n 'news' src/routeTree.gen.ts
+
       - name: Build Cloudflare
         run: npm run build:cloudflare
 
