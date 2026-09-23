@@ -55,18 +55,24 @@ type AniMedia = {
     site?: string | null;
     thumbnail?: string | null;
   } | null;
-
-  airingSchedule?: {
-    nodes?: {
-      airingAt?: number | null;
-      episode?: number | null;
-    }[];
-  } | null;
 };
 
 type AniListResponse = {
   Page: {
     media: AniMedia[];
+  };
+};
+
+type AiringScheduleItem = {
+  id?: number | null;
+  mediaId?: number | null;
+  episode?: number | null;
+  airingAt?: number | null;
+};
+
+type AiringScheduleResponse = {
+  Page: {
+    airingSchedules: AiringScheduleItem[];
   };
 };
 
@@ -318,36 +324,140 @@ function trailerOf(
   return `https://www.youtube.com/embed/${trailer.id}`;
 }
 
-function latestAiredEpisodeOf(
-  media: AniMedia,
-): {
-  episode: number;
-  airingAt: number;
-} | null {
-  const nodes =
-    media.airingSchedule
-      ?.nodes ?? [];
+/**
+ * Busca os episódios que já foram ao ar
+ * usando a consulta própria de calendário
+ * do AniList.
+ *
+ * Isso fica separado da consulta dos animes
+ * para que um problema no calendário não
+ * derrube todas as notícias.
+ */
+async function fetchLatestAiredEpisodes(): Promise<
+  Map<
+    number,
+    {
+      episode: number;
+      airingAt: number;
+    }
+  >
+> {
+  const result =
+    new Map<
+      number,
+      {
+        episode: number;
+        airingAt: number;
+      }
+    >();
 
-  const latest =
-    nodes.find(
-      (item) =>
-        typeof item.airingAt ===
-          "number" &&
-        typeof item.episode ===
-          "number",
-    );
+  try {
+    const response =
+      await fetch(
+        ANILIST,
+        {
+          method: "POST",
 
-  if (!latest) {
-    return null;
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Accept:
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            query: `
+              query LatestAiredEpisodes {
+                Page(
+                  page: 1
+                  perPage: 50
+                ) {
+                  airingSchedules(
+                    notYetAired: false
+                    sort: TIME_DESC
+                  ) {
+                    id
+                    mediaId
+                    episode
+                    airingAt
+                  }
+                }
+              }
+            `,
+          }),
+
+          signal:
+            AbortSignal.timeout(
+              12000,
+            ),
+        },
+      );
+
+    if (!response.ok) {
+      return result;
+    }
+
+    const json =
+      (await response.json()) as {
+        data?: AiringScheduleResponse;
+
+        errors?: {
+          message?: string;
+        }[];
+      };
+
+    if (
+      json.errors?.length ||
+      !json.data?.Page
+    ) {
+      return result;
+    }
+
+    for (const item of
+      json.data.Page
+        .airingSchedules ?? []) {
+      if (
+        typeof item.mediaId !==
+          "number" ||
+        typeof item.episode !==
+          "number" ||
+        typeof item.airingAt !==
+          "number"
+      ) {
+        continue;
+      }
+
+      if (
+        item.episode <= 0 ||
+        item.airingAt * 1000 >
+          Date.now()
+      ) {
+        continue;
+      }
+
+      if (
+        !result.has(
+          item.mediaId,
+        )
+      ) {
+        result.set(
+          item.mediaId,
+          {
+            episode:
+              item.episode,
+
+            airingAt:
+              item.airingAt,
+          },
+        );
+      }
+    }
+  } catch {
+    return result;
   }
 
-  return {
-    episode:
-      latest.episode as number,
-
-    airingAt:
-      latest.airingAt as number,
-  };
+  return result;
 }
 
 async function fetchSeason(
@@ -417,18 +527,6 @@ async function fetchSeason(
                     id
                     site
                     thumbnail
-                  }
-
-                  airingSchedule(
-                    notYetAired: false
-                    page: 1
-                    perPage: 1
-                    sort: TIME_DESC
-                  ) {
-                    nodes {
-                      airingAt
-                      episode
-                    }
                   }
                 }
               }
@@ -521,6 +619,16 @@ export const fetchAutomaticNews =
               "MUSIC",
         );
 
+      /*
+       * Busca os episódios separadamente.
+       *
+       * Se essa consulta falhar,
+       * continuamos normalmente com
+       * trailers e temporadas.
+       */
+      const latestEpisodes =
+        await fetchLatestAiredEpisodes();
+
       const news:
         AutomaticNewsItem[] =
         [];
@@ -543,14 +651,10 @@ export const fetchAutomaticNews =
 
         /*
          * NOTÍCIA DE NOVO EPISÓDIO
-         *
-         * Criamos uma notícia para o
-         * último episódio que o AniList
-         * registra como já exibido.
          */
         const latestEpisode =
-          latestAiredEpisodeOf(
-            anime,
+          latestEpisodes.get(
+            anime.id,
           );
 
         if (
