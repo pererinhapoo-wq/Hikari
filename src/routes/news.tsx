@@ -9,6 +9,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Clapperboard,
   Newspaper,
   Search,
   X,
@@ -17,7 +18,6 @@ import {
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 
@@ -26,7 +26,18 @@ import {
   type AutomaticNewsItem,
 } from "@/lib/news-api";
 
-export const Route = createFileRoute("/news")({
+import {
+  searchCatalog,
+} from "@/lib/api";
+
+import {
+  displayTitle,
+  type SlimAnime,
+} from "@/lib/types";
+
+export const Route = createFileRoute(
+  "/news",
+)({
   validateSearch: (search) => ({
     page: Math.max(
       1,
@@ -43,14 +54,15 @@ export const Route = createFileRoute("/news")({
 
 const NEWS_PER_PAGE = 4;
 
-function parseNewsDate(date: string) {
+function parseNewsDate(
+  date: string,
+) {
   if (!date) {
     return 0;
   }
 
-  const normalized = date
-    .trim()
-    .toLowerCase();
+  const normalized =
+    date.trim().toLowerCase();
 
   const numericMatch =
     normalized.match(
@@ -58,8 +70,12 @@ function parseNewsDate(date: string) {
     );
 
   if (numericMatch) {
-    const [, day, month, year] =
-      numericMatch;
+    const [
+      ,
+      day,
+      month,
+      year,
+    ] = numericMatch;
 
     return new Date(
       Number(year),
@@ -92,8 +108,12 @@ function parseNewsDate(date: string) {
     );
 
   if (textMatch) {
-    const [, day, monthName, year] =
-      textMatch;
+    const [
+      ,
+      day,
+      monthName,
+      year,
+    ] = textMatch;
 
     const month =
       monthNames[monthName];
@@ -117,99 +137,79 @@ function parseNewsDate(date: string) {
   return 0;
 }
 
-function normalizeSearchText(
-  value: string,
-) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(
-      /[\u0300-\u036f]/g,
-      "",
-    )
-    .trim();
-}
-
 function NewsPage() {
-  const loaderNews =
-    Route.useLoaderData() as AutomaticNewsItem[];
-
   const navigate =
     useNavigate({
       from: "/news",
     });
 
-  const { page: urlPage } =
-    Route.useSearch();
+  const loaderNews =
+    Route.useLoaderData() as AutomaticNewsItem[];
 
-  const [currentPage, setCurrentPage] =
-    useState(urlPage);
+  const {
+    page: urlPage,
+  } = Route.useSearch();
 
-  const [searchOpen, setSearchOpen] =
-    useState(false);
+  const [
+    currentPage,
+    setCurrentPage,
+  ] = useState(urlPage);
 
-  const [searchQuery, setSearchQuery] =
-    useState("");
+  /* =========================================================
+     BUSCA
+  ========================================================== */
 
-  const searchInputRef =
-    useRef<HTMLInputElement>(null);
+  const [
+    searchOpen,
+    setSearchOpen,
+  ] = useState(false);
+
+  const [
+    searchQuery,
+    setSearchQuery,
+  ] = useState("");
+
+  const [
+    searchResults,
+    setSearchResults,
+  ] = useState<SlimAnime[]>([]);
+
+  const [
+    searchLoading,
+    setSearchLoading,
+  ] = useState(false);
 
   const news = useMemo(() => {
     return [
       ...(loaderNews ?? []),
     ].sort(
       (a, b) =>
-        parseNewsDate(b.date) -
-        parseNewsDate(a.date),
+        parseNewsDate(
+          b.date,
+        ) -
+        parseNewsDate(
+          a.date,
+        ),
     );
   }, [loaderNews]);
 
-  const filteredNews =
-    useMemo(() => {
-      const query =
-        normalizeSearchText(
-          searchQuery,
-        );
-
-      if (!query) {
-        return news;
-      }
-
-      return news.filter(
-        (item) => {
-          const searchableText =
-            normalizeSearchText(
-              [
-                item.title,
-                item.description,
-                item.type,
-                item.date,
-              ].join(" "),
-            );
-
-          return searchableText.includes(
-            query,
-          );
-        },
-      );
-    }, [
-      news,
-      searchQuery,
-    ]);
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(
-      filteredNews.length /
-        NEWS_PER_PAGE,
-    ),
-  );
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        news.length /
+          NEWS_PER_PAGE,
+      ),
+    );
 
   useEffect(() => {
     if (
-      currentPage !== urlPage
+      currentPage !==
+      urlPage
     ) {
-      setCurrentPage(urlPage);
+      setCurrentPage(
+        urlPage,
+      );
     }
   }, [
     urlPage,
@@ -221,12 +221,15 @@ function NewsPage() {
       currentPage >
       totalPages
     ) {
-      setCurrentPage(totalPages);
+      setCurrentPage(
+        totalPages,
+      );
 
-      navigate({
+      void navigate({
         search: {
           page: totalPages,
         },
+        resetScroll: false,
       });
     }
   }, [
@@ -235,13 +238,140 @@ function NewsPage() {
     navigate,
   ]);
 
+  /* =========================================================
+     BUSCA AUTOMÁTICA
+  ========================================================== */
+
   useEffect(() => {
-    if (searchOpen) {
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-      });
+    const query =
+      searchQuery.trim();
+
+    if (
+      !searchOpen ||
+      !query
+    ) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
     }
-  }, [searchOpen]);
+
+    let cancelled =
+      false;
+
+    const timer =
+      window.setTimeout(
+        async () => {
+          setSearchLoading(
+            true,
+          );
+
+          try {
+            const result =
+              await searchCatalog({
+                data: {
+                  q: query,
+                  page: 1,
+                },
+              });
+
+            if (
+              cancelled
+            ) {
+              return;
+            }
+
+            setSearchResults(
+              result.items ??
+                [],
+            );
+          } catch {
+            if (
+              !cancelled
+            ) {
+              setSearchResults(
+                [],
+              );
+            }
+          } finally {
+            if (
+              !cancelled
+            ) {
+              setSearchLoading(
+                false,
+              );
+            }
+          }
+        },
+        250,
+      );
+
+    return () => {
+      cancelled = true;
+
+      window.clearTimeout(
+        timer,
+      );
+    };
+  }, [
+    searchOpen,
+    searchQuery,
+  ]);
+
+  const performSearch =
+    async () => {
+      const query =
+        searchQuery.trim();
+
+      if (!query) {
+        setSearchResults([]);
+        return;
+      }
+
+      setSearchLoading(
+        true,
+      );
+
+      try {
+        const result =
+          await searchCatalog({
+            data: {
+              q: query,
+              page: 1,
+            },
+          });
+
+        setSearchResults(
+          result.items ??
+            [],
+        );
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(
+          false,
+        );
+      }
+    };
+
+  const handleSearchSubmit =
+    (
+      event: React.FormEvent<HTMLFormElement>,
+    ) => {
+      event.preventDefault();
+
+      void performSearch();
+    };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchLoading(false);
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    clearSearch();
+  };
 
   const visibleNews =
     useMemo(() => {
@@ -249,12 +379,13 @@ function NewsPage() {
         (currentPage - 1) *
         NEWS_PER_PAGE;
 
-      return filteredNews.slice(
+      return news.slice(
         start,
-        start + NEWS_PER_PAGE,
+        start +
+          NEWS_PER_PAGE,
       );
     }, [
-      filteredNews,
+      news,
       currentPage,
     ]);
 
@@ -263,7 +394,10 @@ function NewsPage() {
   ) => {
     const nextPage =
       Math.min(
-        Math.max(page, 1),
+        Math.max(
+          page,
+          1,
+        ),
         totalPages,
       );
 
@@ -271,79 +405,49 @@ function NewsPage() {
       nextPage,
     );
 
-    navigate({
+    void navigate({
       search: {
         page: nextPage,
       },
+      resetScroll: false,
     });
 
     window.scrollTo({
       top: 0,
       behavior: "smooth",
-    });
-  };
-
-  const handleSearchChange = (
-    value: string,
-  ) => {
-    setSearchQuery(value);
-
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-
-      navigate({
-        search: {
-          page: 1,
-        },
-      });
-    }
-  };
-
-  const handleSearchSubmit = (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-
-    const value =
-      searchQuery.trim();
-
-    setSearchQuery(value);
-
-    setCurrentPage(1);
-
-    navigate({
-      search: {
-        page: 1,
-      },
-    });
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  };
-
-  const clearSearch = () => {
-    setSearchQuery("");
-    setCurrentPage(1);
-
-    navigate({
-      search: {
-        page: 1,
-      },
-    });
-
-    requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
     });
   };
 
   return (
     <main className="min-h-screen bg-background text-fg">
-      <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-4 sm:px-6 lg:px-8">
+      <div
+        className="
+          mx-auto
+          w-full
+          max-w-7xl
+          px-4
+          pb-16
+          pt-4
+          sm:px-6
+          lg:px-8
+        "
+      >
 
-        {/* TOPO */}
-        <div className="mb-7 flex items-center justify-between gap-3">
+        {/* =====================================================
+            TOPO
+        ====================================================== */}
+
+        <div
+          className="
+            mb-7
+            flex
+            items-center
+            justify-between
+            gap-3
+          "
+        >
+
+          {/* VOLTAR */}
           <Link
             to="/"
             className="
@@ -371,27 +475,27 @@ function NewsPage() {
             </span>
           </Link>
 
+          {/* BUSCAR / FECHAR */}
           <button
             type="button"
             onClick={() => {
-              setSearchOpen(
-                (open) => !open,
-              );
+              if (
+                searchOpen
+              ) {
+                closeSearch();
+              } else {
+                setSearchOpen(
+                  true,
+                );
+              }
             }}
-            aria-label={
-              searchOpen
-                ? "Fechar busca"
-                : "Buscar notícias"
-            }
-            aria-expanded={
-              searchOpen
-            }
             className="
               inline-flex
+              w-fit
               items-center
               gap-2
               rounded-lg
-              px-3
+              px-2
               py-2
               text-sm
               font-medium
@@ -402,145 +506,329 @@ function NewsPage() {
               hover:text-fg
               active:scale-[0.97]
             "
+            aria-label={
+              searchOpen
+                ? "Fechar busca"
+                : "Abrir busca"
+            }
           >
             {searchOpen ? (
-              <X className="size-4" />
-            ) : (
-              <Search className="size-4" />
-            )}
+              <>
+                <X className="size-4 shrink-0" />
 
-            <span>
-              {searchOpen
-                ? "Fechar"
-                : "Buscar"}
-            </span>
+                <span>
+                  Fechar
+                </span>
+              </>
+            ) : (
+              <>
+                <Search className="size-4 shrink-0" />
+
+                <span>
+                  Buscar
+                </span>
+              </>
+            )}
           </button>
         </div>
 
-        {/* BUSCA */}
+        {/* =====================================================
+            BUSCA
+        ====================================================== */}
+
         {searchOpen && (
-          <form
-            onSubmit={
-              handleSearchSubmit
-            }
+          <section
             className="
-              mb-6
-              rounded-2xl
+              mb-7
+              rounded-3xl
               border
               border-border
-              bg-card
+              bg-background
               p-3
-              shadow-[var(--shadow-border)]
+              sm:p-4
             "
           >
-            <div
-              className="
-                flex
-                items-center
-                gap-2
-                rounded-xl
-                border
-                border-border
-                bg-elevated
-                px-3
-              "
+            <form
+              onSubmit={
+                handleSearchSubmit
+              }
             >
-              <Search
+              <div
                 className="
-                  size-5
-                  shrink-0
-                  text-muted
-                "
-              />
-
-              <input
-                ref={searchInputRef}
-                type="search"
-                value={searchQuery}
-                onChange={(event) =>
-                  handleSearchChange(
-                    event.target.value,
-                  )
-                }
-                placeholder="Buscar notícias..."
-                aria-label="Buscar notícias"
-                autoComplete="off"
-                className="
-                  min-w-0
-                  flex-1
-                  bg-transparent
-                  py-3
-                  text-sm
-                  text-fg
-                  outline-none
-                  placeholder:text-muted
-                "
-              />
-
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={
-                    clearSearch
-                  }
-                  aria-label="Limpar busca"
-                  className="
-                    flex
-                    size-8
-                    shrink-0
-                    items-center
-                    justify-center
-                    rounded-full
-                    text-muted
-                    transition
-                    hover:bg-card
-                    hover:text-fg
-                  "
-                >
-                  <X className="size-4" />
-                </button>
-              )}
-
-              <button
-                type="submit"
-                aria-label="Pesquisar"
-                className="
+                  relative
                   flex
-                  size-9
-                  shrink-0
                   items-center
-                  justify-center
-                  rounded-lg
-                  bg-accent
-                  text-white
-                  transition-all
-                  hover:opacity-90
-                  active:scale-[0.96]
                 "
               >
-                <Search className="size-4" />
-              </button>
-            </div>
+
+                {/* CAMPO */}
+                <input
+                  autoFocus
+                  type="search"
+                  value={
+                    searchQuery
+                  }
+                  onChange={(
+                    event,
+                  ) =>
+                    setSearchQuery(
+                      event.target
+                        .value,
+                    )
+                  }
+                  placeholder="Buscar animes..."
+                  enterKeyHint="search"
+                  autoComplete="off"
+                  className="
+                    h-14
+                    w-full
+                    rounded-2xl
+                    border
+                    border-border
+                    bg-elevated
+                    pl-4
+                    pr-24
+                    text-base
+                    text-fg
+                    outline-none
+                    placeholder:text-muted
+                    focus:border-fg/30
+                  "
+                  aria-label="Buscar animes"
+                />
+
+                {/* AÇÕES DO CAMPO */}
+                <div
+                  className="
+                    absolute
+                    right-2
+                    flex
+                    items-center
+                    gap-1
+                  "
+                >
+
+                  {/* LIMPAR */}
+                  {searchQuery.trim() && (
+                    <button
+                      type="button"
+                      onClick={
+                        clearSearch
+                      }
+                      className="
+                        flex
+                        size-10
+                        items-center
+                        justify-center
+                        rounded-xl
+                        text-muted
+                        transition-colors
+                        hover:bg-background
+                        hover:text-fg
+                        active:scale-95
+                      "
+                      aria-label="Limpar busca"
+                    >
+                      <X className="size-5" />
+                    </button>
+                  )}
+
+                  {/* LUPA */}
+                  <button
+                    type="submit"
+                    className="
+                      flex
+                      size-10
+                      items-center
+                      justify-center
+                      rounded-xl
+                      text-muted
+                      transition-colors
+                      hover:bg-background
+                      hover:text-fg
+                      active:scale-95
+                    "
+                    aria-label="Pesquisar"
+                  >
+                    <Search className="size-5" />
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* =================================================
+                RESULTADOS DA BUSCA
+            ================================================== */}
 
             {searchQuery.trim() && (
-              <p className="mt-2 px-1 text-xs text-muted">
-                {filteredNews.length ===
-                0
-                  ? "Nenhuma notícia encontrada."
-                  : `${filteredNews.length} ${
-                      filteredNews.length ===
-                      1
-                        ? "notícia encontrada"
-                        : "notícias encontradas"
-                    }`}
-              </p>
+              <div className="mt-3">
+
+                {searchLoading ? (
+                  <div
+                    className="
+                      rounded-2xl
+                      bg-surface
+                      px-4
+                      py-6
+                      text-center
+                      text-sm
+                      text-muted
+                    "
+                  >
+                    Buscando...
+                  </div>
+                ) : searchResults.length ===
+                  0 ? (
+                  <div
+                    className="
+                      rounded-2xl
+                      bg-surface
+                      px-4
+                      py-6
+                      text-center
+                      text-sm
+                      text-muted
+                    "
+                  >
+                    Nenhum anime encontrado.
+                  </div>
+                ) : (
+                  <div
+                    className="
+                      max-h-[55vh]
+                      overflow-y-auto
+                      rounded-2xl
+                      border
+                      border-border
+                      bg-surface
+                    "
+                  >
+                    {searchResults
+                      .slice(
+                        0,
+                        10,
+                      )
+                      .map(
+                        (
+                          anime,
+                        ) => (
+                          <Link
+                            key={
+                              anime.id
+                            }
+                            to="/anime/$id"
+                            params={{
+                              id: anime.id,
+                            }}
+                            onClick={
+                              closeSearch
+                            }
+                            className="
+                              flex
+                              items-center
+                              gap-3
+                              border-b
+                              border-border
+                              px-4
+                              py-3
+                              transition-colors
+                              last:border-b-0
+                              hover:bg-elevated
+                            "
+                          >
+
+                            {/* CAPA */}
+                            {anime.cover ? (
+                              <img
+                                src={
+                                  anime.cover
+                                }
+                                alt=""
+                                className="
+                                  size-14
+                                  shrink-0
+                                  rounded-lg
+                                  object-cover
+                                "
+                              />
+                            ) : (
+                              <div
+                                className="
+                                  flex
+                                  size-14
+                                  shrink-0
+                                  items-center
+                                  justify-center
+                                  rounded-lg
+                                  bg-elevated
+                                  text-muted
+                                "
+                              >
+                                <Clapperboard className="size-5" />
+                              </div>
+                            )}
+
+                            {/* INFORMAÇÕES */}
+                            <div className="min-w-0 flex-1">
+                              <p
+                                className="
+                                  truncate
+                                  text-sm
+                                  font-semibold
+                                  text-fg
+                                "
+                              >
+                                {displayTitle(
+                                  anime,
+                                )}
+                              </p>
+
+                              <p
+                                className="
+                                  mt-1
+                                  text-xs
+                                  text-muted
+                                "
+                              >
+                                {anime.year ??
+                                  ""}
+
+                                {anime.year &&
+                                anime.format
+                                  ? " · "
+                                  : ""}
+
+                                {anime.format ===
+                                "TV"
+                                  ? "Série"
+                                  : anime.format ===
+                                      "MOVIE"
+                                    ? "Filme"
+                                    : ""}
+                              </p>
+                            </div>
+                          </Link>
+                        ),
+                      )}
+                  </div>
+                )}
+              </div>
             )}
-          </form>
+          </section>
         )}
 
-        {/* CABEÇALHO */}
+        {/* =====================================================
+            TÍTULO
+        ====================================================== */}
+
         <section className="mb-7">
-          <div className="flex items-center gap-3">
+          <div
+            className="
+              flex
+              items-center
+              gap-3
+            "
+          >
             <div
               className="
                 flex
@@ -557,20 +845,35 @@ function NewsPage() {
             </div>
 
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight">
+              <h1
+                className="
+                  text-2xl
+                  font-semibold
+                  tracking-tight
+                "
+              >
                 Notícias
               </h1>
 
-              <p className="mt-1 text-sm text-muted">
+              <p
+                className="
+                  mt-1
+                  text-sm
+                  text-muted
+                "
+              >
                 Fique por dentro das novidades do mundo dos animes.
               </p>
             </div>
           </div>
         </section>
 
+        {/* =====================================================
+            NOTÍCIAS
+        ====================================================== */}
+
         {visibleNews.length > 0 ? (
           <>
-            {/* NOTÍCIAS */}
             <section
               className="
                 grid
@@ -582,7 +885,9 @@ function NewsPage() {
               {visibleNews.map(
                 (item) => (
                   <Link
-                    key={item.id}
+                    key={
+                      item.id
+                    }
                     to="/news/$id"
                     params={{
                       id: item.id,
@@ -723,7 +1028,10 @@ function NewsPage() {
               )}
             </section>
 
-            {/* PAGINAÇÃO */}
+            {/* =================================================
+                PAGINAÇÃO
+            ================================================== */}
+
             {totalPages > 1 && (
               <nav
                 className="
@@ -746,11 +1054,14 @@ function NewsPage() {
                     pb-1
                   "
                 >
+
+                  {/* ANTERIOR */}
                   <button
                     type="button"
                     onClick={() =>
                       goToPage(
-                        currentPage - 1,
+                        currentPage -
+                          1,
                       )
                     }
                     disabled={
@@ -779,17 +1090,26 @@ function NewsPage() {
                     <ChevronLeft className="size-4" />
                   </button>
 
+                  {/* PÁGINAS */}
                   {Array.from(
                     {
                       length:
                         totalPages,
                     },
-                    (_, index) =>
-                      index + 1,
+                    (
+                      _,
+                      index,
+                    ) =>
+                      index +
+                      1,
                   ).map(
-                    (page) => (
+                    (
+                      page,
+                    ) => (
                       <button
-                        key={page}
+                        key={
+                          page
+                        }
                         type="button"
                         onClick={() =>
                           goToPage(
@@ -829,11 +1149,13 @@ function NewsPage() {
                     ),
                   )}
 
+                  {/* PRÓXIMA */}
                   <button
                     type="button"
                     onClick={() =>
                       goToPage(
-                        currentPage + 1,
+                        currentPage +
+                          1,
                       )
                     }
                     disabled={
@@ -891,18 +1213,12 @@ function NewsPage() {
               text-center
             "
           >
-            <div>
-              <Search className="mx-auto size-8 text-muted" />
-
-              <p className="mt-3 text-sm text-muted">
-                {searchQuery.trim()
-                  ? "Nenhuma notícia encontrada para essa busca."
-                  : "Nenhuma notícia disponível no momento."}
-              </p>
-            </div>
+            <p className="text-sm text-muted">
+              Nenhuma notícia disponível no momento.
+            </p>
           </section>
         )}
       </div>
     </main>
   );
-    }
+          }
