@@ -18,6 +18,8 @@ import {
   type AutomaticNewsItem,
 } from "@/lib/news-api";
 
+import { stripHtml } from "@/lib/utils";
+
 type AnimeInfo = {
   id: string;
   name: string;
@@ -36,9 +38,47 @@ type NewsItem = {
   content: string;
   date: string;
   image: string;
+  animeId?: string;
   trailerUrl?: string;
   anime?: AnimeInfo;
 };
+
+type AniListMediaDetails = {
+  id: number;
+
+  title?: {
+    romaji?: string | null;
+    english?: string | null;
+    native?: string | null;
+  } | null;
+
+  coverImage?: {
+    extraLarge?: string | null;
+    large?: string | null;
+  } | null;
+
+  description?: string | null;
+
+  episodes?: number | null;
+
+  season?: string | null;
+
+  seasonYear?: number | null;
+
+  startDate?: {
+    year?: number | null;
+    month?: number | null;
+    day?: number | null;
+  } | null;
+
+  trailer?: {
+    id?: string | null;
+    site?: string | null;
+  } | null;
+};
+
+const ANILIST =
+  "https://graphql.anilist.co";
 
 const NEWS: NewsItem[] = [
   {
@@ -212,66 +252,472 @@ const NEWS: NewsItem[] = [
   },
 ];
 
+function titleOf(
+  media: AniListMediaDetails,
+): string {
+  return (
+    media.title?.english ||
+    media.title?.romaji ||
+    media.title?.native ||
+    "Anime"
+  );
+}
+
+function formatAnimeSeason(
+  season:
+    | string
+    | null
+    | undefined,
+  year:
+    | number
+    | null
+    | undefined,
+): string {
+  const names: Record<
+    string,
+    string
+  > = {
+    WINTER: "Inverno",
+    SPRING: "Primavera",
+    SUMMER: "Verão",
+    FALL: "Outono",
+  };
+
+  const translated =
+    season
+      ? names[
+          season.toUpperCase()
+        ] ?? season
+      : "Não informado";
+
+  return year
+    ? `${translated} de ${year}`
+    : translated;
+}
+
+function formatAnimeDate(
+  date:
+    | AniListMediaDetails["startDate"]
+    | null
+    | undefined,
+): string {
+  if (
+    !date?.year ||
+    !date.month ||
+    !date.day
+  ) {
+    return "Não informado";
+  }
+
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    },
+  ).format(
+    new Date(
+      date.year,
+      date.month - 1,
+      date.day,
+    ),
+  );
+}
+
+async function translateSynopsis(
+  text: string,
+): Promise<string> {
+  const cleaned =
+    stripHtml(
+      text,
+    ).trim();
+
+  if (!cleaned) {
+    return "Sinopse não disponível.";
+  }
+
+  try {
+    const url =
+      "https://translate.googleapis.com/translate_a/single" +
+      "?client=gtx" +
+      "&sl=auto" +
+      "&tl=pt" +
+      "&dt=t" +
+      `&q=${encodeURIComponent(
+        cleaned.slice(0, 5000),
+      )}`;
+
+    const response =
+      await fetch(
+        url,
+        {
+          signal:
+            AbortSignal.timeout(
+              8000,
+            ),
+        },
+      );
+
+    if (!response.ok) {
+      return cleaned;
+    }
+
+    const json =
+      (await response.json()) as unknown;
+
+    if (
+      !Array.isArray(json) ||
+      !Array.isArray(json[0])
+    ) {
+      return cleaned;
+    }
+
+    const translated =
+      json[0]
+        .filter(
+          (part) =>
+            Array.isArray(part) &&
+            typeof part[0] ===
+              "string",
+        )
+        .map(
+          (part) =>
+            part[0] as string,
+        )
+        .join("")
+        .trim();
+
+    return translated ||
+      cleaned;
+  } catch {
+    return cleaned;
+  }
+}
+
+async function fetchAnimeInfo(
+  animeId: number,
+): Promise<AnimeInfo | null> {
+  try {
+    const response =
+      await fetch(
+        ANILIST,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Accept:
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            query: `
+              query AnimeDetails(
+                $id: Int
+              ) {
+                Media(
+                  id: $id
+                  type: ANIME
+                ) {
+                  id
+
+                  title {
+                    romaji
+                    english
+                    native
+                  }
+
+                  coverImage {
+                    extraLarge
+                    large
+                  }
+
+                  description(
+                    asHtml: false
+                  )
+
+                  episodes
+
+                  season
+
+                  seasonYear
+
+                  startDate {
+                    year
+                    month
+                    day
+                  }
+                }
+              }
+            `,
+
+            variables: {
+              id: animeId,
+            },
+          }),
+
+          signal:
+            AbortSignal.timeout(
+              10000,
+            ),
+        },
+      );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const json =
+      (await response.json()) as {
+        data?: {
+          Media?: AniListMediaDetails | null;
+        };
+
+        errors?: {
+          message?: string;
+        }[];
+      };
+
+    const media =
+      json.data?.Media;
+
+    if (!media) {
+      return null;
+    }
+
+    const synopsis =
+      await translateSynopsis(
+        media.description ??
+          "",
+      );
+
+    return {
+      id: String(
+        media.id,
+      ),
+
+      name:
+        titleOf(
+          media,
+        ),
+
+      image:
+        media.coverImage
+          ?.extraLarge ||
+        media.coverImage
+          ?.large ||
+        "",
+
+      synopsis,
+
+      season:
+        formatAnimeSeason(
+          media.season,
+          media.seasonYear,
+        ),
+
+      releaseDate:
+        formatAnimeDate(
+          media.startDate,
+        ),
+
+      episodes:
+        media.episodes ??
+        null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const Route = createFileRoute(
   "/news/$id",
 )({
-  loader: async () => {
+  loader: async ({
+    params,
+  }) => {
     const automaticNews =
       await fetchAutomaticNews();
 
+    const automaticItem =
+      automaticNews.find(
+        (item) =>
+          item.id ===
+          params.id,
+      );
+
+    let automaticAnime:
+      | AnimeInfo
+      | null =
+      null;
+
+    if (
+      automaticItem?.animeId
+    ) {
+      const animeId =
+        Number(
+          automaticItem.animeId,
+        );
+
+      if (
+        Number.isInteger(
+          animeId,
+        ) &&
+        animeId > 0
+      ) {
+        automaticAnime =
+          await fetchAnimeInfo(
+            animeId,
+          );
+      }
+    }
+
     return {
       automaticNews,
+      automaticAnime,
     };
   },
-  component: NewsDetailsPage,
+
+  component:
+    NewsDetailsPage,
 });
 
 function automaticToNewsItem(
   item: AutomaticNewsItem,
+  anime:
+    | AnimeInfo
+    | null
+    | undefined,
 ): NewsItem {
-  return {
-    id: item.id,
-    type: item.type,
-    title: item.title,
-    description: item.description,
-    content:
+  let content =
+    item.description;
+
+  if (
+    item.type ===
+    "NOVO EPISÓDIO"
+  ) {
+    content =
       `${item.description}\n\n` +
-      `${item.title} faz parte da programação atual de animes. ` +
-      `A página reúne as informações disponíveis no catálogo automático do Hikari. ` +
-      `Novas informações poderão aparecer conforme os dados da temporada forem atualizados.`,
-    date: item.date,
-    image: item.image,
+      `Este episódio faz parte da programação atual de ${anime?.name ?? "este anime"}. ` +
+      `Acompanhe a página do anime para encontrar os episódios disponíveis no Hikari.`;
+  } else if (
+    item.type ===
+    "TRAILER"
+  ) {
+    content =
+      `${item.description}\n\n` +
+      `O trailer foi identificado automaticamente a partir dos dados disponíveis para ${anime?.name ?? "este anime"}. ` +
+      `Novas informações poderão aparecer conforme os dados forem atualizados.`;
+  } else {
+    content =
+      `${item.description}\n\n` +
+      `${anime?.name ?? item.title} faz parte da programação atual de animes. ` +
+      `Novas informações poderão aparecer conforme os dados da temporada forem atualizados.`;
+  }
+
+  return {
+    id:
+      item.id,
+
+    type:
+      item.type,
+
+    title:
+      item.title,
+
+    description:
+      item.description,
+
+    content,
+
+    date:
+      item.date,
+
+    image:
+      item.image,
+
+    animeId:
+      item.animeId,
+
+    trailerUrl:
+      item.trailerUrl,
+
+    anime:
+      anime ?? undefined,
   };
 }
 
 function NewsDetailsPage() {
-  const { id } = Route.useParams();
-  const { automaticNews } =
+  const { id } =
+    Route.useParams();
+
+  const {
+    automaticNews,
+    automaticAnime,
+  } =
     Route.useLoaderData();
 
-  const automaticItems =
-    automaticNews.map(
-      automaticToNewsItem,
+  const automaticItem =
+    automaticNews.find(
+      (item) =>
+        item.id === id,
     );
 
-  const allNews = [
-    ...NEWS,
-    ...automaticItems,
-  ];
+  const automaticNewsItem =
+    automaticItem
+      ? automaticToNewsItem(
+          automaticItem,
+          automaticAnime,
+        )
+      : null;
 
-  const news = allNews.find(
-    (item) => item.id === id,
-  );
+  const staticNews =
+    NEWS.find(
+      (item) =>
+        item.id === id,
+    );
+
+  const news =
+    automaticNewsItem ??
+    staticNews;
 
   if (!news) {
     throw notFound();
   }
 
-  const relatedNews = allNews
-    .filter(
-      (item) => item.id !== news.id,
-    )
-    .slice(0, 3);
+  const allNews = [
+    ...NEWS,
+    ...automaticNews.map(
+      (item) => {
+        if (
+          item.id ===
+          automaticItem?.id
+        ) {
+          return automaticToNewsItem(
+            item,
+            automaticAnime,
+          );
+        }
+
+        return automaticToNewsItem(
+          item,
+          undefined,
+        );
+      },
+    ),
+  ];
+
+  const relatedNews =
+    allNews
+      .filter(
+        (item) =>
+          item.id !==
+          news.id,
+      )
+      .slice(0, 3);
 
   return (
     <div className="space-y-6 pb-10">
@@ -297,7 +743,9 @@ function NewsDetailsPage() {
         "
       >
         <ArrowLeft className="size-4 shrink-0" />
-        <span>Voltar para notícias</span>
+        <span>
+          Voltar para notícias
+        </span>
       </Link>
 
       {/* CABEÇALHO */}
@@ -396,7 +844,10 @@ function NewsDetailsPage() {
             "
           >
             <CalendarDays className="size-4" />
-            <span>{news.date}</span>
+
+            <span>
+              {news.date}
+            </span>
           </div>
 
           <div className="mt-6">
@@ -437,7 +888,8 @@ function NewsDetailsPage() {
           </div>
 
           {/* TRAILER */}
-          {news.type === "TRAILER" &&
+          {news.type ===
+            "TRAILER" &&
             news.trailerUrl && (
               <section
                 id="trailer"
@@ -492,6 +944,7 @@ function NewsDetailsPage() {
                     "
                   >
                     <Play className="size-4 fill-current" />
+
                     <span>
                       Assistir trailer
                     </span>
@@ -546,8 +999,10 @@ function NewsDetailsPage() {
                     text-subtle
                   "
                 >
-                  Trailer oficial publicado
-                  pela TOHO animation.
+                  Trailer disponível
+                  através do link
+                  fornecido pelos
+                  dados da notícia.
                 </p>
               </section>
             )}
@@ -608,9 +1063,13 @@ function NewsDetailsPage() {
                   "
                 >
                   <img
-                    src={news.anime.image}
+                    src={
+                      news.anime
+                        .image
+                    }
                     alt={
-                      news.anime.name
+                      news.anime
+                        .name
                     }
                     className="
                       aspect-[2/3]
@@ -640,19 +1099,25 @@ function NewsDetailsPage() {
                           text-fg
                         "
                       >
-                        {news.anime.name}
+                        {
+                          news
+                            .anime
+                            .name
+                        }
                       </h3>
 
                       <p className="mt-1 text-sm text-subtle">
-                        Anime relacionado à
-                        notícia
+                        Anime relacionado
+                        à notícia
                       </p>
                     </div>
 
                     <Link
                       to="/anime/$id"
                       params={{
-                        id: news.anime.id,
+                        id: news
+                          .anime
+                          .id,
                       }}
                       className="
                         inline-flex
@@ -673,6 +1138,7 @@ function NewsDetailsPage() {
                       "
                     >
                       <Play className="size-4 fill-current" />
+
                       <span>
                         Assistir anime
                       </span>
@@ -705,6 +1171,7 @@ function NewsDetailsPage() {
                         "
                       >
                         <Clapperboard className="size-4" />
+
                         <span>
                           Temporada
                         </span>
@@ -718,7 +1185,11 @@ function NewsDetailsPage() {
                           text-fg
                         "
                       >
-                        {news.anime.season}
+                        {
+                          news
+                            .anime
+                            .season
+                        }
                       </p>
                     </div>
 
@@ -739,6 +1210,7 @@ function NewsDetailsPage() {
                         "
                       >
                         <CalendarDays className="size-4" />
+
                         <span>
                           Lançamento
                         </span>
@@ -753,7 +1225,8 @@ function NewsDetailsPage() {
                         "
                       >
                         {
-                          news.anime
+                          news
+                            .anime
                             .releaseDate
                         }
                       </p>
@@ -776,6 +1249,7 @@ function NewsDetailsPage() {
                         "
                       >
                         <Tv className="size-4" />
+
                         <span>
                           Episódios
                         </span>
@@ -789,9 +1263,12 @@ function NewsDetailsPage() {
                           text-fg
                         "
                       >
-                        {news.anime
-                          .episodes ??
-                          "Não informado"}
+                        {
+                          news
+                            .anime
+                            .episodes ??
+                          "Não informado"
+                        }
                       </p>
                     </div>
                   </div>
@@ -816,7 +1293,8 @@ function NewsDetailsPage() {
                       "
                     >
                       {
-                        news.anime
+                        news
+                          .anime
                           .synopsis
                       }
                     </p>
@@ -966,4 +1444,4 @@ function NewsDetailsPage() {
       </section>
     </div>
   );
-      }
+    }
