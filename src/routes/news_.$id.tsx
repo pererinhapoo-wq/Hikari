@@ -15,6 +15,7 @@ type NewsItem = {
   type: string;
   title: string;
   description: string;
+  content: string;
   date: string;
   image: string;
 };
@@ -27,6 +28,8 @@ const NEWS: NewsItem[] = [
       'Novo trailer de "Sousou no Frieren" é divulgado',
     description:
       "Um novo trailer foi divulgado, trazendo novas cenas e detalhes da próxima temporada.",
+    content:
+      'Um novo trailer de "Sousou no Frieren" foi divulgado, apresentando novas cenas e momentos inéditos da próxima temporada. O material mostra parte da jornada dos personagens e destaca diferentes situações que deverão aparecer nos próximos episódios.\n\nO novo vídeo também apresenta cenas de personagens conhecidos e alguns momentos que chamaram a atenção dos fãs. Mais detalhes sobre a história e a produção poderão ser divulgados posteriormente.',
     date: "22 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
@@ -38,6 +41,8 @@ const NEWS: NewsItem[] = [
       "One Piece ganha novidades sobre seu próximo arco",
     description:
       "Novas informações sobre a continuação da história foram divulgadas.",
+    content:
+      "Novas informações sobre o próximo arco de One Piece foram divulgadas. A atualização apresenta detalhes sobre a continuação da história e aumenta a expectativa para os próximos acontecimentos.\n\nA produção deve continuar revelando novas informações ao longo das próximas atualizações. Os fãs poderão acompanhar as novidades conforme novos materiais forem publicados.",
     date: "21 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&q=90",
@@ -49,6 +54,8 @@ const NEWS: NewsItem[] = [
       "Novo filme de anime recebe data de estreia",
     description:
       "A produção ganhou uma nova atualização e teve sua data de estreia anunciada.",
+    content:
+      "Um novo filme de anime recebeu uma atualização importante com a divulgação de sua data de estreia. A produção vinha sendo aguardada pelos fãs e agora possui uma nova previsão para chegar ao público.\n\nNovas informações sobre a equipe, personagens e materiais promocionais poderão ser divulgadas antes da estreia. O filme também deverá receber novos trailers e imagens promocionais.",
     date: "20 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=90",
@@ -60,6 +67,8 @@ const NEWS: NewsItem[] = [
       "Novo episódio de uma das séries mais populares chega esta semana",
     description:
       "O próximo episódio já tem data prevista e novas informações foram divulgadas.",
+    content:
+      "O próximo episódio da série já possui uma data prevista para lançamento. A atualização também trouxe novas informações sobre o que os espectadores poderão encontrar no próximo capítulo.\n\nA expectativa aumenta com a chegada do novo episódio, que deverá continuar os acontecimentos apresentados anteriormente. Novas informações podem ser divulgadas antes da publicação.",
     date: "19 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=1200&q=90",
@@ -71,6 +80,8 @@ const NEWS: NewsItem[] = [
       "Jujutsu Kaisen recebe novas informações sobre a produção",
     description:
       "A produção divulgou novas informações para os fãs da série.",
+    content:
+      "A produção de Jujutsu Kaisen recebeu uma nova atualização. As informações divulgadas apresentam novidades relacionadas ao futuro da série e aos próximos materiais que deverão ser publicados.\n\nOs fãs poderão acompanhar novas imagens, vídeos e outros anúncios conforme a produção avançar. Mais detalhes serão adicionados quando novas informações oficiais forem disponibilizadas.",
     date: "18 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
@@ -82,6 +93,8 @@ const NEWS: NewsItem[] = [
       "Novo projeto de Demon Slayer ganha novidades",
     description:
       "Novos detalhes do próximo projeto foram revelados.",
+    content:
+      "O próximo projeto relacionado a Demon Slayer recebeu novas informações. A atualização apresenta detalhes adicionais sobre a produção e aumenta a expectativa para os próximos materiais promocionais.\n\nNovas imagens, vídeos e informações sobre o projeto poderão ser divulgados posteriormente. O público poderá acompanhar as novidades conforme o lançamento se aproxima.",
     date: "17 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=90",
@@ -93,6 +106,8 @@ const NEWS: NewsItem[] = [
       "Solo Leveling recebe atualização sobre sua próxima temporada",
     description:
       "A equipe de produção divulgou novas informações sobre a continuação.",
+    content:
+      "A próxima temporada de Solo Leveling recebeu uma nova atualização. As informações divulgadas trazem novidades sobre a continuação da produção e sobre os próximos materiais que serão apresentados aos fãs.\n\nA expectativa para a nova temporada continua crescendo, enquanto novas imagens e informações podem ser divulgadas durante os próximos anúncios.",
     date: "16 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&q=90",
@@ -104,6 +119,8 @@ const NEWS: NewsItem[] = [
       "Bleach ganha novas informações sobre seus próximos episódios",
     description:
       "Novos detalhes foram divulgados sobre a continuação da série.",
+    content:
+      "Novas informações sobre os próximos episódios de Bleach foram divulgadas. A atualização apresenta detalhes sobre a continuação da história e sobre os próximos acontecimentos da série.\n\nMais materiais promocionais poderão ser publicados durante as próximas atualizações. Os fãs poderão acompanhar as novidades conforme novos anúncios forem realizados.",
     date: "15 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=1200&q=90",
@@ -115,6 +132,8 @@ const NEWS: NewsItem[] = [
       "Chainsaw Man recebe novidades sobre seu filme",
     description:
       "O projeto ganhou novas informações e detalhes de produção.",
+    content:
+      "O filme de Chainsaw Man recebeu novas informações relacionadas ao seu desenvolvimento. A atualização apresenta detalhes adicionais sobre o projeto e seus próximos materiais promocionais.\n\nNovas imagens, vídeos e anúncios poderão ser divulgados antes do lançamento. O público poderá acompanhar as próximas atualizações conforme a produção avançar.",
     date: "14 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=90",
@@ -126,6 +145,8 @@ const NEWS: NewsItem[] = [
       "My Hero Academia recebe novidades da próxima fase",
     description:
       "Novas informações sobre a produção foram divulgadas.",
+    content:
+      "My Hero Academia recebeu novas informações relacionadas à sua próxima fase. A atualização apresenta novidades sobre a produção e sobre os próximos conteúdos que deverão ser disponibilizados.\n\nNovos materiais promocionais poderão trazer mais detalhes sobre os personagens e acontecimentos da continuação. Outras informações serão divulgadas conforme novos anúncios forem realizados.",
     date: "13 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
@@ -137,6 +158,8 @@ const NEWS: NewsItem[] = [
       "Dragon Ball ganha novas informações para os fãs",
     description:
       "A franquia recebeu uma nova atualização nesta semana.",
+    content:
+      "Dragon Ball recebeu uma nova atualização com informações para os fãs da franquia. O anúncio apresenta novidades sobre os próximos conteúdos e mantém a comunidade acompanhando os futuros projetos.\n\nNovas informações poderão surgir nas próximas atualizações, incluindo materiais promocionais, imagens e outros anúncios relacionados à franquia.",
     date: "12 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&q=90",
@@ -148,6 +171,8 @@ const NEWS: NewsItem[] = [
       "Novo trailer de One Punch Man é divulgado",
     description:
       "O novo vídeo apresenta cenas inéditas e detalhes da produção.",
+    content:
+      "Um novo trailer de One Punch Man foi divulgado, apresentando cenas inéditas e novos detalhes da produção. O vídeo reúne diferentes momentos da série e mostra parte do conteúdo que deverá aparecer nos próximos episódios.\n\nO material promocional também aumenta a expectativa para a continuação. Novas informações poderão ser divulgadas durante os próximos anúncios da produção.",
     date: "11 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=1200&q=90",
@@ -307,6 +332,25 @@ function NewsDetailsPage() {
             </p>
           </div>
 
+          {/* CONTEÚDO COMPLETO */}
+          <div className="mt-6 space-y-4">
+            {news.content
+              .split("\n\n")
+              .map((paragraph, index) => (
+                <p
+                  key={index}
+                  className="
+                    text-sm
+                    leading-7
+                    text-muted
+                    sm:text-base
+                  "
+                >
+                  {paragraph}
+                </p>
+              ))}
+          </div>
+
           {/* ÁREA PARA INFORMAÇÕES DA NOTÍCIA */}
           <div
             className="
@@ -350,4 +394,4 @@ function NewsDetailsPage() {
       </article>
     </div>
   );
-      }
+    }
