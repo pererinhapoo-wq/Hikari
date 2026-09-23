@@ -2,7 +2,6 @@ import {
   createFileRoute,
   Link,
   notFound,
-  useSearch,
 } from "@tanstack/react-router";
 
 import {
@@ -721,54 +720,14 @@ function NewsDetailsPage() {
     ),
   ];
 
-  /*
-   * Escolhe notícias diferentes conforme
-   * a notícia atualmente aberta.
-   *
-   * Em vez de sempre pegar as primeiras 3,
-   * encontramos a posição da notícia atual
-   * e pegamos as próximas 3.
-   *
-   * Quando chegar ao final da lista,
-   * volta para o começo automaticamente.
-   */
-  const currentNewsIndex =
-    allNews.findIndex(
-      (item) =>
-        item.id === news.id,
-    );
-
   const relatedNews =
-    currentNewsIndex >= 0
-      ? Array.from(
-          {
-            length: Math.min(
-              3,
-              Math.max(
-                allNews.length - 1,
-                0,
-              ),
-            ),
-          },
-          (_, index) => {
-            const nextIndex =
-              (currentNewsIndex +
-                index +
-                1) %
-              allNews.length;
-
-            return allNews[
-              nextIndex
-            ];
-          },
-        )
-      : allNews
-          .filter(
-            (item) =>
-              item.id !==
-              news.id,
-          )
-          .slice(0, 3);
+    allNews
+      .filter(
+        (item) =>
+          item.id !==
+          news.id,
+      )
+      .slice(0, 3);
 
   return (
     <div className="space-y-6 pb-10">
@@ -779,6 +738,7 @@ function NewsDetailsPage() {
           page,
         }}
         className="
+          mt-2
           inline-flex
           w-fit
           items-center
@@ -1420,10 +1380,10 @@ function NewsDetailsPage() {
                 >
                   <img
                     src={item.image}
-                    alt={item.title}
+                    alt=""
                     className="
                       size-full
-                      object-cover
+                      object-contain
                       transition-transform
                       duration-300
                       group-hover:scale-105
