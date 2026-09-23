@@ -5,7 +5,6 @@ import {
 
 import {
   ArrowLeft,
-  ArrowRight,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -183,12 +182,12 @@ function NewsPage() {
   );
 
   const goToPage = (page: number) => {
-    setCurrentPage(
-      Math.min(
-        Math.max(page, 1),
-        totalPages,
-      ),
+    const nextPage = Math.min(
+      Math.max(page, 1),
+      totalPages,
     );
+
+    setCurrentPage(nextPage);
 
     window.scrollTo({
       top: 0,
@@ -382,13 +381,9 @@ function NewsPage() {
           <button
             type="button"
             onClick={() =>
-              goToPage(
-                currentPage - 1,
-              )
+              goToPage(currentPage - 1)
             }
-            disabled={
-              currentPage === 1
-            }
+            disabled={currentPage === 1}
             className="
               flex
               size-10
@@ -415,15 +410,12 @@ function NewsPage() {
               {
                 length: totalPages,
               },
-              (_, index) =>
-                index + 1,
+              (_, index) => index + 1,
             ).map((page) => (
               <button
                 key={page}
                 type="button"
-                onClick={() =>
-                  goToPage(page)
-                }
+                onClick={() => goToPage(page)}
                 className={`
                   flex
                   size-10
@@ -454,9 +446,7 @@ function NewsPage() {
           <button
             type="button"
             onClick={() =>
-              goToPage(
-                currentPage + 1,
-              )
+              goToPage(currentPage + 1)
             }
             disabled={
               currentPage === totalPages
