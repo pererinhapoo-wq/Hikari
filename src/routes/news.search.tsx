@@ -28,9 +28,10 @@ export const Route = createFileRoute(
   "/news/search",
 )({
   validateSearch: (search) => ({
-    q: String(
-      search.q ?? "",
-    ),
+    q:
+      typeof search.q === "string"
+        ? search.q
+        : "",
     page: Math.max(
       1,
       Number(search.page) || 1,
@@ -151,16 +152,28 @@ function NewsSearchPage() {
   const loaderNews =
     Route.useLoaderData() as AutomaticNewsItem[];
 
-  const {
-    q,
-    page: urlPage,
-  } = Route.useSearch();
+  const search =
+    Route.useSearch();
+
+  const query =
+    typeof search.q === "string"
+      ? search.q
+      : "";
+
+  const urlPage =
+    Math.max(
+      1,
+      Number(search.page) || 1,
+    );
 
   const [
     currentPage,
     setCurrentPage,
   ] = useState(urlPage);
 
+  /*
+   * Todas as notícias disponíveis.
+   */
   const news = useMemo(() => {
     return [
       ...(loaderNews ?? []),
@@ -176,16 +189,22 @@ function NewsSearchPage() {
   }, [loaderNews]);
 
   /*
-   * Procura somente nas notícias.
+   * Termo usado na pesquisa.
+   *
+   * Exemplo:
+   * q = "kk"
+   *
+   * A busca procura SOMENTE dentro
+   * das notícias.
    */
   const results =
     useMemo(() => {
-      const query =
+      const normalizedQuery =
         normalizeSearchText(
-          q,
+          query,
         );
 
-      if (!query) {
+      if (!normalizedQuery) {
         return [];
       }
 
@@ -204,17 +223,17 @@ function NewsSearchPage() {
             );
 
           return searchableText.includes(
-            query,
+            normalizedQuery,
           );
         },
       );
     }, [
       news,
-      q,
+      query,
     ]);
 
   /*
-   * Quantidade total de páginas.
+   * Total de páginas.
    */
   const totalPages =
     Math.max(
@@ -226,7 +245,7 @@ function NewsSearchPage() {
     );
 
   /*
-   * Sincroniza a página
+   * Mantém a página sincronizada
    * com a URL.
    */
   useEffect(() => {
@@ -244,12 +263,12 @@ function NewsSearchPage() {
   ]);
 
   /*
-   * Se a página atual não existir,
+   * Se a página solicitada não existir,
    * volta para a última página.
    */
   useEffect(() => {
     if (
-      currentPage >
+      urlPage >
       totalPages
     ) {
       setCurrentPage(
@@ -258,17 +277,17 @@ function NewsSearchPage() {
 
       void navigate({
         search: {
-          q,
+          q: query,
           page: totalPages,
         },
         resetScroll: false,
       });
     }
   }, [
-    currentPage,
+    urlPage,
     totalPages,
+    query,
     navigate,
-    q,
   ]);
 
   /*
@@ -291,7 +310,7 @@ function NewsSearchPage() {
     ]);
 
   /*
-   * Trocar de página.
+   * Troca de página.
    */
   const goToPage = (
     page: number,
@@ -311,7 +330,7 @@ function NewsSearchPage() {
 
     void navigate({
       search: {
-        q,
+        q: query,
         page: nextPage,
       },
       resetScroll: false,
@@ -322,6 +341,13 @@ function NewsSearchPage() {
       behavior: "smooth",
     });
   };
+
+  /*
+   * Texto bonito para mostrar
+   * o termo pesquisado.
+   */
+  const displayedQuery =
+    query.trim();
 
   return (
     <main className="min-h-screen bg-background text-fg">
@@ -375,10 +401,35 @@ function NewsSearchPage() {
               Voltar
             </span>
           </Link>
+
+          <Link
+            to="/news"
+            className="
+              inline-flex
+              items-center
+              gap-2
+              rounded-lg
+              px-2
+              py-2
+              text-sm
+              font-medium
+              text-muted
+              transition
+              hover:bg-elevated
+              hover:text-fg
+              active:scale-[0.97]
+            "
+          >
+            <Search className="size-4 shrink-0" />
+
+            <span>
+              Buscar
+            </span>
+          </Link>
         </div>
 
         {/* =====================================================
-            CABEÇALHO
+            CABEÇALHO DA BUSCA
         ====================================================== */}
 
         <section
@@ -435,7 +486,8 @@ function NewsSearchPage() {
               >
                 Resultados para:{" "}
                 <span className="font-medium text-fg">
-                  {q}
+                  {displayedQuery ||
+                    "nenhuma busca"}
                 </span>
               </p>
             </div>
@@ -446,7 +498,8 @@ function NewsSearchPage() {
             RESULTADOS
         ====================================================== */}
 
-        {results.length > 0 ? (
+        {displayedQuery &&
+        results.length > 0 ? (
           <>
             <div
               className="
@@ -819,12 +872,40 @@ function NewsSearchPage() {
           >
             <Newspaper className="mb-3 size-8 text-muted" />
 
-            <p className="text-sm text-muted">
-              Nenhuma notícia encontrada.
-            </p>
+            {displayedQuery ? (
+              <>
+                <p
+                  className="
+                    text-base
+                    font-medium
+                    text-fg
+                  "
+                >
+                  Nenhuma notícia encontrada.
+                </p>
+
+                <p
+                  className="
+                    mt-2
+                    text-sm
+                    text-muted
+                  "
+                >
+                  Não encontramos notícias para{" "}
+                  <span className="font-medium text-fg">
+                    "{displayedQuery}"
+                  </span>
+                  .
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted">
+                Digite algo para pesquisar notícias.
+              </p>
+            )}
           </section>
         )}
       </div>
     </main>
   );
-}
+        }
