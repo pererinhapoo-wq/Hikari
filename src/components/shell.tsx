@@ -1519,27 +1519,22 @@ export function Shell() {
                             : "text-muted hover:bg-elevated hover:text-fg",
                         )}
                       >
-                        <span>🔞</span>
                         <span>Início</span>
                       </Link>
 
                       <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
-                        <span>📰</span>
                         <span>Notícias +18</span>
                       </div>
 
                       <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
-                        <span>🏷️</span>
                         <span>Tags</span>
                       </div>
 
                       <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
-                        <span>🆕</span>
                         <span>Novidades</span>
                       </div>
 
                       <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
-                        <span>🔥</span>
                         <span>Em destaque</span>
                       </div>
                     </div>
@@ -1577,4 +1572,4 @@ export function Shell() {
 
     </div>
   );
-}
+      }
