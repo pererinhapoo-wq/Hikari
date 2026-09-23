@@ -188,7 +188,7 @@ function NewsPage() {
   }, [loaderNews]);
 
   /*
-   * A busca procura somente nas notícias carregadas.
+   * A busca procura somente nas notícias.
    */
   const searchResults =
     useMemo(() => {
@@ -226,10 +226,13 @@ function NewsPage() {
     ]);
 
   /*
-   * Mostra somente os 5 primeiros
-   * na busca rápida.
+   * Mostra somente alguns resultados
+   * dentro da caixa de busca.
+   *
+   * O botão "Ver todos os resultados"
+   * leva para /news/search?q=...
    */
-  const visibleSearchResults =
+  const previewSearchResults =
     searchResults.slice(
       0,
       5,
@@ -288,21 +291,38 @@ function NewsPage() {
      AÇÕES DA BUSCA
   ========================================================== */
 
-  const openSearch = () => {
-    setSearchOpen(true);
-  };
-
-  const closeSearch = () => {
-    setSearchOpen(false);
-    setSearchQuery("");
-  };
-
   const handleSearchSubmit =
     (
       event: FormEvent<HTMLFormElement>,
     ) => {
       event.preventDefault();
+
+      const query =
+        searchQuery.trim();
+
+      if (!query) {
+        return;
+      }
+
+      /*
+       * O formulário também leva para
+       * a página completa de resultados.
+       *
+       * A navegação acontece na MESMA ABA.
+       */
+      void navigate({
+        to: "/news/search",
+        search: {
+          q: query,
+          page: 1,
+        },
+      });
     };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+  };
 
   /* =========================================================
      NOTÍCIAS VISÍVEIS
@@ -387,6 +407,7 @@ function NewsPage() {
         >
 
           {/* VOLTAR */}
+
           <Link
             to="/"
             className="
@@ -415,65 +436,61 @@ function NewsPage() {
           </Link>
 
           {/* BUSCAR / FECHAR */}
-          {!searchOpen ? (
-            <button
-              type="button"
-              onClick={openSearch}
-              className="
-                inline-flex
-                w-fit
-                items-center
-                gap-2
-                rounded-lg
-                px-2
-                py-2
-                text-sm
-                font-medium
-                text-muted
-                transition-all
-                duration-200
-                hover:bg-elevated
-                hover:text-fg
-                active:scale-[0.97]
-              "
-              aria-label="Abrir busca"
-            >
-              <Search className="size-4 shrink-0" />
 
-              <span>
-                Buscar
-              </span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={closeSearch}
-              className="
-                inline-flex
-                w-fit
-                items-center
-                gap-2
-                rounded-lg
-                px-2
-                py-2
-                text-sm
-                font-medium
-                text-muted
-                transition-all
-                duration-200
-                hover:bg-elevated
-                hover:text-fg
-                active:scale-[0.97]
-              "
-              aria-label="Fechar busca"
-            >
-              <X className="size-4 shrink-0" />
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                searchOpen
+              ) {
+                closeSearch();
+              } else {
+                setSearchOpen(
+                  true,
+                );
+              }
+            }}
+            className="
+              inline-flex
+              w-fit
+              items-center
+              gap-2
+              rounded-lg
+              px-2
+              py-2
+              text-sm
+              font-medium
+              text-muted
+              transition-all
+              duration-200
+              hover:bg-elevated
+              hover:text-fg
+              active:scale-[0.97]
+            "
+            aria-label={
+              searchOpen
+                ? "Fechar busca"
+                : "Abrir busca"
+            }
+          >
+            {searchOpen ? (
+              <>
+                <X className="size-4 shrink-0" />
 
-              <span>
-                Fechar
-              </span>
-            </button>
-          )}
+                <span>
+                  Fechar
+                </span>
+              </>
+            ) : (
+              <>
+                <Search className="size-4 shrink-0" />
+
+                <span>
+                  Buscar
+                </span>
+              </>
+            )}
+          </button>
         </div>
 
         {/* =====================================================
@@ -506,9 +523,10 @@ function NewsPage() {
               >
 
                 {/* CAMPO */}
+
                 <input
                   autoFocus
-                  type="text"
+                  type="search"
                   value={
                     searchQuery
                   }
@@ -542,6 +560,7 @@ function NewsPage() {
                 />
 
                 {/* LUPA */}
+
                 <div
                   className="
                     absolute
@@ -579,7 +598,7 @@ function NewsPage() {
             {searchQuery.trim() && (
               <div className="mt-3">
 
-                {visibleSearchResults.length ===
+                {previewSearchResults.length ===
                 0 ? (
                   <div
                     className="
@@ -597,14 +616,17 @@ function NewsPage() {
                 ) : (
                   <div
                     className="
+                      overflow-hidden
                       rounded-2xl
                       border
                       border-border
                       bg-surface
-                      overflow-hidden
                     "
                   >
-                    {visibleSearchResults.map(
+
+                    {/* RESULTADOS DE PRÉVIA */}
+
+                    {previewSearchResults.map(
                       (
                         item,
                       ) => (
@@ -636,6 +658,8 @@ function NewsPage() {
                           "
                         >
 
+                          {/* IMAGEM */}
+
                           <div
                             className="
                               size-14
@@ -657,6 +681,8 @@ function NewsPage() {
                               "
                             />
                           </div>
+
+                          {/* INFORMAÇÕES */}
 
                           <div className="min-w-0 flex-1">
                             <p
@@ -694,37 +720,42 @@ function NewsPage() {
                       ),
                     )}
 
-                    {/* VER TODOS */}
+                    {/* =================================================
+                        VER TODOS OS RESULTADOS
+                    ================================================== */}
+
                     {searchResults.length >
                       5 && (
-                      <a
-                        href={`/news/search?q=${encodeURIComponent(
-                          searchQuery.trim(),
-                        )}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <Link
+                        to="/news/search"
+                        search={{
+                          q: searchQuery.trim(),
+                          page: 1,
+                        }}
                         className="
-                          block
+                          flex
                           w-full
+                          items-center
+                          justify-center
                           border-t
                           border-border
                           px-4
                           py-4
-                          text-center
                           text-sm
-                          font-medium
+                          font-semibold
                           text-fg
                           transition-colors
                           hover:bg-elevated
-                          active:bg-background
+                          active:bg-elevated
                         "
                       >
-                        Ver todos os resultados (
+                        Ver todos os resultados
+                        {" ("}
                         {
                           searchResults.length
                         }
-                        )
-                      </a>
+                        {")"}
+                      </Link>
                     )}
                   </div>
                 )}
@@ -832,6 +863,7 @@ function NewsPage() {
                         w-full
                         overflow-hidden
                         bg-black
+                        sm:aspect-[16/9]
                       "
                     >
                       <img
@@ -970,6 +1002,8 @@ function NewsPage() {
                   "
                 >
 
+                  {/* ANTERIOR */}
+
                   <button
                     type="button"
                     onClick={() =>
@@ -1003,6 +1037,8 @@ function NewsPage() {
                   >
                     <ChevronLeft className="size-4" />
                   </button>
+
+                  {/* PÁGINAS */}
 
                   {Array.from(
                     {
@@ -1061,6 +1097,8 @@ function NewsPage() {
                       </button>
                     ),
                   )}
+
+                  {/* PRÓXIMA */}
 
                   <button
                     type="button"
@@ -1133,4 +1171,4 @@ function NewsPage() {
       </div>
     </main>
   );
-    }
+}
