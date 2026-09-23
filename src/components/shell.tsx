@@ -10,6 +10,7 @@ import {
   Bell,
   Bookmark,
   CalendarDays,
+  ChevronDown,
   Clapperboard,
   House,
   Menu,
@@ -134,6 +135,9 @@ export function Shell() {
     useState("");
 
   const [menuOpen, setMenuOpen] =
+    useState(false);
+
+  const [adultMenuOpen, setAdultMenuOpen] =
     useState(false);
 
   const [
@@ -1463,30 +1467,83 @@ export function Shell() {
 
                 <div className="space-y-1">
 
-                  <Link
-                    to={ADULT_NAV.to}
+                  <button
+                    type="button"
                     onClick={() =>
-                      setMenuOpen(
-                        false,
+                      setAdultMenuOpen(
+                        (value) => !value,
                       )
                     }
                     className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      "flex w-full items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
                       ADULT_NAV.match(
                         pathname,
                       )
                         ? "bg-elevated text-fg"
                         : "text-muted hover:bg-elevated hover:text-fg",
                     )}
+                    aria-expanded={
+                      adultMenuOpen
+                    }
                   >
                     <span className="flex size-5 items-center justify-center text-base">
                       🔞
                     </span>
 
-                    <span>
+                    <span className="flex-1 text-left">
                       +18
                     </span>
-                  </Link>
+
+                    <ChevronDown
+                      className={cn(
+                        "size-5 transition-transform",
+                        adultMenuOpen &&
+                          "rotate-180",
+                      )}
+                    />
+                  </button>
+
+                  {adultMenuOpen && (
+                    <div className="ml-9 space-y-1 border-l border-border pl-3">
+                      <Link
+                        to={ADULT_NAV.to}
+                        onClick={() =>
+                          setMenuOpen(
+                            false,
+                          )
+                        }
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors",
+                          pathname === "/adult"
+                            ? "bg-elevated text-fg"
+                            : "text-muted hover:bg-elevated hover:text-fg",
+                        )}
+                      >
+                        <span>🔞</span>
+                        <span>Início</span>
+                      </Link>
+
+                      <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
+                        <span>📰</span>
+                        <span>Notícias +18</span>
+                      </div>
+
+                      <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
+                        <span>🏷️</span>
+                        <span>Tags</span>
+                      </div>
+
+                      <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
+                        <span>🆕</span>
+                        <span>Novidades</span>
+                      </div>
+
+                      <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
+                        <span>🔥</span>
+                        <span>Em destaque</span>
+                      </div>
+                    </div>
+                  )}
 
                 </div>
               </div>
@@ -1520,4 +1577,4 @@ export function Shell() {
 
     </div>
   );
-  }
+}
