@@ -173,11 +173,6 @@ function NewsPage() {
     setSearchQuery,
   ] = useState("");
 
-  const [
-    showAllSearchResults,
-    setShowAllSearchResults,
-  ] = useState(false);
-
   const news = useMemo(() => {
     return [
       ...(loaderNews ?? []),
@@ -194,7 +189,6 @@ function NewsPage() {
 
   /*
    * A busca procura somente nas notícias carregadas.
-   * Não consulta o catálogo de animes.
    */
   const searchResults =
     useMemo(() => {
@@ -232,16 +226,14 @@ function NewsPage() {
     ]);
 
   /*
-   * Mostra 5 resultados inicialmente.
-   * Depois pode mostrar todos.
+   * Mostra somente os 5 primeiros
+   * na busca rápida.
    */
-  const newsSearchResults =
-    showAllSearchResults
-      ? searchResults
-      : searchResults.slice(
-          0,
-          5,
-        );
+  const visibleSearchResults =
+    searchResults.slice(
+      0,
+      5,
+    );
 
   const totalPages =
     Math.max(
@@ -298,17 +290,11 @@ function NewsPage() {
 
   const openSearch = () => {
     setSearchOpen(true);
-    setShowAllSearchResults(
-      false,
-    );
   };
 
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchQuery("");
-    setShowAllSearchResults(
-      false,
-    );
   };
 
   const handleSearchSubmit =
@@ -522,7 +508,7 @@ function NewsPage() {
                 {/* CAMPO */}
                 <input
                   autoFocus
-                  type="search"
+                  type="text"
                   value={
                     searchQuery
                   }
@@ -593,7 +579,7 @@ function NewsPage() {
             {searchQuery.trim() && (
               <div className="mt-3">
 
-                {newsSearchResults.length ===
+                {visibleSearchResults.length ===
                 0 ? (
                   <div
                     className="
@@ -611,15 +597,14 @@ function NewsPage() {
                 ) : (
                   <div
                     className="
-                      max-h-[55vh]
-                      overflow-y-auto
                       rounded-2xl
                       border
                       border-border
                       bg-surface
+                      overflow-hidden
                     "
                   >
-                    {newsSearchResults.map(
+                    {visibleSearchResults.map(
                       (
                         item,
                       ) => (
@@ -651,7 +636,6 @@ function NewsPage() {
                           "
                         >
 
-                          {/* IMAGEM */}
                           <div
                             className="
                               size-14
@@ -674,7 +658,6 @@ function NewsPage() {
                             />
                           </div>
 
-                          {/* INFORMAÇÕES */}
                           <div className="min-w-0 flex-1">
                             <p
                               className="
@@ -713,36 +696,36 @@ function NewsPage() {
 
                     {/* VER TODOS */}
                     {searchResults.length >
-                      5 &&
-                      !showAllSearchResults && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowAllSearchResults(
-                              true,
-                            )
-                          }
-                          className="
-                            w-full
-                            border-t
-                            border-border
-                            px-4
-                            py-4
-                            text-sm
-                            font-medium
-                            text-fg
-                            transition-colors
-                            hover:bg-elevated
-                            active:bg-background
-                          "
-                        >
-                          Ver todos os resultados (
-                          {
-                            searchResults.length
-                          }
-                          )
-                        </button>
-                      )}
+                      5 && (
+                      <a
+                        href={`/news/search?q=${encodeURIComponent(
+                          searchQuery.trim(),
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="
+                          block
+                          w-full
+                          border-t
+                          border-border
+                          px-4
+                          py-4
+                          text-center
+                          text-sm
+                          font-medium
+                          text-fg
+                          transition-colors
+                          hover:bg-elevated
+                          active:bg-background
+                        "
+                      >
+                        Ver todos os resultados (
+                        {
+                          searchResults.length
+                        }
+                        )
+                      </a>
+                    )}
                   </div>
                 )}
               </div>
@@ -849,7 +832,6 @@ function NewsPage() {
                         w-full
                         overflow-hidden
                         bg-black
-                        sm:aspect-[16/9]
                       "
                     >
                       <img
@@ -988,7 +970,6 @@ function NewsPage() {
                   "
                 >
 
-                  {/* ANTERIOR */}
                   <button
                     type="button"
                     onClick={() =>
@@ -1023,7 +1004,6 @@ function NewsPage() {
                     <ChevronLeft className="size-4" />
                   </button>
 
-                  {/* PÁGINAS */}
                   {Array.from(
                     {
                       length:
@@ -1082,7 +1062,6 @@ function NewsPage() {
                     ),
                   )}
 
-                  {/* PRÓXIMA */}
                   <button
                     type="button"
                     onClick={() =>
@@ -1154,4 +1133,4 @@ function NewsPage() {
       </div>
     </main>
   );
-      }
+    }
