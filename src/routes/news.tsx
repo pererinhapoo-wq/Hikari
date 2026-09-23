@@ -3,8 +3,6 @@ import {
   Link,
 } from "@tanstack/react-router";
 
-import { useState } from "react";
-
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,11 +12,7 @@ import {
   Newspaper,
 } from "lucide-react";
 
-export const Route = createFileRoute(
-  "/news",
-)({
-  component: NewsPage,
-});
+import { useState } from "react";
 
 type NewsItem = {
   id: string;
@@ -39,7 +33,7 @@ const NEWS: NewsItem[] = [
       "Um novo trailer foi divulgado, trazendo novas cenas e detalhes da próxima temporada.",
     date: "22 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "one-piece-nova-temporada",
@@ -50,7 +44,7 @@ const NEWS: NewsItem[] = [
       "Novas informações sobre a continuação da história foram divulgadas.",
     date: "21 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "anime-filme",
@@ -61,7 +55,7 @@ const NEWS: NewsItem[] = [
       "A produção ganhou uma nova atualização e teve sua data de estreia anunciada.",
     date: "20 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "novo-episodio",
@@ -72,7 +66,7 @@ const NEWS: NewsItem[] = [
       "O próximo episódio já tem data prevista e novas informações foram divulgadas.",
     date: "19 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "jujutsu-novidades",
@@ -83,7 +77,7 @@ const NEWS: NewsItem[] = [
       "A produção divulgou novas informações para os fãs da série.",
     date: "18 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "demon-slayer-filme",
@@ -94,7 +88,7 @@ const NEWS: NewsItem[] = [
       "Novos detalhes do próximo projeto foram revelados.",
     date: "17 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "solo-leveling",
@@ -105,7 +99,7 @@ const NEWS: NewsItem[] = [
       "A equipe de produção divulgou novas informações sobre a continuação.",
     date: "16 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "bleach-news",
@@ -116,7 +110,7 @@ const NEWS: NewsItem[] = [
       "Novos detalhes foram divulgados sobre a continuação da série.",
     date: "15 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "chainsaw-man-filme",
@@ -127,7 +121,7 @@ const NEWS: NewsItem[] = [
       "O projeto ganhou novas informações e detalhes de produção.",
     date: "14 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "my-hero-academia",
@@ -138,7 +132,7 @@ const NEWS: NewsItem[] = [
       "Novas informações sobre a produção foram divulgadas.",
     date: "13 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "dragon-ball",
@@ -149,7 +143,7 @@ const NEWS: NewsItem[] = [
       "A franquia recebeu uma nova atualização nesta semana.",
     date: "12 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&q=90",
   },
   {
     id: "one-punch-man",
@@ -160,14 +154,21 @@ const NEWS: NewsItem[] = [
       "O novo vídeo apresenta cenas inéditas e detalhes da produção.",
     date: "11 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=900&q=85",
+      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=1200&q=90",
   },
 ];
 
 const NEWS_PER_PAGE = 4;
 
+export const Route = createFileRoute(
+  "/news",
+)({
+  component: NewsPage,
+});
+
 function NewsPage() {
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] =
+    useState(1);
 
   const totalPages = Math.ceil(
     NEWS.length / NEWS_PER_PAGE,
@@ -182,11 +183,12 @@ function NewsPage() {
   );
 
   const goToPage = (page: number) => {
-    if (page < 1 || page > totalPages) {
-      return;
-    }
-
-    setCurrentPage(page);
+    setCurrentPage(
+      Math.min(
+        Math.max(page, 1),
+        totalPages,
+      ),
+    );
 
     window.scrollTo({
       top: 0,
@@ -195,76 +197,64 @@ function NewsPage() {
   };
 
   return (
-    <div className="space-y-6 pb-8">
-      {/* CABEÇALHO */}
-      <section className="space-y-4">
-        <Link
-          to="/"
-          className="
-            inline-flex
-            w-fit
-            items-center
-            gap-2
-            rounded-lg
-            px-2.5
-            py-2
-            text-sm
-            font-medium
-            text-muted
-            transition-all
-            duration-200
-            hover:bg-elevated
-            hover:text-fg
-            active:scale-[0.97]
-          "
-        >
-          <ArrowLeft className="size-4 shrink-0" />
-          <span>Voltar</span>
-        </Link>
+    <div className="space-y-6 pb-10">
+      {/* VOLTAR */}
+      <Link
+        to="/"
+        className="
+          inline-flex
+          w-fit
+          items-center
+          gap-2
+          rounded-lg
+          px-2.5
+          py-2
+          text-sm
+          font-medium
+          text-muted
+          transition-all
+          duration-200
+          hover:bg-elevated
+          hover:text-fg
+          active:scale-[0.97]
+        "
+      >
+        <ArrowLeft className="size-4 shrink-0" />
+        <span>Voltar</span>
+      </Link>
 
-        <div className="flex items-start gap-3">
-          <div
+      {/* TÍTULO */}
+      <div>
+        <div className="flex items-center gap-2">
+          <Newspaper className="size-5 text-accent" />
+
+          <h1
             className="
-              flex
-              size-11
-              shrink-0
-              items-center
-              justify-center
-              rounded-xl
-              bg-elevated
+              font-display
+              text-2xl
+              tracking-tight
+              text-fg
+              sm:text-3xl
             "
           >
-            <Newspaper className="size-5 text-fg" />
-          </div>
-
-          <div className="min-w-0">
-            <h1
-              className="
-                font-display
-                text-2xl
-                tracking-tight
-                text-fg
-                sm:text-3xl
-              "
-            >
-              Notícias
-            </h1>
-
-            <p className="mt-1 text-sm text-muted">
-              Todas as novidades do mundo dos animes,
-              em um só lugar.
-            </p>
-          </div>
+            Notícias
+          </h1>
         </div>
-      </section>
 
-      {/* LISTA DE NOTÍCIAS */}
-      <section className="space-y-3">
+        <p className="mt-2 text-sm text-muted">
+          Confira as principais novidades do mundo dos animes.
+        </p>
+      </div>
+
+      {/* NOTÍCIAS */}
+      <div className="space-y-5">
         {currentNews.map((news) => (
           <Link
             key={news.id}
             to="/news/$id"
-            params={{ id: news.id }}
+            params={{
+              id: news.id,
+            }}
             className="
               group
               block
@@ -272,30 +262,21 @@ function NewsPage() {
               rounded-2xl
               bg-elevated
               shadow-[var(--shadow-border)]
-              transition
-              hover:bg-surface
+              transition-all
+              duration-200
+              hover:-translate-y-0.5
+              hover:bg-elevated/80
             "
           >
-            <article
-              className="
-                flex
-                min-w-0
-                flex-col
-                sm:flex-row
-              "
-            >
+            <article>
               {/* IMAGEM */}
               <div
                 className="
                   relative
                   aspect-video
                   w-full
-                  shrink-0
                   overflow-hidden
                   bg-surface
-                  sm:aspect-auto
-                  sm:h-[170px]
-                  sm:w-[290px]
                 "
               >
                 <img
@@ -306,7 +287,7 @@ function NewsPage() {
                     object-cover
                     transition-transform
                     duration-500
-                    group-hover:scale-[1.03]
+                    group-hover:scale-[1.02]
                   "
                 />
 
@@ -316,66 +297,45 @@ function NewsPage() {
                     absolute
                     inset-0
                     bg-linear-to-t
-                    from-black/35
+                    from-black/75
+                    via-black/20
                     to-transparent
                   "
                 />
-              </div>
 
-              {/* CONTEÚDO */}
-              <div
-                className="
-                  flex
-                  min-w-0
-                  flex-1
-                  flex-col
-                  justify-center
-                  p-4
-                  sm:p-5
-                "
-              >
-                <div className="flex items-center justify-between gap-3">
+                <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
                   <span
                     className="
                       inline-flex
-                      w-fit
                       rounded-md
-                      bg-accent/15
+                      bg-black/40
                       px-2
                       py-1
-                      text-[9px]
+                      text-[10px]
                       font-semibold
                       tracking-[0.12em]
-                      text-accent
+                      text-white
                       uppercase
-                      sm:text-[10px]
+                      backdrop-blur-sm
                     "
                   >
                     {news.type}
                   </span>
-
-                  <ArrowRight
-                    className="
-                      size-4
-                      shrink-0
-                      text-muted
-                      transition-transform
-                      group-hover:translate-x-1
-                      group-hover:text-fg
-                    "
-                  />
                 </div>
+              </div>
 
+              {/* CONTEÚDO */}
+              <div className="p-5 sm:p-6">
                 <h2
                   className="
-                    mt-3
-                    line-clamp-2
                     font-display
-                    text-lg
-                    leading-snug
+                    text-xl
+                    leading-tight
                     tracking-tight
                     text-fg
-                    sm:text-xl
+                    transition-colors
+                    group-hover:text-accent
+                    sm:text-2xl
                   "
                 >
                   {news.title}
@@ -383,12 +343,11 @@ function NewsPage() {
 
                 <p
                   className="
-                    mt-2
-                    line-clamp-2
-                    text-xs
-                    leading-relaxed
+                    mt-3
+                    text-sm
+                    leading-6
                     text-muted
-                    sm:text-sm
+                    sm:text-base
                   "
                 >
                   {news.description}
@@ -396,114 +355,138 @@ function NewsPage() {
 
                 <div
                   className="
-                    mt-3
+                    mt-4
                     flex
                     items-center
-                    gap-1.5
-                    text-[11px]
+                    gap-2
+                    text-xs
                     text-subtle
                   "
                 >
-                  <CalendarDays className="size-3.5" />
-                  <span>{news.date}</span>
+                  <CalendarDays className="size-4" />
+
+                  <span>
+                    {news.date}
+                  </span>
                 </div>
               </div>
             </article>
           </Link>
         ))}
-      </section>
+      </div>
 
       {/* PAGINAÇÃO */}
-      <section
-        className="
-          flex
-          flex-wrap
-          items-center
-          justify-center
-          gap-2
-          pt-2
-        "
-      >
-        <button
-          type="button"
-          onClick={() => goToPage(currentPage - 1)}
-          disabled={currentPage === 1}
-          className="
-            inline-flex
-            size-10
-            items-center
-            justify-center
-            rounded-xl
-            bg-elevated
-            text-muted
-            transition
-            hover:bg-surface
-            hover:text-fg
-            disabled:pointer-events-none
-            disabled:opacity-40
-          "
-          aria-label="Página anterior"
-        >
-          <ChevronLeft className="size-4" />
-        </button>
-
-        {Array.from(
-          { length: totalPages },
-          (_, index) => index + 1,
-        ).map((page) => (
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-4">
+          {/* ANTERIOR */}
           <button
-            key={page}
             type="button"
-            onClick={() => goToPage(page)}
-            className={`
-              inline-flex
+            onClick={() =>
+              goToPage(
+                currentPage - 1,
+              )
+            }
+            disabled={
+              currentPage === 1
+            }
+            className="
+              flex
               size-10
               items-center
               justify-center
-              rounded-xl
-              text-sm
-              font-semibold
-              transition
-              ${
-                currentPage === page
-                  ? "bg-accent text-white"
-                  : "bg-elevated text-muted hover:bg-surface hover:text-fg"
-              }
-            `}
-            aria-label={`Página ${page}`}
-            aria-current={
-              currentPage === page
-                ? "page"
-                : undefined
-            }
+              rounded-lg
+              border
+              border-border
+              text-muted
+              transition-colors
+              hover:bg-elevated
+              hover:text-fg
+              disabled:pointer-events-none
+              disabled:opacity-40
+            "
+            aria-label="Página anterior"
           >
-            {page}
+            <ChevronLeft className="size-4" />
           </button>
-        ))}
 
-        <button
-          type="button"
-          onClick={() => goToPage(currentPage + 1)}
-          disabled={currentPage === totalPages}
-          className="
-            inline-flex
-            size-10
-            items-center
-            justify-center
-            rounded-xl
-            bg-elevated
-            text-muted
-            transition
-            hover:bg-surface
-            hover:text-fg
-            disabled:pointer-events-none
-            disabled:opacity-40
-          "
-          aria-label="Próxima página"
-        >
-          <ChevronRight className="size-4" />
-        </button>
-      </section>
+          {/* PÁGINAS */}
+          <div className="flex items-center gap-1">
+            {Array.from(
+              {
+                length: totalPages,
+              },
+              (_, index) =>
+                index + 1,
+            ).map((page) => (
+              <button
+                key={page}
+                type="button"
+                onClick={() =>
+                  goToPage(page)
+                }
+                className={`
+                  flex
+                  size-10
+                  items-center
+                  justify-center
+                  rounded-lg
+                  text-sm
+                  font-medium
+                  transition-colors
+                  ${
+                    currentPage === page
+                      ? "bg-accent text-white"
+                      : "text-muted hover:bg-elevated hover:text-fg"
+                  }
+                `}
+                aria-current={
+                  currentPage === page
+                    ? "page"
+                    : undefined
+                }
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+
+          {/* PRÓXIMA */}
+          <button
+            type="button"
+            onClick={() =>
+              goToPage(
+                currentPage + 1,
+              )
+            }
+            disabled={
+              currentPage === totalPages
+            }
+            className="
+              flex
+              size-10
+              items-center
+              justify-center
+              rounded-lg
+              border
+              border-border
+              text-muted
+              transition-colors
+              hover:bg-elevated
+              hover:text-fg
+              disabled:pointer-events-none
+              disabled:opacity-40
+            "
+            aria-label="Próxima página"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+      )}
+
+      {/* INDICADOR */}
+      <p className="text-center text-xs text-subtle">
+        Página {currentPage} de {totalPages}
+      </p>
     </div>
   );
-  }
+    }
