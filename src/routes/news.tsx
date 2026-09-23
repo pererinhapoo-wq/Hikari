@@ -301,11 +301,6 @@ function NewsPage() {
         return;
       }
 
-      /*
-       * Pesquisa completa.
-       *
-       * Abre /news/search na mesma aba.
-       */
       void navigate({
         to: "/news/search",
         search: {
@@ -722,12 +717,10 @@ function NewsPage() {
 
                     {searchResults.length >
                       5 && (
-                      <Link
-                        to="/news/search"
-                        search={{
-                          q: searchQuery.trim(),
-                          page: 1,
-                        }}
+                      <a
+                        href={`/news/search?q=${encodeURIComponent(
+                          searchQuery.trim(),
+                        )}&page=1`}
                         className="
                           flex
                           w-full
@@ -751,7 +744,7 @@ function NewsPage() {
                           searchResults.length
                         }
                         {")"}
-                      </Link>
+                      </a>
                     )}
                   </div>
                 )}
@@ -1167,4 +1160,4 @@ function NewsPage() {
       </div>
     </main>
   );
-  }
+      }
