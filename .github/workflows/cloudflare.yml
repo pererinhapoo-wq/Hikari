@@ -17,6 +17,11 @@ jobs:
       - name: Baixar repositorio
         uses: actions/checkout@v4
 
+      - name: Verificar arquivo no Git
+        run: |
+          git rev-parse HEAD
+          git ls-tree -r HEAD --name-only | grep '^src/routes/news.tsx$'
+
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
