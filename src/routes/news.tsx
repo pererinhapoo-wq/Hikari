@@ -54,7 +54,7 @@ const NEWS: NewsItem[] = [
       "Ashito retorna para uma nova fase defendendo o Tokyo City Esperion.",
     date: "21/09/2026",
     image:
-      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/BlackClover_S2_BaseAsset_KV_16x9_3840x2160_LogoCenter_Copyright_en-US-533x300.png?ssl=1",
+      "https://aoashi-pr.com/wp/wp-content/uploads/2026/06/aoashi_season2_KV_B2-1-724x1024.png",
   },
   {
     id: "firefly-wedding",
@@ -65,7 +65,7 @@ const NEWS: NewsItem[] = [
       "O anime baseado no mangá de Oreco Tachibana chega na nova temporada.",
     date: "20/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1/145923l.jpg",
+      "https://hotaru-anime.com/assets/img/top/visual/visual3.jpg",
   },
   {
     id: "detective-is-already-dead-season-2",
@@ -117,7 +117,7 @@ const NEWS: NewsItem[] = [
     title:
       "PSYREN entra na programação da temporada de outubro",
     description:
-      "A nova adaptação de PSYREN foi anunciada para a temporada de outono e ainda aguarda uma data específica.",
+      "A nova adaptação de PSYREN foi anunciada para a temporada de outono.",
     date: "15/09/2026",
     image:
       "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/Psyren_S1_BaseAsset_TeaserVisual2_16x9_3840x2160_LogoLeft_Copyright_en-US-533x300.png?ssl=1",
@@ -192,7 +192,7 @@ const NEWS: NewsItem[] = [
     id: "hotel-inhumans-season-2",
     type: "NOVA TEMPORADA",
     title:
-      "HOTEL INHUMANS 2ª temporada estreia em outubro",
+      "HOTEL INHUMANS retorna em outubro",
     description:
       "O misterioso hotel retorna para uma nova temporada durante o outono de 2026.",
     date: "08/09/2026",
@@ -238,7 +238,7 @@ const NEWS: NewsItem[] = [
     title:
       "Temporada de outubro reúne novas séries e continuações",
     description:
-      "A programação de outono de 2026 reúne novas estreias e várias segundas e terceiras temporadas.",
+      "A programação de outono de 2026 reúne novas estreias e várias continuações.",
     date: "04/09/2026",
     image:
       "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/TheApothecaryDiaries_S3_KV_16x9_3840x2160_LogoLeft_Copyright_en-US-533x300.png?ssl=1",
@@ -564,4 +564,4 @@ function NewsPage() {
       </div>
     </div>
   );
-  }
+    }
