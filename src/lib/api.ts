@@ -27,6 +27,12 @@ const CARD_FIELDS = `
   id
   idMal
   isAdult
+  tags {
+    name
+    category
+    rank
+    isAdult
+  }
   title {
     romaji
     english
@@ -74,6 +80,13 @@ type AniMedia = {
   id: number;
   idMal?: number | null;
   isAdult?: boolean;
+
+  tags?: {
+    name: string;
+    category?: string | null;
+    rank?: number | null;
+    isAdult?: boolean | null;
+  }[] | null;
 
   title?: AniTitle | null;
 
