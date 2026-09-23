@@ -19,26 +19,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verificar arquivo news no Git
+      - name: Verificar historico do Git
         run: |
           echo "Commit atual:"
           git rev-parse HEAD
 
           echo ""
-          echo "Verificando news.tsx diretamente no commit:"
-          git cat-file -e HEAD:src/routes/news.tsx
+          echo "Verificando commit 9400f35:"
+          git show 9400f35:src/routes/news.tsx > /tmp/news.tsx
 
           echo ""
-          echo "Verificando news.tsx no commit 9400f35:"
-          git show 9400f35:src/routes/news.tsx > /tmp/news.tsx
           echo "news.tsx encontrado dentro do commit 9400f35."
 
           echo ""
-          echo "Arquivo news.tsx encontrado no commit atual."
-          git show --stat --oneline HEAD
+          echo "Verificando se 9400f35 e ancestral do commit atual:"
+          git merge-base --is-ancestor 9400f35 HEAD
+          echo "9400f35 e ancestral do HEAD."
 
           echo ""
-          git ls-tree HEAD src/routes/news.tsx
+          echo "Arvore de src/routes no HEAD:"
+          git ls-tree HEAD src/routes
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
