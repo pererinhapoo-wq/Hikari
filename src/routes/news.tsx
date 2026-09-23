@@ -3,10 +3,14 @@ import {
   Link,
 } from "@tanstack/react-router";
 
+import { useState } from "react";
+
 import {
   ArrowLeft,
   ArrowRight,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Newspaper,
 } from "lucide-react";
 
@@ -70,9 +74,126 @@ const NEWS: NewsItem[] = [
     image:
       "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=900&q=85",
   },
+  {
+    id: "jujutsu-novidades",
+    type: "NOVIDADES",
+    title:
+      "Jujutsu Kaisen recebe novas informações sobre a produção",
+    description:
+      "A produção divulgou novas informações para os fãs da série.",
+    date: "18 de setembro de 2026",
+    image:
+      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=900&q=85",
+  },
+  {
+    id: "demon-slayer-filme",
+    type: "FILME",
+    title:
+      "Novo projeto de Demon Slayer ganha novidades",
+    description:
+      "Novos detalhes do próximo projeto foram revelados.",
+    date: "17 de setembro de 2026",
+    image:
+      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=900&q=85",
+  },
+  {
+    id: "solo-leveling",
+    type: "NOVA TEMPORADA",
+    title:
+      "Solo Leveling recebe atualização sobre sua próxima temporada",
+    description:
+      "A equipe de produção divulgou novas informações sobre a continuação.",
+    date: "16 de setembro de 2026",
+    image:
+      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=900&q=85",
+  },
+  {
+    id: "bleach-news",
+    type: "NOVIDADES",
+    title:
+      "Bleach ganha novas informações sobre seus próximos episódios",
+    description:
+      "Novos detalhes foram divulgados sobre a continuação da série.",
+    date: "15 de setembro de 2026",
+    image:
+      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=900&q=85",
+  },
+  {
+    id: "chainsaw-man-filme",
+    type: "FILME",
+    title:
+      "Chainsaw Man recebe novidades sobre seu filme",
+    description:
+      "O projeto ganhou novas informações e detalhes de produção.",
+    date: "14 de setembro de 2026",
+    image:
+      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=900&q=85",
+  },
+  {
+    id: "my-hero-academia",
+    type: "NOVA TEMPORADA",
+    title:
+      "My Hero Academia recebe novidades da próxima fase",
+    description:
+      "Novas informações sobre a produção foram divulgadas.",
+    date: "13 de setembro de 2026",
+    image:
+      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=900&q=85",
+  },
+  {
+    id: "dragon-ball",
+    type: "NOVIDADES",
+    title:
+      "Dragon Ball ganha novas informações para os fãs",
+    description:
+      "A franquia recebeu uma nova atualização nesta semana.",
+    date: "12 de setembro de 2026",
+    image:
+      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=900&q=85",
+  },
+  {
+    id: "one-punch-man",
+    type: "TRAILER",
+    title:
+      "Novo trailer de One Punch Man é divulgado",
+    description:
+      "O novo vídeo apresenta cenas inéditas e detalhes da produção.",
+    date: "11 de setembro de 2026",
+    image:
+      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=900&q=85",
+  },
 ];
 
+const NEWS_PER_PAGE = 4;
+
 function NewsPage() {
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = Math.ceil(
+    NEWS.length / NEWS_PER_PAGE,
+  );
+
+  const startIndex =
+    (currentPage - 1) * NEWS_PER_PAGE;
+
+  const currentNews = NEWS.slice(
+    startIndex,
+    startIndex + NEWS_PER_PAGE,
+  );
+
+  const goToPage = (page: number) => {
+    if (page < 1 || page > totalPages) {
+      return;
+    }
+
+    setCurrentPage(page);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
   return (
     <div className="space-y-6 pb-8">
       {/* CABEÇALHO */}
@@ -139,7 +260,7 @@ function NewsPage() {
 
       {/* LISTA DE NOTÍCIAS */}
       <section className="space-y-3">
-        {NEWS.map((news) => (
+        {currentNews.map((news) => (
           <Link
             key={news.id}
             to="/"
@@ -289,6 +410,98 @@ function NewsPage() {
             </article>
           </Link>
         ))}
+      </section>
+
+      {/* PAGINAÇÃO */}
+      <section
+        className="
+          flex
+          flex-wrap
+          items-center
+          justify-center
+          gap-2
+          pt-2
+        "
+      >
+        <button
+          type="button"
+          onClick={() => goToPage(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="
+            inline-flex
+            size-10
+            items-center
+            justify-center
+            rounded-xl
+            bg-elevated
+            text-muted
+            transition
+            hover:bg-surface
+            hover:text-fg
+            disabled:pointer-events-none
+            disabled:opacity-40
+          "
+          aria-label="Página anterior"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+
+        {Array.from(
+          { length: totalPages },
+          (_, index) => index + 1,
+        ).map((page) => (
+          <button
+            key={page}
+            type="button"
+            onClick={() => goToPage(page)}
+            className={`
+              inline-flex
+              size-10
+              items-center
+              justify-center
+              rounded-xl
+              text-sm
+              font-semibold
+              transition
+              ${
+                currentPage === page
+                  ? "bg-accent text-white"
+                  : "bg-elevated text-muted hover:bg-surface hover:text-fg"
+              }
+            `}
+            aria-label={`Página ${page}`}
+            aria-current={
+              currentPage === page
+                ? "page"
+                : undefined
+            }
+          >
+            {page}
+          </button>
+        ))}
+
+        <button
+          type="button"
+          onClick={() => goToPage(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="
+            inline-flex
+            size-10
+            items-center
+            justify-center
+            rounded-xl
+            bg-elevated
+            text-muted
+            transition
+            hover:bg-surface
+            hover:text-fg
+            disabled:pointer-events-none
+            disabled:opacity-40
+          "
+          aria-label="Próxima página"
+        >
+          <ChevronRight className="size-4" />
+        </button>
       </section>
     </div>
   );
