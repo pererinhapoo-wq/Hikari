@@ -750,46 +750,6 @@ function NewsDetailsPage() {
               </div>
             </section>
           )}
-
-          {/* ÁREA PARA INFORMAÇÕES DA NOTÍCIA */}
-          <div
-            className="
-              mt-8
-              rounded-xl
-              bg-surface
-              p-4
-              sm:p-5
-            "
-          >
-            <div className="flex items-center gap-2">
-              <Newspaper className="size-5 text-accent" />
-
-              <h2
-                className="
-                  font-display
-                  text-lg
-                  tracking-tight
-                  text-fg
-                "
-              >
-                Sobre esta notícia
-              </h2>
-            </div>
-
-            <p
-              className="
-                mt-3
-                text-sm
-                leading-6
-                text-muted
-              "
-            >
-              Mais informações sobre esta notícia,
-              incluindo detalhes do anime, trailer e
-              outras informações relacionadas, poderão
-              aparecer aqui.
-            </p>
-          </div>
         </div>
       </article>
 
@@ -921,4 +881,4 @@ function NewsDetailsPage() {
       </section>
     </div>
   );
-    }
+  }
