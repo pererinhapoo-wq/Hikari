@@ -70,6 +70,12 @@ const cache = new Map<
   }
 >();
 
+const translationCache =
+  new Map<
+    string,
+    string
+  >();
+
 const TTL =
   10 * 60 * 1000;
 
@@ -151,25 +157,120 @@ function titleOf(
   );
 }
 
-function descriptionOf(
-  media: AniMedia,
+function cleanDescription(
+  value: string | null | undefined,
 ): string {
+  return stripHtml(
+    value,
+  ).trim();
+}
+
+async function translateToPortuguese(
+  text: string,
+): Promise<string> {
+  const cleaned =
+    text.trim();
+
+  if (!cleaned) {
+    return "";
+  }
+
+  const cached =
+    translationCache.get(
+      cleaned,
+    );
+
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const url =
+      "https://translate.googleapis.com/translate_a/single" +
+      "?client=gtx" +
+      "&sl=auto" +
+      "&tl=pt" +
+      "&dt=t" +
+      `&q=${encodeURIComponent(
+        cleaned.slice(0, 5000),
+      )}`;
+
+    const response =
+      await fetch(
+        url,
+        {
+          signal:
+            AbortSignal.timeout(
+              8000,
+            ),
+        },
+      );
+
+    if (!response.ok) {
+      return cleaned;
+    }
+
+    const json =
+      (await response.json()) as unknown;
+
+    if (
+      !Array.isArray(json) ||
+      !Array.isArray(json[0])
+    ) {
+      return cleaned;
+    }
+
+    const translated =
+      json[0]
+        .filter(
+          (part) =>
+            Array.isArray(part) &&
+            typeof part[0] ===
+              "string",
+        )
+        .map(
+          (part) =>
+            part[0] as string,
+        )
+        .join("")
+        .trim();
+
+    if (!translated) {
+      return cleaned;
+    }
+
+    translationCache.set(
+      cleaned,
+      translated,
+    );
+
+    return translated;
+  } catch {
+    return cleaned;
+  }
+}
+
+async function descriptionOf(
+  media: AniMedia,
+): Promise<string> {
   const description =
-    stripHtml(
+    cleanDescription(
       media.description,
     );
 
-  if (description) {
-    return description;
+  if (!description) {
+    return `${titleOf(
+      media,
+    )} faz parte da programação da temporada de ${(
+      media.season ?? ""
+    ).toLowerCase()} de ${
+      media.seasonYear ?? ""
+    }.`;
   }
 
-  return `${titleOf(
-    media,
-  )} faz parte da programação da temporada de ${(
-    media.season ?? ""
-  ).toLowerCase()} de ${
-    media.seasonYear ?? ""
-  }.`;
+  return translateToPortuguese(
+    description,
+  );
 }
 
 function trailerOf(
@@ -340,20 +441,27 @@ export const fetchAutomaticNews =
           year,
         );
 
+      const filtered =
+        media.filter(
+          (anime) =>
+            anime.id > 0 &&
+            anime.format !==
+              "MUSIC",
+        );
+
       const news =
-        media
-          .filter(
-            (anime) =>
-              anime.id > 0 &&
-              anime.format !==
-                "MUSIC",
-          )
-          .map(
-            (
+        await Promise.all(
+          filtered.map(
+            async (
               anime,
-            ): AutomaticNewsItem => {
+            ): Promise<AutomaticNewsItem> => {
               const trailerUrl =
                 trailerOf(
+                  anime,
+                );
+
+              const description =
+                await descriptionOf(
                   anime,
                 );
 
@@ -374,10 +482,7 @@ export const fetchAutomaticNews =
                       : "nova temporada"
                   }`,
 
-                description:
-                  descriptionOf(
-                    anime,
-                  ),
+                description,
 
                 date:
                   formatDate(
@@ -399,17 +504,20 @@ export const fetchAutomaticNews =
                 trailerUrl,
               };
             },
-          )
-          .filter(
-            (news) =>
-              Boolean(
-                news.image,
-              ),
-          );
+          ),
+        );
+
+      const validNews =
+        news.filter(
+          (news) =>
+            Boolean(
+              news.image,
+            ),
+        );
 
       return toCache(
         key,
-        news,
+        validNews,
       );
     } catch {
       return [];
