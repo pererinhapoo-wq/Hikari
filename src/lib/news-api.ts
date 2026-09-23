@@ -221,7 +221,7 @@ async function fetchSeason(
                   type: ANIME
                   season: $season
                   seasonYear: $year
-                  sort: START_DATE
+                  sort: START_DATE_DESC
                 ) {
                   id
 
