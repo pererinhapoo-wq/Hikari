@@ -13,6 +13,11 @@ import {
   Tv,
 } from "lucide-react";
 
+import {
+  fetchAutomaticNews,
+  type AutomaticNewsItem,
+} from "@/lib/news-api";
+
 type AnimeInfo = {
   id: string;
   name: string;
@@ -210,13 +215,51 @@ const NEWS: NewsItem[] = [
 export const Route = createFileRoute(
   "/news/$id",
 )({
+  loader: async () => {
+    const automaticNews =
+      await fetchAutomaticNews();
+
+    return {
+      automaticNews,
+    };
+  },
   component: NewsDetailsPage,
 });
 
+function automaticToNewsItem(
+  item: AutomaticNewsItem,
+): NewsItem {
+  return {
+    id: item.id,
+    type: item.type,
+    title: item.title,
+    description: item.description,
+    content:
+      `${item.description}\n\n` +
+      `${item.title} faz parte da programação atual de animes. ` +
+      `A página reúne as informações disponíveis no catálogo automático do Hikari. ` +
+      `Novas informações poderão aparecer conforme os dados da temporada forem atualizados.`,
+    date: item.date,
+    image: item.image,
+  };
+}
+
 function NewsDetailsPage() {
   const { id } = Route.useParams();
+  const { automaticNews } =
+    Route.useLoaderData();
 
-  const news = NEWS.find(
+  const automaticItems =
+    automaticNews.map(
+      automaticToNewsItem,
+    );
+
+  const allNews = [
+    ...NEWS,
+    ...automaticItems,
+  ];
+
+  const news = allNews.find(
     (item) => item.id === id,
   );
 
@@ -224,9 +267,11 @@ function NewsDetailsPage() {
     throw notFound();
   }
 
-  const relatedNews = NEWS.filter(
-    (item) => item.id !== news.id,
-  ).slice(0, 3);
+  const relatedNews = allNews
+    .filter(
+      (item) => item.id !== news.id,
+    )
+    .slice(0, 3);
 
   return (
     <div className="space-y-6 pb-10">
@@ -371,19 +416,24 @@ function NewsDetailsPage() {
           <div className="mt-6 space-y-4">
             {news.content
               .split("\n\n")
-              .map((paragraph, index) => (
-                <p
-                  key={index}
-                  className="
-                    text-sm
-                    leading-7
-                    text-muted
-                    sm:text-base
-                  "
-                >
-                  {paragraph}
-                </p>
-              ))}
+              .map(
+                (
+                  paragraph,
+                  index,
+                ) => (
+                  <p
+                    key={index}
+                    className="
+                      text-sm
+                      leading-7
+                      text-muted
+                      sm:text-base
+                    "
+                  >
+                    {paragraph}
+                  </p>
+                ),
+              )}
           </div>
 
           {/* TRAILER */}
@@ -442,7 +492,9 @@ function NewsDetailsPage() {
                     "
                   >
                     <Play className="size-4 fill-current" />
-                    <span>Assistir trailer</span>
+                    <span>
+                      Assistir trailer
+                    </span>
                   </a>
                 </div>
 
@@ -463,7 +515,9 @@ function NewsDetailsPage() {
                     "
                   >
                     <iframe
-                      src={news.trailerUrl}
+                      src={
+                        news.trailerUrl
+                      }
                       title={`Trailer - ${news.title}`}
                       className="
                         absolute
@@ -492,8 +546,8 @@ function NewsDetailsPage() {
                     text-subtle
                   "
                 >
-                  Trailer oficial publicado pela
-                  TOHO animation.
+                  Trailer oficial publicado
+                  pela TOHO animation.
                 </p>
               </section>
             )}
@@ -555,7 +609,9 @@ function NewsDetailsPage() {
                 >
                   <img
                     src={news.anime.image}
-                    alt={news.anime.name}
+                    alt={
+                      news.anime.name
+                    }
                     className="
                       aspect-[2/3]
                       w-full
@@ -588,7 +644,8 @@ function NewsDetailsPage() {
                       </h3>
 
                       <p className="mt-1 text-sm text-subtle">
-                        Anime relacionado à notícia
+                        Anime relacionado à
+                        notícia
                       </p>
                     </div>
 
@@ -616,7 +673,9 @@ function NewsDetailsPage() {
                       "
                     >
                       <Play className="size-4 fill-current" />
-                      <span>Assistir anime</span>
+                      <span>
+                        Assistir anime
+                      </span>
                     </Link>
                   </div>
 
@@ -646,7 +705,9 @@ function NewsDetailsPage() {
                         "
                       >
                         <Clapperboard className="size-4" />
-                        <span>Temporada</span>
+                        <span>
+                          Temporada
+                        </span>
                       </div>
 
                       <p
@@ -678,7 +739,9 @@ function NewsDetailsPage() {
                         "
                       >
                         <CalendarDays className="size-4" />
-                        <span>Lançamento</span>
+                        <span>
+                          Lançamento
+                        </span>
                       </div>
 
                       <p
@@ -689,7 +752,10 @@ function NewsDetailsPage() {
                           text-fg
                         "
                       >
-                        {news.anime.releaseDate}
+                        {
+                          news.anime
+                            .releaseDate
+                        }
                       </p>
                     </div>
 
@@ -710,7 +776,9 @@ function NewsDetailsPage() {
                         "
                       >
                         <Tv className="size-4" />
-                        <span>Episódios</span>
+                        <span>
+                          Episódios
+                        </span>
                       </div>
 
                       <p
@@ -721,7 +789,8 @@ function NewsDetailsPage() {
                           text-fg
                         "
                       >
-                        {news.anime.episodes ??
+                        {news.anime
+                          .episodes ??
                           "Não informado"}
                       </p>
                     </div>
@@ -746,7 +815,10 @@ function NewsDetailsPage() {
                         text-muted
                       "
                     >
-                      {news.anime.synopsis}
+                      {
+                        news.anime
+                          .synopsis
+                      }
                     </p>
                   </div>
                 </div>
@@ -781,113 +853,117 @@ function NewsDetailsPage() {
             md:grid-cols-3
           "
         >
-          {relatedNews.map((item) => (
-            <Link
-              key={item.id}
-              to="/news/$id"
-              params={{
-                id: item.id,
-              }}
-              className="
-                group
-                overflow-hidden
-                rounded-xl
-                bg-elevated
-                shadow-[var(--shadow-border)]
-                transition-all
-                duration-200
-                hover:-translate-y-0.5
-                hover:bg-elevated/80
-              "
-            >
-              <div
+          {relatedNews.map(
+            (item) => (
+              <Link
+                key={item.id}
+                to="/news/$id"
+                params={{
+                  id: item.id,
+                }}
                 className="
-                  relative
-                  aspect-video
-                  w-full
+                  group
                   overflow-hidden
-                  bg-black
+                  rounded-xl
+                  bg-elevated
+                  shadow-[var(--shadow-border)]
+                  transition-all
+                  duration-200
+                  hover:-translate-y-0.5
+                  hover:bg-elevated/80
                 "
               >
-                <img
-                  src={item.image}
-                  alt=""
-                  className="
-                    size-full
-                    object-contain
-                    transition-transform
-                    duration-300
-                    group-hover:scale-105
-                  "
-                />
-
                 <div
                   className="
-                    pointer-events-none
-                    absolute
-                    inset-0
-                    bg-linear-to-t
-                    from-black/70
-                    via-black/10
-                    to-transparent
-                  "
-                />
-
-                <span
-                  className="
-                    absolute
-                    bottom-3
-                    left-3
-                    rounded-md
-                    bg-black/60
-                    px-2
-                    py-1
-                    text-[9px]
-                    font-semibold
-                    tracking-[0.1em]
-                    text-white
-                    uppercase
-                    backdrop-blur-sm
+                    relative
+                    aspect-video
+                    w-full
+                    overflow-hidden
+                    bg-black
                   "
                 >
-                  {item.type}
-                </span>
-              </div>
+                  <img
+                    src={item.image}
+                    alt=""
+                    className="
+                      size-full
+                      object-contain
+                      transition-transform
+                      duration-300
+                      group-hover:scale-105
+                    "
+                  />
 
-              <div className="p-4">
-                <h3
-                  className="
-                    line-clamp-2
-                    text-sm
-                    font-semibold
-                    leading-6
-                    text-fg
-                    transition-colors
-                    group-hover:text-accent
-                  "
-                >
-                  {item.title}
-                </h3>
+                  <div
+                    className="
+                      pointer-events-none
+                      absolute
+                      inset-0
+                      bg-linear-to-t
+                      from-black/70
+                      via-black/10
+                      to-transparent
+                    "
+                  />
 
-                <div
-                  className="
-                    mt-3
-                    flex
-                    items-center
-                    gap-2
-                    text-[11px]
-                    text-subtle
-                  "
-                >
-                  <CalendarDays className="size-3.5" />
-
-                  <span>{item.date}</span>
+                  <span
+                    className="
+                      absolute
+                      bottom-3
+                      left-3
+                      rounded-md
+                      bg-black/60
+                      px-2
+                      py-1
+                      text-[9px]
+                      font-semibold
+                      tracking-[0.1em]
+                      text-white
+                      uppercase
+                      backdrop-blur-sm
+                    "
+                  >
+                    {item.type}
+                  </span>
                 </div>
-              </div>
-            </Link>
-          ))}
+
+                <div className="p-4">
+                  <h3
+                    className="
+                      line-clamp-2
+                      text-sm
+                      font-semibold
+                      leading-6
+                      text-fg
+                      transition-colors
+                      group-hover:text-accent
+                    "
+                  >
+                    {item.title}
+                  </h3>
+
+                  <div
+                    className="
+                      mt-3
+                      flex
+                      items-center
+                      gap-2
+                      text-[11px]
+                      text-subtle
+                    "
+                  >
+                    <CalendarDays className="size-3.5" />
+
+                    <span>
+                      {item.date}
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            ),
+          )}
         </div>
       </section>
     </div>
   );
-}
+      }
