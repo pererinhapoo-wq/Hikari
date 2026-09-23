@@ -228,9 +228,6 @@ function NewsPage() {
   /*
    * Mostra somente alguns resultados
    * dentro da caixa de busca.
-   *
-   * O botão "Ver todos os resultados"
-   * leva para /news/search?q=...
    */
   const previewSearchResults =
     searchResults.slice(
@@ -304,12 +301,28 @@ function NewsPage() {
         return;
       }
 
-      /*
-       * O formulário também leva para
-       * a página completa de resultados.
-       *
-       * A navegação acontece na MESMA ABA.
-       */
+      void navigate({
+        to: "/news/search",
+        search: {
+          q: query,
+          page: 1,
+        },
+      });
+    };
+
+  /*
+   * Abre TODOS os resultados da pesquisa
+   * na mesma aba.
+   */
+  const handleViewAllResults =
+    () => {
+      const query =
+        searchQuery.trim();
+
+      if (!query) {
+        return;
+      }
+
       void navigate({
         to: "/news/search",
         search: {
@@ -726,12 +739,11 @@ function NewsPage() {
 
                     {searchResults.length >
                       5 && (
-                      <Link
-                        to="/news/search"
-                        search={{
-                          q: searchQuery.trim(),
-                          page: 1,
-                        }}
+                      <button
+                        type="button"
+                        onClick={
+                          handleViewAllResults
+                        }
                         className="
                           flex
                           w-full
@@ -755,7 +767,7 @@ function NewsPage() {
                           searchResults.length
                         }
                         {")"}
-                      </Link>
+                      </button>
                     )}
                   </div>
                 )}
@@ -1171,4 +1183,4 @@ function NewsPage() {
       </div>
     </main>
   );
-}
+        }
