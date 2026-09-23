@@ -536,6 +536,13 @@ async function fetchAnimeInfo(
 export const Route = createFileRoute(
   "/news/$id",
 )({
+  validateSearch: (search) => ({
+    page: Math.max(
+      1,
+      Number(search.page) || 1,
+    ),
+  }),
+
   loader: async ({
     params,
   }) => {
@@ -654,6 +661,9 @@ function NewsDetailsPage() {
   const { id } =
     Route.useParams();
 
+  const { page } =
+    Route.useSearch();
+
   const {
     automaticNews,
     automaticAnime,
@@ -724,6 +734,9 @@ function NewsDetailsPage() {
       {/* VOLTAR */}
       <Link
         to="/news"
+        search={{
+          page,
+        }}
         className="
           inline-flex
           w-fit
@@ -743,6 +756,7 @@ function NewsDetailsPage() {
         "
       >
         <ArrowLeft className="size-4 shrink-0" />
+
         <span>
           Voltar para notícias
         </span>
@@ -764,7 +778,7 @@ function NewsDetailsPage() {
             aspect-video
             w-full
             overflow-hidden
-            bg-surface
+            bg-black
           "
         >
           <img
@@ -772,7 +786,8 @@ function NewsDetailsPage() {
             alt=""
             className="
               size-full
-              object-cover
+              object-contain
+              object-center
             "
           />
 
@@ -1444,4 +1459,4 @@ function NewsDetailsPage() {
       </section>
     </div>
   );
-    }
+  }
