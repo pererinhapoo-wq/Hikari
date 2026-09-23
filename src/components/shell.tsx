@@ -635,22 +635,24 @@ export function Shell() {
               )}
             </button>
 
-            {/* BUSCA */}
-            <button
-              type="button"
-              onClick={() => {
-                setSearchOpen(
-                  (value) => !value,
-                );
-              }}
-              className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
-              aria-label="Buscar"
-              aria-expanded={
-                searchOpen
-              }
-            >
-              <Search className="size-5" />
-            </button>
+            {/* BUSCA — escondida na área de Notícias */}
+            {!pathname.startsWith("/news") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchOpen(
+                    (value) => !value,
+                  );
+                }}
+                className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
+                aria-label="Buscar"
+                aria-expanded={
+                  searchOpen
+                }
+              >
+                <Search className="size-5" />
+              </button>
+            )}
 
             {/* NOTIFICAÇÕES MOBILE */}
             <button
@@ -1518,4 +1520,4 @@ export function Shell() {
 
     </div>
   );
-      }
+  }
