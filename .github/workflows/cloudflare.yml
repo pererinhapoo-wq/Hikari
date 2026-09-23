@@ -21,24 +21,24 @@ jobs:
 
       - name: Verificar historico do Git
         run: |
-          echo "Commit atual:"
+          echo "REPOSITORIO:"
+          git remote -v
+
+          echo ""
+          echo "COMMIT ATUAL:"
           git rev-parse HEAD
 
           echo ""
-          echo "Verificando commit 9400f35:"
-          git show 9400f35:src/routes/news.tsx > /tmp/news.tsx
+          echo "INFORMACOES DO COMMIT 9400f35:"
+          git show --stat --oneline 9400f35
 
           echo ""
-          echo "news.tsx encontrado dentro do commit 9400f35."
+          echo "ARQUIVOS DO COMMIT 9400f35:"
+          git ls-tree -r 9400f35 --name-only | grep 'news.tsx' || true
 
           echo ""
-          echo "Verificando se 9400f35 e ancestral do commit atual:"
-          git merge-base --is-ancestor 9400f35 HEAD
-          echo "9400f35 e ancestral do HEAD."
-
-          echo ""
-          echo "Arvore de src/routes no HEAD:"
-          git ls-tree HEAD src/routes
+          echo "TESTE DO ARQUIVO:"
+          git show 9400f35:src/routes/news.tsx || true
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
