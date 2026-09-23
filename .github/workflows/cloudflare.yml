@@ -26,6 +26,9 @@ jobs:
       - name: Instalar dependencias
         run: npm install
 
+      - name: Gerar rotas
+        run: npm run generate-routes
+
       - name: Build Cloudflare
         run: npm run build:cloudflare
 
