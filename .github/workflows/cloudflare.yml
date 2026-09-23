@@ -19,26 +19,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verificar tipo do arquivo news
+      - name: Verificar arquivo news
         run: |
-          echo "REPOSITORIO:"
-          git remote -v
-
-          echo ""
           echo "COMMIT ATUAL:"
           git rev-parse HEAD
-
           echo ""
-          echo "ENTRADA EXATA NO COMMIT 9400f35:"
-          git ls-tree 9400f35 src/routes/news.tsx
 
-          echo ""
-          echo "TIPO DO OBJETO:"
-          git cat-file -t 9400f35:src/routes/news.tsx
-
-          echo ""
-          echo "OBJETO DO ARQUIVO:"
-          git cat-file -p 9400f35:src/routes/news.tsx || true
+          echo "ARQUIVO NEWS:"
+          test -f src/routes/news.tsx
+          echo "news.tsx encontrado no workspace."
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
