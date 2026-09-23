@@ -157,24 +157,7 @@ function NewsPage() {
         </div>
       </div>
 
-      {loading ? (
-        <div
-          className="
-            flex
-            min-h-48
-            items-center
-            justify-center
-            rounded-2xl
-            border
-            border-border
-            bg-surface
-            text-sm
-            text-muted
-          "
-        >
-          Carregando notícias...
-        </div>
-      ) : currentNews.length === 0 ? (
+      {loading ? null : currentNews.length === 0 ? (
         <div
           className="
             flex
@@ -441,4 +424,4 @@ function NewsPage() {
         )}
     </div>
   );
-        }
+                  }
