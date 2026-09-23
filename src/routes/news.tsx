@@ -81,16 +81,24 @@ function NewsPage() {
           to="/"
           className="
             inline-flex
+            w-fit
             items-center
             gap-2
+            rounded-lg
+            px-2.5
+            py-2
             text-sm
+            font-medium
             text-muted
-            transition-colors
+            transition-all
+            duration-200
+            hover:bg-elevated
             hover:text-fg
+            active:scale-[0.97]
           "
         >
-          <ArrowLeft className="size-4" />
-          Voltar
+          <ArrowLeft className="size-4 shrink-0" />
+          <span>Voltar</span>
         </Link>
 
         <div className="flex items-start gap-3">
@@ -284,4 +292,4 @@ function NewsPage() {
       </section>
     </div>
   );
-}
+    }
