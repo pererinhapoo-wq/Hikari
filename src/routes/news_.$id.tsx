@@ -744,14 +744,68 @@ function NewsDetailsPage() {
     ),
   ];
 
-  const relatedNews =
-    allNews
-      .filter(
-        (item) =>
-          item.id !==
-          news.id,
-      )
-      .slice(0, 3);
+  /*
+   * "Mais notícias" deve variar conforme a notícia aberta.
+   *
+   * Antes:
+   * sempre pegava as primeiras 3 notícias da lista.
+   *
+   * Agora:
+   * usamos a posição da notícia atual e mostramos as
+   * próximas notícias disponíveis, evitando repetir sempre
+   * os mesmos 3 cards.
+   */
+  const currentNewsIndex =
+    allNews.findIndex(
+      (item) =>
+        item.id ===
+        news.id,
+    );
+
+  let relatedNews =
+    currentNewsIndex >= 0
+      ? allNews
+          .slice(
+            currentNewsIndex + 1,
+          )
+          .filter(
+            (item) =>
+              item.id !==
+              news.id,
+          )
+          .slice(0, 3)
+      : [];
+
+  /*
+   * Se a notícia atual estiver no final da lista,
+   * completamos com notícias anteriores.
+   */
+  if (
+    relatedNews.length < 3
+  ) {
+    const previousNews =
+      allNews
+        .filter(
+          (item) =>
+            item.id !==
+            news.id &&
+            !relatedNews.some(
+              (related) =>
+                related.id ===
+                item.id,
+            ),
+        )
+        .slice(
+          0,
+          3 -
+            relatedNews.length,
+        );
+
+    relatedNews = [
+      ...relatedNews,
+      ...previousNews,
+    ];
+  }
 
   return (
     <div className="space-y-6 pb-10">
@@ -1487,4 +1541,4 @@ function NewsDetailsPage() {
       </section>
     </div>
   );
-    }
+      }
