@@ -26,134 +26,122 @@ const NEWS: NewsItem[] = [
   {
     id: "frieren-trailer",
     type: "TRAILER",
-    title:
-      'Novo trailer de "Sousou no Frieren" é divulgado',
+    title: "Frieren ganha novo trailer",
     description:
-      "Um novo trailer foi divulgado, trazendo novas cenas e detalhes da próxima temporada.",
-    date: "22 de setembro de 2026",
+      "Novo material promocional de Frieren: Beyond Journey's End é divulgado.",
+    date: "23/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/1015/138006l.jpg",
   },
   {
-    id: "one-piece-nova-temporada",
-    type: "NOVA TEMPORADA",
-    title:
-      "One Piece ganha novidades sobre seu próximo arco",
+    id: "one-piece-novo-episodio",
+    type: "NOVO EPISÓDIO",
+    title: "One Piece recebe novo episódio",
     description:
-      "Novas informações sobre a continuação da história foram divulgadas.",
-    date: "21 de setembro de 2026",
+      "Confira as novidades do anime e os próximos acontecimentos da série.",
+    date: "22/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
   },
   {
-    id: "anime-filme",
+    id: "filme-anime",
     type: "FILME",
-    title:
-      "Novo filme de anime recebe data de estreia",
+    title: "Novo filme de anime ganha novidades",
     description:
-      "A produção ganhou uma nova atualização e teve sua data de estreia anunciada.",
-    date: "20 de setembro de 2026",
+      "Novas informações sobre um dos próximos lançamentos para os fãs de anime.",
+    date: "21/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/1765/135099l.jpg",
   },
   {
-    id: "novo-episodio",
-    type: "NOVO EPISÓDIO",
-    title:
-      "Novo episódio de uma das séries mais populares chega esta semana",
+    id: "jujutsu-kaisen",
+    type: "NOVIDADE",
+    title: "Jujutsu Kaisen ganha novo visual",
     description:
-      "O próximo episódio já tem data prevista e novas informações foram divulgadas.",
-    date: "19 de setembro de 2026",
+      "Um novo visual promocional de Jujutsu Kaisen foi divulgado oficialmente.",
+    date: "20/09/2026",
     image:
-      "https://huggingface.co/datasets/deepghs/fancaps_animes/resolve/main/images/40748__jujutsu_kaisen.jpg",
+      "https://jujutsukaisen.jp/news/images/20250728_01_01.jpg",
   },
   {
-    id: "jujutsu-novidades",
-    type: "NOVIDADES",
-    title:
-      "Jujutsu Kaisen recebe novas informações sobre a produção",
-    description:
-      "A produção divulgou novas informações para os fãs da série.",
-    date: "18 de setembro de 2026",
-    image:
-      "https://huggingface.co/datasets/deepghs/fancaps_animes/resolve/main/images/40748__jujutsu_kaisen.jpg",
-  },
-  {
-    id: "demon-slayer-filme",
+    id: "demon-slayer",
     type: "FILME",
-    title:
-      "Novo projeto de Demon Slayer ganha novidades",
+    title: "Demon Slayer recebe novidades",
     description:
-      "Novos detalhes do próximo projeto foram revelados.",
-    date: "17 de setembro de 2026",
+      "Confira as últimas informações relacionadas ao universo de Demon Slayer.",
+    date: "19/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/1765/135099l.jpg",
   },
   {
     id: "solo-leveling",
-    type: "NOVA TEMPORADA",
-    title:
-      "Solo Leveling recebe atualização sobre sua próxima temporada",
+    type: "NOVIDADE",
+    title: "Solo Leveling ganha novidades",
     description:
-      "A equipe de produção divulgou novas informações sobre a continuação.",
-    date: "16 de setembro de 2026",
+      "Novas informações sobre Solo Leveling foram divulgadas.",
+    date: "18/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/1801/142390l.jpg",
   },
   {
-    id: "bleach-news",
-    type: "NOVIDADES",
-    title:
-      "Bleach ganha novas informações sobre seus próximos episódios",
+    id: "bleach",
+    type: "NOVIDADE",
+    title: "Bleach ganha novo visual",
     description:
-      "Novos detalhes foram divulgados sobre a continuação da série.",
-    date: "15 de setembro de 2026",
+      "Confira as novidades de Bleach e o que vem pela frente no anime.",
+    date: "17/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/3/40451.jpg",
   },
   {
-    id: "chainsaw-man-filme",
+    id: "chainsaw-man",
     type: "FILME",
-    title:
-      "Chainsaw Man recebe novidades sobre seu filme",
+    title: "Chainsaw Man recebe novo material",
     description:
-      "O projeto ganhou novas informações e detalhes de produção.",
-    date: "14 de setembro de 2026",
+      "Novas imagens e informações sobre Chainsaw Man foram divulgadas.",
+    date: "16/09/2026",
     image:
       "https://api-cdn.myanimelist.net/images/anime/1632/110707.jpg",
   },
   {
     id: "my-hero-academia",
-    type: "NOVA TEMPORADA",
-    title:
-      "My Hero Academia recebe novidades da próxima fase",
+    type: "NOVIDADE",
+    title: "My Hero Academia ganha novidades",
     description:
-      "Novas informações sobre a produção foram divulgadas.",
-    date: "13 de setembro de 2026",
+      "Confira as últimas informações sobre My Hero Academia.",
+    date: "15/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/10/78745l.jpg",
   },
   {
     id: "dragon-ball",
-    type: "NOVIDADES",
-    title:
-      "Dragon Ball ganha novas informações para os fãs",
+    type: "NOVIDADE",
+    title: "Dragon Ball recebe novidades",
     description:
-      "A franquia recebeu uma nova atualização nesta semana.",
-    date: "12 de setembro de 2026",
+      "Novas informações sobre o universo de Dragon Ball foram divulgadas.",
+    date: "14/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/7/74606.jpg",
   },
   {
     id: "one-punch-man",
     type: "TRAILER",
-    title:
-      "Novo trailer de One Punch Man é divulgado",
+    title: "One Punch Man ganha novidades",
     description:
-      "O novo vídeo apresenta cenas inéditas e detalhes da produção.",
-    date: "11 de setembro de 2026",
+      "Confira as últimas informações e novidades de One Punch Man.",
+    date: "13/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/12/76049l.jpg",
+  },
+  {
+    id: "anime-news",
+    type: "NOVIDADE",
+    title: "Novidades no mundo dos animes",
+    description:
+      "Confira mais uma seleção de novidades do mundo dos animes.",
+    date: "12/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
   },
 ];
 
@@ -197,7 +185,6 @@ function NewsPage() {
 
   return (
     <div className="space-y-6 pb-10">
-      {/* VOLTAR */}
       <Link
         to="/"
         className="
@@ -222,31 +209,34 @@ function NewsPage() {
         <span>Voltar</span>
       </Link>
 
-      {/* TÍTULO */}
-      <div>
-        <div className="flex items-center gap-2">
-          <Newspaper className="size-5 text-accent" />
-
-          <h1
-            className="
-              font-display
-              text-2xl
-              tracking-tight
-              text-fg
-              sm:text-3xl
-            "
-          >
-            Notícias
-          </h1>
+      <div className="flex items-start gap-3">
+        <div
+          className="
+            flex
+            size-10
+            shrink-0
+            items-center
+            justify-center
+            rounded-xl
+            bg-elevated
+            text-fg
+          "
+        >
+          <Newspaper className="size-5" />
         </div>
 
-        <p className="mt-2 text-sm text-muted">
-          Confira as principais novidades do mundo dos animes.
-        </p>
+        <div>
+          <h1 className="text-2xl font-bold text-fg">
+            Notícias
+          </h1>
+
+          <p className="mt-1 text-sm text-muted">
+            Fique por dentro das novidades do mundo dos animes.
+          </p>
+        </div>
       </div>
 
-      {/* NOTÍCIAS */}
-      <div className="space-y-5">
+      <div className="grid gap-5 md:grid-cols-2">
         {currentNews.map((news) => (
           <Link
             key={news.id}
@@ -256,227 +246,215 @@ function NewsPage() {
             }}
             className="
               group
-              block
               overflow-hidden
               rounded-2xl
-              bg-elevated
-              shadow-[var(--shadow-border)]
+              border
+              border-border
+              bg-surface
               transition-all
-              duration-200
-              hover:-translate-y-0.5
-              hover:bg-elevated/80
+              duration-300
+              hover:-translate-y-1
+              hover:border-border-strong
+              hover:shadow-xl
             "
           >
-            <article>
-              {/* IMAGEM */}
+            <div
+              className="
+                relative
+                aspect-video
+                w-full
+                overflow-hidden
+                bg-black
+              "
+            >
+              <img
+                src={news.image}
+                alt=""
+                loading="lazy"
+                className="
+                  size-full
+                  object-contain
+                  transition-transform
+                  duration-500
+                  group-hover:scale-[1.02]
+                "
+              />
+
               <div
                 className="
-                  relative
-                  aspect-video
-                  w-full
-                  overflow-hidden
-                  bg-surface
+                  pointer-events-none
+                  absolute
+                  inset-0
+                  bg-gradient-to-t
+                  from-black/80
+                  via-black/10
+                  to-transparent
+                "
+              />
+
+              <div
+                className="
+                  absolute
+                  bottom-3
+                  left-3
+                  rounded-full
+                  bg-black/65
+                  px-3
+                  py-1
+                  text-[11px]
+                  font-semibold
+                  uppercase
+                  tracking-wide
+                  text-white
+                  backdrop-blur-sm
                 "
               >
-                <img
-                  src={news.image}
-                  alt=""
-                  className="
-                    size-full
-                    object-cover
-                    transition-transform
-                    duration-500
-                    group-hover:scale-[1.02]
-                  "
-                />
-
-                <div
-                  className="
-                    pointer-events-none
-                    absolute
-                    inset-0
-                    bg-linear-to-t
-                    from-black/75
-                    via-black/20
-                    to-transparent
-                  "
-                />
-
-                <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
-                  <span
-                    className="
-                      inline-flex
-                      rounded-md
-                      bg-black/40
-                      px-2
-                      py-1
-                      text-[10px]
-                      font-semibold
-                      tracking-[0.12em]
-                      text-white
-                      uppercase
-                      backdrop-blur-sm
-                    "
-                  >
-                    {news.type}
-                  </span>
-                </div>
+                {news.type}
               </div>
+            </div>
 
-              {/* CONTEÚDO */}
-              <div className="p-5 sm:p-6">
-                <h2
-                  className="
-                    font-display
-                    text-xl
-                    leading-tight
-                    tracking-tight
-                    text-fg
-                    transition-colors
-                    group-hover:text-accent
-                    sm:text-2xl
-                  "
-                >
-                  {news.title}
-                </h2>
+            <div className="space-y-3 p-4">
+              <h2
+                className="
+                  line-clamp-2
+                  text-lg
+                  font-semibold
+                  leading-tight
+                  text-fg
+                  transition-colors
+                  group-hover:text-primary
+                "
+              >
+                {news.title}
+              </h2>
 
-                <p
-                  className="
-                    mt-3
-                    text-sm
-                    leading-6
-                    text-muted
-                    sm:text-base
-                  "
-                >
-                  {news.description}
-                </p>
+              <p
+                className="
+                  line-clamp-2
+                  text-sm
+                  leading-relaxed
+                  text-muted
+                "
+              >
+                {news.description}
+              </p>
 
-                <div
-                  className="
-                    mt-4
-                    flex
-                    items-center
-                    gap-2
-                    text-xs
-                    text-subtle
-                  "
-                >
-                  <CalendarDays className="size-4" />
-
-                  <span>
-                    {news.date}
-                  </span>
-                </div>
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-2
+                  text-xs
+                  text-muted
+                "
+              >
+                <CalendarDays className="size-4" />
+                <span>{news.date}</span>
               </div>
-            </article>
+            </div>
           </Link>
         ))}
       </div>
 
-      {/* PAGINAÇÃO */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-4">
-          {/* ANTERIOR */}
+      <div
+        className="
+          flex
+          flex-wrap
+          items-center
+          justify-center
+          gap-2
+          pt-2
+        "
+      >
+        <button
+          type="button"
+          onClick={() =>
+            goToPage(currentPage - 1)
+          }
+          disabled={currentPage === 1}
+          className="
+            inline-flex
+            size-10
+            items-center
+            justify-center
+            rounded-lg
+            border
+            border-border
+            bg-surface
+            text-muted
+            transition-all
+            hover:bg-elevated
+            hover:text-fg
+            disabled:cursor-not-allowed
+            disabled:opacity-40
+          "
+          aria-label="Página anterior"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+
+        {Array.from(
+          { length: totalPages },
+          (_, index) => index + 1,
+        ).map((page) => (
           <button
+            key={page}
             type="button"
-            onClick={() =>
-              goToPage(currentPage - 1)
-            }
-            disabled={currentPage === 1}
-            className="
-              flex
+            onClick={() => goToPage(page)}
+            className={`
+              inline-flex
               size-10
               items-center
               justify-center
               rounded-lg
               border
-              border-border
-              text-muted
-              transition-colors
-              hover:bg-elevated
-              hover:text-fg
-              disabled:pointer-events-none
-              disabled:opacity-40
-            "
-            aria-label="Página anterior"
+              text-sm
+              font-medium
+              transition-all
+              ${
+                currentPage === page
+                  ? "border-primary bg-primary text-white"
+                  : "border-border bg-surface text-muted hover:bg-elevated hover:text-fg"
+              }
+            `}
           >
-            <ChevronLeft className="size-4" />
+            {page}
           </button>
+        ))}
 
-          {/* PÁGINAS */}
-          <div className="flex items-center gap-1">
-            {Array.from(
-              {
-                length: totalPages,
-              },
-              (_, index) => index + 1,
-            ).map((page) => (
-              <button
-                key={page}
-                type="button"
-                onClick={() => goToPage(page)}
-                className={`
-                  flex
-                  size-10
-                  items-center
-                  justify-center
-                  rounded-lg
-                  text-sm
-                  font-medium
-                  transition-colors
-                  ${
-                    currentPage === page
-                      ? "bg-accent text-white"
-                      : "text-muted hover:bg-elevated hover:text-fg"
-                  }
-                `}
-                aria-current={
-                  currentPage === page
-                    ? "page"
-                    : undefined
-                }
-              >
-                {page}
-              </button>
-            ))}
-          </div>
+        <button
+          type="button"
+          onClick={() =>
+            goToPage(currentPage + 1)
+          }
+          disabled={
+            currentPage === totalPages
+          }
+          className="
+            inline-flex
+            size-10
+            items-center
+            justify-center
+            rounded-lg
+            border
+            border-border
+            bg-surface
+            text-muted
+            transition-all
+            hover:bg-elevated
+            hover:text-fg
+            disabled:cursor-not-allowed
+            disabled:opacity-40
+          "
+          aria-label="Próxima página"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
 
-          {/* PRÓXIMA */}
-          <button
-            type="button"
-            onClick={() =>
-              goToPage(currentPage + 1)
-            }
-            disabled={
-              currentPage === totalPages
-            }
-            className="
-              flex
-              size-10
-              items-center
-              justify-center
-              rounded-lg
-              border
-              border-border
-              text-muted
-              transition-colors
-              hover:bg-elevated
-              hover:text-fg
-              disabled:pointer-events-none
-              disabled:opacity-40
-            "
-            aria-label="Próxima página"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-        </div>
-      )}
-
-      {/* INDICADOR */}
-      <p className="text-center text-xs text-subtle">
+      <div className="text-center text-xs text-muted">
         Página {currentPage} de {totalPages}
-      </p>
+      </div>
     </div>
   );
     }
