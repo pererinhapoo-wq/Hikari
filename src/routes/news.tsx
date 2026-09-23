@@ -23,6 +23,80 @@ export const Route = createFileRoute("/news")({
 
 const NEWS_PER_PAGE = 4;
 
+function parseNewsDate(date: string) {
+  if (!date) {
+    return 0;
+  }
+
+  const normalized = date
+    .trim()
+    .toLowerCase();
+
+  // Formato: DD/MM/YYYY
+  const numericMatch = normalized.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
+  );
+
+  if (numericMatch) {
+    const [, day, month, year] =
+      numericMatch;
+
+    return new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+    ).getTime();
+  }
+
+  // Formato: DD de mês de YYYY
+  const monthNames: Record<
+    string,
+    number
+  > = {
+    janeiro: 0,
+    fevereiro: 1,
+    março: 2,
+    abril: 3,
+    maio: 4,
+    junho: 5,
+    julho: 6,
+    agosto: 7,
+    setembro: 8,
+    outubro: 9,
+    novembro: 10,
+    dezembro: 11,
+  };
+
+  const textMatch = normalized.match(
+    /^(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})$/,
+  );
+
+  if (textMatch) {
+    const [, day, monthName, year] =
+      textMatch;
+
+    const month =
+      monthNames[monthName];
+
+    if (month !== undefined) {
+      return new Date(
+        Number(year),
+        month,
+        Number(day),
+      ).getTime();
+    }
+  }
+
+  // Fallback para outros formatos de data
+  const parsed = Date.parse(date);
+
+  if (!Number.isNaN(parsed)) {
+    return parsed;
+  }
+
+  return 0;
+}
+
 function NewsPage() {
   const loaderNews =
     Route.useLoaderData() as AutomaticNewsItem[];
@@ -30,7 +104,13 @@ function NewsPage() {
   const [currentPage, setCurrentPage] =
     useState(1);
 
-  const news = loaderNews ?? [];
+  const news = useMemo(() => {
+    return [...(loaderNews ?? [])].sort(
+      (a, b) =>
+        parseNewsDate(b.date) -
+        parseNewsDate(a.date),
+    );
+  }, [loaderNews]);
 
   const totalPages = Math.max(
     1,
@@ -438,4 +518,4 @@ function NewsPage() {
       </div>
     </main>
   );
-              }
+    }
