@@ -26,6 +26,9 @@ jobs:
       - name: Instalar dependencias
         run: npm install
 
+      - name: Verificar versao do tsr
+        run: npx tsr --version
+
       - name: Gerar rotas
         run: npm run generate-routes
 
