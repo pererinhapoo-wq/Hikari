@@ -285,17 +285,21 @@ function NewsPage() {
      AÇÕES DA BUSCA
   ========================================================== */
 
+  const openSearch = () => {
+    setSearchOpen(true);
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+  };
+
   const handleSearchSubmit =
     (
       event: FormEvent<HTMLFormElement>,
     ) => {
       event.preventDefault();
     };
-
-  const closeSearch = () => {
-    setSearchOpen(false);
-    setSearchQuery("");
-  };
 
   /* =========================================================
      NOTÍCIAS VISÍVEIS
@@ -408,60 +412,65 @@ function NewsPage() {
           </Link>
 
           {/* BUSCAR / FECHAR */}
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                searchOpen
-              ) {
-                closeSearch();
-              } else {
-                setSearchOpen(
-                  true,
-                );
-              }
-            }}
-            className="
-              inline-flex
-              w-fit
-              items-center
-              gap-2
-              rounded-lg
-              px-2
-              py-2
-              text-sm
-              font-medium
-              text-muted
-              transition-all
-              duration-200
-              hover:bg-elevated
-              hover:text-fg
-              active:scale-[0.97]
-            "
-            aria-label={
-              searchOpen
-                ? "Fechar busca"
-                : "Abrir busca"
-            }
-          >
-            {searchOpen ? (
-              <>
-                <X className="size-4 shrink-0" />
+          {!searchOpen ? (
+            <button
+              type="button"
+              onClick={openSearch}
+              className="
+                inline-flex
+                w-fit
+                items-center
+                gap-2
+                rounded-lg
+                px-2
+                py-2
+                text-sm
+                font-medium
+                text-muted
+                transition-all
+                duration-200
+                hover:bg-elevated
+                hover:text-fg
+                active:scale-[0.97]
+              "
+              aria-label="Abrir busca"
+            >
+              <Search className="size-4 shrink-0" />
 
-                <span>
-                  Fechar
-                </span>
-              </>
-            ) : (
-              <>
-                <Search className="size-4 shrink-0" />
+              <span>
+                Buscar
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={closeSearch}
+              className="
+                inline-flex
+                w-fit
+                items-center
+                gap-2
+                rounded-lg
+                px-2
+                py-2
+                text-sm
+                font-medium
+                text-muted
+                transition-all
+                duration-200
+                hover:bg-elevated
+                hover:text-fg
+                active:scale-[0.97]
+              "
+              aria-label="Fechar busca"
+            >
+              <X className="size-4 shrink-0" />
 
-                <span>
-                  Buscar
-                </span>
-              </>
-            )}
-          </button>
+              <span>
+                Fechar
+              </span>
+            </button>
+          )}
         </div>
 
         {/* =====================================================
@@ -1095,4 +1104,4 @@ function NewsPage() {
       </div>
     </main>
   );
-}
+  }
