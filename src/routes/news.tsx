@@ -236,7 +236,14 @@ function NewsPage() {
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <div
+        className="
+          grid
+          gap-5
+          md:grid-cols-2
+          xl:grid-cols-3
+        "
+      >
         {currentNews.map((news) => (
           <Link
             key={news.id}
@@ -457,4 +464,4 @@ function NewsPage() {
       </div>
     </div>
   );
-    }
+      }
