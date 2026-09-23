@@ -1,12 +1,25 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+} from "@tanstack/react-router";
+
 import {
   ArrowLeft,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
   Newspaper,
+  Search,
+  X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   fetchAutomaticNews,
@@ -39,9 +52,10 @@ function parseNewsDate(date: string) {
     .trim()
     .toLowerCase();
 
-  const numericMatch = normalized.match(
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
-  );
+  const numericMatch =
+    normalized.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
+    );
 
   if (numericMatch) {
     const [, day, month, year] =
@@ -72,9 +86,10 @@ function parseNewsDate(date: string) {
     dezembro: 11,
   };
 
-  const textMatch = normalized.match(
-    /^(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})$/,
-  );
+  const textMatch =
+    normalized.match(
+      /^(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})$/,
+    );
 
   if (textMatch) {
     const [, day, monthName, year] =
@@ -92,7 +107,8 @@ function parseNewsDate(date: string) {
     }
   }
 
-  const parsed = Date.parse(date);
+  const parsed =
+    Date.parse(date);
 
   if (!Number.isNaN(parsed)) {
     return parsed;
@@ -101,9 +117,27 @@ function parseNewsDate(date: string) {
   return 0;
 }
 
+function normalizeSearchText(
+  value: string,
+) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(
+      /[\u0300-\u036f]/g,
+      "",
+    )
+    .trim();
+}
+
 function NewsPage() {
   const loaderNews =
     Route.useLoaderData() as AutomaticNewsItem[];
+
+  const navigate =
+    useNavigate({
+      from: "/news",
+    });
 
   const { page: urlPage } =
     Route.useSearch();
@@ -111,18 +145,63 @@ function NewsPage() {
   const [currentPage, setCurrentPage] =
     useState(urlPage);
 
+  const [searchOpen, setSearchOpen] =
+    useState(false);
+
+  const [searchQuery, setSearchQuery] =
+    useState("");
+
+  const searchInputRef =
+    useRef<HTMLInputElement>(null);
+
   const news = useMemo(() => {
-    return [...(loaderNews ?? [])].sort(
+    return [
+      ...(loaderNews ?? []),
+    ].sort(
       (a, b) =>
         parseNewsDate(b.date) -
         parseNewsDate(a.date),
     );
   }, [loaderNews]);
 
+  const filteredNews =
+    useMemo(() => {
+      const query =
+        normalizeSearchText(
+          searchQuery,
+        );
+
+      if (!query) {
+        return news;
+      }
+
+      return news.filter(
+        (item) => {
+          const searchableText =
+            normalizeSearchText(
+              [
+                item.title,
+                item.description,
+                item.type,
+                item.date,
+              ].join(" "),
+            );
+
+          return searchableText.includes(
+            query,
+          );
+        },
+      );
+    }, [
+      news,
+      searchQuery,
+    ]);
+
   const totalPages = Math.max(
     1,
     Math.ceil(
-      news.length / NEWS_PER_PAGE,
+      filteredNews.length /
+        NEWS_PER_PAGE,
     ),
   );
 
@@ -143,11 +222,26 @@ function NewsPage() {
       totalPages
     ) {
       setCurrentPage(totalPages);
+
+      navigate({
+        search: {
+          page: totalPages,
+        },
+      });
     }
   }, [
     currentPage,
     totalPages,
+    navigate,
   ]);
+
+  useEffect(() => {
+    if (searchOpen) {
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+    }
+  }, [searchOpen]);
 
   const visibleNews =
     useMemo(() => {
@@ -155,45 +249,33 @@ function NewsPage() {
         (currentPage - 1) *
         NEWS_PER_PAGE;
 
-      return news.slice(
+      return filteredNews.slice(
         start,
         start + NEWS_PER_PAGE,
       );
     }, [
-      news,
+      filteredNews,
       currentPage,
     ]);
 
   const goToPage = (
     page: number,
   ) => {
-    const nextPage = Math.min(
-      Math.max(page, 1),
-      totalPages,
-    );
-
-    setCurrentPage(nextPage);
-
-    const url = new URL(
-      window.location.href,
-    );
-
-    if (nextPage === 1) {
-      url.searchParams.delete(
-        "page",
+    const nextPage =
+      Math.min(
+        Math.max(page, 1),
+        totalPages,
       );
-    } else {
-      url.searchParams.set(
-        "page",
-        String(nextPage),
-      );
-    }
 
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${url.pathname}${url.search}${url.hash}`,
+    setCurrentPage(
+      nextPage,
     );
+
+    navigate({
+      search: {
+        page: nextPage,
+      },
+    });
 
     window.scrollTo({
       top: 0,
@@ -201,34 +283,262 @@ function NewsPage() {
     });
   };
 
+  const handleSearchChange = (
+    value: string,
+  ) => {
+    setSearchQuery(value);
+
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+
+      navigate({
+        search: {
+          page: 1,
+        },
+      });
+    }
+  };
+
+  const handleSearchSubmit = (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+
+    const value =
+      searchQuery.trim();
+
+    setSearchQuery(value);
+
+    setCurrentPage(1);
+
+    navigate({
+      search: {
+        page: 1,
+      },
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+    setCurrentPage(1);
+
+    navigate({
+      search: {
+        page: 1,
+      },
+    });
+
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  };
+
   return (
     <main className="min-h-screen bg-background text-fg">
       <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-4 sm:px-6 lg:px-8">
-        <Link
-          to="/"
-          className="
-            mb-7
-            inline-flex
-            w-fit
-            items-center
-            gap-2
-            rounded-lg
-            px-2
-            py-2
-            text-sm
-            font-medium
-            text-muted
-            transition-all
-            duration-200
-            hover:bg-elevated
-            hover:text-fg
-            active:scale-[0.97]
-          "
-        >
-          <ArrowLeft className="size-4 shrink-0" />
-          <span>Voltar</span>
-        </Link>
 
+        {/* TOPO */}
+        <div className="mb-7 flex items-center justify-between gap-3">
+          <Link
+            to="/"
+            className="
+              inline-flex
+              w-fit
+              items-center
+              gap-2
+              rounded-lg
+              px-2
+              py-2
+              text-sm
+              font-medium
+              text-muted
+              transition-all
+              duration-200
+              hover:bg-elevated
+              hover:text-fg
+              active:scale-[0.97]
+            "
+          >
+            <ArrowLeft className="size-4 shrink-0" />
+
+            <span>
+              Voltar
+            </span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSearchOpen(
+                (open) => !open,
+              );
+            }}
+            aria-label={
+              searchOpen
+                ? "Fechar busca"
+                : "Buscar notícias"
+            }
+            aria-expanded={
+              searchOpen
+            }
+            className="
+              inline-flex
+              items-center
+              gap-2
+              rounded-lg
+              px-3
+              py-2
+              text-sm
+              font-medium
+              text-muted
+              transition-all
+              duration-200
+              hover:bg-elevated
+              hover:text-fg
+              active:scale-[0.97]
+            "
+          >
+            {searchOpen ? (
+              <X className="size-4" />
+            ) : (
+              <Search className="size-4" />
+            )}
+
+            <span>
+              {searchOpen
+                ? "Fechar"
+                : "Buscar"}
+            </span>
+          </button>
+        </div>
+
+        {/* BUSCA */}
+        {searchOpen && (
+          <form
+            onSubmit={
+              handleSearchSubmit
+            }
+            className="
+              mb-6
+              rounded-2xl
+              border
+              border-border
+              bg-card
+              p-3
+              shadow-[var(--shadow-border)]
+            "
+          >
+            <div
+              className="
+                flex
+                items-center
+                gap-2
+                rounded-xl
+                border
+                border-border
+                bg-elevated
+                px-3
+              "
+            >
+              <Search
+                className="
+                  size-5
+                  shrink-0
+                  text-muted
+                "
+              />
+
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={searchQuery}
+                onChange={(event) =>
+                  handleSearchChange(
+                    event.target.value,
+                  )
+                }
+                placeholder="Buscar notícias..."
+                aria-label="Buscar notícias"
+                autoComplete="off"
+                className="
+                  min-w-0
+                  flex-1
+                  bg-transparent
+                  py-3
+                  text-sm
+                  text-fg
+                  outline-none
+                  placeholder:text-muted
+                "
+              />
+
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={
+                    clearSearch
+                  }
+                  aria-label="Limpar busca"
+                  className="
+                    flex
+                    size-8
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-full
+                    text-muted
+                    transition
+                    hover:bg-card
+                    hover:text-fg
+                  "
+                >
+                  <X className="size-4" />
+                </button>
+              )}
+
+              <button
+                type="submit"
+                aria-label="Pesquisar"
+                className="
+                  flex
+                  size-9
+                  shrink-0
+                  items-center
+                  justify-center
+                  rounded-lg
+                  bg-accent
+                  text-white
+                  transition-all
+                  hover:opacity-90
+                  active:scale-[0.96]
+                "
+              >
+                <Search className="size-4" />
+              </button>
+            </div>
+
+            {searchQuery.trim() && (
+              <p className="mt-2 px-1 text-xs text-muted">
+                {filteredNews.length ===
+                0
+                  ? "Nenhuma notícia encontrada."
+                  : `${filteredNews.length} ${
+                      filteredNews.length ===
+                      1
+                        ? "notícia encontrada"
+                        : "notícias encontradas"
+                    }`}
+              </p>
+            )}
+          </form>
+        )}
+
+        {/* CABEÇALHO */}
         <section className="mb-7">
           <div className="flex items-center gap-3">
             <div
@@ -260,6 +570,7 @@ function NewsPage() {
 
         {visibleNews.length > 0 ? (
           <>
+            {/* NOTÍCIAS */}
             <section
               className="
                 grid
@@ -304,8 +615,12 @@ function NewsPage() {
                       "
                     >
                       <img
-                        src={item.image}
-                        alt={item.title}
+                        src={
+                          item.image
+                        }
+                        alt={
+                          item.title
+                        }
                         className="
                           absolute
                           inset-0
@@ -349,7 +664,9 @@ function NewsPage() {
                           text-white
                         "
                       >
-                        {item.type}
+                        {
+                          item.type
+                        }
                       </span>
                     </div>
 
@@ -363,7 +680,9 @@ function NewsPage() {
                           text-fg
                         "
                       >
-                        {item.title}
+                        {
+                          item.title
+                        }
                       </h2>
 
                       <p
@@ -375,7 +694,9 @@ function NewsPage() {
                           text-muted
                         "
                       >
-                        {item.description}
+                        {
+                          item.description
+                        }
                       </p>
 
                       <div
@@ -391,7 +712,9 @@ function NewsPage() {
                         <CalendarDays className="size-3.5 shrink-0" />
 
                         <span>
-                          {item.date}
+                          {
+                            item.date
+                          }
                         </span>
                       </div>
                     </div>
@@ -400,6 +723,7 @@ function NewsPage() {
               )}
             </section>
 
+            {/* PAGINAÇÃO */}
             {totalPages > 1 && (
               <nav
                 className="
@@ -430,7 +754,8 @@ function NewsPage() {
                       )
                     }
                     disabled={
-                      currentPage === 1
+                      currentPage ===
+                      1
                     }
                     aria-label="Página anterior"
                     className="
@@ -467,7 +792,9 @@ function NewsPage() {
                         key={page}
                         type="button"
                         onClick={() =>
-                          goToPage(page)
+                          goToPage(
+                            page,
+                          )
                         }
                         aria-label={`Ir para a página ${page}`}
                         aria-current={
@@ -495,7 +822,9 @@ function NewsPage() {
                           }
                         `}
                       >
-                        {page}
+                        {
+                          page
+                        }
                       </button>
                     ),
                   )}
@@ -536,8 +865,13 @@ function NewsPage() {
 
                 <p className="text-xs text-muted">
                   Página{" "}
-                  {currentPage} de{" "}
-                  {totalPages}
+                  {
+                    currentPage
+                  }{" "}
+                  de{" "}
+                  {
+                    totalPages
+                  }
                 </p>
               </nav>
             )}
@@ -557,12 +891,18 @@ function NewsPage() {
               text-center
             "
           >
-            <p className="text-sm text-muted">
-              Nenhuma notícia disponível no momento.
-            </p>
+            <div>
+              <Search className="mx-auto size-8 text-muted" />
+
+              <p className="mt-3 text-sm text-muted">
+                {searchQuery.trim()
+                  ? "Nenhuma notícia encontrada para essa busca."
+                  : "Nenhuma notícia disponível no momento."}
+              </p>
+            </div>
           </section>
         )}
       </div>
     </main>
   );
-}
+    }
