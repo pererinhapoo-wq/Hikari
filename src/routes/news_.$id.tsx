@@ -2,6 +2,7 @@ import {
   createFileRoute,
   Link,
   notFound,
+  useSearch,
 } from "@tanstack/react-router";
 
 import {
@@ -738,7 +739,8 @@ function NewsDetailsPage() {
           page,
         }}
         className="
-          mt-2
+          relative
+          top-2
           inline-flex
           w-fit
           items-center
@@ -1462,4 +1464,4 @@ function NewsDetailsPage() {
       </section>
     </div>
   );
-    }
+}
