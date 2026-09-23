@@ -13,6 +13,7 @@ export type AutomaticNewsItem = {
   date: string;
   image: string;
   animeId: string;
+  trailerUrl?: string;
 };
 
 const ANILIST =
@@ -33,6 +34,7 @@ type AniMedia = {
   } | null;
 
   description?: string | null;
+
   format?: string | null;
   status?: string | null;
   episodes?: number | null;
@@ -43,6 +45,12 @@ type AniMedia = {
     year?: number | null;
     month?: number | null;
     day?: number | null;
+  } | null;
+
+  trailer?: {
+    id?: string | null;
+    site?: string | null;
+    thumbnail?: string | null;
   } | null;
 };
 
@@ -162,6 +170,23 @@ function descriptionOf(
   }.`;
 }
 
+function trailerOf(
+  media: AniMedia,
+): string | undefined {
+  const trailer =
+    media.trailer;
+
+  if (
+    !trailer?.id ||
+    trailer.site !==
+      "youtube"
+  ) {
+    return undefined;
+  }
+
+  return `https://www.youtube.com/embed/${trailer.id}`;
+}
+
 async function fetchSeason(
   season: string,
   year: number,
@@ -223,6 +248,12 @@ async function fetchSeason(
                     year
                     month
                     day
+                  }
+
+                  trailer {
+                    id
+                    site
+                    thumbnail
                   }
                 }
               }
@@ -318,39 +349,54 @@ export const fetchAutomaticNews =
           .map(
             (
               anime,
-            ): AutomaticNewsItem => ({
-              id: `auto-${anime.id}`,
-
-              type:
-                "NOVA TEMPORADA",
-
-              title:
-                `${titleOf(
+            ): AutomaticNewsItem => {
+              const trailerUrl =
+                trailerOf(
                   anime,
-                )} — nova temporada`,
+                );
 
-              description:
-                descriptionOf(
-                  anime,
-                ),
+              return {
+                id: `auto-${anime.id}`,
 
-              date:
-                formatDate(
-                  anime,
-                ),
+                type:
+                  trailerUrl
+                    ? "TRAILER"
+                    : "NOVA TEMPORADA",
 
-              image:
-                anime.coverImage
-                  ?.extraLarge ||
-                anime.coverImage
-                  ?.large ||
-                "",
+                title:
+                  `${titleOf(
+                    anime,
+                  )} — ${
+                    trailerUrl
+                      ? "novo trailer"
+                      : "nova temporada"
+                  }`,
 
-              animeId:
-                String(
-                  anime.id,
-                ),
-            }),
+                description:
+                  descriptionOf(
+                    anime,
+                  ),
+
+                date:
+                  formatDate(
+                    anime,
+                  ),
+
+                image:
+                  anime.coverImage
+                    ?.extraLarge ||
+                  anime.coverImage
+                    ?.large ||
+                  "",
+
+                animeId:
+                  String(
+                    anime.id,
+                  ),
+
+                trailerUrl,
+              };
+            },
           )
           .filter(
             (news) =>
