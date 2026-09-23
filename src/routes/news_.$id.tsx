@@ -781,7 +781,7 @@ function NewsDetailsPage() {
             aspect-video
             w-full
             overflow-hidden
-            bg-surface
+            bg-black
           "
         >
           <img
@@ -789,7 +789,7 @@ function NewsDetailsPage() {
             alt=""
             className="
               size-full
-              object-cover
+              object-contain
             "
           />
 
@@ -1464,4 +1464,4 @@ function NewsDetailsPage() {
       </section>
     </div>
   );
-}
+      }
