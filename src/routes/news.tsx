@@ -24,204 +24,204 @@ type NewsItem = {
 
 const NEWS: NewsItem[] = [
   {
-    id: "frieren-trailer",
-    type: "TRAILER",
-    title: "Frieren ganha novo trailer",
+    id: "apothecary-diaries-season-3",
+    type: "NOVA TEMPORADA",
+    title: "Diários de uma Apotecária 3ª temporada estreia em outubro",
     description:
-      "Novo material promocional de Frieren: Beyond Journey's End é divulgado.",
+      "A 3ª temporada de Diários de uma Apotecária estreia em 2 de outubro de 2026.",
     date: "23/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1015/138006l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1898/146069l.jpg",
   },
   {
-    id: "one-piece-novo-episodio",
-    type: "NOVO EPISÓDIO",
-    title: "One Piece recebe novo episódio",
+    id: "black-clover-season-2",
+    type: "NOVA TEMPORADA",
+    title: "Black Clover 2ª temporada estreia em 3 de outubro",
     description:
-      "Confira as novidades do anime e os próximos acontecimentos da série.",
+      "Asta e os Cavaleiros Mágicos retornam com a 2ª temporada de Black Clover.",
     date: "22/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
+      "https://cdn.myanimelist.net/images/anime/2/67057l.jpg",
   },
   {
-    id: "filme-anime",
-    type: "FILME",
-    title: "Novo filme de anime ganha novidades",
+    id: "aoashi-season-2",
+    type: "NOVA TEMPORADA",
+    title: "Aoashi 2ª temporada chega em outubro",
     description:
-      "Novas informações sobre um dos próximos lançamentos para os fãs de anime.",
+      "Ashito Aoi retorna para uma nova fase no futebol de elite a partir de 4 de outubro.",
     date: "21/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1765/135099l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1291/123462l.jpg",
   },
   {
-    id: "jujutsu-kaisen",
-    type: "NOVIDADE",
-    title: "Jujutsu Kaisen ganha novo visual",
+    id: "firefly-wedding",
+    type: "ESTREIA",
+    title: "Firefly Wedding estreia em outubro",
     description:
-      "Um novo visual promocional de Jujutsu Kaisen foi divulgado oficialmente.",
+      "A adaptação de Firefly Wedding está entre as novas séries da temporada de outubro.",
     date: "20/09/2026",
     image:
-      "https://jujutsukaisen.jp/news/images/20250728_01_01.jpg",
+      "https://cdn.myanimelist.net/images/manga/1/271069l.jpg",
   },
   {
-    id: "demon-slayer",
-    type: "FILME",
-    title: "Demon Slayer recebe novidades do próximo projeto",
+    id: "returners-magic-season-2",
+    type: "NOVA TEMPORADA",
+    title: "A Returner's Magic Should Be Special ganha 2ª temporada",
     description:
-      "Confira as últimas informações relacionadas ao universo de Demon Slayer.",
+      "Desir retorna para tentar mudar novamente o futuro na nova temporada.",
     date: "19/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1765/135099l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1164/138847l.jpg",
   },
   {
-    id: "solo-leveling",
-    type: "NOVIDADE",
-    title: "Solo Leveling ganha atualização da produção",
+    id: "detective-is-already-dead-season-2",
+    type: "NOVA TEMPORADA",
+    title: "The Detective Is Already Dead 2ª temporada estreia em outubro",
     description:
-      "Novas informações sobre Solo Leveling foram divulgadas.",
+      "Os mistérios continuam para Kimihiko na segunda temporada da série.",
     date: "18/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1801/142390l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1117/116991l.jpg",
   },
   {
-    id: "bleach",
-    type: "NOVIDADE",
-    title: "Bleach revela detalhes dos próximos episódios",
+    id: "iceblade-sorcerer-season-2",
+    type: "NOVA TEMPORADA",
+    title: "The Iceblade Sorcerer Shall Rule the World II chega em outubro",
     description:
-      "Confira as novidades de Bleach e o que vem pela frente no anime.",
+      "Ray e seus amigos retornam para uma nova temporada cheia de conflitos.",
     date: "17/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/3/40451.jpg",
+      "https://cdn.myanimelist.net/images/anime/1244/132095l.jpg",
   },
   {
-    id: "chainsaw-man",
-    type: "FILME",
-    title: "Chainsaw Man recebe novo material promocional",
+    id: "dragon-ball-super-beerus",
+    type: "ESTREIA",
+    title: "Dragon Ball Super: Beerus estreia em outubro",
     description:
-      "Novas imagens e informações sobre Chainsaw Man foram divulgadas.",
+      "Um novo projeto de Dragon Ball Super está programado para chegar em 11 de outubro.",
     date: "16/09/2026",
     image:
-      "https://api-cdn.myanimelist.net/images/anime/1632/110707.jpg",
+      "https://cdn.myanimelist.net/images/anime/7/74606l.jpg",
   },
   {
-    id: "my-hero-academia",
-    type: "NOVIDADE",
-    title: "My Hero Academia ganha detalhes da próxima fase",
+    id: "magic-knight-rayearth",
+    type: "ESTREIA",
+    title: "Magic Knight Rayearth retorna na temporada de outubro",
     description:
-      "Confira as últimas informações sobre My Hero Academia.",
+      "O clássico Magic Knight Rayearth está entre os títulos programados para a temporada de outono.",
     date: "15/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/10/78745l.jpg",
+      "https://cdn.myanimelist.net/images/anime/4/75531l.jpg",
   },
   {
-    id: "dragon-ball",
-    type: "NOVIDADE",
-    title: "Dragon Ball recebe anúncio para os fãs",
+    id: "ace-of-diamond-act-ii",
+    type: "NOVA TEMPORADA",
+    title: "Ace of Diamond act II retorna em outubro",
     description:
-      "Novas informações sobre o universo de Dragon Ball foram divulgadas.",
+      "A nova fase de Ace of Diamond act II está prevista para estrear em 11 de outubro.",
     date: "14/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/7/74606.jpg",
+      "https://cdn.myanimelist.net/images/anime/2/83183l.jpg",
   },
   {
-    id: "one-punch-man",
-    type: "TRAILER",
-    title: "One Punch Man ganha novo vídeo promocional",
+    id: "psyren",
+    type: "ESTREIA",
+    title: "PSYREN está entre as novas estreias de outubro",
     description:
-      "Confira as últimas informações e novidades de One Punch Man.",
+      "A adaptação de PSYREN chega à temporada de outubro de 2026 com nova produção em anime.",
     date: "13/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/12/76049l.jpg",
+      "https://cdn.myanimelist.net/images/manga/3/251792l.jpg",
   },
   {
-    id: "anime-news",
-    type: "NOVIDADE",
-    title: "Principais novidades do mundo dos animes",
+    id: "overgeared",
+    type: "ESTREIA",
+    title: "Overgeared estreia na temporada de outubro",
     description:
-      "Confira uma seleção de notícias e anúncios recentes.",
+      "Grid ganha uma nova vida ao se tornar herdeiro de um lendário ferreiro.",
     date: "12/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1143/145969l.jpg",
   },
   {
-    id: "frieren-novidades",
-    type: "NOVIDADE",
-    title: "Frieren recebe detalhes sobre sua continuação",
+    id: "space-mercenary",
+    type: "ESTREIA",
+    title: "Reborn as a Space Mercenary estreia em outubro",
     description:
-      "Novos detalhes sobre o universo de Frieren foram divulgados.",
+      "Um jogador acorda dentro do universo de seu jogo favorito e parte para aventuras espaciais.",
     date: "11/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1015/138006l.jpg",
+      "https://cdn.myanimelist.net/images/manga/1/276814l.jpg",
   },
   {
-    id: "one-piece-novidades",
-    type: "NOVIDADE",
-    title: "One Piece revela detalhes de seus próximos acontecimentos",
+    id: "wild-last-boss-season-2",
+    type: "NOVA TEMPORADA",
+    title: "A Wild Last Boss Appeared! ganha 2ª temporada",
     description:
-      "Novos detalhes sobre os próximos acontecimentos da série.",
+      "A série retorna com uma nova fase na temporada de outono de 2026.",
     date: "10/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1714/147441l.jpg",
   },
   {
-    id: "solo-leveling-trailer",
-    type: "TRAILER",
-    title: "Solo Leveling ganha novo material promocional",
+    id: "salty-koharu",
+    type: "ESTREIA",
+    title: "The Salty Koharu Has a Soft Spot for Me estreia em outubro",
     description:
-      "Um novo material promocional apresenta cenas inéditas.",
+      "A nova comédia romântica está programada para chegar no início de outubro.",
     date: "09/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1801/142390l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1174/147107l.jpg",
   },
   {
-    id: "my-hero-news",
-    type: "NOVA TEMPORADA",
-    title: "My Hero Academia prepara novidades para a nova temporada",
+    id: "vermilion-mask",
+    type: "ESTREIA",
+    title: "The Vermilion Mask estreia em outubro",
     description:
-      "Novas informações sobre a próxima fase do anime foram divulgadas.",
+      "A nova série está programada para estrear em 10 de outubro de 2026.",
     date: "08/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/10/78745l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1015/147156l.jpg",
   },
   {
-    id: "bleach-novidades",
-    type: "NOVIDADE",
-    title: "Bleach apresenta novas informações da produção",
+    id: "return-of-the-great-witch",
+    type: "TEMPORADA",
+    title: "A temporada de outubro traz dezenas de novos animes",
     description:
-      "Confira as novidades relacionadas aos próximos episódios.",
+      "A programação de outono de 2026 reúne novas séries e várias continuações.",
     date: "07/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/3/40451.jpg",
+      "https://cdn.myanimelist.net/images/anime/1451/147032l.jpg",
   },
   {
-    id: "chainsaw-man-novidades",
-    type: "FILME",
-    title: "Chainsaw Man ganha novas imagens promocionais",
+    id: "october-anime-lineup",
+    type: "TEMPORADA",
+    title: "Confira alguns dos animes que chegam em outubro",
     description:
-      "Novas imagens promocionais do projeto foram divulgadas.",
+      "Black Clover, Diários de uma Apotecária, Aoashi e outras séries estão confirmadas para a nova temporada.",
     date: "06/09/2026",
     image:
-      "https://api-cdn.myanimelist.net/images/anime/1632/110707.jpg",
+      "https://cdn.myanimelist.net/images/anime/1898/146069l.jpg",
   },
   {
-    id: "one-punch-man-novidades",
-    type: "NOVIDADE",
-    title: "One Punch Man recebe detalhes sobre a produção",
+    id: "fall-2026-anime",
+    type: "TEMPORADA",
+    title: "Temporada de Outono 2026 ganha programação atualizada",
     description:
-      "Confira as novidades sobre a próxima fase da série.",
+      "A lista de lançamentos de outubro continua recebendo novos títulos e informações.",
     date: "05/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/12/76049l.jpg",
+      "https://cdn.myanimelist.net/images/anime/2/67057l.jpg",
   },
   {
-    id: "demon-slayer-novidades",
-    type: "FILME",
-    title: "Demon Slayer apresenta novo material promocional",
+    id: "anime-october-preview",
+    type: "PRÓXIMAS ESTREIAS",
+    title: "Outubro promete uma nova temporada cheia de estreias",
     description:
-      "Novas informações sobre o projeto foram divulgadas.",
+      "Veja os principais animes que estão chegando nas próximas semanas.",
     date: "04/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1765/135099l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1291/123462l.jpg",
   },
 ];
 
