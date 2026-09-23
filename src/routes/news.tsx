@@ -169,21 +169,25 @@ function NewsPage() {
       ? search.q
       : "";
 
+  /*
+   * =========================================================
+   * BUSCA
+   * =========================================================
+   *
+   * A busca começa fechada mesmo quando existe q na URL.
+   * Assim, ao recarregar uma página de resultados, o campo
+   * não abre sozinho.
+   */
+
   const [
     searchOpen,
     setSearchOpen,
-  ] = useState(
-    Boolean(
-      urlQuery.trim(),
-    ),
-  );
+  ] = useState(false);
 
   const [
     searchQuery,
     setSearchQuery,
-  ] = useState(
-    urlQuery,
-  );
+  ] = useState("");
 
   /*
    * =========================================================
@@ -326,26 +330,6 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * SINCRONIZAR BUSCA
-   * =========================================================
-   */
-
-  useEffect(() => {
-    setSearchQuery(
-      urlQuery,
-    );
-
-    if (
-      urlQuery.trim()
-    ) {
-      setSearchOpen(
-        true,
-      );
-    }
-  }, [urlQuery]);
-
-  /*
-   * =========================================================
    * PESQUISAR
    * =========================================================
    */
@@ -362,6 +346,13 @@ function NewsPage() {
       if (!query) {
         return;
       }
+
+      /*
+       * Fecha a caixa imediatamente.
+       * Os resultados continuam na página porque q
+       * continua sendo enviado pela URL.
+       */
+      setSearchOpen(false);
 
       void navigate({
         to: "/news",
@@ -388,6 +379,8 @@ function NewsPage() {
         return;
       }
 
+      setSearchOpen(false);
+
       void navigate({
         to: "/news/search",
         search: {
@@ -400,6 +393,16 @@ function NewsPage() {
 
   /*
    * =========================================================
+   * LIMPAR CAMPO DA BUSCA
+   * =========================================================
+   */
+
+  const clearSearchInput = () => {
+    setSearchQuery("");
+  };
+
+  /*
+   * =========================================================
    * FECHAR BUSCA
    * =========================================================
    */
@@ -407,15 +410,6 @@ function NewsPage() {
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchQuery("");
-
-    void navigate({
-      to: "/news",
-      search: {
-        q: "",
-        page: 1,
-      },
-      resetScroll: false,
-    });
   };
 
   /*
@@ -426,7 +420,18 @@ function NewsPage() {
 
   const handleBack = () => {
     if (isSearchMode) {
-      closeSearch();
+      void navigate({
+        to: "/news",
+        search: {
+          q: "",
+          page: 1,
+        },
+        resetScroll: false,
+      });
+
+      setSearchOpen(false);
+      setSearchQuery("");
+
       return;
     }
 
@@ -553,9 +558,13 @@ function NewsPage() {
               ) {
                 closeSearch();
               } else {
-                setSearchOpen(
-                  true,
-                );
+                /*
+                 * Ao abrir novamente a busca, preservamos
+                 * os resultados que já estão na página.
+                 * O campo começa vazio para uma nova pesquisa.
+                 */
+                setSearchQuery("");
+                setSearchOpen(true);
               }
             }}
             className="
@@ -623,7 +632,7 @@ function NewsPage() {
               >
                 <input
                   autoFocus
-                  type="search"
+                  type="text"
                   value={
                     searchQuery
                   }
@@ -646,7 +655,7 @@ function NewsPage() {
                     border-border
                     bg-elevated
                     pl-4
-                    pr-16
+                    pr-24
                     text-base
                     text-fg
                     outline-none
@@ -655,6 +664,32 @@ function NewsPage() {
                   "
                   aria-label="Buscar notícias"
                 />
+
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={
+                      clearSearchInput
+                    }
+                    className="
+                      absolute
+                      right-12
+                      flex
+                      size-10
+                      items-center
+                      justify-center
+                      rounded-xl
+                      text-muted
+                      transition
+                      hover:bg-background
+                      hover:text-fg
+                      active:scale-95
+                    "
+                    aria-label="Limpar busca"
+                  >
+                    <X className="size-5" />
+                  </button>
+                )}
 
                 <button
                   type="submit"
@@ -1270,4 +1305,4 @@ function NewsPage() {
       </div>
     </main>
   );
-          }
+      }
