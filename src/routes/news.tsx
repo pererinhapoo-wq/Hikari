@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import {
+  useEffect,
   useMemo,
   useState,
   type FormEvent,
@@ -1094,4 +1095,4 @@ function NewsPage() {
       </div>
     </main>
   );
-        }
+}
