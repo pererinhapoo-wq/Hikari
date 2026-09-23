@@ -29,8 +29,14 @@ jobs:
           git cat-file -e HEAD:src/routes/news.tsx
 
           echo ""
-          echo "Arquivo news.tsx encontrado no commit."
+          echo "Verificando news.tsx no commit 9400f35:"
+          git show 9400f35:src/routes/news.tsx > /tmp/news.tsx
+          echo "news.tsx encontrado dentro do commit 9400f35."
+
+          echo ""
+          echo "Arquivo news.tsx encontrado no commit atual."
           git show --stat --oneline HEAD
+
           echo ""
           git ls-tree HEAD src/routes/news.tsx
 
