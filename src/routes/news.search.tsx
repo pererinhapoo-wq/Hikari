@@ -1,17 +1,22 @@
 import {
   createFileRoute,
   Link,
+  useNavigate,
 } from "@tanstack/react-router";
 
 import {
   ArrowLeft,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Newspaper,
   Search,
 } from "lucide-react";
 
 import {
+  useEffect,
   useMemo,
+  useState,
 } from "react";
 
 import {
@@ -26,6 +31,10 @@ export const Route = createFileRoute(
     q: String(
       search.q ?? "",
     ),
+    page: Math.max(
+      1,
+      Number(search.page) || 1,
+    ),
   }),
 
   loader: async () => {
@@ -34,6 +43,8 @@ export const Route = createFileRoute(
 
   component: NewsSearchPage,
 });
+
+const NEWS_PER_PAGE = 4;
 
 function parseNewsDate(
   date: string,
@@ -132,12 +143,23 @@ function normalizeSearchText(
 }
 
 function NewsSearchPage() {
+  const navigate =
+    useNavigate({
+      from: "/news/search",
+    });
+
   const loaderNews =
     Route.useLoaderData() as AutomaticNewsItem[];
 
   const {
     q,
+    page: urlPage,
   } = Route.useSearch();
+
+  const [
+    currentPage,
+    setCurrentPage,
+  ] = useState(urlPage);
 
   const news = useMemo(() => {
     return [
@@ -153,6 +175,9 @@ function NewsSearchPage() {
     );
   }, [loaderNews]);
 
+  /*
+   * Procura somente nas notícias.
+   */
   const results =
     useMemo(() => {
       const query =
@@ -188,6 +213,116 @@ function NewsSearchPage() {
       q,
     ]);
 
+  /*
+   * Quantidade total de páginas.
+   */
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        results.length /
+          NEWS_PER_PAGE,
+      ),
+    );
+
+  /*
+   * Sincroniza a página
+   * com a URL.
+   */
+  useEffect(() => {
+    if (
+      currentPage !==
+      urlPage
+    ) {
+      setCurrentPage(
+        urlPage,
+      );
+    }
+  }, [
+    currentPage,
+    urlPage,
+  ]);
+
+  /*
+   * Se a página atual não existir,
+   * volta para a última página.
+   */
+  useEffect(() => {
+    if (
+      currentPage >
+      totalPages
+    ) {
+      setCurrentPage(
+        totalPages,
+      );
+
+      void navigate({
+        search: {
+          q,
+          page: totalPages,
+        },
+        resetScroll: false,
+      });
+    }
+  }, [
+    currentPage,
+    totalPages,
+    navigate,
+    q,
+  ]);
+
+  /*
+   * Resultados da página atual.
+   */
+  const visibleResults =
+    useMemo(() => {
+      const start =
+        (currentPage - 1) *
+        NEWS_PER_PAGE;
+
+      return results.slice(
+        start,
+        start +
+          NEWS_PER_PAGE,
+      );
+    }, [
+      results,
+      currentPage,
+    ]);
+
+  /*
+   * Trocar de página.
+   */
+  const goToPage = (
+    page: number,
+  ) => {
+    const nextPage =
+      Math.min(
+        Math.max(
+          page,
+          1,
+        ),
+        totalPages,
+      );
+
+    setCurrentPage(
+      nextPage,
+    );
+
+    void navigate({
+      search: {
+        q,
+        page: nextPage,
+      },
+      resetScroll: false,
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
   return (
     <main className="min-h-screen bg-background text-fg">
       <div
@@ -203,7 +338,10 @@ function NewsSearchPage() {
         "
       >
 
-        {/* TOPO */}
+        {/* =====================================================
+            TOPO
+        ====================================================== */}
+
         <div
           className="
             mb-8
@@ -228,9 +366,10 @@ function NewsSearchPage() {
               transition
               hover:bg-elevated
               hover:text-fg
+              active:scale-[0.97]
             "
           >
-            <ArrowLeft className="size-4" />
+            <ArrowLeft className="size-4 shrink-0" />
 
             <span>
               Voltar
@@ -238,7 +377,10 @@ function NewsSearchPage() {
           </Link>
         </div>
 
-        {/* CABEÇALHO */}
+        {/* =====================================================
+            CABEÇALHO
+        ====================================================== */}
+
         <section
           className="
             mb-8
@@ -266,6 +408,7 @@ function NewsSearchPage() {
                 justify-center
                 rounded-full
                 bg-elevated
+                text-fg
               "
             >
               <Search className="size-5" />
@@ -299,7 +442,10 @@ function NewsSearchPage() {
           </div>
         </section>
 
-        {/* RESULTADOS */}
+        {/* =====================================================
+            RESULTADOS
+        ====================================================== */}
+
         {results.length > 0 ? (
           <>
             <div
@@ -312,7 +458,7 @@ function NewsSearchPage() {
                 text-muted
               "
             >
-              <Newspaper className="size-4" />
+              <Newspaper className="size-4 shrink-0" />
 
               <span>
                 {results.length}{" "}
@@ -331,7 +477,7 @@ function NewsSearchPage() {
                 sm:grid-cols-2
               "
             >
-              {results.map(
+              {visibleResults.map(
                 (item) => (
                   <Link
                     key={
@@ -340,6 +486,9 @@ function NewsSearchPage() {
                     to="/news/$id"
                     params={{
                       id: item.id,
+                    }}
+                    search={{
+                      page: currentPage,
                     }}
                     className="
                       group
@@ -351,9 +500,14 @@ function NewsSearchPage() {
                       transition-all
                       duration-200
                       hover:-translate-y-0.5
+                      hover:border-border/80
                       hover:bg-elevated
+                      active:scale-[0.99]
                     "
                   >
+
+                    {/* IMAGEM */}
+
                     <div
                       className="
                         relative
@@ -380,7 +534,7 @@ function NewsSearchPage() {
                           transition-transform
                           duration-300
                           group-hover:scale-[1.01]
-                        }
+                        "
                         loading="lazy"
                       />
 
@@ -418,6 +572,8 @@ function NewsSearchPage() {
                         }
                       </span>
                     </div>
+
+                    {/* INFORMAÇÕES */}
 
                     <div className="p-4">
                       <h2
@@ -458,7 +614,7 @@ function NewsSearchPage() {
                           text-muted
                         "
                       >
-                        <CalendarDays className="size-3.5" />
+                        <CalendarDays className="size-3.5 shrink-0" />
 
                         <span>
                           {
@@ -471,6 +627,179 @@ function NewsSearchPage() {
                 ),
               )}
             </section>
+
+            {/* =================================================
+                PAGINAÇÃO
+            ================================================== */}
+
+            {totalPages > 1 && (
+              <nav
+                className="
+                  mt-8
+                  flex
+                  flex-col
+                  items-center
+                  gap-3
+                "
+                aria-label="Paginação dos resultados da busca"
+              >
+                <div
+                  className="
+                    flex
+                    max-w-full
+                    items-center
+                    gap-1.5
+                    overflow-x-auto
+                    px-1
+                    pb-1
+                  "
+                >
+
+                  {/* ANTERIOR */}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      goToPage(
+                        currentPage -
+                          1,
+                      )
+                    }
+                    disabled={
+                      currentPage ===
+                      1
+                    }
+                    aria-label="Página anterior"
+                    className="
+                      flex
+                      size-9
+                      shrink-0
+                      items-center
+                      justify-center
+                      rounded-full
+                      border
+                      border-border
+                      bg-card
+                      text-muted
+                      transition
+                      hover:bg-elevated
+                      hover:text-fg
+                      disabled:cursor-not-allowed
+                      disabled:opacity-30
+                    "
+                  >
+                    <ChevronLeft className="size-4" />
+                  </button>
+
+                  {/* NÚMEROS */}
+
+                  {Array.from(
+                    {
+                      length:
+                        totalPages,
+                    },
+                    (
+                      _,
+                      index,
+                    ) =>
+                      index +
+                      1,
+                  ).map(
+                    (
+                      page,
+                    ) => (
+                      <button
+                        key={
+                          page
+                        }
+                        type="button"
+                        onClick={() =>
+                          goToPage(
+                            page,
+                          )
+                        }
+                        aria-label={`Ir para a página ${page}`}
+                        aria-current={
+                          currentPage ===
+                          page
+                            ? "page"
+                            : undefined
+                        }
+                        className={`
+                          flex
+                          size-9
+                          shrink-0
+                          items-center
+                          justify-center
+                          rounded-full
+                          border
+                          text-xs
+                          font-medium
+                          transition
+                          ${
+                            currentPage ===
+                            page
+                              ? "border-fg bg-fg text-background"
+                              : "border-border bg-card text-muted hover:bg-elevated hover:text-fg"
+                          }
+                        `}
+                      >
+                        {
+                          page
+                        }
+                      </button>
+                    ),
+                  )}
+
+                  {/* PRÓXIMA */}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      goToPage(
+                        currentPage +
+                          1,
+                      )
+                    }
+                    disabled={
+                      currentPage ===
+                      totalPages
+                    }
+                    aria-label="Próxima página"
+                    className="
+                      flex
+                      size-9
+                      shrink-0
+                      items-center
+                      justify-center
+                      rounded-full
+                      border
+                      border-border
+                      bg-card
+                      text-muted
+                      transition
+                      hover:bg-elevated
+                      hover:text-fg
+                      disabled:cursor-not-allowed
+                      disabled:opacity-30
+                    "
+                  >
+                    <ChevronRight className="size-4" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-muted">
+                  Página{" "}
+                  {
+                    currentPage
+                  }{" "}
+                  de{" "}
+                  {
+                    totalPages
+                  }
+                </p>
+              </nav>
+            )}
           </>
         ) : (
           <section
@@ -498,4 +827,4 @@ function NewsSearchPage() {
       </div>
     </main>
   );
-  }
+}
