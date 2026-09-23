@@ -143,6 +143,86 @@ const NEWS: NewsItem[] = [
     image:
       "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
   },
+  {
+    id: "frieren-novidades",
+    type: "NOVIDADE",
+    title: "Frieren recebe novas informações",
+    description:
+      "Novos detalhes sobre o universo de Frieren foram divulgados.",
+    date: "11/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/1015/138006l.jpg",
+  },
+  {
+    id: "one-piece-novidades",
+    type: "NOVIDADE",
+    title: "One Piece ganha novas informações",
+    description:
+      "Novos detalhes sobre os próximos acontecimentos da série.",
+    date: "10/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
+  },
+  {
+    id: "solo-leveling-trailer",
+    type: "TRAILER",
+    title: "Solo Leveling ganha novo material promocional",
+    description:
+      "Um novo material promocional apresenta cenas inéditas.",
+    date: "09/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/1801/142390l.jpg",
+  },
+  {
+    id: "my-hero-news",
+    type: "NOVA TEMPORADA",
+    title: "My Hero Academia recebe novidades",
+    description:
+      "Novas informações sobre a próxima fase do anime foram divulgadas.",
+    date: "08/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/10/78745l.jpg",
+  },
+  {
+    id: "bleach-novidades",
+    type: "NOVIDADE",
+    title: "Bleach recebe novas informações",
+    description:
+      "Confira as novidades relacionadas aos próximos episódios.",
+    date: "07/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/3/40451.jpg",
+  },
+  {
+    id: "chainsaw-man-novidades",
+    type: "FILME",
+    title: "Chainsaw Man ganha novas imagens",
+    description:
+      "Novas imagens promocionais do projeto foram divulgadas.",
+    date: "06/09/2026",
+    image:
+      "https://api-cdn.myanimelist.net/images/anime/1632/110707.jpg",
+  },
+  {
+    id: "one-punch-man-novidades",
+    type: "NOVIDADE",
+    title: "One Punch Man recebe novas informações",
+    description:
+      "Confira as novidades sobre a próxima fase da série.",
+    date: "05/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/12/76049l.jpg",
+  },
+  {
+    id: "demon-slayer-novidades",
+    type: "FILME",
+    title: "Demon Slayer ganha novo material promocional",
+    description:
+      "Novas informações sobre o projeto foram divulgadas.",
+    date: "04/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/1765/135099l.jpg",
+  },
 ];
 
 const NEWS_PER_PAGE = 4;
@@ -240,7 +320,7 @@ function NewsPage() {
         className="
           grid
           gap-5
-          lg:grid-cols-2
+          md:grid-cols-2
           xl:grid-cols-3
         "
       >
@@ -284,7 +364,6 @@ function NewsPage() {
                   transition-transform
                   duration-500
                   group-hover:scale-[1.02]
-                  lg:object-cover
                 "
               />
 
