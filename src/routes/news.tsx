@@ -284,6 +284,7 @@ function NewsPage() {
                   transition-transform
                   duration-500
                   group-hover:scale-[1.02]
+                  md:object-cover
                 "
               />
 
@@ -464,4 +465,4 @@ function NewsPage() {
       </div>
     </div>
   );
-      }
+}
