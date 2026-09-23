@@ -158,7 +158,7 @@ function NewsPage() {
   const search =
     Route.useSearch();
 
-  const urlPage =
+  const currentPage =
     Math.max(
       1,
       Number(search.page) || 1,
@@ -168,11 +168,6 @@ function NewsPage() {
     typeof search.q === "string"
       ? search.q
       : "";
-
-  const [
-    currentPage,
-    setCurrentPage,
-  ] = useState(urlPage);
 
   const [
     searchOpen,
@@ -186,11 +181,13 @@ function NewsPage() {
   const [
     searchQuery,
     setSearchQuery,
-  ] = useState(urlQuery);
+  ] = useState(
+    urlQuery,
+  );
 
   /*
    * =========================================================
-   * TODAS AS NOTÍCIAS
+   * NOTÍCIAS
    * =========================================================
    */
 
@@ -210,7 +207,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * RESULTADOS AO DIGITAR
+   * BUSCA ENQUANTO DIGITA
    * =========================================================
    */
 
@@ -251,7 +248,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * RESULTADOS DA URL
+   * BUSCA DA URL
    * =========================================================
    */
 
@@ -292,7 +289,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * PRÉVIA — 5 RESULTADOS
+   * PRÉVIA
    * =========================================================
    */
 
@@ -329,27 +326,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * SINCRONIZAÇÃO DA PÁGINA
-   * =========================================================
-   */
-
-  useEffect(() => {
-    if (
-      currentPage !==
-      urlPage
-    ) {
-      setCurrentPage(
-        urlPage,
-      );
-    }
-  }, [
-    currentPage,
-    urlPage,
-  ]);
-
-  /*
-   * =========================================================
-   * SINCRONIZAÇÃO DA BUSCA
+   * SINCRONIZA BUSCA COM URL
    * =========================================================
    */
 
@@ -369,38 +346,7 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * CORRIGE PÁGINA INVÁLIDA
-   * =========================================================
-   */
-
-  useEffect(() => {
-    if (
-      urlPage >
-      totalPages
-    ) {
-      setCurrentPage(
-        totalPages,
-      );
-
-      void navigate({
-        to: "/news",
-        search: {
-          q: urlQuery,
-          page: totalPages,
-        },
-        resetScroll: false,
-      });
-    }
-  }, [
-    urlPage,
-    totalPages,
-    urlQuery,
-    navigate,
-  ]);
-
-  /*
-   * =========================================================
-   * ENVIAR BUSCA
+   * BUSCAR
    * =========================================================
    */
 
@@ -417,14 +363,6 @@ function NewsPage() {
         return;
       }
 
-      setSearchOpen(
-        true,
-      );
-
-      setCurrentPage(
-        1,
-      );
-
       void navigate({
         to: "/news",
         search: {
@@ -432,49 +370,6 @@ function NewsPage() {
           page: 1,
         },
         resetScroll: false,
-      });
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
-    };
-
-  /*
-   * =========================================================
-   * VER TODOS OS RESULTADOS
-   * =========================================================
-   */
-
-  const handleViewAllResults =
-    () => {
-      const query =
-        searchQuery.trim();
-
-      if (!query) {
-        return;
-      }
-
-      setSearchOpen(
-        true,
-      );
-
-      setCurrentPage(
-        1,
-      );
-
-      void navigate({
-        to: "/news",
-        search: {
-          q: query,
-          page: 1,
-        },
-        resetScroll: false,
-      });
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
       });
     };
 
@@ -517,6 +412,39 @@ function NewsPage() {
 
   /*
    * =========================================================
+   * PAGINAÇÃO
+   * =========================================================
+   */
+
+  const goToPage = (
+    page: number,
+  ) => {
+    const nextPage =
+      Math.min(
+        Math.max(
+          page,
+          1,
+        ),
+        totalPages,
+      );
+
+    void navigate({
+      to: "/news",
+      search: {
+        q: urlQuery,
+        page: nextPage,
+      },
+      resetScroll: false,
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  /*
+   * =========================================================
    * NOTÍCIAS VISÍVEIS
    * =========================================================
    */
@@ -537,43 +465,6 @@ function NewsPage() {
       currentPage,
     ]);
 
-  /*
-   * =========================================================
-   * PAGINAÇÃO
-   * =========================================================
-   */
-
-  const goToPage = (
-    page: number,
-  ) => {
-    const nextPage =
-      Math.min(
-        Math.max(
-          page,
-          1,
-        ),
-        totalPages,
-      );
-
-    setCurrentPage(
-      nextPage,
-    );
-
-    void navigate({
-      to: "/news",
-      search: {
-        q: urlQuery,
-        page: nextPage,
-      },
-      resetScroll: false,
-    });
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  };
-
   return (
     <main className="min-h-screen bg-background text-fg">
       <div
@@ -589,9 +480,7 @@ function NewsPage() {
         "
       >
 
-        {/* =====================================================
-            TOPO
-        ====================================================== */}
+        {/* TOPO */}
 
         <div
           className="
@@ -609,7 +498,6 @@ function NewsPage() {
             }
             className="
               inline-flex
-              w-fit
               items-center
               gap-2
               rounded-lg
@@ -618,14 +506,12 @@ function NewsPage() {
               text-sm
               font-medium
               text-muted
-              transition-all
-              duration-200
+              transition
               hover:bg-elevated
               hover:text-fg
-              active:scale-[0.97]
             "
           >
-            <ArrowLeft className="size-4 shrink-0" />
+            <ArrowLeft className="size-4" />
 
             <span>
               Voltar
@@ -647,7 +533,6 @@ function NewsPage() {
             }}
             className="
               inline-flex
-              w-fit
               items-center
               gap-2
               rounded-lg
@@ -656,30 +541,21 @@ function NewsPage() {
               text-sm
               font-medium
               text-muted
-              transition-all
-              duration-200
+              transition
               hover:bg-elevated
               hover:text-fg
-              active:scale-[0.97]
             "
-            aria-label={
-              searchOpen
-                ? "Fechar busca"
-                : "Abrir busca"
-            }
           >
             {searchOpen ? (
               <>
-                <X className="size-4 shrink-0" />
-
+                <X className="size-4" />
                 <span>
                   Fechar
                 </span>
               </>
             ) : (
               <>
-                <Search className="size-4 shrink-0" />
-
+                <Search className="size-4" />
                 <span>
                   Buscar
                 </span>
@@ -688,9 +564,7 @@ function NewsPage() {
           </button>
         </div>
 
-        {/* =====================================================
-            BUSCA
-        ====================================================== */}
+        {/* BUSCA */}
 
         {searchOpen && (
           <section
@@ -726,8 +600,7 @@ function NewsPage() {
                     event,
                   ) =>
                     setSearchQuery(
-                      event.target
-                        .value,
+                      event.target.value,
                     )
                   }
                   placeholder="Buscar notícias..."
@@ -748,46 +621,35 @@ function NewsPage() {
                     placeholder:text-muted
                     focus:border-fg/30
                   "
-                  aria-label="Buscar notícias"
                 />
 
-                <div
+                <button
+                  type="submit"
                   className="
                     absolute
                     right-2
                     flex
+                    size-10
                     items-center
+                    justify-center
+                    rounded-xl
+                    text-muted
+                    transition
+                    hover:bg-background
+                    hover:text-fg
+                    active:scale-95
                   "
+                  aria-label="Pesquisar"
                 >
-                  <button
-                    type="submit"
-                    className="
-                      flex
-                      size-10
-                      items-center
-                      justify-center
-                      rounded-xl
-                      text-muted
-                      transition-colors
-                      hover:bg-background
-                      hover:text-fg
-                      active:scale-95
-                    "
-                    aria-label="Pesquisar notícias"
-                  >
-                    <Search className="size-5" />
-                  </button>
-                </div>
+                  <Search className="size-5" />
+                </button>
               </div>
             </form>
 
-            {/* =================================================
-                PRÉVIA DA BUSCA
-            ================================================== */}
+            {/* RESULTADOS DA PRÉVIA */}
 
             {searchQuery.trim() && (
               <div className="mt-3">
-
                 {previewSearchResults.length ===
                 0 ? (
                   <div
@@ -813,9 +675,6 @@ function NewsPage() {
                       bg-surface
                     "
                   >
-
-                    {/* 5 PRIMEIROS RESULTADOS */}
-
                     {previewSearchResults.map(
                       (
                         item,
@@ -839,8 +698,7 @@ function NewsPage() {
                             border-border
                             px-4
                             py-3
-                            transition-colors
-                            last:border-b-0
+                            transition
                             hover:bg-elevated
                           "
                         >
@@ -890,9 +748,7 @@ function NewsPage() {
                               {
                                 item.type
                               }
-
                               {" · "}
-
                               {
                                 item.date
                               }
@@ -908,11 +764,12 @@ function NewsPage() {
 
                     {liveSearchResults.length >
                       5 && (
-                      <button
-                        type="button"
-                        onClick={
-                          handleViewAllResults
-                        }
+                      <Link
+                        to="/news/search"
+                        search={{
+                          q: searchQuery.trim(),
+                          page: 1,
+                        }}
                         className="
                           flex
                           w-full
@@ -925,7 +782,7 @@ function NewsPage() {
                           text-sm
                           font-semibold
                           text-fg
-                          transition-colors
+                          transition
                           hover:bg-elevated
                           active:bg-elevated
                         "
@@ -936,7 +793,7 @@ function NewsPage() {
                           liveSearchResults.length
                         }
                         {")"}
-                      </button>
+                      </Link>
                     )}
                   </div>
                 )}
@@ -945,9 +802,7 @@ function NewsPage() {
           </section>
         )}
 
-        {/* =====================================================
-            CABEÇALHO
-        ====================================================== */}
+        {/* CABEÇALHO */}
 
         <section className="mb-7">
           <div
@@ -961,12 +816,10 @@ function NewsPage() {
               className="
                 flex
                 size-10
-                shrink-0
                 items-center
                 justify-center
                 rounded-full
                 bg-elevated
-                text-fg
               "
             >
               <Newspaper className="size-5" />
@@ -1007,9 +860,7 @@ function NewsPage() {
           </div>
         </section>
 
-        {/* =====================================================
-            CONTADOR
-        ====================================================== */}
+        {/* CONTADOR */}
 
         {isSearchMode && (
           <div
@@ -1022,7 +873,7 @@ function NewsPage() {
               text-muted
             "
           >
-            <Search className="size-4 shrink-0" />
+            <Search className="size-4" />
 
             <span>
               {searchResults.length}{" "}
@@ -1034,9 +885,7 @@ function NewsPage() {
           </div>
         )}
 
-        {/* =====================================================
-            LISTA DE NOTÍCIAS
-        ====================================================== */}
+        {/* NOTÍCIAS */}
 
         {visibleNews.length > 0 ? (
           <>
@@ -1068,10 +917,7 @@ function NewsPage() {
                       border
                       border-border
                       bg-card
-                      transition-all
-                      duration-200
-                      hover:-translate-y-0.5
-                      hover:border-border/80
+                      transition
                       hover:bg-elevated
                     "
                   >
@@ -1098,9 +944,6 @@ function NewsPage() {
                           w-full
                           object-contain
                           object-center
-                          transition-transform
-                          duration-300
-                          group-hover:scale-[1.01]
                         "
                         loading="lazy"
                       />
@@ -1147,7 +990,6 @@ function NewsPage() {
                           text-base
                           font-semibold
                           leading-snug
-                          text-fg
                         "
                       >
                         {
@@ -1179,7 +1021,7 @@ function NewsPage() {
                           text-muted
                         "
                       >
-                        <CalendarDays className="size-3.5 shrink-0" />
+                        <CalendarDays className="size-3.5" />
 
                         <span>
                           {
@@ -1193,9 +1035,7 @@ function NewsPage() {
               )}
             </section>
 
-            {/* =================================================
-                PAGINAÇÃO
-            ================================================== */}
+            {/* PAGINAÇÃO */}
 
             {totalPages > 1 && (
               <nav
@@ -1206,16 +1046,10 @@ function NewsPage() {
                   items-center
                   gap-3
                 "
-                aria-label={
-                  isSearchMode
-                    ? "Paginação dos resultados da busca"
-                    : "Paginação das notícias"
-                }
               >
                 <div
                   className="
                     flex
-                    max-w-full
                     items-center
                     gap-1.5
                     overflow-x-auto
@@ -1235,7 +1069,6 @@ function NewsPage() {
                       currentPage ===
                       1
                     }
-                    aria-label="Página anterior"
                     className="
                       flex
                       size-9
@@ -1247,10 +1080,6 @@ function NewsPage() {
                       border-border
                       bg-card
                       text-muted
-                      transition
-                      hover:bg-elevated
-                      hover:text-fg
-                      disabled:cursor-not-allowed
                       disabled:opacity-30
                     "
                   >
@@ -1282,13 +1111,6 @@ function NewsPage() {
                             page,
                           )
                         }
-                        aria-label={`Ir para a página ${page}`}
-                        aria-current={
-                          currentPage ===
-                          page
-                            ? "page"
-                            : undefined
-                        }
                         className={`
                           flex
                           size-9
@@ -1299,12 +1121,11 @@ function NewsPage() {
                           border
                           text-xs
                           font-medium
-                          transition
                           ${
                             currentPage ===
                             page
                               ? "border-fg bg-fg text-background"
-                              : "border-border bg-card text-muted hover:bg-elevated hover:text-fg"
+                              : "border-border bg-card text-muted"
                           }
                         `}
                       >
@@ -1327,7 +1148,6 @@ function NewsPage() {
                       currentPage ===
                       totalPages
                     }
-                    aria-label="Próxima página"
                     className="
                       flex
                       size-9
@@ -1339,10 +1159,6 @@ function NewsPage() {
                       border-border
                       bg-card
                       text-muted
-                      transition
-                      hover:bg-elevated
-                      hover:text-fg
-                      disabled:cursor-not-allowed
                       disabled:opacity-30
                     "
                   >
@@ -1381,35 +1197,28 @@ function NewsPage() {
           >
             <Newspaper className="mb-3 size-8 text-muted" />
 
-            {isSearchMode ? (
-              <>
-                <p
-                  className="
-                    text-base
-                    font-medium
-                    text-fg
-                  "
-                >
-                  Nenhuma notícia encontrada.
-                </p>
+            <p
+              className="
+                text-base
+                font-medium
+              "
+            >
+              Nenhuma notícia encontrada.
+            </p>
 
-                <p
-                  className="
-                    mt-2
-                    text-sm
-                    text-muted
-                  "
-                >
-                  Não encontramos notícias para{" "}
-                  <span className="font-medium text-fg">
-                    "{urlQuery}"
-                  </span>
-                  .
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted">
-                Nenhuma notícia disponível no momento.
+            {isSearchMode && (
+              <p
+                className="
+                  mt-2
+                  text-sm
+                  text-muted
+                "
+              >
+                Não encontramos notícias para{" "}
+                <span className="font-medium text-fg">
+                  "{urlQuery}"
+                </span>
+                .
               </p>
             )}
           </section>
@@ -1417,4 +1226,4 @@ function NewsPage() {
       </div>
     </main>
   );
-    }
+  }
