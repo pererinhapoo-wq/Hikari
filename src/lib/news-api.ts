@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { currentAnimeSeason, stripHtml } from "@/lib/utils";
+import {
+  currentAnimeSeason,
+  stripHtml,
+} from "@/lib/utils";
 
 export type AutomaticNewsItem = {
   id: string;
@@ -12,25 +15,30 @@ export type AutomaticNewsItem = {
   animeId: string;
 };
 
-const ANILIST = "https://graphql.anilist.co";
+const ANILIST =
+  "https://graphql.anilist.co";
 
 type AniMedia = {
   id: number;
+
   title?: {
     romaji?: string | null;
     english?: string | null;
     native?: string | null;
   } | null;
+
   coverImage?: {
     extraLarge?: string | null;
     large?: string | null;
   } | null;
+
   description?: string | null;
   format?: string | null;
   status?: string | null;
   episodes?: number | null;
   season?: string | null;
   seasonYear?: number | null;
+
   startDate?: {
     year?: number | null;
     month?: number | null;
@@ -52,19 +60,25 @@ const cache = new Map<
   }
 >();
 
-const TTL = 10 * 60 * 1000;
+const TTL =
+  10 * 60 * 1000;
 
 function fromCache(
   key: string,
 ): AutomaticNewsItem[] | null {
-  const hit = cache.get(key);
+  const hit =
+    cache.get(key);
 
   if (!hit) {
     return null;
   }
 
-  if (Date.now() - hit.at > TTL) {
+  if (
+    Date.now() - hit.at >
+    TTL
+  ) {
     cache.delete(key);
+
     return null;
   }
 
@@ -86,14 +100,18 @@ function toCache(
 function formatDate(
   media: AniMedia,
 ): string {
-  const date = media.startDate;
+  const date =
+    media.startDate;
 
   if (
     !date?.year ||
     !date.month ||
     !date.day
   ) {
-    return `${media.seasonYear ?? "2026"}`;
+    return `${
+      media.seasonYear ??
+      "2026"
+    }`;
   }
 
   return new Intl.DateTimeFormat(
@@ -135,9 +153,13 @@ function descriptionOf(
     return description;
   }
 
-  return `${titleOf(media)} faz parte da programação da temporada de ${(
+  return `${titleOf(
+    media,
+  )} faz parte da programação da temporada de ${(
     media.season ?? ""
-  ).toLowerCase()} de ${media.seasonYear ?? ""}.`;
+  ).toLowerCase()} de ${
+    media.seasonYear ?? ""
+  }.`;
 }
 
 async function fetchSeason(
@@ -149,12 +171,15 @@ async function fetchSeason(
       ANILIST,
       {
         method: "POST",
+
         headers: {
           "Content-Type":
             "application/json",
+
           Accept:
             "application/json",
         },
+
         body: JSON.stringify({
           query: `
             query AutomaticNews(
@@ -203,11 +228,15 @@ async function fetchSeason(
               }
             }
           `,
+
           variables: {
-            season,
+            season:
+              season.toUpperCase(),
+
             year,
           },
         }),
+
         signal:
           AbortSignal.timeout(
             12000,
@@ -224,6 +253,7 @@ async function fetchSeason(
   const json =
     (await response.json()) as {
       data?: AniListResponse;
+
       errors?: {
         message?: string;
       }[];
@@ -234,7 +264,8 @@ async function fetchSeason(
     !json.data?.Page
   ) {
     throw new Error(
-      json.errors?.[0]?.message ??
+      json.errors?.[0]
+        ?.message ??
         "AniList sem dados",
     );
   }
@@ -249,8 +280,18 @@ export const fetchAutomaticNews =
     const current =
       currentAnimeSeason();
 
+    const season =
+      String(
+        current.season,
+      ).toUpperCase();
+
+    const year =
+      Number(
+        current.year,
+      );
+
     const key =
-      `automatic-news:${current.season}:${current.year}`;
+      `automatic-news:${season}:${year}`;
 
     const cached =
       fromCache(key);
@@ -262,8 +303,8 @@ export const fetchAutomaticNews =
     try {
       const media =
         await fetchSeason(
-          current.season,
-          current.year,
+          season,
+          year,
         );
 
       const news =
@@ -284,13 +325,19 @@ export const fetchAutomaticNews =
                 "NOVA TEMPORADA",
 
               title:
-                `${titleOf(anime)} — nova temporada`,
+                `${titleOf(
+                  anime,
+                )} — nova temporada`,
 
               description:
-                descriptionOf(anime),
+                descriptionOf(
+                  anime,
+                ),
 
               date:
-                formatDate(anime),
+                formatDate(
+                  anime,
+                ),
 
               image:
                 anime.coverImage
@@ -300,12 +347,16 @@ export const fetchAutomaticNews =
                 "",
 
               animeId:
-                String(anime.id),
+                String(
+                  anime.id,
+                ),
             }),
           )
           .filter(
             (news) =>
-              Boolean(news.image),
+              Boolean(
+                news.image,
+              ),
           );
 
       return toCache(
