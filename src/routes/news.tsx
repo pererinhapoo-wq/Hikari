@@ -26,202 +26,222 @@ const NEWS: NewsItem[] = [
   {
     id: "apothecary-diaries-season-3",
     type: "NOVA TEMPORADA",
-    title: "Diários de uma Apotecária 3ª temporada estreia em outubro",
+    title:
+      "Diários de uma Apotecária 3ª temporada estreia em outubro",
     description:
-      "A 3ª temporada de Diários de uma Apotecária estreia em 2 de outubro de 2026.",
+      "A terceira temporada de Diários de uma Apotecária estreia em 2 de outubro de 2026.",
     date: "23/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1898/146069l.jpg",
+      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/TheApothecaryDiaries_S3_KV_16x9_3840x2160_LogoLeft_Copyright_en-US-533x300.png?ssl=1",
   },
   {
     id: "black-clover-season-2",
     type: "NOVA TEMPORADA",
-    title: "Black Clover 2ª temporada estreia em 3 de outubro",
+    title:
+      "Black Clover 2ª temporada estreia em 3 de outubro",
     description:
-      "Asta e os Cavaleiros Mágicos retornam com a 2ª temporada de Black Clover.",
+      "Asta e os Cavaleiros Mágicos retornam para uma nova fase da história.",
     date: "22/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/2/67057l.jpg",
+      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/BlackClover_S2_BaseAsset_KV_16x9_3840x2160_LogoCenter_Copyright_en-US-533x300.png?ssl=1",
   },
   {
     id: "aoashi-season-2",
     type: "NOVA TEMPORADA",
-    title: "Aoashi 2ª temporada chega em outubro",
+    title:
+      "Aoashi 2ª temporada estreia em 4 de outubro",
     description:
-      "Ashito Aoi retorna para uma nova fase no futebol de elite a partir de 4 de outubro.",
+      "Ashito retorna para uma nova fase defendendo o Tokyo City Esperion.",
     date: "21/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1291/123462l.jpg",
+      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/BlackClover_S2_BaseAsset_KV_16x9_3840x2160_LogoCenter_Copyright_en-US-533x300.png?ssl=1",
   },
   {
     id: "firefly-wedding",
     type: "ESTREIA",
-    title: "Firefly Wedding estreia em outubro",
+    title:
+      "Firefly Wedding estreia em 9 de outubro",
     description:
-      "A adaptação de Firefly Wedding está entre as novas séries da temporada de outubro.",
+      "O anime baseado no mangá de Oreco Tachibana chega na nova temporada.",
     date: "20/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/manga/1/271069l.jpg",
-  },
-  {
-    id: "returners-magic-season-2",
-    type: "NOVA TEMPORADA",
-    title: "A Returner's Magic Should Be Special ganha 2ª temporada",
-    description:
-      "Desir retorna para tentar mudar novamente o futuro na nova temporada.",
-    date: "19/09/2026",
-    image:
-      "https://cdn.myanimelist.net/images/anime/1164/138847l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1/145923l.jpg",
   },
   {
     id: "detective-is-already-dead-season-2",
     type: "NOVA TEMPORADA",
-    title: "The Detective Is Already Dead 2ª temporada estreia em outubro",
+    title:
+      "The Detective Is Already Dead 2ª temporada estreia em outubro",
     description:
-      "Os mistérios continuam para Kimihiko na segunda temporada da série.",
-    date: "18/09/2026",
+      "A segunda temporada chega em 7 de outubro com novos mistérios.",
+    date: "19/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/1117/116991l.jpg",
   },
   {
-    id: "iceblade-sorcerer-season-2",
+    id: "returners-magic-season-2",
     type: "NOVA TEMPORADA",
-    title: "The Iceblade Sorcerer Shall Rule the World II chega em outubro",
+    title:
+      "A Returner's Magic Should Be Special ganha 2ª temporada",
     description:
-      "Ray e seus amigos retornam para uma nova temporada cheia de conflitos.",
-    date: "17/09/2026",
+      "Desir e seus companheiros retornam para uma nova batalha contra os Shadow Worlds.",
+    date: "18/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1244/132095l.jpg",
-  },
-  {
-    id: "dragon-ball-super-beerus",
-    type: "ESTREIA",
-    title: "Dragon Ball Super: Beerus estreia em outubro",
-    description:
-      "Um novo projeto de Dragon Ball Super está programado para chegar em 11 de outubro.",
-    date: "16/09/2026",
-    image:
-      "https://cdn.myanimelist.net/images/anime/7/74606l.jpg",
+      "https://cdn.myanimelist.net/images/anime/1164/138847l.jpg",
   },
   {
     id: "magic-knight-rayearth",
     type: "ESTREIA",
-    title: "Magic Knight Rayearth retorna na temporada de outubro",
+    title:
+      "Novo Magic Knight Rayearth estreia em outubro",
     description:
-      "O clássico Magic Knight Rayearth está entre os títulos programados para a temporada de outono.",
-    date: "15/09/2026",
+      "O novo anime de Magic Knight Rayearth chega à televisão japonesa em outubro.",
+    date: "17/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/4/75531l.jpg",
   },
   {
-    id: "ace-of-diamond-act-ii",
-    type: "NOVA TEMPORADA",
-    title: "Ace of Diamond act II retorna em outubro",
+    id: "vermilion-mask",
+    type: "ESTREIA",
+    title:
+      "The Vermilion Mask estreia em 10 de outubro",
     description:
-      "A nova fase de Ace of Diamond act II está prevista para estrear em 11 de outubro.",
-    date: "14/09/2026",
+      "A nova série acompanha Peru em uma jornada ligada às máscaras criadas por seu mestre.",
+    date: "16/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/2/83183l.jpg",
+      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/TheVermilionMask_S1_BaseAsset_KV_16x9_3840x2160_LogoLeft_Copyright_en-US-533x300.jpg?ssl=1",
   },
   {
     id: "psyren",
     type: "ESTREIA",
-    title: "PSYREN está entre as novas estreias de outubro",
+    title:
+      "PSYREN entra na programação da temporada de outubro",
     description:
-      "A adaptação de PSYREN chega à temporada de outubro de 2026 com nova produção em anime.",
-    date: "13/09/2026",
+      "A nova adaptação de PSYREN foi anunciada para a temporada de outono e ainda aguarda uma data específica.",
+    date: "15/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/manga/3/251792l.jpg",
+      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/Psyren_S1_BaseAsset_TeaserVisual2_16x9_3840x2160_LogoLeft_Copyright_en-US-533x300.png?ssl=1",
   },
   {
     id: "overgeared",
     type: "ESTREIA",
-    title: "Overgeared estreia na temporada de outubro",
+    title:
+      "Overgeared chega antes da temporada principal de outubro",
     description:
-      "Grid ganha uma nova vida ao se tornar herdeiro de um lendário ferreiro.",
-    date: "12/09/2026",
+      "Overgeared tem estreia antecipada marcada para 27 de setembro.",
+    date: "14/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1143/145969l.jpg",
-  },
-  {
-    id: "space-mercenary",
-    type: "ESTREIA",
-    title: "Reborn as a Space Mercenary estreia em outubro",
-    description:
-      "Um jogador acorda dentro do universo de seu jogo favorito e parte para aventuras espaciais.",
-    date: "11/09/2026",
-    image:
-      "https://cdn.myanimelist.net/images/manga/1/276814l.jpg",
+      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/Overgeared_S1_BaseAsset_KV1_16x9_3840x2160_LogoLeft_Copyright_en-US-533x300.png?ssl=1",
   },
   {
     id: "wild-last-boss-season-2",
     type: "NOVA TEMPORADA",
-    title: "A Wild Last Boss Appeared! ganha 2ª temporada",
+    title:
+      "A Wild Last Boss Appeared! ganha 2ª temporada",
     description:
-      "A série retorna com uma nova fase na temporada de outono de 2026.",
-    date: "10/09/2026",
+      "A segunda temporada terá uma estreia antecipada em 26 de setembro.",
+    date: "13/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1714/147441l.jpg",
+      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/Overgeared_S1_BaseAsset_KV1_16x9_3840x2160_LogoLeft_Copyright_en-US-533x300.png?ssl=1",
   },
   {
-    id: "salty-koharu",
+    id: "space-mercenary",
     type: "ESTREIA",
-    title: "The Salty Koharu Has a Soft Spot for Me estreia em outubro",
+    title:
+      "Reborn as a Space Mercenary estreia em 4 de outubro",
     description:
-      "A nova comédia romântica está programada para chegar no início de outubro.",
+      "A nova série acompanha um jogador que acaba vivendo dentro do universo de seu jogo.",
+    date: "12/09/2026",
+    image:
+      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/Overgeared_S1_BaseAsset_KV1_16x9_3840x2160_LogoLeft_Copyright_en-US-533x300.png?ssl=1",
+  },
+  {
+    id: "iceblade-sorcerer-season-2",
+    type: "NOVA TEMPORADA",
+    title:
+      "The Iceblade Sorcerer Shall Rule the World II estreia em outubro",
+    description:
+      "Ray retorna para uma nova temporada da série de fantasia.",
+    date: "11/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/1244/132095l.jpg",
+  },
+  {
+    id: "ace-of-diamond-second-season",
+    type: "NOVA TEMPORADA",
+    title:
+      "Ace of the Diamond act II retorna em outubro",
+    description:
+      "A segunda parte da temporada continua em outubro com novos confrontos no beisebol.",
+    date: "10/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/2/83183l.jpg",
+  },
+  {
+    id: "sasaki-and-peeps-season-2",
+    type: "NOVA TEMPORADA",
+    title:
+      "Sasaki and Peeps 2ª temporada chega em outubro",
+    description:
+      "Sasaki e Peeps retornam em uma nova temporada programada para 7 de outubro.",
     date: "09/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/1770/133033l.jpg",
+  },
+  {
+    id: "hotel-inhumans-season-2",
+    type: "NOVA TEMPORADA",
+    title:
+      "HOTEL INHUMANS 2ª temporada estreia em outubro",
+    description:
+      "O misterioso hotel retorna para uma nova temporada durante o outono de 2026.",
+    date: "08/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/1810/145641l.jpg",
+  },
+  {
+    id: "chitose-ramune-bottle",
+    type: "NOVA TEMPORADA",
+    title:
+      "Chitose Is in the Ramune Bottle retorna em outubro",
+    description:
+      "A segunda parte da série está programada para estrear em 13 de outubro.",
+    date: "07/09/2026",
+    image:
+      "https://cdn.myanimelist.net/images/anime/1765/145936l.jpg",
+  },
+  {
+    id: "dark-machine",
+    type: "ESTREIA",
+    title:
+      "DARK MACHINE THE ANIMATION estreia em outubro",
+    description:
+      "A nova produção está programada para chegar em 13 de outubro.",
+    date: "06/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/1174/147107l.jpg",
   },
   {
-    id: "vermilion-mask",
+    id: "dreamland",
     type: "ESTREIA",
-    title: "The Vermilion Mask estreia em outubro",
+    title:
+      "Dreamland entra na programação de outubro",
     description:
-      "A nova série está programada para estrear em 10 de outubro de 2026.",
-    date: "08/09/2026",
-    image:
-      "https://cdn.myanimelist.net/images/anime/1015/147156l.jpg",
-  },
-  {
-    id: "return-of-the-great-witch",
-    type: "TEMPORADA",
-    title: "A temporada de outubro traz dezenas de novos animes",
-    description:
-      "A programação de outono de 2026 reúne novas séries e várias continuações.",
-    date: "07/09/2026",
+      "A nova animação está programada para estrear em 16 de outubro.",
+    date: "05/09/2026",
     image:
       "https://cdn.myanimelist.net/images/anime/1451/147032l.jpg",
   },
   {
-    id: "october-anime-lineup",
+    id: "fall-2026-lineup",
     type: "TEMPORADA",
-    title: "Confira alguns dos animes que chegam em outubro",
+    title:
+      "Temporada de outubro reúne novas séries e continuações",
     description:
-      "Black Clover, Diários de uma Apotecária, Aoashi e outras séries estão confirmadas para a nova temporada.",
-    date: "06/09/2026",
-    image:
-      "https://cdn.myanimelist.net/images/anime/1898/146069l.jpg",
-  },
-  {
-    id: "fall-2026-anime",
-    type: "TEMPORADA",
-    title: "Temporada de Outono 2026 ganha programação atualizada",
-    description:
-      "A lista de lançamentos de outubro continua recebendo novos títulos e informações.",
-    date: "05/09/2026",
-    image:
-      "https://cdn.myanimelist.net/images/anime/2/67057l.jpg",
-  },
-  {
-    id: "anime-october-preview",
-    type: "PRÓXIMAS ESTREIAS",
-    title: "Outubro promete uma nova temporada cheia de estreias",
-    description:
-      "Veja os principais animes que estão chegando nas próximas semanas.",
+      "A programação de outono de 2026 reúne novas estreias e várias segundas e terceiras temporadas.",
     date: "04/09/2026",
     image:
-      "https://cdn.myanimelist.net/images/anime/1291/123462l.jpg",
+      "https://i0.wp.com/riot-us.com/wp-content/uploads/2026/09/TheApothecaryDiaries_S3_KV_16x9_3840x2160_LogoLeft_Copyright_en-US-533x300.png?ssl=1",
   },
 ];
 
@@ -544,4 +564,4 @@ function NewsPage() {
       </div>
     </div>
   );
-    }
+  }
