@@ -29,6 +29,9 @@ jobs:
       - name: Verificar versao do tsr
         run: npx tsr --version
 
+      - name: Verificar arquivo news
+        run: ls -la src/routes/news.tsx
+
       - name: Gerar rotas
         run: npm run generate-routes
 
