@@ -173,6 +173,11 @@ function NewsPage() {
     setSearchQuery,
   ] = useState("");
 
+  const [
+    showAllSearchResults,
+    setShowAllSearchResults,
+  ] = useState(false);
+
   const news = useMemo(() => {
     return [
       ...(loaderNews ?? []),
@@ -227,10 +232,16 @@ function NewsPage() {
     ]);
 
   /*
-   * Mostra TODOS os resultados.
+   * Mostra 5 resultados inicialmente.
+   * Depois pode mostrar todos.
    */
   const newsSearchResults =
-    searchResults;
+    showAllSearchResults
+      ? searchResults
+      : searchResults.slice(
+          0,
+          5,
+        );
 
   const totalPages =
     Math.max(
@@ -287,11 +298,17 @@ function NewsPage() {
 
   const openSearch = () => {
     setSearchOpen(true);
+    setShowAllSearchResults(
+      false,
+    );
   };
 
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchQuery("");
+    setShowAllSearchResults(
+      false,
+    );
   };
 
   const handleSearchSubmit =
@@ -693,6 +710,39 @@ function NewsPage() {
                         </Link>
                       ),
                     )}
+
+                    {/* VER TODOS */}
+                    {searchResults.length >
+                      5 &&
+                      !showAllSearchResults && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowAllSearchResults(
+                              true,
+                            )
+                          }
+                          className="
+                            w-full
+                            border-t
+                            border-border
+                            px-4
+                            py-4
+                            text-sm
+                            font-medium
+                            text-fg
+                            transition-colors
+                            hover:bg-elevated
+                            active:bg-background
+                          "
+                        >
+                          Ver todos os resultados (
+                          {
+                            searchResults.length
+                          }
+                          )
+                        </button>
+                      )}
                   </div>
                 )}
               </div>
@@ -1104,4 +1154,4 @@ function NewsPage() {
       </div>
     </main>
   );
-  }
+      }
