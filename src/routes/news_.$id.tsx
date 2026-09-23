@@ -7,9 +7,21 @@ import {
 import {
   ArrowLeft,
   CalendarDays,
+  Clapperboard,
   Newspaper,
   Play,
+  Tv,
 } from "lucide-react";
+
+type AnimeInfo = {
+  id: string;
+  name: string;
+  image: string;
+  synopsis: string;
+  season: string;
+  releaseDate: string;
+  episodes: number | null;
+};
 
 type NewsItem = {
   id: string;
@@ -20,6 +32,7 @@ type NewsItem = {
   date: string;
   image: string;
   trailerUrl?: string;
+  anime?: AnimeInfo;
 };
 
 const NEWS: NewsItem[] = [
@@ -37,6 +50,17 @@ const NEWS: NewsItem[] = [
       "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
     trailerUrl:
       "https://www.youtube.com/embed/Fgj15FVP6IU",
+    anime: {
+      id: "52991",
+      name: "Sousou no Frieren",
+      image:
+        "https://cdn.myanimelist.net/images/anime/1015/138006l.jpg",
+      synopsis:
+        "Durante sua jornada de dez anos para derrotar o Rei Demônio, Frieren e os membros do grupo de heróis criaram laços e memórias importantes. Após a aventura terminar, Frieren começa a perceber o verdadeiro significado daqueles momentos e decide compreender melhor os humanos e criar novas conexões.",
+      season: "Outono de 2023",
+      releaseDate: "29 de setembro de 2023",
+      episodes: 28,
+    },
   },
   {
     id: "one-piece-nova-temporada",
@@ -470,6 +494,262 @@ function NewsDetailsPage() {
                 </p>
               </section>
             )}
+
+          {/* ANIME RELACIONADO */}
+          {news.anime && (
+            <section
+              className="
+                mt-8
+                overflow-hidden
+                rounded-2xl
+                bg-surface
+                shadow-[var(--shadow-border)]
+              "
+            >
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-2
+                  border-b
+                  border-border
+                  p-4
+                  sm:p-5
+                "
+              >
+                <Tv className="size-5 text-accent" />
+
+                <h2
+                  className="
+                    font-display
+                    text-lg
+                    tracking-tight
+                    text-fg
+                  "
+                >
+                  Anime relacionado
+                </h2>
+              </div>
+
+              <div
+                className="
+                  grid
+                  gap-5
+                  p-4
+                  sm:p-5
+                  md:grid-cols-[180px_1fr]
+                "
+              >
+                <div
+                  className="
+                    mx-auto
+                    w-full
+                    max-w-[180px]
+                    overflow-hidden
+                    rounded-xl
+                    bg-elevated
+                  "
+                >
+                  <img
+                    src={news.anime.image}
+                    alt={news.anime.name}
+                    className="
+                      aspect-[2/3]
+                      w-full
+                      object-cover
+                    "
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <div
+                    className="
+                      flex
+                      flex-col
+                      gap-3
+                      sm:flex-row
+                      sm:items-start
+                      sm:justify-between
+                    "
+                  >
+                    <div>
+                      <h3
+                        className="
+                          font-display
+                          text-xl
+                          tracking-tight
+                          text-fg
+                        "
+                      >
+                        {news.anime.name}
+                      </h3>
+
+                      <p className="mt-1 text-sm text-subtle">
+                        Anime relacionado à notícia
+                      </p>
+                    </div>
+
+                    <Link
+                      to="/anime/$id"
+                      params={{
+                        id: news.anime.id,
+                      }}
+                      className="
+                        inline-flex
+                        w-fit
+                        shrink-0
+                        items-center
+                        gap-2
+                        rounded-lg
+                        bg-accent
+                        px-4
+                        py-2
+                        text-sm
+                        font-semibold
+                        text-white
+                        transition-all
+                        hover:opacity-90
+                        active:scale-[0.97]
+                      "
+                    >
+                      <Play className="size-4 fill-current" />
+                      <span>Assistir anime</span>
+                    </Link>
+                  </div>
+
+                  <div
+                    className="
+                      mt-5
+                      grid
+                      grid-cols-1
+                      gap-3
+                      sm:grid-cols-3
+                    "
+                  >
+                    <div
+                      className="
+                        rounded-lg
+                        bg-elevated
+                        p-3
+                      "
+                    >
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-2
+                          text-xs
+                          text-subtle
+                        "
+                      >
+                        <Clapperboard className="size-4" />
+                        <span>Temporada</span>
+                      </div>
+
+                      <p
+                        className="
+                          mt-1
+                          text-sm
+                          font-medium
+                          text-fg
+                        "
+                      >
+                        {news.anime.season}
+                      </p>
+                    </div>
+
+                    <div
+                      className="
+                        rounded-lg
+                        bg-elevated
+                        p-3
+                      "
+                    >
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-2
+                          text-xs
+                          text-subtle
+                        "
+                      >
+                        <CalendarDays className="size-4" />
+                        <span>Lançamento</span>
+                      </div>
+
+                      <p
+                        className="
+                          mt-1
+                          text-sm
+                          font-medium
+                          text-fg
+                        "
+                      >
+                        {news.anime.releaseDate}
+                      </p>
+                    </div>
+
+                    <div
+                      className="
+                        rounded-lg
+                        bg-elevated
+                        p-3
+                      "
+                    >
+                      <div
+                        className="
+                          flex
+                          items-center
+                          gap-2
+                          text-xs
+                          text-subtle
+                        "
+                      >
+                        <Tv className="size-4" />
+                        <span>Episódios</span>
+                      </div>
+
+                      <p
+                        className="
+                          mt-1
+                          text-sm
+                          font-medium
+                          text-fg
+                        "
+                      >
+                        {news.anime.episodes ??
+                          "Não informado"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <h4
+                      className="
+                        text-sm
+                        font-semibold
+                        text-fg
+                      "
+                    >
+                      Sinopse
+                    </h4>
+
+                    <p
+                      className="
+                        mt-2
+                        text-sm
+                        leading-7
+                        text-muted
+                      "
+                    >
+                      {news.anime.synopsis}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* ÁREA PARA INFORMAÇÕES DA NOTÍCIA */}
           <div
