@@ -240,7 +240,7 @@ function NewsPage() {
         className="
           grid
           gap-5
-          md:grid-cols-2
+          lg:grid-cols-2
           xl:grid-cols-3
         "
       >
@@ -284,7 +284,7 @@ function NewsPage() {
                   transition-transform
                   duration-500
                   group-hover:scale-[1.02]
-                  md:object-cover
+                  lg:object-cover
                 "
               />
 
@@ -465,4 +465,4 @@ function NewsPage() {
       </div>
     </div>
   );
-}
+      }
