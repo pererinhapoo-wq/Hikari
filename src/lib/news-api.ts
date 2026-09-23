@@ -324,15 +324,6 @@ function trailerOf(
   return `https://www.youtube.com/embed/${trailer.id}`;
 }
 
-/**
- * Busca os episódios que já foram ao ar
- * usando a consulta própria de calendário
- * do AniList.
- *
- * Isso fica separado da consulta dos animes
- * para que um problema no calendário não
- * derrube todas as notícias.
- */
 async function fetchLatestAiredEpisodes(): Promise<
   Map<
     number,
@@ -605,11 +596,28 @@ export const fetchAutomaticNews =
     }
 
     try {
-      const media =
-        await fetchSeason(
-          season,
-          year,
-        );
+      /*
+       * As duas consultas ao AniList
+       * são independentes.
+       *
+       * Antes:
+       * 1. temporada
+       * 2. episódios
+       *
+       * Agora:
+       * as duas acontecem ao mesmo tempo.
+       */
+      const [
+        media,
+        latestEpisodes,
+      ] =
+        await Promise.all([
+          fetchSeason(
+            season,
+            year,
+          ),
+          fetchLatestAiredEpisodes(),
+        ]);
 
       const filtered =
         media.filter(
@@ -620,43 +628,75 @@ export const fetchAutomaticNews =
         );
 
       /*
-       * Busca os episódios separadamente.
+       * Primeiro criamos as informações
+       * básicas de cada notícia.
        *
-       * Se essa consulta falhar,
-       * continuamos normalmente com
-       * trailers e temporadas.
+       * As traduções são feitas em paralelo
+       * depois, em vez de uma por uma.
        */
-      const latestEpisodes =
-        await fetchLatestAiredEpisodes();
+      const prepared =
+        filtered.map(
+          (anime) => {
+            const title =
+              titleOf(
+                anime,
+              );
+
+            const trailerUrl =
+              trailerOf(
+                anime,
+              );
+
+            const latestEpisode =
+              latestEpisodes.get(
+                anime.id,
+              );
+
+            return {
+              anime,
+              title,
+              trailerUrl,
+              latestEpisode,
+            };
+          },
+        );
+
+      const descriptions =
+        await Promise.all(
+          prepared.map(
+            ({
+              anime,
+            }) =>
+              descriptionOf(
+                anime,
+              ),
+          ),
+        );
 
       const news:
         AutomaticNewsItem[] =
         [];
 
-      for (const anime of filtered) {
-        const title =
-          titleOf(
-            anime,
-          );
-
-        const trailerUrl =
-          trailerOf(
-            anime,
-          );
+      for (
+        let index = 0;
+        index <
+        prepared.length;
+        index++
+      ) {
+        const {
+          anime,
+          title,
+          trailerUrl,
+          latestEpisode,
+        } =
+          prepared[index];
 
         const description =
-          await descriptionOf(
-            anime,
-          );
+          descriptions[index];
 
         /*
          * NOTÍCIA DE NOVO EPISÓDIO
          */
-        const latestEpisode =
-          latestEpisodes.get(
-            anime.id,
-          );
-
         if (
           latestEpisode &&
           latestEpisode.episode > 0 &&
