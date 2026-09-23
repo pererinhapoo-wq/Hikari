@@ -32,7 +32,7 @@ const NEWS: NewsItem[] = [
       "Um novo trailer foi divulgado, trazendo novas cenas e detalhes da próxima temporada.",
     date: "22 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
+      "https://cdn.myanimelist.net/images/anime/1015/138006l.jpg",
   },
   {
     id: "one-piece-nova-temporada",
@@ -43,7 +43,7 @@ const NEWS: NewsItem[] = [
       "Novas informações sobre a continuação da história foram divulgadas.",
     date: "21 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&q=90",
+      "https://cdn.myanimelist.net/images/anime/1244/138851l.jpg",
   },
   {
     id: "anime-filme",
@@ -54,7 +54,7 @@ const NEWS: NewsItem[] = [
       "A produção ganhou uma nova atualização e teve sua data de estreia anunciada.",
     date: "20 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=90",
+      "https://cdn.myanimelist.net/images/anime/1765/135099l.jpg",
   },
   {
     id: "novo-episodio",
@@ -65,7 +65,7 @@ const NEWS: NewsItem[] = [
       "O próximo episódio já tem data prevista e novas informações foram divulgadas.",
     date: "19 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=1200&q=90",
+      "https://huggingface.co/datasets/deepghs/fancaps_animes/resolve/main/images/40748__jujutsu_kaisen.jpg",
   },
   {
     id: "jujutsu-novidades",
@@ -76,7 +76,7 @@ const NEWS: NewsItem[] = [
       "A produção divulgou novas informações para os fãs da série.",
     date: "18 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
+      "https://huggingface.co/datasets/deepghs/fancaps_animes/resolve/main/images/40748__jujutsu_kaisen.jpg",
   },
   {
     id: "demon-slayer-filme",
@@ -87,7 +87,7 @@ const NEWS: NewsItem[] = [
       "Novos detalhes do próximo projeto foram revelados.",
     date: "17 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=90",
+      "https://cdn.myanimelist.net/images/anime/1765/135099l.jpg",
   },
   {
     id: "solo-leveling",
@@ -98,7 +98,7 @@ const NEWS: NewsItem[] = [
       "A equipe de produção divulgou novas informações sobre a continuação.",
     date: "16 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&q=90",
+      "https://cdn.myanimelist.net/images/anime/1801/142390l.jpg",
   },
   {
     id: "bleach-news",
@@ -109,7 +109,7 @@ const NEWS: NewsItem[] = [
       "Novos detalhes foram divulgados sobre a continuação da série.",
     date: "15 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=1200&q=90",
+      "https://cdn.myanimelist.net/images/anime/3/40451.jpg",
   },
   {
     id: "chainsaw-man-filme",
@@ -120,7 +120,7 @@ const NEWS: NewsItem[] = [
       "O projeto ganhou novas informações e detalhes de produção.",
     date: "14 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=90",
+      "https://api-cdn.myanimelist.net/images/anime/1632/110707.jpg",
   },
   {
     id: "my-hero-academia",
@@ -131,7 +131,7 @@ const NEWS: NewsItem[] = [
       "Novas informações sobre a produção foram divulgadas.",
     date: "13 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
+      "https://cdn.myanimelist.net/images/anime/10/78745l.jpg",
   },
   {
     id: "dragon-ball",
@@ -142,7 +142,7 @@ const NEWS: NewsItem[] = [
       "A franquia recebeu uma nova atualização nesta semana.",
     date: "12 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&q=90",
+      "https://cdn.myanimelist.net/images/anime/7/74606.jpg",
   },
   {
     id: "one-punch-man",
@@ -153,7 +153,7 @@ const NEWS: NewsItem[] = [
       "O novo vídeo apresenta cenas inéditas e detalhes da produção.",
     date: "11 de setembro de 2026",
     image:
-      "https://images.unsplash.com/photo-1612036782180-6f0b6cd846fe?auto=format&fit=crop&w=1200&q=90",
+      "https://cdn.myanimelist.net/images/anime/12/76049l.jpg",
   },
 ];
 
