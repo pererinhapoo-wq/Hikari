@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   CalendarDays,
   Newspaper,
+  Play,
 } from "lucide-react";
 
 type NewsItem = {
@@ -18,6 +19,7 @@ type NewsItem = {
   content: string;
   date: string;
   image: string;
+  trailerUrl?: string;
 };
 
 const NEWS: NewsItem[] = [
@@ -33,6 +35,8 @@ const NEWS: NewsItem[] = [
     date: "22 de setembro de 2026",
     image:
       "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=90",
+    trailerUrl:
+      "https://www.youtube.com/embed/Fgj15FVP6IU",
   },
   {
     id: "one-piece-nova-temporada",
@@ -354,6 +358,118 @@ function NewsDetailsPage() {
                 </p>
               ))}
           </div>
+
+          {/* TRAILER */}
+          {news.type === "TRAILER" &&
+            news.trailerUrl && (
+              <section
+                id="trailer"
+                className="
+                  mt-8
+                  scroll-mt-6
+                  space-y-4
+                "
+              >
+                <div
+                  className="
+                    flex
+                    flex-col
+                    gap-3
+                    sm:flex-row
+                    sm:items-center
+                    sm:justify-between
+                  "
+                >
+                  <div className="flex items-center gap-2">
+                    <Play className="size-5 fill-current text-accent" />
+
+                    <h2
+                      className="
+                        font-display
+                        text-lg
+                        tracking-tight
+                        text-fg
+                      "
+                    >
+                      Trailer
+                    </h2>
+                  </div>
+
+                  <a
+                    href="#trailer-player"
+                    className="
+                      inline-flex
+                      w-fit
+                      items-center
+                      gap-2
+                      rounded-lg
+                      bg-accent
+                      px-4
+                      py-2
+                      text-sm
+                      font-semibold
+                      text-white
+                      transition-all
+                      hover:opacity-90
+                      active:scale-[0.97]
+                    "
+                  >
+                    <Play className="size-4 fill-current" />
+                    <span>Assistir trailer</span>
+                  </a>
+                </div>
+
+                <div
+                  id="trailer-player"
+                  className="
+                    overflow-hidden
+                    rounded-xl
+                    bg-black
+                    shadow-[var(--shadow-border)]
+                  "
+                >
+                  <div
+                    className="
+                      relative
+                      aspect-video
+                      w-full
+                    "
+                  >
+                    <iframe
+                      src={news.trailerUrl}
+                      title={`Trailer - ${news.title}`}
+                      className="
+                        absolute
+                        inset-0
+                        size-full
+                      "
+                      loading="lazy"
+                      allow="
+                        accelerometer;
+                        autoplay;
+                        clipboard-write;
+                        encrypted-media;
+                        gyroscope;
+                        picture-in-picture;
+                        web-share
+                      "
+                      allowFullScreen
+                    />
+                  </div>
+                </div>
+
+                <p
+                  className="
+                    text-xs
+                    leading-5
+                    text-subtle
+                  "
+                >
+                  Trailer oficial publicado pela
+                  TOHO animation.
+                </p>
+              </section>
+            )}
 
           {/* ÁREA PARA INFORMAÇÕES DA NOTÍCIA */}
           <div
