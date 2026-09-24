@@ -10,16 +10,14 @@ import {
   Tags,
 } from "lucide-react";
 
-import { AnimeCard, AnimeCardSkeleton } from "@/components/anime-card";
+import {
+  AnimeCard,
+  AnimeCardSkeleton,
+} from "@/components/anime-card";
 
-import { fetchAdultCatalog } from "@/lib/api";
+import { fetchAdultTags } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
-
-type AdultTagItem = {
-  name: string;
-  count: number;
-};
 
 export const Route = createFileRoute("/adult/tags")({
   validateSearch: (
@@ -41,7 +39,7 @@ export const Route = createFileRoute("/adult/tags")({
     };
   },
 
-  loader: () => fetchAdultCatalog(),
+  loader: () => fetchAdultTags(),
 
   pendingComponent: AdultTagsPending,
 
@@ -99,55 +97,34 @@ function AdultTagsPage() {
     (state) => state.animes,
   );
 
-  /*
-   * Por enquanto usamos o catálogo +18 que já existe.
-   *
-   * As tags reais serão ligadas à resposta da API
-   * na próxima etapa, sem mexer nas outras páginas.
-   */
   const items = overlayList(
     data.items ?? [],
     locals,
   );
 
-  /*
-   * Lista temporária de tags +18.
-   *
-   * Esta parte será substituída pelos dados reais
-   * vindos da API assim que adicionarmos as tags
-   * ao retorno de fetchAdultCatalog().
-   */
-  const tags: AdultTagItem[] = [
-    {
-      name: "Hentai",
-      count: items.length,
-    },
-    {
-      name: "Adult",
-      count: items.length,
-    },
-    {
-      name: "18+",
-      count: items.length,
-    },
-  ];
+  const normalizeTag = (
+    value: string,
+  ) =>
+    value.trim().toLocaleLowerCase(
+      "pt-BR",
+    );
 
   const selectedTag = tag
-    ? tags.find(
-        (item) => item.name === tag,
+    ? data.tags.find(
+        (item) =>
+          normalizeTag(item.name) ===
+          normalizeTag(tag),
       )
     : undefined;
 
-  /*
-   * Lista de animes da tag selecionada.
-   *
-   * A paginação fica local à página /adult/tags
-   * para não interferir em /adult/hentai.
-   */
   const itemsPerPage = 8;
 
   const filteredItems = selectedTag
-    ? items
+    ? items.filter((anime) =>
+        selectedTag.animeIds.includes(
+          anime.id,
+        ),
+      )
     : [];
 
   const totalPages = Math.max(
@@ -177,6 +154,7 @@ function AdultTagsPage() {
     const pages = new Set<number>();
 
     pages.add(1);
+    pages.add(totalPages);
     pages.add(currentPage);
 
     if (currentPage > 1) {
@@ -229,7 +207,7 @@ function AdultTagsPage() {
     void navigate({
       to: "/adult/tags",
       search: {
-        tag,
+        tag: selectedTag?.name ?? tag,
         page: nextPage,
       },
     }).then(() => {
@@ -262,14 +240,14 @@ function AdultTagsPage() {
             </div>
           </section>
 
-          {tags.length === 0 ? (
+          {data.tags.length === 0 ? (
             <p className="py-16 text-center text-muted">
               Nenhuma tag disponível no momento.
             </p>
           ) : (
             <section>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {tags.map((item) => (
+                {data.tags.map((item) => (
                   <button
                     key={item.name}
                     type="button"
@@ -304,11 +282,13 @@ function AdultTagsPage() {
 
                 <div className="min-w-0">
                   <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-                    {tag}
+                    {selectedTag?.name ?? tag}
                   </h1>
 
                   <p className="mt-1 text-sm text-muted">
-                    Conteúdo +18 da tag {tag}.
+                    {selectedTag
+                      ? `${selectedTag.count} anime(s) com esta tag.`
+                      : "Tag não encontrada."}
                   </p>
                 </div>
               </div>
@@ -329,7 +309,11 @@ function AdultTagsPage() {
             </div>
           </section>
 
-          {paginatedItems.length === 0 ? (
+          {!selectedTag ? (
+            <p className="py-16 text-center text-muted">
+              Essa tag não está disponível no catálogo +18.
+            </p>
+          ) : paginatedItems.length === 0 ? (
             <p className="py-16 text-center text-muted">
               Nenhum anime encontrado para esta tag.
             </p>
@@ -347,7 +331,7 @@ function AdultTagsPage() {
             </div>
           )}
 
-          {totalPages > 1 && (
+          {selectedTag && totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
               <button
                 type="button"
@@ -417,4 +401,4 @@ function AdultTagsPage() {
       )}
     </div>
   );
-      }
+}
