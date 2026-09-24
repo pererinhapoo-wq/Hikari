@@ -73,7 +73,7 @@ function AdultRecentPage() {
   );
 
   const items = overlayList(
-    data.recentItems ?? [],
+    data.items,
     locals,
   );
 
