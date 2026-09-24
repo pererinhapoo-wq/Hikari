@@ -3,6 +3,7 @@ import {
   Link,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
+import { useState } from "react";
 
 import { fetchAdultCatalog } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
@@ -14,16 +15,9 @@ import {
 } from "@/components/anime-card";
 
 export const Route = createFileRoute("/adult/recent")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    page: Math.max(1, Number(search.page) || 1),
-  }),
-
   loader: () => fetchAdultCatalog(),
-
   pendingComponent: AdultRecentPending,
-
   errorComponent: AdultRecentError,
-
   component: AdultRecentPage,
 });
 
@@ -76,10 +70,6 @@ function AdultRecentError({ error }: ErrorComponentProps) {
 function AdultRecentPage() {
   const data = Route.useLoaderData();
 
-  const { page: requestedPage } = Route.useSearch();
-
-  const navigate = Route.useNavigate();
-
   const locals = useHikariStore((s) => s.animes);
 
   const items = overlayList(
@@ -87,16 +77,13 @@ function AdultRecentPage() {
     locals,
   );
 
+  const [currentPage, setCurrentPage] = useState(1);
+
   const itemsPerPage = 6;
 
   const totalPages = Math.max(
     1,
     Math.ceil(items.length / itemsPerPage),
-  );
-
-  const currentPage = Math.min(
-    requestedPage,
-    totalPages,
   );
 
   const startIndex =
@@ -107,37 +94,17 @@ function AdultRecentPage() {
     startIndex + itemsPerPage,
   );
 
-  function goToPage(page: number) {
-    const nextPage = Math.min(
-      Math.max(1, page),
-      totalPages,
-    );
-
-    navigate({
-      search: {
-        page: nextPage,
-      },
-    });
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  }
-
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       <section>
-        <div className="mb-8">
-          <Link
-            to="/adult"
-            className="inline-flex items-center rounded-full border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
-          >
-            ‹ Voltar
-          </Link>
-        </div>
+        <Link
+          to="/adult"
+          className="relative top-2 inline-flex rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted transition hover:bg-elevated hover:text-fg"
+        >
+          ‹ Voltar
+        </Link>
 
-        <div>
+        <div className="mt-12">
           <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
             Novos episódios
           </h1>
@@ -171,7 +138,7 @@ function AdultRecentPage() {
           </div>
 
           {totalPages > 1 && (
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+            <div className="flex items-center justify-center gap-2 pt-2">
               {Array.from(
                 { length: totalPages },
                 (_, index) => {
@@ -184,7 +151,9 @@ function AdultRecentPage() {
                     <button
                       key={page}
                       type="button"
-                      onClick={() => goToPage(page)}
+                      onClick={() =>
+                        setCurrentPage(page)
+                      }
                       aria-current={
                         isActive
                           ? "page"
@@ -207,4 +176,4 @@ function AdultRecentPage() {
       )}
     </div>
   );
-                           }
+                                }
