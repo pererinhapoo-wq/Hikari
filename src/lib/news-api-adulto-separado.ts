@@ -593,7 +593,7 @@ async function fetchAdultCatalogNews(): Promise<
         ) {
           id
           isAdult
-          score
+          score: averageScore
 
           title {
             romaji
