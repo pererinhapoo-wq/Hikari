@@ -2,8 +2,8 @@ import {
   createFileRoute,
   Link,
   type ErrorComponentProps,
+  useNavigate,
 } from "@tanstack/react-router";
-import { useState } from "react";
 
 import { fetchAdultCatalog } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
@@ -15,7 +15,19 @@ import {
 } from "@/components/anime-card";
 
 export const Route = createFileRoute("/adult/recent")({
+  validateSearch: (search: Record<string, unknown>) => {
+    const page = Number(search.page);
+
+    return {
+      page:
+        Number.isFinite(page) && page >= 1
+          ? Math.floor(page)
+          : 1,
+    };
+  },
+
   loader: () => fetchAdultCatalog(),
+
   pendingComponent: AdultRecentPending,
   errorComponent: AdultRecentError,
   component: AdultRecentPage,
@@ -30,7 +42,7 @@ function AdultRecentPending() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-        {Array.from({ length: 12 }, (_, i) => (
+        {Array.from({ length: 8 }, (_, i) => (
           <AnimeCardSkeleton key={i} />
         ))}
       </div>
@@ -38,7 +50,9 @@ function AdultRecentPending() {
   );
 }
 
-function AdultRecentError({ error }: ErrorComponentProps) {
+function AdultRecentError({
+  error,
+}: ErrorComponentProps) {
   const message =
     error instanceof Error && error.message
       ? error.message
@@ -66,23 +80,86 @@ function AdultRecentError({ error }: ErrorComponentProps) {
   );
 }
 
+function getPaginationPages(
+  currentPage: number,
+  totalPages: number,
+) {
+  if (totalPages <= 9) {
+    return Array.from(
+      { length: totalPages },
+      (_, index) => index + 1,
+    );
+  }
+
+  const pages: Array<number | "..."> = [];
+
+  pages.push(1);
+
+  if (currentPage <= 5) {
+    pages.push(2, 3, 4, 5, 6, 7, "...");
+    pages.push(totalPages);
+
+    return pages;
+  }
+
+  if (currentPage >= totalPages - 4) {
+    pages.push("...");
+
+    for (
+      let page = totalPages - 6;
+      page <= totalPages;
+      page++
+    ) {
+      pages.push(page);
+    }
+
+    return pages;
+  }
+
+  pages.push("...");
+
+  pages.push(
+    currentPage - 2,
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    currentPage + 2,
+  );
+
+  pages.push("...");
+  pages.push(totalPages);
+
+  return pages;
+}
+
 function AdultRecentPage() {
   const data = Route.useLoaderData();
 
-  const locals = useHikariStore((s) => s.animes);
+  const navigate = useNavigate({
+    from: "/adult/recent",
+  });
+
+  const { page: requestedPage } = Route.useSearch();
+
+  const locals = useHikariStore(
+    (s) => s.animes,
+  );
 
   const items = overlayList(
     data.recentItems ?? [],
     locals,
   );
 
-  const [currentPage, setCurrentPage] = useState(1);
-
-  const itemsPerPage = 6;
+  const itemsPerPage = 8;
 
   const totalPages = Math.max(
     1,
     Math.ceil(items.length / itemsPerPage),
+  );
+
+  const currentPage = Math.min(
+    requestedPage,
+    totalPages,
   );
 
   const startIndex =
@@ -92,6 +169,28 @@ function AdultRecentPage() {
     startIndex,
     startIndex + itemsPerPage,
   );
+
+  const paginationPages = getPaginationPages(
+    currentPage,
+    totalPages,
+  );
+
+  const changePage = (page: number) => {
+    if (page < 1 || page > totalPages) {
+      return;
+    }
+
+    navigate({
+      search: {
+        page,
+      },
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
 
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
@@ -137,11 +236,19 @@ function AdultRecentPage() {
           </div>
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-2">
-              {Array.from(
-                { length: totalPages },
-                (_, index) => {
-                  const page = index + 1;
+            <div className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
+              {paginationPages.map(
+                (page, index) => {
+                  if (page === "...") {
+                    return (
+                      <span
+                        key={`dots-${index}`}
+                        className="inline-flex size-9 items-center justify-center text-sm text-muted"
+                      >
+                        …
+                      </span>
+                    );
+                  }
 
                   const isActive =
                     currentPage === page;
@@ -151,7 +258,7 @@ function AdultRecentPage() {
                       key={page}
                       type="button"
                       onClick={() =>
-                        setCurrentPage(page)
+                        changePage(page)
                       }
                       aria-current={
                         isActive
@@ -175,4 +282,4 @@ function AdultRecentPage() {
       )}
     </div>
   );
-}
+    }
