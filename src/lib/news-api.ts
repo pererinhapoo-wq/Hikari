@@ -17,6 +17,7 @@ export type AutomaticNewsItem = {
   image: string;
   animeId: string;
   trailerUrl?: string;
+  isAdult?: boolean;
 };
 
 const ANILIST =
@@ -24,6 +25,7 @@ const ANILIST =
 
 type AniMedia = {
   id: number;
+  isAdult?: boolean | null;
 
   title?: {
     romaji?: string | null;
@@ -486,6 +488,7 @@ async function fetchSeason(
                   sort: START_DATE_DESC
                 ) {
                   id
+                  isAdult
 
                   title {
                     romaji
@@ -568,6 +571,235 @@ async function fetchSeason(
   return json.data.Page.media;
 }
 
+async function buildNews(
+  media: AniMedia[],
+  latestEpisodes: Map<
+    number,
+    {
+      episode: number;
+      airingAt: number;
+    }
+  >,
+): Promise<AutomaticNewsItem[]> {
+  const filtered =
+    media.filter(
+      (anime) =>
+        anime.id > 0 &&
+        anime.format !==
+          "MUSIC",
+    );
+
+  const prepared =
+    filtered.map(
+      (anime) => {
+        const title =
+          titleOf(
+            anime,
+          );
+
+        const trailerUrl =
+          trailerOf(
+            anime,
+          );
+
+        const latestEpisode =
+          latestEpisodes.get(
+            anime.id,
+          );
+
+        return {
+          anime,
+          title,
+          trailerUrl,
+          latestEpisode,
+        };
+      },
+    );
+
+  const descriptions =
+    await Promise.all(
+      prepared.map(
+        ({
+          anime,
+        }) =>
+          descriptionOf(
+            anime,
+          ),
+      ),
+    );
+
+  const news:
+    AutomaticNewsItem[] =
+    [];
+
+  for (
+    let index = 0;
+    index <
+    prepared.length;
+    index++
+  ) {
+    const {
+      anime,
+      title,
+      trailerUrl,
+      latestEpisode,
+    } =
+      prepared[index];
+
+    const description =
+      descriptions[index];
+
+    if (
+      latestEpisode &&
+      latestEpisode.episode > 0 &&
+      latestEpisode.airingAt * 1000 <=
+        Date.now()
+    ) {
+      news.push({
+        id:
+          `auto-episode-${anime.id}-${latestEpisode.episode}`,
+
+        type:
+          "NOVO EPISÓDIO",
+
+        title:
+          `${title} — episódio ${latestEpisode.episode}`,
+
+        description:
+          `O episódio ${latestEpisode.episode} de ${title} foi ao ar em ${formatAiringDate(
+            latestEpisode.airingAt,
+          )}. ${description}`,
+
+        date:
+          formatAiringDate(
+            latestEpisode.airingAt,
+          ),
+
+        image:
+          anime.coverImage
+            ?.extraLarge ||
+          anime.coverImage
+            ?.large ||
+          "",
+
+        animeId:
+          String(
+            anime.id,
+          ),
+
+        trailerUrl,
+
+        isAdult:
+          anime.isAdult === true,
+      });
+    }
+
+    if (trailerUrl) {
+      news.push({
+        id:
+          `auto-trailer-${anime.id}`,
+
+        type:
+          "TRAILER",
+
+        title:
+          `${title} — novo trailer`,
+
+        description,
+
+        date:
+          formatDate(
+            anime,
+          ),
+
+        image:
+          anime.coverImage
+            ?.extraLarge ||
+          anime.coverImage
+            ?.large ||
+          "",
+
+        animeId:
+          String(
+            anime.id,
+          ),
+
+        trailerUrl,
+
+        isAdult:
+          anime.isAdult === true,
+      });
+    } else {
+      news.push({
+        id:
+          `auto-season-${anime.id}`,
+
+        type:
+          "NOVA TEMPORADA",
+
+        title:
+          `${title} — nova temporada`,
+
+        description,
+
+        date:
+          formatDate(
+            anime,
+          ),
+
+        image:
+          anime.coverImage
+            ?.extraLarge ||
+          anime.coverImage
+            ?.large ||
+          "",
+
+        animeId:
+          String(
+            anime.id,
+          ),
+
+        isAdult:
+          anime.isAdult === true,
+      });
+    }
+  }
+
+  const validNews =
+    news.filter(
+      (item) =>
+        Boolean(
+          item.image,
+        ),
+    );
+
+  validNews.sort(
+    (a, b) => {
+      const dateA =
+        Date.parse(
+          a.date
+            .split("/")
+            .reverse()
+            .join("-"),
+        );
+
+      const dateB =
+        Date.parse(
+          b.date
+            .split("/")
+            .reverse()
+            .join("-"),
+        );
+
+      return (
+        dateB - dateA
+      );
+    },
+  );
+
+  return validNews;
+}
+
 export const fetchAutomaticNews =
   createServerFn({
     method: "GET",
@@ -592,21 +824,13 @@ export const fetchAutomaticNews =
       fromCache(key);
 
     if (cached) {
-      return cached;
+      return cached.filter(
+        (item) =>
+          item.isAdult !== true,
+      );
     }
 
     try {
-      /*
-       * As duas consultas ao AniList
-       * são independentes.
-       *
-       * Antes:
-       * 1. temporada
-       * 2. episódios
-       *
-       * Agora:
-       * as duas acontecem ao mesmo tempo.
-       */
       const [
         media,
         latestEpisodes,
@@ -619,232 +843,85 @@ export const fetchAutomaticNews =
           fetchLatestAiredEpisodes(),
         ]);
 
-      const filtered =
+      const nonAdultMedia =
         media.filter(
           (anime) =>
-            anime.id > 0 &&
-            anime.format !==
-              "MUSIC",
+            anime.isAdult !== true,
         );
 
-      /*
-       * Primeiro criamos as informações
-       * básicas de cada notícia.
-       *
-       * As traduções são feitas em paralelo
-       * depois, em vez de uma por uma.
-       */
-      const prepared =
-        filtered.map(
-          (anime) => {
-            const title =
-              titleOf(
-                anime,
-              );
-
-            const trailerUrl =
-              trailerOf(
-                anime,
-              );
-
-            const latestEpisode =
-              latestEpisodes.get(
-                anime.id,
-              );
-
-            return {
-              anime,
-              title,
-              trailerUrl,
-              latestEpisode,
-            };
-          },
+      const news =
+        await buildNews(
+          nonAdultMedia,
+          latestEpisodes,
         );
-
-      const descriptions =
-        await Promise.all(
-          prepared.map(
-            ({
-              anime,
-            }) =>
-              descriptionOf(
-                anime,
-              ),
-          ),
-        );
-
-      const news:
-        AutomaticNewsItem[] =
-        [];
-
-      for (
-        let index = 0;
-        index <
-        prepared.length;
-        index++
-      ) {
-        const {
-          anime,
-          title,
-          trailerUrl,
-          latestEpisode,
-        } =
-          prepared[index];
-
-        const description =
-          descriptions[index];
-
-        /*
-         * NOTÍCIA DE NOVO EPISÓDIO
-         */
-        if (
-          latestEpisode &&
-          latestEpisode.episode > 0 &&
-          latestEpisode.airingAt * 1000 <=
-            Date.now()
-        ) {
-          news.push({
-            id:
-              `auto-episode-${anime.id}-${latestEpisode.episode}`,
-
-            type:
-              "NOVO EPISÓDIO",
-
-            title:
-              `${title} — episódio ${latestEpisode.episode}`,
-
-            description:
-              `O episódio ${latestEpisode.episode} de ${title} foi ao ar em ${formatAiringDate(
-                latestEpisode.airingAt,
-              )}. ${description}`,
-
-            date:
-              formatAiringDate(
-                latestEpisode.airingAt,
-              ),
-
-            image:
-              anime.coverImage
-                ?.extraLarge ||
-              anime.coverImage
-                ?.large ||
-              "",
-
-            animeId:
-              String(
-                anime.id,
-              ),
-
-            trailerUrl,
-          });
-        }
-
-        /*
-         * NOTÍCIA DE TRAILER
-         */
-        if (trailerUrl) {
-          news.push({
-            id:
-              `auto-trailer-${anime.id}`,
-
-            type:
-              "TRAILER",
-
-            title:
-              `${title} — novo trailer`,
-
-            description,
-
-            date:
-              formatDate(
-                anime,
-              ),
-
-            image:
-              anime.coverImage
-                ?.extraLarge ||
-              anime.coverImage
-                ?.large ||
-              "",
-
-            animeId:
-              String(
-                anime.id,
-              ),
-
-            trailerUrl,
-          });
-        } else {
-          /*
-           * NOTÍCIA DE NOVA TEMPORADA
-           */
-          news.push({
-            id:
-              `auto-season-${anime.id}`,
-
-            type:
-              "NOVA TEMPORADA",
-
-            title:
-              `${title} — nova temporada`,
-
-            description,
-
-            date:
-              formatDate(
-                anime,
-              ),
-
-            image:
-              anime.coverImage
-                ?.extraLarge ||
-              anime.coverImage
-                ?.large ||
-              "",
-
-            animeId:
-              String(
-                anime.id,
-              ),
-          });
-        }
-      }
-
-      const validNews =
-        news.filter(
-          (item) =>
-            Boolean(
-              item.image,
-            ),
-        );
-
-      validNews.sort(
-        (a, b) => {
-          const dateA =
-            Date.parse(
-              a.date
-                .split("/")
-                .reverse()
-                .join("-"),
-            );
-
-          const dateB =
-            Date.parse(
-              b.date
-                .split("/")
-                .reverse()
-                .join("-"),
-            );
-
-          return (
-            dateB - dateA
-          );
-        },
-      );
 
       return toCache(
         key,
-        validNews,
+        news,
+      );
+    } catch {
+      return [];
+    }
+  });
+
+export const fetchAdultNews =
+  createServerFn({
+    method: "GET",
+  }).handler(async () => {
+    const current =
+      currentAnimeSeason();
+
+    const season =
+      String(
+        current.season,
+      ).toUpperCase();
+
+    const year =
+      Number(
+        current.year,
+      );
+
+    const key =
+      `automatic-adult-news:${season}:${year}`;
+
+    const cached =
+      fromCache(key);
+
+    if (cached) {
+      return cached.filter(
+        (item) =>
+          item.isAdult === true,
+      );
+    }
+
+    try {
+      const [
+        media,
+        latestEpisodes,
+      ] =
+        await Promise.all([
+          fetchSeason(
+            season,
+            year,
+          ),
+          fetchLatestAiredEpisodes(),
+        ]);
+
+      const adultMedia =
+        media.filter(
+          (anime) =>
+            anime.isAdult === true,
+        );
+
+      const news =
+        await buildNews(
+          adultMedia,
+          latestEpisodes,
+        );
+
+      return toCache(
+        key,
+        news,
       );
     } catch {
       return [];
