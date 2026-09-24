@@ -67,6 +67,11 @@ function AdultPage() {
     locals,
   );
 
+  const recentItems = overlayList(
+    data.recentItems ?? [],
+    locals,
+  );
+
   const featured = items[0];
 
   const featuredItems = items.slice(0, 6);
@@ -83,10 +88,18 @@ function AdultPage() {
       )}
 
       {items.length > 0 ? (
-        <AnimeRow
-          title="🔞 +18"
-          items={items}
-        />
+        <>
+          <AnimeRow
+            title="Novos episódios"
+            href="/adult"
+            items={recentItems}
+          />
+
+          <AnimeRow
+            title="🔞 +18"
+            items={items}
+          />
+        </>
       ) : (
         <div className="rounded-xl bg-surface p-8 text-center shadow-[var(--shadow-border)]">
           <p className="font-display text-xl">
@@ -100,4 +113,4 @@ function AdultPage() {
       )}
     </div>
   );
-      }
+}
