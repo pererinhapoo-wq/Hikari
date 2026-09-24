@@ -99,6 +99,7 @@ function HentaiPage() {
     locals,
   );
 
+  // 8 títulos por página
   const itemsPerPage = 8;
 
   const totalPages = Math.max(
@@ -134,16 +135,43 @@ function HentaiPage() {
       search: {
         page: nextPage,
       },
-    });
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
+    }).then(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
     });
   }
 
   function goBack() {
-    window.history.back();
+    // Se estiver em uma página maior que 1,
+    // volta uma página e leva para o topo.
+    if (currentPage > 1) {
+      navigate({
+        search: {
+          page: currentPage - 1,
+        },
+        replace: true,
+      }).then(() => {
+        window.scrollTo({
+          top: 0,
+          behavior: "smooth",
+        });
+      });
+
+      return;
+    }
+
+    // Se estiver na página 1,
+    // volta para a área adulta.
+    navigate({
+      to: "/adult",
+    }).then(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    });
   }
 
   return (
