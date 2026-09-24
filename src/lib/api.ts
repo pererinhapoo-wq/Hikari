@@ -1119,94 +1119,42 @@ function mapAniFull(
 async function fetchRecentAdultReleasesFromAni(): Promise<
   SlimAnime[]
 > {
-  const now =
-    Math.floor(
-      Date.now() / 1000,
-    );
-
-  const monthAgo =
-    now -
-    30 * 24 * 60 * 60;
-
   const data =
     await anilistGraphQL<{
       Page: {
-        airingSchedules: {
-          airingAt: number;
-          episode: number;
-          media?: AniMedia | null;
-        }[];
+        media: AniMedia[];
       };
     }>(
       `
-      query RecentAdultReleases(
-        $airingAtGreater: Int,
-        $airingAtLesser: Int
-      ) {
+      query RecentAdultReleases {
         Page(
           page: 1,
-          perPage: 100
+          perPage: 18
         ) {
-          airingSchedules(
-            airingAt_greater: $airingAtGreater,
-            airingAt_lesser: $airingAtLesser,
-            sort: TIME_DESC
+          media(
+            type: ANIME,
+            isAdult: true,
+            genre: "Hentai",
+            sort: UPDATED_AT_DESC
           ) {
-            airingAt
-            episode
-            media {
-              ${CARD_FIELDS}
-            }
+            ${CARD_FIELDS}
           }
         }
       }
       `,
-      {
-        airingAtGreater: monthAgo,
-        airingAtLesser: now,
-      },
     );
 
-  const seen =
-    new Set<number>();
-
-  const releases: SlimAnime[] =
-    [];
-
-  for (
-    const item of
-      data.Page
-        .airingSchedules ?? []
-  ) {
-    const media =
-      item.media;
-
-    if (!media?.id) {
-      continue;
-    }
-
-    if (
-      !isHentaiAnime(media)
-    ) {
-      continue;
-    }
-
-    if (seen.has(media.id)) {
-      continue;
-    }
-
-    seen.add(media.id);
-
-    releases.push(
-      mapAniSlim(media),
-    );
-
-    if (releases.length >= 18) {
-      break;
-    }
-  }
-
-  return releases;
+  return (
+    data.Page.media ?? []
+  )
+    .filter(
+      (anime) =>
+        isHentaiAnime(anime),
+    )
+    .map(
+      mapAniSlim,
+    )
+    .slice(0, 18);
 }
 
 async function fetchRecentReleasesFromAni(): Promise<
@@ -2362,7 +2310,7 @@ export const fetchAdultCatalog =
   }).handler(
     async () => {
       const key =
-        "adult-catalog";
+        "adult-catalog:v2";
 
       const cached =
         fromCache<SearchResult>(
