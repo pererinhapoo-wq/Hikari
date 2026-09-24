@@ -1119,52 +1119,55 @@ function mapAniFull(
 async function fetchRecentAdultReleasesFromAni(): Promise<
   SlimAnime[]
 > {
-  /*
-   * Busca várias páginas para que a seção
-   * "Novos episódios" tenha bastante conteúdo.
-   *
-   * Mantemos a janela recente do AniList,
-   * mas não ficamos limitados aos primeiros
-   * 50 resultados da primeira página.
-   */
-  const pages = Array.from(
-    { length: 10 },
-    (_, index) => index + 1,
-  );
+  const now =
+    Math.floor(
+      Date.now() / 1000,
+    );
 
-  const results =
-    await Promise.all(
-      pages.map(async (page) => {
-        const data =
-          await anilistGraphQL<{
-            Page: {
-              media: AniMedia[];
-            };
-          }>(
-            `
-            query RecentAdultReleases(
-              $page: Int
-            ) {
-              Page(
-                page: $page,
-                perPage: 50
-              ) {
-                media(
-                  type: ANIME,
-                  isAdult: true,
-                  genre: "Hentai",
-                  sort: START_DATE_DESC
-                ) {
-                  ${CARD_FIELDS}
-                }
-              }
+  const weekAgo =
+    now -
+    7 * 24 * 60 * 60;
+
+  const data =
+    await anilistGraphQL<{
+      Page: {
+        airingSchedules: {
+          airingAt: number;
+          episode: number;
+          media?: AniMedia | null;
+        }[];
+      };
+    }>(
+      `
+      query RecentAdultReleases(
+        $airingAtGreater: Int,
+        $airingAtLesser: Int
+      ) {
+        Page(
+          page: 1,
+          perPage: 30
+        ) {
+          airingSchedules(
+            airingAt_greater: $airingAtGreater,
+            airingAt_lesser: $airingAtLesser,
+            sort: TIME_DESC
+          ) {
+            airingAt
+            episode
+            media {
+              ${CARD_FIELDS}
             }
-            `,
-            { page },
-          );
+          }
+        }
+      }
+      `,
+      {
+        airingAtGreater:
+          weekAgo,
 
-        return data.Page.media ?? [];
-      }),
+        airingAtLesser:
+          now,
+      },
     );
 
   const seen =
@@ -1174,12 +1177,25 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
     [];
 
   for (
-    const media of results.flat()
+    const item of
+      data.Page
+        .airingSchedules ?? []
   ) {
+    const media =
+      item.media;
+
+    if (!media?.id) {
+      continue;
+    }
+
     if (
-      !media.id ||
-      seen.has(media.id) ||
       !isHentaiAnime(media)
+    ) {
+      continue;
+    }
+
+    if (
+      seen.has(media.id)
     ) {
       continue;
     }
@@ -1189,12 +1205,15 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
     releases.push(
       mapAniSlim(media),
     );
+
+    if (
+      releases.length >= 18
+    ) {
+      break;
+    }
   }
 
-  return releases.slice(
-    0,
-    500,
-  );
+  return releases;
 }
 
 async function fetchRecentReleasesFromAni(): Promise<
@@ -2349,10 +2368,8 @@ export const fetchAdultCatalog =
     method: "GET",
   }).handler(
     async () => {
-      // v5: catálogo ampliado para permitir
-      // muitas páginas na área Hentai.
       const key =
-        "adult-catalog:v5";
+        "adult-catalog:v2";
 
       const cached =
         fromCache<SearchResult>(
@@ -2363,92 +2380,53 @@ export const fetchAdultCatalog =
         return cached;
       }
 
-      type AdultPageResult = {
-        Page: {
-          pageInfo: {
-            hasNextPage: boolean;
+      const data =
+        await anilistGraphQL<{
+          Page: {
+            pageInfo: {
+              hasNextPage: boolean;
+            };
+
+            media: AniMedia[];
           };
-
-          media: AniMedia[];
-        };
-      };
-
-      // O AniList entrega até 50 resultados por página.
-      // Buscamos várias páginas em paralelo para que a
-      // paginação do /adult/hentai tenha muitos números.
-      const pages = Array.from(
-        { length: 10 },
-        (_, index) => index + 1,
-      );
-
-      const results =
-        await Promise.all(
-          pages.map((page) =>
-            anilistGraphQL<AdultPageResult>(
-              `
-              query AdultCatalog(
-                $page: Int
-              ) {
-                Page(
-                  page: $page,
-                  perPage: 50
-                ) {
-                  pageInfo {
-                    hasNextPage
-                  }
-
-                  media(
-                    type: ANIME,
-                    isAdult: true,
-                    genre: "Hentai",
-                    sort: TRENDING_DESC
-                  ) {
-                    ${CARD_FIELDS}
-                  }
-                }
+        }>(
+          `
+          query AdultCatalog {
+            Page(
+              page: 1,
+              perPage: 30
+            ) {
+              pageInfo {
+                hasNextPage
               }
-              `,
-              { page },
-            ),
-          ),
+
+              media(
+                type: ANIME,
+                isAdult: true,
+                genre: "Hentai",
+                sort: TRENDING_DESC
+              ) {
+                ${CARD_FIELDS}
+              }
+            }
+          }
+          `,
         );
 
-      const seen =
-        new Set<number>();
-
-      const items: SlimAnime[] =
-        [];
-
-      let hasNext = false;
-
-      for (const result of results) {
-        hasNext =
-          hasNext ||
-          Boolean(
-            result.Page
-              ?.pageInfo
-              ?.hasNextPage,
+      const items =
+        (
+          data.Page.media ??
+          []
+        )
+          .filter(
+            (anime) =>
+              isHentaiAnime(
+                anime,
+              ),
+          )
+          .map(
+            mapAniSlim,
           );
-
-        for (
-          const anime of
-            result.Page.media ?? []
-        ) {
-          if (
-            !anime.id ||
-            seen.has(anime.id) ||
-            !isHentaiAnime(anime)
-          ) {
-            continue;
-          }
-
-          seen.add(anime.id);
-
-          items.push(
-            mapAniSlim(anime),
-          );
-        }
-      }
 
       const recentItems =
         await fetchRecentAdultReleasesFromAni();
@@ -2456,21 +2434,154 @@ export const fetchAdultCatalog =
       return toCache(
         key,
         {
-          // Até 500 Hentais.
-          // Com 8 por página, isso permite
-          // até 63 páginas conforme os dados
-          // realmente disponíveis no AniList.
-          items: items.slice(0, 500),
-
-          // Também mantém os recentes ampliados.
+          items,
           recentItems,
 
           page: 1,
 
-          hasNext,
+          hasNext:
+            Boolean(
+              data.Page
+                .pageInfo
+                ?.hasNextPage,
+            ),
 
           source:
             "anilist" as const,
+        },
+      );
+    },
+  );
+
+type AdultTagCatalog = {
+  items: SlimAnime[];
+  tags: Array<{
+    name: string;
+    count: number;
+    animeIds: string[];
+  }>;
+};
+
+export const fetchAdultTags =
+  createServerFn({
+    method: "GET",
+  }).handler(
+    async () => {
+      const key =
+        "adult-tags:v1";
+
+      const cached =
+        fromCache<AdultTagCatalog>(
+          key,
+        );
+
+      if (cached) {
+        return cached;
+      }
+
+      const data =
+        await anilistGraphQL<{
+          Page: {
+            media: AniMedia[];
+          };
+        }>(
+          `
+          query AdultTags {
+            Page(
+              page: 1,
+              perPage: 50
+            ) {
+              media(
+                type: ANIME,
+                isAdult: true,
+                genre: "Hentai",
+                sort: TRENDING_DESC
+              ) {
+                ${CARD_FIELDS}
+              }
+            }
+          }
+          `,
+        );
+
+      const media =
+        (data.Page.media ?? []).filter(
+          (anime) =>
+            isHentaiAnime(anime),
+        );
+
+      const items = media.map(
+        mapAniSlim,
+      );
+
+      const tagMap = new Map<
+        string,
+        {
+          name: string;
+          animeIds: Set<string>;
+        }
+      >();
+
+      for (const anime of media) {
+        for (const tag of
+          anime.tags ?? []) {
+          if (
+            tag.isAdult !== true ||
+            !tag.name?.trim()
+          ) {
+            continue;
+          }
+
+          const name =
+            tag.name.trim();
+          const keyName =
+            name.toLocaleLowerCase(
+              "pt-BR",
+            );
+
+          const current =
+            tagMap.get(keyName) ?? {
+              name,
+              animeIds:
+                new Set<string>(),
+            };
+
+          current.animeIds.add(
+            String(anime.id),
+          );
+
+          tagMap.set(
+            keyName,
+            current,
+          );
+        }
+      }
+
+      const tags = Array.from(
+        tagMap.values(),
+      )
+        .map((tag) => ({
+          name: tag.name,
+          count:
+            tag.animeIds.size,
+          animeIds:
+            Array.from(
+              tag.animeIds,
+            ),
+        }))
+        .sort((a, b) =>
+          b.count - a.count ||
+          a.name.localeCompare(
+            b.name,
+            "pt-BR",
+          ),
+        );
+
+      return toCache(
+        key,
+        {
+          items,
+          tags,
         },
       );
     },
