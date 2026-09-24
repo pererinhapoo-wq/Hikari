@@ -596,63 +596,13 @@ async function fetchAdultCatalogNews(): Promise<
         body: JSON.stringify({
           query: `
             query AdultNews {
-              trending: Page(
+              adult: Page(
                 page: 1
-                perPage: 50
+                perPage: 30
               ) {
                 media(
                   type: ANIME
                   isAdult: true
-                  sort: TRENDING_DESC
-                ) {
-                  id
-                  isAdult
-                  score
-                  popularity
-
-                  title {
-                    romaji
-                    english
-                    native
-                  }
-
-                  coverImage {
-                    extraLarge
-                    large
-                  }
-
-                  description(
-                    asHtml: false
-                  )
-
-                  format
-                  status
-                  episodes
-                  season
-                  seasonYear
-
-                  startDate {
-                    year
-                    month
-                    day
-                  }
-
-                  trailer {
-                    id
-                    site
-                    thumbnail
-                  }
-                }
-              }
-
-              upcoming: Page(
-                page: 1
-                perPage: 50
-              ) {
-                media(
-                  type: ANIME
-                  isAdult: true
-                  status: NOT_YET_RELEASED
                   sort: START_DATE_DESC
                 ) {
                   id
@@ -695,14 +645,14 @@ async function fetchAdultCatalogNews(): Promise<
                 }
               }
 
-              topRated: Page(
+              hentai: Page(
                 page: 1
-                perPage: 50
+                perPage: 30
               ) {
                 media(
                   type: ANIME
-                  isAdult: true
-                  sort: SCORE_DESC
+                  genre: "Hentai"
+                  sort: START_DATE_DESC
                 ) {
                   id
                   isAdult
@@ -763,9 +713,8 @@ async function fetchAdultCatalogNews(): Promise<
   const json =
     (await response.json()) as {
       data?: {
-        trending?: { media: AniMedia[] };
-        upcoming?: { media: AniMedia[] };
-        topRated?: { media: AniMedia[] };
+        adult?: { media: AniMedia[] };
+        hentai?: { media: AniMedia[] };
       };
 
       errors?: {
@@ -773,23 +722,12 @@ async function fetchAdultCatalogNews(): Promise<
       }[];
     };
 
-  if (
-    json.errors?.length ||
-    !json.data
-  ) {
+  if (json.errors?.length || !json.data) {
     throw new Error(
-      json.errors?.[0]
-        ?.message ??
+      json.errors?.[0]?.message ??
         "AniList sem dados",
     );
   }
-
-  const trending =
-    json.data.trending?.media ?? [];
-  const upcoming =
-    json.data.upcoming?.media ?? [];
-  const topRated =
-    json.data.topRated?.media ?? [];
 
   const selected = new Map<
     number,
@@ -797,18 +735,22 @@ async function fetchAdultCatalogNews(): Promise<
   >();
 
   for (const anime of [
-    ...trending.slice(0, 24),
-    ...upcoming.slice(0, 24),
-    ...topRated.slice(0, 24),
+    ...(json.data.adult?.media ?? []),
+    ...(json.data.hentai?.media ?? []),
   ]) {
     if (
-      anime.isAdult === true &&
       anime.id > 0 &&
-      anime.format !== "MUSIC"
+      anime.format !== "MUSIC" &&
+      (anime.isAdult === true ||
+        (anime.title?.romaji ?? "") ||
+        (anime.title?.english ?? ""))
     ) {
       selected.set(
         anime.id,
-        anime,
+        {
+          ...anime,
+          isAdult: true,
+        },
       );
     }
   }
@@ -817,6 +759,7 @@ async function fetchAdultCatalogNews(): Promise<
     selected.values(),
   );
 }
+
 
 async function buildNews(
   media: AniMedia[],
