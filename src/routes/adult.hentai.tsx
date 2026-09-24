@@ -20,8 +20,8 @@ export const Route = createFileRoute("/adult/hentai")({
 
     return {
       page:
-        Number.isInteger(page) && page > 0
-          ? page
+        Number.isFinite(page) && page >= 1
+          ? Math.floor(page)
           : 1,
     };
   },
@@ -83,12 +83,66 @@ function HentaiError({
   );
 }
 
+function getPaginationPages(
+  currentPage: number,
+  totalPages: number,
+) {
+  if (totalPages <= 9) {
+    return Array.from(
+      { length: totalPages },
+      (_, index) => index + 1,
+    );
+  }
+
+  const pages: Array<number | "..."> = [];
+
+  pages.push(1);
+
+  if (currentPage <= 5) {
+    pages.push(2, 3, 4, 5, 6, 7, "...");
+    pages.push(totalPages);
+
+    return pages;
+  }
+
+  if (currentPage >= totalPages - 4) {
+    pages.push("...");
+
+    for (
+      let page = totalPages - 6;
+      page <= totalPages;
+      page++
+    ) {
+      pages.push(page);
+    }
+
+    return pages;
+  }
+
+  pages.push("...");
+
+  pages.push(
+    currentPage - 2,
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    currentPage + 2,
+  );
+
+  pages.push("...");
+  pages.push(totalPages);
+
+  return pages;
+}
+
 function HentaiPage() {
   const data = Route.useLoaderData();
 
   const { page } = Route.useSearch();
 
-  const navigate = useNavigate();
+  const navigate = useNavigate({
+    from: "/adult/hentai",
+  });
 
   const locals = useHikariStore(
     (s) => s.animes,
@@ -121,6 +175,11 @@ function HentaiPage() {
     startIndex + itemsPerPage,
   );
 
+  const paginationPages = getPaginationPages(
+    currentPage,
+    totalPages,
+  );
+
   function changePage(nextPage: number) {
     if (
       nextPage < 1 ||
@@ -134,25 +193,38 @@ function HentaiPage() {
       search: {
         page: nextPage,
       },
-    });
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
+    }).then(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
     });
   }
 
   function handleBack() {
+    if (currentPage > 1) {
+      navigate({
+        search: {
+          page: currentPage - 1,
+        },
+      }).then(() => {
+        window.scrollTo({
+          top: 0,
+          behavior: "auto",
+        });
+      });
+
+      return;
+    }
+
     navigate({
       to: "/adult",
-    });
-
-    setTimeout(() => {
+    }).then(() => {
       window.scrollTo({
         top: 0,
         behavior: "auto",
       });
-    }, 0);
+    });
   }
 
   return (
@@ -201,10 +273,18 @@ function HentaiPage() {
 
           {totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-              {Array.from(
-                { length: totalPages },
-                (_, index) => {
-                  const pageNumber = index + 1;
+              {paginationPages.map(
+                (pageNumber, index) => {
+                  if (pageNumber === "...") {
+                    return (
+                      <span
+                        key={`dots-${index}`}
+                        className="inline-flex size-9 items-center justify-center text-sm text-muted"
+                      >
+                        …
+                      </span>
+                    );
+                  }
 
                   const isActive =
                     currentPage === pageNumber;
@@ -238,4 +318,4 @@ function HentaiPage() {
       )}
     </div>
   );
-        }
+      }
