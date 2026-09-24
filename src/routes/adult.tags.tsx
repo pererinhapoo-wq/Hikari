@@ -193,6 +193,15 @@ function AdultTagsPage() {
     );
 
   const pageNumbers = (() => {
+    if (allTagsTotalPages <= 9) {
+      return Array.from(
+        {
+          length: allTagsTotalPages,
+        },
+        (_, index) => index + 1,
+      );
+    }
+
     const pages = new Set<number>();
 
     pages.add(1);
@@ -708,4 +717,4 @@ function AdultTagsPage() {
       )}
     </div>
   );
-}
+    }
