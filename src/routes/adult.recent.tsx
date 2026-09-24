@@ -26,7 +26,6 @@ function AdultRecentPending() {
     <div className="space-y-5 pb-5 sm:space-y-8">
       <div>
         <div className="h-8 w-52 animate-pulse rounded bg-elevated" />
-
         <div className="mt-2 h-4 w-72 animate-pulse rounded bg-elevated" />
       </div>
 
@@ -99,7 +98,7 @@ function AdultRecentPage() {
       <section>
         <Link
           to="/adult"
-          className="relative top-2 inline-flex rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted transition hover:bg-elevated hover:text-fg"
+          className="mt-2 inline-flex items-center rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
         >
           ‹ Voltar
         </Link>
@@ -176,4 +175,4 @@ function AdultRecentPage() {
       )}
     </div>
   );
-                                }
+}
