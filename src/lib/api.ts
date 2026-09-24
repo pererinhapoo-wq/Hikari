@@ -1124,9 +1124,9 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
       Date.now() / 1000,
     );
 
-  const weekAgo =
+  const monthAgo =
     now -
-    7 * 24 * 60 * 60;
+    30 * 24 * 60 * 60;
 
   const data =
     await anilistGraphQL<{
@@ -1145,7 +1145,7 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
       ) {
         Page(
           page: 1,
-          perPage: 30
+          perPage: 100
         ) {
           airingSchedules(
             airingAt_greater: $airingAtGreater,
@@ -1162,7 +1162,7 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
       }
       `,
       {
-        airingAtGreater: weekAgo,
+        airingAtGreater: monthAgo,
         airingAtLesser: now,
       },
     );
