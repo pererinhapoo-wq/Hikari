@@ -571,6 +571,119 @@ async function fetchSeason(
   return json.data.Page.media;
 }
 
+async function fetchAdultCatalogNews(): Promise<
+  AniMedia[]
+> {
+  const response =
+    await fetch(
+      ANILIST,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          Accept:
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          query: `
+            query AdultNews {
+              Page(
+                page: 1
+                perPage: 50
+              ) {
+                media(
+                  type: ANIME
+                  isAdult: true
+                  sort: TRENDING_DESC
+                ) {
+                  id
+                  isAdult
+
+                  title {
+                    romaji
+                    english
+                    native
+                  }
+
+                  coverImage {
+                    extraLarge
+                    large
+                  }
+
+                  description(
+                    asHtml: false
+                  )
+
+                  format
+                  status
+                  episodes
+                  season
+                  seasonYear
+
+                  startDate {
+                    year
+                    month
+                    day
+                  }
+
+                  trailer {
+                    id
+                    site
+                    thumbnail
+                  }
+                }
+              }
+            }
+          `,
+        }),
+
+        signal:
+          AbortSignal.timeout(
+            12000,
+          ),
+      },
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `AniList indisponível (${response.status})`,
+    );
+  }
+
+  const json =
+    (await response.json()) as {
+      data?: AniListResponse;
+
+      errors?: {
+        message?: string;
+      }[];
+    };
+
+  if (
+    json.errors?.length ||
+    !json.data?.Page
+  ) {
+    throw new Error(
+      json.errors?.[0]
+        ?.message ??
+        "AniList sem dados",
+    );
+  }
+
+  return (
+    json.data.Page.media ?? []
+  ).filter(
+    (anime) =>
+      anime.isAdult === true &&
+      anime.id > 0 &&
+      anime.format !== "MUSIC",
+  );
+}
+
 async function buildNews(
   media: AniMedia[],
   latestEpisodes: Map<
@@ -581,16 +694,8 @@ async function buildNews(
     }
   >,
 ): Promise<AutomaticNewsItem[]> {
-  const filtered =
-    media.filter(
-      (anime) =>
-        anime.id > 0 &&
-        anime.format !==
-          "MUSIC",
-    );
-
   const prepared =
-    filtered.map(
+    media.map(
       (anime) => {
         const title =
           titleOf(
@@ -775,24 +880,28 @@ async function buildNews(
 
   validNews.sort(
     (a, b) => {
-      const dateA =
-        Date.parse(
-          a.date
-            .split("/")
-            .reverse()
-            .join("-"),
-        );
+      const parse = (
+        value: string,
+      ) => {
+        const match =
+          value.match(
+            /^(\d{2})\/(\d{2})\/(\d{4})$/,
+          );
 
-      const dateB =
-        Date.parse(
-          b.date
-            .split("/")
-            .reverse()
-            .join("-"),
-        );
+        if (!match) {
+          return 0;
+        }
+
+        return new Date(
+          Number(match[3]),
+          Number(match[2]) - 1,
+          Number(match[1]),
+        ).getTime();
+      };
 
       return (
-        dateB - dateA
+        parse(b.date) -
+        parse(a.date)
       );
     },
   );
@@ -895,23 +1004,21 @@ export const fetchAdultNews =
     }
 
     try {
+      /*
+       * As notícias +18 não dependem
+       * da temporada atual.
+       *
+       * Buscamos diretamente os animes
+       * marcados pelo AniList como adultos.
+       */
       const [
-        media,
+        adultMedia,
         latestEpisodes,
       ] =
         await Promise.all([
-          fetchSeason(
-            season,
-            year,
-          ),
+          fetchAdultCatalogNews(),
           fetchLatestAiredEpisodes(),
         ]);
-
-      const adultMedia =
-        media.filter(
-          (anime) =>
-            anime.isAdult === true,
-        );
 
       const news =
         await buildNews(
