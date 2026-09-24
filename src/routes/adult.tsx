@@ -1,6 +1,5 @@
 import {
   createFileRoute,
-  Link,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 
@@ -90,49 +89,16 @@ function AdultPage() {
 
       {items.length > 0 ? (
         <>
-          {/* 🔞 +18 */}
-          <section className="space-y-2">
-            <div className="flex items-center justify-between gap-4 px-1">
-              <h2 className="font-display text-xl tracking-tight sm:text-2xl">
-                🔞 +18
-              </h2>
+          <AnimeRow
+            title="Novos episódios"
+            href="/adult/recent"
+            items={recentItems}
+          />
 
-              <Link
-                to="/adult/all"
-                className="shrink-0 text-xs font-semibold tracking-wide text-muted transition hover:text-fg"
-              >
-                VER TUDO →
-              </Link>
-            </div>
-
-            <AnimeRow
-              title=""
-              items={items}
-            />
-          </section>
-
-          {/* 🆕 Novos episódios */}
-          {recentItems.length > 0 && (
-            <section className="space-y-2">
-              <div className="flex items-center justify-between gap-4 px-1">
-                <h2 className="font-display text-xl tracking-tight sm:text-2xl">
-                  Novos episódios
-                </h2>
-
-                <Link
-                  to="/adult/recent"
-                  className="shrink-0 text-xs font-semibold tracking-wide text-muted transition hover:text-fg"
-                >
-                  VER TUDO →
-                </Link>
-              </div>
-
-              <AnimeRow
-                title=""
-                items={recentItems}
-              />
-            </section>
-          )}
+          <AnimeRow
+            title="🔞 +18"
+            items={items}
+          />
         </>
       ) : (
         <div className="rounded-xl bg-surface p-8 text-center shadow-[var(--shadow-border)]">
@@ -147,4 +113,4 @@ function AdultPage() {
       )}
     </div>
   );
-            }
+}
