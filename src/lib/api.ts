@@ -1642,6 +1642,9 @@ const searchSchema =
 
     page:
       z.number().optional(),
+
+    adult:
+      z.boolean().optional(),
   });
 
 function normalizeSearchText(
@@ -1883,8 +1886,13 @@ function mergeSearchItems(
   return result;
 }
 
+type SearchRequestParams =
+  SearchParams & {
+    adult?: boolean;
+  };
+
 async function searchAni(
-  params: SearchParams,
+  params: SearchRequestParams,
 ): Promise<SearchResult> {
   const page =
     params.page ?? 1;
@@ -1920,7 +1928,8 @@ async function searchAni(
         $year: Int,
         $format: MediaFormat,
         $status: MediaStatus,
-        $sort: [MediaSort]
+        $sort: [MediaSort],
+        $isAdult: Boolean
       ) {
         Page(
           page: $page,
@@ -1937,7 +1946,8 @@ async function searchAni(
             seasonYear: $year,
             format: $format,
             status: $status,
-            sort: $sort
+            sort: $sort,
+            isAdult: $isAdult
           ) {
             ${CARD_FIELDS}
           }
@@ -1952,8 +1962,10 @@ async function searchAni(
           undefined,
 
         genre:
-          params.genre ||
-          undefined,
+          params.adult
+            ? "Hentai"
+            : params.genre ||
+              undefined,
 
         year:
           year &&
@@ -1972,6 +1984,9 @@ async function searchAni(
           undefined,
 
         sort: [sort],
+
+        isAdult:
+          Boolean(params.adult),
       },
     );
 
@@ -1983,9 +1998,13 @@ async function searchAni(
       )
         .filter(
           (anime) =>
-            !isAdultAnime(
-              anime,
-            ),
+            params.adult
+              ? isHentaiAnime(
+                  anime,
+                )
+              : !isAdultAnime(
+                  anime,
+                ),
         )
         .map(
           mapAniSlim,
@@ -2006,10 +2025,19 @@ async function searchAni(
 }
 
 async function searchJikan(
-  params: SearchParams,
+  params: SearchRequestParams,
 ): Promise<SearchResult> {
   const page =
     params.page ?? 1;
+
+  if (params.adult) {
+    return {
+      items: [],
+      page,
+      hasNext: false,
+      source: "jikan",
+    };
+  }
 
   const query =
     new URLSearchParams();
@@ -2077,7 +2105,7 @@ async function searchJikan(
 }
 
 async function searchRelaxed(
-  params: SearchParams,
+  params: SearchRequestParams,
 ): Promise<SlimAnime[]> {
   const original = params.q?.trim() ?? "";
   const normalized = normalizeSearchText(original);
@@ -2111,7 +2139,7 @@ async function searchRelaxed(
   );
 
   const attempts = validVariants.map(async (variant) => {
-    const searchParams: SearchParams = {
+    const searchParams: SearchRequestParams = {
       ...params,
       q: variant,
       page: 1,
@@ -2189,7 +2217,7 @@ function isStrongSearchResult(
 }
 
 async function searchDirectFast(
-  params: SearchParams,
+  params: SearchRequestParams,
 ): Promise<{
   items: SlimAnime[];
   hasNext: boolean;
