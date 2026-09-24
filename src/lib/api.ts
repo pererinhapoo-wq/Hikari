@@ -2468,7 +2468,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v2";
+        "adult-tags:v3";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2542,6 +2542,12 @@ export const fetchAdultTags =
         );
 
         page += 1;
+
+        if (hasNextPage) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000),
+          );
+        }
       }
 
       const media = Array.from(
