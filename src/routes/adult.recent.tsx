@@ -8,8 +8,10 @@ import { fetchAdultCatalog } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
 
-import { AnimeCard } from "@/components/anime-card";
-import { AnimeCardSkeleton } from "@/components/anime-card";
+import {
+  AnimeCard,
+  AnimeCardSkeleton,
+} from "@/components/anime-card";
 
 export const Route = createFileRoute("/adult/all")({
   loader: () => fetchAdultCatalog(),
@@ -36,9 +38,7 @@ function AdultAllPending() {
   );
 }
 
-function AdultAllError({
-  error,
-}: ErrorComponentProps) {
+function AdultAllError({ error }: ErrorComponentProps) {
   const message =
     error instanceof Error && error.message
       ? error.message
@@ -69,9 +69,7 @@ function AdultAllError({
 function AdultAllPage() {
   const data = Route.useLoaderData();
 
-  const locals = useHikariStore(
-    (s) => s.animes,
-  );
+  const locals = useHikariStore((s) => s.animes);
 
   const items = overlayList(
     data.items ?? [],
@@ -124,4 +122,4 @@ function AdultAllPage() {
       )}
     </div>
   );
-}
+            }
