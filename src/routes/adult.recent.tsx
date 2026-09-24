@@ -97,8 +97,7 @@ function AdultRecentPage() {
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       <section>
-        {/* Botão Voltar — padrão usado no Calendário */}
-        <div className="mb-6">
+        <div className="mb-6 pt-2">
           <Link
             to="/adult"
             className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-fg"
@@ -180,4 +179,4 @@ function AdultRecentPage() {
       )}
     </div>
   );
-}
+                    }
