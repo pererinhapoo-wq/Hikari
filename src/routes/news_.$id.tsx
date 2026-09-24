@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import {
+  fetchAdultNews,
   fetchAutomaticNews,
   type AutomaticNewsItem,
 } from "@/lib/news-api";
@@ -570,8 +571,15 @@ export const Route = createFileRoute(
      * Para notícias automáticas, buscamos o catálogo somente
      * quando realmente precisamos dele para localizar a notícia.
      */
+    const isAdultNews =
+      params.id.startsWith(
+        "auto-adult-",
+      );
+
     const automaticNews =
-      await fetchAutomaticNews();
+      isAdultNews
+        ? await fetchAdultNews()
+        : await fetchAutomaticNews();
 
     const automaticItem =
       automaticNews.find(
@@ -744,68 +752,14 @@ function NewsDetailsPage() {
     ),
   ];
 
-  /*
-   * "Mais notícias" deve variar conforme a notícia aberta.
-   *
-   * Antes:
-   * sempre pegava as primeiras 3 notícias da lista.
-   *
-   * Agora:
-   * usamos a posição da notícia atual e mostramos as
-   * próximas notícias disponíveis, evitando repetir sempre
-   * os mesmos 3 cards.
-   */
-  const currentNewsIndex =
-    allNews.findIndex(
-      (item) =>
-        item.id ===
-        news.id,
-    );
-
-  let relatedNews =
-    currentNewsIndex >= 0
-      ? allNews
-          .slice(
-            currentNewsIndex + 1,
-          )
-          .filter(
-            (item) =>
-              item.id !==
-              news.id,
-          )
-          .slice(0, 3)
-      : [];
-
-  /*
-   * Se a notícia atual estiver no final da lista,
-   * completamos com notícias anteriores.
-   */
-  if (
-    relatedNews.length < 3
-  ) {
-    const previousNews =
-      allNews
-        .filter(
-          (item) =>
-            item.id !==
-            news.id &&
-            !relatedNews.some(
-              (related) =>
-                related.id ===
-                item.id,
-            ),
-        )
-        .slice(
-          0,
-          3 -
-            relatedNews.length,
-        );
-
-    relatedNews = [
-      ...relatedNews,
-      ...previousNews,
-    ];
-  }
+  const relatedNews =
+    allNews
+      .filter(
+        (item) =>
+          item.id !==
+          news.id,
+      )
+      .slice(0, 3);
 
   return (
     <div className="space-y-6 pb-10">
