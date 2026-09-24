@@ -1550,9 +1550,16 @@ export function Shell() {
                         <span>Notícias +18</span>
                       </Link>
 
-                      <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
+                      <Link
+                        to="/adult/tags"
+                        onClick={() =>
+                          setMenuOpen(false)
+                        }
+                        className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
+                      >
+                        <Tags className="size-5" />
                         <span>Tags</span>
-                      </div>
+                      </Link>
 
                     </div>
                   )}
