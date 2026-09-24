@@ -3,10 +3,13 @@ import {
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 
-import { AnimeCard, AnimeCardSkeleton } from "@/components/anime-card";
 import { fetchAdultCatalog } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
+
+import { Hero } from "@/components/hero";
+import { AnimeRow } from "@/components/anime-row";
+import { AnimeCardSkeleton } from "@/components/anime-card";
 
 export const Route = createFileRoute("/adult")({
   loader: () => fetchAdultCatalog(),
@@ -17,19 +20,11 @@ export const Route = createFileRoute("/adult")({
 
 function AdultPending() {
   return (
-    <div className="space-y-5 pb-8">
-      <div>
-        <p className="text-[11px] tracking-[0.28em] text-muted uppercase">
-          Área restrita
-        </p>
+    <div className="space-y-6 pt-3">
+      <div className="-mx-4 h-[20rem] animate-pulse bg-elevated sm:-mx-6 sm:h-[27rem]" />
 
-        <h1 className="mt-2 font-display text-3xl tracking-tight">
-          🔞 +18
-        </h1>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-        {Array.from({ length: 12 }, (_, i) => (
+      <div className="rail">
+        {Array.from({ length: 8 }, (_, i) => (
           <AnimeCardSkeleton key={i} />
         ))}
       </div>
@@ -72,31 +67,26 @@ function AdultPage() {
     locals,
   );
 
+  const featured = items[0];
+
+  const featuredItems = items.slice(0, 6);
+
   return (
-    <div className="space-y-5 pb-8 sm:space-y-8">
-      <header>
-        <p className="text-[11px] tracking-[0.28em] text-muted uppercase">
-          Área restrita
-        </p>
-
-        <h1 className="mt-2 font-display text-3xl tracking-tight">
-          🔞 +18
-        </h1>
-
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
-          Conteúdo adulto separado do catálogo principal.
-        </p>
-      </header>
+    <div className="space-y-5 pb-5 sm:space-y-8">
+      {featured ? (
+        <Hero
+          anime={featured}
+          animes={featuredItems}
+        />
+      ) : (
+        <AdultPending />
+      )}
 
       {items.length > 0 ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-          {items.map((anime) => (
-            <AnimeCard
-              key={anime.id}
-              anime={anime}
-            />
-          ))}
-        </div>
+        <AnimeRow
+          title="🔞 +18"
+          items={items}
+        />
       ) : (
         <div className="rounded-xl bg-surface p-8 text-center shadow-[var(--shadow-border)]">
           <p className="font-display text-xl">
