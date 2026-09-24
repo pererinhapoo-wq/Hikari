@@ -1119,42 +1119,101 @@ function mapAniFull(
 async function fetchRecentAdultReleasesFromAni(): Promise<
   SlimAnime[]
 > {
+  const now =
+    Math.floor(
+      Date.now() / 1000,
+    );
+
+  const weekAgo =
+    now -
+    7 * 24 * 60 * 60;
+
   const data =
     await anilistGraphQL<{
       Page: {
-        media: AniMedia[];
+        airingSchedules: {
+          airingAt: number;
+          episode: number;
+          media?: AniMedia | null;
+        }[];
       };
     }>(
       `
-      query RecentAdultReleases {
+      query RecentAdultReleases(
+        $airingAtGreater: Int,
+        $airingAtLesser: Int
+      ) {
         Page(
           page: 1,
-          perPage: 18
+          perPage: 30
         ) {
-          media(
-            type: ANIME,
-            isAdult: true,
-            genre: "Hentai",
-            sort: UPDATED_AT_DESC
+          airingSchedules(
+            airingAt_greater: $airingAtGreater,
+            airingAt_lesser: $airingAtLesser,
+            sort: TIME_DESC
           ) {
-            ${CARD_FIELDS}
+            airingAt
+            episode
+            media {
+              ${CARD_FIELDS}
+            }
           }
         }
       }
       `,
+      {
+        airingAtGreater:
+          weekAgo,
+
+        airingAtLesser:
+          now,
+      },
     );
 
-  return (
-    data.Page.media ?? []
-  )
-    .filter(
-      (anime) =>
-        isHentaiAnime(anime),
-    )
-    .map(
-      mapAniSlim,
-    )
-    .slice(0, 18);
+  const seen =
+    new Set<number>();
+
+  const releases: SlimAnime[] =
+    [];
+
+  for (
+    const item of
+      data.Page
+        .airingSchedules ?? []
+  ) {
+    const media =
+      item.media;
+
+    if (!media?.id) {
+      continue;
+    }
+
+    if (
+      !isHentaiAnime(media)
+    ) {
+      continue;
+    }
+
+    if (
+      seen.has(media.id)
+    ) {
+      continue;
+    }
+
+    seen.add(media.id);
+
+    releases.push(
+      mapAniSlim(media),
+    );
+
+    if (
+      releases.length >= 18
+    ) {
+      break;
+    }
+  }
+
+  return releases;
 }
 
 async function fetchRecentReleasesFromAni(): Promise<
