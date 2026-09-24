@@ -2468,7 +2468,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v1";
+        "adult-tags:v2";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2479,36 +2479,74 @@ export const fetchAdultTags =
         return cached;
       }
 
-      const data =
-        await anilistGraphQL<{
-          Page: {
-            media: AniMedia[];
-          };
-        }>(
-          `
-          query AdultTags {
-            Page(
-              page: 1,
-              perPage: 50
+      const allMedia =
+        new Map<number, AniMedia>();
+
+      let page = 1;
+      let hasNextPage = true;
+
+      while (hasNextPage) {
+        const data =
+          await anilistGraphQL<{
+            Page: {
+              pageInfo: {
+                hasNextPage: boolean;
+              };
+
+              media: AniMedia[];
+            };
+          }>(
+            `
+            query AdultTags(
+              $page: Int,
             ) {
-              media(
-                type: ANIME,
-                isAdult: true,
-                genre: "Hentai",
-                sort: TRENDING_DESC
+              Page(
+                page: $page,
+                perPage: 50
               ) {
-                ${CARD_FIELDS}
+                pageInfo {
+                  hasNextPage
+                }
+
+                media(
+                  type: ANIME,
+                  isAdult: true,
+                  genre: "Hentai",
+                  sort: TRENDING_DESC
+                ) {
+                  ${CARD_FIELDS}
+                }
               }
             }
+            `,
+            {
+              page,
+            },
+          );
+
+        for (const anime of
+          data.Page.media ?? []) {
+          if (
+            isHentaiAnime(anime)
+          ) {
+            allMedia.set(
+              anime.id,
+              anime,
+            );
           }
-          `,
+        }
+
+        hasNextPage = Boolean(
+          data.Page.pageInfo
+            ?.hasNextPage,
         );
 
-      const media =
-        (data.Page.media ?? []).filter(
-          (anime) =>
-            isHentaiAnime(anime),
-        );
+        page += 1;
+      }
+
+      const media = Array.from(
+        allMedia.values(),
+      );
 
       const items = media.map(
         mapAniSlim,
@@ -2525,15 +2563,13 @@ export const fetchAdultTags =
       for (const anime of media) {
         for (const tag of
           anime.tags ?? []) {
-          if (
-            tag.isAdult !== true ||
-            !tag.name?.trim()
-          ) {
+          if (!tag.name?.trim()) {
             continue;
           }
 
           const name =
             tag.name.trim();
+
           const keyName =
             name.toLocaleLowerCase(
               "pt-BR",
