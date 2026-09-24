@@ -2349,8 +2349,10 @@ export const fetchAdultCatalog =
     method: "GET",
   }).handler(
     async () => {
+      // v5: catálogo ampliado para permitir
+      // muitas páginas na área Hentai.
       const key =
-        "adult-catalog:v4";
+        "adult-catalog:v5";
 
       const cached =
         fromCache<SearchResult>(
@@ -2361,53 +2363,92 @@ export const fetchAdultCatalog =
         return cached;
       }
 
-      const data =
-        await anilistGraphQL<{
-          Page: {
-            pageInfo: {
-              hasNextPage: boolean;
-            };
-
-            media: AniMedia[];
+      type AdultPageResult = {
+        Page: {
+          pageInfo: {
+            hasNextPage: boolean;
           };
-        }>(
-          `
-          query AdultCatalog {
-            Page(
-              page: 1,
-              perPage: 30
-            ) {
-              pageInfo {
-                hasNextPage
-              }
 
-              media(
-                type: ANIME,
-                isAdult: true,
-                genre: "Hentai",
-                sort: TRENDING_DESC
+          media: AniMedia[];
+        };
+      };
+
+      // O AniList entrega até 50 resultados por página.
+      // Buscamos várias páginas em paralelo para que a
+      // paginação do /adult/hentai tenha muitos números.
+      const pages = Array.from(
+        { length: 10 },
+        (_, index) => index + 1,
+      );
+
+      const results =
+        await Promise.all(
+          pages.map((page) =>
+            anilistGraphQL<AdultPageResult>(
+              `
+              query AdultCatalog(
+                $page: Int
               ) {
-                ${CARD_FIELDS}
+                Page(
+                  page: $page,
+                  perPage: 50
+                ) {
+                  pageInfo {
+                    hasNextPage
+                  }
+
+                  media(
+                    type: ANIME,
+                    isAdult: true,
+                    genre: "Hentai",
+                    sort: TRENDING_DESC
+                  ) {
+                    ${CARD_FIELDS}
+                  }
+                }
               }
-            }
-          }
-          `,
+              `,
+              { page },
+            ),
+          ),
         );
 
-      const items =
-        (
-          data.Page.media ??
-          []
-        )
-          .filter(
-            (anime) =>
-              isHentaiAnime(
-                anime,
-              ),
-          )
-          .map(
-            mapAniSlim,
+      const seen =
+        new Set<number>();
+
+      const items: SlimAnime[] =
+        [];
+
+      let hasNext = false;
+
+      for (const result of results) {
+        hasNext =
+          hasNext ||
+          Boolean(
+            result.Page
+              ?.pageInfo
+              ?.hasNextPage,
           );
+
+        for (
+          const anime of
+            result.Page.media ?? []
+        ) {
+          if (
+            !anime.id ||
+            seen.has(anime.id) ||
+            !isHentaiAnime(anime)
+          ) {
+            continue;
+          }
+
+          seen.add(anime.id);
+
+          items.push(
+            mapAniSlim(anime),
+          );
+        }
+      }
 
       const recentItems =
         await fetchRecentAdultReleasesFromAni();
@@ -2415,17 +2456,18 @@ export const fetchAdultCatalog =
       return toCache(
         key,
         {
-          items,
+          // Até 500 Hentais.
+          // Com 8 por página, isso permite
+          // até 63 páginas conforme os dados
+          // realmente disponíveis no AniList.
+          items: items.slice(0, 500),
+
+          // Também mantém os recentes ampliados.
           recentItems,
 
           page: 1,
 
-          hasNext:
-            Boolean(
-              data.Page
-                .pageInfo
-                ?.hasNextPage,
-            ),
+          hasNext,
 
           source:
             "anilist" as const,
