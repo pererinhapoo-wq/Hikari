@@ -2468,7 +2468,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v3";
+        "adult-tags:v4";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2482,94 +2482,201 @@ export const fetchAdultTags =
       const allMedia =
         new Map<number, AniMedia>();
 
-      let page = 1;
-      let hasNextPage = true;
-
-      while (hasNextPage) {
-        const data =
-          await anilistGraphQL<{
-            Page: {
-              pageInfo: {
-                hasNextPage: boolean;
-              };
-
-              media: AniMedia[];
-            };
-          }>(
-            `
-            query AdultTags(
-              $page: Int,
-            ) {
-              Page(
-                page: $page,
-                perPage: 50
-              ) {
-                pageInfo {
-                  hasNextPage
-                }
-
-                media(
-                  type: ANIME,
-                  isAdult: true,
-                  genre: "Hentai",
-                  sort: TRENDING_DESC
-                ) {
-                  ${CARD_FIELDS}
-                }
-              }
-            }
-            `,
-            {
-              page,
-            },
-          );
-
-        for (const anime of
-          data.Page.media ?? []) {
-          if (
-            isHentaiAnime(anime)
-          ) {
+      const addMedia = (
+        media:
+          | AniMedia[]
+          | null
+          | undefined,
+      ) => {
+        for (const anime of media ?? []) {
+          if (isHentaiAnime(anime)) {
             allMedia.set(
               anime.id,
               anime,
             );
           }
         }
+      };
 
-        hasNextPage = Boolean(
-          data.Page.pageInfo
+      /*
+       * Primeira página.
+       * Fazemos uma requisição separada
+       * para descobrir se existem mais páginas.
+       */
+      const firstPage =
+        await anilistGraphQL<{
+          Page: {
+            pageInfo: {
+              hasNextPage: boolean;
+            };
+
+            media: AniMedia[];
+          };
+        }>(
+          `
+          query AdultTagsFirst {
+            Page(
+              page: 1,
+              perPage: 50
+            ) {
+              pageInfo {
+                hasNextPage
+              }
+
+              media(
+                type: ANIME,
+                isAdult: true,
+                genre: "Hentai",
+                sort: TRENDING_DESC
+              ) {
+                ${CARD_FIELDS}
+              }
+            }
+          }
+          `,
+        );
+
+      addMedia(
+        firstPage.Page.media,
+      );
+
+      let nextPage = 2;
+
+      let hasNextPage =
+        Boolean(
+          firstPage.Page.pageInfo
             ?.hasNextPage,
         );
 
-        page += 1;
+      /*
+       * Em vez de fazer uma requisição
+       * para cada página, agrupamos
+       * 5 páginas em uma única query.
+       */
+      const batchSize = 5;
 
+      while (hasNextPage) {
+        const pages =
+          Array.from(
+            {
+              length: batchSize,
+            },
+            (_, index) =>
+              nextPage + index,
+          );
+
+        const pageFields =
+          pages
+            .map(
+              (page) => `
+                page${page}: Page(
+                  page: ${page},
+                  perPage: 50
+                ) {
+                  pageInfo {
+                    hasNextPage
+                  }
+
+                  media(
+                    type: ANIME,
+                    isAdult: true,
+                    genre: "Hentai",
+                    sort: TRENDING_DESC
+                  ) {
+                    ${CARD_FIELDS}
+                  }
+                }
+              `,
+            )
+            .join("\n");
+
+        const data =
+          await anilistGraphQL<
+            Record<
+              string,
+              {
+                pageInfo: {
+                  hasNextPage: boolean;
+                };
+
+                media: AniMedia[];
+              }
+            >
+          >(
+            `
+            query AdultTagsBatch {
+              ${pageFields}
+            }
+            `,
+          );
+
+        hasNextPage = false;
+
+        for (const page of pages) {
+          const result =
+            data[
+              `page${page}`
+            ];
+
+          if (!result) {
+            continue;
+          }
+
+          addMedia(
+            result.media,
+          );
+
+          if (
+            result.pageInfo
+              ?.hasNextPage
+          ) {
+            hasNextPage = true;
+          }
+        }
+
+        nextPage += batchSize;
+
+        /*
+         * Pequena pausa entre os lotes
+         * para evitar muitas requisições
+         * em sequência.
+         */
         if (hasNextPage) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1000),
+          await new Promise(
+            (resolve) =>
+              setTimeout(
+                resolve,
+                750,
+              ),
           );
         }
       }
 
-      const media = Array.from(
-        allMedia.values(),
-      );
+      const media =
+        Array.from(
+          allMedia.values(),
+        );
 
-      const items = media.map(
-        mapAniSlim,
-      );
+      const items =
+        media.map(
+          mapAniSlim,
+        );
 
-      const tagMap = new Map<
-        string,
-        {
-          name: string;
-          animeIds: Set<string>;
-        }
-      >();
+      const tagMap =
+        new Map<
+          string,
+          {
+            name: string;
+            animeIds: Set<string>;
+          }
+        >();
 
       for (const anime of media) {
         for (const tag of
           anime.tags ?? []) {
-          if (!tag.name?.trim()) {
+          if (
+            !tag.name?.trim()
+          ) {
             continue;
           }
 
@@ -2582,14 +2689,18 @@ export const fetchAdultTags =
             );
 
           const current =
-            tagMap.get(keyName) ?? {
+            tagMap.get(
+              keyName,
+            ) ?? {
               name,
               animeIds:
                 new Set<string>(),
             };
 
           current.animeIds.add(
-            String(anime.id),
+            String(
+              anime.id,
+            ),
           );
 
           tagMap.set(
@@ -2599,25 +2710,29 @@ export const fetchAdultTags =
         }
       }
 
-      const tags = Array.from(
-        tagMap.values(),
-      )
-        .map((tag) => ({
-          name: tag.name,
-          count:
-            tag.animeIds.size,
-          animeIds:
-            Array.from(
-              tag.animeIds,
-            ),
-        }))
-        .sort((a, b) =>
-          b.count - a.count ||
-          a.name.localeCompare(
-            b.name,
-            "pt-BR",
-          ),
-        );
+      const tags =
+        Array.from(
+          tagMap.values(),
+        )
+          .map((tag) => ({
+            name: tag.name,
+
+            count:
+              tag.animeIds.size,
+
+            animeIds:
+              Array.from(
+                tag.animeIds,
+              ),
+          }))
+          .sort(
+            (a, b) =>
+              b.count - a.count ||
+              a.name.localeCompare(
+                b.name,
+                "pt-BR",
+              ),
+          );
 
       return toCache(
         key,
