@@ -3,7 +3,7 @@ import {
   Link,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { fetchAdultCatalog } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
@@ -26,6 +26,7 @@ function AdultHentaiPending() {
     <div className="space-y-5 pb-5 sm:space-y-8">
       <div>
         <div className="h-8 w-52 animate-pulse rounded bg-elevated" />
+
         <div className="mt-2 h-4 w-72 animate-pulse rounded bg-elevated" />
       </div>
 
@@ -78,15 +79,76 @@ function AdultHentaiPage() {
     locals,
   );
 
-  const [currentPage, setCurrentPage] = useState(1);
+  /*
+   * A página fica salva na URL:
+   *
+   * /adult/hentai?page=1
+   * /adult/hentai?page=2
+   * /adult/hentai?page=3
+   *
+   * Assim, ao recarregar, continuamos na mesma página.
+   */
+  const getPageFromUrl = () => {
+    if (typeof window === "undefined") {
+      return 1;
+    }
 
-  // 4 animes por página para criar mais páginas
-  const itemsPerPage = 4;
+    const value = Number(
+      new URLSearchParams(window.location.search).get("page"),
+    );
+
+    return Number.isInteger(value) && value > 0
+      ? value
+      : 1;
+  };
+
+  const [currentPage, setCurrentPage] = useState(
+    getPageFromUrl,
+  );
+
+  // 3 títulos por página para criar mais páginas.
+  const itemsPerPage = 3;
 
   const totalPages = Math.max(
     1,
     Math.ceil(items.length / itemsPerPage),
   );
+
+  /*
+   * Garante que uma página inválida não fique selecionada
+   * caso a quantidade de títulos diminua.
+   */
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  /*
+   * Salva a página atual na URL sem recarregar a página.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+
+    if (currentPage === 1) {
+      url.searchParams.delete("page");
+    } else {
+      url.searchParams.set(
+        "page",
+        String(currentPage),
+      );
+    }
+
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [currentPage]);
 
   const startIndex =
     (currentPage - 1) * itemsPerPage;
@@ -140,7 +202,7 @@ function AdultHentaiPage() {
           </div>
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
               {Array.from(
                 { length: totalPages },
                 (_, index) => {
@@ -178,4 +240,4 @@ function AdultHentaiPage() {
       )}
     </div>
   );
-  }
+}
