@@ -24,7 +24,7 @@ export type AutomaticNewsItem = {
 };
 
 const ANILIST =
-  "https://graphql.anilist.co";
+  "https://grokhikari.vercel.app/api-anilist";
 
 type AniMedia = {
   id: number;
@@ -588,6 +588,7 @@ async function fetchAdultCatalogNews(): Promise<
         media(
           type: ANIME
           isAdult: true
+          genre: "Hentai"
           sort: START_DATE_DESC
         ) {
           id
