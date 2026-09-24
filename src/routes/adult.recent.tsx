@@ -110,7 +110,19 @@ function AdultRecentPage() {
 
           <Link
             to="/adult"
-            className="shrink-0 text-sm font-semibold text-muted transition hover:text-fg"
+            className="
+              mt-1
+              shrink-0
+              rounded-md
+              px-2
+              py-1
+              text-sm
+              font-semibold
+              text-muted
+              transition
+              hover:bg-elevated
+              hover:text-fg
+            "
           >
             Voltar
           </Link>
@@ -178,4 +190,4 @@ function AdultRecentPage() {
       )}
     </div>
   );
-        }
+    }
