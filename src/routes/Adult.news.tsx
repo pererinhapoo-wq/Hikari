@@ -1,7 +1,6 @@
 import {
   createFileRoute,
   Link,
-  stripSearchParams,
   useNavigate,
 } from "@tanstack/react-router";
 
@@ -16,19 +15,18 @@ import {
 } from "lucide-react";
 
 import {
-  useEffect,
   useMemo,
   useState,
   type FormEvent,
 } from "react";
 
 import {
-  fetchAutomaticNews,
+  fetchAdultNews,
   type AutomaticNewsItem,
 } from "@/lib/news-api";
 
 export const Route = createFileRoute(
-  "/news",
+  "/adult/news",
 )({
   validateSearch: (search) => ({
     q:
@@ -42,17 +40,8 @@ export const Route = createFileRoute(
     ),
   }),
 
-  search: {
-    middlewares: [
-      stripSearchParams({
-        q: "",
-        page: 1,
-      }),
-    ],
-  },
-
   loader: async () => {
-    return await fetchAutomaticNews();
+    return await fetchAdultNews();
   },
 
   component: NewsPage,
@@ -159,7 +148,7 @@ function normalizeSearchText(
 function NewsPage() {
   const navigate =
     useNavigate({
-      from: "/news",
+      from: "/adult/news",
     });
 
   const loaderNews =
@@ -179,16 +168,6 @@ function NewsPage() {
       ? search.q
       : "";
 
-  /*
-   * =========================================================
-   * BUSCA
-   * =========================================================
-   *
-   * A busca começa fechada mesmo quando existe q na URL.
-   * Assim, ao recarregar uma página de resultados, o campo
-   * não abre sozinho.
-   */
-
   const [
     searchOpen,
     setSearchOpen,
@@ -198,12 +177,6 @@ function NewsPage() {
     searchQuery,
     setSearchQuery,
   ] = useState("");
-
-  /*
-   * =========================================================
-   * NOTÍCIAS
-   * =========================================================
-   */
 
   const news = useMemo(() => {
     return [
@@ -218,12 +191,6 @@ function NewsPage() {
         ),
     );
   }, [loaderNews]);
-
-  /*
-   * =========================================================
-   * RESULTADOS ENQUANTO DIGITA
-   * =========================================================
-   */
 
   const liveSearchResults =
     useMemo(() => {
@@ -260,12 +227,6 @@ function NewsPage() {
       searchQuery,
     ]);
 
-  /*
-   * =========================================================
-   * RESULTADOS DA URL
-   * =========================================================
-   */
-
   const searchResults =
     useMemo(() => {
       const query =
@@ -301,23 +262,11 @@ function NewsPage() {
       urlQuery,
     ]);
 
-  /*
-   * =========================================================
-   * PRIMEIROS 5 RESULTADOS
-   * =========================================================
-   */
-
   const previewSearchResults =
     liveSearchResults.slice(
       0,
       5,
     );
-
-  /*
-   * =========================================================
-   * MODO DE BUSCA
-   * =========================================================
-   */
 
   const isSearchMode =
     Boolean(
@@ -338,12 +287,6 @@ function NewsPage() {
       ),
     );
 
-  /*
-   * =========================================================
-   * PESQUISAR
-   * =========================================================
-   */
-
   const handleSearchSubmit =
     (
       event: FormEvent<HTMLFormElement>,
@@ -357,15 +300,10 @@ function NewsPage() {
         return;
       }
 
-      /*
-       * Fecha a caixa imediatamente.
-       * Os resultados continuam na página porque q
-       * continua sendo enviado pela URL.
-       */
       setSearchOpen(false);
 
       void navigate({
-        to: "/news",
+        to: "/adult/news",
         search: {
           q: query,
           page: 1,
@@ -373,12 +311,6 @@ function NewsPage() {
         resetScroll: false,
       });
     };
-
-  /*
-   * =========================================================
-   * VER TODOS OS RESULTADOS
-   * =========================================================
-   */
 
   const handleViewAllResults =
     () => {
@@ -392,7 +324,7 @@ function NewsPage() {
       setSearchOpen(false);
 
       void navigate({
-        to: "/news/search",
+        to: "/adult/news",
         search: {
           q: query,
           page: 1,
@@ -401,38 +333,23 @@ function NewsPage() {
       });
     };
 
-  /*
-   * =========================================================
-   * LIMPAR CAMPO DA BUSCA
-   * =========================================================
-   */
-
   const clearSearchInput = () => {
     setSearchQuery("");
   };
-
-  /*
-   * =========================================================
-   * FECHAR BUSCA
-   * =========================================================
-   */
 
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchQuery("");
   };
 
-  /*
-   * =========================================================
-   * VOLTAR
-   * =========================================================
-   */
-
   const handleBack = () => {
     if (isSearchMode) {
       void navigate({
-        to: "/news",
-        search: {},
+        to: "/adult/news",
+        search: {
+          q: "",
+          page: 1,
+        },
         resetScroll: false,
       });
 
@@ -443,15 +360,9 @@ function NewsPage() {
     }
 
     void navigate({
-      to: "/",
+      to: "/adult",
     });
   };
-
-  /*
-   * =========================================================
-   * PAGINAÇÃO
-   * =========================================================
-   */
 
   const goToPage = (
     page: number,
@@ -466,7 +377,7 @@ function NewsPage() {
       );
 
     void navigate({
-      to: "/news",
+      to: "/adult/news",
       search: {
         q: urlQuery,
         page: nextPage,
@@ -479,12 +390,6 @@ function NewsPage() {
       behavior: "smooth",
     });
   };
-
-  /*
-   * =========================================================
-   * NOTÍCIAS VISÍVEIS
-   * =========================================================
-   */
 
   const visibleNews =
     useMemo(() => {
@@ -516,11 +421,6 @@ function NewsPage() {
           lg:px-8
         "
       >
-
-        {/* =====================================================
-            TOPO
-        ====================================================== */}
-
         <div
           className="
             mb-7
@@ -532,9 +432,7 @@ function NewsPage() {
         >
           <button
             type="button"
-            onClick={
-              handleBack
-            }
+            onClick={handleBack}
             className="
               inline-flex
               items-center
@@ -560,16 +458,9 @@ function NewsPage() {
           <button
             type="button"
             onClick={() => {
-              if (
-                searchOpen
-              ) {
+              if (searchOpen) {
                 closeSearch();
               } else {
-                /*
-                 * Ao abrir novamente a busca, preservamos
-                 * os resultados que já estão na página.
-                 * O campo começa vazio para uma nova pesquisa.
-                 */
                 setSearchQuery("");
                 setSearchOpen(true);
               }
@@ -609,10 +500,6 @@ function NewsPage() {
           </button>
         </div>
 
-        {/* =====================================================
-            BUSCA
-        ====================================================== */}
-
         {searchOpen && (
           <section
             className="
@@ -651,7 +538,7 @@ function NewsPage() {
                         .value,
                     )
                   }
-                  placeholder="Buscar notícias..."
+                  placeholder="Buscar notícias +18..."
                   enterKeyHint="search"
                   autoComplete="off"
                   className="
@@ -669,7 +556,7 @@ function NewsPage() {
                     placeholder:text-muted
                     focus:border-fg/30
                   "
-                  aria-label="Buscar notícias"
+                  aria-label="Buscar notícias +18"
                 />
 
                 {searchQuery.trim() && (
@@ -714,16 +601,12 @@ function NewsPage() {
                     hover:text-fg
                     active:scale-95
                   "
-                  aria-label="Pesquisar notícias"
+                  aria-label="Pesquisar notícias +18"
                 >
                   <Search className="size-5" />
                 </button>
               </div>
             </form>
-
-            {/* =================================================
-                RESULTADOS
-            ================================================== */}
 
             {searchQuery.trim() && (
               <div className="mt-3">
@@ -752,23 +635,13 @@ function NewsPage() {
                       bg-surface
                     "
                   >
-
-                    {/* PRIMEIROS 5 */}
-
                     {previewSearchResults.map(
-                      (
-                        item,
-                      ) => (
+                      (item) => (
                         <Link
-                          key={
-                            item.id
-                          }
+                          key={item.id}
                           to="/news/$id"
                           params={{
                             id: item.id,
-                          }}
-                          search={{
-                            page: currentPage,
                           }}
                           className="
                             flex
@@ -840,10 +713,6 @@ function NewsPage() {
                       ),
                     )}
 
-                    {/* =================================================
-                        VER TODOS
-                    ================================================== */}
-
                     {liveSearchResults.length >
                       5 && (
                       <button
@@ -854,7 +723,6 @@ function NewsPage() {
                         className="
                           flex
                           w-full
-                          cursor-pointer
                           items-center
                           justify-center
                           border-t
@@ -866,7 +734,6 @@ function NewsPage() {
                           text-fg
                           transition
                           hover:bg-elevated
-                          active:bg-elevated
                         "
                       >
                         Ver todos os resultados
@@ -883,10 +750,6 @@ function NewsPage() {
             )}
           </section>
         )}
-
-        {/* =====================================================
-            CABEÇALHO
-        ====================================================== */}
 
         <section className="mb-7">
           <div
@@ -920,7 +783,7 @@ function NewsPage() {
               >
                 {isSearchMode
                   ? "Resultados da busca"
-                  : "Notícias"}
+                  : "Notícias +18"}
               </h1>
 
               <p
@@ -938,16 +801,12 @@ function NewsPage() {
                     </span>
                   </>
                 ) : (
-                  "Fique por dentro das novidades do mundo dos animes."
+                  "Fique por dentro das novidades de conteúdo +18."
                 )}
               </p>
             </div>
           </div>
         </section>
-
-        {/* =====================================================
-            CONTADOR
-        ====================================================== */}
 
         {isSearchMode && (
           <div
@@ -964,17 +823,12 @@ function NewsPage() {
 
             <span>
               {searchResults.length}{" "}
-              {searchResults.length ===
-              1
+              {searchResults.length === 1
                 ? "resultado encontrado"
                 : "resultados encontrados"}
             </span>
           </div>
         )}
-
-        {/* =====================================================
-            NOTÍCIAS
-        ====================================================== */}
 
         {visibleNews.length > 0 ? (
           <>
@@ -989,15 +843,10 @@ function NewsPage() {
               {visibleNews.map(
                 (item) => (
                   <Link
-                    key={
-                      item.id
-                    }
+                    key={item.id}
                     to="/news/$id"
                     params={{
                       id: item.id,
-                    }}
-                    search={{
-                      page: currentPage,
                     }}
                     className="
                       group
@@ -1124,10 +973,6 @@ function NewsPage() {
               )}
             </section>
 
-            {/* =================================================
-                PAGINAÇÃO
-            ================================================== */}
-
             {totalPages > 1 && (
               <nav
                 className="
@@ -1152,13 +997,11 @@ function NewsPage() {
                     type="button"
                     onClick={() =>
                       goToPage(
-                        currentPage -
-                          1,
+                        currentPage - 1,
                       )
                     }
                     disabled={
-                      currentPage ===
-                      1
+                      currentPage === 1
                     }
                     className="
                       flex
@@ -1182,20 +1025,12 @@ function NewsPage() {
                       length:
                         totalPages,
                     },
-                    (
-                      _,
-                      index,
-                    ) =>
-                      index +
-                      1,
+                    (_, index) =>
+                      index + 1,
                   ).map(
-                    (
-                      page,
-                    ) => (
+                    (page) => (
                       <button
-                        key={
-                          page
-                        }
+                        key={page}
                         type="button"
                         onClick={() =>
                           goToPage(
@@ -1220,9 +1055,7 @@ function NewsPage() {
                           }
                         `}
                       >
-                        {
-                          page
-                        }
+                        {page}
                       </button>
                     ),
                   )}
@@ -1231,8 +1064,7 @@ function NewsPage() {
                     type="button"
                     onClick={() =>
                       goToPage(
-                        currentPage +
-                          1,
+                        currentPage + 1,
                       )
                     }
                     disabled={
@@ -1258,14 +1090,8 @@ function NewsPage() {
                 </div>
 
                 <p className="text-xs text-muted">
-                  Página{" "}
-                  {
-                    currentPage
-                  }{" "}
-                  de{" "}
-                  {
-                    totalPages
-                  }
+                  Página {currentPage} de{" "}
+                  {totalPages}
                 </p>
               </nav>
             )}
