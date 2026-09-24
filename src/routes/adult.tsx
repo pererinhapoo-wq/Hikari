@@ -90,15 +90,15 @@ function AdultPage() {
 
       {items.length > 0 ? (
         <>
-          {/* +18 */}
+          {/* 🔞 +18 */}
           <section className="space-y-2">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4 px-1">
               <h2 className="font-display text-xl tracking-tight sm:text-2xl">
                 🔞 +18
               </h2>
 
               <Link
-                to="/adult"
+                to="/adult/all"
                 className="shrink-0 text-xs font-semibold tracking-wide text-muted transition hover:text-fg"
               >
                 VER TUDO →
@@ -107,32 +107,32 @@ function AdultPage() {
 
             <AnimeRow
               title=""
-              items={recentItems}
+              items={items}
             />
           </section>
 
-          {/* Novos episódios */}
-          <section className="space-y-2">
-            <div className="flex items-center justify-between gap-4">
-              <h2 className="font-display text-xl tracking-tight sm:text-2xl">
-                Novos episódios
-              </h2>
+          {/* 🆕 Novos episódios */}
+          {recentItems.length > 0 && (
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-4 px-1">
+                <h2 className="font-display text-xl tracking-tight sm:text-2xl">
+                  Novos episódios
+                </h2>
 
-              {items.length > 0 && (
                 <Link
                   to="/adult/recent"
                   className="shrink-0 text-xs font-semibold tracking-wide text-muted transition hover:text-fg"
                 >
                   VER TUDO →
                 </Link>
-              )}
-            </div>
+              </div>
 
-            <AnimeRow
-              title=""
-              items={items}
-            />
-          </section>
+              <AnimeRow
+                title=""
+                items={recentItems}
+              />
+            </section>
+          )}
         </>
       ) : (
         <div className="rounded-xl bg-surface p-8 text-center shadow-[var(--shadow-border)]">
@@ -147,4 +147,4 @@ function AdultPage() {
       )}
     </div>
   );
-          }
+            }
