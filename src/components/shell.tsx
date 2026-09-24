@@ -148,9 +148,7 @@ export function Shell() {
   const [
     notifications,
     setNotifications,
-  ] = useState<
-    NotificationItem[]
-  >([]);
+  ] = useState<NotificationItem[]>([]);
 
   const [
     unreadCount,
@@ -181,6 +179,26 @@ export function Shell() {
         previousOverflow;
     };
   }, [notificationsOpen]);
+
+  /* =========================================================
+     TRAVA ROLAGEM DO FUNDO AO ABRIR O MENU LATERAL
+  ========================================================== */
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    const previousOverflow =
+      document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow =
+        previousOverflow;
+    };
+  }, [menuOpen]);
 
   /* =========================================================
      PERFIL PÚBLICO
@@ -1395,7 +1413,7 @@ export function Shell() {
 
               {/* =================================================
                   PERFIL
-              ================================================== */}
+              ================================================== */
               <div className="mt-6">
                 <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
                   Perfil
@@ -1571,4 +1589,4 @@ export function Shell() {
 
     </div>
   );
-               }
+}
