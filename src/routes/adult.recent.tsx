@@ -96,7 +96,16 @@ function getPaginationPages(
   pages.push(1);
 
   if (currentPage <= 5) {
-    pages.push(2, 3, 4, 5, 6, 7, "...");
+    pages.push(
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      "...",
+    );
+
     pages.push(totalPages);
 
     return pages;
@@ -154,7 +163,9 @@ function AdultRecentPage() {
 
   const totalPages = Math.max(
     1,
-    Math.ceil(items.length / itemsPerPage),
+    Math.ceil(
+      items.length / itemsPerPage,
+    ),
   );
 
   const currentPage = Math.min(
@@ -176,7 +187,10 @@ function AdultRecentPage() {
   );
 
   const changePage = (page: number) => {
-    if (page < 1 || page > totalPages) {
+    if (
+      page < 1 ||
+      page > totalPages
+    ) {
       return;
     }
 
@@ -192,15 +206,20 @@ function AdultRecentPage() {
     });
   };
 
+  function goBack() {
+    window.history.back();
+  }
+
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       <section>
-        <Link
-          to="/adult"
+        <button
+          type="button"
+          onClick={goBack}
           className="mt-2 inline-flex items-center rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
         >
           ‹ Voltar
-        </Link>
+        </button>
 
         <div className="mt-12">
           <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
@@ -282,4 +301,4 @@ function AdultRecentPage() {
       )}
     </div>
   );
-    }
+  }
