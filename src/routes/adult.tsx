@@ -1,5 +1,6 @@
 import {
   createFileRoute,
+  Link,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 
@@ -89,11 +90,23 @@ function AdultPage() {
 
       {items.length > 0 ? (
         <>
-          <AnimeRow
-            title="Novos episódios"
-            href="/adult"
-            items={recentItems}
-          />
+          <section className="space-y-2">
+            <AnimeRow
+              title="Novos episódios"
+              items={recentItems}
+            />
+
+            {recentItems.length > 0 && (
+              <div className="flex justify-end px-1">
+                <Link
+                  to="/adult/recent"
+                  className="text-xs font-semibold tracking-wide text-muted transition hover:text-fg"
+                >
+                  VER TUDO →
+                </Link>
+              </div>
+            )}
+          </section>
 
           <AnimeRow
             title="🔞 +18"
