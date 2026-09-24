@@ -97,14 +97,23 @@ function AdultRecentPage() {
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       <section>
-        <div>
-          <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-            Novos episódios
-          </h1>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+              Novos episódios
+            </h1>
 
-          <p className="mt-1 text-sm text-muted">
-            Confira os episódios mais recentes.
-          </p>
+            <p className="mt-1 text-sm text-muted">
+              Confira os episódios mais recentes.
+            </p>
+          </div>
+
+          <Link
+            to="/adult"
+            className="shrink-0 text-sm font-semibold text-muted transition hover:text-fg"
+          >
+            Voltar
+          </Link>
         </div>
       </section>
 
@@ -131,7 +140,7 @@ function AdultRecentPage() {
           </div>
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
               {Array.from(
                 { length: totalPages },
                 (_, index) => {
@@ -165,17 +174,8 @@ function AdultRecentPage() {
               )}
             </div>
           )}
-
-          <div className="flex justify-center pt-2">
-            <Link
-              to="/adult"
-              className="inline-flex rounded-lg bg-elevated px-4 py-2 text-sm font-semibold text-fg transition hover:bg-surface"
-            >
-              Voltar
-            </Link>
-          </div>
         </>
       )}
     </div>
   );
-          }
+        }
