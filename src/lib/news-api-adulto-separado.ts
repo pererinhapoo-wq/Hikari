@@ -1107,7 +1107,24 @@ async function buildNews(
     },
   );
 
-  return validNews;
+  // Um mesmo anime pode gerar mais de um tipo
+  // de notícia (ex.: "PRÓXIMO LANÇAMENTO" e
+  // "NOVO HENTAI"). Para a página +18,
+  // mostramos apenas uma notícia por anime,
+  // evitando cards duplicados. Como a lista já
+  // está ordenada por data, a primeira notícia
+  // de cada anime é a mais recente.
+  const uniqueNews =
+    Array.from(
+      new Map(
+        validNews.map((item) => [
+          item.animeId ?? item.id,
+          item,
+        ]),
+      ).values(),
+    );
+
+  return uniqueNews;
 }
 
 export const fetchAutomaticNews =
