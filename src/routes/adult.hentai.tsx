@@ -80,7 +80,8 @@ function AdultHentaiPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
 
-  const itemsPerPage = 6;
+  // 4 animes por página para criar mais páginas
+  const itemsPerPage = 4;
 
   const totalPages = Math.max(
     1,
