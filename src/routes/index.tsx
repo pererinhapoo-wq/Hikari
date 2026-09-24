@@ -1,10 +1,7 @@
 import {
   createFileRoute,
-  Link,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-
-import { useEffect, useState } from "react";
 
 import { fetchHomeCatalog } from "@/lib/api";
 import { useHikariStore } from "@/lib/store";
@@ -60,15 +57,6 @@ function Home() {
   const data = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
-  const continueWatching = useHikariStore(
-    (s) => s.continueWatching,
-  );
-
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
 
   const trending = overlayList(data.trending, locals);
   const popular = overlayList(data.popular, locals);
@@ -93,59 +81,6 @@ function Home() {
         />
       ) : (
         <HomePending />
-      )}
-
-      {!hydrated ? (
-        <section className="space-y-2">
-          <div className="h-6" />
-
-          <div className="rail -mx-4 px-4 sm:-mx-6 sm:px-6">
-            {Array.from({ length: 3 }, (_, i) => (
-              <AnimeCardSkeleton key={i} />
-            ))}
-          </div>
-        </section>
-      ) : (
-        continueWatching.length > 0 && (
-          <section className="space-y-2">
-            <h2 className="font-display text-base tracking-tight sm:text-2xl">
-              Continuar assistindo
-            </h2>
-
-            <div className="rail -mx-4 px-4 sm:-mx-6 sm:px-6">
-              {continueWatching.map((c) => (
-                <Link
-                  key={c.animeId}
-                  to="/watch/$id"
-                  params={{ id: c.animeId }}
-                  search={{ ep: c.episodeId }}
-                  className="w-40 shrink-0 overflow-hidden rounded-lg bg-elevated shadow-[var(--shadow-border)] sm:w-52"
-                >
-                  <div className="aspect-video bg-surface">
-                    {c.cover && (
-                      <img
-                        src={c.cover}
-                        alt=""
-                        className="size-full object-cover"
-                      />
-                    )}
-                  </div>
-
-                  <div className="px-2.5 py-1.5">
-                    <p className="truncate text-xs text-fg">
-                      {c.title}
-                    </p>
-
-                    <p className="truncate text-[11px] text-muted">
-                      Ep. {c.episodeNumber} ·{" "}
-                      {c.episodeTitle}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )
       )}
 
       <AnimeRow
