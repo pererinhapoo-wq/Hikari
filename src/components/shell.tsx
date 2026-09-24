@@ -10,6 +10,7 @@ import {
   Bell,
   Bookmark,
   CalendarDays,
+  ChevronDown,
   Clapperboard,
   House,
   Menu,
@@ -136,6 +137,9 @@ export function Shell() {
   const [menuOpen, setMenuOpen] =
     useState(false);
 
+  const [adultMenuOpen, setAdultMenuOpen] =
+    useState(false);
+
   const [
     notificationsOpen,
     setNotificationsOpen,
@@ -144,9 +148,7 @@ export function Shell() {
   const [
     notifications,
     setNotifications,
-  ] = useState<
-    NotificationItem[]
-  >([]);
+  ] = useState<NotificationItem[]>([]);
 
   const [
     unreadCount,
@@ -177,6 +179,26 @@ export function Shell() {
         previousOverflow;
     };
   }, [notificationsOpen]);
+
+  /* =========================================================
+     TRAVA ROLAGEM DO FUNDO AO ABRIR O MENU LATERAL
+  ========================================================== */
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    const previousOverflow =
+      document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow =
+        previousOverflow;
+    };
+  }, [menuOpen]);
 
   /* =========================================================
      PERFIL PÚBLICO
@@ -310,9 +332,11 @@ export function Shell() {
                 "hentai",
             ) ?? false;
 
-          if (isAdultArea
-            ? !isHentai
-            : isHentai) {
+          if (
+            isAdultArea
+              ? !isHentai
+              : isHentai
+          ) {
             return false;
           }
 
@@ -405,7 +429,6 @@ export function Shell() {
     searchOpen,
     searchQuery,
     localAnimes,
-    window.location.pathname,
   ]);
 
   /* =========================================================
@@ -1489,30 +1512,84 @@ export function Shell() {
 
                 <div className="space-y-1">
 
-                  <Link
-                    to={ADULT_NAV.to}
+                  <button
+                    type="button"
                     onClick={() =>
-                      setMenuOpen(
-                        false,
+                      setAdultMenuOpen(
+                        (value) => !value,
                       )
                     }
                     className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      "flex w-full items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
                       ADULT_NAV.match(
                         pathname,
                       )
                         ? "bg-elevated text-fg"
                         : "text-muted hover:bg-elevated hover:text-fg",
                     )}
+                    aria-expanded={
+                      adultMenuOpen
+                    }
                   >
                     <span className="flex size-5 items-center justify-center text-base">
                       🔞
                     </span>
 
-                    <span>
+                    <span className="flex-1 text-left">
                       +18
                     </span>
-                  </Link>
+
+                    <ChevronDown
+                      className={cn(
+                        "size-5 transition-transform",
+                        adultMenuOpen &&
+                          "rotate-180",
+                      )}
+                    />
+                  </button>
+
+                  {adultMenuOpen && (
+                    <div className="ml-9 space-y-1 border-l border-border pl-3">
+                      <Link
+                        to={ADULT_NAV.to}
+                        onClick={() =>
+                          setMenuOpen(
+                            false,
+                          )
+                        }
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors",
+                          pathname === "/adult"
+                            ? "bg-elevated text-fg"
+                            : "text-muted hover:bg-elevated hover:text-fg",
+                        )}
+                      >
+                        <span>Início</span>
+                      </Link>
+
+                      <Link
+                        to="/adult/news"
+                        onClick={() =>
+                          setMenuOpen(false)
+                        }
+                        className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
+                      >
+                        <span>Notícias +18</span>
+                      </Link>
+
+                      <Link
+                        to="/adult/tags"
+                        onClick={() =>
+                          setMenuOpen(false)
+                        }
+                        className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
+                      >
+                        <Tags className="size-5" />
+                        <span>Tags</span>
+                      </Link>
+
+                    </div>
+                  )}
 
                 </div>
               </div>
@@ -1546,4 +1623,4 @@ export function Shell() {
 
     </div>
   );
-      }
+}
