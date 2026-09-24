@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import {
+  useEffect,
   useMemo,
   useState,
   type FormEvent,
@@ -23,7 +24,7 @@ import {
 import {
   fetchAdultNews,
   type AutomaticNewsItem,
-} from "@/lib/news-api-adulto-separado";
+} from "@/lib/news-api";
 
 export const Route = createFileRoute(
   "/adult/news",
@@ -47,7 +48,7 @@ export const Route = createFileRoute(
   component: NewsPage,
 });
 
-const NEWS_PER_PAGE = 4;
+const NEWS_PER_PAGE = 8;
 
 function parseNewsDate(
   date: string,
@@ -168,6 +169,16 @@ function NewsPage() {
       ? search.q
       : "";
 
+  /*
+   * =========================================================
+   * BUSCA
+   * =========================================================
+   *
+   * A busca começa fechada mesmo quando existe q na URL.
+   * Assim, ao recarregar uma página de resultados, o campo
+   * não abre sozinho.
+   */
+
   const [
     searchOpen,
     setSearchOpen,
@@ -177,6 +188,12 @@ function NewsPage() {
     searchQuery,
     setSearchQuery,
   ] = useState("");
+
+  /*
+   * =========================================================
+   * NOTÍCIAS
+   * =========================================================
+   */
 
   const news = useMemo(() => {
     return [
@@ -191,6 +208,12 @@ function NewsPage() {
         ),
     );
   }, [loaderNews]);
+
+  /*
+   * =========================================================
+   * RESULTADOS ENQUANTO DIGITA
+   * =========================================================
+   */
 
   const liveSearchResults =
     useMemo(() => {
@@ -227,6 +250,12 @@ function NewsPage() {
       searchQuery,
     ]);
 
+  /*
+   * =========================================================
+   * RESULTADOS DA URL
+   * =========================================================
+   */
+
   const searchResults =
     useMemo(() => {
       const query =
@@ -262,11 +291,23 @@ function NewsPage() {
       urlQuery,
     ]);
 
+  /*
+   * =========================================================
+   * PRIMEIROS 5 RESULTADOS
+   * =========================================================
+   */
+
   const previewSearchResults =
     liveSearchResults.slice(
       0,
       5,
     );
+
+  /*
+   * =========================================================
+   * MODO DE BUSCA
+   * =========================================================
+   */
 
   const isSearchMode =
     Boolean(
@@ -287,6 +328,12 @@ function NewsPage() {
       ),
     );
 
+  /*
+   * =========================================================
+   * PESQUISAR
+   * =========================================================
+   */
+
   const handleSearchSubmit =
     (
       event: FormEvent<HTMLFormElement>,
@@ -300,6 +347,11 @@ function NewsPage() {
         return;
       }
 
+      /*
+       * Fecha a caixa imediatamente.
+       * Os resultados continuam na página porque q
+       * continua sendo enviado pela URL.
+       */
       setSearchOpen(false);
 
       void navigate({
@@ -311,6 +363,12 @@ function NewsPage() {
         resetScroll: false,
       });
     };
+
+  /*
+   * =========================================================
+   * VER TODOS OS RESULTADOS
+   * =========================================================
+   */
 
   const handleViewAllResults =
     () => {
@@ -333,14 +391,32 @@ function NewsPage() {
       });
     };
 
+  /*
+   * =========================================================
+   * LIMPAR CAMPO DA BUSCA
+   * =========================================================
+   */
+
   const clearSearchInput = () => {
     setSearchQuery("");
   };
+
+  /*
+   * =========================================================
+   * FECHAR BUSCA
+   * =========================================================
+   */
 
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchQuery("");
   };
+
+  /*
+   * =========================================================
+   * VOLTAR
+   * =========================================================
+   */
 
   const handleBack = () => {
     if (isSearchMode) {
@@ -363,6 +439,12 @@ function NewsPage() {
       to: "/adult",
     });
   };
+
+  /*
+   * =========================================================
+   * PAGINAÇÃO
+   * =========================================================
+   */
 
   const goToPage = (
     page: number,
@@ -390,6 +472,12 @@ function NewsPage() {
       behavior: "smooth",
     });
   };
+
+  /*
+   * =========================================================
+   * NOTÍCIAS VISÍVEIS
+   * =========================================================
+   */
 
   const visibleNews =
     useMemo(() => {
@@ -421,6 +509,11 @@ function NewsPage() {
           lg:px-8
         "
       >
+
+        {/* =====================================================
+            TOPO
+        ====================================================== */}
+
         <div
           className="
             mb-7
@@ -465,6 +558,11 @@ function NewsPage() {
               ) {
                 closeSearch();
               } else {
+                /*
+                 * Ao abrir novamente a busca, preservamos
+                 * os resultados que já estão na página.
+                 * O campo começa vazio para uma nova pesquisa.
+                 */
                 setSearchQuery("");
                 setSearchOpen(true);
               }
@@ -503,6 +601,10 @@ function NewsPage() {
             )}
           </button>
         </div>
+
+        {/* =====================================================
+            BUSCA
+        ====================================================== */}
 
         {searchOpen && (
           <section
@@ -612,6 +714,10 @@ function NewsPage() {
               </div>
             </form>
 
+            {/* =================================================
+                RESULTADOS
+            ================================================== */}
+
             {searchQuery.trim() && (
               <div className="mt-3">
                 {previewSearchResults.length ===
@@ -639,6 +745,9 @@ function NewsPage() {
                       bg-surface
                     "
                   >
+
+                    {/* PRIMEIROS 5 */}
+
                     {previewSearchResults.map(
                       (
                         item,
@@ -724,6 +833,10 @@ function NewsPage() {
                       ),
                     )}
 
+                    {/* =================================================
+                        VER TODOS
+                    ================================================== */}
+
                     {liveSearchResults.length >
                       5 && (
                       <button
@@ -763,6 +876,10 @@ function NewsPage() {
             )}
           </section>
         )}
+
+        {/* =====================================================
+            CABEÇALHO
+        ====================================================== */}
 
         <section className="mb-7">
           <div
@@ -821,6 +938,10 @@ function NewsPage() {
           </div>
         </section>
 
+        {/* =====================================================
+            CONTADOR
+        ====================================================== */}
+
         {isSearchMode && (
           <div
             className="
@@ -843,6 +964,10 @@ function NewsPage() {
             </span>
           </div>
         )}
+
+        {/* =====================================================
+            NOTÍCIAS
+        ====================================================== */}
 
         {visibleNews.length > 0 ? (
           <>
@@ -991,6 +1116,10 @@ function NewsPage() {
                 ),
               )}
             </section>
+
+            {/* =================================================
+                PAGINAÇÃO
+            ================================================== */}
 
             {totalPages > 1 && (
               <nav
@@ -1176,4 +1305,4 @@ function NewsPage() {
       </div>
     </main>
   );
-                }
+      }
