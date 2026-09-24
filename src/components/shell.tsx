@@ -1413,7 +1413,7 @@ export function Shell() {
 
               {/* =================================================
                   PERFIL
-              ================================================== */
+              ================================================== */}
               <div className="mt-6">
                 <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
                   Perfil
@@ -1543,7 +1543,7 @@ export function Shell() {
                       <Link
                         to="/adult/news"
                         onClick={() =>
-                          setMobileSidebarOpen(false)
+                          setMenuOpen(false)
                         }
                         className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
                       >
