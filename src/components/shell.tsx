@@ -1522,9 +1522,15 @@ export function Shell() {
                         <span>Início</span>
                       </Link>
 
-                      <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
+                      <Link
+                        to="/adult/news"
+                        onClick={() =>
+                          setMobileSidebarOpen(false)
+                        }
+                        className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
+                      >
                         <span>Notícias +18</span>
-                      </div>
+                      </Link>
 
                       <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
                         <span>Tags</span>
@@ -1572,4 +1578,4 @@ export function Shell() {
 
     </div>
   );
-      }
+               }
