@@ -1119,42 +1119,82 @@ function mapAniFull(
 async function fetchRecentAdultReleasesFromAni(): Promise<
   SlimAnime[]
 > {
-  const data =
-    await anilistGraphQL<{
-      Page: {
-        media: AniMedia[];
-      };
-    }>(
-      `
-      query RecentAdultReleases {
-        Page(
-          page: 1,
-          perPage: 50
-        ) {
-          media(
-            type: ANIME,
-            isAdult: true,
-            genre: "Hentai",
-            sort: START_DATE_DESC
-          ) {
-            ${CARD_FIELDS}
-          }
-        }
-      }
-      `,
+  /*
+   * Busca várias páginas para que a seção
+   * "Novos episódios" tenha bastante conteúdo.
+   *
+   * Mantemos a janela recente do AniList,
+   * mas não ficamos limitados aos primeiros
+   * 50 resultados da primeira página.
+   */
+  const pages = Array.from(
+    { length: 10 },
+    (_, index) => index + 1,
+  );
+
+  const results =
+    await Promise.all(
+      pages.map(async (page) => {
+        const data =
+          await anilistGraphQL<{
+            Page: {
+              media: AniMedia[];
+            };
+          }>(
+            `
+            query RecentAdultReleases(
+              $page: Int
+            ) {
+              Page(
+                page: $page,
+                perPage: 50
+              ) {
+                media(
+                  type: ANIME,
+                  isAdult: true,
+                  genre: "Hentai",
+                  sort: START_DATE_DESC
+                ) {
+                  ${CARD_FIELDS}
+                }
+              }
+            }
+            `,
+            { page },
+          );
+
+        return data.Page.media ?? [];
+      }),
     );
 
-  return (
-    data.Page.media ?? []
-  )
-    .filter(
-      (anime) =>
-        isHentaiAnime(anime),
-    )
-    .map(
-      mapAniSlim,
-    )
-    .slice(0, 50);
+  const seen =
+    new Set<number>();
+
+  const releases: SlimAnime[] =
+    [];
+
+  for (
+    const media of results.flat()
+  ) {
+    if (
+      !media.id ||
+      seen.has(media.id) ||
+      !isHentaiAnime(media)
+    ) {
+      continue;
+    }
+
+    seen.add(media.id);
+
+    releases.push(
+      mapAniSlim(media),
+    );
+  }
+
+  return releases.slice(
+    0,
+    500,
+  );
 }
 
 async function fetchRecentReleasesFromAni(): Promise<
@@ -2310,7 +2350,7 @@ export const fetchAdultCatalog =
   }).handler(
     async () => {
       const key =
-        "adult-catalog:v3";
+        "adult-catalog:v4";
 
       const cached =
         fromCache<SearchResult>(
