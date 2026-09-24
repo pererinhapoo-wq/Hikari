@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  ArrowLeft,
   Bookmark,
   BookmarkCheck,
   Check,
@@ -359,6 +360,12 @@ function AnimePage() {
     }
   };
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    }
+  };
+
   const bannerIsReady =
     loadedBanner?.id === anime.id &&
     loadedBanner.id === id;
@@ -385,6 +392,20 @@ function AnimePage() {
           <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
 
           <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
+
+          {/* BOTÃO VOLTAR */}
+          {window.history.length > 1 && (
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="Voltar"
+              title="Voltar"
+              className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-white/10 bg-black/45 px-3 py-2 text-sm font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/65 sm:left-6"
+            >
+              <ArrowLeft className="size-4" />
+              <span>Voltar</span>
+            </button>
+          )}
         </div>
 
         <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
