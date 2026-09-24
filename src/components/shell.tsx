@@ -1536,13 +1536,6 @@ export function Shell() {
                         <span>Tags</span>
                       </div>
 
-                      <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
-                        <span>Novidades</span>
-                      </div>
-
-                      <div className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted">
-                        <span>Em destaque</span>
-                      </div>
                     </div>
                   )}
 
