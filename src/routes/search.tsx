@@ -57,6 +57,7 @@ type Search = {
   status?: string;
   sort?: string;
   page?: number;
+  adult?: boolean;
 };
 
 export const Route =
@@ -107,6 +108,12 @@ export const Route =
               1,
               Number(raw.page),
             )
+          : undefined,
+
+      adult:
+        raw.adult === true ||
+        raw.adult === "true"
+          ? true
           : undefined,
     }),
 
@@ -267,7 +274,7 @@ function SearchPage() {
    * LIMPAR BUSCA SOMENTE NO RELOAD REAL
    * =========================================================
    *
-   * O gênero é preservado.
+   * O gênero e o tipo da busca são preservados.
    */
 
   useEffect(() => {
@@ -281,6 +288,8 @@ function SearchPage() {
       search: {
         genre:
           search.genre,
+        adult:
+          search.adult,
       },
       replace: true,
     }).finally(() => {
@@ -290,6 +299,7 @@ function SearchPage() {
     clearingOnReload,
     navigate,
     search.genre,
+    search.adult,
   ]);
 
   /*
@@ -418,6 +428,37 @@ function SearchPage() {
               locals,
             ).filter(
               (anime) => {
+                const isHentai =
+                  anime.genres?.some(
+                    (genre) =>
+                      genre
+                        .trim()
+                        .toLowerCase() ===
+                      "hentai",
+                  ) ?? false;
+
+                /*
+                 * Busca adulta:
+                 * somente Hentai.
+                 *
+                 * Busca normal:
+                 * exclui Hentai.
+                 */
+
+                if (
+                  search.adult
+                ) {
+                  if (
+                    !isHentai
+                  ) {
+                    return false;
+                  }
+                } else if (
+                  isHentai
+                ) {
+                  return false;
+                }
+
                 if (
                   q &&
                   !`${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
@@ -445,6 +486,29 @@ function SearchPage() {
         overlayList(
           result.items,
           locals,
+        ).filter(
+          (anime) => {
+            const isHentai =
+              anime.genres?.some(
+                (genre) =>
+                  genre
+                    .trim()
+                    .toLowerCase() ===
+                  "hentai",
+              ) ?? false;
+
+            /*
+             * Proteção adicional no resultado remoto.
+             *
+             * Isso garante que nenhum conteúdo +18
+             * apareça na busca normal, e que a busca
+             * adulta permaneça somente em Hentai.
+             */
+
+            return search.adult
+              ? isHentai
+              : !isHentai;
+          },
         );
 
       const seen =
@@ -470,6 +534,7 @@ function SearchPage() {
       result.items,
       search.q,
       search.genre,
+      search.adult,
       clearingOnReload,
     ]);
 
