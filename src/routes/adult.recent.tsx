@@ -97,35 +97,25 @@ function AdultRecentPage() {
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       <section>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-              Novos episódios
-            </h1>
-
-            <p className="mt-1 text-sm text-muted">
-              Confira os episódios mais recentes.
-            </p>
-          </div>
-
+        {/* Botão Voltar — padrão usado no Calendário */}
+        <div className="mb-6">
           <Link
             to="/adult"
-            className="
-              mt-1
-              shrink-0
-              rounded-md
-              px-2
-              py-1
-              text-sm
-              font-semibold
-              text-muted
-              transition
-              hover:bg-elevated
-              hover:text-fg
-            "
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-fg"
           >
+            <span aria-hidden="true">‹</span>
             Voltar
           </Link>
+        </div>
+
+        <div>
+          <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+            Novos episódios
+          </h1>
+
+          <p className="mt-1 text-sm text-muted">
+            Confira os episódios mais recentes.
+          </p>
         </div>
       </section>
 
@@ -190,4 +180,4 @@ function AdultRecentPage() {
       )}
     </div>
   );
-    }
+}
