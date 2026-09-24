@@ -10,7 +10,10 @@ export type AutomaticNewsItem = {
   type:
     | "NOVA TEMPORADA"
     | "TRAILER"
-    | "NOVO EPISÓDIO";
+    | "NOVO EPISÓDIO"
+    | "PRÓXIMO LANÇAMENTO"
+    | "DESTAQUE"
+    | "NOVO HENTAI";
   title: string;
   description: string;
   date: string;
@@ -43,6 +46,8 @@ type AniMedia = {
   format?: string | null;
   status?: string | null;
   episodes?: number | null;
+  score?: number | null;
+  popularity?: number | null;
   season?: string | null;
   seasonYear?: number | null;
 
@@ -591,7 +596,7 @@ async function fetchAdultCatalogNews(): Promise<
         body: JSON.stringify({
           query: `
             query AdultNews {
-              Page(
+              trending: Page(
                 page: 1
                 perPage: 50
               ) {
@@ -602,6 +607,107 @@ async function fetchAdultCatalogNews(): Promise<
                 ) {
                   id
                   isAdult
+                  score
+                  popularity
+
+                  title {
+                    romaji
+                    english
+                    native
+                  }
+
+                  coverImage {
+                    extraLarge
+                    large
+                  }
+
+                  description(
+                    asHtml: false
+                  )
+
+                  format
+                  status
+                  episodes
+                  season
+                  seasonYear
+
+                  startDate {
+                    year
+                    month
+                    day
+                  }
+
+                  trailer {
+                    id
+                    site
+                    thumbnail
+                  }
+                }
+              }
+
+              upcoming: Page(
+                page: 1
+                perPage: 50
+              ) {
+                media(
+                  type: ANIME
+                  isAdult: true
+                  status: NOT_YET_RELEASED
+                  sort: START_DATE_DESC
+                ) {
+                  id
+                  isAdult
+                  score
+                  popularity
+
+                  title {
+                    romaji
+                    english
+                    native
+                  }
+
+                  coverImage {
+                    extraLarge
+                    large
+                  }
+
+                  description(
+                    asHtml: false
+                  )
+
+                  format
+                  status
+                  episodes
+                  season
+                  seasonYear
+
+                  startDate {
+                    year
+                    month
+                    day
+                  }
+
+                  trailer {
+                    id
+                    site
+                    thumbnail
+                  }
+                }
+              }
+
+              topRated: Page(
+                page: 1
+                perPage: 50
+              ) {
+                media(
+                  type: ANIME
+                  isAdult: true
+                  sort: SCORE_DESC
+                ) {
+                  id
+                  isAdult
+                  score
+                  popularity
 
                   title {
                     romaji
@@ -656,7 +762,11 @@ async function fetchAdultCatalogNews(): Promise<
 
   const json =
     (await response.json()) as {
-      data?: AniListResponse;
+      data?: {
+        trending?: { media: AniMedia[] };
+        upcoming?: { media: AniMedia[] };
+        topRated?: { media: AniMedia[] };
+      };
 
       errors?: {
         message?: string;
@@ -665,7 +775,7 @@ async function fetchAdultCatalogNews(): Promise<
 
   if (
     json.errors?.length ||
-    !json.data?.Page
+    !json.data
   ) {
     throw new Error(
       json.errors?.[0]
@@ -674,13 +784,37 @@ async function fetchAdultCatalogNews(): Promise<
     );
   }
 
-  return (
-    json.data.Page.media ?? []
-  ).filter(
-    (anime) =>
+  const trending =
+    json.data.trending?.media ?? [];
+  const upcoming =
+    json.data.upcoming?.media ?? [];
+  const topRated =
+    json.data.topRated?.media ?? [];
+
+  const selected = new Map<
+    number,
+    AniMedia
+  >();
+
+  for (const anime of [
+    ...trending.slice(0, 24),
+    ...upcoming.slice(0, 24),
+    ...topRated.slice(0, 24),
+  ]) {
+    if (
       anime.isAdult === true &&
       anime.id > 0 &&
-      anime.format !== "MUSIC",
+      anime.format !== "MUSIC"
+    ) {
+      selected.set(
+        anime.id,
+        anime,
+      );
+    }
+  }
+
+  return Array.from(
+    selected.values(),
   );
 }
 
@@ -737,6 +871,57 @@ async function buildNews(
     AutomaticNewsItem[] =
     [];
 
+  const now = Date.now();
+  const isAdultFeed =
+    media.some(
+      (anime) => anime.isAdult === true,
+    );
+
+  const topRated = [
+    ...media,
+  ]
+    .filter(
+      (anime) =>
+        typeof anime.score ===
+          "number" &&
+        anime.score > 0,
+    )
+    .sort(
+      (a, b) =>
+        (b.score ?? 0) -
+        (a.score ?? 0),
+    )
+    .slice(0, 8);
+
+  if (isAdultFeed) {
+    for (const anime of topRated) {
+    const title = titleOf(anime);
+    const preparedIndex = prepared.findIndex(
+      ({ anime: preparedAnime }) =>
+        preparedAnime.id === anime.id,
+    );
+    const description =
+      preparedIndex >= 0
+        ? descriptions[preparedIndex]
+        : "";
+
+    news.push({
+      id: `auto-highlight-${anime.id}`,
+      type: "DESTAQUE",
+      title,
+      description,
+      date: formatDate(anime),
+      image:
+        anime.coverImage?.extraLarge ||
+        anime.coverImage?.large ||
+        "",
+      animeId: String(anime.id),
+      trailerUrl: trailerOf(anime),
+      isAdult: true,
+    });
+    }
+  }
+
   for (
     let index = 0;
     index <
@@ -754,6 +939,67 @@ async function buildNews(
     const description =
       descriptions[index];
 
+    const isAdult =
+      anime.isAdult === true;
+
+    const startDate = anime.startDate;
+    const startTimestamp =
+      startDate?.year &&
+      startDate.month &&
+      startDate.day
+        ? new Date(
+            startDate.year,
+            startDate.month - 1,
+            startDate.day,
+          ).getTime()
+        : 0;
+
+    if (
+      isAdultFeed &&
+      isAdult &&
+      startTimestamp > now
+    ) {
+      news.push({
+        id:
+          `auto-upcoming-${anime.id}`,
+
+        type:
+          "PRÓXIMO LANÇAMENTO",
+
+        title:
+          isAdult
+            ? title
+            : `${title} — próximo lançamento`,
+
+        description:
+          `Novo conteúdo de ${title} está previsto para ${formatDate(
+            anime,
+          )}. ${description}`,
+
+        date:
+          formatDate(
+            anime,
+          ),
+
+        image:
+          anime.coverImage
+            ?.extraLarge ||
+          anime.coverImage
+            ?.large ||
+          "",
+
+        animeId:
+          String(
+            anime.id,
+          ),
+
+        trailerUrl,
+
+        isAdult:
+          anime.isAdult === true,
+      });
+    }
+
     if (
       latestEpisode &&
       latestEpisode.episode > 0 &&
@@ -768,7 +1014,9 @@ async function buildNews(
           "NOVO EPISÓDIO",
 
         title:
-          `${title} — episódio ${latestEpisode.episode}`,
+          isAdult
+            ? `${title} — Episode ${latestEpisode.episode}`
+            : `${title} — episódio ${latestEpisode.episode}`,
 
         description:
           `O episódio ${latestEpisode.episode} de ${title} foi ao ar em ${formatAiringDate(
@@ -808,7 +1056,9 @@ async function buildNews(
           "TRAILER",
 
         title:
-          `${title} — novo trailer`,
+          isAdult
+            ? title
+            : `${title} — novo trailer`,
 
         description,
 
@@ -840,10 +1090,14 @@ async function buildNews(
           `auto-season-${anime.id}`,
 
         type:
-          "NOVA TEMPORADA",
+          isAdult
+            ? "NOVO HENTAI"
+            : "NOVA TEMPORADA",
 
         title:
-          `${title} — nova temporada`,
+          isAdult
+            ? title
+            : `${title} — nova temporada`,
 
         description,
 
