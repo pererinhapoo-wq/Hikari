@@ -97,7 +97,7 @@ function AdultPage() {
 
           <AnimeRow
             title="Hentai"
-            href="/adult/recent"
+            href="/adult/hentai"
             items={items}
           />
         </>
@@ -114,4 +114,4 @@ function AdultPage() {
       )}
     </div>
   );
-}
+      }
