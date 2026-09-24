@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { currentAnimeSeason, stripHtml } from "@/lib/utils";
+import {
+  currentAnimeSeason,
+  stripHtml,
+} from "@/lib/utils";
 
 export type AutomaticNewsItem = {
   id: string;
@@ -18,21 +21,25 @@ const ANILIST = "https://graphql.anilist.co";
 type AniMedia = {
   id: number;
   isAdult?: boolean | null;
+
   title?: {
     romaji?: string | null;
     english?: string | null;
     native?: string | null;
   } | null;
+
   coverImage?: {
     extraLarge?: string | null;
     large?: string | null;
   } | null;
+
   description?: string | null;
   format?: string | null;
   status?: string | null;
   episodes?: number | null;
   season?: string | null;
   seasonYear?: number | null;
+
   startDate?: {
     year?: number | null;
     month?: number | null;
@@ -151,12 +158,14 @@ async function fetchSeason(
       ANILIST,
       {
         method: "POST",
+
         headers: {
           "Content-Type":
             "application/json",
           Accept:
             "application/json",
         },
+
         body: JSON.stringify({
           query: `
             query AutomaticNews(
@@ -206,11 +215,13 @@ async function fetchSeason(
               }
             }
           `,
+
           variables: {
             season,
             year,
           },
         }),
+
         signal:
           AbortSignal.timeout(
             12000,
@@ -282,7 +293,8 @@ export const fetchAutomaticNews =
             (
               anime,
             ): AutomaticNewsItem => ({
-              id: `auto-${anime.id}`,
+              id:
+                `auto-${anime.id}`,
 
               type:
                 "NOVA TEMPORADA",
@@ -324,7 +336,6 @@ export const fetchAutomaticNews =
     }
   });
 
-
 export const fetchAdultNews =
   createServerFn({
     method: "GET",
@@ -362,7 +373,8 @@ export const fetchAdultNews =
             (
               anime,
             ): AutomaticNewsItem => ({
-              id: `auto-adult-${anime.id}`,
+              id:
+                `auto-adult-${anime.id}`,
 
               type:
                 "NOVA TEMPORADA",
