@@ -1,1258 +1,1226 @@
-import { createServerFn } from "@tanstack/react-start";
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+} from "@tanstack/react-router";
 
 import {
-  currentAnimeSeason,
-  stripHtml,
-} from "@/lib/utils";
+  ArrowLeft,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Newspaper,
+  Search,
+  X,
+} from "lucide-react";
 
-export type AutomaticNewsItem = {
-  id: string;
-  type:
-    | "NOVA TEMPORADA"
-    | "TRAILER"
-    | "NOVO EPISÓDIO"
-    | "PRÓXIMO LANÇAMENTO"
-    | "DESTAQUE"
-    | "NOVO HENTAI";
-  title: string;
-  description: string;
-  date: string;
-  image: string;
-  animeId: string;
-  trailerUrl?: string;
-  isAdult?: boolean;
-};
+import {
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 
-const ANILIST =
-  "https://grokhikari.vercel.app/api-anilist";
+import {
+  fetchAdultNews,
+  type AutomaticNewsItem,
+} from "@/lib/news-api-adulto-separado";
 
-type AniMedia = {
-  id: number;
-  isAdult?: boolean | null;
+export const Route = createFileRoute(
+  "/adult/news",
+)({
+  validateSearch: (search) => ({
+    q:
+      typeof search.q === "string"
+        ? search.q
+        : "",
 
-  title?: {
-    romaji?: string | null;
-    english?: string | null;
-    native?: string | null;
-  } | null;
+    page: Math.max(
+      1,
+      Number(search.page) || 1,
+    ),
+  }),
 
-  coverImage?: {
-    extraLarge?: string | null;
-    large?: string | null;
-  } | null;
+  loader: async () => {
+    return await fetchAdultNews();
+  },
 
-  description?: string | null;
+  component: NewsPage,
+});
 
-  format?: string | null;
-  status?: string | null;
-  episodes?: number | null;
-  score?: number | null;
-  popularity?: number | null;
-  season?: string | null;
-  seasonYear?: number | null;
+const NEWS_PER_PAGE = 8;
 
-  startDate?: {
-    year?: number | null;
-    month?: number | null;
-    day?: number | null;
-  } | null;
-
-  trailer?: {
-    id?: string | null;
-    site?: string | null;
-    thumbnail?: string | null;
-  } | null;
-};
-
-type AniListResponse = {
-  Page: {
-    media: AniMedia[];
-  };
-};
-
-type AiringScheduleItem = {
-  id?: number | null;
-  mediaId?: number | null;
-  episode?: number | null;
-  airingAt?: number | null;
-};
-
-type AiringScheduleResponse = {
-  Page: {
-    airingSchedules: AiringScheduleItem[];
-  };
-};
-
-const cache = new Map<
-  string,
-  {
-    at: number;
-    data: AutomaticNewsItem[];
+function parseNewsDate(
+  date: string,
+) {
+  if (!date) {
+    return 0;
   }
->();
 
-const translationCache =
-  new Map<
+  const normalized =
+    date.trim().toLowerCase();
+
+  const numericMatch =
+    normalized.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
+    );
+
+  if (numericMatch) {
+    const [
+      ,
+      day,
+      month,
+      year,
+    ] = numericMatch;
+
+    return new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+    ).getTime();
+  }
+
+  const monthNames: Record<
     string,
-    string
-  >();
+    number
+  > = {
+    janeiro: 0,
+    fevereiro: 1,
+    março: 2,
+    abril: 3,
+    maio: 4,
+    junho: 5,
+    julho: 6,
+    agosto: 7,
+    setembro: 8,
+    outubro: 9,
+    novembro: 10,
+    dezembro: 11,
+  };
 
-const TTL =
-  10 * 60 * 1000;
-
-function fromCache(
-  key: string,
-): AutomaticNewsItem[] | null {
-  const hit =
-    cache.get(key);
-
-  if (!hit) {
-    return null;
-  }
-
-  if (
-    Date.now() - hit.at >
-    TTL
-  ) {
-    cache.delete(key);
-
-    return null;
-  }
-
-  return hit.data;
-}
-
-function toCache(
-  key: string,
-  data: AutomaticNewsItem[],
-): AutomaticNewsItem[] {
-  cache.set(key, {
-    at: Date.now(),
-    data,
-  });
-
-  return data;
-}
-
-function formatDate(
-  media: AniMedia,
-): string {
-  const date =
-    media.startDate;
-
-  if (
-    !date?.year ||
-    !date.month ||
-    !date.day
-  ) {
-    return `${
-      media.seasonYear ??
-      "2026"
-    }`;
-  }
-
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    },
-  ).format(
-    new Date(
-      date.year,
-      date.month - 1,
-      date.day,
-    ),
-  );
-}
-
-function formatAiringDate(
-  airingAt: number,
-): string {
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    },
-  ).format(
-    new Date(
-      airingAt * 1000,
-    ),
-  );
-}
-
-function titleOf(
-  media: AniMedia,
-): string {
-  return (
-    media.title?.english ||
-    media.title?.romaji ||
-    media.title?.native ||
-    "Anime"
-  );
-}
-
-function cleanDescription(
-  value:
-    | string
-    | null
-    | undefined,
-): string {
-  return stripHtml(
-    value,
-  ).trim();
-}
-
-async function translateToPortuguese(
-  text: string,
-): Promise<string> {
-  const cleaned =
-    text.trim();
-
-  if (!cleaned) {
-    return "";
-  }
-
-  const cached =
-    translationCache.get(
-      cleaned,
+  const textMatch =
+    normalized.match(
+      /^(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})$/,
     );
 
-  if (cached) {
-    return cached;
+  if (textMatch) {
+    const [
+      ,
+      day,
+      monthName,
+      year,
+    ] = textMatch;
+
+    const month =
+      monthNames[monthName];
+
+    if (month !== undefined) {
+      return new Date(
+        Number(year),
+        month,
+        Number(day),
+      ).getTime();
+    }
   }
 
-  try {
-    const url =
-      "https://translate.googleapis.com/translate_a/single" +
-      "?client=gtx" +
-      "&sl=auto" +
-      "&tl=pt" +
-      "&dt=t" +
-      `&q=${encodeURIComponent(
-        cleaned.slice(0, 5000),
-      )}`;
+  const parsed =
+    Date.parse(date);
 
-    const response =
-      await fetch(
-        url,
-        {
-          signal:
-            AbortSignal.timeout(
-              8000,
-            ),
-        },
-      );
-
-    if (!response.ok) {
-      return cleaned;
-    }
-
-    const json =
-      (await response.json()) as unknown;
-
-    if (
-      !Array.isArray(json) ||
-      !Array.isArray(json[0])
-    ) {
-      return cleaned;
-    }
-
-    const translated =
-      json[0]
-        .filter(
-          (part) =>
-            Array.isArray(part) &&
-            typeof part[0] ===
-              "string",
-        )
-        .map(
-          (part) =>
-            part[0] as string,
-        )
-        .join("")
-        .trim();
-
-    if (!translated) {
-      return cleaned;
-    }
-
-    translationCache.set(
-      cleaned,
-      translated,
-    );
-
-    return translated;
-  } catch {
-    return cleaned;
+  if (!Number.isNaN(parsed)) {
+    return parsed;
   }
+
+  return 0;
 }
 
-async function descriptionOf(
-  media: AniMedia,
-): Promise<string> {
-  const description =
-    cleanDescription(
-      media.description,
-    );
-
-  if (!description) {
-    return `${titleOf(
-      media,
-    )} faz parte da programação da temporada de ${(
-      media.season ?? ""
-    ).toLowerCase()} de ${
-      media.seasonYear ?? ""
-    }.`;
-  }
-
-  return translateToPortuguese(
-    description,
-  );
+function normalizeSearchText(
+  value: string,
+) {
+  return value
+    .normalize("NFD")
+    .replace(
+      /[\u0300-\u036f]/g,
+      "",
+    )
+    .toLowerCase()
+    .trim();
 }
 
-function trailerOf(
-  media: AniMedia,
-): string | undefined {
-  const trailer =
-    media.trailer;
+function NewsPage() {
+  const navigate =
+    useNavigate({
+      from: "/adult/news",
+    });
 
-  if (
-    !trailer?.id ||
-    trailer.site !==
-      "youtube"
-  ) {
-    return undefined;
-  }
+  const loaderNews =
+    Route.useLoaderData() as AutomaticNewsItem[];
 
-  return `https://www.youtube.com/embed/${trailer.id}`;
-}
+  const search =
+    Route.useSearch();
 
-async function fetchLatestAiredEpisodes(): Promise<
-  Map<
-    number,
-    {
-      episode: number;
-      airingAt: number;
-    }
-  >
-> {
-  const result =
-    new Map<
-      number,
-      {
-        episode: number;
-        airingAt: number;
-      }
-    >();
-
-  try {
-    const response =
-      await fetch(
-        ANILIST,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            Accept:
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            query: `
-              query LatestAiredEpisodes {
-                Page(
-                  page: 1
-                  perPage: 50
-                ) {
-                  airingSchedules(
-                    notYetAired: false
-                    sort: TIME_DESC
-                  ) {
-                    id
-                    mediaId
-                    episode
-                    airingAt
-                  }
-                }
-              }
-            `,
-          }),
-
-          signal:
-            AbortSignal.timeout(
-              12000,
-            ),
-        },
-      );
-
-    if (!response.ok) {
-      return result;
-    }
-
-    const json =
-      (await response.json()) as {
-        data?: AiringScheduleResponse;
-
-        errors?: {
-          message?: string;
-        }[];
-      };
-
-    if (
-      json.errors?.length ||
-      !json.data?.Page
-    ) {
-      return result;
-    }
-
-    for (const item of
-      json.data.Page
-        .airingSchedules ?? []) {
-      if (
-        typeof item.mediaId !==
-          "number" ||
-        typeof item.episode !==
-          "number" ||
-        typeof item.airingAt !==
-          "number"
-      ) {
-        continue;
-      }
-
-      if (
-        item.episode <= 0 ||
-        item.airingAt * 1000 >
-          Date.now()
-      ) {
-        continue;
-      }
-
-      if (
-        !result.has(
-          item.mediaId,
-        )
-      ) {
-        result.set(
-          item.mediaId,
-          {
-            episode:
-              item.episode,
-
-            airingAt:
-              item.airingAt,
-          },
-        );
-      }
-    }
-  } catch {
-    return result;
-  }
-
-  return result;
-}
-
-async function fetchSeason(
-  season: string,
-  year: number,
-): Promise<AniMedia[]> {
-  const response =
-    await fetch(
-      ANILIST,
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-
-          Accept:
-            "application/json",
-        },
-
-        body: JSON.stringify({
-          query: `
-            query AutomaticNews(
-              $season: MediaSeason
-              $year: Int
-            ) {
-              Page(
-                page: 1
-                perPage: 50
-              ) {
-                media(
-                  type: ANIME
-                  season: $season
-                  seasonYear: $year
-                  sort: START_DATE_DESC
-                ) {
-                  id
-                  isAdult
-
-                  title {
-                    romaji
-                    english
-                    native
-                  }
-
-                  coverImage {
-                    extraLarge
-                    large
-                  }
-
-                  description(
-                    asHtml: false
-                  )
-
-                  format
-                  status
-                  episodes
-                  season
-                  seasonYear
-
-                  startDate {
-                    year
-                    month
-                    day
-                  }
-
-                  trailer {
-                    id
-                    site
-                    thumbnail
-                  }
-                }
-              }
-            }
-          `,
-
-          variables: {
-            season:
-              season.toUpperCase(),
-
-            year,
-          },
-        }),
-
-        signal:
-          AbortSignal.timeout(
-            12000,
-          ),
-      },
+  const currentPage =
+    Math.max(
+      1,
+      Number(search.page) || 1,
     );
 
-  if (!response.ok) {
-    throw new Error(
-      `AniList indisponível (${response.status})`,
+  const urlQuery =
+    typeof search.q === "string"
+      ? search.q
+      : "";
+
+  const [
+    searchOpen,
+    setSearchOpen,
+  ] = useState(false);
+
+  const [
+    searchQuery,
+    setSearchQuery,
+  ] = useState("");
+
+  const news = useMemo(() => {
+    return [
+      ...(loaderNews ?? []),
+    ].sort(
+      (a, b) =>
+        parseNewsDate(
+          b.date,
+        ) -
+        parseNewsDate(
+          a.date,
+        ),
     );
-  }
+  }, [loaderNews]);
 
-  const json =
-    (await response.json()) as {
-      data?: AniListResponse;
-
-      errors?: {
-        message?: string;
-      }[];
-    };
-
-  if (
-    json.errors?.length ||
-    !json.data?.Page
-  ) {
-    throw new Error(
-      json.errors?.[0]
-        ?.message ??
-        "AniList sem dados",
-    );
-  }
-
-  return json.data.Page.media;
-}
-
-async function fetchAdultCatalogNews(): Promise<
-  AniMedia[]
-> {
-  const query = `
-    query AdultNews {
-      Page(
-        page: 1
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-    }
-  `;
-
-  let lastError = "AniList indisponível";
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response =
-        await fetch(
-          ANILIST,
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-
-              Accept:
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              query,
-            }),
-
-            signal:
-              AbortSignal.timeout(
-                12000,
-              ),
-          },
+  const liveSearchResults =
+    useMemo(() => {
+      const query =
+        normalizeSearchText(
+          searchQuery,
         );
 
-      if (!response.ok) {
-        lastError =
-          `AniList indisponível (${response.status})`;
+      if (!query) {
+        return [];
+      }
 
-        if (
-          response.status === 429 ||
-          response.status >= 500
-        ) {
-          const retryAfter =
-            Number(
-              response.headers.get(
-                "Retry-After",
-              ),
+      return news.filter(
+        (item) => {
+          const searchableText =
+            normalizeSearchText(
+              [
+                item.title,
+                item.description,
+                item.type,
+                item.date,
+              ]
+                .filter(Boolean)
+                .join(" "),
             );
 
-          const waitMs = Number.isFinite(
-            retryAfter,
-          )
-            ? Math.min(
-                Math.max(
-                  retryAfter * 1000,
-                  500,
-                ),
-                5000,
-              )
-            : 800 * (attempt + 1);
+          return searchableText.includes(
+            query,
+          );
+        },
+      );
+    }, [
+      news,
+      searchQuery,
+    ]);
 
-          if (attempt < 2) {
-            await new Promise((resolve) =>
-              setTimeout(
-                resolve,
-                waitMs,
-              ),
+  const searchResults =
+    useMemo(() => {
+      const query =
+        normalizeSearchText(
+          urlQuery,
+        );
+
+      if (!query) {
+        return [];
+      }
+
+      return news.filter(
+        (item) => {
+          const searchableText =
+            normalizeSearchText(
+              [
+                item.title,
+                item.description,
+                item.type,
+                item.date,
+              ]
+                .filter(Boolean)
+                .join(" "),
             );
-            continue;
-          }
-        }
 
-        throw new Error(
-          lastError,
-        );
-      }
-
-      const json =
-        (await response.json()) as {
-          data?: {
-            Page?: {
-              media: AniMedia[];
-            };
-          };
-
-          errors?: {
-            message?: string;
-          }[];
-        };
-
-      if (json.errors?.length) {
-        lastError =
-          json.errors[0]?.message ??
-          "AniList sem dados";
-
-        throw new Error(
-          lastError,
-        );
-      }
-
-      const media =
-        json.data?.Page?.media ?? [];
-
-      return media
-        .filter(
-          (anime) =>
-            anime.id > 0 &&
-            anime.format !== "MUSIC" &&
-            anime.isAdult === true,
-        )
-        .map((anime) => ({
-          ...anime,
-          isAdult: true,
-        }));
-    } catch (error) {
-      lastError =
-        error instanceof Error &&
-        error.message
-          ? error.message
-          : lastError;
-
-      if (attempt < 2) {
-        await new Promise((resolve) =>
-          setTimeout(
-            resolve,
-            800 * (attempt + 1),
-          ),
-        );
-        continue;
-      }
-    }
-  }
-
-  throw new Error(
-    lastError,
-  );
-}
-
-async function buildNews(
-  media: AniMedia[],
-  latestEpisodes: Map<
-    number,
-    {
-      episode: number;
-      airingAt: number;
-    }
-  >,
-): Promise<AutomaticNewsItem[]> {
-  const prepared =
-    media.map(
-      (anime) => {
-        const title =
-          titleOf(
-            anime,
+          return searchableText.includes(
+            query,
           );
+        },
+      );
+    }, [
+      news,
+      urlQuery,
+    ]);
 
-        const trailerUrl =
-          trailerOf(
-            anime,
-          );
-
-        const latestEpisode =
-          latestEpisodes.get(
-            anime.id,
-          );
-
-        return {
-          anime,
-          title,
-          trailerUrl,
-          latestEpisode,
-        };
-      },
+  const previewSearchResults =
+    liveSearchResults.slice(
+      0,
+      5,
     );
 
-  const descriptions =
-    await Promise.all(
-      prepared.map(
-        ({
-          anime,
-        }) =>
-          descriptionOf(
-            anime,
-          ),
+  const isSearchMode =
+    Boolean(
+      urlQuery.trim(),
+    );
+
+  const displayedNews =
+    isSearchMode
+      ? searchResults
+      : news;
+
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        displayedNews.length /
+          NEWS_PER_PAGE,
       ),
     );
 
-  const news:
-    AutomaticNewsItem[] =
-    [];
+  const handleSearchSubmit =
+    (
+      event: FormEvent<HTMLFormElement>,
+    ) => {
+      event.preventDefault();
 
-  const now = Date.now();
-  const isAdultFeed =
-    media.some(
-      (anime) => anime.isAdult === true,
-    );
+      const query =
+        searchQuery.trim();
 
-  const topRated = [
-    ...media,
-  ]
-    .filter(
-      (anime) =>
-        typeof anime.score ===
-          "number" &&
-        anime.score > 0,
-    )
-    .sort(
-      (a, b) =>
-        (b.score ?? 0) -
-        (a.score ?? 0),
-    )
-    .slice(0, 8);
+      if (!query) {
+        return;
+      }
 
-  if (isAdultFeed) {
-    for (const anime of topRated) {
-    const title = titleOf(anime);
-    const preparedIndex = prepared.findIndex(
-      ({ anime: preparedAnime }) =>
-        preparedAnime.id === anime.id,
-    );
-    const description =
-      preparedIndex >= 0
-        ? descriptions[preparedIndex]
-        : "";
+      setSearchOpen(false);
 
-    news.push({
-      id: `auto-highlight-${anime.id}`,
-      type: "DESTAQUE",
-      title,
-      description,
-      date: formatDate(anime),
-      image:
-        anime.coverImage?.extraLarge ||
-        anime.coverImage?.large ||
-        "",
-      animeId: String(anime.id),
-      trailerUrl: trailerOf(anime),
-      isAdult: true,
+      void navigate({
+        to: "/adult/news",
+        search: {
+          q: query,
+          page: 1,
+        },
+        resetScroll: false,
+      });
+    };
+
+  const handleViewAllResults =
+    () => {
+      const query =
+        searchQuery.trim();
+
+      if (!query) {
+        return;
+      }
+
+      setSearchOpen(false);
+
+      void navigate({
+        to: "/adult/news",
+        search: {
+          q: query,
+          page: 1,
+        },
+        resetScroll: false,
+      });
+    };
+
+  const clearSearchInput = () => {
+    setSearchQuery("");
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+  };
+
+  const handleBack = () => {
+    if (isSearchMode) {
+      void navigate({
+        to: "/adult/news",
+        search: {
+          q: "",
+          page: 1,
+        },
+        resetScroll: false,
+      });
+
+      setSearchOpen(false);
+      setSearchQuery("");
+
+      return;
+    }
+
+    void navigate({
+      to: "/adult",
     });
-    }
-  }
+  };
 
-  for (
-    let index = 0;
-    index <
-    prepared.length;
-    index++
-  ) {
-    const {
-      anime,
-      title,
-      trailerUrl,
-      latestEpisode,
-    } =
-      prepared[index];
-
-    const description =
-      descriptions[index];
-
-    const isAdult =
-      anime.isAdult === true;
-
-    const startDate = anime.startDate;
-    const startTimestamp =
-      startDate?.year &&
-      startDate.month &&
-      startDate.day
-        ? new Date(
-            startDate.year,
-            startDate.month - 1,
-            startDate.day,
-          ).getTime()
-        : 0;
-
-    if (
-      isAdultFeed &&
-      isAdult &&
-      startTimestamp > now
-    ) {
-      news.push({
-        id:
-          `auto-upcoming-${anime.id}`,
-
-        type:
-          "PRÓXIMO LANÇAMENTO",
-
-        title:
-          isAdult
-            ? title
-            : `${title} — próximo lançamento`,
-
-        description:
-          `Novo conteúdo de ${title} está previsto para ${formatDate(
-            anime,
-          )}. ${description}`,
-
-        date:
-          formatDate(
-            anime,
-          ),
-
-        image:
-          anime.coverImage
-            ?.extraLarge ||
-          anime.coverImage
-            ?.large ||
-          "",
-
-        animeId:
-          String(
-            anime.id,
-          ),
-
-        trailerUrl,
-
-        isAdult:
-          anime.isAdult === true,
-      });
-    }
-
-    if (
-      latestEpisode &&
-      latestEpisode.episode > 0 &&
-      latestEpisode.airingAt * 1000 <=
-        Date.now()
-    ) {
-      news.push({
-        id:
-          `auto-episode-${anime.id}-${latestEpisode.episode}`,
-
-        type:
-          "NOVO EPISÓDIO",
-
-        title:
-          isAdult
-            ? `${title} — Episode ${latestEpisode.episode}`
-            : `${title} — episódio ${latestEpisode.episode}`,
-
-        description:
-          `O episódio ${latestEpisode.episode} de ${title} foi ao ar em ${formatAiringDate(
-            latestEpisode.airingAt,
-          )}. ${description}`,
-
-        date:
-          formatAiringDate(
-            latestEpisode.airingAt,
-          ),
-
-        image:
-          anime.coverImage
-            ?.extraLarge ||
-          anime.coverImage
-            ?.large ||
-          "",
-
-        animeId:
-          String(
-            anime.id,
-          ),
-
-        trailerUrl,
-
-        isAdult:
-          anime.isAdult === true,
-      });
-    }
-
-    if (trailerUrl) {
-      news.push({
-        id:
-          `auto-trailer-${anime.id}`,
-
-        type:
-          "TRAILER",
-
-        title:
-          isAdult
-            ? title
-            : `${title} — novo trailer`,
-
-        description,
-
-        date:
-          formatDate(
-            anime,
-          ),
-
-        image:
-          anime.coverImage
-            ?.extraLarge ||
-          anime.coverImage
-            ?.large ||
-          "",
-
-        animeId:
-          String(
-            anime.id,
-          ),
-
-        trailerUrl,
-
-        isAdult:
-          anime.isAdult === true,
-      });
-    } else {
-      news.push({
-        id:
-          `auto-season-${anime.id}`,
-
-        type:
-          isAdult
-            ? "NOVO HENTAI"
-            : "NOVA TEMPORADA",
-
-        title:
-          isAdult
-            ? title
-            : `${title} — nova temporada`,
-
-        description,
-
-        date:
-          formatDate(
-            anime,
-          ),
-
-        image:
-          anime.coverImage
-            ?.extraLarge ||
-          anime.coverImage
-            ?.large ||
-          "",
-
-        animeId:
-          String(
-            anime.id,
-          ),
-
-        isAdult:
-          anime.isAdult === true,
-      });
-    }
-  }
-
-  const validNews =
-    news.filter(
-      (item) =>
-        Boolean(
-          item.image,
+  const goToPage = (
+    page: number,
+  ) => {
+    const nextPage =
+      Math.min(
+        Math.max(
+          page,
+          1,
         ),
-    );
-
-  validNews.sort(
-    (a, b) => {
-      const parse = (
-        value: string,
-      ) => {
-        const match =
-          value.match(
-            /^(\d{2})\/(\d{2})\/(\d{4})$/,
-          );
-
-        if (!match) {
-          return 0;
-        }
-
-        return new Date(
-          Number(match[3]),
-          Number(match[2]) - 1,
-          Number(match[1]),
-        ).getTime();
-      };
-
-      return (
-        parse(b.date) -
-        parse(a.date)
+        totalPages,
       );
-    },
+
+    void navigate({
+      to: "/adult/news",
+      search: {
+        q: urlQuery,
+        page: nextPage,
+      },
+      resetScroll: false,
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  const visibleNews =
+    useMemo(() => {
+      const start =
+        (currentPage - 1) *
+        NEWS_PER_PAGE;
+
+      return displayedNews.slice(
+        start,
+        start +
+          NEWS_PER_PAGE,
+      );
+    }, [
+      displayedNews,
+      currentPage,
+    ]);
+
+  return (
+    <main className="min-h-screen bg-background text-fg">
+      <div
+        className="
+          mx-auto
+          w-full
+          max-w-7xl
+          px-4
+          pb-16
+          pt-4
+          sm:px-6
+          lg:px-8
+        "
+      >
+        <div
+          className="
+            mb-7
+            flex
+            items-center
+            justify-between
+            gap-3
+          "
+        >
+          <button
+            type="button"
+            onClick={
+              handleBack
+            }
+            className="
+              inline-flex
+              items-center
+              gap-2
+              rounded-lg
+              px-2
+              py-2
+              text-sm
+              font-medium
+              text-muted
+              transition
+              hover:bg-elevated
+              hover:text-fg
+            "
+          >
+            <ArrowLeft className="size-4" />
+
+            <span>
+              Voltar
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                searchOpen
+              ) {
+                closeSearch();
+              } else {
+                setSearchQuery("");
+                setSearchOpen(true);
+              }
+            }}
+            className="
+              inline-flex
+              items-center
+              gap-2
+              rounded-lg
+              px-2
+              py-2
+              text-sm
+              font-medium
+              text-muted
+              transition
+              hover:bg-elevated
+              hover:text-fg
+            "
+          >
+            {searchOpen ? (
+              <>
+                <X className="size-4" />
+
+                <span>
+                  Fechar
+                </span>
+              </>
+            ) : (
+              <>
+                <Search className="size-4" />
+
+                <span>
+                  Buscar
+                </span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {searchOpen && (
+          <section
+            className="
+              mb-7
+              rounded-3xl
+              border
+              border-border
+              bg-background
+              p-3
+              sm:p-4
+            "
+          >
+            <form
+              onSubmit={
+                handleSearchSubmit
+              }
+            >
+              <div
+                className="
+                  relative
+                  flex
+                  items-center
+                "
+              >
+                <input
+                  autoFocus
+                  type="text"
+                  value={
+                    searchQuery
+                  }
+                  onChange={(
+                    event,
+                  ) =>
+                    setSearchQuery(
+                      event.target
+                        .value,
+                    )
+                  }
+                  placeholder="Buscar notícias +18..."
+                  enterKeyHint="search"
+                  autoComplete="off"
+                  className="
+                    h-14
+                    w-full
+                    rounded-2xl
+                    border
+                    border-border
+                    bg-elevated
+                    pl-4
+                    pr-24
+                    text-base
+                    text-fg
+                    outline-none
+                    placeholder:text-muted
+                    focus:border-fg/30
+                  "
+                  aria-label="Buscar notícias"
+                />
+
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={
+                      clearSearchInput
+                    }
+                    className="
+                      absolute
+                      right-12
+                      flex
+                      size-10
+                      items-center
+                      justify-center
+                      rounded-xl
+                      text-muted
+                      transition
+                      hover:bg-background
+                      hover:text-fg
+                      active:scale-95
+                    "
+                    aria-label="Limpar busca"
+                  >
+                    <X className="size-5" />
+                  </button>
+                )}
+
+                <button
+                  type="submit"
+                  className="
+                    absolute
+                    right-2
+                    flex
+                    size-10
+                    items-center
+                    justify-center
+                    rounded-xl
+                    text-muted
+                    transition
+                    hover:bg-background
+                    hover:text-fg
+                    active:scale-95
+                  "
+                  aria-label="Pesquisar notícias"
+                >
+                  <Search className="size-5" />
+                </button>
+              </div>
+            </form>
+
+            {searchQuery.trim() && (
+              <div className="mt-3">
+                {previewSearchResults.length ===
+                0 ? (
+                  <div
+                    className="
+                      rounded-2xl
+                      bg-surface
+                      px-4
+                      py-6
+                      text-center
+                      text-sm
+                      text-muted
+                    "
+                  >
+                    Nenhuma notícia encontrada.
+                  </div>
+                ) : (
+                  <div
+                    className="
+                      overflow-hidden
+                      rounded-2xl
+                      border
+                      border-border
+                      bg-surface
+                    "
+                  >
+                    {previewSearchResults.map(
+                      (
+                        item,
+                      ) => (
+                        <Link
+                          key={
+                            item.id
+                          }
+                          to="/news/$id"
+                          params={{
+                            id: item.id,
+                          }}
+                          search={{
+                            page: currentPage,
+                          }}
+                          className="
+                            flex
+                            items-center
+                            gap-3
+                            border-b
+                            border-border
+                            px-4
+                            py-3
+                            transition
+                            hover:bg-elevated
+                          "
+                        >
+                          <div
+                            className="
+                              size-14
+                              shrink-0
+                              overflow-hidden
+                              rounded-lg
+                              bg-black
+                            "
+                          >
+                            <img
+                              src={
+                                item.image
+                              }
+                              alt=""
+                              className="
+                                h-full
+                                w-full
+                                object-cover
+                              "
+                            />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="
+                                line-clamp-2
+                                text-sm
+                                font-semibold
+                                text-fg
+                              "
+                            >
+                              {
+                                item.title
+                              }
+                            </p>
+
+                            <p
+                              className="
+                                mt-1
+                                text-xs
+                                text-muted
+                              "
+                            >
+                              {
+                                item.type
+                              }
+
+                              {" · "}
+
+                              {
+                                item.date
+                              }
+                            </p>
+                          </div>
+                        </Link>
+                      ),
+                    )}
+
+                    {liveSearchResults.length >
+                      5 && (
+                      <button
+                        type="button"
+                        onClick={
+                          handleViewAllResults
+                        }
+                        className="
+                          flex
+                          w-full
+                          cursor-pointer
+                          items-center
+                          justify-center
+                          border-t
+                          border-border
+                          px-4
+                          py-4
+                          text-sm
+                          font-semibold
+                          text-fg
+                          transition
+                          hover:bg-elevated
+                          active:bg-elevated
+                        "
+                      >
+                        Ver todos os resultados
+                        {" ("}
+                        {
+                          liveSearchResults.length
+                        }
+                        {")"}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="mb-7">
+          <div
+            className="
+              flex
+              items-center
+              gap-3
+            "
+          >
+            <div
+              className="
+                flex
+                size-10
+                shrink-0
+                items-center
+                justify-center
+                rounded-full
+                bg-elevated
+              "
+            >
+              <Newspaper className="size-5" />
+            </div>
+
+            <div>
+              <h1
+                className="
+                  text-2xl
+                  font-semibold
+                  tracking-tight
+                "
+              >
+                {isSearchMode
+                  ? "Resultados da busca"
+                  : "Notícias +18"}
+              </h1>
+
+              <p
+                className="
+                  mt-1
+                  text-sm
+                  text-muted
+                "
+              >
+                {isSearchMode ? (
+                  <>
+                    Resultados para:{" "}
+                    <span className="font-medium text-fg">
+                      "{urlQuery}"
+                    </span>
+                  </>
+                ) : (
+                  "Fique por dentro das novidades de conteúdo +18."
+                )}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {isSearchMode && (
+          <div
+            className="
+              mb-5
+              flex
+              items-center
+              gap-2
+              text-sm
+              text-muted
+            "
+          >
+            <Search className="size-4" />
+
+            <span>
+              {searchResults.length}{" "}
+              {searchResults.length ===
+              1
+                ? "resultado encontrado"
+                : "resultados encontrados"}
+            </span>
+          </div>
+        )}
+
+        {visibleNews.length > 0 ? (
+          <>
+            <section
+              className="
+                grid
+                grid-cols-1
+                gap-4
+                sm:grid-cols-2
+              "
+            >
+              {visibleNews.map(
+                (item) => (
+                  <Link
+                    key={
+                      item.id
+                    }
+                    to="/news/$id"
+                    params={{
+                      id: item.id,
+                    }}
+                    search={{
+                      page: currentPage,
+                    }}
+                    className="
+                      group
+                      overflow-hidden
+                      rounded-3xl
+                      border
+                      border-border
+                      bg-card
+                      transition
+                      hover:bg-elevated
+                    "
+                  >
+                    <div
+                      className="
+                        relative
+                        aspect-[16/9]
+                        w-full
+                        overflow-hidden
+                        bg-black
+                      "
+                    >
+                      <img
+                        src={
+                          item.image
+                        }
+                        alt={
+                          item.title
+                        }
+                        className="
+                          absolute
+                          inset-0
+                          h-full
+                          w-full
+                          object-contain
+                          object-center
+                        "
+                        loading="lazy"
+                      />
+
+                      <div
+                        className="
+                          absolute
+                          inset-x-0
+                          bottom-0
+                          h-1/2
+                          bg-gradient-to-t
+                          from-black/80
+                          via-black/20
+                          to-transparent
+                        "
+                      />
+
+                      <span
+                        className="
+                          absolute
+                          bottom-3
+                          left-3
+                          rounded-md
+                          bg-black/70
+                          px-2
+                          py-1
+                          text-[10px]
+                          font-semibold
+                          uppercase
+                          tracking-wide
+                          text-white
+                        "
+                      >
+                        {
+                          item.type
+                        }
+                      </span>
+                    </div>
+
+                    <div className="p-4">
+                      <h2
+                        className="
+                          line-clamp-2
+                          text-base
+                          font-semibold
+                          leading-snug
+                        "
+                      >
+                        {
+                          item.title
+                        }
+                      </h2>
+
+                      <p
+                        className="
+                          mt-2
+                          line-clamp-3
+                          text-sm
+                          leading-relaxed
+                          text-muted
+                        "
+                      >
+                        {
+                          item.description
+                        }
+                      </p>
+
+                      <div
+                        className="
+                          mt-4
+                          flex
+                          items-center
+                          gap-2
+                          text-xs
+                          text-muted
+                        "
+                      >
+                        <CalendarDays className="size-3.5" />
+
+                        <span>
+                          {
+                            item.date
+                          }
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                ),
+              )}
+            </section>
+
+            {totalPages > 1 && (
+              <nav
+                className="
+                  mt-8
+                  flex
+                  flex-col
+                  items-center
+                  gap-3
+                "
+              >
+                <div
+                  className="
+                    flex
+                    items-center
+                    gap-1.5
+                    overflow-x-auto
+                    px-1
+                    pb-1
+                  "
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      goToPage(
+                        currentPage -
+                          1,
+                      )
+                    }
+                    disabled={
+                      currentPage ===
+                      1
+                    }
+                    className="
+                      flex
+                      size-9
+                      shrink-0
+                      items-center
+                      justify-center
+                      rounded-full
+                      border
+                      border-border
+                      bg-card
+                      text-muted
+                      disabled:opacity-30
+                    "
+                  >
+                    <ChevronLeft className="size-4" />
+                  </button>
+
+                  {(() => {
+                    const maxVisible = 7;
+
+                    if (totalPages <= maxVisible) {
+                      return Array.from(
+                        { length: totalPages },
+                        (_, index) => index + 1,
+                      ).map((page) => (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => goToPage(page)}
+                          className={`
+                            flex
+                            size-9
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-full
+                            border
+                            text-xs
+                            font-medium
+                            ${
+                              currentPage === page
+                                ? "border-fg bg-fg text-background"
+                                : "border-border bg-card text-muted"
+                            }
+                          `}
+                        >
+                          {page}
+                        </button>
+                      ));
+                    }
+
+                    let pages: Array<number | "ellipsis">;
+
+                    if (currentPage <= 4) {
+                      pages = [1, 2, 3, 4, 5, "ellipsis", totalPages];
+                    } else if (currentPage >= totalPages - 3) {
+                      pages = [
+                        1,
+                        "ellipsis",
+                        totalPages - 4,
+                        totalPages - 3,
+                        totalPages - 2,
+                        totalPages - 1,
+                        totalPages,
+                      ];
+                    } else {
+                      pages = [
+                        1,
+                        "ellipsis",
+                        currentPage - 1,
+                        currentPage,
+                        currentPage + 1,
+                        "ellipsis",
+                        totalPages,
+                      ];
+                    }
+
+                    return pages.map((page, index) =>
+                      page === "ellipsis" ? (
+                        <span
+                          key={`ellipsis-${index}`}
+                          className="flex size-9 shrink-0 items-center justify-center text-xs text-muted"
+                          aria-hidden="true"
+                        >
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => goToPage(page)}
+                          className={`
+                            flex
+                            size-9
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-full
+                            border
+                            text-xs
+                            font-medium
+                            ${
+                              currentPage === page
+                                ? "border-fg bg-fg text-background"
+                                : "border-border bg-card text-muted"
+                            }
+                          `}
+                        >
+                          {page}
+                        </button>
+                      ),
+                    );
+                  })()}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      goToPage(
+                        currentPage +
+                          1,
+                      )
+                    }
+                    disabled={
+                      currentPage ===
+                      totalPages
+                    }
+                    className="
+                      flex
+                      size-9
+                      shrink-0
+                      items-center
+                      justify-center
+                      rounded-full
+                      border
+                      border-border
+                      bg-card
+                      text-muted
+                      disabled:opacity-30
+                    "
+                  >
+                    <ChevronRight className="size-4" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-muted">
+                  Página{" "}
+                  {
+                    currentPage
+                  }{" "}
+                  de{" "}
+                  {
+                    totalPages
+                  }
+                </p>
+              </nav>
+            )}
+          </>
+        ) : (
+          <section
+            className="
+              flex
+              min-h-[220px]
+              flex-col
+              items-center
+              justify-center
+              rounded-3xl
+              border
+              border-border
+              bg-card
+              px-6
+              text-center
+            "
+          >
+            <Newspaper className="mb-3 size-8 text-muted" />
+
+            <p className="text-base font-medium">
+              Nenhuma notícia encontrada.
+            </p>
+
+            {isSearchMode && (
+              <p
+                className="
+                  mt-2
+                  text-sm
+                  text-muted
+                "
+              >
+                Não encontramos notícias para{" "}
+                <span className="font-medium text-fg">
+                  "{urlQuery}"
+                </span>
+                .
+              </p>
+            )}
+          </section>
+        )}
+      </div>
+    </main>
   );
-
-  // Um mesmo anime pode gerar mais de um tipo
-  // de notícia (ex.: "PRÓXIMO LANÇAMENTO" e
-  // "NOVO HENTAI"). Para a página +18,
-  // mostramos apenas uma notícia por anime,
-  // evitando cards duplicados. Como a lista já
-  // está ordenada por data, a primeira notícia
-  // de cada anime é a mais recente.
-  const uniqueNews =
-    Array.from(
-      new Map(
-        validNews.map((item) => [
-          item.animeId ?? item.id,
-          item,
-        ]),
-      ).values(),
-    );
-
-  return uniqueNews;
-}
-
-export const fetchAutomaticNews =
-  createServerFn({
-    method: "GET",
-  }).handler(async () => {
-    const current =
-      currentAnimeSeason();
-
-    const season =
-      String(
-        current.season,
-      ).toUpperCase();
-
-    const year =
-      Number(
-        current.year,
-      );
-
-    const key =
-      `automatic-news:${season}:${year}`;
-
-    const cached =
-      fromCache(key);
-
-    if (cached) {
-      return cached.filter(
-        (item) =>
-          item.isAdult !== true,
-      );
-    }
-
-    try {
-      const [
-        media,
-        latestEpisodes,
-      ] =
-        await Promise.all([
-          fetchSeason(
-            season,
-            year,
-          ),
-          fetchLatestAiredEpisodes(),
-        ]);
-
-      const nonAdultMedia =
-        media.filter(
-          (anime) =>
-            anime.isAdult !== true,
-        );
-
-      const news =
-        await buildNews(
-          nonAdultMedia,
-          latestEpisodes,
-        );
-
-      return toCache(
-        key,
-        news,
-      );
-    } catch {
-      return [];
-    }
-  });
-
-export const fetchAdultNews =
-  createServerFn({
-    method: "GET",
-  }).handler(async () => {
-    const current =
-      currentAnimeSeason();
-
-    const season =
-      String(
-        current.season,
-      ).toUpperCase();
-
-    const year =
-      Number(
-        current.year,
-      );
-
-    const key =
-      `automatic-adult-news:${season}:${year}`;
-
-    const cached =
-      fromCache(key);
-
-    if (cached) {
-      return cached.filter(
-        (item) =>
-          item.isAdult === true,
-      );
-    }
-
-    try {
-      /*
-       * As notícias +18 não dependem
-       * da temporada atual.
-       *
-       * Buscamos diretamente os animes
-       * marcados pelo AniList como adultos.
-       */
-      const [
-        adultMedia,
-        latestEpisodes,
-      ] =
-        await Promise.all([
-          fetchAdultCatalogNews(),
-          fetchLatestAiredEpisodes(),
-        ]);
-
-      const news =
-        await buildNews(
-          adultMedia,
-          latestEpisodes,
-        );
-
-      return toCache(
-        key,
-        news,
-      );
-    } catch (error) {
-      throw error instanceof Error
-        ? error
-        : new Error(
-            "Falha ao carregar notícias +18",
-          );
-    }
-  });
+                }
