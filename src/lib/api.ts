@@ -1129,7 +1129,7 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
       query RecentAdultReleases {
         Page(
           page: 1,
-          perPage: 18
+          perPage: 50
         ) {
           media(
             type: ANIME,
@@ -1154,7 +1154,7 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
     .map(
       mapAniSlim,
     )
-    .slice(0, 18);
+    .slice(0, 50);
 }
 
 async function fetchRecentReleasesFromAni(): Promise<
@@ -2310,7 +2310,7 @@ export const fetchAdultCatalog =
   }).handler(
     async () => {
       const key =
-        "adult-catalog:v2";
+        "adult-catalog:v3";
 
       const cached =
         fromCache<SearchResult>(
