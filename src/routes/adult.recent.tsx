@@ -13,14 +13,14 @@ import {
   AnimeCardSkeleton,
 } from "@/components/anime-card";
 
-export const Route = createFileRoute("/adult/all")({
+export const Route = createFileRoute("/adult/recent")({
   loader: () => fetchAdultCatalog(),
-  pendingComponent: AdultAllPending,
-  errorComponent: AdultAllError,
-  component: AdultAllPage,
+  pendingComponent: AdultRecentPending,
+  errorComponent: AdultRecentError,
+  component: AdultRecentPage,
 });
 
-function AdultAllPending() {
+function AdultRecentPending() {
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       <div>
@@ -38,7 +38,7 @@ function AdultAllPending() {
   );
 }
 
-function AdultAllError({ error }: ErrorComponentProps) {
+function AdultRecentError({ error }: ErrorComponentProps) {
   const message =
     error instanceof Error && error.message
       ? error.message
@@ -49,7 +49,7 @@ function AdultAllError({ error }: ErrorComponentProps) {
   return (
     <div className="mx-auto max-w-md py-24 text-center">
       <p className="font-display text-2xl">
-        Conteúdo +18 indisponível
+        Novos episódios indisponíveis
       </p>
 
       <p className="mt-2 text-sm text-muted">
@@ -66,13 +66,13 @@ function AdultAllError({ error }: ErrorComponentProps) {
   );
 }
 
-function AdultAllPage() {
+function AdultRecentPage() {
   const data = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
 
   const items = overlayList(
-    data.items ?? [],
+    data.recentItems ?? [],
     locals,
   );
 
@@ -82,11 +82,11 @@ function AdultAllPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-              🔞 +18
+              Novos episódios
             </h1>
 
             <p className="mt-1 text-sm text-muted">
-              Confira todo o conteúdo adulto disponível.
+              Confira os episódios mais recentes.
             </p>
           </div>
 
@@ -102,11 +102,11 @@ function AdultAllPage() {
       {items.length === 0 ? (
         <div className="rounded-xl bg-surface p-8 text-center shadow-[var(--shadow-border)]">
           <p className="font-display text-xl">
-            Nenhum anime encontrado
+            Nenhum episódio encontrado
           </p>
 
           <p className="mt-2 text-sm text-muted">
-            A lista de conteúdo +18 está vazia.
+            Não há novos episódios disponíveis no momento.
           </p>
         </div>
       ) : (
@@ -122,4 +122,4 @@ function AdultAllPage() {
       )}
     </div>
   );
-            }
+}
