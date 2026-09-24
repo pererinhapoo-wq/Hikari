@@ -41,17 +41,30 @@ jobs:
       - name: Verificar versao do tsr
         run: npx tsr --version
 
-      - name: Verificar arquivo news
+      - name: Verificar arquivos de rotas
         run: |
-          test -f src/routes/news.tsx
-          echo "news.tsx encontrado no workspace."
+          echo "ROTAS ADULT:"
+          test -f src/routes/adult.tsx
+          echo "adult.tsx encontrado."
+
+          test -f src/routes/adult.news.tsx
+          echo "adult.news.tsx encontrado."
+
+          echo ""
+          echo "ARQUIVOS ADULT NA PASTA:"
+          find src/routes -maxdepth 1 -type f -iname '*adult*' -print
 
       - name: Gerar rotas
         run: npm run generate-routes
 
-      - name: Verificar rota news
+      - name: Verificar rotas geradas
         run: |
-          grep -n 'news' src/routeTree.gen.ts
+          echo "ROTAS NEWS:"
+          grep -n 'news' src/routeTree.gen.ts || true
+
+          echo ""
+          echo "ROTAS ADULT:"
+          grep -n 'adult' src/routeTree.gen.ts || true
 
       - name: Build Cloudflare
         run: npm run build:cloudflare
