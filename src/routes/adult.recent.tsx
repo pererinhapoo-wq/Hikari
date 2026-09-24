@@ -38,6 +38,7 @@ function AdultRecentPending() {
     <div className="space-y-5 pb-5 sm:space-y-8">
       <div>
         <div className="h-8 w-52 animate-pulse rounded bg-elevated" />
+
         <div className="mt-2 h-4 w-72 animate-pulse rounded bg-elevated" />
       </div>
 
@@ -159,6 +160,7 @@ function AdultRecentPage() {
     locals,
   );
 
+  // 8 títulos por página
   const itemsPerPage = 8;
 
   const totalPages = Math.max(
@@ -189,7 +191,8 @@ function AdultRecentPage() {
   const changePage = (page: number) => {
     if (
       page < 1 ||
-      page > totalPages
+      page > totalPages ||
+      page === currentPage
     ) {
       return;
     }
@@ -198,16 +201,42 @@ function AdultRecentPage() {
       search: {
         page,
       },
-    });
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
+    }).then(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
     });
   };
 
   function goBack() {
-    window.history.back();
+    // Página 3 -> página 2 -> topo
+    // Página 2 -> página 1 -> topo
+    if (currentPage > 1) {
+      navigate({
+        search: {
+          page: currentPage - 1,
+        },
+        replace: true,
+      }).then(() => {
+        window.scrollTo({
+          top: 0,
+          behavior: "smooth",
+        });
+      });
+
+      return;
+    }
+
+    // Página 1 -> área adulta
+    navigate({
+      to: "/adult",
+    }).then(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    });
   }
 
   return (
