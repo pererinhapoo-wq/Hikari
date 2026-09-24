@@ -96,7 +96,8 @@ function AdultPage() {
           />
 
           <AnimeRow
-            title="🔞 +18"
+            title="Hentai"
+            href="/adult/recent"
             items={items}
           />
         </>
