@@ -3,7 +3,6 @@ import {
   Link,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useState } from "react";
 
 import { fetchAdultCatalog } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
@@ -15,9 +14,16 @@ import {
 } from "@/components/anime-card";
 
 export const Route = createFileRoute("/adult/recent")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    page: Math.max(1, Number(search.page) || 1),
+  }),
+
   loader: () => fetchAdultCatalog(),
+
   pendingComponent: AdultRecentPending,
+
   errorComponent: AdultRecentError,
+
   component: AdultRecentPage,
 });
 
@@ -70,6 +76,10 @@ function AdultRecentError({ error }: ErrorComponentProps) {
 function AdultRecentPage() {
   const data = Route.useLoaderData();
 
+  const { page: requestedPage } = Route.useSearch();
+
+  const navigate = Route.useNavigate();
+
   const locals = useHikariStore((s) => s.animes);
 
   const items = overlayList(
@@ -77,13 +87,16 @@ function AdultRecentPage() {
     locals,
   );
 
-  const [currentPage, setCurrentPage] = useState(1);
-
   const itemsPerPage = 6;
 
   const totalPages = Math.max(
     1,
     Math.ceil(items.length / itemsPerPage),
+  );
+
+  const currentPage = Math.min(
+    requestedPage,
+    totalPages,
   );
 
   const startIndex =
@@ -94,27 +107,44 @@ function AdultRecentPage() {
     startIndex + itemsPerPage,
   );
 
+  function goToPage(page: number) {
+    const nextPage = Math.min(
+      Math.max(1, page),
+      totalPages,
+    );
+
+    navigate({
+      search: {
+        page: nextPage,
+      },
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       <section>
-        <div className="mb-6 pt-2">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+              Novos episódios
+            </h1>
+
+            <p className="mt-1 text-sm text-muted">
+              Confira os episódios mais recentes.
+            </p>
+          </div>
+
           <Link
             to="/adult"
-            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted transition hover:bg-elevated hover:text-fg"
+            className="shrink-0 rounded-md px-1 py-1 text-sm font-semibold text-muted transition hover:text-fg"
           >
-            <span aria-hidden="true">‹</span>
             Voltar
           </Link>
-        </div>
-
-        <div>
-          <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-            Novos episódios
-          </h1>
-
-          <p className="mt-1 text-sm text-muted">
-            Confira os episódios mais recentes.
-          </p>
         </div>
       </section>
 
@@ -154,9 +184,7 @@ function AdultRecentPage() {
                     <button
                       key={page}
                       type="button"
-                      onClick={() =>
-                        setCurrentPage(page)
-                      }
+                      onClick={() => goToPage(page)}
                       aria-current={
                         isActive
                           ? "page"
@@ -179,4 +207,4 @@ function AdultRecentPage() {
       )}
     </div>
   );
-                    }
+  }
