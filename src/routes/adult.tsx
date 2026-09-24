@@ -90,17 +90,11 @@ function AdultPage() {
 
       {items.length > 0 ? (
         <>
-          {/* 🔞 CONTEÚDO +18 */}
-          <AnimeRow
-            title="🔞 +18"
-            items={items}
-          />
-
-          {/* 🆕 NOVOS EPISÓDIOS */}
+          {/* 🔞 +18 — episódios recentes */}
           {recentItems.length > 0 && (
             <section className="space-y-2">
               <AnimeRow
-                title="Novos episódios"
+                title="🔞 +18"
                 items={recentItems}
               />
 
@@ -114,6 +108,14 @@ function AdultPage() {
               </div>
             </section>
           )}
+
+          {/* 🆕 Novos episódios */}
+          <section className="space-y-2">
+            <AnimeRow
+              title="Novos episódios"
+              items={items}
+            />
+          </section>
         </>
       ) : (
         <div className="rounded-xl bg-surface p-8 text-center shadow-[var(--shadow-border)]">
@@ -128,4 +130,4 @@ function AdultPage() {
       )}
     </div>
   );
-          }
+                                    }
