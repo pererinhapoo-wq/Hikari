@@ -83,12 +83,93 @@ function HentaiError({
   );
 }
 
+/**
+ * Cria uma paginação compacta.
+ *
+ * Exemplos:
+ *
+ * Página 1:
+ * 1 2 3 4 5 6 7 … 63
+ *
+ * Página 4:
+ * 1 2 3 4 5 6 7 … 63
+ *
+ * Página 30:
+ * 1 … 27 28 29 30 31 32 33 … 63
+ *
+ * Página 63:
+ * 1 … 57 58 59 60 61 62 63
+ */
+function getPaginationPages(
+  currentPage: number,
+  totalPages: number,
+) {
+  if (totalPages <= 9) {
+    return Array.from(
+      { length: totalPages },
+      (_, index) => index + 1,
+    );
+  }
+
+  const pages: Array<number | "..."> = [];
+
+  // Começo
+  if (currentPage <= 5) {
+    pages.push(
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      "...",
+      totalPages,
+    );
+
+    return pages;
+  }
+
+  // Final
+  if (currentPage >= totalPages - 4) {
+    pages.push(1, "...");
+
+    for (
+      let page = totalPages - 6;
+      page <= totalPages;
+      page++
+    ) {
+      pages.push(page);
+    }
+
+    return pages;
+  }
+
+  // Meio
+  pages.push(
+    1,
+    "...",
+    currentPage - 2,
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    currentPage + 2,
+    "...",
+    totalPages,
+  );
+
+  return pages;
+}
+
 function HentaiPage() {
   const data = Route.useLoaderData();
 
-  const { page } = Route.useSearch();
+  const { page: requestedPage } =
+    Route.useSearch();
 
-  const navigate = useNavigate();
+  const navigate = useNavigate({
+    from: "/adult/hentai",
+  });
 
   const locals = useHikariStore(
     (s) => s.animes,
@@ -99,6 +180,7 @@ function HentaiPage() {
     locals,
   );
 
+  // Sempre 8 Hentai por página.
   const itemsPerPage = 8;
 
   const totalPages = Math.max(
@@ -108,8 +190,9 @@ function HentaiPage() {
     ),
   );
 
+  // Impede uma página inválida de quebrar a lista.
   const currentPage = Math.min(
-    page,
+    Math.max(requestedPage, 1),
     totalPages,
   );
 
@@ -120,6 +203,12 @@ function HentaiPage() {
     startIndex,
     startIndex + itemsPerPage,
   );
+
+  const paginationPages =
+    getPaginationPages(
+      currentPage,
+      totalPages,
+    );
 
   function changePage(nextPage: number) {
     if (
@@ -186,21 +275,29 @@ function HentaiPage() {
           </div>
 
           {totalPages > 1 && (
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-              {Array.from(
-                { length: totalPages },
-                (_, index) => {
-                  const pageNumber = index + 1;
+            <div className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
+              {paginationPages.map(
+                (page, index) => {
+                  if (page === "...") {
+                    return (
+                      <span
+                        key={`dots-${index}`}
+                        className="inline-flex size-9 items-center justify-center text-sm text-muted"
+                      >
+                        …
+                      </span>
+                    );
+                  }
 
                   const isActive =
-                    currentPage === pageNumber;
+                    currentPage === page;
 
                   return (
                     <button
-                      key={pageNumber}
+                      key={page}
                       type="button"
                       onClick={() =>
-                        changePage(pageNumber)
+                        changePage(page)
                       }
                       aria-current={
                         isActive
@@ -213,7 +310,7 @@ function HentaiPage() {
                           : "text-muted hover:bg-elevated hover:text-fg"
                       }`}
                     >
-                      {pageNumber}
+                      {page}
                     </button>
                   );
                 },
@@ -224,4 +321,4 @@ function HentaiPage() {
       )}
     </div>
   );
-  }
+    }
