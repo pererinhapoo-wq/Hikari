@@ -90,29 +90,46 @@ function AdultPage() {
 
       {items.length > 0 ? (
         <>
-          {/* 🔞 +18 — episódios recentes */}
-          {recentItems.length > 0 && (
-            <section className="space-y-2">
-              <AnimeRow
-                title="🔞 +18"
-                items={recentItems}
-              />
+          {/* +18 */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="font-display text-xl tracking-tight sm:text-2xl">
+                🔞 +18
+              </h2>
 
-              <div className="flex justify-end px-1">
+              <Link
+                to="/adult"
+                className="shrink-0 text-xs font-semibold tracking-wide text-muted transition hover:text-fg"
+              >
+                VER TUDO →
+              </Link>
+            </div>
+
+            <AnimeRow
+              title=""
+              items={recentItems}
+            />
+          </section>
+
+          {/* Novos episódios */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="font-display text-xl tracking-tight sm:text-2xl">
+                Novos episódios
+              </h2>
+
+              {items.length > 0 && (
                 <Link
                   to="/adult/recent"
-                  className="text-xs font-semibold tracking-wide text-muted transition hover:text-fg"
+                  className="shrink-0 text-xs font-semibold tracking-wide text-muted transition hover:text-fg"
                 >
                   VER TUDO →
                 </Link>
-              </div>
-            </section>
-          )}
+              )}
+            </div>
 
-          {/* 🆕 Novos episódios */}
-          <section className="space-y-2">
             <AnimeRow
-              title="Novos episódios"
+              title=""
               items={items}
             />
           </section>
@@ -130,4 +147,4 @@ function AdultPage() {
       )}
     </div>
   );
-                                    }
+          }
