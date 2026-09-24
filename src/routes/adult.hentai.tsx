@@ -3,7 +3,7 @@ import {
   Link,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { fetchAdultCatalog } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
@@ -16,22 +16,21 @@ import {
 
 export const Route = createFileRoute("/adult/hentai")({
   loader: () => fetchAdultCatalog(),
-  pendingComponent: AdultHentaiPending,
-  errorComponent: AdultHentaiError,
-  component: AdultHentaiPage,
+  pendingComponent: HentaiPending,
+  errorComponent: HentaiError,
+  component: HentaiPage,
 });
 
-function AdultHentaiPending() {
+function HentaiPending() {
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       <div>
         <div className="h-8 w-52 animate-pulse rounded bg-elevated" />
-
         <div className="mt-2 h-4 w-72 animate-pulse rounded bg-elevated" />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-        {Array.from({ length: 12 }, (_, i) => (
+        {Array.from({ length: 8 }, (_, i) => (
           <AnimeCardSkeleton key={i} />
         ))}
       </div>
@@ -39,9 +38,7 @@ function AdultHentaiPending() {
   );
 }
 
-function AdultHentaiError({
-  error,
-}: ErrorComponentProps) {
+function HentaiError({ error }: ErrorComponentProps) {
   const message =
     error instanceof Error && error.message
       ? error.message
@@ -69,7 +66,19 @@ function AdultHentaiError({
   );
 }
 
-function AdultHentaiPage() {
+function getInitialPage() {
+  if (typeof window === "undefined") {
+    return 1;
+  }
+
+  const page = Number(
+    new URLSearchParams(window.location.search).get("page"),
+  );
+
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+function HentaiPage() {
   const data = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
@@ -79,84 +88,57 @@ function AdultHentaiPage() {
     locals,
   );
 
-  /*
-   * A página fica salva na URL:
-   *
-   * /adult/hentai?page=1
-   * /adult/hentai?page=2
-   * /adult/hentai?page=3
-   *
-   * Assim, ao recarregar, continuamos na mesma página.
-   */
-  const getPageFromUrl = () => {
-    if (typeof window === "undefined") {
-      return 1;
-    }
-
-    const value = Number(
-      new URLSearchParams(window.location.search).get("page"),
-    );
-
-    return Number.isInteger(value) && value > 0
-      ? value
-      : 1;
-  };
-
   const [currentPage, setCurrentPage] = useState(
-    getPageFromUrl,
+    getInitialPage,
   );
 
-  // 3 títulos por página para criar mais páginas.
-  const itemsPerPage = 3;
+  const itemsPerPage = 8;
 
   const totalPages = Math.max(
     1,
     Math.ceil(items.length / itemsPerPage),
   );
 
-  /*
-   * Garante que uma página inválida não fique selecionada
-   * caso a quantidade de títulos diminua.
-   */
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
-  /*
-   * Salva a página atual na URL sem recarregar a página.
-   */
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const url = new URL(window.location.href);
-
-    if (currentPage === 1) {
-      url.searchParams.delete("page");
-    } else {
-      url.searchParams.set(
-        "page",
-        String(currentPage),
-      );
-    }
-
-    window.history.replaceState(
-      null,
-      "",
-      `${url.pathname}${url.search}${url.hash}`,
-    );
-  }, [currentPage]);
+  const safePage = Math.min(
+    currentPage,
+    totalPages,
+  );
 
   const startIndex =
-    (currentPage - 1) * itemsPerPage;
+    (safePage - 1) * itemsPerPage;
 
   const paginatedItems = items.slice(
     startIndex,
     startIndex + itemsPerPage,
   );
+
+  function changePage(page: number) {
+    if (page < 1 || page > totalPages) {
+      return;
+    }
+
+    setCurrentPage(page);
+
+    const url = new URL(
+      window.location.href,
+    );
+
+    url.searchParams.set(
+      "page",
+      String(page),
+    );
+
+    window.history.pushState(
+      {},
+      "",
+      url.toString(),
+    );
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
 
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
@@ -209,14 +191,14 @@ function AdultHentaiPage() {
                   const page = index + 1;
 
                   const isActive =
-                    currentPage === page;
+                    safePage === page;
 
                   return (
                     <button
                       key={page}
                       type="button"
                       onClick={() =>
-                        setCurrentPage(page)
+                        changePage(page)
                       }
                       aria-current={
                         isActive
@@ -240,4 +222,4 @@ function AdultHentaiPage() {
       )}
     </div>
   );
-}
+    }
