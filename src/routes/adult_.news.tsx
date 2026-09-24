@@ -47,7 +47,7 @@ export const Route = createFileRoute(
   component: NewsPage,
 });
 
-const NEWS_PER_PAGE = 4;
+const NEWS_PER_PAGE = 8;
 
 function parseNewsDate(
   date: string,
@@ -1041,55 +1041,102 @@ function NewsPage() {
                     <ChevronLeft className="size-4" />
                   </button>
 
-                  {Array.from(
-                    {
-                      length:
+                  {(() => {
+                    const maxVisible = 7;
+
+                    if (totalPages <= maxVisible) {
+                      return Array.from(
+                        { length: totalPages },
+                        (_, index) => index + 1,
+                      ).map((page) => (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => goToPage(page)}
+                          className={`
+                            flex
+                            size-9
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-full
+                            border
+                            text-xs
+                            font-medium
+                            ${
+                              currentPage === page
+                                ? "border-fg bg-fg text-background"
+                                : "border-border bg-card text-muted"
+                            }
+                          `}
+                        >
+                          {page}
+                        </button>
+                      ));
+                    }
+
+                    let pages: Array<number | "ellipsis">;
+
+                    if (currentPage <= 4) {
+                      pages = [1, 2, 3, 4, 5, "ellipsis", totalPages];
+                    } else if (currentPage >= totalPages - 3) {
+                      pages = [
+                        1,
+                        "ellipsis",
+                        totalPages - 4,
+                        totalPages - 3,
+                        totalPages - 2,
+                        totalPages - 1,
                         totalPages,
-                    },
-                    (
-                      _,
-                      index,
-                    ) =>
-                      index +
-                      1,
-                  ).map(
-                    (
-                      page,
-                    ) => (
-                      <button
-                        key={
-                          page
-                        }
-                        type="button"
-                        onClick={() =>
-                          goToPage(
-                            page,
-                          )
-                        }
-                        className={`
-                          flex
-                          size-9
-                          shrink-0
-                          items-center
-                          justify-center
-                          rounded-full
-                          border
-                          text-xs
-                          font-medium
-                          ${
-                            currentPage ===
-                            page
-                              ? "border-fg bg-fg text-background"
-                              : "border-border bg-card text-muted"
-                          }
-                        `}
-                      >
-                        {
-                          page
-                        }
-                      </button>
-                    ),
-                  )}
+                      ];
+                    } else {
+                      pages = [
+                        1,
+                        "ellipsis",
+                        currentPage - 1,
+                        currentPage,
+                        currentPage + 1,
+                        "ellipsis",
+                        totalPages,
+                      ];
+                    }
+
+                    return pages.map((page, index) =>
+                      page === "ellipsis" ? (
+                        <span
+                          key={`ellipsis-${index}`}
+                          className="flex size-9 shrink-0 items-center justify-center text-xs text-muted"
+                          aria-hidden="true"
+                        >
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => goToPage(page)}
+                          className={`
+                            flex
+                            size-9
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-full
+                            border
+                            text-xs
+                            font-medium
+                            ${
+                              currentPage === page
+                                ? "border-fg bg-fg text-background"
+                                : "border-border bg-card text-muted"
+                            }
+                          `}
+                        >
+                          {page}
+                        </button>
+                      ),
+                    );
+                  })()}
 
                   <button
                     type="button"
@@ -1176,4 +1223,3 @@ function NewsPage() {
       </div>
     </main>
   );
-                }
