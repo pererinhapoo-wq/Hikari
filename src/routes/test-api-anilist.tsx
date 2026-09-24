@@ -1,8 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/test-api-anilist")({
-  loader: async () => {
-    const response = await fetch("/api-anilist", {
+  loader: async ({ request }) => {
+    const apiUrl = new URL(
+      "/api-anilist",
+      request.url,
+    );
+
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -48,4 +53,4 @@ function TestApiAniListPage() {
       {data.response}
     </pre>
   );
-      }
+        }
