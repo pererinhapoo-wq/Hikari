@@ -3,6 +3,7 @@ import {
   Link,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
+import { useState } from "react";
 
 import { fetchAdultCatalog } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
@@ -76,26 +77,34 @@ function AdultRecentPage() {
     locals,
   );
 
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const itemsPerPage = 6;
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(items.length / itemsPerPage),
+  );
+
+  const startIndex =
+    (currentPage - 1) * itemsPerPage;
+
+  const paginatedItems = items.slice(
+    startIndex,
+    startIndex + itemsPerPage,
+  );
+
   return (
     <div className="space-y-5 pb-5 sm:space-y-8">
       <section>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-              Novos episódios
-            </h1>
+        <div>
+          <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+            Novos episódios
+          </h1>
 
-            <p className="mt-1 text-sm text-muted">
-              Confira os episódios mais recentes.
-            </p>
-          </div>
-
-          <Link
-            to="/adult"
-            className="shrink-0 text-sm font-semibold text-muted transition hover:text-fg"
-          >
-            Voltar
-          </Link>
+          <p className="mt-1 text-sm text-muted">
+            Confira os episódios mais recentes.
+          </p>
         </div>
       </section>
 
@@ -110,16 +119,63 @@ function AdultRecentPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-          {items.map((anime) => (
-            <AnimeCard
-              key={anime.id}
-              anime={anime}
-              size="lg"
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+            {paginatedItems.map((anime) => (
+              <AnimeCard
+                key={anime.id}
+                anime={anime}
+                size="lg"
+              />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-2">
+              {Array.from(
+                { length: totalPages },
+                (_, index) => {
+                  const page = index + 1;
+
+                  const isActive =
+                    currentPage === page;
+
+                  return (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() =>
+                        setCurrentPage(page)
+                      }
+                      aria-current={
+                        isActive
+                          ? "page"
+                          : undefined
+                      }
+                      className={`inline-flex size-9 items-center justify-center rounded-lg text-sm font-medium transition ${
+                        isActive
+                          ? "bg-elevated text-fg"
+                          : "text-muted hover:bg-elevated hover:text-fg"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  );
+                },
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-center pt-2">
+            <Link
+              to="/adult"
+              className="inline-flex rounded-lg bg-elevated px-4 py-2 text-sm font-semibold text-fg transition hover:bg-surface"
+            >
+              Voltar
+            </Link>
+          </div>
+        </>
       )}
     </div>
   );
-}
+          }
