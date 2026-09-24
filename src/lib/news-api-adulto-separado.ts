@@ -579,187 +579,190 @@ async function fetchSeason(
 async function fetchAdultCatalogNews(): Promise<
   AniMedia[]
 > {
-  const response =
-    await fetch(
-      ANILIST,
-      {
-        method: "POST",
+  const query = `
+    query AdultNews {
+      Page(
+        page: 1
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score
 
-        headers: {
-          "Content-Type":
-            "application/json",
+          title {
+            romaji
+            english
+            native
+          }
 
-          Accept:
-            "application/json",
-        },
+          coverImage {
+            extraLarge
+            large
+          }
 
-        body: JSON.stringify({
-          query: `
-            query AdultNews {
-              adult: Page(
-                page: 1
-                perPage: 30
-              ) {
-                media(
-                  type: ANIME
-                  isAdult: true
-                  sort: START_DATE_DESC
-                ) {
-                  id
-                  isAdult
-                  score
-                  popularity
+          description(
+            asHtml: false
+          )
 
-                  title {
-                    romaji
-                    english
-                    native
-                  }
+          format
+          status
+          episodes
+          season
+          seasonYear
 
-                  coverImage {
-                    extraLarge
-                    large
-                  }
+          startDate {
+            year
+            month
+            day
+          }
 
-                  description(
-                    asHtml: false
-                  )
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+    }
+  `;
 
-                  format
-                  status
-                  episodes
-                  season
-                  seasonYear
+  let lastError = "AniList indisponível";
 
-                  startDate {
-                    year
-                    month
-                    day
-                  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response =
+        await fetch(
+          ANILIST,
+          {
+            method: "POST",
 
-                  trailer {
-                    id
-                    site
-                    thumbnail
-                  }
-                }
-              }
+            headers: {
+              "Content-Type":
+                "application/json",
 
-              hentai: Page(
-                page: 1
-                perPage: 30
-              ) {
-                media(
-                  type: ANIME
-                  genre: "Hentai"
-                  sort: START_DATE_DESC
-                ) {
-                  id
-                  isAdult
-                  score
-                  popularity
+              Accept:
+                "application/json",
+            },
 
-                  title {
-                    romaji
-                    english
-                    native
-                  }
+            body: JSON.stringify({
+              query,
+            }),
 
-                  coverImage {
-                    extraLarge
-                    large
-                  }
+            signal:
+              AbortSignal.timeout(
+                12000,
+              ),
+          },
+        );
 
-                  description(
-                    asHtml: false
-                  )
+      if (!response.ok) {
+        lastError =
+          `AniList indisponível (${response.status})`;
 
-                  format
-                  status
-                  episodes
-                  season
-                  seasonYear
+        if (
+          response.status === 429 ||
+          response.status >= 500
+        ) {
+          const retryAfter =
+            Number(
+              response.headers.get(
+                "Retry-After",
+              ),
+            );
 
-                  startDate {
-                    year
-                    month
-                    day
-                  }
+          const waitMs = Number.isFinite(
+            retryAfter,
+          )
+            ? Math.min(
+                Math.max(
+                  retryAfter * 1000,
+                  500,
+                ),
+                5000,
+              )
+            : 800 * (attempt + 1);
 
-                  trailer {
-                    id
-                    site
-                    thumbnail
-                  }
-                }
-              }
-            }
-          `,
-        }),
+          if (attempt < 2) {
+            await new Promise((resolve) =>
+              setTimeout(
+                resolve,
+                waitMs,
+              ),
+            );
+            continue;
+          }
+        }
 
-        signal:
-          AbortSignal.timeout(
-            12000,
-          ),
-      },
-    );
+        throw new Error(
+          lastError,
+        );
+      }
 
-  if (!response.ok) {
-    throw new Error(
-      `AniList indisponível (${response.status})`,
-    );
-  }
+      const json =
+        (await response.json()) as {
+          data?: {
+            Page?: {
+              media: AniMedia[];
+            };
+          };
 
-  const json =
-    (await response.json()) as {
-      data?: {
-        adult?: { media: AniMedia[] };
-        hentai?: { media: AniMedia[] };
-      };
+          errors?: {
+            message?: string;
+          }[];
+        };
 
-      errors?: {
-        message?: string;
-      }[];
-    };
+      if (json.errors?.length) {
+        lastError =
+          json.errors[0]?.message ??
+          "AniList sem dados";
 
-  if (json.errors?.length || !json.data) {
-    throw new Error(
-      json.errors?.[0]?.message ??
-        "AniList sem dados",
-    );
-  }
+        throw new Error(
+          lastError,
+        );
+      }
 
-  const selected = new Map<
-    number,
-    AniMedia
-  >();
+      const media =
+        json.data?.Page?.media ?? [];
 
-  for (const anime of [
-    ...(json.data.adult?.media ?? []),
-    ...(json.data.hentai?.media ?? []),
-  ]) {
-    if (
-      anime.id > 0 &&
-      anime.format !== "MUSIC" &&
-      (anime.isAdult === true ||
-        (anime.title?.romaji ?? "") ||
-        (anime.title?.english ?? ""))
-    ) {
-      selected.set(
-        anime.id,
-        {
+      return media
+        .filter(
+          (anime) =>
+            anime.id > 0 &&
+            anime.format !== "MUSIC" &&
+            anime.isAdult === true,
+        )
+        .map((anime) => ({
           ...anime,
           isAdult: true,
-        },
-      );
+        }));
+    } catch (error) {
+      lastError =
+        error instanceof Error &&
+        error.message
+          ? error.message
+          : lastError;
+
+      if (attempt < 2) {
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            800 * (attempt + 1),
+          ),
+        );
+        continue;
+      }
     }
   }
 
-  return Array.from(
-    selected.values(),
+  throw new Error(
+    lastError,
   );
 }
-
 
 async function buildNews(
   media: AniMedia[],
@@ -1227,7 +1230,11 @@ export const fetchAdultNews =
         key,
         news,
       );
-    } catch {
-      return [];
+    } catch (error) {
+      throw error instanceof Error
+        ? error
+        : new Error(
+            "Falha ao carregar notícias +18",
+          );
     }
   });
