@@ -1,30 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/test-api-anilist")({
-  loader: async ({ request }) => {
-    const apiUrl = new URL(
-      "/api-anilist",
-      request.url,
-    );
-
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: `
-          query {
-            Media(id: 1, type: ANIME) {
-              id
-              title {
-                romaji
+  loader: async () => {
+    const response = await fetch(
+      "https://grokhikari.vercel.app/api-anilist",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: `
+            query {
+              Media(id: 1, type: ANIME) {
+                id
+                title {
+                  romaji
+                }
               }
             }
-          }
-        `,
-      }),
-    });
+          `,
+        }),
+      },
+    );
 
     const text = await response.text();
 
@@ -53,4 +51,4 @@ function TestApiAniListPage() {
       {data.response}
     </pre>
   );
-        }
+}
