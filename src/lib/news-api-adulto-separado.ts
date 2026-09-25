@@ -321,6 +321,101 @@ function imageFromRss(block: string): string {
   );
 }
 
+async function proxyRssImage(
+  imageUrl: string,
+): Promise<string> {
+  const url = imageUrl.trim();
+
+  if (!/^https?:\/\//i.test(url)) {
+    return "";
+  }
+
+  const MAX_IMAGE_BYTES = 1_500_000;
+
+  try {
+    const response =
+      await fetch(
+        url,
+        {
+          headers: {
+            Accept:
+              "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            Referer:
+              "https://eroeronews.com/",
+            "User-Agent":
+              "Hikari/1.0 (adult news image)",
+          },
+          signal:
+            AbortSignal.timeout(8000),
+        },
+      );
+
+    if (!response.ok) {
+      return "";
+    }
+
+    const contentType =
+      (response.headers.get(
+        "content-type",
+      ) ?? "")
+        .split(";", 1)[0]
+        .trim()
+        .toLowerCase();
+
+    if (!contentType.startsWith("image/")) {
+      return "";
+    }
+
+    const contentLength = Number(
+      response.headers.get(
+        "content-length",
+      ) ?? "0",
+    );
+
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_IMAGE_BYTES
+    ) {
+      return "";
+    }
+
+    const buffer =
+      new Uint8Array(
+        await response.arrayBuffer(),
+      );
+
+    if (
+      buffer.byteLength >
+      MAX_IMAGE_BYTES
+    ) {
+      return "";
+    }
+
+    let binary = "";
+    const CHUNK_SIZE = 0x8000;
+
+    for (
+      let index = 0;
+      index < buffer.length;
+      index += CHUNK_SIZE
+    ) {
+      binary += String.fromCharCode(
+        ...buffer.subarray(
+          index,
+          Math.min(
+            index + CHUNK_SIZE,
+            buffer.length,
+          ),
+        ),
+      );
+    }
+
+    return `data:${contentType};base64,${btoa(binary)}`;
+  } catch {
+    return "";
+  }
+}
+
 function looksSpanish(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
 
@@ -889,13 +984,18 @@ async function fetchAdultNewsFeed(
             item.description,
           );
 
+        const rssImage =
+          image ||
+          (await proxyRssImage(
+            item.image,
+          ));
+
         return {
           ...item,
           title,
           description,
           image:
-            image ||
-            item.image ||
+            rssImage ||
             ADULT_IMAGE_FALLBACK,
         };
       },
