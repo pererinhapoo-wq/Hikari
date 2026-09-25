@@ -359,74 +359,6 @@ function imageFromHtml(html: string): string {
   return "";
 }
 
-async function fetchJapaneseOtonariImage(): Promise<string> {
-  const sourceUrl =
-    "https://ec.toranoana.jp/tora_r/ec/item/210006667343/";
-
-  try {
-    const response = await fetch(
-      sourceUrl,
-      {
-        headers: {
-          Accept: "text/html,application/xhtml+xml",
-          "User-Agent": "Hikari/1.0 (adult news)",
-        },
-        signal: AbortSignal.timeout(8000),
-      },
-    );
-
-    if (!response.ok) {
-      return "";
-    }
-
-    const html = await response.text();
-
-    // Primeiro tenta a imagem do próprio produto no HTML, procurando
-    // pelo código do produto/nome da obra. Não usa og:image porque ela
-    // pode ser apenas o ícone/banner padrão da loja.
-    const productImagePatterns = [
-      /<img[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*(?:210006667343|お隣の贄)[^>]*>/i,
-      /<img[^>]*(?:210006667343|お隣の贄)[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*>/i,
-    ];
-
-    for (const pattern of productImagePatterns) {
-      const match = html.match(pattern);
-
-      if (match?.[1]) {
-        const productImage = new URL(
-          decodeXml(match[1].trim()),
-          sourceUrl,
-        ).href;
-
-        if (!isSourceBrandImage(productImage)) {
-          return productImage;
-        }
-      }
-    }
-
-    // Fallback para o link da imagem do produto, quando a loja não deixa
-    // o endereço da imagem diretamente no <img>.
-    const productMatch = html.match(
-      /href=["']([^"']*\/ec\/his\/?\?[^"']*\bi=210006667343\b[^"']*)["']/i,
-    );
-
-    if (productMatch?.[1]) {
-      const productImage = new URL(
-        productMatch[1],
-        sourceUrl,
-      ).href;
-
-      if (!isSourceBrandImage(productImage)) {
-        return productImage;
-      }
-    }
-
-    return "";
-  } catch {
-    return "";
-  }
-}
-
 function isSourceBrandImage(
   imageUrl: string,
 ): boolean {
@@ -455,6 +387,42 @@ function removeSourceBrandText(
     )
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+function contentImagesFromHtml(
+  html: string,
+  baseUrl: string,
+): string[] {
+  const values: string[] = [];
+
+  const imagePattern =
+    /<img[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*>/gi;
+
+  for (const match of html.matchAll(imagePattern)) {
+    const decoded = decodeXml((match[1] ?? "").trim());
+    if (!decoded) continue;
+
+    try {
+      const absolute = new URL(decoded, baseUrl).href;
+      const contextValue = (match[0] ?? "").toLowerCase();
+
+      if (
+        /\b(?:logo|favicon|branding|site-brand|header-brand|footer-brand)\b/.test(contextValue) ||
+        /(?:eroero\s*news|lune\s*soft|lune\s*pictures)/i.test(contextValue) ||
+        isSourceBrandImage(absolute)
+      ) {
+        continue;
+      }
+
+      if (/^https?:\/\//i.test(absolute) && !values.includes(absolute)) {
+        values.push(absolute);
+      }
+    } catch {
+      // Ignora URLs inválidas.
+    }
+  }
+
+  return values.slice(0, 8);
 }
 
 function imagesFromHtml(
@@ -502,9 +470,18 @@ function imagesFromHtml(
     }
   };
 
-  // Não usamos og:image/twitter:image na galeria da notícia.
-  // Essas metas frequentemente apontam para o logo/ícone padrão do site,
-  // que era o quadrado azul que aparecia em várias notícias.
+  const metaPatterns = [
+    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/gi,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/gi,
+  ];
+
+  for (const pattern of metaPatterns) {
+    for (const match of html.matchAll(pattern)) {
+      if (match[1]) add(match[1]);
+    }
+  }
 
   const imagePattern =
     /<img[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*>/gi;
@@ -514,6 +491,29 @@ function imagesFromHtml(
   }
 
   return values.slice(0, 5);
+}
+
+async function fetchJapaneseOtonariImage(): Promise<string> {
+  const sourceUrl =
+    "https://ec.toranoana.jp/tora_r/ec/item/210006667343/";
+
+  try {
+    const response = await fetch(sourceUrl, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "Hikari/1.0 (adult news)",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!response.ok) return "";
+
+    const html = await response.text();
+    const images = contentImagesFromHtml(html, sourceUrl);
+    return images[0] ?? "";
+  } catch {
+    return "";
+  }
 }
 
 async function fetchArticleImages(
@@ -543,7 +543,7 @@ async function fetchArticleImages(
     }
 
     const html = await response.text();
-    return imagesFromHtml(
+    return contentImagesFromHtml(
       html,
       url,
     );
@@ -1484,7 +1484,7 @@ async function fetchLuneAnimeReleaseNews(): Promise<AutomaticNewsItem[]> {
               ? pageDescription
               : "";
 
-          articleImages = imagesFromHtml(
+          articleImages = contentImagesFromHtml(
             html,
             item.url,
           );
@@ -1653,7 +1653,7 @@ async function fetchAdultNewsFeed(
             );
 
           const articleImages =
-            imagesFromHtml(
+            contentImagesFromHtml(
               rawDescription,
               link,
             );
@@ -1800,14 +1800,13 @@ async function fetchAdultNewsFeed(
               list.indexOf(value) === index,
           ).slice(0, 8);
 
-          // Somente para esta notícia, a segunda imagem vem de uma fonte
-          // japonesa do próprio Otonari no Nie. Não altera as outras notícias.
+          // Somente esta notícia usa uma segunda imagem de uma fonte japonesa.
+          // A imagem principal e todas as outras notícias permanecem como estavam.
           if (/otonari\s+no\s+nie|お隣の贄/i.test(`${item.title} ${item.url}`)) {
             const japaneseImage =
               await fetchJapaneseOtonariImage();
 
             if (japaneseImage) {
-              // Substitui somente a segunda imagem desta notícia.
               articleImages = [
                 articleImages[0],
                 japaneseImage,
