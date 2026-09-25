@@ -146,6 +146,57 @@ function normalizeSearchText(
     .trim();
 }
 
+
+type PaginationItem =
+  | number
+  | "ellipsis";
+
+function getPaginationItems(
+  currentPage: number,
+  totalPages: number,
+): PaginationItem[] {
+  if (totalPages <= 7) {
+    return Array.from(
+      { length: totalPages },
+      (_, index) => index + 1,
+    );
+  }
+
+  if (currentPage <= 4) {
+    return [
+      1,
+      2,
+      3,
+      4,
+      5,
+      "ellipsis",
+      totalPages,
+    ];
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [
+      1,
+      "ellipsis",
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ];
+  }
+
+  return [
+    1,
+    "ellipsis",
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    "ellipsis",
+    totalPages,
+  ];
+}
+
 function NewsPage() {
   const navigate =
     useNavigate({
@@ -478,6 +529,12 @@ function NewsPage() {
    * NOTÍCIAS VISÍVEIS
    * =========================================================
    */
+
+  const paginationItems =
+    getPaginationItems(
+      currentPage,
+      totalPages,
+    );
 
   const visibleNews =
     useMemo(() => {
@@ -1170,54 +1227,61 @@ function NewsPage() {
                     <ChevronLeft className="size-4" />
                   </button>
 
-                  {Array.from(
-                    {
-                      length:
-                        totalPages,
-                    },
+                  {paginationItems.map(
                     (
-                      _,
+                      item,
                       index,
                     ) =>
-                      index +
-                      1,
-                  ).map(
-                    (
-                      page,
-                    ) => (
-                      <button
-                        key={
-                          page
-                        }
-                        type="button"
-                        onClick={() =>
-                          goToPage(
-                            page,
-                          )
-                        }
-                        className={`
-                          flex
-                          size-9
-                          shrink-0
-                          items-center
-                          justify-center
-                          rounded-full
-                          border
-                          text-xs
-                          font-medium
-                          ${
-                            currentPage ===
-                            page
-                              ? "border-fg bg-fg text-background"
-                              : "border-border bg-card text-muted"
+                      item ===
+                      "ellipsis" ? (
+                        <span
+                          key={`ellipsis-${index}`}
+                          className="
+                            flex
+                            size-9
+                            shrink-0
+                            items-center
+                            justify-center
+                            text-xs
+                            text-muted
+                          "
+                        >
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={
+                            item
                           }
-                        `}
-                      >
-                        {
-                          page
-                        }
-                      </button>
-                    ),
+                          type="button"
+                          onClick={() =>
+                            goToPage(
+                              item,
+                            )
+                          }
+                          className={`
+                            flex
+                            size-9
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-full
+                            border
+                            text-xs
+                            font-medium
+                            ${
+                              currentPage ===
+                              item
+                                ? "border-fg bg-fg text-background"
+                                : "border-border bg-card text-muted"
+                            }
+                          `}
+                        >
+                          {
+                            item
+                          }
+                        </button>
+                      ),
                   )}
 
                   <button
