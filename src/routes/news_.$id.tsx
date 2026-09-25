@@ -42,6 +42,7 @@ type NewsItem = {
   description: string;
   content: string;
   date: string;
+  time?: string;
   image: string;
   animeId?: string;
   trailerUrl?: string;
@@ -704,6 +705,12 @@ function automaticToNewsItem(
     date:
       item.date,
 
+    time:
+      "time" in item &&
+      typeof item.time === "string"
+        ? item.time
+        : undefined,
+
     image:
       item.image,
 
@@ -937,6 +944,9 @@ function NewsDetailsPage() {
 
             <span>
               {news.date}
+              {news.time
+                ? ` às ${news.time}`
+                : ""}
             </span>
           </div>
 
