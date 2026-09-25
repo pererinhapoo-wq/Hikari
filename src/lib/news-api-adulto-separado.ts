@@ -355,7 +355,7 @@ function isSourceBrandImage(
       `${url.pathname}${url.search}`,
     ).toLowerCase();
 
-    return /(?:^|[\/_?=&.-])(logo|favicon|site-logo|header-logo|footer-logo)(?:[\/_?=&.-]|$)/i.test(
+    return /(?:^|[\/_?=&.-])(logo|favicon|site-logo|header-logo|footer-logo|lune-logo)(?:[\/_?=&.-]|$)/i.test(
       value,
     );
   } catch {
@@ -369,7 +369,7 @@ function removeSourceBrandText(
 ): string {
   return value
     .replace(
-      /(?:fonte\s*:\s*)?eroero[ -]?news/gi,
+      /(?:fonte\s*:\s*)?(?:eroero[ -]?news|lune\s*soft(?:\s*&\s*lune\s*pictures)?)/gi,
       "",
     )
     .replace(/\s{2,}/g, " ")
@@ -404,7 +404,7 @@ function imagesFromHtml(
         /\b(?:logo|favicon|branding|site-brand|header-brand|footer-brand)\b/.test(
           contextValue,
         ) ||
-        /eroero\s*news/i.test(contextValue) ||
+        /(?:eroero\s*news|lune\s*soft|lune\s*pictures)/i.test(contextValue) ||
         isSourceBrandImage(absolute)
       ) {
         return;
@@ -501,7 +501,7 @@ async function proxyRssImage(
             Accept:
               "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
             Referer:
-              "https://eroeronews.com/",
+              `${new URL(url).origin}/`,
             "User-Agent":
               "Hikari/1.0 (adult news image)",
           },
@@ -578,6 +578,10 @@ async function proxyRssImage(
 
 function looksSpanish(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
+
+  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(value)) {
+    return true;
+  }
 
   const markers = [
     " el ",
@@ -1059,7 +1063,9 @@ function typeFromRss(
 
   if (
     value.includes("trailer") ||
-    value.includes("tráiler")
+    value.includes("tráiler") ||
+    value.includes("デモムービー") ||
+    value.includes("pv")
   ) {
     return "TRAILER";
   }
@@ -1077,7 +1083,9 @@ function typeFromRss(
     value.includes("estreno") ||
     value.includes("estreia") ||
     value.includes("ova") ||
-    value.includes("lançamento")
+    value.includes("lançamento") ||
+    value.includes("発売") ||
+    value.includes("発売中")
   ) {
     return "ESTREIA";
   }
@@ -1098,7 +1106,10 @@ function typeFromRss(
     value.includes("hentai") ||
     value.includes("manga hentai") ||
     value.includes("manhwa") ||
-    value.includes("manhua")
+    value.includes("manhua") ||
+    value.includes("アニメ化") ||
+    value.includes("新作") ||
+    value.includes("続編")
   ) {
     return "NOVO HENTAI";
   }
@@ -1180,14 +1191,9 @@ async function fetchAdultNewsFeed(
         const categoryValue =
           categories.toLowerCase();
 
-        const isLuneFeed =
-          /lune-soft\.jp/i.test(
-            feedUrl,
-          );
-
         if (
-          isLuneFeed &&
-          !categories.includes("アニメ")
+          !categoryValue.includes("アニメ") &&
+          !categoryValue.includes("anime")
         ) {
           return null;
         }
@@ -1227,9 +1233,12 @@ async function fetchAdultNewsFeed(
           return null;
         }
 
+        const rssImage =
+          imageFromRss(item);
+
         return {
           id:
-            `auto-adult-rss-${index}-${encodeURIComponent(link)}`,
+            `auto-adult-lune-${encodeURIComponent(link)}`,
           type:
             typeFromRss(
               title,
@@ -1246,14 +1255,13 @@ async function fetchAdultNewsFeed(
               ? ""
               : new Date(Date.parse(date)).toISOString(),
           image:
-            imageFromRss(item),
+            isSourceBrandImage(rssImage)
+              ? ""
+              : rssImage,
           animeId: "",
           isAdult: true,
           url: link,
-          source:
-            isLuneFeed
-              ? "Lune Soft & Lune Pictures"
-              : "Fonte externa",
+          source: "Lune Soft & Lune Pictures",
           articleImages,
         };
       },
@@ -1281,14 +1289,7 @@ async function fetchAdultNewsFeed(
   return Promise.all(
     hentaiOnly.map(
       async (item) => {
-        const title =
-          /lune-soft\.jp/i.test(
-            item.url ?? "",
-          )
-            ? item.title
-            : await translateToPortuguese(
-                item.title,
-              );
+        const title = item.title;
         const description =
           await translateToPortuguese(
             item.description,
@@ -1307,9 +1308,10 @@ async function fetchAdultNewsFeed(
         if (image) {
           rssImage = image;
         } else if (item.image) {
-          rssImage = await proxyRssImage(
-            item.image,
-          );
+          rssImage =
+            (await proxyRssImage(
+              item.image,
+            )) || item.image;
         }
 
         if (item.url) {
@@ -1327,29 +1329,25 @@ async function fetchAdultNewsFeed(
           ).slice(0, 8);
 
           if (!rssImage && pageImages[0]) {
-            rssImage = await proxyRssImage(
-              pageImages[0],
-            );
+            rssImage =
+              (await proxyRssImage(
+                pageImages[0],
+              )) || pageImages[0];
           }
         }
 
         const proxiedArticleImages =
           (
             await Promise.all(
-              articleImages.map(
-                async (imageUrl) => {
-                  const proxied =
-                    await proxyRssImage(
-                      imageUrl,
-                      5_000_000,
-                    );
-
-                  return (
-                    proxied ||
-                    imageUrl
+              articleImages.map(async (imageUrl) => {
+                const proxied =
+                  await proxyRssImage(
+                    imageUrl,
+                    5_000_000,
                   );
-                },
-              ),
+
+                return proxied || imageUrl;
+              }),
             )
           ).filter(Boolean);
 
