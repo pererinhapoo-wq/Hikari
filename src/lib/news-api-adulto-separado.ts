@@ -22,7 +22,13 @@ export type AutomaticNewsItem = {
 };
 
 const ANILIST = "https://graphql.anilist.co";
-const ADULT_NEWS_RSS = "https://eroeronews.com/feed/";
+
+const ADULT_NEWS_RSS_FEEDS = [
+  "https://eroeronews.com/feed/",
+  "https://eroeronews.com/categorias/manhwa/feed/",
+  "https://eroeronews.com/categorias/manga-hentai/feed/",
+  "https://eroeronews.com/categorias/estrenos/feed/",
+];
 
 type AniMedia = {
   id: number;
@@ -282,20 +288,60 @@ function firstXmlValue(
   );
 }
 
+function normalizeUrl(
+  value: string,
+): string {
+  const url = decodeXml(value.trim());
+
+  if (url.startsWith("//")) {
+    return `https:${url}`;
+  }
+
+  return url;
+}
 
 function looksSpanish(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
+
   const markers = [
-    " el ", " la ", " los ", " las ", " un ", " una ",
-    " de ", " del ", " para ", " con ", " por ", " que ",
-    " se ", " este ", " estos ", " nueva ", " nuevo ",
-    " estrenos", " tráiler", " termina ", " fueron ",
-    " vendidos", " imágenes", " revelan ",
+    " el ",
+    " la ",
+    " los ",
+    " las ",
+    " un ",
+    " una ",
+    " de ",
+    " del ",
+    " para ",
+    " con ",
+    " por ",
+    " que ",
+    " se ",
+    " este ",
+    " estos ",
+    " esta ",
+    " estas ",
+    " nueva ",
+    " nuevo ",
+    " estrenos ",
+    " tráiler ",
+    " termina ",
+    " fueron ",
+    " vendidos ",
+    " imágenes ",
+    " revelan ",
   ];
-  return markers.filter((marker) => text.includes(marker)).length >= 2;
+
+  return (
+    markers.filter((marker) =>
+      text.includes(marker),
+    ).length >= 2
+  );
 }
 
-async function translateToPortuguese(value: string): Promise<string> {
+async function translateToPortuguese(
+  value: string,
+): Promise<string> {
   const text = value.trim();
 
   if (!text || !looksSpanish(text)) {
@@ -303,32 +349,48 @@ async function translateToPortuguese(value: string): Promise<string> {
   }
 
   try {
-    const response = await fetch(
-      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt&dt=t&q=${encodeURIComponent(text.slice(0, 4500))}`,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "Hikari/1.0 (adult news)",
+    const response =
+      await fetch(
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt&dt=t&q=${encodeURIComponent(text.slice(0, 4500))}`,
+        {
+          headers: {
+            Accept:
+              "application/json",
+            "User-Agent":
+              "Hikari/1.0 (adult news)",
+          },
+          signal:
+            AbortSignal.timeout(
+              5000,
+            ),
         },
-        signal: AbortSignal.timeout(5000),
-      },
-    );
+      );
 
     if (!response.ok) {
       return text;
     }
 
-    const data = (await response.json()) as unknown;
+    const data =
+      (await response.json()) as unknown;
 
-    if (!Array.isArray(data) || !Array.isArray(data[0])) {
+    if (
+      !Array.isArray(data) ||
+      !Array.isArray(data[0])
+    ) {
       return text;
     }
 
-    const translated = data[0]
-      .filter((part): part is unknown[] => Array.isArray(part))
-      .map((part) => String(part[0] ?? ""))
-      .join("")
-      .trim();
+    const translated =
+      data[0]
+        .filter(
+          (part): part is unknown[] =>
+            Array.isArray(part),
+        )
+        .map((part) =>
+          String(part[0] ?? ""),
+        )
+        .join("")
+        .trim();
 
     return translated || text;
   } catch {
@@ -339,57 +401,51 @@ async function translateToPortuguese(value: string): Promise<string> {
 function imageFromRss(
   block: string,
 ): string {
-  const mediaContent = block.match(
+  const candidates = [
     /<media:content[^>]+url=["']([^"']+)["'][^>]*>/i,
-  );
-
-  if (mediaContent?.[1]) {
-    return decodeXml(mediaContent[1]);
-  }
-
-  const enclosure = block.match(
+    /<media:thumbnail[^>]+url=["']([^"']+)["'][^>]*>/i,
+    /<thumbnail[^>]+url=["']([^"']+)["'][^>]*>/i,
     /<enclosure[^>]+url=["']([^"']+)["'][^>]*>/i,
-  );
+    /<(?:img|source)[^>]+(?:data-src|data-lazy-src|data-original|data-image)=['"]([^'"]+)['"][^>]*>/i,
+    /<(?:img|source)[^>]+src=['"]([^'"]+)['"][^>]*>/i,
+  ];
 
-  if (enclosure?.[1]) {
-    return decodeXml(enclosure[1]);
-  }
+  for (const pattern of candidates) {
+    const match = block.match(pattern);
 
-  const lazyImage = block.match(
-    /<(?:img|source)[^>]+(?:data-src|data-lazy-src|data-original)=["']([^"']+)["'][^>]*>/i,
-  );
-
-  if (lazyImage?.[1]) {
-    return decodeXml(lazyImage[1]);
+    if (match?.[1]) {
+      return normalizeUrl(match[1]);
+    }
   }
 
   const ogImage =
     block.match(
-      /<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+      /<meta[^>]+(?:property|name)=['"]og:image['"][^>]+content=['"]([^'"]+)['"][^>]*>/i,
     ) ||
     block.match(
-      /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["'][^>]*>/i,
+      /<meta[^>]+content=['"]([^'"]+)['"][^>]+(?:property|name)=['"]og:image['"][^>]*>/i,
     );
 
   if (ogImage?.[1]) {
-    return decodeXml(ogImage[1]);
+    return normalizeUrl(ogImage[1]);
   }
 
-  const content = firstXmlValue(
-    block,
-    "content:encoded",
-  );
-
-  const image =
-    content.match(
-      /<img[^>]+src=["']([^"']+)["'][^>]*>/i,
-    ) ||
-    content.match(
-      /<img[^>]+(?:data-src|data-lazy-src|data-original)=["']([^"']+)["'][^>]*>/i,
+  const content =
+    firstXmlValue(
+      block,
+      "content:encoded",
     );
 
-  return decodeXml(
-    image?.[1] ?? "",
+  const contentImage =
+    content.match(
+      /<(?:img|source)[^>]+(?:data-src|data-lazy-src|data-original|data-image)=['"]([^'"]+)['"][^>]*>/i,
+    ) ||
+    content.match(
+      /<(?:img|source)[^>]+src=['"]([^'"]+)['"][^>]*>/i,
+    );
+
+  return normalizeUrl(
+    contentImage?.[1] ?? "",
   );
 }
 
@@ -422,7 +478,8 @@ function typeFromRss(
   title: string,
   categories: string,
 ): AutomaticNewsItem["type"] {
-  const value = `${title} ${categories}`.toLowerCase();
+  const value =
+    `${title} ${categories}`.toLowerCase();
 
   if (
     value.includes("trailer") ||
@@ -433,7 +490,9 @@ function typeFromRss(
 
   if (
     value.includes("episodio") ||
-    value.includes("episode")
+    value.includes("episode") ||
+    value.includes("capítulo") ||
+    value.includes("chapter")
   ) {
     return "NOVO EPISÓDIO";
   }
@@ -441,7 +500,8 @@ function typeFromRss(
   if (
     value.includes("estreno") ||
     value.includes("estreia") ||
-    value.includes("ova")
+    value.includes("ova") ||
+    value.includes("lançamento")
   ) {
     return "ESTREIA";
   }
@@ -449,7 +509,8 @@ function typeFromRss(
   if (
     value.includes("recomend") ||
     value.includes("vendidos") ||
-    value.includes("ranking")
+    value.includes("ranking") ||
+    value.includes("top ")
   ) {
     return "RECOMENDAÇÃO";
   }
@@ -457,7 +518,11 @@ function typeFromRss(
   if (
     value.includes("nuevo") ||
     value.includes("nuevo hentai") ||
-    value.includes("novo")
+    value.includes("novo") ||
+    value.includes("hentai") ||
+    value.includes("manga hentai") ||
+    value.includes("manhwa") ||
+    value.includes("manhua")
   ) {
     return "NOVO HENTAI";
   }
@@ -465,12 +530,12 @@ function typeFromRss(
   return "ANÚNCIO";
 }
 
-async function fetchAdultNewsFeed(): Promise<
-  AutomaticNewsItem[]
-> {
+async function fetchAdultNewsFeed(
+  feedUrl: string,
+): Promise<AutomaticNewsItem[]> {
   const response =
     await fetch(
-      ADULT_NEWS_RSS,
+      feedUrl,
       {
         headers: {
           Accept:
@@ -491,7 +556,8 @@ async function fetchAdultNewsFeed(): Promise<
     );
   }
 
-  const xml = await response.text();
+  const xml =
+    await response.text();
 
   const items =
     xml.match(
@@ -500,21 +566,27 @@ async function fetchAdultNewsFeed(): Promise<
 
   const parsed = items
     .map(
-      (item, index): AutomaticNewsItem | null => {
-        const title = firstXmlValue(
-          item,
-          "title",
-        );
+      (
+        item,
+        index,
+      ): AutomaticNewsItem | null => {
+        const title =
+          firstXmlValue(
+            item,
+            "title",
+          );
 
-        const link = firstXmlValue(
-          item,
-          "link",
-        );
+        const link =
+          firstXmlValue(
+            item,
+            "link",
+          );
 
-        const date = firstXmlValue(
-          item,
-          "pubDate",
-        );
+        const date =
+          firstXmlValue(
+            item,
+            "pubDate",
+          );
 
         const categories =
           Array.from(
@@ -523,7 +595,9 @@ async function fetchAdultNewsFeed(): Promise<
             ),
           )
             .map((match) =>
-              decodeXml(match[1] ?? ""),
+              decodeXml(
+                match[1] ?? "",
+              ),
             )
             .join(" ");
 
@@ -547,17 +621,21 @@ async function fetchAdultNewsFeed(): Promise<
         }
 
         return {
-          id: `auto-adult-rss-${index}-${encodeURIComponent(link)}`,
-          type: typeFromRss(
-            title,
-            categories,
-          ),
+          id:
+            `auto-adult-rss-${index}-${encodeURIComponent(link)}`,
+          type:
+            typeFromRss(
+              title,
+              categories,
+            ),
           title,
           description:
             description ||
-            "Nova notícia da área Hentai.",
-          date: formatRssDate(date),
-          image: imageFromRss(item),
+            "Nova notícia da área adulta.",
+          date:
+            formatRssDate(date),
+          image:
+            imageFromRss(item),
           animeId: "",
           isAdult: true,
           url: link,
@@ -568,15 +646,26 @@ async function fetchAdultNewsFeed(): Promise<
       (
         item,
       ): item is AutomaticNewsItem =>
-        Boolean(item?.title && item?.url),
+        Boolean(
+          item?.title &&
+          item?.url,
+        ),
     );
 
   return Promise.all(
-    parsed.map(async (item) => ({
-      ...item,
-      title: await translateToPortuguese(item.title),
-      description: await translateToPortuguese(item.description),
-    })),
+    parsed.map(
+      async (item) => ({
+        ...item,
+        title:
+          await translateToPortuguese(
+            item.title,
+          ),
+        description:
+          await translateToPortuguese(
+            item.description,
+          ),
+      }),
+    ),
   );
 }
 
@@ -617,30 +706,24 @@ export const fetchAutomaticNews =
             (
               anime,
             ): AutomaticNewsItem => ({
-              id: `auto-${anime.id}`,
-
+              id:
+                `auto-${anime.id}`,
               type:
                 "NOVA TEMPORADA",
-
               title:
                 `${titleOf(anime)} — nova temporada`,
-
               description:
                 descriptionOf(anime),
-
               date:
                 formatDate(anime),
-
               image:
                 anime.coverImage
                   ?.extraLarge ||
                 anime.coverImage
                   ?.large ||
                 "",
-
               animeId:
                 String(anime.id),
-
               isAdult:
                 anime.isAdult === true,
             }),
@@ -677,93 +760,102 @@ export const fetchAdultNews =
     }
 
     try {
-      const [media, rssNews] =
-        await Promise.allSettled([
-          fetchSeason(
-            current.season,
-            current.year,
-          ),
-          fetchAdultNewsFeed(),
-        ]);
+      const [
+        media,
+        ...rssResults
+      ] = await Promise.all([
+        fetchSeason(
+          current.season,
+          current.year,
+        ).catch(() => []),
+        ...ADULT_NEWS_RSS_FEEDS.map(
+          (feedUrl) =>
+            fetchAdultNewsFeed(
+              feedUrl,
+            ).catch(() => []),
+        ),
+      ]);
 
       const seasonNews =
-        media.status === "fulfilled"
-          ? media.value
-              .filter(
-                (anime) =>
-                  anime.id > 0 &&
-                  anime.format !==
-                    "MUSIC" &&
-                  anime.isAdult === true,
-              )
-              .map(
-                (
-                  anime,
-                ): AutomaticNewsItem => ({
-                  id: `auto-adult-${anime.id}`,
-
-                  type:
-                    "NOVA TEMPORADA",
-
-                  title:
-                    `${titleOf(anime)} — nova temporada`,
-
-                  description:
-                    descriptionOf(anime),
-
-                  date:
-                    formatDate(anime),
-
-                  image:
-                    anime.coverImage
-                      ?.extraLarge ||
-                    anime.coverImage
-                      ?.large ||
-                    "",
-
-                  animeId:
-                    String(anime.id),
-
-                  isAdult: true,
-                }),
-              )
-              .filter(
-                (news) =>
-                  Boolean(news.image),
-              )
-          : [];
+        media
+          .filter(
+            (anime) =>
+              anime.id > 0 &&
+              anime.format !==
+                "MUSIC" &&
+              anime.isAdult === true,
+          )
+          .map(
+            (
+              anime,
+            ): AutomaticNewsItem => ({
+              id:
+                `auto-adult-${anime.id}`,
+              type:
+                "NOVA TEMPORADA",
+              title:
+                `${titleOf(anime)} — nova temporada`,
+              description:
+                descriptionOf(anime),
+              date:
+                formatDate(anime),
+              image:
+                anime.coverImage
+                  ?.extraLarge ||
+                anime.coverImage
+                  ?.large ||
+                "",
+              animeId:
+                String(anime.id),
+              isAdult: true,
+            }),
+          )
+          .filter(
+            (news) =>
+              Boolean(news.image),
+          );
 
       const externalNews =
-        rssNews.status === "fulfilled"
-          ? rssNews.value
-          : [];
+        rssResults.flat();
 
       const combined = [
         ...externalNews,
         ...seasonNews,
       ];
 
-      const unique = Array.from(
-        new Map(
-          combined.map((item) => [
-            item.url ||
-              `${item.title}-${item.date}`,
-            item,
-          ]),
-        ).values(),
-      );
+      const unique =
+        Array.from(
+          new Map(
+            combined.map((item) => [
+              item.url ||
+                `${item.title}-${item.date}`,
+              item,
+            ]),
+          ).values(),
+        );
 
       unique.sort((a, b) => {
         const dateA = Date.parse(
-          a.date.split("/").reverse().join("-"),
+          a.date
+            .split("/")
+            .reverse()
+            .join("-"),
         );
+
         const dateB = Date.parse(
-          b.date.split("/").reverse().join("-"),
+          b.date
+            .split("/")
+            .reverse()
+            .join("-"),
         );
 
         return (
-          (Number.isNaN(dateB) ? 0 : dateB) -
-          (Number.isNaN(dateA) ? 0 : dateA)
+          (Number.isNaN(dateB)
+            ? 0
+            : dateB) -
+          (Number.isNaN(dateA)
+            ? 0
+            : dateA)
         );
       });
 
