@@ -159,6 +159,7 @@ function formatDate(
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+      timeZone: "America/Recife",
     },
   ).format(
     new Date(
@@ -783,6 +784,7 @@ function formatUpdatedDate(
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+      timeZone: "America/Recife",
     },
   ).format(
     new Date(timestamp),
@@ -803,6 +805,7 @@ function formatUpdatedTime(
     {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: "America/Recife",
     },
   ).format(
     new Date(timestamp),
