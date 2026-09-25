@@ -1,6 +1,7 @@
 import {
   createFileRoute,
   Link,
+  stripSearchParams,
   useNavigate,
 } from "@tanstack/react-router";
 
@@ -40,6 +41,15 @@ export const Route = createFileRoute(
       Number(search.page) || 1,
     ),
   }),
+
+  search: {
+    middlewares: [
+      stripSearchParams({
+        q: "",
+        page: 1,
+      }),
+    ],
+  },
 
   loader: async () => {
     return await fetchAdultNews();
