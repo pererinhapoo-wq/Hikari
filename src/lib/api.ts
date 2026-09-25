@@ -2303,7 +2303,7 @@ export const searchCatalog =
           `search:v4:${JSON.stringify(data)}`;
 
         const cached =
-          fromCache<BrowseResult>(
+          fromCache<SearchResult>(
             key,
           );
 
@@ -2481,6 +2481,58 @@ export const fetchAdultCatalog =
     },
   );
 
+
+const MAIN_ADULT_TAGS = [
+  { name: "Anal", aliases: ["Anal", "Anal Sex"] },
+  { name: "Boquete", aliases: ["Blow Job", "Blowjob"] },
+  { name: "Harém", aliases: ["Harem", "Female Harem"] },
+  { name: "Incesto", aliases: ["Incest"] },
+  { name: "Lactante", aliases: ["Breast Feeding", "Lactation"] },
+  { name: "Milf", aliases: ["MILF"] },
+  { name: "Futanari", aliases: ["Futanari"] },
+  { name: "Ecchi", aliases: ["Ecchi"] },
+  { name: "Yuri", aliases: ["Yuri"] },
+  { name: "Yaoi", aliases: ["Yaoi"] },
+  { name: "Romance", aliases: ["Romance"] },
+  { name: "Masturbação", aliases: ["Masturbation"] },
+  { name: "Orgia", aliases: ["Orgy"] },
+  { name: "Peitões", aliases: ["Large Breasts", "Big Breasts"] },
+  { name: "Brinquedos", aliases: ["Toys", "Sex Toys"] },
+  { name: "BDSM", aliases: ["BDSM"] },
+  { name: "Submissão", aliases: ["Submission"] },
+  { name: "Tentáculos", aliases: ["Tentacles"] },
+  { name: "NTR", aliases: ["NTR"] },
+  { name: "Netorare", aliases: ["Netorare"] },
+  { name: "Cosplay", aliases: ["Cosplay"] },
+  { name: "Voyeur", aliases: ["Voyeur"] },
+  { name: "Exibicionismo", aliases: ["Exhibitionism"] },
+  { name: "Vida Escolar", aliases: ["School Life", "School"] },
+  { name: "Professora", aliases: ["Teacher"] },
+  { name: "Enfermeira", aliases: ["Nurse"] },
+  { name: "Empregada", aliases: ["Maid", "Maids"] },
+  { name: "Amiga de infância", aliases: ["Childhood Friend"] },
+  { name: "Senpai", aliases: ["Senpai"] },
+  { name: "Vizinha", aliases: ["Neighbor", "Neighbors"] },
+  { name: "Office / Escritório", aliases: ["Office Lady", "Office"] },
+  { name: "Dark Skin", aliases: ["Dark Skin", "Tanned Skin"] },
+  { name: "Comédia", aliases: ["Comedy"] },
+  { name: "Magia", aliases: ["Magic"] },
+  { name: "Elfos", aliases: ["Elf", "Elves"] },
+  { name: "Demônios", aliases: ["Demon", "Demons"] },
+  { name: "Vampiros", aliases: ["Vampire", "Vampires"] },
+  { name: "Terror", aliases: ["Horror"] },
+  { name: "Virgem", aliases: ["Virgin", "Virginity"] },
+  { name: "Esporte", aliases: ["Sports", "Sport"] },
+] as const;
+
+function normalizeAdultTagName(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 type AdultTagCatalog = {
   items: SlimAnime[];
   tags: Array<{
@@ -2549,7 +2601,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v5";
+        "adult-tags:v6";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2677,7 +2729,6 @@ export const fetchAdultTags =
               string,
               {
                 pageInfo: {
-                  total: number;
                   hasNextPage: boolean;
                 };
 
@@ -2800,28 +2851,50 @@ export const fetchAdultTags =
         }
       }
 
-      const tags =
+      const sourceTags =
         Array.from(
           tagMap.values(),
-        )
-          .map((tag) => ({
-            name: tag.name,
+        );
 
-            count:
-              tag.animeIds.size,
+      const tags =
+        MAIN_ADULT_TAGS
+          .map((mainTag) => {
+            const aliases = new Set(
+              [
+                mainTag.name,
+                ...mainTag.aliases,
+              ].map(normalizeAdultTagName),
+            );
 
-            animeIds:
-              Array.from(
-                tag.animeIds,
-              ),
-          }))
-          .sort(
-            (a, b) =>
-              b.count - a.count ||
-              a.name.localeCompare(
-                b.name,
-                "pt-BR",
-              ),
+            const matching =
+              sourceTags.filter((tag) =>
+                aliases.has(
+                  normalizeAdultTagName(
+                    tag.name,
+                  ),
+                ),
+              );
+
+            const animeIds = new Set<string>();
+
+            for (const tag of matching) {
+              for (const animeId of tag.animeIds) {
+                animeIds.add(animeId);
+              }
+            }
+
+            return {
+              name: mainTag.name,
+              count: animeIds.size,
+              animeIds: Array.from(animeIds),
+            };
+          })
+          .filter(
+            (tag): tag is {
+              name: string;
+              count: number;
+              animeIds: string[];
+            } => Boolean(tag),
           );
 
       return toCache(
@@ -3333,10 +3406,6 @@ const browseSchema =
       z.string().optional(),
   });
 
-type BrowseResult = SearchResult & {
-  total: number;
-};
-
 export const fetchBrowse =
   createServerFn({
     method: "GET",
@@ -3366,10 +3435,10 @@ export const fetchBrowse =
           data.genre?.trim() || undefined;
 
         const key =
-          `browse:v2:${data.section}:${season}:${year}:${genre ?? "all"}:${page}`;
+          `browse:${data.section}:${season}:${year}:${genre ?? "all"}:${page}`;
 
         const cached =
-          fromCache<BrowseResult>(
+          fromCache<SearchResult>(
             key,
           );
 
@@ -3400,7 +3469,6 @@ export const fetchBrowse =
             await anilistGraphQL<{
               Page: {
                 pageInfo: {
-                  total: number;
                   hasNextPage: boolean;
                 };
 
@@ -3420,13 +3488,11 @@ export const fetchBrowse =
                 perPage: 24
               ) {
                 pageInfo {
-                  total
                   hasNextPage
                 }
 
                 media(
                   type: ANIME,
-                  isAdult: false,
                   sort: $sort,
                   season: $season,
                   seasonYear: $year
@@ -3447,13 +3513,11 @@ export const fetchBrowse =
                 perPage: 24
               ) {
                 pageInfo {
-                  total
                   hasNextPage
                 }
 
                 media(
                   type: ANIME,
-                  isAdult: false,
                   sort: $sort,
                   genre: $genre
                 ) {
@@ -3487,7 +3551,7 @@ export const fetchBrowse =
                   },
             );
 
-          return toCache<BrowseResult>(
+          return toCache(
             key,
             {
               items: (
@@ -3505,9 +3569,6 @@ export const fetchBrowse =
                 ),
 
               page,
-
-              total:
-                result.Page.pageInfo?.total ?? 0,
 
               hasNext:
                 Boolean(
@@ -3534,15 +3595,12 @@ export const fetchBrowse =
             await jikanFetch<{
               pagination?: {
                 has_next_page?: boolean;
-                items?: {
-                  total?: number;
-                };
               };
 
               data?: JikanAnime[];
             }>(path);
 
-          return toCache<BrowseResult>(
+          return toCache(
             key,
             {
               items: (
@@ -3553,9 +3611,6 @@ export const fetchBrowse =
               ),
 
               page,
-
-              total:
-                json.pagination?.items?.total ?? 0,
 
               hasNext:
                 Boolean(
