@@ -1635,6 +1635,85 @@ async function buildNews(
     [];
 
   const now = Date.now();
+  const RECENT_UPDATE_WINDOW =
+    30 * 24 * 60 * 60 * 1000;
+  const RECENT_RELEASE_WINDOW =
+    120 * 24 * 60 * 60 * 1000;
+  const UPCOMING_RELEASE_WINDOW =
+    180 * 24 * 60 * 60 * 1000;
+  const RECENT_EPISODE_WINDOW =
+    14 * 24 * 60 * 60 * 1000;
+
+  const recentMedia = media.filter(
+    (anime) => {
+      const updatedAt =
+        typeof anime.updatedAt ===
+          "number" &&
+        anime.updatedAt > 0
+          ? anime.updatedAt * 1000
+          : 0;
+
+      const startDate =
+        anime.startDate;
+      const startTimestamp =
+        startDate?.year &&
+        startDate.month &&
+        startDate.day
+          ? new Date(
+              startDate.year,
+              startDate.month - 1,
+              startDate.day,
+            ).getTime()
+          : 0;
+
+      const latestEpisode =
+        latestEpisodes.get(
+          anime.id,
+        );
+
+      const episodeTimestamp =
+        latestEpisode?.airingAt
+          ? latestEpisode.airingAt * 1000
+          : 0;
+
+      const recentlyUpdated =
+        updatedAt > 0 &&
+        now - updatedAt <=
+          RECENT_UPDATE_WINDOW &&
+        updatedAt <= now;
+
+      const recentlyReleased =
+        startTimestamp > 0 &&
+        startTimestamp <= now &&
+        now - startTimestamp <=
+          RECENT_RELEASE_WINDOW;
+
+      const upcoming =
+        startTimestamp > now &&
+        startTimestamp - now <=
+          UPCOMING_RELEASE_WINDOW;
+
+      const recentlyAired =
+        episodeTimestamp > 0 &&
+        episodeTimestamp <= now &&
+        now - episodeTimestamp <=
+          RECENT_EPISODE_WINDOW;
+
+      return (
+        recentlyUpdated ||
+        recentlyReleased ||
+        upcoming ||
+        recentlyAired
+      );
+    },
+  );
+
+  // A lista de notícias deve ser formada por acontecimentos
+  // recentes, e não por todos os animes antigos do catálogo.
+  // Mantemos somente os títulos que tiveram atualização recente,
+  // lançamento recente/próximo ou episódio recém-exibido.
+  media = recentMedia;
+
   const isAdultFeed =
     media.some(
       (anime) => anime.isAdult === true,
@@ -1709,6 +1788,19 @@ async function buildNews(
 
     const isAdult =
       anime.isAdult === true;
+
+    const updatedTimestamp =
+      typeof anime.updatedAt ===
+        "number" &&
+      anime.updatedAt > 0
+        ? anime.updatedAt * 1000
+        : 0;
+
+    const recentlyUpdated =
+      updatedTimestamp > 0 &&
+      now - updatedTimestamp <=
+        RECENT_UPDATE_WINDOW &&
+      updatedTimestamp <= now;
 
     const startDate = anime.startDate;
     const startTimestamp =
@@ -1825,7 +1917,31 @@ async function buildNews(
       });
     }
 
-    if (trailerUrl) {
+    const recentlyReleased =
+      startTimestamp > 0 &&
+      startTimestamp <= now &&
+      now - startTimestamp <=
+        RECENT_RELEASE_WINDOW;
+
+    const upcoming =
+      startTimestamp > now &&
+      startTimestamp - now <=
+        UPCOMING_RELEASE_WINDOW;
+
+    const recentlyAired =
+      latestEpisode?.airingAt
+        ? latestEpisode.airingAt * 1000 <= now &&
+          now - latestEpisode.airingAt * 1000 <=
+            RECENT_EPISODE_WINDOW
+        : false;
+
+    if (
+      trailerUrl &&
+      (recentlyUpdated ||
+        recentlyReleased ||
+        upcoming ||
+        recentlyAired)
+    ) {
       news.push({
         id:
           `auto-trailer-${anime.id}`,
@@ -1867,7 +1983,12 @@ async function buildNews(
         isAdult:
           anime.isAdult === true,
       });
-    } else {
+    } else if (
+      recentlyUpdated ||
+      recentlyReleased ||
+      upcoming ||
+      recentlyAired
+    ) {
       news.push({
         id:
           `auto-season-${anime.id}`,
