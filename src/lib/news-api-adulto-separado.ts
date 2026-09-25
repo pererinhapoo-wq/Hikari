@@ -1711,24 +1711,15 @@ async function fetchAdultNewsFeed(
         const title = translated.title;
         const description = translated.description;
 
-        const image =
-          await fetchAniListCover(
-            item.title,
-            item.description,
-          );
-
+        // Para notícias, a imagem principal deve vir da própria notícia
+        // (ou do trailer/imagem do artigo), e não do AniList.
+        // Isso evita substituir a imagem da notícia por capas/ícones azuis.
         let rssImage = "";
         let articleImages = [
           ...(item.articleImages ?? []),
         ];
 
-        if (image) {
-          rssImage =
-            (await proxyRssImage(
-              image,
-              5_000_000,
-            )) || image;
-        } else if (item.image) {
+        if (item.image) {
           rssImage =
             (await proxyRssImage(
               item.image,
@@ -1792,8 +1783,8 @@ async function fetchAdultNewsFeed(
           title,
           description,
           image:
-            rssImage ||
             proxiedArticleImages[0] ||
+            rssImage ||
             ADULT_IMAGE_FALLBACK,
           articleImages:
             proxiedArticleImages,
@@ -1895,7 +1886,7 @@ export const fetchAdultNews =
       currentAnimeSeason();
 
     const key =
-      `automatic-adult-news:hentai-real-publication-date:v3-images:${current.season}:${current.year}`;
+      `automatic-adult-news:hentai-real-publication-date:v4-news-images:${current.season}:${current.year}`;
 
     const cached =
       fromCache(key);
