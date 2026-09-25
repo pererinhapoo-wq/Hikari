@@ -615,65 +615,94 @@ async function translateTextToPortuguese(
     return text;
   }
 
-  try {
-    const response = await fetch(
-      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=es&tl=pt&dt=t&q=${encodeURIComponent(text.slice(0, 4500))}`,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "Hikari/1.0 (adult news translation)",
-        },
-        signal: AbortSignal.timeout(7000),
-      },
-    );
+  // Os serviços de tradução usados aqui aceitam consultas curtas.
+  // A descrição das notícias pode ser muito maior, então traduzimos
+  // em blocos pequenos para nunca ultrapassar o limite de 500 caracteres.
+  const chunks: string[] = [];
+  let remaining = text;
 
-    if (response.ok) {
-      const data = (await response.json()) as unknown;
+  while (remaining.length > 0) {
+    if (remaining.length <= 450) {
+      chunks.push(remaining);
+      break;
+    }
 
-      if (Array.isArray(data) && Array.isArray(data[0])) {
-        const translated = data[0]
-          .filter((part): part is unknown[] => Array.isArray(part))
-          .map((part) => String(part[0] ?? ""))
-          .join("")
-          .trim();
+    let cut = remaining.lastIndexOf(" ", 450);
+    if (cut < 200) cut = 450;
 
-        if (translated && translated !== text) {
-          return translated;
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trimStart();
+  }
+
+  const translatedChunks = await Promise.all(
+    chunks.map(async (chunk) => {
+      if (!chunk || !looksSpanish(chunk)) {
+        return chunk;
+      }
+
+      try {
+        const response = await fetch(
+          `https://translate.googleapis.com/translate_a/single?client=gtx&sl=es&tl=pt&dt=t&q=${encodeURIComponent(chunk)}`,
+          {
+            headers: {
+              Accept: "application/json",
+              "User-Agent": "Hikari/1.0 (adult news translation)",
+            },
+            signal: AbortSignal.timeout(7000),
+          },
+        );
+
+        if (response.ok) {
+          const data = (await response.json()) as unknown;
+
+          if (Array.isArray(data) && Array.isArray(data[0])) {
+            const translated = data[0]
+              .filter((part): part is unknown[] => Array.isArray(part))
+              .map((part) => String(part[0] ?? ""))
+              .join("")
+              .trim();
+
+            if (translated && translated !== chunk) {
+              return translated;
+            }
+          }
         }
+      } catch {
+        // Tenta o fallback.
       }
-    }
-  } catch {
-    // Tenta o fallback.
-  }
 
-  try {
-    const response = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0, 1800))}&langpair=es|pt-BR`,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "Hikari/1.0 (adult news translation)",
-        },
-        signal: AbortSignal.timeout(7000),
-      },
-    );
+      try {
+        const response = await fetch(
+          `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=es|pt-BR`,
+          {
+            headers: {
+              Accept: "application/json",
+              "User-Agent": "Hikari/1.0 (adult news translation)",
+            },
+            signal: AbortSignal.timeout(7000),
+          },
+        );
 
-    if (response.ok) {
-      const data = (await response.json()) as {
-        responseData?: { translatedText?: string };
-      };
+        if (response.ok) {
+          const data = (await response.json()) as {
+            responseData?: { translatedText?: string };
+          };
 
-      const translated = data.responseData?.translatedText?.trim() ?? "";
+          const translated = data.responseData?.translatedText?.trim() ?? "";
 
-      if (translated && translated !== text) {
-        return translated;
+          if (translated && translated !== chunk) {
+            return translated;
+          }
+        }
+      } catch {
+        // Mantém o bloco original se os dois serviços estiverem indisponíveis.
       }
-    }
-  } catch {
-    // Mantém o original se os dois serviços estiverem indisponíveis.
-  }
 
-  return text;
+      return chunk;
+    }),
+  );
+
+  return translatedChunks.join(" ").trim();
 }
 
 async function translateEroEroItem(
@@ -1886,7 +1915,7 @@ export const fetchAdultNews =
       currentAnimeSeason();
 
     const key =
-      `automatic-adult-news:hentai-real-publication-date:v4-news-images:${current.season}:${current.year}`;
+      `automatic-adult-news:hentai-real-publication-date:v5-news-images-translation:${current.season}:${current.year}`;
 
     const cached =
       fromCache(key);
