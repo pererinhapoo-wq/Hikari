@@ -2805,8 +2805,8 @@ export const fetchAdultTags =
        * filtrado por `isAdult: true`.
        *
        * Nesses casos, fazemos uma busca complementar somente
-       * para as 15 tags que estavam retornando 0. Isso não cria
-       * tags novas nem altera as outras 25.
+       * para as 10 tags que precisavam de busca complementar. Isso não cria
+       * tags novas nem altera as demais tags.
        */
       const missingAdultTagNames = new Set([
         "Boquete",
@@ -2815,8 +2815,8 @@ export const fetchAdultTags =
         "Romance",
         "Orgia",
         "BDSM",
-        "NTR",
-        "Comédia",
+              "NTR",
+                                "Comédia",
         "Terror",
         "Esporte",
       ]);
