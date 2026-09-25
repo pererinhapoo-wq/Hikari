@@ -19,6 +19,7 @@ export type AutomaticNewsItem = {
   animeId: string;
   isAdult: boolean;
   url?: string;
+  publishedAt?: string;
 };
 
 const ANILIST = "https://graphql.anilist.co";
@@ -317,6 +318,70 @@ function imageFromRss(block: string): string {
   return decodeXml(
     image?.[1] ?? "",
   );
+}
+
+function imageFromHtml(html: string): string {
+  const candidates = [
+    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/i,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/i,
+    /<link[^>]+rel=["'][^"']*image_src[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>/i,
+    /<img[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*>/i,
+  ];
+
+  for (const pattern of candidates) {
+    const match = html.match(pattern);
+
+    if (match?.[1]) {
+      return decodeXml(match[1].trim());
+    }
+  }
+
+  return "";
+}
+
+async function fetchArticleImage(
+  articleUrl: string,
+): Promise<string> {
+  const url = articleUrl.trim();
+
+  if (!/^https?:\/\//i.test(url)) {
+    return "";
+  }
+
+  try {
+    const response = await fetch(
+      url,
+      {
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "User-Agent":
+            "Hikari/1.0 (adult news image)",
+        },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+
+    if (!response.ok) {
+      return "";
+    }
+
+    const html = await response.text();
+    const image = imageFromHtml(html);
+
+    if (!image) {
+      return "";
+    }
+
+    try {
+      return new URL(image, url).href;
+    } catch {
+      return "";
+    }
+  } catch {
+    return "";
+  }
 }
 
 async function proxyRssImage(
@@ -677,7 +742,6 @@ async function fetchAniListCover(
                 ) {
                   media(
                     search: $search
-                    type: ANIME
                     isAdult: true
                   ) {
                     id
@@ -726,7 +790,6 @@ async function fetchAniListCover(
       const match = media
         .filter(
           (item) =>
-            item.type === "ANIME" &&
             item.isAdult === true &&
             Boolean(
               item.coverImage?.extraLarge ||
@@ -786,27 +849,6 @@ function formatRssDate(
     },
   ).format(
     new Date(timestamp),
-  );
-}
-
-function isMangaNews(
-  title: string,
-  categories: string,
-  description: string,
-): boolean {
-  const value =
-    `${title} ${categories} ${description}`.toLowerCase();
-
-  return (
-    value.includes("manhwa") ||
-    value.includes("manhua") ||
-    value.includes("manga hentai") ||
-    value.includes("hentai manga") ||
-    value.includes("mangá hentai") ||
-    value.includes("mangá adulto") ||
-    value.includes("manga adulto") ||
-    value.includes("manhwa adulto") ||
-    value.includes("webtoon")
   );
 }
 
@@ -956,16 +998,6 @@ async function fetchAdultNewsFeed(
           return null;
         }
 
-        if (
-          isMangaNews(
-            title,
-            categories,
-            description,
-          )
-        ) {
-          return null;
-        }
-
         return {
           id:
             `auto-adult-rss-${index}-${encodeURIComponent(link)}`,
@@ -980,6 +1012,10 @@ async function fetchAdultNewsFeed(
             "Nova notícia da área adulta.",
           date:
             formatRssDate(date),
+          publishedAt:
+            Number.isNaN(Date.parse(date))
+              ? ""
+              : new Date(Date.parse(date)).toISOString(),
           image:
             imageFromRss(item),
           animeId: "",
@@ -998,8 +1034,18 @@ async function fetchAdultNewsFeed(
         ),
     );
 
+  const hentaiOnly = parsed.filter((item) => {
+    const value = `${item.title} ${item.description}`.toLowerCase();
+
+    return !(
+      /\bmanhwa\b/.test(value) ||
+      /\bmanhua\b/.test(value) ||
+      /\bmanga\b/.test(value)
+    );
+  });
+
   return Promise.all(
-    parsed.map(
+    hentaiOnly.map(
       async (item) => {
         const title =
           await translateToPortuguese(
@@ -1015,11 +1061,28 @@ async function fetchAdultNewsFeed(
             item.description,
           );
 
-        const rssImage =
-          image ||
-          (await proxyRssImage(
+        let rssImage = "";
+
+        if (image) {
+          rssImage = image;
+        } else if (item.image) {
+          rssImage = await proxyRssImage(
             item.image,
-          ));
+          );
+        }
+
+        if (!rssImage && item.url) {
+          const articleImage =
+            await fetchArticleImage(
+              item.url,
+            );
+
+          if (articleImage) {
+            rssImage = await proxyRssImage(
+              articleImage,
+            );
+          }
+        }
 
         return {
           ...item,
@@ -1081,6 +1144,16 @@ export const fetchAutomaticNews =
                 descriptionOf(anime),
               date:
                 formatDate(anime),
+              publishedAt:
+                anime.startDate?.year &&
+                anime.startDate?.month &&
+                anime.startDate?.day
+                  ? new Date(
+                      anime.startDate.year,
+                      anime.startDate.month - 1,
+                      anime.startDate.day,
+                    ).toISOString()
+                  : "",
               image:
                 anime.coverImage
                   ?.extraLarge ||
@@ -1200,27 +1273,29 @@ export const fetchAdultNews =
         );
 
       unique.sort((a, b) => {
-        const dateA = Date.parse(
-          a.date
-            .split("/")
-            .reverse()
-            .join("-"),
-        );
+        const timeA =
+          a.publishedAt
+            ? Date.parse(a.publishedAt)
+            : Date.parse(
+                a.date
+                  .split("/")
+                  .reverse()
+                  .join("-"),
+              );
 
-        const dateB = Date.parse(
-          b.date
-            .split("/")
-            .reverse()
-            .join("-"),
-        );
+        const timeB =
+          b.publishedAt
+            ? Date.parse(b.publishedAt)
+            : Date.parse(
+                b.date
+                  .split("/")
+                  .reverse()
+                  .join("-"),
+              );
 
         return (
-          (Number.isNaN(dateB)
-            ? 0
-            : dateB) -
-          (Number.isNaN(dateA)
-            ? 0
-            : dateA)
+          (Number.isNaN(timeB) ? 0 : timeB) -
+          (Number.isNaN(timeA) ? 0 : timeA)
         );
       });
 
