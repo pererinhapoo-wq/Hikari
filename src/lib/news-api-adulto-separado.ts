@@ -979,6 +979,17 @@ async function fetchAdultNewsFeed(
             )
             .join(" ");
 
+        const categoryValue =
+          categories.toLowerCase();
+
+        if (
+          /\bmanhwa\b/.test(categoryValue) ||
+          /\bmanhua\b/.test(categoryValue) ||
+          /\bmanga\b/.test(categoryValue)
+        ) {
+          return null;
+        }
+
         const rawDescription =
           firstXmlValue(
             item,
