@@ -380,11 +380,26 @@ async function fetchJapaneseOtonariImage(): Promise<string> {
     }
 
     const html = await response.text();
-    const image = imageFromHtml(html);
 
-    return image && !isSourceBrandImage(image)
-      ? image
-      : "";
+    // A página da Toranoana possui uma imagem dinâmica do próprio
+    // produto em /ec/his/?...&i=210006667343. A og:image da página
+    // pode ser um banner genérico da loja, então não usamos ela aqui.
+    const productMatch = html.match(
+      /href=["']([^"']*\/ec\/his\/?\?[^"']*\bi=210006667343\b[^"']*)["']/i,
+    );
+
+    if (productMatch?.[1]) {
+      const productImage = new URL(
+        productMatch[1],
+        sourceUrl,
+      ).href;
+
+      if (!isSourceBrandImage(productImage)) {
+        return productImage;
+      }
+    }
+
+    return "";
   } catch {
     return "";
   }
