@@ -7,6 +7,8 @@ import {
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Tags,
 } from "lucide-react";
 
@@ -51,6 +53,20 @@ export const Route = createFileRoute("/adult/tags")({
 });
 
 function AdultTagsPending() {
+  function jumpPages(
+    amount: number,
+  ) {
+    goToPage(
+      Math.min(
+        Math.max(
+          currentPage + amount,
+          1,
+        ),
+        totalPages,
+      ),
+    );
+  }
+
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
       <section>
@@ -222,6 +238,20 @@ function AdultTagsPage() {
     });
   }
 
+  function jumpPages(
+    amount: number,
+  ) {
+    goToPage(
+      Math.min(
+        Math.max(
+          currentPage + amount,
+          1,
+        ),
+        totalPages,
+      ),
+    );
+  }
+
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
       {!tag ? (
@@ -342,6 +372,21 @@ function AdultTagsPage() {
               <button
                 type="button"
                 onClick={() =>
+                  jumpPages(-5)
+                }
+                disabled={
+                  currentPage === 1
+                }
+                aria-label="Voltar 5 páginas"
+                title="Voltar 5 páginas"
+                className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+              >
+                <ChevronsLeft className="size-5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
                   goToPage(
                     currentPage - 1,
                   )
@@ -350,6 +395,7 @@ function AdultTagsPage() {
                   currentPage === 1
                 }
                 aria-label="Página anterior"
+                title="Página anterior"
                 className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
               >
                 <ChevronLeft className="size-5" />
@@ -362,19 +408,15 @@ function AdultTagsPage() {
                       key={pageNumber}
                       type="button"
                       onClick={() =>
-                        goToPage(
-                          pageNumber,
-                        )
+                        goToPage(pageNumber)
                       }
                       aria-current={
-                        pageNumber ===
-                        currentPage
+                        pageNumber === currentPage
                           ? "page"
                           : undefined
                       }
                       className={
-                        pageNumber ===
-                        currentPage
+                        pageNumber === currentPage
                           ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
                           : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
                       }
@@ -393,13 +435,28 @@ function AdultTagsPage() {
                   )
                 }
                 disabled={
-                  currentPage ===
-                  totalPages
+                  currentPage === totalPages
                 }
                 aria-label="Próxima página"
+                title="Próxima página"
                 className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
               >
                 <ChevronRight className="size-5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  jumpPages(5)
+                }
+                disabled={
+                  currentPage === totalPages
+                }
+                aria-label="Avançar 5 páginas"
+                title="Avançar 5 páginas"
+                className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+              >
+                <ChevronsRight className="size-5" />
               </button>
             </div>
           )}
