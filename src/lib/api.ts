@@ -23,26 +23,6 @@ import type {
 const ANILIST = "https://grokhikari.vercel.app/api-anilist";
 const JIKAN = "https://api.jikan.moe/v4";
 
-const ADULT_TAG_FIELDS = `
-  id
-  idMal
-  isAdult
-  tags {
-    name
-  }
-  title {
-    romaji
-    english
-    native
-  }
-  coverImage {
-    extraLarge
-    large
-    color
-  }
-  genres
-`;
-
 const CARD_FIELDS = `
   id
   idMal
@@ -1662,6 +1642,9 @@ const searchSchema =
 
     page:
       z.number().optional(),
+
+    adult:
+      z.boolean().optional(),
   });
 
 function normalizeSearchText(
@@ -1903,8 +1886,13 @@ function mergeSearchItems(
   return result;
 }
 
+type SearchRequestParams =
+  SearchParams & {
+    adult?: boolean;
+  };
+
 async function searchAni(
-  params: SearchParams,
+  params: SearchRequestParams,
 ): Promise<SearchResult> {
   const page =
     params.page ?? 1;
@@ -1940,7 +1928,8 @@ async function searchAni(
         $year: Int,
         $format: MediaFormat,
         $status: MediaStatus,
-        $sort: [MediaSort]
+        $sort: [MediaSort],
+        $isAdult: Boolean
       ) {
         Page(
           page: $page,
@@ -1957,7 +1946,8 @@ async function searchAni(
             seasonYear: $year,
             format: $format,
             status: $status,
-            sort: $sort
+            sort: $sort,
+            isAdult: $isAdult
           ) {
             ${CARD_FIELDS}
           }
@@ -1972,8 +1962,10 @@ async function searchAni(
           undefined,
 
         genre:
-          params.genre ||
-          undefined,
+          params.adult
+            ? "Hentai"
+            : params.genre ||
+              undefined,
 
         year:
           year &&
@@ -1992,6 +1984,9 @@ async function searchAni(
           undefined,
 
         sort: [sort],
+
+        isAdult:
+          Boolean(params.adult),
       },
     );
 
@@ -2003,9 +1998,13 @@ async function searchAni(
       )
         .filter(
           (anime) =>
-            !isAdultAnime(
-              anime,
-            ),
+            params.adult
+              ? isHentaiAnime(
+                  anime,
+                )
+              : !isAdultAnime(
+                  anime,
+                ),
         )
         .map(
           mapAniSlim,
@@ -2026,10 +2025,19 @@ async function searchAni(
 }
 
 async function searchJikan(
-  params: SearchParams,
+  params: SearchRequestParams,
 ): Promise<SearchResult> {
   const page =
     params.page ?? 1;
+
+  if (params.adult) {
+    return {
+      items: [],
+      page,
+      hasNext: false,
+      source: "jikan",
+    };
+  }
 
   const query =
     new URLSearchParams();
@@ -2097,7 +2105,7 @@ async function searchJikan(
 }
 
 async function searchRelaxed(
-  params: SearchParams,
+  params: SearchRequestParams,
 ): Promise<SlimAnime[]> {
   const original = params.q?.trim() ?? "";
   const normalized = normalizeSearchText(original);
@@ -2131,7 +2139,7 @@ async function searchRelaxed(
   );
 
   const attempts = validVariants.map(async (variant) => {
-    const searchParams: SearchParams = {
+    const searchParams: SearchRequestParams = {
       ...params,
       q: variant,
       page: 1,
@@ -2209,7 +2217,7 @@ function isStrongSearchResult(
 }
 
 async function searchDirectFast(
-  params: SearchParams,
+  params: SearchRequestParams,
 ): Promise<{
   items: SlimAnime[];
   hasNext: boolean;
@@ -2482,6 +2490,59 @@ type AdultTagCatalog = {
   }>;
 };
 
+const ADULT_FEATURED_TAGS = [
+  "Anal",
+  "Boquete",
+  "Harém",
+  "Incesto",
+  "Lactante",
+  "Milf",
+  "Futanari",
+  "Ecchi",
+  "Yuri",
+  "Yaoi",
+  "Romance",
+  "Masturbação",
+  "Orgia",
+  "Peitões",
+  "Brinquedos",
+  "BDSM",
+  "Submissão",
+  "Tentáculos",
+  "NTR",
+  "Netorare",
+  "Cosplay",
+  "Voyeur",
+  "Exibicionismo",
+  "Vida Escolar",
+  "Professora",
+  "Enfermeira",
+  "Empregada",
+  "Amiga de infância",
+  "Senpai",
+  "Vizinha",
+  "Office / Escritório",
+  "Dark Skin",
+  "Comédia",
+  "Magia",
+  "Elfos",
+  "Demônios",
+  "Vampiros",
+  "Terror",
+  "Virgem",
+  "Esporte",
+] as const;
+
+const ADULT_REMOVED_TAGS = new Set([
+  "travesti",
+  "trans",
+  "super poderes",
+  "mistério",
+  "ninjas",
+  "monstros",
+  "gay",
+]);
+
 export const fetchAdultTags =
   createServerFn({
     method: "GET",
@@ -2549,7 +2610,7 @@ export const fetchAdultTags =
                 genre: "Hentai",
                 sort: TRENDING_DESC
               ) {
-                ${ADULT_TAG_FIELDS}
+                ${CARD_FIELDS}
               }
             }
           }
@@ -2603,7 +2664,7 @@ export const fetchAdultTags =
                     genre: "Hentai",
                     sort: TRENDING_DESC
                   ) {
-                    ${ADULT_TAG_FIELDS}
+                    ${CARD_FIELDS}
                   }
                 }
               `,
@@ -2707,6 +2768,14 @@ export const fetchAdultTags =
             name.toLocaleLowerCase(
               "pt-BR",
             );
+
+          if (
+            ADULT_REMOVED_TAGS.has(
+              keyName,
+            )
+          ) {
+            continue;
+          }
 
           const current =
             tagMap.get(
