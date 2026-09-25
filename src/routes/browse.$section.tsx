@@ -530,11 +530,23 @@ function BrowsePage() {
         locals,
       );
 
+    const itemsPerPage = 24;
+
+    const totalPages = Math.max(
+      1,
+      Math.ceil(
+        (result?.total ?? 0) /
+          itemsPerPage,
+      ),
+    );
+
+    const currentPage = Math.min(
+      page,
+      totalPages,
+    );
+
     const showPagination =
-      page > 1 ||
-      Boolean(
-        result?.hasNext,
-      );
+      totalPages > 1;
 
     const pageNumbers =
       (() => {
@@ -542,13 +554,18 @@ function BrowsePage() {
           new Set<number>();
 
         pages.add(1);
-        pages.add(page);
+        pages.add(totalPages);
+        pages.add(currentPage);
 
-        if (
-          result?.hasNext
-        ) {
+        if (currentPage > 1) {
           pages.add(
-            page + 1,
+            currentPage - 1,
+          );
+        }
+
+        if (currentPage < totalPages) {
+          pages.add(
+            currentPage + 1,
           );
         }
 
@@ -557,7 +574,8 @@ function BrowsePage() {
         )
           .filter(
             (value) =>
-              value >= 1,
+              value >= 1 &&
+              value <= totalPages,
           )
           .sort(
             (a, b) =>
@@ -570,15 +588,8 @@ function BrowsePage() {
     ) {
       if (
         nextPage < 1 ||
-        nextPage === page
-      ) {
-        return;
-      }
-
-      if (
-        nextPage >
-          page + 1 &&
-        !result?.hasNext
+        nextPage > totalPages ||
+        nextPage === currentPage
       ) {
         return;
       }
@@ -656,11 +667,28 @@ function BrowsePage() {
               type="button"
               onClick={() =>
                 goToGenrePage(
-                  page - 1,
+                  Math.max(1, currentPage - 5),
                 )
               }
               disabled={
-                page === 1
+                currentPage <= 1
+              }
+              aria-label="Voltar 5 páginas"
+              title="Voltar 5 páginas"
+              className="flex size-10 items-center justify-center rounded-lg border border-border text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+            >
+              ⏪
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                goToGenrePage(
+                  currentPage - 1,
+                )
+              }
+              disabled={
+                currentPage === 1
               }
               aria-label="Página anterior"
               className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
@@ -685,13 +713,13 @@ function BrowsePage() {
                     }
                     aria-current={
                       pageNumber ===
-                      page
+                      currentPage
                         ? "page"
                         : undefined
                     }
                     className={
                       pageNumber ===
-                      page
+                      currentPage
                         ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
                         : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
                     }
@@ -708,16 +736,33 @@ function BrowsePage() {
               type="button"
               onClick={() =>
                 goToGenrePage(
-                  page + 1,
+                  currentPage + 1,
                 )
               }
               disabled={
-                !result?.hasNext
+                currentPage >= totalPages
               }
               aria-label="Próxima página"
               className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
             >
               <ChevronRight className="size-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                goToGenrePage(
+                  Math.min(totalPages, currentPage + 5),
+                )
+              }
+              disabled={
+                currentPage >= totalPages
+              }
+              aria-label="Avançar 5 páginas"
+              title="Avançar 5 páginas"
+              className="flex size-10 items-center justify-center rounded-lg border border-border text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+            >
+              ⏩
             </button>
           </div>
         )}
@@ -869,15 +914,17 @@ function BrowsePage() {
 
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
-      <div>
-        <Link
-          to="/"
-          className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
-        >
-          <ChevronLeft className="size-4" />
-          Voltar
-        </Link>
-      </div>
+      {!isSeasonPage && (
+        <div>
+          <Link
+            to="/"
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
+          >
+            <ChevronLeft className="size-4" />
+            Voltar
+          </Link>
+        </div>
+      )}
 
       {/* CABEÇALHO */}
       <section>
