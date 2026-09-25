@@ -260,6 +260,55 @@ function NewsPage() {
     );
   }, [loaderNews]);
 
+  function getRelativeDateLabel(
+    dateString: string,
+  ): string {
+    const match = dateString.match(
+      /^(\d{2})\/(\d{2})\/(\d{4})$/,
+    );
+
+    if (!match) {
+      return "";
+    }
+
+    const [, day, month, year] = match;
+    const published = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+    );
+
+    const now = new Date();
+    const today = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+
+    const difference = Math.round(
+      (today.getTime() - published.getTime()) /
+        86_400_000,
+    );
+
+    if (difference === 0) {
+      return "Hoje";
+    }
+
+    if (difference === 1) {
+      return "Ontem";
+    }
+
+    if (difference > 1) {
+      return `Há ${difference} dias`;
+    }
+
+    if (difference === -1) {
+      return "Amanhã";
+    }
+
+    return `Em ${Math.abs(difference)} dias`;
+  }
+
   /*
    * =========================================================
    * RESULTADOS ENQUANTO DIGITA
@@ -1167,6 +1216,22 @@ function NewsPage() {
                             item.date
                           }
                         </span>
+
+                        {getRelativeDateLabel(
+                          item.date,
+                        ) && (
+                          <>
+                            <span aria-hidden="true">
+                              •
+                            </span>
+
+                            <span>
+                              {getRelativeDateLabel(
+                                item.date,
+                              )}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </Link>
