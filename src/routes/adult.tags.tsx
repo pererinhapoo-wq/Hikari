@@ -19,6 +19,57 @@ import { fetchAdultTags } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
 
+const MAIN_ADULT_TAGS = [
+  { name: "Anal", aliases: ["Anal"] },
+  { name: "Boquete", aliases: ["Blow Job", "Blowjob", "Boquete"] },
+  { name: "Harém", aliases: ["Harem", "Harém"] },
+  { name: "Incesto", aliases: ["Incest", "Incesto"] },
+  { name: "Lactante", aliases: ["Breast Feeding", "Lactation", "Lactante"] },
+  { name: "Milf", aliases: ["MILF", "Milf"] },
+  { name: "Futanari", aliases: ["Futanari"] },
+  { name: "Ecchi", aliases: ["Ecchi"] },
+  { name: "Yuri", aliases: ["Yuri"] },
+  { name: "Yaoi", aliases: ["Yaoi"] },
+  { name: "Romance", aliases: ["Romance"] },
+  { name: "Masturbação", aliases: ["Masturbation", "Masturbação"] },
+  { name: "Orgia", aliases: ["Orgy", "Orgia"] },
+  { name: "Peitões", aliases: ["Large Breasts", "Big Breasts", "Peitões"] },
+  { name: "Brinquedos", aliases: ["Toys", "Sex Toys", "Brinquedos"] },
+  { name: "BDSM", aliases: ["BDSM"] },
+  { name: "Submissão", aliases: ["Submission", "Submissão"] },
+  { name: "Tentáculos", aliases: ["Tentacles", "Tentáculos"] },
+  { name: "NTR", aliases: ["NTR"] },
+  { name: "Netorare", aliases: ["Netorare"] },
+  { name: "Cosplay", aliases: ["Cosplay"] },
+  { name: "Voyeur", aliases: ["Voyeur"] },
+  { name: "Exibicionismo", aliases: ["Exhibitionism", "Exibicionismo"] },
+  { name: "Vida Escolar", aliases: ["School Life", "School", "Vida Escolar"] },
+  { name: "Professora", aliases: ["Teacher", "Professora"] },
+  { name: "Enfermeira", aliases: ["Nurse", "Enfermeira"] },
+  { name: "Empregada", aliases: ["Maid", "Maids", "Empregada"] },
+  { name: "Amiga de infância", aliases: ["Childhood Friend", "Amiga de infância"] },
+  { name: "Senpai", aliases: ["Senpai"] },
+  { name: "Vizinha", aliases: ["Neighbor", "Neighbors", "Vizinha"] },
+  { name: "Office / Escritório", aliases: ["Office Lady", "Office", "Office / Escritório"] },
+  { name: "Dark Skin", aliases: ["Dark Skin", "Tanned Skin"] },
+  { name: "Comédia", aliases: ["Comedy", "Comédia"] },
+  { name: "Magia", aliases: ["Magic", "Magia"] },
+  { name: "Elfos", aliases: ["Elf", "Elves", "Elfos"] },
+  { name: "Demônios", aliases: ["Demon", "Demons", "Demônios"] },
+  { name: "Vampiros", aliases: ["Vampire", "Vampires", "Vampiros"] },
+  { name: "Terror", aliases: ["Horror", "Terror"] },
+  { name: "Virgem", aliases: ["Virgin", "Virginity", "Virgem"] },
+  { name: "Esporte", aliases: ["Sports", "Sport", "Esporte"] },
+] as const;
+
+function normalizeAdultTag(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 export const Route = createFileRoute("/adult/tags")({
   validateSearch: (
     search: Record<string, unknown>,
@@ -105,6 +156,21 @@ function AdultTagsPage() {
     data.items ?? [],
     locals,
   );
+
+  const displayedTags = MAIN_ADULT_TAGS
+    .map((mainTag) => {
+      const found = data.tags.find((item) => {
+        const normalizedItem = normalizeAdultTag(item.name);
+        return mainTag.aliases.some(
+          (alias) => normalizeAdultTag(alias) === normalizedItem,
+        );
+      });
+
+      return found
+        ? { ...found, name: mainTag.name }
+        : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   const normalizeTag = (
     value: string,
@@ -230,14 +296,14 @@ function AdultTagsPage() {
             </div>
           </section>
 
-          {data.tags.length === 0 ? (
+          {displayedTags.length === 0 ? (
             <p className="py-16 text-center text-muted">
               Nenhuma tag disponível no momento.
             </p>
           ) : (
             <section>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {data.tags.map((item) => (
+                {displayedTags.map((item) => (
                   <button
                     key={item.name}
                     type="button"
