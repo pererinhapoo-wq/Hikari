@@ -2601,7 +2601,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v7";
+        "adult-tags:v8";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2623,6 +2623,32 @@ export const fetchAdultTags =
       ) => {
         for (const anime of media ?? []) {
           if (isHentaiAnime(anime)) {
+            allMedia.set(
+              anime.id,
+              anime,
+            );
+          }
+        }
+      };
+
+      // Busca complementar: alguns títulos com gênero Hentai
+      // podem vir do AniList sem isAdult=true. Eles ainda precisam
+      // entrar no catálogo de tags para que a tag seja contabilizada.
+      const addFallbackMedia = (
+        media:
+          | AniMedia[]
+          | null
+          | undefined,
+      ) => {
+        for (const anime of media ?? []) {
+          const isHentaiByGenre =
+            (anime.genres ?? []).some(
+              (genre) =>
+                normalizeAdultTagName(genre) ===
+                "hentai",
+            );
+
+          if (isHentaiByGenre) {
             allMedia.set(
               anime.id,
               anime,
@@ -2875,7 +2901,7 @@ export const fetchAdultTags =
                   const found =
                     result.Page.media ?? [];
 
-                  addMedia(found);
+                  addFallbackMedia(found);
 
                   hasNextPage =
                     Boolean(
