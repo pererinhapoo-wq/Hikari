@@ -2018,11 +2018,7 @@ async function fetchAdultNewsFeed(
         ];
 
         if (item.image) {
-          rssImage =
-            (await proxyRssImage(
-              item.image,
-              5_000_000,
-            )) || item.image;
+          rssImage = item.image;
         }
 
         if (item.url) {
@@ -2040,35 +2036,9 @@ async function fetchAdultNewsFeed(
           ).slice(0, 8);
 
           if (!rssImage && pageImages.length) {
-            for (const pageImage of pageImages) {
-              const proxied =
-                await proxyRssImage(
-                  pageImage,
-                  5_000_000,
-                );
-
-              if (proxied) {
-                rssImage = proxied;
-                break;
-              }
-            }
+            rssImage = pageImages[0];
           }
         }
-
-        const proxiedArticleImages =
-          (
-            await Promise.all(
-              articleImages.map(async (imageUrl) => {
-                const proxied =
-                  await proxyRssImage(
-                    imageUrl,
-                    5_000_000,
-                  );
-
-                return proxied;
-              }),
-            )
-          ).filter(Boolean);
 
         const mentionedHentai =
           await fetchMentionedHentai(
@@ -2081,11 +2051,10 @@ async function fetchAdultNewsFeed(
           title,
           description,
           image:
-            proxiedArticleImages[0] ||
             rssImage ||
+            articleImages[0] ||
             ADULT_IMAGE_FALLBACK,
-          articleImages:
-            proxiedArticleImages,
+          articleImages,
           mentionedHentai,
         };
       },
