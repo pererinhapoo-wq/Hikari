@@ -11,6 +11,11 @@ import {
 } from "lucide-react";
 
 import {
+  useMemo,
+  useState,
+} from "react";
+
+import {
   AnimeCard,
   AnimeCardSkeleton,
 } from "@/components/anime-card";
@@ -18,6 +23,49 @@ import {
 import { fetchAdultTags } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
+
+const FEATURED_TAG_NAMES = [
+  "Anal",
+  "Boquete",
+  "Harém",
+  "Incesto",
+  "Lactante",
+  "Milf",
+  "Futanari",
+  "Ecchi",
+  "Yuri",
+  "Yaoi",
+  "Romance",
+  "Masturbação",
+  "Orgia",
+  "Peitões",
+  "Brinquedos",
+  "BDSM",
+  "Submissão",
+  "Tentáculos",
+  "NTR",
+  "Netorare",
+  "Cosplay",
+  "Voyeur",
+  "Exibicionismo",
+  "Vida Escolar",
+  "Professora",
+  "Enfermeira",
+  "Empregada",
+  "Amiga de infância",
+  "Senpai",
+  "Vizinha",
+  "Office / Escritório",
+  "Dark Skin",
+  "Comédia",
+  "Magia",
+  "Elfos",
+  "Demônios",
+  "Vampiros",
+  "Terror",
+  "Virgem",
+  "Esporte",
+];
 
 export const Route = createFileRoute("/adult/tags")({
   validateSearch: (
@@ -101,6 +149,9 @@ function AdultTagsPage() {
     (state) => state.animes,
   );
 
+  const [showAllTags, setShowAllTags] =
+    useState(false);
+
   const items = overlayList(
     data.items ?? [],
     locals,
@@ -120,6 +171,30 @@ function AdultTagsPage() {
           normalizeTag(tag),
       )
     : undefined;
+
+  const featuredTags = useMemo(() => {
+    const byName = new Map(
+      data.tags.map((item) => [
+        normalizeTag(item.name),
+        item,
+      ]),
+    );
+
+    return FEATURED_TAG_NAMES.map(
+      (name) =>
+        byName.get(
+          normalizeTag(name),
+        ),
+    ).filter(
+      (item): item is (typeof data.tags)[number] =>
+        Boolean(item),
+    );
+  }, [data.tags]);
+
+  const displayedTags =
+    showAllTags
+      ? data.tags
+      : featuredTags;
 
   const itemsPerPage = 8;
 
@@ -251,7 +326,7 @@ function AdultTagsPage() {
           ) : (
             <section>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {data.tags.map((item) => (
+                {displayedTags.map((item) => (
                   <button
                     key={item.name}
                     type="button"
@@ -272,6 +347,20 @@ function AdultTagsPage() {
                   </button>
                 ))}
               </div>
+
+              {data.tags.length > featuredTags.length && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowAllTags((value) => !value)
+                  }
+                  className="mt-4 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm font-medium text-fg transition-colors hover:bg-elevated"
+                >
+                  {showAllTags
+                    ? "Mostrar tags principais"
+                    : "Ver todas as tags"}
+                </button>
+              )}
             </section>
           )}
         </>
