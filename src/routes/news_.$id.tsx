@@ -44,6 +44,7 @@ type NewsItem = {
   date: string;
   time?: string;
   image: string;
+  source?: string;
   animeId?: string;
   trailerUrl?: string;
   isAdult?: boolean;
@@ -728,6 +729,11 @@ function automaticToNewsItem(
     isAdult:
       item.isAdult === true,
 
+    source:
+      "source" in item &&
+      typeof item.source === "string"
+        ? item.source
+        : undefined,
     articleImages:
       "articleImages" in item &&
       Array.isArray(item.articleImages)
@@ -1162,6 +1168,17 @@ function NewsDetailsPage() {
                     ),
                   )}
                 </div>
+
+                {news.source && (
+                  <p
+                    className="
+                      text-xs
+                      text-muted
+                    "
+                  >
+                    Fonte: {news.source}
+                  </p>
+                )}
               </section>
             )}
 
