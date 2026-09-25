@@ -1922,7 +1922,7 @@ async function fetchAdultNewsFeed(
 
   const now = Date.now();
   const minimum =
-    now - 90 * 24 * 60 * 60 * 1000;
+    now - 30 * 24 * 60 * 60 * 1000;
 
   const recent = articles.filter((article) => {
     const timestamp = Date.parse(article.publishedAt);
@@ -2040,7 +2040,7 @@ export const fetchAdultNews =
     method: "GET",
   }).handler(async () => {
     const key =
-      "automatic-adult-news:hentai-recentes:v4";
+      "automatic-adult-news:hentai-recentes-30-dias:v5";
 
     const cached =
       fromCache(key);
@@ -2062,7 +2062,7 @@ export const fetchAdultNews =
 
       const now = Date.now();
       const minimum =
-        now - 90 * 24 * 60 * 60 * 1000;
+        now - 30 * 24 * 60 * 60 * 1000;
 
       const unique =
         Array.from(
