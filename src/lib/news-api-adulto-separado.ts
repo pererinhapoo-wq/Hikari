@@ -31,7 +31,7 @@ export type AutomaticNewsItem = {
 const ANILIST = "https://graphql.anilist.co";
 
 const ADULT_NEWS_RSS_FEEDS = [
-  "https://prtimes.jp/topics/keywords/AnimeFesta",
+  "https://www.lune-soft.jp/feed",
 ];
 
 type AniMedia = {
@@ -1549,21 +1549,186 @@ async function fetchPrTimesArticle(
   }
 }
 
+function parseLuneRssItems(
+  xml: string,
+): {
+  title: string;
+  description: string;
+  url: string;
+  publishedAt: string;
+  categories: string;
+  image: string;
+}[] {
+  const blocks = xml.match(/<item\b[\s\S]*?<\/item>/gi) ?? [];
+  const items: {
+    title: string;
+    description: string;
+    url: string;
+    publishedAt: string;
+    categories: string;
+    image: string;
+  }[] = [];
+
+  for (const block of blocks) {
+    const title = firstXmlValue(block, "title");
+    const description = firstXmlValue(block, "description");
+    const url = firstXmlValue(block, "link");
+    const publishedAt =
+      firstXmlValue(block, "pubDate") ||
+      firstXmlValue(block, "dc:date");
+
+    const categories = Array.from(
+      block.matchAll(/<category[^>]*>([\s\S]*?)<\/category>/gi),
+    )
+      .map((match) => decodeXml(match[1] ?? "").trim())
+      .filter(Boolean)
+      .join(" ");
+
+    const image = imageFromRss(block);
+
+    if (!title || !url || !publishedAt) {
+      continue;
+    }
+
+    // O RSS da Lune reúne vários tipos de conteúdo da empresa.
+    // A categoria "アニメ" é a separação oficial de notícias de anime adulto.
+    if (!categories.includes("アニメ")) {
+      continue;
+    }
+
+    // Mantemos apenas notícias claramente relacionadas a OVAs/animações adultas.
+    const value = `${title} ${description}`.toLowerCase();
+    const isHentaiAnime =
+      value.includes("ova") ||
+      value.includes("アニメ化") ||
+      value.includes("アニメ") ||
+      value.includes("発売") ||
+      value.includes("配信");
+
+    if (!isHentaiAnime) {
+      continue;
+    }
+
+    items.push({
+      title,
+      description,
+      url,
+      publishedAt,
+      categories,
+      image,
+    });
+  }
+
+  return Array.from(
+    new Map(items.map((item) => [item.url, item])).values(),
+  ).slice(0, 30);
+}
+
+async function fetchLuneAdultArticle(
+  article: {
+    title: string;
+    description: string;
+    url: string;
+    publishedAt: string;
+    categories: string;
+    image: string;
+  },
+): Promise<AutomaticNewsItem | null> {
+  try {
+    let html = "";
+
+    const response = await fetch(article.url, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "Hikari/1.0 (adult hentai news)",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (response.ok) {
+      html = await response.text();
+    }
+
+    const pageDescription = html
+      ? extractMetaContent(html, "og:description") ||
+        extractMetaContent(html, "description")
+      : "";
+
+    const articleImages = html
+      ? imagesFromHtml(html, article.url)
+      : [];
+
+    const rawDescription =
+      pageDescription || article.description;
+
+    const translatedDescription =
+      await translateToPortuguese(rawDescription);
+
+    const sourceImage = article.image || imageFromHtml(html);
+
+    const imageCandidates = Array.from(
+      new Set([
+        sourceImage,
+        ...articleImages,
+      ].filter(Boolean)),
+    ).slice(0, 8);
+
+    const proxiedImages = (
+      await Promise.all(
+        imageCandidates.map((imageUrl) =>
+          proxyRssImage(
+            imageUrl,
+            5_000_000,
+            "https://www.lune-soft.jp/",
+          ),
+        ),
+      )
+    ).filter(Boolean);
+
+    const finalImage =
+      proxiedImages[0] ||
+      sourceImage ||
+      ADULT_IMAGE_FALLBACK;
+
+    return {
+      id:
+        `auto-adult-lune-${encodeURIComponent(article.url)}`,
+      type: typeFromRss(
+        article.title,
+        article.categories,
+      ),
+      // Títulos de hentai permanecem no original, sem tradução automática.
+      title: article.title,
+      description:
+        translatedDescription ||
+        "Nova notícia de hentai/OVA adulto.",
+      date: formatRssDate(article.publishedAt),
+      image: finalImage,
+      animeId: "",
+      isAdult: true,
+      url: article.url,
+      publishedAt: article.publishedAt,
+      source: "Lune Soft / Lune Pictures",
+      articleImages:
+        proxiedImages.length
+          ? proxiedImages
+          : articleImages,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchAdultNewsFeed(
   feedUrl: string,
 ): Promise<AutomaticNewsItem[]> {
-  const response = await fetch(
-    feedUrl,
-    {
-      headers: {
-        Accept:
-          "text/html,application/xhtml+xml,application/xml,text/xml",
-        "User-Agent":
-          "Hikari/1.0 (adult news)",
-      },
-      signal: AbortSignal.timeout(12000),
+  const response = await fetch(feedUrl, {
+    headers: {
+      Accept: "application/rss+xml, application/xml, text/xml",
+      "User-Agent": "Hikari/1.0 (adult hentai news)",
     },
-  );
+    signal: AbortSignal.timeout(12000),
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -1571,17 +1736,15 @@ async function fetchAdultNewsFeed(
     );
   }
 
-  const html = await response.text();
-  const articles =
-    extractPrTimesArticles(html);
+  const xml = await response.text();
+  const articles = parseLuneRssItems(xml);
 
   const now = Date.now();
   const minimum =
     now - 90 * 24 * 60 * 60 * 1000;
 
   const recent = articles.filter((article) => {
-    const timestamp =
-      Date.parse(article.publishedAt);
+    const timestamp = Date.parse(article.publishedAt);
 
     return (
       !Number.isNaN(timestamp) &&
@@ -1590,12 +1753,11 @@ async function fetchAdultNewsFeed(
     );
   });
 
-  const results =
-    await Promise.all(
-      recent.map((article) =>
-        fetchPrTimesArticle(article),
-      ),
-    );
+  const results = await Promise.all(
+    recent.map((article) =>
+      fetchLuneAdultArticle(article),
+    ),
+  );
 
   return results.filter(
     (item): item is AutomaticNewsItem =>
@@ -1691,7 +1853,7 @@ export const fetchAdultNews =
     method: "GET",
   }).handler(async () => {
     const key =
-      "automatic-adult-news:recent:v2";
+      "automatic-adult-news:lune-hentai:v3";
 
     const cached =
       fromCache(key);
