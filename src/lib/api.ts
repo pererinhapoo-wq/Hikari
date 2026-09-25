@@ -1580,7 +1580,6 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
       "Horror",
       "Mecha",
       "Mystery",
-      "Romance",
       "Sci-Fi",
       "Slice of Life",
       "Sports",
@@ -2484,23 +2483,17 @@ export const fetchAdultCatalog =
 
 const MAIN_ADULT_TAGS = [
   { name: "Anal", aliases: ["Anal", "Anal Sex"] },
-  { name: "Boquete", aliases: ["Blow Job", "Blowjob"] },
   { name: "Harém", aliases: ["Harem", "Female Harem"] },
   { name: "Incesto", aliases: ["Incest"] },
   { name: "Lactante", aliases: ["Breast Feeding", "Lactation"] },
   { name: "Milf", aliases: ["MILF"] },
   { name: "Futanari", aliases: ["Futanari"] },
-  { name: "Ecchi", aliases: ["Ecchi"] },
+  { name: "Ahegao", aliases: ["Ahegao"] },
   { name: "Yuri", aliases: ["Yuri"] },
-  { name: "Yaoi", aliases: ["Yaoi"] },
-  { name: "Romance", aliases: ["Romance"] },
   { name: "Masturbação", aliases: ["Masturbation"] },
-  { name: "Orgia", aliases: ["Orgy"] },
   { name: "Peitões", aliases: ["Large Breasts", "Big Breasts"] },
   { name: "Brinquedos", aliases: ["Toys", "Sex Toys"] },
-  { name: "BDSM", aliases: ["BDSM"] },
   { name: "Tentáculos", aliases: ["Tentacles"] },
-  { name: "NTR", aliases: ["NTR"] },
   { name: "Netorare", aliases: ["Netorare"] },
   { name: "Cosplay", aliases: ["Cosplay"] },
   { name: "Voyeur", aliases: ["Voyeur"] },
@@ -2509,14 +2502,11 @@ const MAIN_ADULT_TAGS = [
   { name: "Professora", aliases: ["Teacher"] },
   { name: "Empregada", aliases: ["Maid", "Maids"] },
   { name: "Office / Escritório", aliases: ["Office Lady", "Office"] },
-  { name: "Comédia", aliases: ["Comedy"] },
   { name: "Magia", aliases: ["Magic"] },
   { name: "Elfos", aliases: ["Elf", "Elves"] },
   { name: "Demônios", aliases: ["Demon", "Demons"] },
   { name: "Vampiros", aliases: ["Vampire", "Vampires"] },
-  { name: "Terror", aliases: ["Horror"] },
   { name: "Virgem", aliases: ["Virgin", "Virginity"] },
-  { name: "Esporte", aliases: ["Sports", "Sport"] },
 ] as const;
 
 function normalizeAdultTagName(value: string) {
@@ -2538,23 +2528,17 @@ type AdultTagCatalog = {
 
 const ADULT_FEATURED_TAGS = [
   "Anal",
-  "Boquete",
   "Harém",
   "Incesto",
   "Lactante",
   "Milf",
   "Futanari",
-  "Ecchi",
+  "Ahegao",
   "Yuri",
-  "Yaoi",
-  "Romance",
   "Masturbação",
-  "Orgia",
   "Peitões",
   "Brinquedos",
-  "BDSM",
   "Tentáculos",
-  "NTR",
   "Netorare",
   "Cosplay",
   "Voyeur",
@@ -2563,14 +2547,11 @@ const ADULT_FEATURED_TAGS = [
   "Professora",
   "Empregada",
   "Office / Escritório",
-  "Comédia",
   "Magia",
   "Elfos",
   "Demônios",
   "Vampiros",
-  "Terror",
   "Virgem",
-  "Esporte",
 ] as const;
 
 const ADULT_REMOVED_TAGS = new Set([
@@ -2805,20 +2786,11 @@ export const fetchAdultTags =
        * filtrado por `isAdult: true`.
        *
        * Nesses casos, fazemos uma busca complementar somente
-       * para as 10 tags que precisavam de busca complementar. Isso não cria
-       * tags novas nem altera as demais tags.
+       * para as 15 tags que estavam retornando 0. Isso não cria
+       * tags novas nem altera as outras 25.
        */
       const missingAdultTagNames = new Set([
-        "Boquete",
-        "Ecchi",
-        "Yaoi",
-        "Romance",
-        "Orgia",
-        "BDSM",
-              "NTR",
-                                "Comédia",
-        "Terror",
-        "Esporte",
+        "Ahegao",
       ]);
 
       const fallbackTags =
