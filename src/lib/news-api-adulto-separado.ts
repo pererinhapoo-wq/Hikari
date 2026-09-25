@@ -381,9 +381,31 @@ async function fetchJapaneseOtonariImage(): Promise<string> {
 
     const html = await response.text();
 
-    // A página da Toranoana possui uma imagem dinâmica do próprio
-    // produto em /ec/his/?...&i=210006667343. A og:image da página
-    // pode ser um banner genérico da loja, então não usamos ela aqui.
+    // Primeiro tenta a imagem do próprio produto no HTML, procurando
+    // pelo código do produto/nome da obra. Não usa og:image porque ela
+    // pode ser apenas o ícone/banner padrão da loja.
+    const productImagePatterns = [
+      /<img[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*(?:210006667343|お隣の贄)[^>]*>/i,
+      /<img[^>]*(?:210006667343|お隣の贄)[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*>/i,
+    ];
+
+    for (const pattern of productImagePatterns) {
+      const match = html.match(pattern);
+
+      if (match?.[1]) {
+        const productImage = new URL(
+          decodeXml(match[1].trim()),
+          sourceUrl,
+        ).href;
+
+        if (!isSourceBrandImage(productImage)) {
+          return productImage;
+        }
+      }
+    }
+
+    // Fallback para o link da imagem do produto, quando a loja não deixa
+    // o endereço da imagem diretamente no <img>.
     const productMatch = html.match(
       /href=["']([^"']*\/ec\/his\/?\?[^"']*\bi=210006667343\b[^"']*)["']/i,
     );
@@ -480,18 +502,9 @@ function imagesFromHtml(
     }
   };
 
-  const metaPatterns = [
-    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/gi,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/gi,
-    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/gi,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/gi,
-  ];
-
-  for (const pattern of metaPatterns) {
-    for (const match of html.matchAll(pattern)) {
-      if (match[1]) add(match[1]);
-    }
-  }
+  // Não usamos og:image/twitter:image na galeria da notícia.
+  // Essas metas frequentemente apontam para o logo/ícone padrão do site,
+  // que era o quadrado azul que aparecia em várias notícias.
 
   const imagePattern =
     /<img[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*>/gi;
