@@ -44,11 +44,12 @@ jobs:
       - name: Verificar arquivos de rotas
         run: |
           echo "ROTAS ADULT:"
+
           test -f src/routes/adult.tsx
           echo "adult.tsx encontrado."
 
-          test -f src/routes/adult.news.tsx
-          echo "adult.news.tsx encontrado."
+          test -f src/routes/adult_.news.tsx
+          echo "adult_.news.tsx encontrado."
 
           echo ""
           echo "ARQUIVOS ADULT NA PASTA:"
@@ -59,12 +60,8 @@ jobs:
 
       - name: Verificar rotas geradas
         run: |
-          echo "ROTAS NEWS:"
-          grep -n 'news' src/routeTree.gen.ts || true
-
-          echo ""
-          echo "ROTAS ADULT:"
-          grep -n 'adult' src/routeTree.gen.ts || true
+          grep -n 'adult' src/routeTree.gen.ts
+          grep -n 'news' src/routeTree.gen.ts
 
       - name: Build Cloudflare
         run: npm run build:cloudflare
