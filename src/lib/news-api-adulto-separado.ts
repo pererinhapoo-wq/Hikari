@@ -20,6 +20,7 @@ export type AutomaticNewsItem = {
   isAdult: boolean;
   url?: string;
   publishedAt?: string;
+  articleImages?: string[];
 };
 
 const ANILIST = "https://graphql.anilist.co";
@@ -341,13 +342,66 @@ function imageFromHtml(html: string): string {
   return "";
 }
 
-async function fetchArticleImage(
+function imagesFromHtml(
+  html: string,
+  baseUrl: string,
+): string[] {
+  const values: string[] = [];
+
+  const add = (value: string) => {
+    const decoded = decodeXml(value.trim());
+
+    if (!decoded) {
+      return;
+    }
+
+    try {
+      const absolute = new URL(
+        decoded,
+        baseUrl,
+      ).href;
+
+      if (
+        /^https?:\/\//i.test(absolute) &&
+        !values.includes(absolute)
+      ) {
+        values.push(absolute);
+      }
+    } catch {
+      // Ignora URLs de imagem inválidas.
+    }
+  };
+
+  const metaPatterns = [
+    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url)?["'][^>]*>/gi,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["'][^>]*>/gi,
+  ];
+
+  for (const pattern of metaPatterns) {
+    for (const match of html.matchAll(pattern)) {
+      if (match[1]) add(match[1]);
+    }
+  }
+
+  const imagePattern =
+    /<img[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*>/gi;
+
+  for (const match of html.matchAll(imagePattern)) {
+    if (match[1]) add(match[1]);
+  }
+
+  return values.slice(0, 5);
+}
+
+async function fetchArticleImages(
   articleUrl: string,
-): Promise<string> {
+): Promise<string[]> {
   const url = articleUrl.trim();
 
   if (!/^https?:\/\//i.test(url)) {
-    return "";
+    return [];
   }
 
   try {
@@ -364,28 +418,22 @@ async function fetchArticleImage(
     );
 
     if (!response.ok) {
-      return "";
+      return [];
     }
 
     const html = await response.text();
-    const image = imageFromHtml(html);
-
-    if (!image) {
-      return "";
-    }
-
-    try {
-      return new URL(image, url).href;
-    } catch {
-      return "";
-    }
+    return imagesFromHtml(
+      html,
+      url,
+    );
   } catch {
-    return "";
+    return [];
   }
 }
 
 async function proxyRssImage(
   imageUrl: string,
+  maxImageBytes = 1_500_000,
 ): Promise<string> {
   const url = imageUrl.trim();
 
@@ -393,7 +441,7 @@ async function proxyRssImage(
     return "";
   }
 
-  const MAX_IMAGE_BYTES = 1_500_000;
+  const MAX_IMAGE_BYTES = maxImageBytes;
 
   try {
     const response =
@@ -1000,6 +1048,12 @@ async function fetchAdultNewsFeed(
             "description",
           );
 
+        const articleImages =
+          imagesFromHtml(
+            rawDescription,
+            link,
+          );
+
         const description =
           stripHtml(
             rawDescription,
@@ -1032,6 +1086,7 @@ async function fetchAdultNewsFeed(
           animeId: "",
           isAdult: true,
           url: link,
+          articleImages,
         };
       },
     )
@@ -1073,6 +1128,9 @@ async function fetchAdultNewsFeed(
           );
 
         let rssImage = "";
+        let articleImages = [
+          ...(item.articleImages ?? []),
+        ];
 
         if (image) {
           rssImage = image;
@@ -1082,18 +1140,35 @@ async function fetchAdultNewsFeed(
           );
         }
 
-        if (!rssImage && item.url) {
-          const articleImage =
-            await fetchArticleImage(
+        if (item.url) {
+          const pageImages =
+            await fetchArticleImages(
               item.url,
             );
 
-          if (articleImage) {
+          articleImages = [
+            ...articleImages,
+            ...pageImages,
+          ].filter(
+            (value, index, list) =>
+              list.indexOf(value) === index,
+          ).slice(0, 8);
+
+          if (!rssImage && pageImages[0]) {
             rssImage = await proxyRssImage(
-              articleImage,
+              pageImages[0],
             );
           }
         }
+
+        const proxiedArticleImages =
+          (
+            await Promise.all(
+              articleImages.map((imageUrl) =>
+                proxyRssImage(imageUrl, 700_000),
+              ),
+            )
+          ).filter(Boolean);
 
         return {
           ...item,
@@ -1101,7 +1176,10 @@ async function fetchAdultNewsFeed(
           description,
           image:
             rssImage ||
+            proxiedArticleImages[0] ||
             ADULT_IMAGE_FALLBACK,
+          articleImages:
+            proxiedArticleImages,
         };
       },
     ),
