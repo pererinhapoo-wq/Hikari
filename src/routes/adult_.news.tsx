@@ -1369,3 +1369,4 @@ function NewsPage() {
       </div>
     </main>
   );
+}
