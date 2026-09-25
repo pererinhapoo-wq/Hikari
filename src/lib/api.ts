@@ -2483,46 +2483,53 @@ export const fetchAdultCatalog =
 
 
 const MAIN_ADULT_TAGS = [
-  { name: "Anal", aliases: ["Anal", "Anal Sex"] },
-  { name: "Boquete", aliases: ["Blow Job", "Blowjob"] },
-  { name: "Harém", aliases: ["Harem", "Female Harem"] },
+  { name: "Anal", aliases: ["Anal Sex"] },
+  { name: "Boquete", aliases: ["Fellatio"] },
+  {
+    name: "Harém",
+    aliases: [
+      "Female Harem",
+      "Male Harem",
+      "Mixed Gender Harem",
+    ],
+  },
   { name: "Incesto", aliases: ["Incest"] },
-  { name: "Lactante", aliases: ["Breast Feeding", "Lactation"] },
+  { name: "Lactante", aliases: ["Lactation"] },
   { name: "Milf", aliases: ["MILF"] },
   { name: "Futanari", aliases: ["Futanari"] },
-  { name: "Ecchi", aliases: ["Ecchi"] },
+  { name: "Ecchi", aliases: [], genres: ["Ecchi"] },
   { name: "Yuri", aliases: ["Yuri"] },
-  { name: "Yaoi", aliases: ["Yaoi"] },
-  { name: "Romance", aliases: ["Romance"] },
+  { name: "Yaoi", aliases: ["Boys' Love"] },
+  { name: "Romance", aliases: [], genres: ["Romance"] },
   { name: "Masturbação", aliases: ["Masturbation"] },
-  { name: "Orgia", aliases: ["Orgy"] },
-  { name: "Peitões", aliases: ["Large Breasts", "Big Breasts"] },
-  { name: "Brinquedos", aliases: ["Toys", "Sex Toys"] },
-  { name: "BDSM", aliases: ["BDSM"] },
-  { name: "Submissão", aliases: ["Submission"] },
+  { name: "Orgia", aliases: ["Group Sex"] },
+  { name: "Peitões", aliases: ["Large Breasts"] },
+  { name: "Brinquedos", aliases: ["Sex Toys"] },
+  { name: "BDSM", aliases: ["Bondage"] },
+  { name: "Submissão", aliases: [] },
   { name: "Tentáculos", aliases: ["Tentacles"] },
-  { name: "NTR", aliases: ["NTR"] },
+  { name: "NTR", aliases: ["Netorare"] },
   { name: "Netorare", aliases: ["Netorare"] },
   { name: "Cosplay", aliases: ["Cosplay"] },
   { name: "Voyeur", aliases: ["Voyeur"] },
   { name: "Exibicionismo", aliases: ["Exhibitionism"] },
-  { name: "Vida Escolar", aliases: ["School Life", "School"] },
+  { name: "Vida Escolar", aliases: ["School"] },
   { name: "Professora", aliases: ["Teacher"] },
-  { name: "Enfermeira", aliases: ["Nurse"] },
-  { name: "Empregada", aliases: ["Maid", "Maids"] },
-  { name: "Amiga de infância", aliases: ["Childhood Friend"] },
-  { name: "Senpai", aliases: ["Senpai"] },
-  { name: "Vizinha", aliases: ["Neighbor", "Neighbors"] },
-  { name: "Office / Escritório", aliases: ["Office Lady", "Office"] },
-  { name: "Dark Skin", aliases: ["Dark Skin", "Tanned Skin"] },
-  { name: "Comédia", aliases: ["Comedy"] },
+  { name: "Enfermeira", aliases: [] },
+  { name: "Empregada", aliases: ["Maids"] },
+  { name: "Amiga de infância", aliases: [] },
+  { name: "Senpai", aliases: [] },
+  { name: "Vizinha", aliases: [] },
+  { name: "Office / Escritório", aliases: ["Office"] },
+  { name: "Dark Skin", aliases: [] },
+  { name: "Comédia", aliases: [], genres: ["Comedy"] },
   { name: "Magia", aliases: ["Magic"] },
-  { name: "Elfos", aliases: ["Elf", "Elves"] },
-  { name: "Demônios", aliases: ["Demon", "Demons"] },
-  { name: "Vampiros", aliases: ["Vampire", "Vampires"] },
-  { name: "Terror", aliases: ["Horror"] },
-  { name: "Virgem", aliases: ["Virgin", "Virginity"] },
-  { name: "Esporte", aliases: ["Sports", "Sport"] },
+  { name: "Elfos", aliases: ["Elf"] },
+  { name: "Demônios", aliases: ["Demons"] },
+  { name: "Vampiros", aliases: ["Vampire"] },
+  { name: "Terror", aliases: [], genres: ["Horror"] },
+  { name: "Virgem", aliases: ["Virginity"] },
+  { name: "Esporte", aliases: [], genres: ["Sports"] },
 ] as const;
 
 function normalizeAdultTagName(value: string) {
@@ -2601,7 +2608,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v8";
+        "adult-tags:v9";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2822,20 +2829,10 @@ export const fetchAdultTags =
        */
       const missingAdultTagNames = new Set([
         "Boquete",
-        "Ecchi",
         "Yaoi",
-        "Romance",
         "Orgia",
         "BDSM",
-        "Submissão",
         "NTR",
-        "Enfermeira",
-        "Amiga de infância",
-        "Senpai",
-        "Vizinha",
-        "Comédia",
-        "Terror",
-        "Esporte",
       ]);
 
       const fallbackTags =
@@ -2849,7 +2846,6 @@ export const fetchAdultTags =
         fallbackTags.map(
           async (mainTag) => {
             const aliases = [
-              mainTag.name,
               ...mainTag.aliases,
             ];
 
@@ -3020,27 +3016,50 @@ export const fetchAdultTags =
       const tags =
         MAIN_ADULT_TAGS
           .map((mainTag) => {
-            const aliases = new Set(
-              [
-                mainTag.name,
-                ...mainTag.aliases,
-              ].map(normalizeAdultTagName),
-            );
+            const animeIds = new Set<string>();
 
-            const matching =
-              sourceTags.filter((tag) =>
-                aliases.has(
-                  normalizeAdultTagName(
-                    tag.name,
-                  ),
+            if (mainTag.genres?.length) {
+              const genres = new Set(
+                mainTag.genres.map(
+                  normalizeAdultTagName,
                 ),
               );
 
-            const animeIds = new Set<string>();
+              for (const anime of media) {
+                if (
+                  (anime.genres ?? []).some((genre) =>
+                    genres.has(
+                      normalizeAdultTagName(
+                        genre,
+                      ),
+                    ),
+                  )
+                ) {
+                  animeIds.add(
+                    String(anime.id),
+                  );
+                }
+              }
+            } else if (mainTag.aliases.length > 0) {
+              const aliases = new Set(
+                mainTag.aliases.map(
+                  normalizeAdultTagName,
+                ),
+              );
 
-            for (const tag of matching) {
-              for (const animeId of tag.animeIds) {
-                animeIds.add(animeId);
+              const matching =
+                sourceTags.filter((tag) =>
+                  aliases.has(
+                    normalizeAdultTagName(
+                      tag.name,
+                    ),
+                  ),
+                );
+
+              for (const tag of matching) {
+                for (const animeId of tag.animeIds) {
+                  animeIds.add(animeId);
+                }
               }
             }
 
