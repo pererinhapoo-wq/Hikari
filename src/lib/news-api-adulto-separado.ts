@@ -1649,42 +1649,59 @@ function parseLuneRssItems(
   ).slice(0, 30);
 }
 
-function extractLunePublishedDate(
+function extractPublishedDateFromVisibleText(
   html: string,
   fallback: string,
 ): string {
-  const jsonLdPatterns = [
-    /"datePublished"\s*:\s*"(20\d{2}-\d{2}-\d{2}(?:T[^"\\]+)?)"/i,
-    /"datePublished"\s*:\s*"(20\d{2}[./-]\d{1,2}[./-]\d{1,2})"/i,
-  ];
+  const visible = stripPageText(html);
 
-  for (const pattern of jsonLdPatterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) {
-      return match[1];
-    }
-  }
-
-  const metaPatterns = [
-    /<meta[^>]+(?:property|name)=["']article:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']article:published_time["'][^>]*>/i,
-  ];
-
-  for (const pattern of metaPatterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) {
-      return match[1];
-    }
-  }
-
-  // A Lune article displays its original publication date beside the
-  // アニメ category. Prefer that date over any later page update date.
-  const visibleDate = html.match(
-    /アニメ[\s\S]{0,250}?\b(20\d{2})\.(\d{1,2})\.(\d{1,2})\b/i,
+  // EroEro News: o rodapé do artigo informa a data real de publicação.
+  const eroEro = visible.match(
+    /EroEro News\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+(\d{1,2}),\s*(20\d{2})/i,
   );
 
-  if (visibleDate) {
-    return `${visibleDate[1]}-${visibleDate[2].padStart(2, "0")}-${visibleDate[3].padStart(2, "0")}`;
+  if (eroEro) {
+    const months: Record<string, number> = {
+      enero: 1,
+      febrero: 2,
+      marzo: 3,
+      abril: 4,
+      mayo: 5,
+      junio: 6,
+      julio: 7,
+      agosto: 8,
+      septiembre: 9,
+      octubre: 10,
+      noviembre: 11,
+      diciembre: 12,
+    };
+    const month = months[eroEro[1].toLowerCase()];
+    if (month) {
+      return `${eroEro[3]}-${String(month).padStart(2, "0")}-${String(Number(eroEro[2])).padStart(2, "0")}`;
+    }
+  }
+
+  // Lune Soft: a data original aparece imediatamente após a categoria アニメ.
+  const lune = html.match(
+    /(?:<[^>]+>\s*)?アニメ(?:\s*<[^>]+>)*\s*(20\d{2})\.(\d{1,2})\.(\d{1,2})/i,
+  );
+
+  if (lune) {
+    return `${lune[1]}-${lune[2].padStart(2, "0")}-${lune[3].padStart(2, "0")}`;
+  }
+
+  // Último recurso: metadados de publicação, nunca metadados de atualização.
+  const publishedPatterns = [
+    /<meta[^>]+(?:property|name)=["']article:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']article:published_time["'][^>]*>/i,
+    /"datePublished"\s*:\s*"(20\d{2}-\d{2}-\d{2}(?:T[^"\\]+)?)"/i,
+  ];
+
+  for (const pattern of publishedPatterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
   }
 
   return fallback;
@@ -1716,7 +1733,7 @@ async function fetchLuneAdultArticle(
     }
 
     const publishedAt = html
-      ? extractLunePublishedDate(
+      ? extractPublishedDateFromVisibleText(
           html,
           article.publishedAt,
         )
@@ -1970,14 +1987,9 @@ async function fetchAdultNewsFeed(
     return fallback;
   }
 
-  const validArticles = articles.filter((article) => {
-    const timestamp = Date.parse(article.publishedAt);
-
-    return (
-      !Number.isNaN(timestamp) &&
-      timestamp <= Date.now() + 24 * 60 * 60 * 1000
-    );
-  });
+  // Não filtramos pela data do RSS aqui: algumas fontes atualizam o pubDate
+  // quando alteram uma página. A data válida será corrigida a partir do artigo.
+  const validArticles = articles.filter((article) => Boolean(article.url));
 
   if (!validArticles.length) {
     const fallback = feedUrl.includes("eroeronews.com")
@@ -1993,10 +2005,24 @@ async function fetchAdultNewsFeed(
     ),
   );
 
-  return results.filter(
-    (item): item is AutomaticNewsItem =>
-      Boolean(item),
-  );
+  return results
+    .filter(
+      (item): item is AutomaticNewsItem => Boolean(item),
+    )
+    .filter((item) => {
+      const timestamp = item.publishedAt
+        ? Date.parse(item.publishedAt)
+        : NaN;
+      return (
+        !Number.isNaN(timestamp) &&
+        timestamp <= Date.now() + 24 * 60 * 60 * 1000
+      );
+    })
+    .sort((a, b) => {
+      const timeA = Date.parse(a.publishedAt || "") || 0;
+      const timeB = Date.parse(b.publishedAt || "") || 0;
+      return timeB - timeA;
+    });
 }
 
 export const fetchAutomaticNews =
@@ -2087,7 +2113,7 @@ export const fetchAdultNews =
     method: "GET",
   }).handler(async () => {
     const key =
-      "automatic-adult-news:hentai-paginado-recentes:v8";
+      "automatic-adult-news:hentai-paginado-recentes:v9";
 
     const cached =
       fromCache(key);
