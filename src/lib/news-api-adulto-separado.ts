@@ -604,7 +604,6 @@ async function fetchAdultCatalogNews(): Promise<
           id
           isAdult
           score: averageScore
-          updatedAt
 
           title {
             romaji
@@ -654,707 +653,6 @@ async function fetchAdultCatalogNews(): Promise<
           id
           isAdult
           score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page3: Page(
-        page: 3
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page4: Page(
-        page: 4
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page5: Page(
-        page: 5
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page6: Page(
-        page: 6
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page7: Page(
-        page: 7
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page8: Page(
-        page: 8
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page9: Page(
-        page: 9
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page10: Page(
-        page: 10
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page11: Page(
-        page: 11
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page12: Page(
-        page: 12
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page13: Page(
-        page: 13
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page14: Page(
-        page: 14
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page15: Page(
-        page: 15
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page16: Page(
-        page: 16
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
 
           title {
             romaji
@@ -1393,254 +691,85 @@ async function fetchAdultCatalogNews(): Promise<
     }
   `;
 
-  let lastError = "AniList indisponível";
+  const response =
+    await fetch(
+      ANILIST,
+      {
+        method: "POST",
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response =
-        await fetch(
-          ANILIST,
-          {
-            method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
 
-            headers: {
-              "Content-Type":
-                "application/json",
+          Accept:
+            "application/json",
+        },
 
-              Accept:
-                "application/json",
-            },
+        body: JSON.stringify({
+          query,
+        }),
 
-            body: JSON.stringify({
-              query,
-            }),
-
-            signal:
-              AbortSignal.timeout(
-                12000,
-              ),
-          },
-        );
-
-      if (!response.ok) {
-        lastError =
-          `AniList indisponível (${response.status})`;
-
-        if (
-          response.status === 429 ||
-          response.status >= 500
-        ) {
-          const retryAfter =
-            Number(
-              response.headers.get(
-                "Retry-After",
-              ),
-            );
-
-          const waitMs = Number.isFinite(
-            retryAfter,
-          )
-            ? Math.min(
-                Math.max(
-                  retryAfter * 1000,
-                  500,
-                ),
-                5000,
-              )
-            : 800 * (attempt + 1);
-
-          if (attempt < 2) {
-            await new Promise((resolve) =>
-              setTimeout(
-                resolve,
-                waitMs,
-              ),
-            );
-            continue;
-          }
-        }
-
-        throw new Error(
-          lastError,
-        );
-      }
-
-      const json =
-        (await response.json()) as {
-          data?: Record<
-            string,
-            {
-              media: AniMedia[];
-            }
-          >;
-
-          errors?: {
-            message?: string;
-          }[];
-        };
-
-      if (json.errors?.length) {
-        lastError =
-          json.errors[0]?.message ??
-          "AniList sem dados";
-
-        throw new Error(
-          lastError,
-        );
-      }
-
-      const media = Object.values(
-        json.data ?? {},
-      )
-        .flatMap(
-          (page) =>
-            page?.media ?? [],
-        )
-        .filter(
-          (anime) =>
-            anime.id > 0 &&
-            anime.format !== "MUSIC" &&
-            anime.isAdult === true,
-        );
-
-      const unique = new Map<
-        number,
-        AniMedia
-      >();
-
-      for (const anime of media) {
-        unique.set(
-          anime.id,
-          {
-            ...anime,
-            isAdult: true,
-          },
-        );
-      }
-
-      return Array.from(
-        unique.values(),
-      );
-    } catch (error) {
-      lastError =
-        error instanceof Error &&
-        error.message
-          ? error.message
-          : lastError;
-
-      if (attempt < 2) {
-        await new Promise((resolve) =>
-          setTimeout(
-            resolve,
-            800 * (attempt + 1),
+        signal:
+          AbortSignal.timeout(
+            8000,
           ),
-        );
-        continue;
-      }
-    }
+      },
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `AniList indisponível (${response.status})`,
+    );
   }
 
-  throw new Error(
-    lastError,
-  );
-}
+  const json =
+    (await response.json()) as {
+      data?: {
+        page1?: {
+          media?: AniMedia[];
+        };
+        page2?: {
+          media?: AniMedia[];
+        };
+      };
 
-function formatUpdatedDate(
-  updatedAt: number | null | undefined,
-): string {
-  const timestamp =
-    typeof updatedAt === "number" &&
-    updatedAt > 0
-      ? updatedAt * 1000
-      : Date.now();
-
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      timeZone: "America/Recife",
-    },
-  ).format(
-    new Date(timestamp),
-  );
-}
-
-function formatUpdatedTime(
-  updatedAt: number | null | undefined,
-): string {
-  const timestamp =
-    typeof updatedAt === "number" &&
-    updatedAt > 0
-      ? updatedAt * 1000
-      : Date.now();
-
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "America/Recife",
-    },
-  ).format(
-    new Date(timestamp),
-  );
-}
-
-function formatEventDate(
-  timestamp: number,
-): string {
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      timeZone: "America/Recife",
-    },
-  ).format(
-    new Date(timestamp),
-  );
-}
-
-function formatEventTime(
-  timestamp: number,
-): string {
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "America/Recife",
-    },
-  ).format(
-    new Date(timestamp),
-  );
-}
-
-function startTimestampOf(
-  anime: AniMedia,
-): number {
-  const date = anime.startDate;
+      errors?: {
+        message?: string;
+      }[];
+    };
 
   if (
-    !date?.year ||
-    !date.month ||
-    !date.day
+    json.errors?.length ||
+    !json.data
   ) {
-    return 0;
+    throw new Error(
+      json.errors?.[0]
+        ?.message ??
+        "AniList sem dados",
+    );
   }
 
-  return new Date(
-    date.year,
-    date.month - 1,
-    date.day,
-    12,
-    0,
-    0,
-    0,
-  ).getTime();
+  const merged = [
+    ...(json.data.page1?.media ?? []),
+    ...(json.data.page2?.media ?? []),
+  ];
+
+  const unique =
+    Array.from(
+      new Map(
+        merged.map((anime) => [
+          anime.id,
+          anime,
+        ]),
+      ).values(),
+    );
+
+  return unique.filter(
+    (anime) =>
+      anime.isAdult === true &&
+      anime.id > 0 &&
+      anime.format !== "MUSIC",
+  );
 }
 
 async function buildNews(
@@ -1653,45 +782,6 @@ async function buildNews(
     }
   >,
 ): Promise<AutomaticNewsItem[]> {
-  const prepared =
-    media.map(
-      (anime) => {
-        const title =
-          titleOf(
-            anime,
-          );
-
-        const trailerUrl =
-          trailerOf(
-            anime,
-          );
-
-        const latestEpisode =
-          latestEpisodes.get(
-            anime.id,
-          );
-
-        return {
-          anime,
-          title,
-          trailerUrl,
-          latestEpisode,
-        };
-      },
-    );
-
-  const descriptions =
-    await Promise.all(
-      prepared.map(
-        ({
-          anime,
-        }) =>
-          descriptionOf(
-            anime,
-          ),
-      ),
-    );
-
   const news:
     AutomaticNewsItem[] =
     [];
@@ -1785,6 +875,26 @@ async function buildNews(
   // Mantemos somente os títulos que tiveram atualização recente,
   // lançamento recente/próximo ou episódio recém-exibido.
   media = recentMedia;
+
+  // Só traduzimos os animes que realmente podem gerar
+  // uma notícia. Isso evita dezenas de chamadas externas
+  // de tradução para títulos antigos que serão descartados.
+  const prepared =
+    media.map(
+      (anime) => ({
+        anime,
+        title: titleOf(anime),
+        trailerUrl: trailerOf(anime),
+        latestEpisode: latestEpisodes.get(anime.id),
+      }),
+    );
+
+  const descriptions =
+    await Promise.all(
+      prepared.map(({ anime }) =>
+        descriptionOf(anime),
+      ),
+    );
 
   const topRated = [
     ...media,
