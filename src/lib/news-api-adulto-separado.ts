@@ -1318,9 +1318,15 @@ async function fetchAdultNewsFeed(
         const proxiedArticleImages =
           (
             await Promise.all(
-              articleImages.map((imageUrl) =>
-                proxyRssImage(imageUrl, 5_000_000),
-              ),
+              articleImages.map(async (imageUrl) => {
+                const proxied =
+                  await proxyRssImage(
+                    imageUrl,
+                    5_000_000,
+                  );
+
+                return proxied || imageUrl;
+              }),
             )
           ).filter(Boolean);
 
