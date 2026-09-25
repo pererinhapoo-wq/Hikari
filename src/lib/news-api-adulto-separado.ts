@@ -389,42 +389,6 @@ function removeSourceBrandText(
     .trim();
 }
 
-function contentImagesFromHtml(
-  html: string,
-  baseUrl: string,
-): string[] {
-  const values: string[] = [];
-
-  const imagePattern =
-    /<img[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*>/gi;
-
-  for (const match of html.matchAll(imagePattern)) {
-    const decoded = decodeXml((match[1] ?? "").trim());
-    if (!decoded) continue;
-
-    try {
-      const absolute = new URL(decoded, baseUrl).href;
-      const contextValue = (match[0] ?? "").toLowerCase();
-
-      if (
-        /\b(?:logo|favicon|branding|site-brand|header-brand|footer-brand)\b/.test(contextValue) ||
-        /(?:eroero\s*news|lune\s*soft|lune\s*pictures)/i.test(contextValue) ||
-        isSourceBrandImage(absolute)
-      ) {
-        continue;
-      }
-
-      if (/^https?:\/\//i.test(absolute) && !values.includes(absolute)) {
-        values.push(absolute);
-      }
-    } catch {
-      // Ignora URLs inválidas.
-    }
-  }
-
-  return values.slice(0, 8);
-}
-
 function imagesFromHtml(
   html: string,
   baseUrl: string,
@@ -493,29 +457,6 @@ function imagesFromHtml(
   return values.slice(0, 5);
 }
 
-async function fetchJapaneseOtonariImage(): Promise<string> {
-  const sourceUrl =
-    "https://ec.toranoana.jp/tora_r/ec/item/210006667343/";
-
-  try {
-    const response = await fetch(sourceUrl, {
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent": "Hikari/1.0 (adult news)",
-      },
-      signal: AbortSignal.timeout(8000),
-    });
-
-    if (!response.ok) return "";
-
-    const html = await response.text();
-    const images = contentImagesFromHtml(html, sourceUrl);
-    return images[0] ?? "";
-  } catch {
-    return "";
-  }
-}
-
 async function fetchArticleImages(
   articleUrl: string,
 ): Promise<string[]> {
@@ -543,7 +484,7 @@ async function fetchArticleImages(
     }
 
     const html = await response.text();
-    return contentImagesFromHtml(
+    return imagesFromHtml(
       html,
       url,
     );
@@ -674,65 +615,136 @@ async function translateTextToPortuguese(
     return text;
   }
 
-  try {
-    const response = await fetch(
-      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=es&tl=pt&dt=t&q=${encodeURIComponent(text.slice(0, 4500))}`,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "Hikari/1.0 (adult news translation)",
-        },
-        signal: AbortSignal.timeout(7000),
-      },
-    );
+  const MAX_QUERY_CHARS = 450;
 
-    if (response.ok) {
+  const splitIntoChunks = (
+    input: string,
+  ): string[] => {
+    const chunks: string[] = [];
+    let remaining = input.trim();
+
+    while (remaining.length > MAX_QUERY_CHARS) {
+      let cut = remaining.lastIndexOf(
+        " ",
+        MAX_QUERY_CHARS,
+      );
+
+      if (cut < 120) {
+        cut = MAX_QUERY_CHARS;
+      }
+
+      chunks.push(
+        remaining.slice(0, cut).trim(),
+      );
+      remaining = remaining
+        .slice(cut)
+        .trim();
+    }
+
+    if (remaining) {
+      chunks.push(remaining);
+    }
+
+    return chunks;
+  };
+
+  const translateChunkWithGoogle = async (
+    chunk: string,
+  ): Promise<string> => {
+    try {
+      const response = await fetch(
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=es&tl=pt&dt=t&q=${encodeURIComponent(chunk)}`,
+        {
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Hikari/1.0 (adult news translation)",
+          },
+          signal: AbortSignal.timeout(7000),
+        },
+      );
+
+      if (!response.ok) {
+        return "";
+      }
+
       const data = (await response.json()) as unknown;
 
       if (Array.isArray(data) && Array.isArray(data[0])) {
         const translated = data[0]
-          .filter((part): part is unknown[] => Array.isArray(part))
+          .filter(
+            (part): part is unknown[] =>
+              Array.isArray(part),
+          )
           .map((part) => String(part[0] ?? ""))
           .join("")
           .trim();
 
-        if (translated && translated !== text) {
+        if (translated && translated !== chunk) {
           return translated;
         }
       }
+    } catch {
+      // Tenta o fallback para este bloco.
     }
-  } catch {
-    // Tenta o fallback.
-  }
 
-  try {
-    const response = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0, 1800))}&langpair=es|pt-BR`,
-      {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "Hikari/1.0 (adult news translation)",
+    return "";
+  };
+
+  const translateChunkWithMyMemory = async (
+    chunk: string,
+  ): Promise<string> => {
+    try {
+      const response = await fetch(
+        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=es|pt-BR`,
+        {
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Hikari/1.0 (adult news translation)",
+          },
+          signal: AbortSignal.timeout(7000),
         },
-        signal: AbortSignal.timeout(7000),
-      },
-    );
+      );
 
-    if (response.ok) {
+      if (!response.ok) {
+        return "";
+      }
+
       const data = (await response.json()) as {
         responseData?: { translatedText?: string };
       };
 
-      const translated = data.responseData?.translatedText?.trim() ?? "";
+      const translated =
+        data.responseData?.translatedText?.trim() ?? "";
 
-      if (translated && translated !== text) {
+      if (translated && translated !== chunk) {
         return translated;
       }
+    } catch {
+      // Mantém o bloco original se o fallback falhar.
     }
-  } catch {
-    // Mantém o original se os dois serviços estiverem indisponíveis.
+
+    return "";
+  };
+
+  const chunks = splitIntoChunks(text);
+  const translatedChunks: string[] = [];
+
+  for (const chunk of chunks) {
+    const translated =
+      (await translateChunkWithGoogle(chunk)) ||
+      (await translateChunkWithMyMemory(chunk));
+
+    translatedChunks.push(
+      translated || chunk,
+    );
   }
 
-  return text;
+  const translated = translatedChunks
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return translated || text;
 }
 
 async function translateEroEroItem(
@@ -1484,7 +1496,7 @@ async function fetchLuneAnimeReleaseNews(): Promise<AutomaticNewsItem[]> {
               ? pageDescription
               : "";
 
-          articleImages = contentImagesFromHtml(
+          articleImages = imagesFromHtml(
             html,
             item.url,
           );
@@ -1653,7 +1665,7 @@ async function fetchAdultNewsFeed(
             );
 
           const articleImages =
-            contentImagesFromHtml(
+            imagesFromHtml(
               rawDescription,
               link,
             );
@@ -1799,20 +1811,6 @@ async function fetchAdultNewsFeed(
             (value, index, list) =>
               list.indexOf(value) === index,
           ).slice(0, 8);
-
-          // Somente esta notícia usa uma segunda imagem de uma fonte japonesa.
-          // A imagem principal e todas as outras notícias permanecem como estavam.
-          if (/otonari\s+no\s+nie|お隣の贄/i.test(`${item.title} ${item.url}`)) {
-            const japaneseImage =
-              await fetchJapaneseOtonariImage();
-
-            if (japaneseImage) {
-              articleImages = [
-                articleImages[0],
-                japaneseImage,
-              ].filter(Boolean);
-            }
-          }
 
           if (!rssImage && pageImages.length) {
             for (const pageImage of pageImages) {
