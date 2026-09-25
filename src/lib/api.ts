@@ -1580,6 +1580,7 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
       "Horror",
       "Mecha",
       "Mystery",
+      "Romance",
       "Sci-Fi",
       "Slice of Life",
       "Sports",
@@ -2482,31 +2483,49 @@ export const fetchAdultCatalog =
 
 
 const MAIN_ADULT_TAGS = [
-  { name: "Anal", aliases: ["Anal", "Anal Sex"] },
-  { name: "Harém", aliases: ["Harem", "Female Harem"] },
-  { name: "Incesto", aliases: ["Incest"] },
-  { name: "Lactante", aliases: ["Breast Feeding", "Lactation"] },
-  { name: "Milf", aliases: ["MILF"] },
-  { name: "Futanari", aliases: ["Futanari"] },
-  { name: "Ahegao", aliases: ["Ahegao"] },
-  { name: "Yuri", aliases: ["Yuri"] },
-  { name: "Masturbação", aliases: ["Masturbation"] },
-  { name: "Peitões", aliases: ["Large Breasts", "Big Breasts"] },
-  { name: "Brinquedos", aliases: ["Toys", "Sex Toys"] },
-  { name: "Tentáculos", aliases: ["Tentacles"] },
-  { name: "Netorare", aliases: ["Netorare"] },
-  { name: "Cosplay", aliases: ["Cosplay"] },
-  { name: "Voyeur", aliases: ["Voyeur"] },
-  { name: "Exibicionismo", aliases: ["Exhibitionism"] },
-  { name: "Vida Escolar", aliases: ["School Life", "School"] },
-  { name: "Professora", aliases: ["Teacher"] },
-  { name: "Empregada", aliases: ["Maid", "Maids"] },
-  { name: "Office / Escritório", aliases: ["Office Lady", "Office"] },
-  { name: "Magia", aliases: ["Magic"] },
-  { name: "Elfos", aliases: ["Elf", "Elves"] },
-  { name: "Demônios", aliases: ["Demon", "Demons"] },
-  { name: "Vampiros", aliases: ["Vampire", "Vampires"] },
-  { name: "Virgem", aliases: ["Virgin", "Virginity"] },
+  { name: "Anal", type: "tag", aliases: ["Anal Sex"] },
+  { name: "Boquete", type: "tag", aliases: ["Fellatio"] },
+  {
+    name: "Harém",
+    type: "tag",
+    aliases: [
+      "Female Harem",
+      "Male Harem",
+      "Mixed Gender Harem",
+    ],
+  },
+  { name: "Incesto", type: "tag", aliases: ["Incest"] },
+  { name: "Lactante", type: "tag", aliases: ["Lactation"] },
+  { name: "Milf", type: "tag", aliases: ["MILF"] },
+  { name: "Futanari", type: "tag", aliases: ["Futanari"] },
+  { name: "Ecchi", type: "genre", aliases: ["Ecchi"] },
+  { name: "Yuri", type: "tag", aliases: ["Yuri"] },
+  { name: "Yaoi", type: "tag", aliases: ["Boys' Love"] },
+  { name: "Romance", type: "genre", aliases: ["Romance"] },
+  { name: "Masturbação", type: "tag", aliases: ["Masturbation"] },
+  { name: "Orgia", type: "tag", aliases: ["Group Sex"] },
+  { name: "Peitões", type: "tag", aliases: ["Large Breasts"] },
+  { name: "Brinquedos", type: "tag", aliases: ["Sex Toys"] },
+  { name: "BDSM", type: "tag", aliases: ["Bondage"] },
+  { name: "Tentáculos", type: "tag", aliases: ["Tentacles"] },
+  { name: "NTR", type: "tag", aliases: ["Netorare"] },
+  { name: "Netorare", type: "tag", aliases: ["Netorare"] },
+  { name: "Cosplay", type: "tag", aliases: ["Cosplay"] },
+  { name: "Voyeur", type: "tag", aliases: ["Voyeur"] },
+  { name: "Exibicionismo", type: "tag", aliases: ["Exhibitionism"] },
+  { name: "Vida Escolar", type: "tag", aliases: ["School"] },
+  { name: "Professora", type: "tag", aliases: ["Teacher"] },
+  { name: "Empregada", type: "tag", aliases: ["Maids"] },
+  { name: "Office / Escritório", type: "tag", aliases: ["Office"] },
+  { name: "Comédia", type: "genre", aliases: ["Comedy"] },
+  { name: "Magia", type: "tag", aliases: ["Magic"] },
+  { name: "Elfos", type: "tag", aliases: ["Elf"] },
+  { name: "Demônios", type: "tag", aliases: ["Demons"] },
+  { name: "Vampiros", type: "tag", aliases: ["Vampire"] },
+  { name: "Terror", type: "genre", aliases: ["Horror"] },
+  { name: "Virgem", type: "tag", aliases: ["Virginity"] },
+  { name: "Esporte", type: "genre", aliases: ["Sports"] },
+  { name: "Ahegao", type: "tag", aliases: ["Ahegao"] },
 ] as const;
 
 function normalizeAdultTagName(value: string) {
@@ -2528,17 +2547,23 @@ type AdultTagCatalog = {
 
 const ADULT_FEATURED_TAGS = [
   "Anal",
+  "Boquete",
   "Harém",
   "Incesto",
   "Lactante",
   "Milf",
   "Futanari",
-  "Ahegao",
+  "Ecchi",
   "Yuri",
+  "Yaoi",
+  "Romance",
   "Masturbação",
+  "Orgia",
   "Peitões",
   "Brinquedos",
+  "BDSM",
   "Tentáculos",
+  "NTR",
   "Netorare",
   "Cosplay",
   "Voyeur",
@@ -2547,11 +2572,15 @@ const ADULT_FEATURED_TAGS = [
   "Professora",
   "Empregada",
   "Office / Escritório",
+  "Comédia",
   "Magia",
   "Elfos",
   "Demônios",
   "Vampiros",
+  "Terror",
   "Virgem",
+  "Esporte",
+  "Ahegao",
 ] as const;
 
 const ADULT_REMOVED_TAGS = new Set([
@@ -2570,7 +2599,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v9";
+        "adult-tags:v10";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2781,34 +2810,19 @@ export const fetchAdultTags =
       }
 
       /*
-       * Algumas das 40 tags principais podem existir em animes
-       * com gênero Hentai que não aparecem no catálogo adulto
-       * filtrado por `isAdult: true`.
-       *
-       * Nesses casos, fazemos uma busca complementar somente
-       * para as 15 tags que estavam retornando 0. Isso não cria
-       * tags novas nem altera as outras 25.
+       * Algumas tags específicas podem não aparecer no primeiro
+       * conjunto do catálogo adulto. Consultamos diretamente
+       * as tags oficiais do AniList, sem criar aliases inventados.
        */
-      const missingAdultTagNames = new Set([
-        "Ahegao",
-      ]);
-
       const fallbackTags =
-        MAIN_ADULT_TAGS.filter((tag) =>
-          missingAdultTagNames.has(
-            tag.name,
-          ),
+        MAIN_ADULT_TAGS.filter(
+          (tag) => tag.type === "tag",
         );
 
       await Promise.all(
         fallbackTags.map(
           async (mainTag) => {
-            const aliases = [
-              mainTag.name,
-              ...mainTag.aliases,
-            ];
-
-            for (const alias of aliases) {
+            for (const alias of mainTag.aliases) {
               try {
                 let page = 1;
                 let hasNextPage = true;
@@ -2853,10 +2867,9 @@ export const fetchAdultTags =
                       },
                     );
 
-                  const found =
-                    result.Page.media ?? [];
-
-                  addFallbackMedia(found);
+                  addFallbackMedia(
+                    result.Page.media ?? [],
+                  );
 
                   hasNextPage =
                     Boolean(
@@ -2866,35 +2879,8 @@ export const fetchAdultTags =
 
                   page += 1;
                 }
-
-                /*
-                 * Se este alias encontrou conteúdo,
-                 * não precisamos consultar os outros
-                 * aliases da mesma tag.
-                 */
-                const foundAny =
-                  Array.from(
-                    allMedia.values(),
-                  ).some((anime) =>
-                    (anime.tags ?? []).some(
-                      (sourceTag) =>
-                        normalizeAdultTagName(
-                          sourceTag.name,
-                        ) ===
-                        normalizeAdultTagName(
-                          alias,
-                        ),
-                    ),
-                  );
-
-                if (foundAny) {
-                  break;
-                }
               } catch {
-                /*
-                 * Um alias que falhar não impede
-                 * os demais aliases nem as outras tags.
-                 */
+                // Um erro em uma tag não interrompe as demais.
               }
             }
           },
@@ -2911,107 +2897,51 @@ export const fetchAdultTags =
           mapAniSlim,
         );
 
-      const tagMap =
-        new Map<
-          string,
-          {
-            name: string;
-            animeIds: Set<string>;
-          }
-        >();
-
-      for (const anime of media) {
-        for (const tag of
-          anime.tags ?? []) {
-          if (
-            !tag.name?.trim()
-          ) {
-            continue;
-          }
-
-          const name =
-            tag.name.trim();
-
-          const keyName =
-            name.toLocaleLowerCase(
-              "pt-BR",
-            );
-
-          if (
-            ADULT_REMOVED_TAGS.has(
-              keyName,
-            )
-          ) {
-            continue;
-          }
-
-          const current =
-            tagMap.get(
-              keyName,
-            ) ?? {
-              name,
-              animeIds:
-                new Set<string>(),
-            };
-
-          current.animeIds.add(
-            String(
-              anime.id,
-            ),
-          );
-
-          tagMap.set(
-            keyName,
-            current,
-          );
-        }
-      }
-
-      const sourceTags =
-        Array.from(
-          tagMap.values(),
-        );
-
       const tags =
-        MAIN_ADULT_TAGS
-          .map((mainTag) => {
-            const aliases = new Set(
-              [
-                mainTag.name,
-                ...mainTag.aliases,
-              ].map(normalizeAdultTagName),
-            );
+        MAIN_ADULT_TAGS.map((mainTag) => {
+          const aliases = new Set(
+            [
+              mainTag.name,
+              ...mainTag.aliases,
+            ].map(normalizeAdultTagName),
+          );
 
-            const matching =
-              sourceTags.filter((tag) =>
-                aliases.has(
-                  normalizeAdultTagName(
-                    tag.name,
+          const animeIds = new Set<string>();
+
+          for (const anime of media) {
+            if (mainTag.type === "genre") {
+              const matchesGenre =
+                (anime.genres ?? []).some((genre) =>
+                  aliases.has(
+                    normalizeAdultTagName(genre),
                   ),
+                );
+
+              if (matchesGenre) {
+                animeIds.add(String(anime.id));
+              }
+
+              continue;
+            }
+
+            const matchesTag =
+              (anime.tags ?? []).some((tag) =>
+                aliases.has(
+                  normalizeAdultTagName(tag.name),
                 ),
               );
 
-            const animeIds = new Set<string>();
-
-            for (const tag of matching) {
-              for (const animeId of tag.animeIds) {
-                animeIds.add(animeId);
-              }
+            if (matchesTag) {
+              animeIds.add(String(anime.id));
             }
+          }
 
-            return {
-              name: mainTag.name,
-              count: animeIds.size,
-              animeIds: Array.from(animeIds),
-            };
-          })
-          .filter(
-            (tag): tag is {
-              name: string;
-              count: number;
-              animeIds: string[];
-            } => Boolean(tag),
-          );
+          return {
+            name: mainTag.name,
+            count: animeIds.size,
+            animeIds: Array.from(animeIds),
+          };
+        });
 
       return toCache(
         key,
