@@ -170,58 +170,53 @@ function formatDate(
   );
 }
 
-function formatEventDate(timestamp: number): string {
-  const timeZone = "America/Recife";
-
-  const getLocalDay = (value: Date) => {
-    const parts = new Intl.DateTimeFormat(
-      "en-US",
-      {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        timeZone,
-      },
-    ).formatToParts(value);
-
-    const year = Number(
-      parts.find((part) => part.type === "year")?.value,
-    );
-    const month = Number(
-      parts.find((part) => part.type === "month")?.value,
-    );
-    const day = Number(
-      parts.find((part) => part.type === "day")?.value,
-    );
-
-    return Date.UTC(year, month - 1, day);
-  };
-
-  const eventDay = getLocalDay(new Date(timestamp));
-  const todayDay = getLocalDay(new Date());
-  const diffDays = Math.round(
-    (eventDay - todayDay) / 86_400_000,
+function isInCurrentMonth(timestamp: number): boolean {
+  const formatter = new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      year: "numeric",
+      month: "2-digit",
+      timeZone: "America/Recife",
+    },
   );
 
-  if (diffDays === 0) {
-    return "Hoje";
-  }
+  return (
+    formatter.format(new Date(timestamp)) ===
+    formatter.format(new Date())
+  );
+}
 
-  if (diffDays === -1) {
-    return "Ontem";
-  }
+function formatEventDate(timestamp: number): string {
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "America/Recife",
+    },
+  ).format(new Date(timestamp));
+}
 
-  if (diffDays === 1) {
-    return "Amanhã";
-  }
+function formatEventTime(timestamp: number): string {
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Recife",
+    },
+  ).format(new Date(timestamp));
+}
 
-  if (diffDays < 0 && diffDays >= -30) {
-    return `Há ${Math.abs(diffDays)} dias`;
-  }
-
-  if (diffDays > 0 && diffDays <= 60) {
-    return `Em ${diffDays} dias`;
-  }
+function formatUpdatedDate(
+  updatedAt: number | null | undefined,
+): string {
+  const timestamp =
+    typeof updatedAt === "number" &&
+    updatedAt > 0
+      ? updatedAt * 1000
+      : Date.now();
 
   return new Intl.DateTimeFormat(
     "pt-BR",
@@ -229,12 +224,20 @@ function formatEventDate(timestamp: number): string {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-      timeZone,
+      timeZone: "America/Recife",
     },
   ).format(new Date(timestamp));
 }
 
-function formatEventTime(timestamp: number): string {
+function formatUpdatedTime(
+  updatedAt: number | null | undefined,
+): string {
+  const timestamp =
+    typeof updatedAt === "number" &&
+    updatedAt > 0
+      ? updatedAt * 1000
+      : Date.now();
+
   return new Intl.DateTimeFormat(
     "pt-BR",
     {
@@ -254,6 +257,7 @@ function formatAiringDate(
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+      timeZone: "America/Recife",
     },
   ).format(
     new Date(
@@ -579,6 +583,7 @@ async function fetchSeason(
                 ) {
                   id
                   isAdult
+                  updatedAt
 
                   title {
                     romaji
@@ -679,6 +684,7 @@ async function fetchAdultCatalogNews(): Promise<
           id
           isAdult
           score: averageScore
+          updatedAt
 
           title {
             romaji
@@ -728,6 +734,7 @@ async function fetchAdultCatalogNews(): Promise<
           id
           isAdult
           score: averageScore
+          updatedAt
 
           title {
             romaji
@@ -879,7 +886,7 @@ async function buildNews(
       : 180 * 24 * 60 * 60 * 1000;
   const RECENT_EPISODE_WINDOW =
     isAdultFeed
-      ? 7 * 24 * 60 * 60 * 1000
+      ? 30 * 24 * 60 * 60 * 1000
       : 14 * 24 * 60 * 60 * 1000;
 
   const recentMedia = media.filter(
@@ -897,11 +904,11 @@ async function buildNews(
         startDate?.year &&
         startDate.month &&
         startDate.day
-          ? new Date(
+          ? Date.UTC(
               startDate.year,
               startDate.month - 1,
               startDate.day,
-            ).getTime()
+            )
           : 0;
 
       const latestEpisode =
@@ -936,6 +943,22 @@ async function buildNews(
         episodeTimestamp <= now &&
         now - episodeTimestamp <=
           RECENT_EPISODE_WINDOW;
+
+      if (isAdultFeed) {
+        const eventTimestamp =
+          recentlyAired && episodeTimestamp > 0
+            ? episodeTimestamp
+            : recentlyReleased && startTimestamp > 0
+              ? startTimestamp
+              : upcoming && startTimestamp > 0
+                ? startTimestamp
+                : 0;
+
+        return (
+          eventTimestamp > 0 &&
+          isInCurrentMonth(eventTimestamp)
+        );
+      }
 
       return (
         recentlyReleased ||
@@ -1059,11 +1082,11 @@ async function buildNews(
       startDate?.year &&
       startDate.month &&
       startDate.day
-        ? new Date(
+        ? Date.UTC(
             startDate.year,
             startDate.month - 1,
             startDate.day,
-          ).getTime()
+          )
         : 0;
 
     if (
@@ -1458,7 +1481,7 @@ export const fetchAdultNews =
       );
 
     const key =
-      `automatic-adult-news:v2:${season}:${year}`;
+      `automatic-adult-news:v3:september:${season}:${year}`;
 
     const cached =
       fromCache(key);
