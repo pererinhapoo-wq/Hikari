@@ -300,6 +300,18 @@ function normalizeUrl(
   return url;
 }
 
+function proxyImageUrl(
+  value: string,
+): string {
+  const url = normalizeUrl(value);
+
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return "";
+  }
+
+  return `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
+}
+
 function looksSpanish(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
 
@@ -414,7 +426,7 @@ function imageFromRss(
     const match = block.match(pattern);
 
     if (match?.[1]) {
-      return normalizeUrl(match[1]);
+      return proxyImageUrl(match[1]);
     }
   }
 
@@ -444,7 +456,7 @@ function imageFromRss(
       /<(?:img|source)[^>]+src=['"]([^'"]+)['"][^>]*>/i,
     );
 
-  return normalizeUrl(
+  return proxyImageUrl(
     contentImage?.[1] ?? "",
   );
 }
