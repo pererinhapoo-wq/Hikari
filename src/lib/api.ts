@@ -2601,7 +2601,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v6";
+        "adult-tags:v7";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2784,6 +2784,141 @@ export const fetchAdultTags =
           );
         }
       }
+
+      /*
+       * Algumas das 40 tags principais podem existir em animes
+       * com gênero Hentai que não aparecem no catálogo adulto
+       * filtrado por `isAdult: true`.
+       *
+       * Nesses casos, fazemos uma busca complementar somente
+       * para as 15 tags que estavam retornando 0. Isso não cria
+       * tags novas nem altera as outras 25.
+       */
+      const missingAdultTagNames = new Set([
+        "Boquete",
+        "Ecchi",
+        "Yaoi",
+        "Romance",
+        "Orgia",
+        "BDSM",
+        "Submissão",
+        "NTR",
+        "Enfermeira",
+        "Amiga de infância",
+        "Senpai",
+        "Vizinha",
+        "Comédia",
+        "Terror",
+        "Esporte",
+      ]);
+
+      const fallbackTags =
+        MAIN_ADULT_TAGS.filter((tag) =>
+          missingAdultTagNames.has(
+            tag.name,
+          ),
+        );
+
+      await Promise.all(
+        fallbackTags.map(
+          async (mainTag) => {
+            const aliases = [
+              mainTag.name,
+              ...mainTag.aliases,
+            ];
+
+            for (const alias of aliases) {
+              try {
+                let page = 1;
+                let hasNextPage = true;
+
+                while (hasNextPage) {
+                  const result =
+                    await anilistGraphQL<{
+                      Page: {
+                        pageInfo: {
+                          hasNextPage: boolean;
+                        };
+                        media: AniMedia[];
+                      };
+                    }>(
+                      `
+                      query AdultTagFallback(
+                        $page: Int,
+                        $tag: String
+                      ) {
+                        Page(
+                          page: $page,
+                          perPage: 50
+                        ) {
+                          pageInfo {
+                            hasNextPage
+                          }
+
+                          media(
+                            type: ANIME,
+                            genre: "Hentai",
+                            tag: $tag,
+                            sort: TRENDING_DESC
+                          ) {
+                            ${CARD_FIELDS}
+                          }
+                        }
+                      }
+                      `,
+                      {
+                        page,
+                        tag: alias,
+                      },
+                    );
+
+                  const found =
+                    result.Page.media ?? [];
+
+                  addMedia(found);
+
+                  hasNextPage =
+                    Boolean(
+                      result.Page.pageInfo
+                        ?.hasNextPage,
+                    );
+
+                  page += 1;
+                }
+
+                /*
+                 * Se este alias encontrou conteúdo,
+                 * não precisamos consultar os outros
+                 * aliases da mesma tag.
+                 */
+                const foundAny =
+                  Array.from(
+                    allMedia.values(),
+                  ).some((anime) =>
+                    (anime.tags ?? []).some(
+                      (sourceTag) =>
+                        normalizeAdultTagName(
+                          sourceTag.name,
+                        ) ===
+                        normalizeAdultTagName(
+                          alias,
+                        ),
+                    ),
+                  );
+
+                if (foundAny) {
+                  break;
+                }
+              } catch {
+                /*
+                 * Um alias que falhar não impede
+                 * os demais aliases nem as outras tags.
+                 */
+              }
+            }
+          },
+        ),
+      );
 
       const media =
         Array.from(
