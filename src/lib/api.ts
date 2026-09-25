@@ -2506,7 +2506,7 @@ const MAIN_ADULT_TAGS = [
   { name: "Peitões", aliases: ["Large Breasts"] },
   { name: "Brinquedos", aliases: ["Sex Toys"] },
   { name: "BDSM", aliases: ["Bondage"] },
-  { name: "Submissão", aliases: [] },
+  { name: "Ahegao", aliases: ["Ahegao"] },
   { name: "Tentáculos", aliases: ["Tentacles"] },
   { name: "NTR", aliases: ["Netorare"] },
   { name: "Netorare", aliases: ["Netorare"] },
@@ -2515,13 +2515,13 @@ const MAIN_ADULT_TAGS = [
   { name: "Exibicionismo", aliases: ["Exhibitionism"] },
   { name: "Vida Escolar", aliases: ["School"] },
   { name: "Professora", aliases: ["Teacher"] },
-  { name: "Enfermeira", aliases: [] },
+  { name: "Boobjob", aliases: ["Boobjob"] },
   { name: "Empregada", aliases: ["Maids"] },
-  { name: "Amiga de infância", aliases: [] },
-  { name: "Senpai", aliases: [] },
-  { name: "Vizinha", aliases: [] },
+  { name: "Cunnilingus", aliases: ["Cunnilingus"] },
+  { name: "Crossdressing", aliases: ["Crossdressing"] },
+  { name: "Handjob", aliases: ["Handjob"] },
   { name: "Office / Escritório", aliases: ["Office"] },
-  { name: "Dark Skin", aliases: [] },
+  { name: "Pequenos seios", aliases: ["Small Breasts"] },
   { name: "Comédia", aliases: [], genres: ["Comedy"] },
   { name: "Magia", aliases: ["Magic"] },
   { name: "Elfos", aliases: ["Elf"] },
@@ -2566,7 +2566,7 @@ const ADULT_FEATURED_TAGS = [
   "Peitões",
   "Brinquedos",
   "BDSM",
-  "Submissão",
+  "Ahegao",
   "Tentáculos",
   "NTR",
   "Netorare",
@@ -2575,13 +2575,13 @@ const ADULT_FEATURED_TAGS = [
   "Exibicionismo",
   "Vida Escolar",
   "Professora",
-  "Enfermeira",
+  "Boobjob",
   "Empregada",
-  "Amiga de infância",
-  "Senpai",
-  "Vizinha",
+  "Cunnilingus",
+  "Crossdressing",
+  "Handjob",
   "Office / Escritório",
-  "Dark Skin",
+  "Pequenos seios",
   "Comédia",
   "Magia",
   "Elfos",
@@ -2608,7 +2608,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v9";
+        "adult-tags:v10";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2833,6 +2833,12 @@ export const fetchAdultTags =
         "Orgia",
         "BDSM",
         "NTR",
+        "Ahegao",
+        "Boobjob",
+        "Cunnilingus",
+        "Crossdressing",
+        "Handjob",
+        "Pequenos seios",
       ]);
 
       const fallbackTags =
