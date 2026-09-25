@@ -23,6 +23,26 @@ import type {
 const ANILIST = "https://grokhikari.vercel.app/api-anilist";
 const JIKAN = "https://api.jikan.moe/v4";
 
+const ADULT_TAG_FIELDS = `
+  id
+  idMal
+  isAdult
+  tags {
+    name
+  }
+  title {
+    romaji
+    english
+    native
+  }
+  coverImage {
+    extraLarge
+    large
+    color
+  }
+  genres
+`;
+
 const CARD_FIELDS = `
   id
   idMal
@@ -1642,9 +1662,6 @@ const searchSchema =
 
     page:
       z.number().optional(),
-
-    adult:
-      z.boolean().optional(),
   });
 
 function normalizeSearchText(
@@ -1886,13 +1903,8 @@ function mergeSearchItems(
   return result;
 }
 
-type SearchRequestParams =
-  SearchParams & {
-    adult?: boolean;
-  };
-
 async function searchAni(
-  params: SearchRequestParams,
+  params: SearchParams,
 ): Promise<SearchResult> {
   const page =
     params.page ?? 1;
@@ -1928,8 +1940,7 @@ async function searchAni(
         $year: Int,
         $format: MediaFormat,
         $status: MediaStatus,
-        $sort: [MediaSort],
-        $isAdult: Boolean
+        $sort: [MediaSort]
       ) {
         Page(
           page: $page,
@@ -1946,8 +1957,7 @@ async function searchAni(
             seasonYear: $year,
             format: $format,
             status: $status,
-            sort: $sort,
-            isAdult: $isAdult
+            sort: $sort
           ) {
             ${CARD_FIELDS}
           }
@@ -1962,10 +1972,8 @@ async function searchAni(
           undefined,
 
         genre:
-          params.adult
-            ? "Hentai"
-            : params.genre ||
-              undefined,
+          params.genre ||
+          undefined,
 
         year:
           year &&
@@ -1984,9 +1992,6 @@ async function searchAni(
           undefined,
 
         sort: [sort],
-
-        isAdult:
-          Boolean(params.adult),
       },
     );
 
@@ -1998,13 +2003,9 @@ async function searchAni(
       )
         .filter(
           (anime) =>
-            params.adult
-              ? isHentaiAnime(
-                  anime,
-                )
-              : !isAdultAnime(
-                  anime,
-                ),
+            !isAdultAnime(
+              anime,
+            ),
         )
         .map(
           mapAniSlim,
@@ -2025,19 +2026,10 @@ async function searchAni(
 }
 
 async function searchJikan(
-  params: SearchRequestParams,
+  params: SearchParams,
 ): Promise<SearchResult> {
   const page =
     params.page ?? 1;
-
-  if (params.adult) {
-    return {
-      items: [],
-      page,
-      hasNext: false,
-      source: "jikan",
-    };
-  }
 
   const query =
     new URLSearchParams();
@@ -2105,7 +2097,7 @@ async function searchJikan(
 }
 
 async function searchRelaxed(
-  params: SearchRequestParams,
+  params: SearchParams,
 ): Promise<SlimAnime[]> {
   const original = params.q?.trim() ?? "";
   const normalized = normalizeSearchText(original);
@@ -2139,7 +2131,7 @@ async function searchRelaxed(
   );
 
   const attempts = validVariants.map(async (variant) => {
-    const searchParams: SearchRequestParams = {
+    const searchParams: SearchParams = {
       ...params,
       q: variant,
       page: 1,
@@ -2217,7 +2209,7 @@ function isStrongSearchResult(
 }
 
 async function searchDirectFast(
-  params: SearchRequestParams,
+  params: SearchParams,
 ): Promise<{
   items: SlimAnime[];
   hasNext: boolean;
@@ -2496,7 +2488,7 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v4";
+        "adult-tags:v5";
 
       const cached =
         fromCache<AdultTagCatalog>(
@@ -2557,7 +2549,7 @@ export const fetchAdultTags =
                 genre: "Hentai",
                 sort: TRENDING_DESC
               ) {
-                ${CARD_FIELDS}
+                ${ADULT_TAG_FIELDS}
               }
             }
           }
@@ -2611,7 +2603,7 @@ export const fetchAdultTags =
                     genre: "Hentai",
                     sort: TRENDING_DESC
                   ) {
-                    ${CARD_FIELDS}
+                    ${ADULT_TAG_FIELDS}
                   }
                 }
               `,
