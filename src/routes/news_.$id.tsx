@@ -15,10 +15,13 @@ import {
 } from "lucide-react";
 
 import {
-  fetchAdultNews,
   fetchAutomaticNews,
   type AutomaticNewsItem,
 } from "@/lib/news-api";
+
+import {
+  fetchAdultNews,
+} from "@/lib/news-api-adulto-separado";
 
 import { stripHtml } from "@/lib/utils";
 
@@ -693,6 +696,9 @@ function NewsDetailsPage() {
   const { id } =
     Route.useParams();
 
+  const isAdultNews =
+    id.startsWith("auto-adult-");
+
   const { page } =
     Route.useSearch();
 
@@ -759,13 +765,22 @@ function NewsDetailsPage() {
           item.id !==
           news.id,
       )
+      .filter((item) =>
+        isAdultNews
+          ? item.id.startsWith("auto-adult-")
+          : !item.id.startsWith("auto-adult-"),
+      )
       .slice(0, 3);
 
   return (
     <div className="space-y-6 pb-10">
       {/* VOLTAR */}
       <Link
-        to="/news"
+        to={
+          isAdultNews
+            ? "/adult/news"
+            : "/news"
+        }
         search={{
           page,
         }}
