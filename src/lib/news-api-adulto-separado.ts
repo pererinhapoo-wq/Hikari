@@ -77,6 +77,104 @@ const cache = new Map<
 
 const TTL = 10 * 60 * 1000;
 
+const sourcePublishedAtCache = new Map<string, Map<string, string>>();
+
+async function fetchSourcePublishedDates(
+  source: "eroero" | "lune",
+): Promise<Map<string, string>> {
+  const cacheKey = source;
+  const cached = sourcePublishedAtCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const indexUrl =
+    source === "eroero"
+      ? "https://eroeronews.com/categorias/estrenos/"
+      : "https://www.lune-soft.jp/news/categories/event";
+
+  const dates = new Map<string, string>();
+
+  try {
+    const response = await fetch(indexUrl, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "Hikari/1.0 (adult hentai news)",
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+
+    if (!response.ok) {
+      return dates;
+    }
+
+    const html = await response.text();
+
+    if (source === "eroero") {
+      // WordPress/EroEro: a data real fica no elemento <time>, enquanto
+      // o RSS pode carregar uma data de atualização.
+      const timePattern =
+        /<time[^>]+datetime=["']([^"']+)["'][^>]*>[\s\S]*?<\/time>/gi;
+
+      const times = Array.from(html.matchAll(timePattern));
+      for (const match of times) {
+        const publishedAt = match[1]?.trim();
+        if (!publishedAt) continue;
+
+        const position = match.index ?? 0;
+        const context = html.slice(
+          Math.max(0, position - 2500),
+          Math.min(html.length, position + 3500),
+        );
+
+        const linkCandidates: { href: string; distance: number }[] = [];
+        const links = context.matchAll(
+          /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+        );
+
+        for (const link of links) {
+          const href = decodeXml(link[1] ?? "").trim();
+          if (!href || !href.startsWith("http")) continue;
+          if (!/eroeronews\.com/i.test(href)) continue;
+          if (/\/(?:categorias|tag|autor|page|feed|wp-content)\//i.test(href)) continue;
+
+          const absolute = new URL(href, indexUrl).href;
+          const localIndex = link.index ?? 0;
+          linkCandidates.push({
+            href: absolute,
+            distance: Math.abs(localIndex - 2500),
+          });
+        }
+
+        linkCandidates.sort((a, b) => a.distance - b.distance);
+        const nearest = linkCandidates[0];
+        if (nearest) {
+          dates.set(nearest.href, publishedAt);
+        }
+      }
+    } else {
+      // Lune: a página oficial de notícias de アニメ mostra explicitamente
+      // a data no formato YYYY.M.D. Essa data é a fonte de verdade.
+      const pattern =
+        /アニメ\s+(20\d{2})\.(\d{1,2})\.(\d{1,2})[\s\S]{0,2200}?<a[^>]+href=["']([^"']+)["'][^>]*>/gi;
+
+      for (const match of html.matchAll(pattern)) {
+        const publishedAt = `${match[1]}-${String(Number(match[2])).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}`;
+        const href = decodeXml(match[4] ?? "").trim();
+        if (!href) continue;
+
+        const absolute = new URL(href, indexUrl).href;
+        dates.set(absolute, publishedAt);
+      }
+    }
+  } catch {
+    return dates;
+  }
+
+  sourcePublishedAtCache.set(cacheKey, dates);
+  return dates;
+}
+
 function fromCache(
   key: string,
 ): AutomaticNewsItem[] | null {
@@ -1732,12 +1830,10 @@ async function fetchLuneAdultArticle(
       html = await response.text();
     }
 
-    const publishedAt = html
-      ? extractPublishedDateFromVisibleText(
-          html,
-          article.publishedAt,
-        )
-      : article.publishedAt;
+    // A data recebida do índice oficial da fonte já foi corrigida para a
+    // data original de publicação. Não substituímos por metadados da página,
+    // pois eles podem representar atualização/modificação.
+    const publishedAt = article.publishedAt;
 
     const pageDescription = html
       ? extractMetaContent(html, "og:description") ||
@@ -1978,8 +2074,22 @@ async function fetchAdultNewsFeed(
 
   const xml = await response.text();
   const articles = parseLuneRssItems(xml);
+  const source = feedUrl.includes("eroeronews.com")
+    ? "eroero"
+    : "lune";
+  const sourceDates = await fetchSourcePublishedDates(source);
 
-  if (!articles.length) {
+  const correctedArticles = articles.map((article) => {
+    const canonicalDate = sourceDates.get(
+      new URL(article.url, feedUrl).href,
+    );
+
+    return canonicalDate
+      ? { ...article, publishedAt: canonicalDate }
+      : article;
+  });
+
+  if (!correctedArticles.length) {
     const fallback = feedUrl.includes("eroeronews.com")
       ? await fetchEroEroNewsPageFallback()
       : await fetchLuneNewsPageFallback();
@@ -1989,7 +2099,7 @@ async function fetchAdultNewsFeed(
 
   // Não filtramos pela data do RSS aqui: algumas fontes atualizam o pubDate
   // quando alteram uma página. A data válida será corrigida a partir do artigo.
-  const validArticles = articles.filter((article) => Boolean(article.url));
+  const validArticles = correctedArticles.filter((article) => Boolean(article.url));
 
   if (!validArticles.length) {
     const fallback = feedUrl.includes("eroeronews.com")
@@ -2113,7 +2223,7 @@ export const fetchAdultNews =
     method: "GET",
   }).handler(async () => {
     const key =
-      "automatic-adult-news:hentai-paginado-recentes:v9";
+      "automatic-adult-news:hentai-paginado-recentes:v10";
 
     const cached =
       fromCache(key);
