@@ -236,20 +236,27 @@ async function anilistGraphQL<T>(
       );
 
       if (!res.ok) {
-        const shouldRetry =
-          res.status === 429 ||
-          res.status >= 500;
+        if (res.status === 429) {
+          const retryAfter = Number(
+            res.headers.get("Retry-After") ?? "0",
+          );
 
-        if (
-          shouldRetry &&
-          attempt === 0
-        ) {
-          await new Promise(
-            (resolve) =>
+          if (retryAfter > 0 && attempt === 0) {
+            await new Promise((resolve) =>
               setTimeout(
                 resolve,
-                350,
+                Math.min(retryAfter * 1000, 65_000),
               ),
+            );
+            continue;
+          }
+
+          throw new Error("AniList rate limit (429)");
+        }
+
+        if (res.status >= 500 && attempt === 0) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1500),
           );
           continue;
         }
@@ -2547,87 +2554,42 @@ export const fetchAdultTags =
   }).handler(
     async () => {
       const key =
-        "adult-tags:v10";
+        "adult-tags:v11";
 
       const cached =
-        fromCache<AdultTagCatalog>(
-          key,
-        );
+        fromCache<{
+          items: SlimAnime[];
+          tags: {
+            name: string;
+            count: number;
+            animeIds: string[];
+          }[];
+        }>(key);
 
       if (cached) {
         return cached;
       }
 
-      const allMedia =
-        new Map<number, AniMedia>();
-
-      const addMedia = (
-        media:
-          | AniMedia[]
-          | null
-          | undefined,
-      ) => {
-        for (const anime of media ?? []) {
-          if (isHentaiAnime(anime)) {
-            allMedia.set(
-              anime.id,
-              anime,
-            );
-          }
-        }
-      };
-
-      // Busca complementar: alguns títulos com gênero Hentai
-      // podem vir do AniList sem isAdult=true. Eles ainda precisam
-      // entrar no catálogo de tags para que a tag seja contabilizada.
-      const addFallbackMedia = (
-        media:
-          | AniMedia[]
-          | null
-          | undefined,
-      ) => {
-        for (const anime of media ?? []) {
-          const isHentaiByGenre =
-            (anime.genres ?? []).some(
-              (genre) =>
-                normalizeAdultTagName(genre) ===
-                "hentai",
-            );
-
-          if (isHentaiByGenre) {
-            allMedia.set(
-              anime.id,
-              anime,
-            );
-          }
-        }
-      };
-
       /*
-       * Primeira página.
-       * Fazemos uma requisição separada
-       * para descobrir se existem mais páginas.
+       * IMPORTANTE:
+       * Não fazemos uma consulta ao AniList para cada tag.
+       * Isso causava dezenas de requisições e disparava o 429.
+       *
+       * Agora fazemos UMA única requisição GraphQL contendo várias
+       * páginas do catálogo Hentai. Depois contamos as tags localmente.
        */
-      const firstPage =
-        await anilistGraphQL<{
-          Page: {
-            pageInfo: {
-              hasNextPage: boolean;
-            };
+      const pages = Array.from(
+        { length: 5 },
+        (_, index) => index + 1,
+      );
 
-            media: AniMedia[];
-          };
-        }>(
-          `
-          query AdultTagsFirst {
-            Page(
-              page: 1,
+      const pageFields = pages
+        .map(
+          (page) => `
+            page${page}: Page(
+              page: ${page},
               perPage: 50
             ) {
-              pageInfo {
-                hasNextPage
-              }
-
               media(
                 type: ANIME,
                 isAdult: true,
@@ -2637,242 +2599,128 @@ export const fetchAdultTags =
                 ${CARD_FIELDS}
               }
             }
+          `,
+        )
+        .join("\n");
+
+      let data: Record<
+        string,
+        { media: AniMedia[] }
+      >;
+
+      try {
+        data = await anilistGraphQL<
+          Record<
+            string,
+            { media: AniMedia[] }
+          >
+        >(
+          `
+          query AdultTagsCatalog {
+            ${pageFields}
           }
           `,
         );
+      } catch {
+        /*
+         * Se o AniList estiver temporariamente limitado, não deixamos
+         * a página quebrar. Retornamos um catálogo vazio e a próxima
+         * chamada tentará novamente. O erro 429 não é exibido ao usuário.
+         */
+        return {
+          items: [],
+          tags: [],
+        };
+      }
 
-      addMedia(
-        firstPage.Page.media,
+      const allMedia = new Map<
+        number,
+        AniMedia
+      >();
+
+      for (const page of pages) {
+        for (const anime of data[
+          `page${page}`
+        ]?.media ?? []) {
+          if (isHentaiAnime(anime)) {
+            allMedia.set(
+              anime.id,
+              anime,
+            );
+          }
+        }
+      }
+
+      const media = Array.from(
+        allMedia.values(),
       );
 
-      let nextPage = 2;
-
-      let hasNextPage =
-        Boolean(
-          firstPage.Page.pageInfo
-            ?.hasNextPage,
-        );
-
-      /*
-       * Em vez de fazer uma requisição
-       * para cada página, agrupamos
-       * 5 páginas em uma única query.
-       */
-      const batchSize = 5;
-
-      while (hasNextPage) {
-        const pages =
-          Array.from(
-            {
-              length: batchSize,
-            },
-            (_, index) =>
-              nextPage + index,
-          );
-
-        const pageFields =
-          pages
-            .map(
-              (page) => `
-                page${page}: Page(
-                  page: ${page},
-                  perPage: 50
-                ) {
-                  pageInfo {
-                    hasNextPage
-                  }
-
-                  media(
-                    type: ANIME,
-                    isAdult: true,
-                    genre: "Hentai",
-                    sort: TRENDING_DESC
-                  ) {
-                    ${CARD_FIELDS}
-                  }
-                }
-              `,
-            )
-            .join("\n");
-
-        const data =
-          await anilistGraphQL<
-            Record<
-              string,
-              {
-                pageInfo: {
-                  hasNextPage: boolean;
-                };
-
-                media: AniMedia[];
-              }
-            >
-          >(
-            `
-            query AdultTagsBatch {
-              ${pageFields}
-            }
-            `,
-          );
-
-        hasNextPage = false;
-
-        for (const page of pages) {
-          const result =
-            data[
-              `page${page}`
-            ];
-
-          if (!result) {
-            continue;
-          }
-
-          addMedia(
-            result.media,
-          );
-
-          if (
-            result.pageInfo
-              ?.hasNextPage
-          ) {
-            hasNextPage = true;
-          }
-        }
-
-        nextPage += batchSize;
-
-        /*
-         * Pequena pausa entre os lotes
-         * para evitar muitas requisições
-         * em sequência.
-         */
-        if (hasNextPage) {
-          await new Promise(
-            (resolve) =>
-              setTimeout(
-                resolve,
-                750,
-              ),
-          );
-        }
-      }
-
-      /*
-       * Algumas tags específicas podem não aparecer no primeiro
-       * conjunto do catálogo adulto. Consultamos diretamente
-       * as tags oficiais do AniList, sem criar aliases inventados.
-       */
-      const fallbackTags =
-        MAIN_ADULT_TAGS.filter(
-          (tag) => tag.type === "tag",
-        );
-
-      // Não consulte todas as tags em paralelo: isso dispara o rate limit
-      // do AniList e provoca 429 (Too Many Requests).
-      // Uma página por tag já basta para descobrir se existem resultados.
-      for (const mainTag of fallbackTags) {
-        const alias = mainTag.aliases[0];
-
-        if (!alias) {
-          continue;
-        }
-
-        try {
-          const result =
-            await anilistGraphQL<{
-              Page: {
-                media: AniMedia[];
-              };
-            }>(
-              `
-              query AdultTagFallback(
-                $tag: String
-              ) {
-                Page(
-                  page: 1,
-                  perPage: 50
-                ) {
-                  media(
-                    type: ANIME,
-                    genre: "Hentai",
-                    tag: $tag,
-                    sort: TRENDING_DESC
-                  ) {
-                    ${CARD_FIELDS}
-                  }
-                }
-              }
-              `,
-              { tag: alias },
-            );
-
-          addFallbackMedia(
-            result.Page.media ?? [],
-          );
-
-          await new Promise(
-            (resolve) => setTimeout(resolve, 350),
-          );
-        } catch {
-          // Um erro em uma tag não interrompe as demais.
-        }
-      }
-
-      const media =
-        Array.from(
-          allMedia.values(),
-        );
-
-      const items =
-        media.map(
-          mapAniSlim,
-        );
+      const items = media.map(
+        mapAniSlim,
+      );
 
       const tags =
-        MAIN_ADULT_TAGS.map((mainTag) => {
-          const aliases = new Set(
-            [
-              mainTag.name,
-              ...mainTag.aliases,
-            ].map(normalizeAdultTagName),
-          );
+        MAIN_ADULT_TAGS.map(
+          (mainTag) => {
+            const aliases = new Set(
+              [
+                mainTag.name,
+                ...mainTag.aliases,
+              ].map(
+                normalizeAdultTagName,
+              ),
+            );
 
-          const animeIds = new Set<string>();
+            const animeIds =
+              new Set<string>();
 
-          for (const anime of media) {
-            if (mainTag.type === "genre") {
-              const matchesGenre =
-                (anime.genres ?? []).some((genre) =>
-                  aliases.has(
-                    normalizeAdultTagName(genre),
-                  ),
-                );
+            for (const anime of media) {
+              if (
+                mainTag.type ===
+                "genre"
+              ) {
+                if (
+                  (anime.genres ?? []).some(
+                    (genre) =>
+                      aliases.has(
+                        normalizeAdultTagName(
+                          genre,
+                        ),
+                      ),
+                  )
+                ) {
+                  animeIds.add(
+                    String(anime.id),
+                  );
+                }
 
-              if (matchesGenre) {
-                animeIds.add(String(anime.id));
+                continue;
               }
 
-              continue;
+              if (
+                (anime.tags ?? []).some(
+                  (tag) =>
+                    aliases.has(
+                      normalizeAdultTagName(
+                        tag.name,
+                      ),
+                    ),
+                )
+              ) {
+                animeIds.add(
+                  String(anime.id),
+                );
+              }
             }
 
-            const matchesTag =
-              (anime.tags ?? []).some((tag) =>
-                aliases.has(
-                  normalizeAdultTagName(tag.name),
-                ),
-              );
-
-            if (matchesTag) {
-              animeIds.add(String(anime.id));
-            }
-          }
-
-          return {
-            name: mainTag.name,
-            count: animeIds.size,
-            animeIds: Array.from(animeIds),
-          };
-        });
+            return {
+              name: mainTag.name,
+              count: animeIds.size,
+              animeIds:
+                Array.from(animeIds),
+            };
+          },
+        );
 
       return toCache(
         key,
