@@ -454,18 +454,6 @@ function imagesFromHtml(
     if (match[1]) add(match[1], match[0]);
   }
 
-  const srcsetPattern =
-    /<img[^>]+(?:data-srcset|srcset)=["']([^"']+)["'][^>]*>/gi;
-
-  for (const match of html.matchAll(srcsetPattern)) {
-    const first = (match[1] ?? "")
-      .split(",")[0]
-      ?.trim()
-      .split(/\s+/)[0] ?? "";
-
-    if (first) add(first, match[0]);
-  }
-
   return values.slice(0, 5);
 }
 
@@ -505,16 +493,18 @@ async function fetchArticleImages(
   }
 }
 
-function proxyRssImage(
+async function proxyRssImage(
   imageUrl: string,
   _maxImageBytes = 1_500_000,
-): string {
+): Promise<string> {
   const url = imageUrl.trim();
 
   if (!/^https?:\/\//i.test(url)) {
     return "";
   }
 
+  // Mantém a URL original como origem, mas entrega a imagem
+  // através de um proxy de imagens para evitar bloqueio/hotlink.
   return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=900&q=82`;
 }
 
