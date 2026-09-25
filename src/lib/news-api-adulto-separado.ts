@@ -648,43 +648,104 @@ async function translateTextToPortuguese(
     return chunks;
   };
 
+  const buildGoogleUrl = (
+    baseUrl: string,
+    chunk: string,
+  ): string => {
+    const url = new URL(baseUrl);
+
+    url.searchParams.set("client", "gtx");
+    url.searchParams.set("sl", "es");
+    url.searchParams.set("tl", "pt");
+    url.searchParams.set("dt", "t");
+    url.searchParams.set("q", chunk);
+
+    return url.toString();
+  };
+
+  const extractGoogleTranslation = (
+    data: unknown,
+  ): string => {
+    if (Array.isArray(data) && Array.isArray(data[0])) {
+      return data[0]
+        .filter(
+          (part): part is unknown[] =>
+            Array.isArray(part),
+        )
+        .map((part) => String(part[0] ?? ""))
+        .join("")
+        .trim();
+    }
+
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "sentences" in data
+    ) {
+      const sentences = (
+        data as {
+          sentences?: Array<{
+            trans?: string;
+          }>;
+        }
+      ).sentences;
+
+      if (Array.isArray(sentences)) {
+        return sentences
+          .map((sentence) => sentence.trans ?? "")
+          .join("")
+          .trim();
+      }
+    }
+
+    return "";
+  };
+
   const translateChunkWithGoogle = async (
     chunk: string,
   ): Promise<string> => {
-    try {
-      const response = await fetch(
-        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=es&tl=pt&dt=t&q=${encodeURIComponent(chunk)}`,
-        {
-          headers: {
-            Accept: "application/json",
-            "User-Agent": "Hikari/1.0 (adult news translation)",
+    const endpoints = [
+      "https://translate.googleapis.com/translate_a/single",
+      "https://translate.google.com/translate_a/single",
+      "https://clients5.google.com/translate_a/t",
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const url = buildGoogleUrl(
+          endpoint,
+          chunk,
+        );
+
+        const response = await fetch(
+          url,
+          {
+            headers: {
+              Accept: "application/json",
+              "User-Agent":
+                "Mozilla/5.0 (compatible; Hikari/1.0; adult news translation)",
+            },
+            signal: AbortSignal.timeout(7000),
           },
-          signal: AbortSignal.timeout(7000),
-        },
-      );
+        );
 
-      if (!response.ok) {
-        return "";
-      }
+        if (!response.ok) {
+          continue;
+        }
 
-      const data = (await response.json()) as unknown;
+        const data = (await response.json()) as unknown;
+        const translated =
+          extractGoogleTranslation(data);
 
-      if (Array.isArray(data) && Array.isArray(data[0])) {
-        const translated = data[0]
-          .filter(
-            (part): part is unknown[] =>
-              Array.isArray(part),
-          )
-          .map((part) => String(part[0] ?? ""))
-          .join("")
-          .trim();
-
-        if (translated && translated !== chunk) {
+        if (
+          translated &&
+          translated !== chunk
+        ) {
           return translated;
         }
+      } catch {
+        // Tenta o próximo endpoint.
       }
-    } catch {
-      // Tenta o fallback para este bloco.
     }
 
     return "";
@@ -699,7 +760,8 @@ async function translateTextToPortuguese(
         {
           headers: {
             Accept: "application/json",
-            "User-Agent": "Hikari/1.0 (adult news translation)",
+            "User-Agent":
+              "Hikari/1.0 (adult news translation)",
           },
           signal: AbortSignal.timeout(7000),
         },
@@ -716,7 +778,10 @@ async function translateTextToPortuguese(
       const translated =
         data.responseData?.translatedText?.trim() ?? "";
 
-      if (translated && translated !== chunk) {
+      if (
+        translated &&
+        translated !== chunk
+      ) {
         return translated;
       }
     } catch {
