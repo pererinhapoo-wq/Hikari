@@ -503,9 +503,10 @@ async function proxyRssImage(
     return "";
   }
 
-  // Usa um proxy de imagens para evitar bloqueios de hotlink
-  // dos sites de origem no navegador do visitante.
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=900&q=82`;
+  // Mantém a URL original da imagem.
+  // O proxy externo (wsrv.nl) estava fazendo as imagens chegarem quebradas
+  // no Cloudflare. A notícia continua usando a imagem real da fonte.
+  return url;
 }
 
 function looksSpanish(value: string): boolean {
