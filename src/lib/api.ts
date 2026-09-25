@@ -2525,12 +2525,12 @@ const MAIN_ADULT_TAGS = [
   { name: "Terror", type: "genre", aliases: ["Horror"] },
   { name: "Virgem", type: "tag", aliases: ["Virginity"] },
   { name: "Esporte", type: "genre", aliases: ["Sports"] },
-  { name: "Ahegao", type: "tag", aliases: ["Ahegao"] },
   { name: "Femdom", type: "tag", aliases: ["Femdom"] },
   { name: "Deepthroat", type: "tag", aliases: ["Deepthroat"] },
-  { name: "Bondage", type: "tag", aliases: ["Bondage"] },
   { name: "Nakadashi", type: "tag", aliases: ["Nakadashi"] },
   { name: "Threesome", type: "tag", aliases: ["Threesome"] },
+  { name: "Handjob", type: "tag", aliases: ["Handjob"] },
+  { name: "Ahegao", type: "tag", aliases: ["Ahegao"] },
 ] as const;
 
 function normalizeAdultTagName(value: string) {
@@ -2585,12 +2585,12 @@ const ADULT_FEATURED_TAGS = [
   "Terror",
   "Virgem",
   "Esporte",
-  "Ahegao",
   "Femdom",
   "Deepthroat",
-  "Bondage",
   "Nakadashi",
   "Threesome",
+  "Handjob",
+  "Ahegao",
 ] as const;
 
 const ADULT_REMOVED_TAGS = new Set([
