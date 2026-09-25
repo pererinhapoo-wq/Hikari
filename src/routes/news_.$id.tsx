@@ -792,19 +792,45 @@ function NewsDetailsPage() {
     ),
   ];
 
-  const relatedNews =
-    allNews
-      .filter(
-        (item) =>
-          item.id !==
-          news.id,
-      )
-      .filter((item) =>
-        isAdultNews
-          ? item.isAdult === true
-          : item.isAdult !== true,
-      )
-      .slice(0, 3);
+  const filteredNews =
+    allNews.filter((item) =>
+      isAdultNews
+        ? item.isAdult === true
+        : item.isAdult !== true,
+    );
+
+  const currentNewsIndex =
+    filteredNews.findIndex(
+      (item) =>
+        item.id === news.id,
+    );
+
+  const relatedNews: NewsItem[] = [];
+
+  if (filteredNews.length > 1) {
+    const startIndex =
+      currentNewsIndex >= 0
+        ? currentNewsIndex + 1
+        : 0;
+
+    for (
+      let offset = 0;
+      offset < filteredNews.length &&
+        relatedNews.length < 3;
+      offset++
+    ) {
+      const index =
+        (startIndex + offset) %
+        filteredNews.length;
+
+      const item =
+        filteredNews[index];
+
+      if (item.id !== news.id) {
+        relatedNews.push(item);
+      }
+    }
+  }
 
   return (
     <div className="space-y-6 pb-10">
