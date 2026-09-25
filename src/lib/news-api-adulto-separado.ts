@@ -289,6 +289,38 @@ function firstXmlValue(
   );
 }
 
+function imageFromRss(block: string): string {
+  const candidates = [
+    /<media:content[^>]+url=["']([^"']+)["'][^>]*>/i,
+    /<media:thumbnail[^>]+url=["']([^"']+)["'][^>]*>/i,
+    /<thumbnail[^>]+url=["']([^"']+)["'][^>]*>/i,
+    /<enclosure[^>]+url=["']([^"']+)["'][^>]*>/i,
+    /<(?:img|source)[^>]+(?:data-src|data-lazy-src|data-original|data-image)=["']([^"']+)["'][^>]*>/i,
+    /<(?:img|source)[^>]+src=["']([^"']+)["'][^>]*>/i,
+  ];
+
+  for (const pattern of candidates) {
+    const match = block.match(pattern);
+
+    if (match?.[1]) {
+      return decodeXml(match[1]);
+    }
+  }
+
+  const content = firstXmlValue(
+    block,
+    "content:encoded",
+  );
+
+  const image = content.match(
+    /<img[^>]+(?:data-src|data-lazy-src|data-original|src)=["']([^"']+)["'][^>]*>/i,
+  );
+
+  return decodeXml(
+    image?.[1] ?? "",
+  );
+}
+
 function looksSpanish(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
 
@@ -823,7 +855,7 @@ async function fetchAdultNewsFeed(
           date:
             formatRssDate(date),
           image:
-            "",
+            imageFromRss(item),
           animeId: "",
           isAdult: true,
           url: link,
@@ -861,7 +893,10 @@ async function fetchAdultNewsFeed(
           ...item,
           title,
           description,
-          image: image || ADULT_IMAGE_FALLBACK,
+          image:
+            image ||
+            item.image ||
+            ADULT_IMAGE_FALLBACK,
         };
       },
     ),
