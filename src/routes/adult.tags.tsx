@@ -19,7 +19,6 @@ import { fetchAdultTags } from "@/lib/api";
 import { overlayList } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
 
-
 export const Route = createFileRoute("/adult/tags")({
   validateSearch: (
     search: Record<string, unknown>,
@@ -252,7 +251,7 @@ function AdultTagsPage() {
           ) : (
             <section>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {displayedTags.map((item) => (
+                {data.tags.map((item) => (
                   <button
                     key={item.name}
                     type="button"
@@ -273,6 +272,8 @@ function AdultTagsPage() {
                   </button>
                 ))}
               </div>
+
+
             </section>
           )}
         </>
