@@ -31,8 +31,7 @@ export type AutomaticNewsItem = {
 const ANILIST = "https://graphql.anilist.co";
 
 const ADULT_NEWS_RSS_FEEDS = [
-  "https://eroeronews.com/feed/",
-  "https://eroeronews.com/categorias/estrenos/feed/",
+  "https://www.lune-soft.jp/feed",
 ];
 
 type AniMedia = {
@@ -1181,6 +1180,18 @@ async function fetchAdultNewsFeed(
         const categoryValue =
           categories.toLowerCase();
 
+        const isLuneFeed =
+          /lune-soft\.jp/i.test(
+            feedUrl,
+          );
+
+        if (
+          isLuneFeed &&
+          !categories.includes("アニメ")
+        ) {
+          return null;
+        }
+
         if (
           /\bmanhwa\b/.test(categoryValue) ||
           /\bmanhua\b/.test(categoryValue) ||
@@ -1239,7 +1250,10 @@ async function fetchAdultNewsFeed(
           animeId: "",
           isAdult: true,
           url: link,
-          source: "EroEro News",
+          source:
+            isLuneFeed
+              ? "Lune Soft & Lune Pictures"
+              : "Fonte externa",
           articleImages,
         };
       },
@@ -1268,9 +1282,13 @@ async function fetchAdultNewsFeed(
     hentaiOnly.map(
       async (item) => {
         const title =
-          await translateToPortuguese(
-            item.title,
-          );
+          /lune-soft\.jp/i.test(
+            item.url ?? "",
+          )
+            ? item.title
+            : await translateToPortuguese(
+                item.title,
+              );
         const description =
           await translateToPortuguese(
             item.description,
@@ -1318,15 +1336,20 @@ async function fetchAdultNewsFeed(
         const proxiedArticleImages =
           (
             await Promise.all(
-              articleImages.map(async (imageUrl) => {
-                const proxied =
-                  await proxyRssImage(
-                    imageUrl,
-                    5_000_000,
-                  );
+              articleImages.map(
+                async (imageUrl) => {
+                  const proxied =
+                    await proxyRssImage(
+                      imageUrl,
+                      5_000_000,
+                    );
 
-                return proxied || imageUrl;
-              }),
+                  return (
+                    proxied ||
+                    imageUrl
+                  );
+                },
+              ),
             )
           ).filter(Boolean);
 
