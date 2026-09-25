@@ -31,7 +31,7 @@ export type AutomaticNewsItem = {
 const ANILIST = "https://graphql.anilist.co";
 
 const ADULT_NEWS_RSS_FEEDS = [
-  "https://prtimes.jp/index.rdf",
+  "https://prtimes.jp/topics/keywords/AnimeFesta",
 ];
 
 type AniMedia = {
@@ -1230,25 +1230,310 @@ function isRecentAdultNews(
   return age >= 0 && age <= maxAge;
 }
 
-async function fetchAdultNewsFeed(
-  feedUrl: string,
-): Promise<AutomaticNewsItem[]> {
-  const response =
-    await fetch(
-      feedUrl,
+function parsePrTimesDate(value: string): string {
+  const match = value.match(
+    /(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日(?:\s+(\d{1,2}):(\d{2}))?/i,
+  );
+
+  if (!match) {
+    return "";
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4] ?? 0);
+  const minute = Number(match[5] ?? 0);
+
+  const date = new Date(
+    Date.UTC(
+      year,
+      month - 1,
+      day,
+      hour,
+      minute,
+    ),
+  );
+
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toISOString();
+}
+
+function stripPageText(value: string): string {
+  return stripHtml(
+    value
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractPrTimesArticles(
+  html: string,
+): {
+  title: string;
+  url: string;
+  publishedAt: string;
+}[] {
+  const results: {
+    title: string;
+    url: string;
+    publishedAt: string;
+  }[] = [];
+
+  const anchorPattern =
+    /<a[^>]+href=["']([^"']*\/main\/html\/rd\/p\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+  for (const match of html.matchAll(anchorPattern)) {
+    const rawUrl = decodeXml(match[1] ?? "");
+    const rawTitle = stripPageText(match[2] ?? "");
+
+    if (!rawUrl || !rawTitle) {
+      continue;
+    }
+
+    const url = new URL(
+      rawUrl,
+      "https://prtimes.jp/",
+    ).href;
+
+    const position = match.index ?? 0;
+    const context = html.slice(
+      Math.max(0, position - 1200),
+      Math.min(html.length, position + 1800),
+    );
+
+    const publishedAt =
+      parsePrTimesDate(
+        stripPageText(context),
+      );
+
+    if (!publishedAt) {
+      continue;
+    }
+
+    results.push({
+      title: rawTitle,
+      url,
+      publishedAt,
+    });
+  }
+
+  return Array.from(
+    new Map(
+      results.map((item) => [
+        item.url,
+        item,
+      ]),
+    ).values(),
+  ).slice(0, 20);
+}
+
+function extractMetaContent(
+  html: string,
+  name: string,
+): string {
+  const escaped = name.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&",
+  );
+
+  const patterns = [
+    new RegExp(
+      `<meta[^>]+(?:name|property)=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`,
+      "i",
+    ),
+    new RegExp(
+      `<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["']${escaped}["'][^>]*>`,
+      "i",
+    ),
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+
+    if (match?.[1]) {
+      return decodeXml(match[1].trim());
+    }
+  }
+
+  return "";
+}
+
+function extractPrTimesSynopsis(
+  html: string,
+): string {
+  const text = stripPageText(html);
+  const match = text.match(
+    /(?:〖|【)?あらすじ(?:〗|】)?\s*[:：]?\s*([\s\S]{40,1800}?)(?=\s*(?:〖|【)?(?:STAFF|キャスト|スタッフ|作品情報|配信概要)(?:〗|】)?)/i,
+  );
+
+  return match?.[1]?.trim() ?? "";
+}
+
+function extractPrTimesDescription(
+  html: string,
+): string {
+  const synopsis =
+    extractPrTimesSynopsis(html);
+
+  const meta =
+    extractMetaContent(
+      html,
+      "og:description",
+    ) ||
+    extractMetaContent(
+      html,
+      "description",
+    );
+
+  const value =
+    synopsis
+      ? `${meta} Sinopse: ${synopsis}`
+      : meta;
+
+  return buildAdultNewsDescription(value);
+}
+
+async function fetchPrTimesArticle(
+  article: {
+    title: string;
+    url: string;
+    publishedAt: string;
+  },
+): Promise<AutomaticNewsItem | null> {
+  try {
+    const response = await fetch(
+      article.url,
       {
         headers: {
           Accept:
-            "application/rss+xml, application/xml, text/xml",
+            "text/html,application/xhtml+xml",
           "User-Agent":
             "Hikari/1.0 (adult news)",
         },
         signal:
-          AbortSignal.timeout(
-            12000,
-          ),
+          AbortSignal.timeout(8000),
       },
     );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = await response.text();
+    const description =
+      extractPrTimesDescription(html);
+    const articleImages =
+      imagesFromHtml(
+        html,
+        article.url,
+      );
+
+    if (
+      !isAdultAnimeNews(
+        article.title,
+        description,
+        "AnimeFesta",
+      )
+    ) {
+      return null;
+    }
+
+    let image =
+      imageFromHtml(html);
+
+    if (!image && articleImages[0]) {
+      image = articleImages[0];
+    }
+
+    const proxiedImages =
+      (
+        await Promise.all(
+          articleImages
+            .slice(0, 8)
+            .map((imageUrl) =>
+              proxyRssImage(
+                imageUrl,
+                5_000_000,
+                "https://prtimes.jp/",
+              ),
+            ),
+        )
+      ).filter(Boolean);
+
+    const proxiedMain =
+      image
+        ? await proxyRssImage(
+            image,
+            5_000_000,
+            "https://prtimes.jp/",
+          )
+        : "";
+
+    const finalImage =
+      proxiedMain ||
+      proxiedImages[0] ||
+      image ||
+      ADULT_IMAGE_FALLBACK;
+
+    const title =
+      await translateToPortuguese(
+        article.title,
+      );
+    const translatedDescription =
+      await translateToPortuguese(
+        description,
+      );
+
+    return {
+      id:
+        `auto-adult-prtimes-${encodeURIComponent(article.url)}`,
+      type:
+        typeFromRss(
+          article.title,
+          "AnimeFesta",
+        ),
+      title,
+      description:
+        translatedDescription ||
+        "Nova notícia de anime adulto.",
+      date:
+        formatRssDate(article.publishedAt),
+      image: finalImage,
+      animeId: "",
+      isAdult: true,
+      url: article.url,
+      publishedAt: article.publishedAt,
+      source: "PR TIMES / AnimeFesta",
+      articleImages:
+        proxiedImages.length
+          ? proxiedImages
+          : articleImages,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchAdultNewsFeed(
+  feedUrl: string,
+): Promise<AutomaticNewsItem[]> {
+  const response = await fetch(
+    feedUrl,
+    {
+      headers: {
+        Accept:
+          "text/html,application/xhtml+xml,application/xml,text/xml",
+        "User-Agent":
+          "Hikari/1.0 (adult news)",
+      },
+      signal: AbortSignal.timeout(12000),
+    },
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -1256,217 +1541,35 @@ async function fetchAdultNewsFeed(
     );
   }
 
-  const xml =
-    await response.text();
+  const html = await response.text();
+  const articles =
+    extractPrTimesArticles(html);
 
-  const items =
-    xml.match(
-      /<item\b[\s\S]*?<\/item>/gi,
-    ) ?? [];
+  const now = Date.now();
+  const minimum =
+    now - 90 * 24 * 60 * 60 * 1000;
 
-  const parsed = items
-    .map(
-      (
-        item,
-        index,
-      ): AutomaticNewsItem | null => {
-        const title =
-          firstXmlValue(
-            item,
-            "title",
-          );
+  const recent = articles.filter((article) => {
+    const timestamp =
+      Date.parse(article.publishedAt);
 
-        const link =
-          firstXmlValue(
-            item,
-            "link",
-          );
+    return (
+      !Number.isNaN(timestamp) &&
+      timestamp <= now + 24 * 60 * 60 * 1000 &&
+      timestamp >= minimum
+    );
+  });
 
-        const date =
-          firstXmlValue(
-            item,
-            "pubDate",
-          );
-
-        if (!isRecentAdultNews(date)) {
-          return null;
-        }
-
-        const categories =
-          Array.from(
-            item.matchAll(
-              /<category[^>]*>([\s\S]*?)<\/category>/gi,
-            ),
-          )
-            .map((match) =>
-              decodeXml(
-                match[1] ?? "",
-              ),
-            )
-            .join(" ");
-
-        const categoryValue =
-          categories.toLowerCase();
-
-        const rawDescription =
-          firstXmlValue(
-            item,
-            "content:encoded",
-          ) ||
-          firstXmlValue(
-            item,
-            "description",
-          );
-
-        const articleImages =
-          imagesFromHtml(
-            rawDescription,
-            link,
-          );
-
-        const description =
-          buildAdultNewsDescription(
-            stripHtml(rawDescription),
-          );
-
-        if (
-          !title ||
-          !link ||
-          !isAdultAnimeNews(
-            title,
-            description,
-            categoryValue,
-          )
-        ) {
-          return null;
-        }
-
-        return {
-          id:
-            `auto-adult-rss-${index}-${encodeURIComponent(link)}`,
-          type:
-            typeFromRss(
-              title,
-              categories,
-            ),
-          title,
-          description:
-            description ||
-            "Nova notícia da área adulta.",
-          date:
-            formatRssDate(date),
-          publishedAt:
-            Number.isNaN(Date.parse(date))
-              ? ""
-              : new Date(Date.parse(date)).toISOString(),
-          image:
-            imageFromRss(item),
-          animeId: "",
-          isAdult: true,
-          url: link,
-          source: "PR TIMES / AnimeFesta",
-          articleImages,
-        };
-      },
-    )
-    .filter(
-      (
-        item,
-      ): item is AutomaticNewsItem =>
-        Boolean(
-          item?.title &&
-          item?.url,
-        ),
+  const results =
+    await Promise.all(
+      recent.map((article) =>
+        fetchPrTimesArticle(article),
+      ),
     );
 
-  return Promise.all(
-    parsed.map(
-      async (item) => {
-        const title =
-          await translateToPortuguese(
-            item.title,
-          );
-        const description =
-          await translateToPortuguese(
-            item.description,
-          );
-        const image =
-          await fetchAniListCover(
-            item.title,
-            item.description,
-          );
-
-        let rssImage = "";
-        let articleImages = [
-          ...(item.articleImages ?? []),
-        ];
-
-        if (image) {
-          rssImage = image;
-        } else if (item.image) {
-          rssImage = await proxyRssImage(
-            item.image,
-            1_500_000,
-            "https://prtimes.jp/",
-          );
-        }
-
-        if (item.url) {
-          const pageImages =
-            await fetchArticleImages(
-              item.url,
-            );
-
-          articleImages = [
-            ...articleImages,
-            ...pageImages,
-          ].filter(
-            (value, index, list) =>
-              list.indexOf(value) === index,
-          ).slice(0, 8);
-
-          if (!rssImage && pageImages[0]) {
-            rssImage = await proxyRssImage(
-              pageImages[0],
-              1_500_000,
-              "https://prtimes.jp/",
-            );
-          }
-        }
-
-        const proxiedArticleImages =
-          (
-            await Promise.all(
-              articleImages.map((imageUrl) =>
-                proxyRssImage(
-                  imageUrl,
-                  5_000_000,
-                  "https://prtimes.jp/",
-                ),
-              ),
-            )
-          ).filter(Boolean);
-
-        const mentionedHentai =
-          await fetchMentionedHentai(
-            item.title,
-            item.description,
-          );
-
-        return {
-          ...item,
-          title,
-          description,
-          image:
-            rssImage ||
-            proxiedArticleImages[0] ||
-            ADULT_IMAGE_FALLBACK,
-          articleImages:
-            proxiedArticleImages,
-          mentionedHentai,
-        };
-      },
-    ),
+  return results.filter(
+    (item): item is AutomaticNewsItem =>
+      Boolean(item),
   );
 }
 
@@ -1557,13 +1660,8 @@ export const fetchAdultNews =
   createServerFn({
     method: "GET",
   }).handler(async () => {
-    const now = new Date();
     const key =
-      `automatic-adult-news:${now.getFullYear()}-${String(
-        now.getMonth() + 1,
-      ).padStart(2, "0")}-${String(
-        now.getDate(),
-      ).padStart(2, "0")}`;
+      "automatic-adult-news:recent";
 
     const cached =
       fromCache(key);
@@ -1573,54 +1671,67 @@ export const fetchAdultNews =
     }
 
     try {
-      const rssResults =
+      const results =
         await Promise.all(
-          ADULT_NEWS_RSS_FEEDS.map((feedUrl) =>
-            fetchAdultNewsFeed(
-              feedUrl,
-            ).catch(() => []),
+          ADULT_NEWS_RSS_FEEDS.map(
+            (feedUrl) =>
+              fetchAdultNewsFeed(
+                feedUrl,
+              ).catch(() => []),
           ),
         );
 
-      const combined =
-        rssResults.flat();
+      const now = Date.now();
+      const minimum =
+        now - 90 * 24 * 60 * 60 * 1000;
 
       const unique =
         Array.from(
           new Map(
-            combined.map((item) => [
-              item.url ||
-                `${item.title}-${item.date}`,
-              item,
-            ]),
+            results
+              .flat()
+              .filter((item) => {
+                const timestamp =
+                  item.publishedAt
+                    ? Date.parse(
+                        item.publishedAt,
+                      )
+                    : NaN;
+
+                return (
+                  !Number.isNaN(timestamp) &&
+                  timestamp <=
+                    now +
+                      24 *
+                        60 *
+                        60 *
+                        1000 &&
+                  timestamp >= minimum
+                );
+              })
+              .map((item) => [
+                item.url ||
+                  `${item.title}-${item.date}`,
+                item,
+              ]),
           ).values(),
         );
 
       unique.sort((a, b) => {
         const timeA =
           a.publishedAt
-            ? Date.parse(a.publishedAt)
-            : Date.parse(
-                a.date
-                  .split("/")
-                  .reverse()
-                  .join("-"),
-              );
-
+            ? Date.parse(
+                a.publishedAt,
+              )
+            : 0;
         const timeB =
           b.publishedAt
-            ? Date.parse(b.publishedAt)
-            : Date.parse(
-                b.date
-                  .split("/")
-                  .reverse()
-                  .join("-"),
-              );
+            ? Date.parse(
+                b.publishedAt,
+              )
+            : 0;
 
-        return (
-          (Number.isNaN(timeB) ? 0 : timeB) -
-          (Number.isNaN(timeA) ? 0 : timeA)
-        );
+        return timeB - timeA;
       });
 
       return toCache(
