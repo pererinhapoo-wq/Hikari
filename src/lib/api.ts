@@ -2489,6 +2489,14 @@ export const fetchAdultCatalog =
   );
 
 
+const normalizeAdultTagName = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
 const MAIN_ADULT_TAGS = [
   { name: "Anal", type: "tag", aliases: ["Anal Sex"] },
   { name: "Boquete", type: "tag", aliases: ["Fellatio"] },
