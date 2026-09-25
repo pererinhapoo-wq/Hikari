@@ -1164,28 +1164,12 @@ function formatRssDate(
     return "";
   }
 
-  // Most feeds provide the publication date in the source's own calendar/timezone.
-  // Keep that calendar date and only convert the presentation to Brazilian format.
-  const isoMatch = value.match(
-    /(20\d{2})-(\d{1,2})-(\d{1,2})/,
-  );
+  // Datas completas são convertidas para o fuso do Brasil (São Paulo).
+  // Datas sem horário (YYYY-MM-DD) permanecem no mesmo dia do calendário da fonte.
+  const dateOnlyMatch = value.match(/^\s*(20\d{2})-(\d{1,2})-(\d{1,2})\s*$/);
 
-  if (isoMatch) {
-    return `${isoMatch[3].padStart(2, "0")}/${isoMatch[2].padStart(2, "0")}/${isoMatch[1]}`;
-  }
-
-  const rfcMatch = value.match(
-    /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(20\d{2})/i,
-  );
-
-  if (rfcMatch) {
-    const months: Record<string, string> = {
-      jan: "01", feb: "02", mar: "03", apr: "04",
-      may: "05", jun: "06", jul: "07", aug: "08",
-      sep: "09", oct: "10", nov: "11", dec: "12",
-    };
-
-    return `${rfcMatch[1].padStart(2, "0")}/${months[rfcMatch[2].toLowerCase()]}/${rfcMatch[3]}`;
+  if (dateOnlyMatch) {
+    return `${dateOnlyMatch[3].padStart(2, "0")}/${dateOnlyMatch[2].padStart(2, "0")}/${dateOnlyMatch[1]}`;
   }
 
   const timestamp = Date.parse(value);
@@ -1608,7 +1592,16 @@ function parseLuneRssItems(
       .filter(Boolean)
       .join(" ");
 
-    const image = imageFromRss(block);
+    const rawImage = imageFromRss(block);
+    let image = "";
+
+    if (rawImage) {
+      try {
+        image = new URL(rawImage, url).href;
+      } catch {
+        image = rawImage;
+      }
+    }
 
     if (!title || !url || !publishedAt) {
       continue;
@@ -1705,13 +1698,18 @@ async function fetchLuneAdultArticle(
       ].filter(Boolean)),
     ).slice(0, 8);
 
+    const isEroEro = /eroeronews\.com/i.test(article.url);
+    const imageReferer = isEroEro
+      ? "https://eroeronews.com/"
+      : "https://www.lune-soft.jp/";
+
     const proxiedImages = (
       await Promise.all(
         imageCandidates.map((imageUrl) =>
           proxyRssImage(
             imageUrl,
             5_000_000,
-            "https://www.lune-soft.jp/",
+            imageReferer,
           ),
         ),
       )
@@ -1720,17 +1718,23 @@ async function fetchLuneAdultArticle(
     const finalImage =
       proxiedImages[0] ||
       sourceImage ||
+      articleImages[0] ||
       ADULT_IMAGE_FALLBACK;
+
+    // Só traduzimos títulos que realmente vieram em espanhol.
+    // Títulos japoneses/originais permanecem intactos.
+    const displayTitle = looksSpanish(article.title)
+      ? await translateToPortuguese(article.title)
+      : article.title;
 
     return {
       id:
-        `auto-adult-lune-${encodeURIComponent(article.url)}`,
+        `auto-adult-${isEroEro ? "eroero" : "lune"}-${encodeURIComponent(article.url)}`,
       type: typeFromRss(
         article.title,
         article.categories,
       ),
-      // Títulos de hentai permanecem no original, sem tradução automática.
-      title: article.title,
+      title: displayTitle,
       description:
         translatedDescription ||
         "Nova notícia de hentai/OVA adulto.",
