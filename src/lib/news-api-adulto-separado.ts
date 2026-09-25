@@ -1545,7 +1545,7 @@ async function fetchPrTimesArticle(
       animeId: "",
       isAdult: true,
       url: article.url,
-      publishedAt: article.publishedAt,
+      publishedAt,
       source: "PR TIMES / AnimeFesta",
       articleImages:
         proxiedImages.length
@@ -1649,6 +1649,47 @@ function parseLuneRssItems(
   ).slice(0, 30);
 }
 
+function extractLunePublishedDate(
+  html: string,
+  fallback: string,
+): string {
+  const jsonLdPatterns = [
+    /"datePublished"\s*:\s*"(20\d{2}-\d{2}-\d{2}(?:T[^"\\]+)?)"/i,
+    /"datePublished"\s*:\s*"(20\d{2}[./-]\d{1,2}[./-]\d{1,2})"/i,
+  ];
+
+  for (const pattern of jsonLdPatterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  const metaPatterns = [
+    /<meta[^>]+(?:property|name)=["']article:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']article:published_time["'][^>]*>/i,
+  ];
+
+  for (const pattern of metaPatterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  // A Lune article displays its original publication date beside the
+  // アニメ category. Prefer that date over any later page update date.
+  const visibleDate = html.match(
+    /アニメ[\s\S]{0,250}?\b(20\d{2})\.(\d{1,2})\.(\d{1,2})\b/i,
+  );
+
+  if (visibleDate) {
+    return `${visibleDate[1]}-${visibleDate[2].padStart(2, "0")}-${visibleDate[3].padStart(2, "0")}`;
+  }
+
+  return fallback;
+}
+
 async function fetchLuneAdultArticle(
   article: {
     title: string;
@@ -1673,6 +1714,13 @@ async function fetchLuneAdultArticle(
     if (response.ok) {
       html = await response.text();
     }
+
+    const publishedAt = html
+      ? extractLunePublishedDate(
+          html,
+          article.publishedAt,
+        )
+      : article.publishedAt;
 
     const pageDescription = html
       ? extractMetaContent(html, "og:description") ||
@@ -1738,12 +1786,12 @@ async function fetchLuneAdultArticle(
       description:
         translatedDescription ||
         "Nova notícia de hentai/OVA adulto.",
-      date: formatRssDate(article.publishedAt),
+      date: formatRssDate(publishedAt),
       image: finalImage,
       animeId: "",
       isAdult: true,
       url: article.url,
-      publishedAt: article.publishedAt,
+      publishedAt,
       source: article.url.includes("eroeronews.com")
         ? "EroEro News"
         : "Lune Soft / Lune Pictures",
@@ -1919,59 +1967,28 @@ async function fetchAdultNewsFeed(
       ? await fetchEroEroNewsPageFallback()
       : await fetchLuneNewsPageFallback();
 
-    const fallbackMinimum =
-      Date.now() - 30 * 24 * 60 * 60 * 1000;
-
-    return fallback.filter((item) => {
-      const timestamp = item.publishedAt
-        ? Date.parse(item.publishedAt)
-        : NaN;
-
-      return (
-        !Number.isNaN(timestamp) &&
-        timestamp <= Date.now() + 24 * 60 * 60 * 1000 &&
-        timestamp >= fallbackMinimum
-      );
-    });
+    return fallback;
   }
 
-  const now = Date.now();
-  const minimum =
-    now - 30 * 24 * 60 * 60 * 1000;
-
-  const recent = articles.filter((article) => {
+  const validArticles = articles.filter((article) => {
     const timestamp = Date.parse(article.publishedAt);
 
     return (
       !Number.isNaN(timestamp) &&
-      timestamp <= now + 24 * 60 * 60 * 1000 &&
-      timestamp >= minimum
+      timestamp <= Date.now() + 24 * 60 * 60 * 1000
     );
   });
 
-  if (!recent.length) {
+  if (!validArticles.length) {
     const fallback = feedUrl.includes("eroeronews.com")
       ? await fetchEroEroNewsPageFallback()
       : await fetchLuneNewsPageFallback();
 
-    const fallbackMinimum =
-      Date.now() - 30 * 24 * 60 * 60 * 1000;
-
-    return fallback.filter((item) => {
-      const timestamp = item.publishedAt
-        ? Date.parse(item.publishedAt)
-        : NaN;
-
-      return (
-        !Number.isNaN(timestamp) &&
-        timestamp <= Date.now() + 24 * 60 * 60 * 1000 &&
-        timestamp >= fallbackMinimum
-      );
-    });
+    return fallback;
   }
 
   const results = await Promise.all(
-    recent.map((article) =>
+    validArticles.map((article) =>
       fetchLuneAdultArticle(article),
     ),
   );
@@ -2070,7 +2087,7 @@ export const fetchAdultNews =
     method: "GET",
   }).handler(async () => {
     const key =
-      "automatic-adult-news:hentai-paginado-recentes:v7";
+      "automatic-adult-news:hentai-paginado-recentes:v8";
 
     const cached =
       fromCache(key);
@@ -2090,10 +2107,6 @@ export const fetchAdultNews =
           ),
         );
 
-      const now = Date.now();
-      const minimum =
-        now - 30 * 24 * 60 * 60 * 1000;
-
       const unique =
         Array.from(
           new Map(
@@ -2110,12 +2123,11 @@ export const fetchAdultNews =
                 return (
                   !Number.isNaN(timestamp) &&
                   timestamp <=
-                    now +
+                    Date.now() +
                       24 *
                         60 *
                         60 *
-                        1000 &&
-                  timestamp >= minimum
+                        1000
                 );
               })
               .map((item) => [
