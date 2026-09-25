@@ -1254,7 +1254,7 @@ function NewsPage() {
                 PAGINAÇÃO
             ================================================== */}
 
-            {totalPages > 1 && (
+            {totalPages >= 1 && (
               <nav
                 className="
                   mt-8
@@ -1274,19 +1274,20 @@ function NewsPage() {
                     pb-1
                   "
                 >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      goToPage(
-                        paginationPage -
-                          1,
-                      )
-                    }
-                    disabled={
-                      paginationPage ===
-                      1
-                    }
-                    className="
+                  {totalPages > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        goToPage(
+                          paginationPage -
+                            1,
+                        )
+                      }
+                      disabled={
+                        paginationPage ===
+                        1
+                      }
+                      className="
                       flex
                       size-9
                       shrink-0
@@ -1299,9 +1300,10 @@ function NewsPage() {
                       text-muted
                       disabled:opacity-30
                     "
-                  >
-                    <ChevronLeft className="size-4" />
-                  </button>
+                    >
+                      <ChevronLeft className="size-4" />
+                    </button>
+                  )}
 
                   {paginationItems.map(
                     (
@@ -1360,19 +1362,20 @@ function NewsPage() {
                       ),
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      goToPage(
-                        paginationPage +
-                          1,
-                      )
-                    }
-                    disabled={
-                      paginationPage ===
-                      totalPages
-                    }
-                    className="
+                  {totalPages > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        goToPage(
+                          paginationPage +
+                            1,
+                        )
+                      }
+                      disabled={
+                        paginationPage ===
+                        totalPages
+                      }
+                      className="
                       flex
                       size-9
                       shrink-0
@@ -1385,9 +1388,10 @@ function NewsPage() {
                       text-muted
                       disabled:opacity-30
                     "
-                  >
-                    <ChevronRight className="size-4" />
-                  </button>
+                    >
+                      <ChevronRight className="size-4" />
+                    </button>
+                  )}
                 </div>
 
                 <p className="text-xs text-muted">
