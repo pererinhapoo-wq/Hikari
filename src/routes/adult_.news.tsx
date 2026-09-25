@@ -48,7 +48,7 @@ export const Route = createFileRoute(
   component: NewsPage,
 });
 
-const NEWS_PER_PAGE = 4;
+const NEWS_PER_PAGE = 8;
 
 function parseNewsDate(
   date: string,
