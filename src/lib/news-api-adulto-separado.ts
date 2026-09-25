@@ -1,87 +1,57 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import {
-  currentAnimeSeason,
-  stripHtml,
-} from "@/lib/utils";
+import { currentAnimeSeason, stripHtml } from "@/lib/utils";
 
 export type AutomaticNewsItem = {
   id: string;
   type:
     | "NOVA TEMPORADA"
     | "TRAILER"
+    | "NOVO HENTAI"
     | "NOVO EPISÓDIO"
-    | "PRÓXIMO LANÇAMENTO"
-    | "DESTAQUE"
-    | "NOVO HENTAI";
+    | "ANÚNCIO"
+    | "ESTREIA"
+    | "RECOMENDAÇÃO";
   title: string;
   description: string;
   date: string;
-  time: string;
   image: string;
   animeId: string;
-  trailerUrl?: string;
-  isAdult?: boolean;
+  isAdult: boolean;
+  url?: string;
 };
 
-const ANILIST =
-  "https://grokhikari.vercel.app/api-anilist";
+const ANILIST = "https://graphql.anilist.co";
+const ADULT_NEWS_RSS = "https://eroeronews.com/feed/";
 
 type AniMedia = {
   id: number;
   isAdult?: boolean | null;
-
   title?: {
     romaji?: string | null;
     english?: string | null;
     native?: string | null;
   } | null;
-
   coverImage?: {
     extraLarge?: string | null;
     large?: string | null;
   } | null;
-
   description?: string | null;
-
   format?: string | null;
   status?: string | null;
   episodes?: number | null;
-  score?: number | null;
-  popularity?: number | null;
-  updatedAt?: number | null;
   season?: string | null;
   seasonYear?: number | null;
-
   startDate?: {
     year?: number | null;
     month?: number | null;
     day?: number | null;
-  } | null;
-
-  trailer?: {
-    id?: string | null;
-    site?: string | null;
-    thumbnail?: string | null;
   } | null;
 };
 
 type AniListResponse = {
   Page: {
     media: AniMedia[];
-  };
-};
-
-type AiringScheduleItem = {
-  id?: number | null;
-  mediaId?: number | null;
-  episode?: number | null;
-  airingAt?: number | null;
-};
-
-type AiringScheduleResponse = {
-  Page: {
-    airingSchedules: AiringScheduleItem[];
   };
 };
 
@@ -93,31 +63,19 @@ const cache = new Map<
   }
 >();
 
-const translationCache =
-  new Map<
-    string,
-    string
-  >();
-
-const TTL =
-  10 * 60 * 1000;
+const TTL = 10 * 60 * 1000;
 
 function fromCache(
   key: string,
 ): AutomaticNewsItem[] | null {
-  const hit =
-    cache.get(key);
+  const hit = cache.get(key);
 
   if (!hit) {
     return null;
   }
 
-  if (
-    Date.now() - hit.at >
-    TTL
-  ) {
+  if (Date.now() - hit.at > TTL) {
     cache.delete(key);
-
     return null;
   }
 
@@ -139,18 +97,14 @@ function toCache(
 function formatDate(
   media: AniMedia,
 ): string {
-  const date =
-    media.startDate;
+  const date = media.startDate;
 
   if (
     !date?.year ||
     !date.month ||
     !date.day
   ) {
-    return `${
-      media.seasonYear ??
-      "2026"
-    }`;
+    return `${media.seasonYear ?? "2026"}`;
   }
 
   return new Intl.DateTimeFormat(
@@ -159,109 +113,12 @@ function formatDate(
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-      timeZone: "America/Recife",
     },
   ).format(
     new Date(
       date.year,
       date.month - 1,
       date.day,
-    ),
-  );
-}
-
-function isInCurrentMonth(timestamp: number): boolean {
-  const formatter = new Intl.DateTimeFormat(
-    "en-CA",
-    {
-      year: "numeric",
-      month: "2-digit",
-      timeZone: "America/Recife",
-    },
-  );
-
-  return (
-    formatter.format(new Date(timestamp)) ===
-    formatter.format(new Date())
-  );
-}
-
-function formatEventDate(timestamp: number): string {
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      timeZone: "America/Recife",
-    },
-  ).format(new Date(timestamp));
-}
-
-function formatEventTime(timestamp: number): string {
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "America/Recife",
-    },
-  ).format(new Date(timestamp));
-}
-
-function formatUpdatedDate(
-  updatedAt: number | null | undefined,
-): string {
-  const timestamp =
-    typeof updatedAt === "number" &&
-    updatedAt > 0
-      ? updatedAt * 1000
-      : Date.now();
-
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      timeZone: "America/Recife",
-    },
-  ).format(new Date(timestamp));
-}
-
-function formatUpdatedTime(
-  updatedAt: number | null | undefined,
-): string {
-  const timestamp =
-    typeof updatedAt === "number" &&
-    updatedAt > 0
-      ? updatedAt * 1000
-      : Date.now();
-
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "America/Recife",
-    },
-  ).format(new Date(timestamp));
-}
-
-function formatAiringDate(
-  airingAt: number,
-): string {
-  return new Intl.DateTimeFormat(
-    "pt-BR",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      timeZone: "America/Recife",
-    },
-  ).format(
-    new Date(
-      airingAt * 1000,
     ),
   );
 }
@@ -277,274 +134,21 @@ function titleOf(
   );
 }
 
-function cleanDescription(
-  value:
-    | string
-    | null
-    | undefined,
-): string {
-  return stripHtml(
-    value,
-  ).trim();
-}
-
-async function translateToPortuguese(
-  text: string,
-): Promise<string> {
-  const cleaned =
-    text.trim();
-
-  if (!cleaned) {
-    return "";
-  }
-
-  const cached =
-    translationCache.get(
-      cleaned,
-    );
-
-  if (cached) {
-    return cached;
-  }
-
-  try {
-    const url =
-      "https://translate.googleapis.com/translate_a/single" +
-      "?client=gtx" +
-      "&sl=auto" +
-      "&tl=pt" +
-      "&dt=t" +
-      `&q=${encodeURIComponent(
-        cleaned.slice(0, 5000),
-      )}`;
-
-    const response =
-      await fetch(
-        url,
-        {
-          signal:
-            AbortSignal.timeout(
-              8000,
-            ),
-        },
-      );
-
-    if (!response.ok) {
-      return cleaned;
-    }
-
-    const json =
-      (await response.json()) as unknown;
-
-    if (
-      !Array.isArray(json) ||
-      !Array.isArray(json[0])
-    ) {
-      return cleaned;
-    }
-
-    const translated =
-      json[0]
-        .filter(
-          (part) =>
-            Array.isArray(part) &&
-            typeof part[0] ===
-              "string",
-        )
-        .map(
-          (part) =>
-            part[0] as string,
-        )
-        .join("")
-        .trim();
-
-    if (!translated) {
-      return cleaned;
-    }
-
-    translationCache.set(
-      cleaned,
-      translated,
-    );
-
-    return translated;
-  } catch {
-    return cleaned;
-  }
-}
-
-async function descriptionOf(
+function descriptionOf(
   media: AniMedia,
-): Promise<string> {
+): string {
   const description =
-    cleanDescription(
+    stripHtml(
       media.description,
     );
 
-  if (!description) {
-    return `${titleOf(
-      media,
-    )} faz parte da programação da temporada de ${(
-      media.season ?? ""
-    ).toLowerCase()} de ${
-      media.seasonYear ?? ""
-    }.`;
+  if (description) {
+    return description;
   }
 
-  return translateToPortuguese(
-    description,
-  );
-}
-
-function trailerOf(
-  media: AniMedia,
-): string | undefined {
-  const trailer =
-    media.trailer;
-
-  if (
-    !trailer?.id ||
-    trailer.site !==
-      "youtube"
-  ) {
-    return undefined;
-  }
-
-  return `https://www.youtube.com/embed/${trailer.id}`;
-}
-
-async function fetchLatestAiredEpisodes(
-  mediaIds?: number[],
-): Promise<
-  Map<
-    number,
-    {
-      episode: number;
-      airingAt: number;
-    }
-  >
-> {
-  const result =
-    new Map<
-      number,
-      {
-        episode: number;
-        airingAt: number;
-      }
-    >();
-
-  try {
-    const response =
-      await fetch(
-        ANILIST,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            Accept:
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            query: `
-              query LatestAiredEpisodes {
-                Page(
-                  page: 1
-                  perPage: 50
-                ) {
-                  airingSchedules(
-                    notYetAired: false
-                    ${
-                      mediaIds?.length
-                        ? `mediaId_in: [${mediaIds.join(",")}]`
-                        : ""
-                    }
-                    sort: TIME_DESC
-                  ) {
-                    id
-                    mediaId
-                    episode
-                    airingAt
-                  }
-                }
-              }
-            `,
-          }),
-
-          signal:
-            AbortSignal.timeout(
-              12000,
-            ),
-        },
-      );
-
-    if (!response.ok) {
-      return result;
-    }
-
-    const json =
-      (await response.json()) as {
-        data?: AiringScheduleResponse;
-
-        errors?: {
-          message?: string;
-        }[];
-      };
-
-    if (
-      json.errors?.length ||
-      !json.data?.Page
-    ) {
-      return result;
-    }
-
-    for (const item of
-      json.data.Page
-        .airingSchedules ?? []) {
-      if (
-        typeof item.mediaId !==
-          "number" ||
-        typeof item.episode !==
-          "number" ||
-        typeof item.airingAt !==
-          "number"
-      ) {
-        continue;
-      }
-
-      if (
-        item.episode <= 0 ||
-        item.airingAt * 1000 >
-          Date.now()
-      ) {
-        continue;
-      }
-
-      if (
-        !result.has(
-          item.mediaId,
-        )
-      ) {
-        result.set(
-          item.mediaId,
-          {
-            episode:
-              item.episode,
-
-            airingAt:
-              item.airingAt,
-          },
-        );
-      }
-    }
-  } catch {
-    return result;
-  }
-
-  return result;
+  return `${titleOf(media)} faz parte da programação da temporada de ${(
+    media.season ?? ""
+  ).toLowerCase()} de ${media.seasonYear ?? ""}.`;
 }
 
 async function fetchSeason(
@@ -556,15 +160,12 @@ async function fetchSeason(
       ANILIST,
       {
         method: "POST",
-
         headers: {
           "Content-Type":
             "application/json",
-
           Accept:
             "application/json",
         },
-
         body: JSON.stringify({
           query: `
             query AutomaticNews(
@@ -579,11 +180,10 @@ async function fetchSeason(
                   type: ANIME
                   season: $season
                   seasonYear: $year
-                  sort: START_DATE_DESC
+                  sort: START_DATE
                 ) {
                   id
                   isAdult
-                  updatedAt
 
                   title {
                     romaji
@@ -611,25 +211,15 @@ async function fetchSeason(
                     month
                     day
                   }
-
-                  trailer {
-                    id
-                    site
-                    thumbnail
-                  }
                 }
               }
             }
           `,
-
           variables: {
-            season:
-              season.toUpperCase(),
-
+            season,
             year,
           },
         }),
-
         signal:
           AbortSignal.timeout(
             12000,
@@ -646,7 +236,6 @@ async function fetchSeason(
   const json =
     (await response.json()) as {
       data?: AniListResponse;
-
       errors?: {
         message?: string;
       }[];
@@ -657,8 +246,7 @@ async function fetchSeason(
     !json.data?.Page
   ) {
     throw new Error(
-      json.errors?.[0]
-        ?.message ??
+      json.errors?.[0]?.message ??
         "AniList sem dados",
     );
   }
@@ -666,737 +254,244 @@ async function fetchSeason(
   return json.data.Page.media;
 }
 
-async function fetchAdultCatalogNews(): Promise<
-  AniMedia[]
+function decodeXml(
+  value: string,
+): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function firstXmlValue(
+  block: string,
+  tag: string,
+): string {
+  const match = block.match(
+    new RegExp(
+      `<${tag}[^>]*>([\\s\\S]*?)</${tag}>`,
+      "i",
+    ),
+  );
+
+  return decodeXml(
+    match?.[1]?.trim() ?? "",
+  );
+}
+
+function imageFromRss(
+  block: string,
+): string {
+  const mediaContent = block.match(
+    /<media:content[^>]+url=["']([^"']+)["'][^>]*>/i,
+  );
+
+  if (mediaContent?.[1]) {
+    return decodeXml(mediaContent[1]);
+  }
+
+  const enclosure = block.match(
+    /<enclosure[^>]+url=["']([^"']+)["'][^>]*>/i,
+  );
+
+  if (enclosure?.[1]) {
+    return decodeXml(enclosure[1]);
+  }
+
+  const content = firstXmlValue(
+    block,
+    "content:encoded",
+  );
+
+  const image = content.match(
+    /<img[^>]+src=["']([^"']+)["'][^>]*>/i,
+  );
+
+  return decodeXml(
+    image?.[1] ?? "",
+  );
+}
+
+function formatRssDate(
+  value: string,
+): string {
+  if (!value) {
+    return "";
+  }
+
+  const timestamp = Date.parse(value);
+
+  if (Number.isNaN(timestamp)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    },
+  ).format(
+    new Date(timestamp),
+  );
+}
+
+function typeFromRss(
+  title: string,
+  categories: string,
+): AutomaticNewsItem["type"] {
+  const value = `${title} ${categories}`.toLowerCase();
+
+  if (
+    value.includes("trailer") ||
+    value.includes("tráiler")
+  ) {
+    return "TRAILER";
+  }
+
+  if (
+    value.includes("episodio") ||
+    value.includes("episode")
+  ) {
+    return "NOVO EPISÓDIO";
+  }
+
+  if (
+    value.includes("estreno") ||
+    value.includes("estreia") ||
+    value.includes("ova")
+  ) {
+    return "ESTREIA";
+  }
+
+  if (
+    value.includes("recomend") ||
+    value.includes("vendidos") ||
+    value.includes("ranking")
+  ) {
+    return "RECOMENDAÇÃO";
+  }
+
+  if (
+    value.includes("nuevo") ||
+    value.includes("nuevo hentai") ||
+    value.includes("novo")
+  ) {
+    return "NOVO HENTAI";
+  }
+
+  return "ANÚNCIO";
+}
+
+async function fetchAdultNewsFeed(): Promise<
+  AutomaticNewsItem[]
 > {
-  const query = `
-    query AdultNews {
-      page1: Page(
-        page: 1
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-
-      page2: Page(
-        page: 2
-        perPage: 50
-      ) {
-        media(
-          type: ANIME
-          isAdult: true
-          genre: "Hentai"
-          sort: START_DATE_DESC
-        ) {
-          id
-          isAdult
-          score: averageScore
-          updatedAt
-
-          title {
-            romaji
-            english
-            native
-          }
-
-          coverImage {
-            extraLarge
-            large
-          }
-
-          description(
-            asHtml: false
-          )
-
-          format
-          status
-          episodes
-          season
-          seasonYear
-
-          startDate {
-            year
-            month
-            day
-          }
-
-          trailer {
-            id
-            site
-            thumbnail
-          }
-        }
-      }
-    }
-  `;
-
   const response =
     await fetch(
-      ANILIST,
+      ADULT_NEWS_RSS,
       {
-        method: "POST",
-
         headers: {
-          "Content-Type":
-            "application/json",
-
           Accept:
-            "application/json",
+            "application/rss+xml, application/xml, text/xml",
+          "User-Agent":
+            "Hikari/1.0 (adult news)",
         },
-
-        body: JSON.stringify({
-          query,
-        }),
-
         signal:
           AbortSignal.timeout(
-            8000,
+            12000,
           ),
       },
     );
 
   if (!response.ok) {
     throw new Error(
-      `AniList indisponível (${response.status})`,
+      `Fonte de notícias indisponível (${response.status})`,
     );
   }
 
-  const json =
-    (await response.json()) as {
-      data?: {
-        page1?: {
-          media?: AniMedia[];
-        };
-        page2?: {
-          media?: AniMedia[];
-        };
-      };
+  const xml = await response.text();
 
-      errors?: {
-        message?: string;
-      }[];
-    };
+  const items =
+    xml.match(
+      /<item\b[\s\S]*?<\/item>/gi,
+    ) ?? [];
 
-  if (
-    json.errors?.length ||
-    !json.data
-  ) {
-    throw new Error(
-      json.errors?.[0]
-        ?.message ??
-        "AniList sem dados",
-    );
-  }
-
-  const merged = [
-    ...(json.data.page1?.media ?? []),
-    ...(json.data.page2?.media ?? []),
-  ];
-
-  const unique =
-    Array.from(
-      new Map(
-        merged.map((anime) => [
-          anime.id,
-          anime,
-        ]),
-      ).values(),
-    );
-
-  return unique.filter(
-    (anime) =>
-      anime.isAdult === true &&
-      anime.id > 0 &&
-      anime.format !== "MUSIC",
-  );
-}
-
-async function buildNews(
-  media: AniMedia[],
-  latestEpisodes: Map<
-    number,
-    {
-      episode: number;
-      airingAt: number;
-    }
-  >,
-): Promise<AutomaticNewsItem[]> {
-  const news:
-    AutomaticNewsItem[] =
-    [];
-
-  const isAdultFeed =
-    media.some(
-      (anime) => anime.isAdult === true,
-    );
-
-  const now = Date.now();
-  const RECENT_UPDATE_WINDOW =
-    30 * 24 * 60 * 60 * 1000;
-  const RECENT_RELEASE_WINDOW =
-    isAdultFeed
-      ? 30 * 24 * 60 * 60 * 1000
-      : 120 * 24 * 60 * 60 * 1000;
-  const UPCOMING_RELEASE_WINDOW =
-    isAdultFeed
-      ? 60 * 24 * 60 * 60 * 1000
-      : 180 * 24 * 60 * 60 * 1000;
-  const RECENT_EPISODE_WINDOW =
-    isAdultFeed
-      ? 30 * 24 * 60 * 60 * 1000
-      : 14 * 24 * 60 * 60 * 1000;
-
-  const recentMedia = media.filter(
-    (anime) => {
-      const updatedAt =
-        typeof anime.updatedAt ===
-          "number" &&
-        anime.updatedAt > 0
-          ? anime.updatedAt * 1000
-          : 0;
-
-      const startDate =
-        anime.startDate;
-      const startTimestamp =
-        startDate?.year &&
-        startDate.month &&
-        startDate.day
-          ? Date.UTC(
-              startDate.year,
-              startDate.month - 1,
-              startDate.day,
-            )
-          : 0;
-
-      const latestEpisode =
-        latestEpisodes.get(
-          anime.id,
+  return items
+    .map(
+      (item, index): AutomaticNewsItem | null => {
+        const title = firstXmlValue(
+          item,
+          "title",
         );
 
-      const episodeTimestamp =
-        latestEpisode?.airingAt
-          ? latestEpisode.airingAt * 1000
-          : 0;
-
-      const recentlyUpdated =
-        updatedAt > 0 &&
-        now - updatedAt <=
-          RECENT_UPDATE_WINDOW &&
-        updatedAt <= now;
-
-      const recentlyReleased =
-        startTimestamp > 0 &&
-        startTimestamp <= now &&
-        now - startTimestamp <=
-          RECENT_RELEASE_WINDOW;
-
-      const upcoming =
-        startTimestamp > now &&
-        startTimestamp - now <=
-          UPCOMING_RELEASE_WINDOW;
-
-      const recentlyAired =
-        episodeTimestamp > 0 &&
-        episodeTimestamp <= now &&
-        now - episodeTimestamp <=
-          RECENT_EPISODE_WINDOW;
-
-      if (isAdultFeed) {
-        const eventTimestamp =
-          recentlyAired && episodeTimestamp > 0
-            ? episodeTimestamp
-            : recentlyReleased && startTimestamp > 0
-              ? startTimestamp
-              : upcoming && startTimestamp > 0
-                ? startTimestamp
-                : 0;
-
-        return (
-          eventTimestamp > 0 &&
-          isInCurrentMonth(eventTimestamp)
+        const link = firstXmlValue(
+          item,
+          "link",
         );
-      }
 
-      return (
-        recentlyReleased ||
-        upcoming ||
-        recentlyAired
-      );
-    },
-  );
+        const date = firstXmlValue(
+          item,
+          "pubDate",
+        );
 
-  // A lista de notícias deve ser formada por acontecimentos
-  // recentes, e não por todos os animes antigos do catálogo.
-  // Mantemos somente os títulos que tiveram atualização recente,
-  // lançamento recente/próximo ou episódio recém-exibido.
-  media = recentMedia;
-
-  // Só traduzimos os animes que realmente podem gerar
-  // uma notícia. Isso evita dezenas de chamadas externas
-  // de tradução para títulos antigos que serão descartados.
-  const prepared =
-    media.map(
-      (anime) => ({
-        anime,
-        title: titleOf(anime),
-        trailerUrl: trailerOf(anime),
-        latestEpisode: latestEpisodes.get(anime.id),
-      }),
-    );
-
-  const descriptions =
-    await Promise.all(
-      prepared.map(({ anime }) =>
-        descriptionOf(anime),
-      ),
-    );
-
-  const topRated = [
-    ...media,
-  ]
-    .filter(
-      (anime) =>
-        typeof anime.score ===
-          "number" &&
-        anime.score > 0,
-    )
-    .sort(
-      (a, b) =>
-        (b.score ?? 0) -
-        (a.score ?? 0),
-    )
-    .slice(0, 8);
-
-  if (!isAdultFeed) {
-    for (const anime of topRated) {
-    const title = titleOf(anime);
-    const preparedIndex = prepared.findIndex(
-      ({ anime: preparedAnime }) =>
-        preparedAnime.id === anime.id,
-    );
-    const description =
-      preparedIndex >= 0
-        ? descriptions[preparedIndex]
-        : "";
-
-    news.push({
-      id: `auto-highlight-${anime.id}`,
-      type: "DESTAQUE",
-      title,
-      description,
-      date: formatUpdatedDate(
-        anime.updatedAt,
-      ),
-      time: formatUpdatedTime(
-        anime.updatedAt,
-      ),
-      image:
-        anime.coverImage?.extraLarge ||
-        anime.coverImage?.large ||
-        "",
-      animeId: String(anime.id),
-      trailerUrl: trailerOf(anime),
-      isAdult: true,
-    });
-    }
-  }
-
-  for (
-    let index = 0;
-    index <
-    prepared.length;
-    index++
-  ) {
-    const {
-      anime,
-      title,
-      trailerUrl,
-      latestEpisode,
-    } =
-      prepared[index];
-
-    const description =
-      descriptions[index];
-
-    const isAdult =
-      anime.isAdult === true;
-
-    const updatedTimestamp =
-      typeof anime.updatedAt ===
-        "number" &&
-      anime.updatedAt > 0
-        ? anime.updatedAt * 1000
-        : 0;
-
-    const recentlyUpdated =
-      updatedTimestamp > 0 &&
-      now - updatedTimestamp <=
-        RECENT_UPDATE_WINDOW &&
-      updatedTimestamp <= now;
-
-    const startDate = anime.startDate;
-    const startTimestamp =
-      startDate?.year &&
-      startDate.month &&
-      startDate.day
-        ? Date.UTC(
-            startDate.year,
-            startDate.month - 1,
-            startDate.day,
+        const categories =
+          Array.from(
+            item.matchAll(
+              /<category[^>]*>([\s\S]*?)<\/category>/gi,
+            ),
           )
-        : 0;
+            .map((match) =>
+              decodeXml(match[1] ?? ""),
+            )
+            .join(" ");
 
-    if (
-      isAdultFeed &&
-      isAdult &&
-      startTimestamp > now
-    ) {
-      news.push({
-        id:
-          `auto-upcoming-${anime.id}`,
-
-        type:
-          "PRÓXIMO LANÇAMENTO",
-
-        title:
-          isAdult
-            ? title
-            : `${title} — próximo lançamento`,
-
-        description:
-          `Novo conteúdo de ${title} está previsto para ${formatDate(
-            anime,
-          )}. ${description}`,
-
-        date:
-          isAdultFeed
-            ? formatEventDate(
-                startTimestamp,
-              )
-            : formatUpdatedDate(
-                anime.updatedAt,
-              ),
-
-        time:
-          isAdultFeed
-            ? formatEventTime(
-                startTimestamp,
-              )
-            : formatUpdatedTime(
-                anime.updatedAt,
-              ),
-
-        image:
-          anime.coverImage
-            ?.extraLarge ||
-          anime.coverImage
-            ?.large ||
-          "",
-
-        animeId:
-          String(
-            anime.id,
-          ),
-
-        trailerUrl,
-
-        isAdult:
-          anime.isAdult === true,
-      });
-    }
-
-    if (
-      latestEpisode &&
-      latestEpisode.episode > 0 &&
-      latestEpisode.airingAt * 1000 <=
-        Date.now() &&
-      (!isAdultFeed ||
-        Date.now() -
-          latestEpisode.airingAt * 1000 <=
-          RECENT_EPISODE_WINDOW)
-    ) {
-      news.push({
-        id:
-          `auto-episode-${anime.id}-${latestEpisode.episode}`,
-
-        type:
-          "NOVO EPISÓDIO",
-
-        title:
-          isAdult
-            ? `${title} — Episode ${latestEpisode.episode}`
-            : `${title} — episódio ${latestEpisode.episode}`,
-
-        description:
-          `O episódio ${latestEpisode.episode} de ${title} foi ao ar em ${formatAiringDate(
-            latestEpisode.airingAt,
-          )}. ${description}`,
-
-        date:
-          isAdultFeed && latestEpisode
-            ? formatEventDate(
-                latestEpisode.airingAt * 1000,
-              )
-            : formatUpdatedDate(
-                anime.updatedAt,
-              ),
-
-        time:
-          isAdultFeed && latestEpisode
-            ? formatEventTime(
-                latestEpisode.airingAt * 1000,
-              )
-            : formatUpdatedTime(
-                anime.updatedAt,
-              ),
-
-        image:
-          anime.coverImage
-            ?.extraLarge ||
-          anime.coverImage
-            ?.large ||
-          "",
-
-        animeId:
-          String(
-            anime.id,
-          ),
-
-        trailerUrl,
-
-        isAdult:
-          anime.isAdult === true,
-      });
-    }
-
-    const recentlyReleased =
-      startTimestamp > 0 &&
-      startTimestamp <= now &&
-      now - startTimestamp <=
-        RECENT_RELEASE_WINDOW;
-
-    const upcoming =
-      startTimestamp > now &&
-      startTimestamp - now <=
-        UPCOMING_RELEASE_WINDOW;
-
-    const recentlyAired =
-      latestEpisode?.airingAt
-        ? latestEpisode.airingAt * 1000 <= now &&
-          now - latestEpisode.airingAt * 1000 <=
-            RECENT_EPISODE_WINDOW
-        : false;
-
-    const releaseTimestamp =
-      startTimestamp > 0
-        ? startTimestamp
-        : 0;
-
-    const episodeTimestamp =
-      latestEpisode?.airingAt
-        ? latestEpisode.airingAt * 1000
-        : 0;
-
-    const eventTimestamp =
-      recentlyAired && episodeTimestamp > 0
-        ? episodeTimestamp
-        : releaseTimestamp > 0
-          ? releaseTimestamp
-          : updatedTimestamp;
-
-    if (
-      trailerUrl &&
-      (recentlyReleased ||
-        upcoming ||
-        recentlyAired)
-    ) {
-      news.push({
-        id:
-          `auto-trailer-${anime.id}`,
-
-        type:
-          "TRAILER",
-
-        title:
-          isAdult
-            ? title
-            : `${title} — novo trailer`,
-
-        description,
-
-        date:
-          isAdultFeed && eventTimestamp > 0
-            ? formatEventDate(eventTimestamp)
-            : formatUpdatedDate(anime.updatedAt),
-
-        time:
-          isAdultFeed && eventTimestamp > 0
-            ? formatEventTime(eventTimestamp)
-            : formatUpdatedTime(anime.updatedAt),
-
-        image:
-          anime.coverImage
-            ?.extraLarge ||
-          anime.coverImage
-            ?.large ||
-          "",
-
-        animeId:
-          String(
-            anime.id,
-          ),
-
-        trailerUrl,
-
-        isAdult:
-          anime.isAdult === true,
-      });
-    } else if (
-      recentlyReleased ||
-      upcoming ||
-      recentlyAired
-    ) {
-      news.push({
-        id:
-          `auto-season-${anime.id}`,
-
-        type:
-          isAdult
-            ? "NOVO HENTAI"
-            : "NOVA TEMPORADA",
-
-        title:
-          isAdult
-            ? title
-            : `${title} — nova temporada`,
-
-        description,
-
-        date:
-          isAdultFeed && eventTimestamp > 0
-            ? formatEventDate(eventTimestamp)
-            : formatUpdatedDate(anime.updatedAt),
-
-        time:
-          isAdultFeed && eventTimestamp > 0
-            ? formatEventTime(eventTimestamp)
-            : formatUpdatedTime(anime.updatedAt),
-
-        image:
-          anime.coverImage
-            ?.extraLarge ||
-          anime.coverImage
-            ?.large ||
-          "",
-
-        animeId:
-          String(
-            anime.id,
-          ),
-
-        isAdult:
-          anime.isAdult === true,
-      });
-    }
-  }
-
-  const validNews =
-    news.filter(
-      (item) =>
-        Boolean(
-          item.image,
-        ),
-    );
-
-  validNews.sort(
-    (a, b) => {
-      const parse = (
-        value: string,
-      ) => {
-        const match =
-          value.match(
-            /^(\d{2})\/(\d{2})\/(\d{4})$/,
+        const rawDescription =
+          firstXmlValue(
+            item,
+            "content:encoded",
+          ) ||
+          firstXmlValue(
+            item,
+            "description",
           );
 
-        if (!match) {
-          return 0;
+        const description =
+          stripHtml(
+            rawDescription,
+          );
+
+        if (!title || !link) {
+          return null;
         }
 
-        return new Date(
-          Number(match[3]),
-          Number(match[2]) - 1,
-          Number(match[1]),
-        ).getTime();
-      };
-
-      return (
-        parse(b.date) -
-        parse(a.date)
-      );
-    },
-  );
-
-  // Um mesmo anime pode gerar mais de um tipo
-  // de notícia (ex.: "PRÓXIMO LANÇAMENTO" e
-  // "NOVO HENTAI"). Para a página +18,
-  // mostramos apenas uma notícia por anime,
-  // evitando cards duplicados. Como a lista já
-  // está ordenada por data, a primeira notícia
-  // de cada anime é a mais recente.
-  const uniqueNews =
-    Array.from(
-      new Map(
-        validNews.map((item) => [
-          item.animeId ?? item.id,
-          item,
-        ]),
-      ).values(),
+        return {
+          id: `auto-adult-rss-${index}-${encodeURIComponent(link)}`,
+          type: typeFromRss(
+            title,
+            categories,
+          ),
+          title,
+          description:
+            description ||
+            "Nova notícia da área Hentai.",
+          date: formatRssDate(date),
+          image: imageFromRss(item),
+          animeId: "",
+          isAdult: true,
+          url: link,
+        };
+      },
+    )
+    .filter(
+      (
+        item,
+      ): item is AutomaticNewsItem =>
+        Boolean(item?.title && item?.url),
     );
-
-  return uniqueNews;
 }
 
 export const fetchAutomaticNews =
@@ -1406,53 +501,68 @@ export const fetchAutomaticNews =
     const current =
       currentAnimeSeason();
 
-    const season =
-      String(
-        current.season,
-      ).toUpperCase();
-
-    const year =
-      Number(
-        current.year,
-      );
-
     const key =
-      `automatic-news:${season}:${year}`;
+      `automatic-news:${current.season}:${current.year}`;
 
     const cached =
       fromCache(key);
 
     if (cached) {
-      return cached.filter(
-        (item) =>
-          item.isAdult !== true,
-      );
+      return cached;
     }
 
     try {
-      const [
-        media,
-        latestEpisodes,
-      ] =
-        await Promise.all([
-          fetchSeason(
-            season,
-            year,
-          ),
-          fetchLatestAiredEpisodes(),
-        ]);
-
-      const nonAdultMedia =
-        media.filter(
-          (anime) =>
-            anime.isAdult !== true,
+      const media =
+        await fetchSeason(
+          current.season,
+          current.year,
         );
 
       const news =
-        await buildNews(
-          nonAdultMedia,
-          latestEpisodes,
-        );
+        media
+          .filter(
+            (anime) =>
+              anime.id > 0 &&
+              anime.format !==
+                "MUSIC" &&
+              anime.isAdult !== true,
+          )
+          .map(
+            (
+              anime,
+            ): AutomaticNewsItem => ({
+              id: `auto-${anime.id}`,
+
+              type:
+                "NOVA TEMPORADA",
+
+              title:
+                `${titleOf(anime)} — nova temporada`,
+
+              description:
+                descriptionOf(anime),
+
+              date:
+                formatDate(anime),
+
+              image:
+                anime.coverImage
+                  ?.extraLarge ||
+                anime.coverImage
+                  ?.large ||
+                "",
+
+              animeId:
+                String(anime.id),
+
+              isAdult:
+                anime.isAdult === true,
+            }),
+          )
+          .filter(
+            (news) =>
+              Boolean(news.image),
+          );
 
       return toCache(
         key,
@@ -1470,62 +580,112 @@ export const fetchAdultNews =
     const current =
       currentAnimeSeason();
 
-    const season =
-      String(
-        current.season,
-      ).toUpperCase();
-
-    const year =
-      Number(
-        current.year,
-      );
-
     const key =
-      `automatic-adult-news:v3:september:${season}:${year}`;
+      `automatic-adult-news:${current.season}:${current.year}`;
 
     const cached =
       fromCache(key);
 
     if (cached) {
-      return cached.filter(
-        (item) =>
-          item.isAdult === true,
-      );
+      return cached;
     }
 
     try {
-      /*
-       * As notícias +18 não dependem
-       * da temporada atual.
-       *
-       * Buscamos diretamente os animes
-       * marcados pelo AniList como adultos.
-       */
-      const adultMedia =
-        await fetchAdultCatalogNews();
-
-      const latestEpisodes =
-        await fetchLatestAiredEpisodes(
-          adultMedia.map(
-            (anime) => anime.id,
+      const [media, rssNews] =
+        await Promise.allSettled([
+          fetchSeason(
+            current.season,
+            current.year,
           ),
+          fetchAdultNewsFeed(),
+        ]);
+
+      const seasonNews =
+        media.status === "fulfilled"
+          ? media.value
+              .filter(
+                (anime) =>
+                  anime.id > 0 &&
+                  anime.format !==
+                    "MUSIC" &&
+                  anime.isAdult === true,
+              )
+              .map(
+                (
+                  anime,
+                ): AutomaticNewsItem => ({
+                  id: `auto-adult-${anime.id}`,
+
+                  type:
+                    "NOVA TEMPORADA",
+
+                  title:
+                    `${titleOf(anime)} — nova temporada`,
+
+                  description:
+                    descriptionOf(anime),
+
+                  date:
+                    formatDate(anime),
+
+                  image:
+                    anime.coverImage
+                      ?.extraLarge ||
+                    anime.coverImage
+                      ?.large ||
+                    "",
+
+                  animeId:
+                    String(anime.id),
+
+                  isAdult: true,
+                }),
+              )
+              .filter(
+                (news) =>
+                  Boolean(news.image),
+              )
+          : [];
+
+      const externalNews =
+        rssNews.status === "fulfilled"
+          ? rssNews.value
+          : [];
+
+      const combined = [
+        ...externalNews,
+        ...seasonNews,
+      ];
+
+      const unique = Array.from(
+        new Map(
+          combined.map((item) => [
+            item.url ||
+              `${item.title}-${item.date}`,
+            item,
+          ]),
+        ).values(),
+      );
+
+      unique.sort((a, b) => {
+        const dateA = Date.parse(
+          a.date.split("/").reverse().join("-"),
+        );
+        const dateB = Date.parse(
+          b.date.split("/").reverse().join("-"),
         );
 
-      const news =
-        await buildNews(
-          adultMedia,
-          latestEpisodes,
+        return (
+          (Number.isNaN(dateB) ? 0 : dateB) -
+          (Number.isNaN(dateA) ? 0 : dateA)
         );
+      });
 
       return toCache(
         key,
-        news,
+        unique,
       );
-    } catch (error) {
-      throw error instanceof Error
-        ? error
-        : new Error(
-            "Falha ao carregar notícias +18",
-          );
+    } catch {
+      return [];
     }
   });
