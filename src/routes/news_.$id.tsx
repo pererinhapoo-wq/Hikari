@@ -47,6 +47,7 @@ type NewsItem = {
   animeId?: string;
   trailerUrl?: string;
   isAdult?: boolean;
+  articleImages?: string[];
   anime?: AnimeInfo;
 };
 
@@ -723,6 +724,12 @@ function automaticToNewsItem(
     isAdult:
       item.isAdult === true,
 
+    articleImages:
+      "articleImages" in item &&
+      Array.isArray(item.articleImages)
+        ? item.articleImages
+        : [],
+
     anime:
       anime ?? undefined,
   };
@@ -1012,6 +1019,67 @@ function NewsDetailsPage() {
                 ),
               )}
           </div>
+
+          {/* IMAGENS DA MATÉRIA */}
+          {news.articleImages &&
+            news.articleImages.length > 0 && (
+              <section
+                className="
+                  mt-8
+                  space-y-4
+                "
+              >
+                <div className="flex items-center gap-2">
+                  <Newspaper className="size-5 text-accent" />
+
+                  <h2
+                    className="
+                      font-display
+                      text-lg
+                      tracking-tight
+                      text-fg
+                    "
+                  >
+                    Imagens da notícia
+                  </h2>
+                </div>
+
+                <div
+                  className="
+                    grid
+                    grid-cols-1
+                    gap-4
+                    sm:grid-cols-2
+                  "
+                >
+                  {news.articleImages.map(
+                    (image, index) => (
+                      <div
+                        key={`${image}-${index}`}
+                        className="
+                          overflow-hidden
+                          rounded-2xl
+                          bg-black
+                          shadow-[var(--shadow-border)]
+                        "
+                      >
+                        <img
+                          src={image}
+                          alt={`${news.title} — imagem ${index + 1}`}
+                          loading="lazy"
+                          className="
+                            h-auto
+                            max-h-[520px]
+                            w-full
+                            object-contain
+                          "
+                        />
+                      </div>
+                    ),
+                  )}
+                </div>
+              </section>
+            )}
 
           {/* TRAILER */}
           {news.type ===
