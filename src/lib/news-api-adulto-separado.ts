@@ -17,6 +17,7 @@ export type AutomaticNewsItem = {
   title: string;
   description: string;
   date: string;
+  time: string;
   image: string;
   animeId: string;
   trailerUrl?: string;
@@ -48,6 +49,7 @@ type AniMedia = {
   episodes?: number | null;
   score?: number | null;
   popularity?: number | null;
+  updatedAt?: number | null;
   season?: string | null;
   seasonYear?: number | null;
 
@@ -594,6 +596,7 @@ async function fetchAdultCatalogNews(): Promise<
           id
           isAdult
           score: averageScore
+          updatedAt
 
           title {
             romaji
@@ -765,6 +768,47 @@ async function fetchAdultCatalogNews(): Promise<
   );
 }
 
+function formatUpdatedDate(
+  updatedAt: number | null | undefined,
+): string {
+  const timestamp =
+    typeof updatedAt === "number" &&
+    updatedAt > 0
+      ? updatedAt * 1000
+      : Date.now();
+
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    },
+  ).format(
+    new Date(timestamp),
+  );
+}
+
+function formatUpdatedTime(
+  updatedAt: number | null | undefined,
+): string {
+  const timestamp =
+    typeof updatedAt === "number" &&
+    updatedAt > 0
+      ? updatedAt * 1000
+      : Date.now();
+
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  ).format(
+    new Date(timestamp),
+  );
+}
+
 async function buildNews(
   media: AniMedia[],
   latestEpisodes: Map<
@@ -857,7 +901,12 @@ async function buildNews(
       type: "DESTAQUE",
       title,
       description,
-      date: formatDate(anime),
+      date: formatUpdatedDate(
+        anime.updatedAt,
+      ),
+      time: formatUpdatedTime(
+        anime.updatedAt,
+      ),
       image:
         anime.coverImage?.extraLarge ||
         anime.coverImage?.large ||
@@ -924,8 +973,13 @@ async function buildNews(
           )}. ${description}`,
 
         date:
-          formatDate(
-            anime,
+          formatUpdatedDate(
+            anime.updatedAt,
+          ),
+
+        time:
+          formatUpdatedTime(
+            anime.updatedAt,
           ),
 
         image:
@@ -971,8 +1025,13 @@ async function buildNews(
           )}. ${description}`,
 
         date:
-          formatAiringDate(
-            latestEpisode.airingAt,
+          formatUpdatedDate(
+            anime.updatedAt,
+          ),
+
+        time:
+          formatUpdatedTime(
+            anime.updatedAt,
           ),
 
         image:
@@ -1010,8 +1069,13 @@ async function buildNews(
         description,
 
         date:
-          formatDate(
-            anime,
+          formatUpdatedDate(
+            anime.updatedAt,
+          ),
+
+        time:
+          formatUpdatedTime(
+            anime.updatedAt,
           ),
 
         image:
@@ -1049,8 +1113,13 @@ async function buildNews(
         description,
 
         date:
-          formatDate(
-            anime,
+          formatUpdatedDate(
+            anime.updatedAt,
+          ),
+
+        time:
+          formatUpdatedTime(
+            anime.updatedAt,
           ),
 
         image:
