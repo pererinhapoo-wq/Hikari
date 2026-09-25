@@ -25,8 +25,6 @@ const ANILIST = "https://graphql.anilist.co";
 
 const ADULT_NEWS_RSS_FEEDS = [
   "https://eroeronews.com/feed/",
-  "https://eroeronews.com/categorias/manhwa/feed/",
-  "https://eroeronews.com/categorias/manga-hentai/feed/",
   "https://eroeronews.com/categorias/estrenos/feed/",
 ];
 
@@ -679,6 +677,7 @@ async function fetchAniListCover(
                 ) {
                   media(
                     search: $search
+                    type: ANIME
                     isAdult: true
                   ) {
                     id
@@ -727,6 +726,7 @@ async function fetchAniListCover(
       const match = media
         .filter(
           (item) =>
+            item.type === "ANIME" &&
             item.isAdult === true &&
             Boolean(
               item.coverImage?.extraLarge ||
@@ -786,6 +786,27 @@ function formatRssDate(
     },
   ).format(
     new Date(timestamp),
+  );
+}
+
+function isMangaNews(
+  title: string,
+  categories: string,
+  description: string,
+): boolean {
+  const value =
+    `${title} ${categories} ${description}`.toLowerCase();
+
+  return (
+    value.includes("manhwa") ||
+    value.includes("manhua") ||
+    value.includes("manga hentai") ||
+    value.includes("hentai manga") ||
+    value.includes("mangá hentai") ||
+    value.includes("mangá adulto") ||
+    value.includes("manga adulto") ||
+    value.includes("manhwa adulto") ||
+    value.includes("webtoon")
   );
 }
 
@@ -932,6 +953,16 @@ async function fetchAdultNewsFeed(
           );
 
         if (!title || !link) {
+          return null;
+        }
+
+        if (
+          isMangaNews(
+            title,
+            categories,
+            description,
+          )
+        ) {
           return null;
         }
 
