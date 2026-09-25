@@ -20,6 +20,7 @@ export type AutomaticNewsItem = {
   isAdult: boolean;
   url?: string;
   publishedAt?: string;
+  source?: string;
   articleImages?: string[];
   mentionedHentai?: {
     title: string;
@@ -401,9 +402,10 @@ function imagesFromHtml(
       const contextValue = context.toLowerCase();
 
       if (
-        /\b(?:logo|favicon)\b/.test(
+        /\b(?:logo|favicon|branding|site-brand|header-brand|footer-brand)\b/.test(
           contextValue,
         ) ||
+        /eroero\s*news/i.test(contextValue) ||
         isSourceBrandImage(absolute)
       ) {
         return;
@@ -1237,6 +1239,7 @@ async function fetchAdultNewsFeed(
           animeId: "",
           isAdult: true,
           url: link,
+          source: "EroEro News",
           articleImages,
         };
       },
