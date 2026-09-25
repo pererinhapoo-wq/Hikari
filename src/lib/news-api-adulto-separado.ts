@@ -495,7 +495,7 @@ async function fetchArticleImages(
 
 async function proxyRssImage(
   imageUrl: string,
-  _maxImageBytes = 1_500_000,
+  maxImageBytes = 1_500_000,
 ): Promise<string> {
   const url = imageUrl.trim();
 
@@ -503,9 +503,90 @@ async function proxyRssImage(
     return "";
   }
 
-  // Mantém a URL original como origem, mas entrega a imagem
-  // através de um proxy de imagens para evitar bloqueio/hotlink.
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=900&q=82`;
+  const MAX_IMAGE_BYTES = maxImageBytes;
+
+  try {
+    const response =
+      await fetch(
+        url,
+        {
+          headers: {
+            Accept:
+              "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            Referer:
+              `${new URL(url).origin}/`,
+            "User-Agent":
+              "Hikari/1.0 (adult news image)",
+          },
+          signal:
+            AbortSignal.timeout(8000),
+        },
+      );
+
+    if (!response.ok) {
+      return "";
+    }
+
+    const contentType =
+      (response.headers.get(
+        "content-type",
+      ) ?? "")
+        .split(";", 1)[0]
+        .trim()
+        .toLowerCase();
+
+    if (!contentType.startsWith("image/")) {
+      return "";
+    }
+
+    const contentLength = Number(
+      response.headers.get(
+        "content-length",
+      ) ?? "0",
+    );
+
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_IMAGE_BYTES
+    ) {
+      return "";
+    }
+
+    const buffer =
+      new Uint8Array(
+        await response.arrayBuffer(),
+      );
+
+    if (
+      buffer.byteLength >
+      MAX_IMAGE_BYTES
+    ) {
+      return "";
+    }
+
+    let binary = "";
+    const CHUNK_SIZE = 0x8000;
+
+    for (
+      let index = 0;
+      index < buffer.length;
+      index += CHUNK_SIZE
+    ) {
+      binary += String.fromCharCode(
+        ...buffer.subarray(
+          index,
+          Math.min(
+            index + CHUNK_SIZE,
+            buffer.length,
+          ),
+        ),
+      );
+    }
+
+    return `data:${contentType};base64,${btoa(binary)}`;
+  } catch {
+    return "";
+  }
 }
 
 function looksSpanish(value: string): boolean {
@@ -1642,11 +1723,16 @@ async function fetchAdultNewsFeed(
         ];
 
         if (image) {
-          rssImage = image;
+          rssImage =
+            (await proxyRssImage(
+              image,
+              5_000_000,
+            )) || image;
         } else if (item.image) {
           rssImage =
             (await proxyRssImage(
               item.image,
+              5_000_000,
             )) || item.image;
         }
 
@@ -1664,11 +1750,19 @@ async function fetchAdultNewsFeed(
               list.indexOf(value) === index,
           ).slice(0, 8);
 
-          if (!rssImage && pageImages[0]) {
-            rssImage =
-              (await proxyRssImage(
-                pageImages[0],
-              )) || pageImages[0];
+          if (!rssImage && pageImages.length) {
+            for (const pageImage of pageImages) {
+              const proxied =
+                await proxyRssImage(
+                  pageImage,
+                  5_000_000,
+                );
+
+              if (proxied) {
+                rssImage = proxied;
+                break;
+              }
+            }
           }
         }
 
@@ -1682,7 +1776,7 @@ async function fetchAdultNewsFeed(
                     5_000_000,
                   );
 
-                return proxied || imageUrl;
+                return proxied;
               }),
             )
           ).filter(Boolean);
@@ -1801,7 +1895,7 @@ export const fetchAdultNews =
       currentAnimeSeason();
 
     const key =
-      `automatic-adult-news:hentai-real-publication-date:v2:${current.season}:${current.year}`;
+      `automatic-adult-news:hentai-real-publication-date:v3-images:${current.season}:${current.year}`;
 
     const cached =
       fromCache(key);
