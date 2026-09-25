@@ -349,17 +349,31 @@ function imageFromHtml(html: string): string {
 function isSourceBrandImage(
   imageUrl: string,
 ): boolean {
-  const value = decodeURIComponent(
-    imageUrl,
-  ).toLowerCase();
+  try {
+    const url = new URL(imageUrl);
+    const value = decodeURIComponent(
+      `${url.pathname}${url.search}`,
+    ).toLowerCase();
 
-  return (
-    /(?:^|[\/_?=&-])(logo|favicon|site-logo|header-logo|footer-logo|eroero(?:[-_ ]news)?)(?:[\/_?=&.-]|$)/i.test(
+    return /(?:^|[\/_?=&.-])(logo|favicon|site-logo|header-logo|footer-logo)(?:[\/_?=&.-]|$)/i.test(
       value,
-    ) ||
-    value.includes("eroero-news") ||
-    value.includes("eroero_news")
-  );
+    );
+  } catch {
+    return false;
+  }
+}
+
+
+function removeSourceBrandText(
+  value: string,
+): string {
+  return value
+    .replace(
+      /(?:fonte\s*:\s*)?eroero[ -]?news/gi,
+      "",
+    )
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function imagesFromHtml(
@@ -388,9 +402,6 @@ function imagesFromHtml(
 
       if (
         /\b(?:logo|favicon)\b/.test(
-          contextValue,
-        ) ||
-        /eroero[ -]?news/.test(
           contextValue,
         ) ||
         isSourceBrandImage(absolute)
@@ -1193,8 +1204,10 @@ async function fetchAdultNewsFeed(
           );
 
         const description =
-          stripHtml(
-            rawDescription,
+          removeSourceBrandText(
+            stripHtml(
+              rawDescription,
+            ),
           );
 
         if (!title || !link) {
