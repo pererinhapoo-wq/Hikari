@@ -429,6 +429,17 @@ function NewsPage() {
     );
 
   /*
+   * Mantém a paginação sempre dentro do intervalo real
+   * de páginas, inclusive quando a URL contém uma página
+   * que deixou de existir depois de uma atualização.
+   */
+  const paginationPage =
+    Math.min(
+      currentPage,
+      totalPages,
+    );
+
+  /*
    * =========================================================
    * PESQUISAR
    * =========================================================
@@ -581,14 +592,14 @@ function NewsPage() {
 
   const paginationItems =
     getPaginationItems(
-      currentPage,
+      paginationPage,
       totalPages,
     );
 
   const visibleNews =
     useMemo(() => {
       const start =
-        (currentPage - 1) *
+        (paginationPage - 1) *
         NEWS_PER_PAGE;
 
       return displayedNews.slice(
@@ -598,7 +609,7 @@ function NewsPage() {
       );
     }, [
       displayedNews,
-      currentPage,
+      paginationPage,
     ]);
 
   return (
@@ -1267,12 +1278,12 @@ function NewsPage() {
                     type="button"
                     onClick={() =>
                       goToPage(
-                        currentPage -
+                        paginationPage -
                           1,
                       )
                     }
                     disabled={
-                      currentPage ===
+                      paginationPage ===
                       1
                     }
                     className="
@@ -1335,7 +1346,7 @@ function NewsPage() {
                             text-xs
                             font-medium
                             ${
-                              currentPage ===
+                              paginationPage ===
                               item
                                 ? "border-fg bg-fg text-background"
                                 : "border-border bg-card text-muted"
@@ -1353,12 +1364,12 @@ function NewsPage() {
                     type="button"
                     onClick={() =>
                       goToPage(
-                        currentPage +
+                        paginationPage +
                           1,
                       )
                     }
                     disabled={
-                      currentPage ===
+                      paginationPage ===
                       totalPages
                     }
                     className="
@@ -1382,7 +1393,7 @@ function NewsPage() {
                 <p className="text-xs text-muted">
                   Página{" "}
                   {
-                    currentPage
+                    paginationPage
                   }{" "}
                   de{" "}
                   {
