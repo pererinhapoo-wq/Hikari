@@ -35,6 +35,18 @@ const ADULT_NEWS_RSS_FEEDS = [
   "https://www.lune-soft.jp/feed",
 ];
 
+const LUNE_ANIME_BRAND_PAGES = [
+  "https://www.lune-soft.jp/ova/brand_ova/bunnywalker",
+  "https://www.lune-soft.jp/ova/brand_ova/antechinus",
+  "https://www.lune-soft.jp/ova/brand_ova/cottondoll",
+  "https://www.lune-soft.jp/ova/brand_ova/girlstalk",
+  "https://www.lune-soft.jp/ova/brand_ova/juicymango",
+  "https://www.lune-soft.jp/ova/brand_ova/erozuki",
+  "https://www.lune-soft.jp/ova/brand_ova/eru",
+  "https://www.lune-soft.jp/ova/brand_ova/angelfish",
+  "https://www.lune-soft.jp/ova/brand_ova/milkshake",
+];
+
 type AniMedia = {
   id: number;
   type?: "ANIME" | "MANGA" | null;
@@ -76,104 +88,6 @@ const cache = new Map<
 >();
 
 const TTL = 10 * 60 * 1000;
-
-const sourcePublishedAtCache = new Map<string, Map<string, string>>();
-
-async function fetchSourcePublishedDates(
-  source: "eroero" | "lune",
-): Promise<Map<string, string>> {
-  const cacheKey = source;
-  const cached = sourcePublishedAtCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  const indexUrl =
-    source === "eroero"
-      ? "https://eroeronews.com/categorias/estrenos/"
-      : "https://www.lune-soft.jp/news/categories/event";
-
-  const dates = new Map<string, string>();
-
-  try {
-    const response = await fetch(indexUrl, {
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent": "Hikari/1.0 (adult hentai news)",
-      },
-      signal: AbortSignal.timeout(12000),
-    });
-
-    if (!response.ok) {
-      return dates;
-    }
-
-    const html = await response.text();
-
-    if (source === "eroero") {
-      // WordPress/EroEro: a data real fica no elemento <time>, enquanto
-      // o RSS pode carregar uma data de atualização.
-      const timePattern =
-        /<time[^>]+datetime=["']([^"']+)["'][^>]*>[\s\S]*?<\/time>/gi;
-
-      const times = Array.from(html.matchAll(timePattern));
-      for (const match of times) {
-        const publishedAt = match[1]?.trim();
-        if (!publishedAt) continue;
-
-        const position = match.index ?? 0;
-        const context = html.slice(
-          Math.max(0, position - 2500),
-          Math.min(html.length, position + 3500),
-        );
-
-        const linkCandidates: { href: string; distance: number }[] = [];
-        const links = context.matchAll(
-          /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
-        );
-
-        for (const link of links) {
-          const href = decodeXml(link[1] ?? "").trim();
-          if (!href || !href.startsWith("http")) continue;
-          if (!/eroeronews\.com/i.test(href)) continue;
-          if (/\/(?:categorias|tag|autor|page|feed|wp-content)\//i.test(href)) continue;
-
-          const absolute = new URL(href, indexUrl).href;
-          const localIndex = link.index ?? 0;
-          linkCandidates.push({
-            href: absolute,
-            distance: Math.abs(localIndex - 2500),
-          });
-        }
-
-        linkCandidates.sort((a, b) => a.distance - b.distance);
-        const nearest = linkCandidates[0];
-        if (nearest) {
-          dates.set(nearest.href, publishedAt);
-        }
-      }
-    } else {
-      // Lune: a página oficial de notícias de アニメ mostra explicitamente
-      // a data no formato YYYY.M.D. Essa data é a fonte de verdade.
-      const pattern =
-        /アニメ\s+(20\d{2})\.(\d{1,2})\.(\d{1,2})[\s\S]{0,2200}?<a[^>]+href=["']([^"']+)["'][^>]*>/gi;
-
-      for (const match of html.matchAll(pattern)) {
-        const publishedAt = `${match[1]}-${String(Number(match[2])).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}`;
-        const href = decodeXml(match[4] ?? "").trim();
-        if (!href) continue;
-
-        const absolute = new URL(href, indexUrl).href;
-        dates.set(absolute, publishedAt);
-      }
-    }
-  } catch {
-    return dates;
-  }
-
-  sourcePublishedAtCache.set(cacheKey, dates);
-  return dates;
-}
 
 function fromCache(
   key: string,
@@ -454,7 +368,7 @@ function isSourceBrandImage(
       `${url.pathname}${url.search}`,
     ).toLowerCase();
 
-    return /(?:^|[\/_?=&.-])(logo|favicon|site-logo|header-logo|footer-logo)(?:[\/_?=&.-]|$)/i.test(
+    return /(?:^|[\/_?=&.-])(logo|favicon|site-logo|header-logo|footer-logo|lune-logo)(?:[\/_?=&.-]|$)/i.test(
       value,
     );
   } catch {
@@ -468,135 +382,11 @@ function removeSourceBrandText(
 ): string {
   return value
     .replace(
-      /(?:fonte\s*:\s*)?eroero[ -]?news/gi,
+      /(?:fonte\s*:\s*)?(?:eroero[ -]?news|lune\s*soft(?:\s*&\s*lune\s*pictures)?)/gi,
       "",
     )
     .replace(/\s{2,}/g, " ")
     .trim();
-}
-
-function isAdultAnimeNews(
-  title: string,
-  description: string,
-  categories: string,
-): boolean {
-  // IMPORTANTE: AnimeFesta também publica animes comuns.
-  // Portanto, "AnimeFesta", "配信" ou "アニメ" NÃO são
-  // suficientes para considerar uma notícia como +18.
-  const value =
-    `${title} ${description}`.toLowerCase();
-
-  const animeMarkers = [
-    "アニメ",
-    "tvアニメ",
-    "ova",
-    "アニメ化",
-    "配信",
-    "デレギュラ",
-  ];
-
-  // Marcadores que identificam a versão adulta/premium da obra.
-  // "セクシー" sozinho foi removido porque também aparece em
-  // notícias promocionais, entrevistas e eventos de AnimeFesta.
-  const adultMarkers = [
-    "プレミアム版",
-    "プレミアムver",
-    "プレミアムｖｅｒ",
-    "規制解除",
-    "規制解除版",
-    "完全デレギュラ版",
-    "完全デレギュラver",
-    "デレギュラ版",
-    "デレギュラver",
-    "艶姿",
-    "ノーカットver",
-    "ノーカット版",
-  ];
-
-  const isAnime = animeMarkers.some((marker) =>
-    value.includes(marker),
-  );
-
-  const isAdult = adultMarkers.some((marker) =>
-    value.includes(marker),
-  );
-
-  if (!isAnime || !isAdult) {
-    return false;
-  }
-
-  // Notícias que são apenas eventos, entrevistas ou campanhas
-  // promocionais não são notícias do hentai/anime adulto em si.
-  const nonNewsAdultEventMarkers = [
-    "同時視聴企画",
-    "同時視聴",
-    "プロデュース",
-    "放送記念",
-    "企画実施",
-    "イベント",
-    "インタビュー",
-  ];
-
-  if (
-    nonNewsAdultEventMarkers.some((marker) =>
-      value.includes(marker),
-    )
-  ) {
-    return false;
-  }
-
-  // O feed pode mencionar mangá como obra de origem.
-  // Isso não torna a notícia uma notícia de mangá: filtramos
-  // somente quando o próprio título/categoria indica mangá/manhwa/manhua.
-  const titleAndCategories =
-    `${title} ${categories}`.toLowerCase();
-
-  return !(
-    /\bmanga\b/.test(titleAndCategories) ||
-    /\bmanhwa\b/.test(titleAndCategories) ||
-    /\bmanhua\b/.test(titleAndCategories)
-  );
-}
-
-function buildAdultNewsDescription(
-  value: string,
-): string {
-  const cleaned =
-    removeSourceBrandText(value)
-      .replace(/https?:\/\/\S+/gi, "")
-      .replace(/(?:copyright|©)[^\n]*/gi, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  if (!cleaned) {
-    return "Nova notícia de anime adulto.";
-  }
-
-  const synopsisIndex = cleaned.search(
-    /(?:あらすじ|sinopse|sinopsis)\s*[:：]?/i,
-  );
-
-  if (synopsisIndex >= 0) {
-    const before = cleaned.slice(
-      0,
-      synopsisIndex,
-    ).trim();
-    const synopsis = cleaned
-      .slice(synopsisIndex)
-      .replace(
-        /^(?:あらすじ|sinopse|sinopsis)\s*[:：]?\s*/i,
-        "Sinopse: ",
-      )
-      .trim()
-      .slice(0, 900);
-
-    return `${before.slice(0, 450)} ${synopsis}`
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 1400);
-  }
-
-  return cleaned.slice(0, 1400);
 }
 
 function imagesFromHtml(
@@ -627,7 +417,7 @@ function imagesFromHtml(
         /\b(?:logo|favicon|branding|site-brand|header-brand|footer-brand)\b/.test(
           contextValue,
         ) ||
-        /eroero\s*news/i.test(contextValue) ||
+        /(?:eroero\s*news|lune\s*soft|lune\s*pictures)/i.test(contextValue) ||
         isSourceBrandImage(absolute)
       ) {
         return;
@@ -706,7 +496,6 @@ async function fetchArticleImages(
 async function proxyRssImage(
   imageUrl: string,
   maxImageBytes = 1_500_000,
-  referer = "https://prtimes.jp/",
 ): Promise<string> {
   const url = imageUrl.trim();
 
@@ -724,7 +513,8 @@ async function proxyRssImage(
           headers: {
             Accept:
               "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-            Referer: referer,
+            Referer:
+              `${new URL(url).origin}/`,
             "User-Agent":
               "Hikari/1.0 (adult news image)",
           },
@@ -799,12 +589,12 @@ async function proxyRssImage(
   }
 }
 
-function looksJapanese(value: string): boolean {
-  return /[\u3040-\u30ff\u3400-\u9fff]/.test(value);
-}
-
 function looksSpanish(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
+
+  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(value)) {
+    return true;
+  }
 
   const markers = [
     " el ",
@@ -847,10 +637,7 @@ async function translateToPortuguese(
 ): Promise<string> {
   const text = value.trim();
 
-  if (
-    !text ||
-    (!looksSpanish(text) && !looksJapanese(text))
-  ) {
+  if (!text || !looksSpanish(text)) {
     return text;
   }
 
@@ -1262,14 +1049,6 @@ function formatRssDate(
     return "";
   }
 
-  // Datas completas são convertidas para o fuso do Brasil (São Paulo).
-  // Datas sem horário (YYYY-MM-DD) permanecem no mesmo dia do calendário da fonte.
-  const dateOnlyMatch = value.match(/^\s*(20\d{2})-(\d{1,2})-(\d{1,2})\s*$/);
-
-  if (dateOnlyMatch) {
-    return `${dateOnlyMatch[3].padStart(2, "0")}/${dateOnlyMatch[2].padStart(2, "0")}/${dateOnlyMatch[1]}`;
-  }
-
   const timestamp = Date.parse(value);
 
   if (Number.isNaN(timestamp)) {
@@ -1282,9 +1061,152 @@ function formatRssDate(
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
-      timeZone: "America/Sao_Paulo",
     },
-  ).format(new Date(timestamp));
+  ).format(
+    new Date(timestamp),
+  );
+}
+
+function isoDateFromParts(
+  year: string,
+  month: string,
+  day: string,
+): string {
+  const date = new Date(
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+    ),
+  );
+
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toISOString();
+}
+
+const EROERO_MONTHS: Record<string, number> = {
+  enero: 1,
+  febrero: 2,
+  marzo: 3,
+  abril: 4,
+  mayo: 5,
+  junio: 6,
+  julio: 7,
+  agosto: 8,
+  septiembre: 9,
+  octubre: 10,
+  noviembre: 11,
+  diciembre: 12,
+};
+
+function extractCanonicalPublishedAt(
+  html: string,
+  source: "eroero" | "lune",
+): string {
+  if (!html) {
+    return "";
+  }
+
+  const visibleText = stripHtml(html)
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (source === "eroero") {
+    const visible = visibleText.match(
+      /EroEro\s+News\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+(\d{1,2}),\s*(20\d{2})/i,
+    );
+
+    if (visible) {
+      const month =
+        EROERO_MONTHS[visible[1].toLowerCase()];
+
+      if (month) {
+        return isoDateFromParts(
+          visible[3],
+          String(month),
+          visible[2],
+        );
+      }
+    }
+  }
+
+  if (source === "lune") {
+    const visible = visibleText.match(
+      /(?:アニメ|ニュース)\s+(20\d{2})\.(\d{1,2})\.(\d{1,2})/i,
+    );
+
+    if (visible) {
+      return isoDateFromParts(
+        visible[1],
+        visible[2],
+        visible[3],
+      );
+    }
+  }
+
+  // Fallback: datePublished da própria página, nunca a data atual.
+  const jsonLd = html.match(
+    /["']datePublished["']\s*:\s*["'](20\d{2})[-.](\d{1,2})[-.](\d{1,2})(?:T[^"']*)?["']/i,
+  );
+
+  if (jsonLd) {
+    return isoDateFromParts(
+      jsonLd[1],
+      jsonLd[2],
+      jsonLd[3],
+    );
+  }
+
+  const meta = html.match(
+    /<meta[^>]+(?:property|name)=["'](?:article:published_time|date|publishdate)["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+  ) ?? html.match(
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:article:published_time|date|publishdate)["'][^>]*>/i,
+  );
+
+  if (meta?.[1]) {
+    const parsed = new Date(meta[1]);
+
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  return "";
+}
+
+async function fetchCanonicalPublishedAt(
+  url: string,
+  source: "eroero" | "lune",
+  fallback: string,
+): Promise<string> {
+  try {
+    const response = await fetch(
+      url,
+      {
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "User-Agent": "Hikari/1.0 (adult news date)",
+        },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+
+    if (!response.ok) {
+      return fallback;
+    }
+
+    const html = await response.text();
+    return (
+      extractCanonicalPublishedAt(
+        html,
+        source,
+      ) || fallback
+    );
+  } catch {
+    return fallback;
+  }
 }
 
 function typeFromRss(
@@ -1297,7 +1219,7 @@ function typeFromRss(
   if (
     value.includes("trailer") ||
     value.includes("tráiler") ||
-    value.includes("予告") ||
+    value.includes("デモムービー") ||
     value.includes("pv")
   ) {
     return "TRAILER";
@@ -1307,8 +1229,7 @@ function typeFromRss(
     value.includes("episodio") ||
     value.includes("episode") ||
     value.includes("capítulo") ||
-    value.includes("chapter") ||
-    value.includes("第")
+    value.includes("chapter")
   ) {
     return "NOVO EPISÓDIO";
   }
@@ -1318,9 +1239,8 @@ function typeFromRss(
     value.includes("estreia") ||
     value.includes("ova") ||
     value.includes("lançamento") ||
-    value.includes("配信") ||
     value.includes("発売") ||
-    value.includes("放送")
+    value.includes("発売中")
   ) {
     return "ESTREIA";
   }
@@ -1341,7 +1261,10 @@ function typeFromRss(
     value.includes("hentai") ||
     value.includes("manga hentai") ||
     value.includes("manhwa") ||
-    value.includes("manhua")
+    value.includes("manhua") ||
+    value.includes("アニメ化") ||
+    value.includes("新作") ||
+    value.includes("続編")
   ) {
     return "NOVO HENTAI";
   }
@@ -1349,722 +1272,238 @@ function typeFromRss(
   return "ANÚNCIO";
 }
 
-function isRecentAdultNews(
-  value: string,
-): boolean {
-  const timestamp = Date.parse(value);
+async function fetchLuneAnimeReleaseNews(): Promise<AutomaticNewsItem[]> {
+  const now = new Date();
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  const minTime = today.getTime();
+  const maxTime =
+    today.getTime() +
+    1000 * 60 * 60 * 24 * 180;
 
-  if (Number.isNaN(timestamp)) {
-    return false;
-  }
+  const discovered = new Map<
+    string,
+    {
+      url: string;
+      title: string;
+      date: string;
+      publishedAt: string;
+    }
+  >();
 
-  const age =
-    Date.now() - timestamp;
-  const maxAge =
-    90 * 24 * 60 * 60 * 1000;
+  const pages = await Promise.all(
+    LUNE_ANIME_BRAND_PAGES.map(async (pageUrl) => {
+      try {
+        const response = await fetch(
+          pageUrl,
+          {
+            headers: {
+              Accept: "text/html,application/xhtml+xml",
+              "User-Agent": "Hikari/1.0 (adult news)",
+            },
+            signal: AbortSignal.timeout(8000),
+          },
+        );
 
-  return age >= 0 && age <= maxAge;
-}
+        if (!response.ok) {
+          return "";
+        }
 
-function parsePrTimesDate(value: string): string {
-  const match = value.match(
-    /(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日(?:\s+(\d{1,2}):(\d{2}))?/i,
+        return await response.text();
+      } catch {
+        return "";
+      }
+    }),
   );
 
-  if (!match) {
-    return "";
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const hour = Number(match[4] ?? 0);
-  const minute = Number(match[5] ?? 0);
-
-  const date = new Date(
-    Date.UTC(
-      year,
-      month - 1,
-      day,
-      hour,
-      minute,
-    ),
-  );
-
-  return Number.isNaN(date.getTime())
-    ? ""
-    : date.toISOString();
-}
-
-function stripPageText(value: string): string {
-  return stripHtml(
-    value
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " "),
-  )
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function extractPrTimesArticles(
-  html: string,
-): {
-  title: string;
-  url: string;
-  publishedAt: string;
-}[] {
-  const results: {
-    title: string;
-    url: string;
-    publishedAt: string;
-  }[] = [];
-
-  const anchorPattern =
-    /<a[^>]+href=["']([^"']*\/main\/html\/rd\/p\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-
-  for (const match of html.matchAll(anchorPattern)) {
-    const rawUrl = decodeXml(match[1] ?? "");
-    const rawTitle = stripPageText(match[2] ?? "");
-
-    if (!rawUrl || !rawTitle) {
+  for (const html of pages) {
+    if (!html) {
       continue;
     }
 
-    const url = new URL(
-      rawUrl,
-      "https://prtimes.jp/",
-    ).href;
+    const linkPattern =
+      /<a[^>]+href=["']([^"']*\/ova\/\d+[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
 
-    const position = match.index ?? 0;
-    const context = html.slice(
-      Math.max(0, position - 1200),
-      Math.min(html.length, position + 1800),
-    );
-
-    const publishedAt =
-      parsePrTimesDate(
-        stripPageText(context),
-      );
-
-    if (!publishedAt) {
-      continue;
-    }
-
-    results.push({
-      title: rawTitle,
-      url,
-      publishedAt,
-    });
-  }
-
-  return Array.from(
-    new Map(
-      results.map((item) => [
-        item.url,
-        item,
-      ]),
-    ).values(),
-  ).slice(0, 20);
-}
-
-function extractMetaContent(
-  html: string,
-  name: string,
-): string {
-  const escaped = name.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&",
-  );
-
-  const patterns = [
-    new RegExp(
-      `<meta[^>]+(?:name|property)=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`,
-      "i",
-    ),
-    new RegExp(
-      `<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["']${escaped}["'][^>]*>`,
-      "i",
-    ),
-  ];
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-
-    if (match?.[1]) {
-      return decodeXml(match[1].trim());
-    }
-  }
-
-  return "";
-}
-
-function extractPrTimesSynopsis(
-  html: string,
-): string {
-  const text = stripPageText(html);
-  const match = text.match(
-    /(?:〖|【)?あらすじ(?:〗|】)?\s*[:：]?\s*([\s\S]{40,1800}?)(?=\s*(?:〖|【)?(?:STAFF|キャスト|スタッフ|作品情報|配信概要)(?:〗|】)?)/i,
-  );
-
-  return match?.[1]?.trim() ?? "";
-}
-
-function extractPrTimesDescription(
-  html: string,
-): string {
-  const synopsis =
-    extractPrTimesSynopsis(html);
-
-  const meta =
-    extractMetaContent(
-      html,
-      "og:description",
-    ) ||
-    extractMetaContent(
-      html,
-      "description",
-    );
-
-  const value =
-    synopsis
-      ? `${meta} Sinopse: ${synopsis}`
-      : meta;
-
-  return buildAdultNewsDescription(value);
-}
-
-async function fetchPrTimesArticle(
-  article: {
-    title: string;
-    url: string;
-    publishedAt: string;
-  },
-): Promise<AutomaticNewsItem | null> {
-  try {
-    const response = await fetch(
-      article.url,
-      {
-        headers: {
-          Accept:
-            "text/html,application/xhtml+xml",
-          "User-Agent":
-            "Hikari/1.0 (adult news)",
-        },
-        signal:
-          AbortSignal.timeout(8000),
-      },
-    );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const html = await response.text();
-    const description =
-      extractPrTimesDescription(html);
-    const articleImages =
-      imagesFromHtml(
-        html,
-        article.url,
-      );
-
-    if (
-      !isAdultAnimeNews(
-        article.title,
-        description,
-        "AnimeFesta",
+    for (const match of html.matchAll(linkPattern)) {
+      const href = decodeXml(match[1] ?? "").trim();
+      const label = stripHtml(
+        decodeXml(match[2] ?? ""),
       )
-    ) {
-      return null;
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const dateMatch = label.match(
+        /(20\d{2})年(\d{1,2})月(\d{1,2})日発売/,
+      );
+
+      if (!href || !label || !dateMatch) {
+        continue;
+      }
+
+      const timestamp = Date.UTC(
+        Number(dateMatch[1]),
+        Number(dateMatch[2]) - 1,
+        Number(dateMatch[3]),
+      );
+
+      if (timestamp < minTime || timestamp > maxTime) {
+        continue;
+      }
+
+      const absolute = new URL(
+        href,
+        "https://www.lune-soft.jp/",
+      ).href;
+
+      const title = label
+        .replace(
+          /\s*20\d{2}年\d{1,2}月\d{1,2}日発売\s*$/,
+          "",
+        )
+        .trim();
+
+      if (!title) {
+        continue;
+      }
+
+      discovered.set(absolute, {
+        url: absolute,
+        title,
+        date: new Intl.DateTimeFormat(
+          "pt-BR",
+          {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          },
+        ).format(new Date(timestamp)),
+        publishedAt: new Date(timestamp).toISOString(),
+      });
     }
+  }
 
-    let image =
-      imageFromHtml(html);
+  const candidates = Array.from(
+    discovered.values(),
+  )
+    .sort(
+      (a, b) =>
+        Date.parse(b.publishedAt) -
+        Date.parse(a.publishedAt),
+    )
+    .slice(0, 20);
 
-    if (!image && articleImages[0]) {
-      image = articleImages[0];
-    }
+  return Promise.all(
+    candidates.map(async (item) => {
+      let description =
+        `Novo lançamento de anime adulto anunciado pela Lune Soft & Lune Pictures, com lançamento em ${item.date}.`;
+      let image = "";
+      let articleImages: string[] = [];
 
-    const proxiedImages =
-      (
+      try {
+        const response = await fetch(
+          item.url,
+          {
+            headers: {
+              Accept: "text/html,application/xhtml+xml",
+              "User-Agent": "Hikari/1.0 (adult news)",
+            },
+            signal: AbortSignal.timeout(8000),
+          },
+        );
+
+        if (response.ok) {
+          const html = await response.text();
+          const pageDescription =
+            imageFromHtml(html);
+
+          image =
+            pageDescription &&
+            !isSourceBrandImage(pageDescription)
+              ? pageDescription
+              : "";
+
+          articleImages = imagesFromHtml(
+            html,
+            item.url,
+          );
+        }
+      } catch {
+        // Mantém o lançamento mesmo se a página da obra falhar.
+      }
+
+      const proxiedImages = (
         await Promise.all(
-          articleImages
-            .slice(0, 8)
-            .map((imageUrl) =>
-              proxyRssImage(
-                imageUrl,
-                5_000_000,
-                "https://prtimes.jp/",
-              ),
+          articleImages.map((imageUrl) =>
+            proxyRssImage(
+              imageUrl,
+              5_000_000,
             ),
+          ),
         )
       ).filter(Boolean);
 
-    const proxiedMain =
-      image
-        ? await proxyRssImage(
-            image,
-            5_000_000,
-            "https://prtimes.jp/",
-          )
-        : "";
+      const finalImage =
+        (image
+          ? (await proxyRssImage(
+              image,
+              5_000_000,
+            )) || image
+          : "") ||
+        proxiedImages[0] ||
+        (await fetchAniListCover(
+          item.title,
+          item.title,
+        ));
 
-    const finalImage =
-      proxiedMain ||
-      proxiedImages[0] ||
-      image ||
-      ADULT_IMAGE_FALLBACK;
-
-    const title =
-      await translateToPortuguese(
-        article.title,
-      );
-    const translatedDescription =
-      await translateToPortuguese(
+      return {
+        id: `auto-adult-lune-release-${encodeURIComponent(item.url)}`,
+        type: "ESTREIA",
+        title: item.title,
         description,
-      );
-
-    return {
-      id:
-        `auto-adult-prtimes-${encodeURIComponent(article.url)}`,
-      type:
-        typeFromRss(
-          article.title,
-          "AnimeFesta",
-        ),
-      title,
-      description:
-        translatedDescription ||
-        "Nova notícia de anime adulto.",
-      date:
-        formatRssDate(article.publishedAt),
-      image: finalImage,
-      animeId: "",
-      isAdult: true,
-      url: article.url,
-      publishedAt,
-      source: "PR TIMES / AnimeFesta",
-      articleImages:
-        proxiedImages.length
+        date: item.date,
+        image: finalImage || ADULT_IMAGE_FALLBACK,
+        animeId: "",
+        isAdult: true,
+        url: item.url,
+        publishedAt: item.publishedAt,
+        source: "Lune Soft & Lune Pictures",
+        articleImages: proxiedImages.length
           ? proxiedImages
-          : articleImages,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseLuneRssItems(
-  xml: string,
-): {
-  title: string;
-  description: string;
-  url: string;
-  publishedAt: string;
-  categories: string;
-  image: string;
-}[] {
-  const blocks = xml.match(/<item\b[\s\S]*?<\/item>/gi) ?? [];
-  const items: {
-    title: string;
-    description: string;
-    url: string;
-    publishedAt: string;
-    categories: string;
-    image: string;
-  }[] = [];
-
-  for (const block of blocks) {
-    const title = firstXmlValue(block, "title");
-    const description = firstXmlValue(block, "description");
-    const url = firstXmlValue(block, "link");
-    const publishedAt =
-      firstXmlValue(block, "pubDate") ||
-      firstXmlValue(block, "dc:date");
-
-    const categories = Array.from(
-      block.matchAll(/<category[^>]*>([\s\S]*?)<\/category>/gi),
-    )
-      .map((match) => decodeXml(match[1] ?? "").trim())
-      .filter(Boolean)
-      .join(" ");
-
-    const rawImage = imageFromRss(block);
-    let image = "";
-
-    if (rawImage) {
-      try {
-        image = new URL(rawImage, url).href;
-      } catch {
-        image = rawImage;
-      }
-    }
-
-    if (!title || !url || !publishedAt) {
-      continue;
-    }
-
-    // A fonte principal é especializada em notícias hentai.
-    // Ainda assim, filtramos para manter somente anime/OVA e
-    // eliminar manga, manhwa, manhua, jogos e outros conteúdos.
-    const value = `${title} ${description} ${categories}`.toLowerCase();
-    const isAnimeNews =
-      /\bova\b/i.test(value) ||
-      value.includes("anime") ||
-      value.includes("animada") ||
-      value.includes("adaptación animada") ||
-      value.includes("episodio") ||
-      value.includes("trailer") ||
-      value.includes("tráiler") ||
-      value.includes("アニメ") ||
-      value.includes("アニメ化");
-
-    const isNonAnime =
-      value.includes("manhwa") ||
-      value.includes("manhua") ||
-      value.includes("manga hentai") ||
-      value.includes("manga +18") ||
-      value.includes("jav") ||
-      value.includes("live action");
-
-    if (!isAnimeNews || isNonAnime) {
-      continue;
-    }
-
-    items.push({
-      title,
-      description,
-      url,
-      publishedAt,
-      categories,
-      image,
-    });
-  }
-
-  return Array.from(
-    new Map(items.map((item) => [item.url, item])).values(),
-  ).slice(0, 30);
-}
-
-function extractPublishedDateFromVisibleText(
-  html: string,
-  fallback: string,
-): string {
-  const visible = stripPageText(html);
-
-  // EroEro News: o rodapé do artigo informa a data real de publicação.
-  const eroEro = visible.match(
-    /EroEro News\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+(\d{1,2}),\s*(20\d{2})/i,
+          : image
+            ? [
+                (await proxyRssImage(
+                  image,
+                  5_000_000,
+                )) || image,
+              ]
+            : [],
+      } satisfies AutomaticNewsItem;
+    }),
   );
-
-  if (eroEro) {
-    const months: Record<string, number> = {
-      enero: 1,
-      febrero: 2,
-      marzo: 3,
-      abril: 4,
-      mayo: 5,
-      junio: 6,
-      julio: 7,
-      agosto: 8,
-      septiembre: 9,
-      octubre: 10,
-      noviembre: 11,
-      diciembre: 12,
-    };
-    const month = months[eroEro[1].toLowerCase()];
-    if (month) {
-      return `${eroEro[3]}-${String(month).padStart(2, "0")}-${String(Number(eroEro[2])).padStart(2, "0")}`;
-    }
-  }
-
-  // Lune Soft: a data original aparece imediatamente após a categoria アニメ.
-  const lune = html.match(
-    /(?:<[^>]+>\s*)?アニメ(?:\s*<[^>]+>)*\s*(20\d{2})\.(\d{1,2})\.(\d{1,2})/i,
-  );
-
-  if (lune) {
-    return `${lune[1]}-${lune[2].padStart(2, "0")}-${lune[3].padStart(2, "0")}`;
-  }
-
-  // Último recurso: metadados de publicação, nunca metadados de atualização.
-  const publishedPatterns = [
-    /<meta[^>]+(?:property|name)=["']article:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']article:published_time["'][^>]*>/i,
-    /"datePublished"\s*:\s*"(20\d{2}-\d{2}-\d{2}(?:T[^"\\]+)?)"/i,
-  ];
-
-  for (const pattern of publishedPatterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) {
-      return match[1];
-    }
-  }
-
-  return fallback;
-}
-
-async function fetchLuneAdultArticle(
-  article: {
-    title: string;
-    description: string;
-    url: string;
-    publishedAt: string;
-    categories: string;
-    image: string;
-  },
-): Promise<AutomaticNewsItem | null> {
-  try {
-    let html = "";
-
-    const response = await fetch(article.url, {
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent": "Hikari/1.0 (adult hentai news)",
-      },
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (response.ok) {
-      html = await response.text();
-    }
-
-    // A data recebida do índice oficial da fonte já foi corrigida para a
-    // data original de publicação. Não substituímos por metadados da página,
-    // pois eles podem representar atualização/modificação.
-    const publishedAt = article.publishedAt;
-
-    const pageDescription = html
-      ? extractMetaContent(html, "og:description") ||
-        extractMetaContent(html, "description")
-      : "";
-
-    const articleImages = html
-      ? imagesFromHtml(html, article.url)
-      : [];
-
-    const rawDescription =
-      pageDescription || article.description;
-
-    const translatedDescription =
-      await translateToPortuguese(rawDescription);
-
-    const sourceImage = article.image || imageFromHtml(html);
-
-    const imageCandidates = Array.from(
-      new Set([
-        sourceImage,
-        ...articleImages,
-      ].filter(Boolean)),
-    ).slice(0, 8);
-
-    const isEroEro = /eroeronews\.com/i.test(article.url);
-    const imageReferer = isEroEro
-      ? "https://eroeronews.com/"
-      : "https://www.lune-soft.jp/";
-
-    const proxiedImages = (
-      await Promise.all(
-        imageCandidates.map((imageUrl) =>
-          proxyRssImage(
-            imageUrl,
-            5_000_000,
-            imageReferer,
-          ),
-        ),
-      )
-    ).filter(Boolean);
-
-    const finalImage =
-      proxiedImages[0] ||
-      sourceImage ||
-      articleImages[0] ||
-      ADULT_IMAGE_FALLBACK;
-
-    // Só traduzimos títulos que realmente vieram em espanhol.
-    // Títulos japoneses/originais permanecem intactos.
-    const displayTitle = looksSpanish(article.title)
-      ? await translateToPortuguese(article.title)
-      : article.title;
-
-    return {
-      id:
-        `auto-adult-${isEroEro ? "eroero" : "lune"}-${encodeURIComponent(article.url)}`,
-      type: typeFromRss(
-        article.title,
-        article.categories,
-      ),
-      title: displayTitle,
-      description:
-        translatedDescription ||
-        "Nova notícia de hentai/OVA adulto.",
-      date: formatRssDate(publishedAt),
-      image: finalImage,
-      animeId: "",
-      isAdult: true,
-      url: article.url,
-      publishedAt,
-      source: article.url.includes("eroeronews.com")
-        ? "EroEro News"
-        : "Lune Soft / Lune Pictures",
-      articleImages:
-        proxiedImages.length
-          ? proxiedImages
-          : articleImages,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function fetchEroEroNewsPageFallback(): Promise<AutomaticNewsItem[]> {
-  try {
-    const response = await fetch(
-      "https://eroeronews.com/categorias/estrenos/",
-      {
-        headers: {
-          Accept: "text/html,application/xhtml+xml",
-          "User-Agent": "Hikari/1.0 (adult hentai news)",
-        },
-        signal: AbortSignal.timeout(12000),
-      },
-    );
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const html = await response.text();
-    const results: {
-      title: string;
-      description: string;
-      url: string;
-      publishedAt: string;
-      categories: string;
-      image: string;
-    }[] = [];
-
-    const datePattern = /(?:Estrenos[^<]{0,120})?<[^>]+>\s*([^<]{8,300})\s*<\/[^>]+>[\s\S]{0,1200}?((?:20\d{2})-(\d{2})-(\d{2})T[^<\s]+)/gi;
-    for (const match of html.matchAll(datePattern)) {
-      const title = stripPageText(match[1] ?? "");
-      if (!title || !/\bOVA\b|anime|animada|trailer|tráiler/i.test(title)) continue;
-      const iso = match[2];
-      const urlMatch = html.slice(Math.max(0, (match.index ?? 0) - 1500), (match.index ?? 0) + 1500).match(/href=["']([^"']+)["']/i);
-      if (!urlMatch) continue;
-      results.push({
-        title,
-        description: title,
-        url: new URL(urlMatch[1], "https://eroeronews.com/").href,
-        publishedAt: iso,
-        categories: "Estrenos",
-        image: "",
-      });
-    }
-
-    const articles = Array.from(new Map(results.map((item) => [item.url, item])).values()).slice(0, 30);
-    const converted = await Promise.all(articles.map((article) => fetchLuneAdultArticle(article)));
-    return converted.filter((item): item is AutomaticNewsItem => Boolean(item)).map((item) => ({
-      ...item,
-      source: "EroEro News",
-    }));
-  } catch {
-    return [];
-  }
-}
-
-function parseLuneNewsPage(
-  html: string,
-): {
-  title: string;
-  description: string;
-  url: string;
-  publishedAt: string;
-  categories: string;
-  image: string;
-}[] {
-  const results: {
-    title: string;
-    description: string;
-    url: string;
-    publishedAt: string;
-    categories: string;
-    image: string;
-  }[] = [];
-
-  // Fallback usado apenas quando o RSS não entregar itens.
-  // A própria página oficial da Lune lista as notícias da categoria アニメ.
-  const pattern = /(?:アニメ)\s+(20\d{2})\.(\d{1,2})\.(\d{1,2})[\s\S]{0,1200}?<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-
-  for (const match of html.matchAll(pattern)) {
-    const year = match[1];
-    const month = match[2].padStart(2, "0");
-    const day = match[3].padStart(2, "0");
-    const url = new URL(match[4], "https://www.lune-soft.jp/").href;
-    const title = stripPageText(match[5]);
-
-    if (!title || !url || !/\bOVA\b|アニメ化/i.test(title)) {
-      continue;
-    }
-
-    results.push({
-      title,
-      description: title,
-      url,
-      publishedAt: `${year}-${month}-${day}`,
-      categories: "アニメ",
-      image: "",
-    });
-  }
-
-  return Array.from(
-    new Map(results.map((item) => [item.url, item])).values(),
-  ).slice(0, 30);
-}
-
-async function fetchLuneNewsPageFallback(): Promise<
-  AutomaticNewsItem[]
-> {
-  try {
-    const response = await fetch(
-      "https://www.lune-soft.jp/news/categories/event",
-      {
-        headers: {
-          Accept: "text/html,application/xhtml+xml",
-          "User-Agent": "Hikari/1.0 (adult hentai news)",
-        },
-        signal: AbortSignal.timeout(12000),
-      },
-    );
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const html = await response.text();
-    const articles = parseLuneNewsPage(html);
-    const results = await Promise.all(
-      articles.map((article) => fetchLuneAdultArticle(article)),
-    );
-
-    return results.filter(
-      (item): item is AutomaticNewsItem => Boolean(item),
-    );
-  } catch {
-    return [];
-  }
 }
 
 async function fetchAdultNewsFeed(
   feedUrl: string,
 ): Promise<AutomaticNewsItem[]> {
-  const response = await fetch(feedUrl, {
-    headers: {
-      Accept: "application/rss+xml, application/xml, text/xml",
-      "User-Agent": "Hikari/1.0 (adult hentai news)",
-    },
-    signal: AbortSignal.timeout(12000),
-  });
+  const response =
+    await fetch(
+      feedUrl,
+      {
+        headers: {
+          Accept:
+            "application/rss+xml, application/xml, text/xml",
+          "User-Agent":
+            "Hikari/1.0 (adult news)",
+        },
+        signal:
+          AbortSignal.timeout(
+            12000,
+          ),
+      },
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -2072,67 +1511,278 @@ async function fetchAdultNewsFeed(
     );
   }
 
-  const xml = await response.text();
-  const articles = parseLuneRssItems(xml);
-  const source = feedUrl.includes("eroeronews.com")
-    ? "eroero"
-    : "lune";
-  const sourceDates = await fetchSourcePublishedDates(source);
+  const xml =
+    await response.text();
 
-  const correctedArticles = articles.map((article) => {
-    const canonicalDate = sourceDates.get(
-      new URL(article.url, feedUrl).href,
-    );
+  const items =
+    xml.match(
+      /<item\b[\s\S]*?<\/item>/gi,
+    ) ?? [];
 
-    return canonicalDate
-      ? { ...article, publishedAt: canonicalDate }
-      : article;
-  });
+  const source: "eroero" | "lune" =
+    feedUrl.includes("eroeronews.com")
+      ? "eroero"
+      : "lune";
 
-  if (!correctedArticles.length) {
-    const fallback = feedUrl.includes("eroeronews.com")
-      ? await fetchEroEroNewsPageFallback()
-      : await fetchLuneNewsPageFallback();
+  const parsed = (
+    await Promise.all(
+      items.map(
+        async (
+          item,
+        ): Promise<AutomaticNewsItem | null> => {
+          const title =
+            firstXmlValue(
+              item,
+              "title",
+            );
 
-    return fallback;
-  }
+          const link =
+            firstXmlValue(
+              item,
+              "link",
+            );
 
-  // Não filtramos pela data do RSS aqui: algumas fontes atualizam o pubDate
-  // quando alteram uma página. A data válida será corrigida a partir do artigo.
-  const validArticles = correctedArticles.filter((article) => Boolean(article.url));
+          const rssDate =
+            firstXmlValue(
+              item,
+              "pubDate",
+            );
 
-  if (!validArticles.length) {
-    const fallback = feedUrl.includes("eroeronews.com")
-      ? await fetchEroEroNewsPageFallback()
-      : await fetchLuneNewsPageFallback();
+          const categories =
+            Array.from(
+              item.matchAll(
+                /<category[^>]*>([\s\S]*?)<\/category>/gi,
+              ),
+            )
+              .map((match) =>
+                decodeXml(
+                  match[1] ?? "",
+                ),
+              )
+              .join(" ");
 
-    return fallback;
-  }
+          const categoryValue =
+            categories.toLowerCase();
 
-  const results = await Promise.all(
-    validArticles.map((article) =>
-      fetchLuneAdultArticle(article),
-    ),
+          // Lune usa a categoria japonesa アニメ.
+          // EroEro usa categorias como Estrenos/Trailers.
+          if (
+            source === "lune" &&
+            !categoryValue.includes("アニメ") &&
+            !categoryValue.includes("anime")
+          ) {
+            return null;
+          }
+
+          if (
+            /\bmanhwa\b/.test(categoryValue) ||
+            /\bmanhua\b/.test(categoryValue) ||
+            /\bmanga\b/.test(categoryValue) ||
+            /manga hentai/i.test(categoryValue)
+          ) {
+            return null;
+          }
+
+          const rawDescription =
+            firstXmlValue(
+              item,
+              "content:encoded",
+            ) ||
+            firstXmlValue(
+              item,
+              "description",
+            );
+
+          const articleImages =
+            imagesFromHtml(
+              rawDescription,
+              link,
+            );
+
+          const description =
+            removeSourceBrandText(
+              stripHtml(
+                rawDescription,
+              ),
+            );
+
+          if (!title || !link) {
+            return null;
+          }
+
+          const rssImage =
+            imageFromRss(item);
+
+          const rssPublishedAt =
+            Number.isNaN(
+              Date.parse(rssDate),
+            )
+              ? ""
+              : new Date(
+                  Date.parse(rssDate),
+                ).toISOString();
+
+          // A data do RSS é somente fallback.
+          // A data exibida no Hikari vem da página original da notícia.
+          const publishedAt =
+            await fetchCanonicalPublishedAt(
+              link,
+              source,
+              rssPublishedAt,
+            );
+
+          if (!publishedAt) {
+            return null;
+          }
+
+          return {
+            id:
+              `auto-adult-${source}-${encodeURIComponent(link)}`,
+            type:
+              typeFromRss(
+                title,
+                categories,
+              ),
+            title,
+            description:
+              description ||
+              "Nova notícia da área adulta.",
+            date:
+              formatRssDate(
+                publishedAt,
+              ),
+            publishedAt,
+            image:
+              isSourceBrandImage(rssImage)
+                ? ""
+                : rssImage,
+            animeId: "",
+            isAdult: true,
+            url: link,
+            source:
+              source === "eroero"
+                ? "EroEro News"
+                : "Lune Soft & Lune Pictures",
+            articleImages,
+          };
+        },
+      ),
+    )
+  ).filter(
+    (
+      item,
+    ): item is AutomaticNewsItem =>
+      Boolean(
+        item?.title &&
+        item?.url &&
+        item?.publishedAt,
+      ),
   );
 
-  return results
-    .filter(
-      (item): item is AutomaticNewsItem => Boolean(item),
-    )
-    .filter((item) => {
-      const timestamp = item.publishedAt
-        ? Date.parse(item.publishedAt)
-        : NaN;
-      return (
-        !Number.isNaN(timestamp) &&
-        timestamp <= Date.now() + 24 * 60 * 60 * 1000
+  const hentaiOnly =
+    parsed.filter((item) => {
+      const value =
+        `${item.title} ${item.description}`.toLowerCase();
+
+      return !(
+        /\bmanhwa\b/.test(value) ||
+        /\bmanhua\b/.test(value) ||
+        /\bmanga\b/.test(value) ||
+        /\bmanga hentai\b/.test(value) ||
+        /\bjav\b/.test(value) ||
+        /\blive action\b/.test(value)
       );
-    })
-    .sort((a, b) => {
-      const timeA = Date.parse(a.publishedAt || "") || 0;
-      const timeB = Date.parse(b.publishedAt || "") || 0;
-      return timeB - timeA;
     });
+
+  return Promise.all(
+    hentaiOnly.map(
+      async (item) => {
+        const title =
+          item.title;
+
+        const description =
+          await translateToPortuguese(
+            item.description,
+          );
+
+        const image =
+          await fetchAniListCover(
+            item.title,
+            item.description,
+          );
+
+        let rssImage = "";
+        let articleImages = [
+          ...(item.articleImages ?? []),
+        ];
+
+        if (image) {
+          rssImage = image;
+        } else if (item.image) {
+          rssImage =
+            (await proxyRssImage(
+              item.image,
+            )) || item.image;
+        }
+
+        if (item.url) {
+          const pageImages =
+            await fetchArticleImages(
+              item.url,
+            );
+
+          articleImages = [
+            ...articleImages,
+            ...pageImages,
+          ].filter(
+            (value, index, list) =>
+              list.indexOf(value) === index,
+          ).slice(0, 8);
+
+          if (!rssImage && pageImages[0]) {
+            rssImage =
+              (await proxyRssImage(
+                pageImages[0],
+              )) || pageImages[0];
+          }
+        }
+
+        const proxiedArticleImages =
+          (
+            await Promise.all(
+              articleImages.map(async (imageUrl) => {
+                const proxied =
+                  await proxyRssImage(
+                    imageUrl,
+                    5_000_000,
+                  );
+
+                return proxied || imageUrl;
+              }),
+            )
+          ).filter(Boolean);
+
+        const mentionedHentai =
+          await fetchMentionedHentai(
+            item.title,
+            item.description,
+          );
+
+        return {
+          ...item,
+          title,
+          description,
+          image:
+            rssImage ||
+            proxiedArticleImages[0] ||
+            ADULT_IMAGE_FALLBACK,
+          articleImages:
+            proxiedArticleImages,
+          mentionedHentai,
+        };
+      },
+    ),
+  );
 }
 
 export const fetchAutomaticNews =
@@ -2222,8 +1872,11 @@ export const fetchAdultNews =
   createServerFn({
     method: "GET",
   }).handler(async () => {
+    const current =
+      currentAnimeSeason();
+
     const key =
-      "automatic-adult-news:hentai-paginado-recentes:v10";
+      `automatic-adult-news:hentai-real-publication-date:v1:${current.season}:${current.year}`;
 
     const cached =
       fromCache(key);
@@ -2233,62 +1886,65 @@ export const fetchAdultNews =
     }
 
     try {
-      const results =
-        await Promise.all(
-          ADULT_NEWS_RSS_FEEDS.map(
-            (feedUrl) =>
-              fetchAdultNewsFeed(
-                feedUrl,
-              ).catch(() => []),
-          ),
-        );
+      const [
+        media,
+        ...rssResults
+      ] = await Promise.all([
+        fetchSeason(
+          current.season,
+          current.year,
+        ).catch(() => []),
+        ...ADULT_NEWS_RSS_FEEDS.map(
+          (feedUrl) =>
+            fetchAdultNewsFeed(
+              feedUrl,
+            ).catch(() => []),
+        ),
+      ]);
+
+      const externalNews =
+        rssResults.flat();
+
+      const combined = [
+        ...externalNews,
+      ];
 
       const unique =
         Array.from(
           new Map(
-            results
-              .flat()
-              .filter((item) => {
-                const timestamp =
-                  item.publishedAt
-                    ? Date.parse(
-                        item.publishedAt,
-                      )
-                    : NaN;
-
-                return (
-                  !Number.isNaN(timestamp) &&
-                  timestamp <=
-                    Date.now() +
-                      24 *
-                        60 *
-                        60 *
-                        1000
-                );
-              })
-              .map((item) => [
-                item.url ||
-                  `${item.title}-${item.date}`,
-                item,
-              ]),
+            combined.map((item) => [
+              item.url ||
+                `${item.title}-${item.date}`,
+              item,
+            ]),
           ).values(),
         );
 
       unique.sort((a, b) => {
         const timeA =
           a.publishedAt
-            ? Date.parse(
-                a.publishedAt,
-              )
-            : 0;
+            ? Date.parse(a.publishedAt)
+            : Date.parse(
+                a.date
+                  .split("/")
+                  .reverse()
+                  .join("-"),
+              );
+
         const timeB =
           b.publishedAt
-            ? Date.parse(
-                b.publishedAt,
-              )
-            : 0;
+            ? Date.parse(b.publishedAt)
+            : Date.parse(
+                b.date
+                  .split("/")
+                  .reverse()
+                  .join("-"),
+              );
 
-        return timeB - timeA;
+        return (
+          (Number.isNaN(timeB) ? 0 : timeB) -
+          (Number.isNaN(timeA) ? 0 : timeA)
+        );
       });
 
       return toCache(
