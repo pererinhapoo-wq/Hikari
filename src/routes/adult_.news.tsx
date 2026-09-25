@@ -24,7 +24,7 @@ import {
 import {
   fetchAdultNews,
   type AutomaticNewsItem,
-} from "@/lib/news-api";
+} from "@/lib/news-api-adulto-separado";
 
 export const Route = createFileRoute(
   "/adult/news",
