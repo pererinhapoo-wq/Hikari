@@ -550,37 +550,32 @@ function BrowsePage() {
 
     const pageNumbers =
       (() => {
-        const pages =
-          new Set<number>();
+        const pages: number[] = [];
 
-        pages.add(1);
-        pages.add(totalPages);
-        pages.add(currentPage);
+        const start = Math.min(
+          Math.max(
+            1,
+            currentPage - 2,
+          ),
+          Math.max(
+            1,
+            totalPages - 4,
+          ),
+        );
 
-        if (currentPage > 1) {
-          pages.add(
-            currentPage - 1,
-          );
+        for (
+          let value = start;
+          value <=
+            Math.min(
+              totalPages,
+              start + 4,
+            );
+          value += 1
+        ) {
+          pages.push(value);
         }
 
-        if (currentPage < totalPages) {
-          pages.add(
-            currentPage + 1,
-          );
-        }
-
-        return Array.from(
-          pages,
-        )
-          .filter(
-            (value) =>
-              value >= 1 &&
-              value <= totalPages,
-          )
-          .sort(
-            (a, b) =>
-              a - b,
-          );
+        return pages;
       })();
 
     function goToGenrePage(
@@ -677,7 +672,7 @@ function BrowsePage() {
               title="Voltar 5 páginas"
               className="flex size-10 items-center justify-center rounded-lg border border-border text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
             >
-              ⏪
+              «
             </button>
 
             <button
@@ -762,7 +757,7 @@ function BrowsePage() {
               title="Avançar 5 páginas"
               className="flex size-10 items-center justify-center rounded-lg border border-border text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
             >
-              ⏩
+              »
             </button>
           </div>
         )}
