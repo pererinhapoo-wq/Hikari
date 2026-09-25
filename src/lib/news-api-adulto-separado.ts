@@ -1920,7 +1920,7 @@ async function fetchAdultNewsFeed(
       : await fetchLuneNewsPageFallback();
 
     const fallbackMinimum =
-      Date.now() - 7 * 24 * 60 * 60 * 1000;
+      Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     return fallback.filter((item) => {
       const timestamp = item.publishedAt
@@ -1937,7 +1937,7 @@ async function fetchAdultNewsFeed(
 
   const now = Date.now();
   const minimum =
-    now - 7 * 24 * 60 * 60 * 1000;
+    now - 30 * 24 * 60 * 60 * 1000;
 
   const recent = articles.filter((article) => {
     const timestamp = Date.parse(article.publishedAt);
@@ -1955,7 +1955,7 @@ async function fetchAdultNewsFeed(
       : await fetchLuneNewsPageFallback();
 
     const fallbackMinimum =
-      Date.now() - 7 * 24 * 60 * 60 * 1000;
+      Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     return fallback.filter((item) => {
       const timestamp = item.publishedAt
@@ -2070,7 +2070,7 @@ export const fetchAdultNews =
     method: "GET",
   }).handler(async () => {
     const key =
-      "automatic-adult-news:hentai-recentes-7-dias:v6";
+      "automatic-adult-news:hentai-paginado-recentes:v7";
 
     const cached =
       fromCache(key);
@@ -2092,7 +2092,7 @@ export const fetchAdultNews =
 
       const now = Date.now();
       const minimum =
-        now - 7 * 24 * 60 * 60 * 1000;
+        now - 30 * 24 * 60 * 60 * 1000;
 
       const unique =
         Array.from(
