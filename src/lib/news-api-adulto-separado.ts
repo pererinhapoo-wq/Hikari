@@ -395,7 +395,6 @@ function isAdultAnimeNews(
   ];
 
   const adultMarkers = [
-    "animefesta",
     "プレミアム版",
     "規制解除",
     "完全デレギュラ版",
@@ -1661,7 +1660,7 @@ export const fetchAdultNews =
     method: "GET",
   }).handler(async () => {
     const key =
-      "automatic-adult-news:recent";
+      "automatic-adult-news:recent:v2";
 
     const cached =
       fromCache(key);
