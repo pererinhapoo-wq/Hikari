@@ -584,8 +584,758 @@ async function fetchAdultCatalogNews(): Promise<
 > {
   const query = `
     query AdultNews {
-      Page(
+      page1: Page(
         page: 1
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page2: Page(
+        page: 2
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page3: Page(
+        page: 3
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page4: Page(
+        page: 4
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page5: Page(
+        page: 5
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page6: Page(
+        page: 6
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page7: Page(
+        page: 7
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page8: Page(
+        page: 8
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page9: Page(
+        page: 9
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page10: Page(
+        page: 10
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page11: Page(
+        page: 11
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page12: Page(
+        page: 12
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page13: Page(
+        page: 13
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page14: Page(
+        page: 14
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page15: Page(
+        page: 15
+        perPage: 50
+      ) {
+        media(
+          type: ANIME
+          isAdult: true
+          genre: "Hentai"
+          sort: START_DATE_DESC
+        ) {
+          id
+          isAdult
+          score: averageScore
+          updatedAt
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            extraLarge
+            large
+          }
+
+          description(
+            asHtml: false
+          )
+
+          format
+          status
+          episodes
+          season
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          trailer {
+            id
+            site
+            thumbnail
+          }
+        }
+      }
+
+      page16: Page(
+        page: 16
         perPage: 50
       ) {
         media(
@@ -710,11 +1460,12 @@ async function fetchAdultCatalogNews(): Promise<
 
       const json =
         (await response.json()) as {
-          data?: {
-            Page?: {
+          data?: Record<
+            string,
+            {
               media: AniMedia[];
-            };
-          };
+            }
+          >;
 
           errors?: {
             message?: string;
@@ -731,20 +1482,38 @@ async function fetchAdultCatalogNews(): Promise<
         );
       }
 
-      const media =
-        json.data?.Page?.media ?? [];
-
-      return media
+      const media = Object.values(
+        json.data ?? {},
+      )
+        .flatMap(
+          (page) =>
+            page?.media ?? [],
+        )
         .filter(
           (anime) =>
             anime.id > 0 &&
             anime.format !== "MUSIC" &&
             anime.isAdult === true,
-        )
-        .map((anime) => ({
-          ...anime,
-          isAdult: true,
-        }));
+        );
+
+      const unique = new Map<
+        number,
+        AniMedia
+      >();
+
+      for (const anime of media) {
+        unique.set(
+          anime.id,
+          {
+            ...anime,
+            isAdult: true,
+          },
+        );
+      }
+
+      return Array.from(
+        unique.values(),
+      );
     } catch (error) {
       lastError =
         error instanceof Error &&
