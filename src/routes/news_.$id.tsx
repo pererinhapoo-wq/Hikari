@@ -667,15 +667,13 @@ function automaticToNewsItem(
     | null
     | undefined,
 ): NewsItem {
-  let content =
-    item.description;
+  let content = "";
 
   if (
     item.type ===
     "NOVO EPISÓDIO"
   ) {
     content =
-      `${item.description}\n\n` +
       `Este episódio faz parte da programação atual de ${anime?.name ?? "este anime"}. ` +
       `Acompanhe a página do anime para encontrar os episódios disponíveis no Hikari.`;
   } else if (
@@ -683,12 +681,10 @@ function automaticToNewsItem(
     "TRAILER"
   ) {
     content =
-      `${item.description}\n\n` +
       `O trailer foi identificado automaticamente a partir dos dados disponíveis para ${anime?.name ?? "este anime"}. ` +
       `Novas informações poderão aparecer conforme os dados forem atualizados.`;
   } else {
     content =
-      `${item.description}\n\n` +
       `${anime?.name ?? item.title} faz parte da programação atual de animes. ` +
       `Novas informações poderão aparecer conforme os dados da temporada forem atualizados.`;
   }
