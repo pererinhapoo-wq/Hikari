@@ -2485,15 +2485,7 @@ export const fetchAdultCatalog =
 const MAIN_ADULT_TAGS = [
   { name: "Anal", type: "tag", aliases: ["Anal Sex"] },
   { name: "Boquete", type: "tag", aliases: ["Fellatio"] },
-  {
-    name: "Harém",
-    type: "tag",
-    aliases: [
-      "Female Harem",
-      "Male Harem",
-      "Mixed Gender Harem",
-    ],
-  },
+  { name: "Harém", type: "tag", aliases: ["Female Harem", "Male Harem", "Mixed Gender Harem"] },
   { name: "Incesto", type: "tag", aliases: ["Incest"] },
   { name: "Lactante", type: "tag", aliases: ["Lactation"] },
   { name: "Milf", type: "tag", aliases: ["MILF"] },
@@ -2507,6 +2499,7 @@ const MAIN_ADULT_TAGS = [
   { name: "Peitões", type: "tag", aliases: ["Large Breasts"] },
   { name: "Brinquedos", type: "tag", aliases: ["Sex Toys"] },
   { name: "BDSM", type: "tag", aliases: ["Bondage"] },
+  { name: "Cunnilingus", type: "tag", aliases: ["Cunnilingus"] },
   { name: "Tentáculos", type: "tag", aliases: ["Tentacles"] },
   { name: "NTR", type: "tag", aliases: ["Netorare"] },
   { name: "Netorare", type: "tag", aliases: ["Netorare"] },
@@ -2515,7 +2508,11 @@ const MAIN_ADULT_TAGS = [
   { name: "Exibicionismo", type: "tag", aliases: ["Exhibitionism"] },
   { name: "Vida Escolar", type: "tag", aliases: ["School"] },
   { name: "Professora", type: "tag", aliases: ["Teacher"] },
+  { name: "Boobjob", type: "tag", aliases: ["Boobjob"] },
   { name: "Empregada", type: "tag", aliases: ["Maids"] },
+  { name: "Handjob", type: "tag", aliases: ["Handjob"] },
+  { name: "Human Pet", type: "tag", aliases: ["Human Pet"] },
+  { name: "Sumata", type: "tag", aliases: ["Sumata"] },
   { name: "Office / Escritório", type: "tag", aliases: ["Office"] },
   { name: "Comédia", type: "genre", aliases: ["Comedy"] },
   { name: "Magia", type: "tag", aliases: ["Magic"] },
@@ -2525,73 +2522,14 @@ const MAIN_ADULT_TAGS = [
   { name: "Terror", type: "genre", aliases: ["Horror"] },
   { name: "Virgem", type: "tag", aliases: ["Virginity"] },
   { name: "Esporte", type: "genre", aliases: ["Sports"] },
-  { name: "Femdom", type: "tag", aliases: ["Femdom"] },
-  { name: "Deepthroat", type: "tag", aliases: ["Deepthroat"] },
-  { name: "Nakadashi", type: "tag", aliases: ["Nakadashi"] },
-  { name: "Threesome", type: "tag", aliases: ["Threesome"] },
-  { name: "Handjob", type: "tag", aliases: ["Handjob"] },
   { name: "Ahegao", type: "tag", aliases: ["Ahegao"] },
 ] as const;
 
-function normalizeAdultTagName(value: string) {
-  return value
-    .trim()
-    .toLocaleLowerCase("pt-BR")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-type AdultTagCatalog = {
-  items: SlimAnime[];
-  tags: Array<{
-    name: string;
-    count: number;
-    animeIds: string[];
-  }>;
-};
-
 const ADULT_FEATURED_TAGS = [
-  "Anal",
-  "Boquete",
-  "Harém",
-  "Incesto",
-  "Lactante",
-  "Milf",
-  "Futanari",
-  "Ecchi",
-  "Yuri",
-  "Yaoi",
-  "Romance",
-  "Masturbação",
-  "Orgia",
-  "Peitões",
-  "Brinquedos",
-  "BDSM",
-  "Tentáculos",
-  "NTR",
-  "Netorare",
-  "Cosplay",
-  "Voyeur",
-  "Exibicionismo",
-  "Vida Escolar",
-  "Professora",
-  "Empregada",
-  "Office / Escritório",
-  "Comédia",
-  "Magia",
-  "Elfos",
-  "Demônios",
-  "Vampiros",
-  "Terror",
-  "Virgem",
-  "Esporte",
-  "Femdom",
-  "Deepthroat",
-  "Nakadashi",
-  "Threesome",
-  "Handjob",
-  "Ahegao",
+  "Anal", "Boquete", "Harém", "Incesto", "Lactante", "Milf", "Futanari", "Ecchi", "Yuri", "Yaoi", "Romance", "Masturbação", "Orgia", "Peitões", "Brinquedos", "BDSM", "Cunnilingus", "Tentáculos", "NTR", "Netorare", "Cosplay", "Voyeur", "Exibicionismo", "Vida Escolar", "Professora", "Boobjob", "Empregada", "Handjob", "Human Pet", "Sumata", "Office / Escritório", "Comédia", "Magia", "Elfos", "Demônios", "Vampiros", "Terror", "Virgem", "Esporte", "Ahegao",
 ] as const;
+
+
 
 const ADULT_REMOVED_TAGS = new Set([
   "travesti",
