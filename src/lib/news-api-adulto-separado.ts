@@ -346,13 +346,32 @@ function imageFromHtml(html: string): string {
   return "";
 }
 
+function isSourceBrandImage(
+  imageUrl: string,
+): boolean {
+  const value = decodeURIComponent(
+    imageUrl,
+  ).toLowerCase();
+
+  return (
+    /(?:^|[\/_?=&-])(logo|favicon|site-logo|header-logo|footer-logo|eroero(?:[-_ ]news)?)(?:[\/_?=&.-]|$)/i.test(
+      value,
+    ) ||
+    value.includes("eroero-news") ||
+    value.includes("eroero_news")
+  );
+}
+
 function imagesFromHtml(
   html: string,
   baseUrl: string,
 ): string[] {
   const values: string[] = [];
 
-  const add = (value: string) => {
+  const add = (
+    value: string,
+    context = "",
+  ) => {
     const decoded = decodeXml(value.trim());
 
     if (!decoded) {
@@ -364,6 +383,20 @@ function imagesFromHtml(
         decoded,
         baseUrl,
       ).href;
+
+      const contextValue = context.toLowerCase();
+
+      if (
+        /\b(?:logo|favicon)\b/.test(
+          contextValue,
+        ) ||
+        /eroero[ -]?news/.test(
+          contextValue,
+        ) ||
+        isSourceBrandImage(absolute)
+      ) {
+        return;
+      }
 
       if (
         /^https?:\/\//i.test(absolute) &&
@@ -393,7 +426,7 @@ function imagesFromHtml(
     /<img[^>]+(?:data-src|data-lazy-src|data-original|data-image|src)=["']([^"']+)["'][^>]*>/gi;
 
   for (const match of html.matchAll(imagePattern)) {
-    if (match[1]) add(match[1]);
+    if (match[1]) add(match[1], match[0]);
   }
 
   return values.slice(0, 5);
@@ -883,6 +916,23 @@ function isListLikeAdultNews(
   );
 }
 
+function cleanMentionedHentaiTitle(
+  value: string,
+): string {
+  return value
+    .replace(
+      /\s+(?:a\s+)?animação\s+\d+(?:\s+e\s+\d+)?\s*$/i,
+      "",
+    )
+    .replace(
+      /\s+\d{1,2}(?:\s+e\s+\d{1,2})?\s*(?:\(pacote\))?\s*$/i,
+      "",
+    )
+    .replace(/\s+\(pacote\)\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function extractHentaiTitles(
   title: string,
   description: string,
@@ -899,11 +949,9 @@ function extractHentaiTitles(
   const numbered = /(?:^|[\n\r]|\s)(\d+)\s*(?:\.\s*-|-\s*|\)\s*|\.\s*)([^\n]+?)(?=(?:\s+\d+\s*(?:\.\s*-|-\s*|\)\s*|\.\s*))|[\n\r]+|$)/g;
 
   for (const match of source.matchAll(numbered)) {
-    const value = match[2]
-      ?.replace(/\s+/g, " ")
-      .replace(/^[-–—: ]+/, "")
-      .replace(/\s+(?:a\s+)?animação\s+\d+(?:\s+e\s+\d+)?\s*$/i, "")
-      .trim();
+    const value = cleanMentionedHentaiTitle(
+      match[2] ?? "",
+    );
 
     if (value && value.length >= 4 && value.length <= 140) {
       values.push(value);
@@ -933,23 +981,28 @@ async function fetchMentionedHentai(
     return [];
   }
 
-  const results: { title: string; image: string }[] = [];
+  const resolved = await Promise.all(
+    titles.map(async (hentaiTitle) => {
+      const image = await fetchAniListCover(
+        hentaiTitle,
+        hentaiTitle,
+      );
 
-  for (const hentaiTitle of titles) {
-    const image = await fetchAniListCover(
-      hentaiTitle,
-      hentaiTitle,
-    );
+      if (!image) {
+        return null;
+      }
 
-    if (image) {
-      results.push({
+      return {
         title: hentaiTitle,
         image,
-      });
-    }
-  }
+      };
+    }),
+  );
 
-  return results;
+  return resolved.filter(
+    (item): item is { title: string; image: string } =>
+      Boolean(item),
+  );
 }
 
 const ADULT_IMAGE_FALLBACK =
@@ -1257,8 +1310,8 @@ async function fetchAdultNewsFeed(
 
         const mentionedHentai =
           await fetchMentionedHentai(
-            title,
-            description,
+            item.title,
+            item.description,
           );
 
         return {
