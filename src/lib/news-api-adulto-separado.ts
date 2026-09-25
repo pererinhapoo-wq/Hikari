@@ -454,6 +454,18 @@ function imagesFromHtml(
     if (match[1]) add(match[1], match[0]);
   }
 
+  const srcsetPattern =
+    /<img[^>]+(?:data-srcset|srcset)=["']([^"']+)["'][^>]*>/gi;
+
+  for (const match of html.matchAll(srcsetPattern)) {
+    const first = (match[1] ?? "")
+      .split(",")[0]
+      ?.trim()
+      .split(/\s+/)[0] ?? "";
+
+    if (first) add(first, match[0]);
+  }
+
   return values.slice(0, 5);
 }
 
@@ -493,146 +505,37 @@ async function fetchArticleImages(
   }
 }
 
-async function proxyRssImage(
+function proxyRssImage(
   imageUrl: string,
-  maxImageBytes = 1_500_000,
-): Promise<string> {
+  _maxImageBytes = 1_500_000,
+): string {
   const url = imageUrl.trim();
 
   if (!/^https?:\/\//i.test(url)) {
     return "";
   }
 
-  const MAX_IMAGE_BYTES = maxImageBytes;
-
-  try {
-    const response =
-      await fetch(
-        url,
-        {
-          headers: {
-            Accept:
-              "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-            Referer:
-              `${new URL(url).origin}/`,
-            "User-Agent":
-              "Hikari/1.0 (adult news image)",
-          },
-          signal:
-            AbortSignal.timeout(8000),
-        },
-      );
-
-    if (!response.ok) {
-      return "";
-    }
-
-    const contentType =
-      (response.headers.get(
-        "content-type",
-      ) ?? "")
-        .split(";", 1)[0]
-        .trim()
-        .toLowerCase();
-
-    if (!contentType.startsWith("image/")) {
-      return "";
-    }
-
-    const contentLength = Number(
-      response.headers.get(
-        "content-length",
-      ) ?? "0",
-    );
-
-    if (
-      Number.isFinite(contentLength) &&
-      contentLength > MAX_IMAGE_BYTES
-    ) {
-      return "";
-    }
-
-    const buffer =
-      new Uint8Array(
-        await response.arrayBuffer(),
-      );
-
-    if (
-      buffer.byteLength >
-      MAX_IMAGE_BYTES
-    ) {
-      return "";
-    }
-
-    let binary = "";
-    const CHUNK_SIZE = 0x8000;
-
-    for (
-      let index = 0;
-      index < buffer.length;
-      index += CHUNK_SIZE
-    ) {
-      binary += String.fromCharCode(
-        ...buffer.subarray(
-          index,
-          Math.min(
-            index + CHUNK_SIZE,
-            buffer.length,
-          ),
-        ),
-      );
-    }
-
-    return `data:${contentType};base64,${btoa(binary)}`;
-  } catch {
-    return "";
-  }
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=900&q=82`;
 }
 
 function looksSpanish(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
 
-  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(value)) {
-    return true;
-  }
-
   const markers = [
-    " el ",
-    " la ",
-    " los ",
-    " las ",
-    " un ",
-    " una ",
-    " de ",
-    " del ",
-    " para ",
-    " con ",
-    " por ",
-    " que ",
-    " se ",
-    " este ",
-    " estos ",
-    " esta ",
-    " estas ",
-    " nueva ",
-    " nuevo ",
-    " estrenos ",
-    " tráiler ",
-    " termina ",
-    " fueron ",
-    " vendidos ",
-    " imágenes ",
+    " el ", " la ", " los ", " las ",
+    " un ", " una ", " de ", " del ",
+    " para ", " con ", " por ", " que ",
+    " se ", " este ", " estos ", " esta ",
+    " estas ", " nueva ", " nuevo ",
+    " estrenos ", " tráiler ", " termina ",
+    " fueron ", " vendidos ", " imágenes ",
     " revelan ",
   ];
 
-  return (
-    markers.filter((marker) =>
-      text.includes(marker),
-    ).length >= 2
-  );
+  return markers.filter((marker) => text.includes(marker)).length >= 2;
 }
 
-async function translateToPortuguese(
+async function translateTextToPortuguese(
   value: string,
 ): Promise<string> {
   const text = value.trim();
@@ -642,53 +545,79 @@ async function translateToPortuguese(
   }
 
   try {
-    const response =
-      await fetch(
-        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt&dt=t&q=${encodeURIComponent(text.slice(0, 4500))}`,
-        {
-          headers: {
-            Accept:
-              "application/json",
-            "User-Agent":
-              "Hikari/1.0 (adult news)",
-          },
-          signal:
-            AbortSignal.timeout(
-              5000,
-            ),
+    const response = await fetch(
+      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=es&tl=pt&dt=t&q=${encodeURIComponent(text.slice(0, 4500))}`,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Hikari/1.0 (adult news translation)",
         },
-      );
+        signal: AbortSignal.timeout(7000),
+      },
+    );
 
-    if (!response.ok) {
-      return text;
+    if (response.ok) {
+      const data = (await response.json()) as unknown;
+
+      if (Array.isArray(data) && Array.isArray(data[0])) {
+        const translated = data[0]
+          .filter((part): part is unknown[] => Array.isArray(part))
+          .map((part) => String(part[0] ?? ""))
+          .join("")
+          .trim();
+
+        if (translated && translated !== text) {
+          return translated;
+        }
+      }
     }
-
-    const data =
-      (await response.json()) as unknown;
-
-    if (
-      !Array.isArray(data) ||
-      !Array.isArray(data[0])
-    ) {
-      return text;
-    }
-
-    const translated =
-      data[0]
-        .filter(
-          (part): part is unknown[] =>
-            Array.isArray(part),
-        )
-        .map((part) =>
-          String(part[0] ?? ""),
-        )
-        .join("")
-        .trim();
-
-    return translated || text;
   } catch {
-    return text;
+    // Tenta o fallback.
   }
+
+  try {
+    const response = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0, 1800))}&langpair=es|pt-BR`,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Hikari/1.0 (adult news translation)",
+        },
+        signal: AbortSignal.timeout(7000),
+      },
+    );
+
+    if (response.ok) {
+      const data = (await response.json()) as {
+        responseData?: { translatedText?: string };
+      };
+
+      const translated = data.responseData?.translatedText?.trim() ?? "";
+
+      if (translated && translated !== text) {
+        return translated;
+      }
+    }
+  } catch {
+    // Mantém o original se os dois serviços estiverem indisponíveis.
+  }
+
+  return text;
+}
+
+async function translateEroEroItem(
+  title: string,
+  description: string,
+): Promise<{ title: string; description: string }> {
+  const [translatedTitle, translatedDescription] = await Promise.all([
+    translateTextToPortuguese(title),
+    translateTextToPortuguese(description),
+  ]);
+
+  return {
+    title: translatedTitle,
+    description: translatedDescription,
+  };
 }
 
 function normalizeSearchText(value: string): string {
@@ -1697,13 +1626,19 @@ async function fetchAdultNewsFeed(
   return Promise.all(
     hentaiOnly.map(
       async (item) => {
-        const title =
-          item.title;
+        const translated =
+          item.source === "EroEro News"
+            ? await translateEroEroItem(
+                item.title,
+                item.description,
+              )
+            : {
+                title: item.title,
+                description: item.description,
+              };
 
-        const description =
-          await translateToPortuguese(
-            item.description,
-          );
+        const title = translated.title;
+        const description = translated.description;
 
         const image =
           await fetchAniListCover(
@@ -1876,7 +1811,7 @@ export const fetchAdultNews =
       currentAnimeSeason();
 
     const key =
-      `automatic-adult-news:hentai-real-publication-date:v1:${current.season}:${current.year}`;
+      `automatic-adult-news:hentai-real-publication-date:v2:${current.season}:${current.year}`;
 
     const cached =
       fromCache(key);
