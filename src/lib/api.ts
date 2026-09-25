@@ -2767,73 +2767,56 @@ export const fetchAdultTags =
           (tag) => tag.type === "tag",
         );
 
-      await Promise.all(
-        fallbackTags.map(
-          async (mainTag) => {
-            for (const alias of mainTag.aliases) {
-              try {
-                let page = 1;
-                let hasNextPage = true;
+      // Não consulte todas as tags em paralelo: isso dispara o rate limit
+      // do AniList e provoca 429 (Too Many Requests).
+      // Uma página por tag já basta para descobrir se existem resultados.
+      for (const mainTag of fallbackTags) {
+        const alias = mainTag.aliases[0];
 
-                while (hasNextPage) {
-                  const result =
-                    await anilistGraphQL<{
-                      Page: {
-                        pageInfo: {
-                          hasNextPage: boolean;
-                        };
-                        media: AniMedia[];
-                      };
-                    }>(
-                      `
-                      query AdultTagFallback(
-                        $page: Int,
-                        $tag: String
-                      ) {
-                        Page(
-                          page: $page,
-                          perPage: 50
-                        ) {
-                          pageInfo {
-                            hasNextPage
-                          }
+        if (!alias) {
+          continue;
+        }
 
-                          media(
-                            type: ANIME,
-                            genre: "Hentai",
-                            tag: $tag,
-                            sort: TRENDING_DESC
-                          ) {
-                            ${CARD_FIELDS}
-                          }
-                        }
-                      }
-                      `,
-                      {
-                        page,
-                        tag: alias,
-                      },
-                    );
-
-                  addFallbackMedia(
-                    result.Page.media ?? [],
-                  );
-
-                  hasNextPage =
-                    Boolean(
-                      result.Page.pageInfo
-                        ?.hasNextPage,
-                    );
-
-                  page += 1;
+        try {
+          const result =
+            await anilistGraphQL<{
+              Page: {
+                media: AniMedia[];
+              };
+            }>(
+              `
+              query AdultTagFallback(
+                $tag: String
+              ) {
+                Page(
+                  page: 1,
+                  perPage: 50
+                ) {
+                  media(
+                    type: ANIME,
+                    genre: "Hentai",
+                    tag: $tag,
+                    sort: TRENDING_DESC
+                  ) {
+                    ${CARD_FIELDS}
+                  }
                 }
-              } catch {
-                // Um erro em uma tag não interrompe as demais.
               }
-            }
-          },
-        ),
-      );
+              `,
+              { tag: alias },
+            );
+
+          addFallbackMedia(
+            result.Page.media ?? [],
+          );
+
+          await new Promise(
+            (resolve) => setTimeout(resolve, 350),
+          );
+        } catch {
+          // Um erro em uma tag não interrompe as demais.
+        }
+      }
 
       const media =
         Array.from(
