@@ -34,6 +34,18 @@ const ADULT_NEWS_RSS_FEEDS = [
   "https://www.lune-soft.jp/feed",
 ];
 
+const LUNE_ANIME_BRAND_PAGES = [
+  "https://www.lune-soft.jp/ova/brand_ova/bunnywalker",
+  "https://www.lune-soft.jp/ova/brand_ova/antechinus",
+  "https://www.lune-soft.jp/ova/brand_ova/cottondoll",
+  "https://www.lune-soft.jp/ova/brand_ova/girlstalk",
+  "https://www.lune-soft.jp/ova/brand_ova/juicymango",
+  "https://www.lune-soft.jp/ova/brand_ova/erozuki",
+  "https://www.lune-soft.jp/ova/brand_ova/eru",
+  "https://www.lune-soft.jp/ova/brand_ova/angelfish",
+  "https://www.lune-soft.jp/ova/brand_ova/milkshake",
+];
+
 type AniMedia = {
   id: number;
   type?: "ANIME" | "MANGA" | null;
@@ -1117,6 +1129,212 @@ function typeFromRss(
   return "ANÚNCIO";
 }
 
+async function fetchLuneAnimeReleaseNews(): Promise<AutomaticNewsItem[]> {
+  const now = Date.now();
+  const minTime = now - 1000 * 60 * 60 * 24 * 120;
+  const maxTime = now + 1000 * 60 * 60 * 24 * 180;
+
+  const discovered = new Map<
+    string,
+    {
+      url: string;
+      title: string;
+      date: string;
+      publishedAt: string;
+    }
+  >();
+
+  const pages = await Promise.all(
+    LUNE_ANIME_BRAND_PAGES.map(async (pageUrl) => {
+      try {
+        const response = await fetch(
+          pageUrl,
+          {
+            headers: {
+              Accept: "text/html,application/xhtml+xml",
+              "User-Agent": "Hikari/1.0 (adult news)",
+            },
+            signal: AbortSignal.timeout(8000),
+          },
+        );
+
+        if (!response.ok) {
+          return "";
+        }
+
+        return await response.text();
+      } catch {
+        return "";
+      }
+    }),
+  );
+
+  for (const html of pages) {
+    if (!html) {
+      continue;
+    }
+
+    const linkPattern =
+      /<a[^>]+href=["']([^"']*\/ova\/\d+[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+    for (const match of html.matchAll(linkPattern)) {
+      const href = decodeXml(match[1] ?? "").trim();
+      const label = stripHtml(
+        decodeXml(match[2] ?? ""),
+      )
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const dateMatch = label.match(
+        /(20\d{2})年(\d{1,2})月(\d{1,2})日発売/,
+      );
+
+      if (!href || !label || !dateMatch) {
+        continue;
+      }
+
+      const timestamp = Date.UTC(
+        Number(dateMatch[1]),
+        Number(dateMatch[2]) - 1,
+        Number(dateMatch[3]),
+      );
+
+      if (timestamp < minTime || timestamp > maxTime) {
+        continue;
+      }
+
+      const absolute = new URL(
+        href,
+        "https://www.lune-soft.jp/",
+      ).href;
+
+      const title = label
+        .replace(
+          /\s*20\d{2}年\d{1,2}月\d{1,2}日発売\s*$/,
+          "",
+        )
+        .trim();
+
+      if (!title) {
+        continue;
+      }
+
+      discovered.set(absolute, {
+        url: absolute,
+        title,
+        date: new Intl.DateTimeFormat(
+          "pt-BR",
+          {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          },
+        ).format(new Date(timestamp)),
+        publishedAt: new Date(timestamp).toISOString(),
+      });
+    }
+  }
+
+  const candidates = Array.from(
+    discovered.values(),
+  )
+    .sort(
+      (a, b) =>
+        Date.parse(b.publishedAt) -
+        Date.parse(a.publishedAt),
+    )
+    .slice(0, 20);
+
+  return Promise.all(
+    candidates.map(async (item) => {
+      let description =
+        `Novo lançamento de anime adulto anunciado pela Lune Soft & Lune Pictures, com lançamento em ${item.date}.`;
+      let image = "";
+      let articleImages: string[] = [];
+
+      try {
+        const response = await fetch(
+          item.url,
+          {
+            headers: {
+              Accept: "text/html,application/xhtml+xml",
+              "User-Agent": "Hikari/1.0 (adult news)",
+            },
+            signal: AbortSignal.timeout(8000),
+          },
+        );
+
+        if (response.ok) {
+          const html = await response.text();
+          const pageDescription =
+            imageFromHtml(html);
+
+          image =
+            pageDescription &&
+            !isSourceBrandImage(pageDescription)
+              ? pageDescription
+              : "";
+
+          articleImages = imagesFromHtml(
+            html,
+            item.url,
+          );
+        }
+      } catch {
+        // Mantém o lançamento mesmo se a página da obra falhar.
+      }
+
+      const proxiedImages = (
+        await Promise.all(
+          articleImages.map((imageUrl) =>
+            proxyRssImage(
+              imageUrl,
+              5_000_000,
+            ),
+          ),
+        )
+      ).filter(Boolean);
+
+      const finalImage =
+        (image
+          ? (await proxyRssImage(
+              image,
+              5_000_000,
+            )) || image
+          : "") ||
+        proxiedImages[0] ||
+        (await fetchAniListCover(
+          item.title,
+          item.title,
+        ));
+
+      return {
+        id: `auto-adult-lune-release-${encodeURIComponent(item.url)}`,
+        type: "ESTREIA",
+        title: item.title,
+        description,
+        date: item.date,
+        image: finalImage || ADULT_IMAGE_FALLBACK,
+        animeId: "",
+        isAdult: true,
+        url: item.url,
+        publishedAt: item.publishedAt,
+        source: "Lune Soft & Lune Pictures",
+        articleImages: proxiedImages.length
+          ? proxiedImages
+          : image
+            ? [
+                (await proxyRssImage(
+                  image,
+                  5_000_000,
+                )) || image,
+              ]
+            : [],
+      } satisfies AutomaticNewsItem;
+    }),
+  );
+}
+
 async function fetchAdultNewsFeed(
   feedUrl: string,
 ): Promise<AutomaticNewsItem[]> {
@@ -1491,6 +1709,11 @@ export const fetchAdultNews =
         ),
       ]);
 
+      const releaseNews =
+        await fetchLuneAnimeReleaseNews().catch(
+          () => [],
+        );
+
       const seasonNews =
         media
           .filter(
@@ -1535,6 +1758,7 @@ export const fetchAdultNews =
 
       const combined = [
         ...externalNews,
+        ...releaseNews,
         ...seasonNews,
       ];
 
