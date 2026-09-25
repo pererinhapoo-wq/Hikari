@@ -32,6 +32,7 @@ const ADULT_NEWS_RSS_FEEDS = [
 
 type AniMedia = {
   id: number;
+  type?: "ANIME" | "MANGA" | null;
   isAdult?: boolean | null;
   title?: {
     romaji?: string | null;
@@ -288,30 +289,6 @@ function firstXmlValue(
   );
 }
 
-function normalizeUrl(
-  value: string,
-): string {
-  const url = decodeXml(value.trim());
-
-  if (url.startsWith("//")) {
-    return `https:${url}`;
-  }
-
-  return url;
-}
-
-function proxyImageUrl(
-  value: string,
-): string {
-  const url = normalizeUrl(value);
-
-  if (!url || !/^https?:\/\//i.test(url)) {
-    return "";
-  }
-
-  return `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
-}
-
 function looksSpanish(value: string): boolean {
   const text = ` ${value.toLowerCase()} `;
 
@@ -410,56 +387,255 @@ async function translateToPortuguese(
   }
 }
 
-function imageFromRss(
-  block: string,
-): string {
-  const candidates = [
-    /<media:content[^>]+url=["']([^"']+)["'][^>]*>/i,
-    /<media:thumbnail[^>]+url=["']([^"']+)["'][^>]*>/i,
-    /<thumbnail[^>]+url=["']([^"']+)["'][^>]*>/i,
-    /<enclosure[^>]+url=["']([^"']+)["'][^>]*>/i,
-    /<(?:img|source)[^>]+(?:data-src|data-lazy-src|data-original|data-image)=['"]([^'"]+)['"][^>]*>/i,
-    /<(?:img|source)[^>]+src=['"]([^'"]+)['"][^>]*>/i,
-  ];
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  for (const pattern of candidates) {
-    const match = block.match(pattern);
+function mediaSearchCandidates(
+  title: string,
+  description: string,
+): string[] {
+  const source = `${title}\n${description}`;
+  const candidates: string[] = [];
 
-    if (match?.[1]) {
-      return proxyImageUrl(match[1]);
+  for (const pattern of [
+    /[“「『"]([^”」』"\n]{2,120})[”」』"]/g,
+    /[‘']([^’'\n]{2,120})[’']/g,
+  ]) {
+    for (const match of source.matchAll(pattern)) {
+      const value = match[1]?.trim();
+
+      if (value && value.length >= 3) {
+        candidates.push(value);
+      }
     }
   }
 
-  const ogImage =
-    block.match(
-      /<meta[^>]+(?:property|name)=['"]og:image['"][^>]+content=['"]([^'"]+)['"][^>]*>/i,
-    ) ||
-    block.match(
-      /<meta[^>]+content=['"]([^'"]+)['"][^>]+(?:property|name)=['"]og:image['"][^>]*>/i,
-    );
+  candidates.push(title.trim());
 
-  if (ogImage?.[1]) {
-    return normalizeUrl(ogImage[1]);
-  }
+  return Array.from(
+    new Set(
+      candidates
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 4);
+}
 
-  const content =
-    firstXmlValue(
-      block,
-      "content:encoded",
-    );
-
-  const contentImage =
-    content.match(
-      /<(?:img|source)[^>]+(?:data-src|data-lazy-src|data-original|data-image)=['"]([^'"]+)['"][^>]*>/i,
-    ) ||
-    content.match(
-      /<(?:img|source)[^>]+src=['"]([^'"]+)['"][^>]*>/i,
-    );
-
-  return proxyImageUrl(
-    contentImage?.[1] ?? "",
+function mediaTitleValues(
+  media: AniMedia,
+): string[] {
+  return [
+    media.title?.english,
+    media.title?.romaji,
+    media.title?.native,
+  ].filter(
+    (value): value is string =>
+      Boolean(value?.trim()),
   );
 }
+
+function titleMatchScore(
+  candidate: string,
+  media: AniMedia,
+): number {
+  const query = normalizeSearchText(candidate);
+
+  if (!query) {
+    return 0;
+  }
+
+  let best = 0;
+
+  for (const title of mediaTitleValues(media)) {
+    const normalized = normalizeSearchText(title);
+
+    if (!normalized) {
+      continue;
+    }
+
+    if (normalized === query) {
+      best = Math.max(best, 100);
+      continue;
+    }
+
+    if (
+      normalized.includes(query) ||
+      query.includes(normalized)
+    ) {
+      best = Math.max(best, 80);
+      continue;
+    }
+
+    const queryTokens = new Set(
+      query.split(" ").filter(Boolean),
+    );
+    const titleTokens = new Set(
+      normalized.split(" ").filter(Boolean),
+    );
+
+    if (!queryTokens.size || !titleTokens.size) {
+      continue;
+    }
+
+    let overlap = 0;
+
+    for (const token of queryTokens) {
+      if (titleTokens.has(token)) {
+        overlap += 1;
+      }
+    }
+
+    best = Math.max(
+      best,
+      Math.round(
+        (overlap / queryTokens.size) * 70,
+      ),
+    );
+  }
+
+  return best;
+}
+
+const mediaCoverCache = new Map<
+  string,
+  string
+>();
+
+async function fetchAniListCover(
+  title: string,
+  description: string,
+): Promise<string> {
+  const candidates = mediaSearchCandidates(
+    title,
+    description,
+  );
+
+  for (const candidate of candidates) {
+    const key = normalizeSearchText(candidate);
+
+    if (!key) {
+      continue;
+    }
+
+    const cached = mediaCoverCache.get(key);
+
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const response = await fetch(
+        ANILIST,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+            Accept:
+              "application/json",
+          },
+          body: JSON.stringify({
+            query: `
+              query AdultNewsMediaCover(
+                $search: String!
+              ) {
+                Page(
+                  page: 1
+                  perPage: 10
+                ) {
+                  media(
+                    search: $search
+                    isAdult: true
+                  ) {
+                    id
+                    type
+                    isAdult
+                    title {
+                      romaji
+                      english
+                      native
+                    }
+                    coverImage {
+                      extraLarge
+                      large
+                    }
+                  }
+                }
+              }
+            `,
+            variables: {
+              search: candidate,
+            },
+          }),
+          signal:
+            AbortSignal.timeout(
+              8000,
+            ),
+        },
+      );
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const json =
+        (await response.json()) as {
+          data?: {
+            Page?: {
+              media?: AniMedia[];
+            };
+          };
+        };
+
+      const media =
+        json.data?.Page?.media ?? [];
+
+      const match = media
+        .filter(
+          (item) =>
+            item.isAdult === true &&
+            Boolean(
+              item.coverImage?.extraLarge ||
+              item.coverImage?.large,
+            ),
+        )
+        .sort(
+          (a, b) =>
+            titleMatchScore(candidate, b) -
+            titleMatchScore(candidate, a),
+        )[0];
+
+      const image =
+        match?.coverImage?.extraLarge ||
+        match?.coverImage?.large ||
+        "";
+
+      if (image) {
+        mediaCoverCache.set(key, image);
+        return image;
+      }
+    } catch {
+      // Tenta o próximo candidato sem quebrar o feed.
+    }
+  }
+
+  return "";
+}
+
+const ADULT_IMAGE_FALLBACK =
+  `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+      <rect width="800" height="450" fill="#17131f"/>
+      <text x="400" y="225" fill="#a855f7" font-family="Arial, sans-serif" font-size="42" text-anchor="middle" dominant-baseline="middle">Hikari +18</text>
+    </svg>
+  `)}`;
 
 function formatRssDate(
   value: string,
@@ -647,7 +823,7 @@ async function fetchAdultNewsFeed(
           date:
             formatRssDate(date),
           image:
-            imageFromRss(item),
+            "",
           animeId: "",
           isAdult: true,
           url: link,
@@ -666,17 +842,28 @@ async function fetchAdultNewsFeed(
 
   return Promise.all(
     parsed.map(
-      async (item) => ({
-        ...item,
-        title:
+      async (item) => {
+        const title =
           await translateToPortuguese(
             item.title,
-          ),
-        description:
+          );
+        const description =
           await translateToPortuguese(
             item.description,
-          ),
-      }),
+          );
+        const image =
+          await fetchAniListCover(
+            item.title,
+            item.description,
+          );
+
+        return {
+          ...item,
+          title,
+          description,
+          image: image || ADULT_IMAGE_FALLBACK,
+        };
+      },
     ),
   );
 }
