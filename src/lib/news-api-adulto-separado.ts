@@ -21,6 +21,10 @@ export type AutomaticNewsItem = {
   url?: string;
   publishedAt?: string;
   articleImages?: string[];
+  mentionedHentai?: {
+    title: string;
+    image: string;
+  }[];
 };
 
 const ANILIST = "https://graphql.anilist.co";
@@ -790,6 +794,7 @@ async function fetchAniListCover(
                 ) {
                   media(
                     search: $search
+                    type: ANIME
                     isAdult: true
                   ) {
                     id
@@ -865,6 +870,86 @@ async function fetchAniListCover(
   }
 
   return "";
+}
+
+function isListLikeAdultNews(
+  title: string,
+  description: string,
+): boolean {
+  const value = `${title} ${description}`.toLowerCase();
+
+  return /\b(lista|ranking|mais vendidos|recomend|outubro|novembro|dezembro|janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro)\b/.test(
+    value,
+  );
+}
+
+function extractHentaiTitles(
+  title: string,
+  description: string,
+): string[] {
+  if (!isListLikeAdultNews(title, description)) {
+    return [];
+  }
+
+  const source = stripHtml(description)
+    .replace(/\r/g, "")
+    .replace(/\u00a0/g, " ");
+
+  const values: string[] = [];
+  const numbered = /(?:^|[\n\r]|\s)(\d+)\s*(?:\.\s*-|-\s*|\)\s*|\.\s*)([^\n]+?)(?=(?:\s+\d+\s*(?:\.\s*-|-\s*|\)\s*|\.\s*))|[\n\r]+|$)/g;
+
+  for (const match of source.matchAll(numbered)) {
+    const value = match[2]
+      ?.replace(/\s+/g, " ")
+      .replace(/^[-–—: ]+/, "")
+      .replace(/\s+(?:a\s+)?animação\s+\d+(?:\s+e\s+\d+)?\s*$/i, "")
+      .trim();
+
+    if (value && value.length >= 4 && value.length <= 140) {
+      values.push(value);
+    }
+  }
+
+  return Array.from(
+    new Map(
+      values.map((value) => [
+        normalizeSearchText(value),
+        value,
+      ]),
+    ).values(),
+  ).slice(0, 12);
+}
+
+async function fetchMentionedHentai(
+  title: string,
+  description: string,
+): Promise<{ title: string; image: string }[]> {
+  const titles = extractHentaiTitles(
+    title,
+    description,
+  );
+
+  if (!titles.length) {
+    return [];
+  }
+
+  const results: { title: string; image: string }[] = [];
+
+  for (const hentaiTitle of titles) {
+    const image = await fetchAniListCover(
+      hentaiTitle,
+      hentaiTitle,
+    );
+
+    if (image) {
+      results.push({
+        title: hentaiTitle,
+        image,
+      });
+    }
+  }
+
+  return results;
 }
 
 const ADULT_IMAGE_FALLBACK =
@@ -1170,6 +1255,12 @@ async function fetchAdultNewsFeed(
             )
           ).filter(Boolean);
 
+        const mentionedHentai =
+          await fetchMentionedHentai(
+            title,
+            description,
+          );
+
         return {
           ...item,
           title,
@@ -1180,6 +1271,7 @@ async function fetchAdultNewsFeed(
             ADULT_IMAGE_FALLBACK,
           articleImages:
             proxiedArticleImages,
+          mentionedHentai,
         };
       },
     ),
