@@ -334,7 +334,9 @@ function trailerOf(
   return `https://www.youtube.com/embed/${trailer.id}`;
 }
 
-async function fetchLatestAiredEpisodes(): Promise<
+async function fetchLatestAiredEpisodes(
+  mediaIds?: number[],
+): Promise<
   Map<
     number,
     {
@@ -376,6 +378,11 @@ async function fetchLatestAiredEpisodes(): Promise<
                 ) {
                   airingSchedules(
                     notYetAired: false
+                    ${
+                      mediaIds?.length
+                        ? `mediaId_in: [${mediaIds.join(",")}]`
+                        : ""
+                    }
                     sort: TIME_DESC
                   ) {
                     id
@@ -1581,6 +1588,61 @@ function formatUpdatedTime(
   );
 }
 
+function formatEventDate(
+  timestamp: number,
+): string {
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "America/Recife",
+    },
+  ).format(
+    new Date(timestamp),
+  );
+}
+
+function formatEventTime(
+  timestamp: number,
+): string {
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Recife",
+    },
+  ).format(
+    new Date(timestamp),
+  );
+}
+
+function startTimestampOf(
+  anime: AniMedia,
+): number {
+  const date = anime.startDate;
+
+  if (
+    !date?.year ||
+    !date.month ||
+    !date.day
+  ) {
+    return 0;
+  }
+
+  return new Date(
+    date.year,
+    date.month - 1,
+    date.day,
+    12,
+    0,
+    0,
+    0,
+  ).getTime();
+}
+
 async function buildNews(
   media: AniMedia[],
   latestEpisodes: Map<
@@ -1634,15 +1696,26 @@ async function buildNews(
     AutomaticNewsItem[] =
     [];
 
+  const isAdultFeed =
+    media.some(
+      (anime) => anime.isAdult === true,
+    );
+
   const now = Date.now();
   const RECENT_UPDATE_WINDOW =
     30 * 24 * 60 * 60 * 1000;
   const RECENT_RELEASE_WINDOW =
-    120 * 24 * 60 * 60 * 1000;
+    isAdultFeed
+      ? 30 * 24 * 60 * 60 * 1000
+      : 120 * 24 * 60 * 60 * 1000;
   const UPCOMING_RELEASE_WINDOW =
-    180 * 24 * 60 * 60 * 1000;
+    isAdultFeed
+      ? 60 * 24 * 60 * 60 * 1000
+      : 180 * 24 * 60 * 60 * 1000;
   const RECENT_EPISODE_WINDOW =
-    14 * 24 * 60 * 60 * 1000;
+    isAdultFeed
+      ? 7 * 24 * 60 * 60 * 1000
+      : 14 * 24 * 60 * 60 * 1000;
 
   const recentMedia = media.filter(
     (anime) => {
@@ -1713,11 +1786,6 @@ async function buildNews(
   // lançamento recente/próximo ou episódio recém-exibido.
   media = recentMedia;
 
-  const isAdultFeed =
-    media.some(
-      (anime) => anime.isAdult === true,
-    );
-
   const topRated = [
     ...media,
   ]
@@ -1734,7 +1802,7 @@ async function buildNews(
     )
     .slice(0, 8);
 
-  if (isAdultFeed) {
+  if (!isAdultFeed) {
     for (const anime of topRated) {
     const title = titleOf(anime);
     const preparedIndex = prepared.findIndex(
@@ -1836,14 +1904,22 @@ async function buildNews(
           )}. ${description}`,
 
         date:
-          formatUpdatedDate(
-            anime.updatedAt,
-          ),
+          isAdultFeed
+            ? formatEventDate(
+                startTimestamp,
+              )
+            : formatUpdatedDate(
+                anime.updatedAt,
+              ),
 
         time:
-          formatUpdatedTime(
-            anime.updatedAt,
-          ),
+          isAdultFeed
+            ? formatEventTime(
+                startTimestamp,
+              )
+            : formatUpdatedTime(
+                anime.updatedAt,
+              ),
 
         image:
           anime.coverImage
@@ -1868,7 +1944,11 @@ async function buildNews(
       latestEpisode &&
       latestEpisode.episode > 0 &&
       latestEpisode.airingAt * 1000 <=
-        Date.now()
+        Date.now() &&
+      (!isAdultFeed ||
+        Date.now() -
+          latestEpisode.airingAt * 1000 <=
+          RECENT_EPISODE_WINDOW)
     ) {
       news.push({
         id:
@@ -1888,14 +1968,22 @@ async function buildNews(
           )}. ${description}`,
 
         date:
-          formatUpdatedDate(
-            anime.updatedAt,
-          ),
+          isAdultFeed && latestEpisode
+            ? formatEventDate(
+                latestEpisode.airingAt * 1000,
+              )
+            : formatUpdatedDate(
+                anime.updatedAt,
+              ),
 
         time:
-          formatUpdatedTime(
-            anime.updatedAt,
-          ),
+          isAdultFeed && latestEpisode
+            ? formatEventTime(
+                latestEpisode.airingAt * 1000,
+              )
+            : formatUpdatedTime(
+                anime.updatedAt,
+              ),
 
         image:
           anime.coverImage
@@ -1934,6 +2022,23 @@ async function buildNews(
             RECENT_EPISODE_WINDOW
         : false;
 
+    const releaseTimestamp =
+      startTimestamp > 0
+        ? startTimestamp
+        : 0;
+
+    const episodeTimestamp =
+      latestEpisode?.airingAt
+        ? latestEpisode.airingAt * 1000
+        : 0;
+
+    const eventTimestamp =
+      recentlyAired && episodeTimestamp > 0
+        ? episodeTimestamp
+        : releaseTimestamp > 0
+          ? releaseTimestamp
+          : updatedTimestamp;
+
     if (
       trailerUrl &&
       (recentlyReleased ||
@@ -1955,14 +2060,14 @@ async function buildNews(
         description,
 
         date:
-          formatUpdatedDate(
-            anime.updatedAt,
-          ),
+          isAdultFeed && eventTimestamp > 0
+            ? formatEventDate(eventTimestamp)
+            : formatUpdatedDate(anime.updatedAt),
 
         time:
-          formatUpdatedTime(
-            anime.updatedAt,
-          ),
+          isAdultFeed && eventTimestamp > 0
+            ? formatEventTime(eventTimestamp)
+            : formatUpdatedTime(anime.updatedAt),
 
         image:
           anime.coverImage
@@ -2003,14 +2108,14 @@ async function buildNews(
         description,
 
         date:
-          formatUpdatedDate(
-            anime.updatedAt,
-          ),
+          isAdultFeed && eventTimestamp > 0
+            ? formatEventDate(eventTimestamp)
+            : formatUpdatedDate(anime.updatedAt),
 
         time:
-          formatUpdatedTime(
-            anime.updatedAt,
-          ),
+          isAdultFeed && eventTimestamp > 0
+            ? formatEventTime(eventTimestamp)
+            : formatUpdatedTime(anime.updatedAt),
 
         image:
           anime.coverImage
@@ -2168,7 +2273,7 @@ export const fetchAdultNews =
       );
 
     const key =
-      `automatic-adult-news:${season}:${year}`;
+      `automatic-adult-news:v2:${season}:${year}`;
 
     const cached =
       fromCache(key);
@@ -2188,14 +2293,15 @@ export const fetchAdultNews =
        * Buscamos diretamente os animes
        * marcados pelo AniList como adultos.
        */
-      const [
-        adultMedia,
-        latestEpisodes,
-      ] =
-        await Promise.all([
-          fetchAdultCatalogNews(),
-          fetchLatestAiredEpisodes(),
-        ]);
+      const adultMedia =
+        await fetchAdultCatalogNews();
+
+      const latestEpisodes =
+        await fetchLatestAiredEpisodes(
+          adultMedia.map(
+            (anime) => anime.id,
+          ),
+        );
 
       const news =
         await buildNews(
