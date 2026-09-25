@@ -32,10 +32,6 @@ export const Route = createFileRoute("/adult/tags")({
           ? search.tag.trim()
           : undefined,
 
-      all:
-        search.all === true ||
-        search.all === "true",
-
       page:
         Number.isInteger(page) && page >= 1
           ? page
@@ -44,6 +40,10 @@ export const Route = createFileRoute("/adult/tags")({
   },
 
   loader: () => fetchAdultTags(),
+
+  staleTime: 30 * 60 * 1000,
+  preloadStaleTime: 5 * 60 * 1000,
+  gcTime: 60 * 60 * 1000,
 
   pendingComponent: AdultTagsPending,
 
@@ -67,27 +67,19 @@ function AdultTagsPending() {
 
       <section>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from(
-            { length: 12 },
-            (_, index) => (
-              <div
-                key={index}
-                className="h-12 animate-pulse rounded-xl bg-elevated"
-              />
-            ),
-          )}
+          {Array.from({ length: 12 }, (_, index) => (
+            <div
+              key={index}
+              className="h-12 animate-pulse rounded-xl bg-elevated"
+            />
+          ))}
         </div>
       </section>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-        {Array.from(
-          { length: 8 },
-          (_, index) => (
-            <AnimeCardSkeleton
-              key={index}
-            />
-          ),
-        )}
+        {Array.from({ length: 8 }, (_, index) => (
+          <AnimeCardSkeleton key={index} />
+        ))}
       </div>
     </div>
   );
@@ -102,7 +94,6 @@ function AdultTagsPage() {
 
   const {
     tag,
-    all,
     page,
   } = Route.useSearch();
 
@@ -118,9 +109,9 @@ function AdultTagsPage() {
   const normalizeTag = (
     value: string,
   ) =>
-    value
-      .trim()
-      .toLocaleLowerCase("pt-BR");
+    value.trim().toLocaleLowerCase(
+      "pt-BR",
+    );
 
   const selectedTag = tag
     ? data.tags.find(
@@ -163,78 +154,7 @@ function AdultTagsPage() {
       startIndex + itemsPerPage,
     );
 
-  const featuredTags =
-    data.tags.slice(0, 12);
-
-  const allTagsPerPage = 40;
-
-  const allTagsTotalPages = Math.max(
-    1,
-    Math.ceil(
-      data.tags.length /
-        allTagsPerPage,
-    ),
-  );
-
-  const allTagsCurrentPage = Math.min(
-    page,
-    allTagsTotalPages,
-  );
-
-  const allTagsStartIndex =
-    (allTagsCurrentPage - 1) *
-    allTagsPerPage;
-
-  const paginatedTags =
-    data.tags.slice(
-      allTagsStartIndex,
-      allTagsStartIndex +
-        allTagsPerPage,
-    );
-
   const pageNumbers = (() => {
-    if (allTagsTotalPages <= 9) {
-      return Array.from(
-        {
-          length: allTagsTotalPages,
-        },
-        (_, index) => index + 1,
-      );
-    }
-
-    const pages = new Set<number>();
-
-    pages.add(1);
-    pages.add(allTagsTotalPages);
-    pages.add(allTagsCurrentPage);
-
-    if (allTagsCurrentPage > 1) {
-      pages.add(
-        allTagsCurrentPage - 1,
-      );
-    }
-
-    if (
-      allTagsCurrentPage <
-      allTagsTotalPages
-    ) {
-      pages.add(
-        allTagsCurrentPage + 1,
-      );
-    }
-
-    return Array.from(pages)
-      .filter(
-        (value) =>
-          value >= 1 &&
-          value <= allTagsTotalPages,
-      )
-      .sort(
-        (a, b) => a - b,
-      );
-  })();
-
-  const tagPageNumbers = (() => {
     const pages = new Set<number>();
 
     pages.add(1);
@@ -267,50 +187,7 @@ function AdultTagsPage() {
       to: "/adult/tags",
       search: {
         tag: nextTag,
-        all: undefined,
         page: 1,
-      },
-    }).then(() => {
-      window.scrollTo({
-        top: 0,
-        behavior: "auto",
-      });
-    });
-  }
-
-  function openAllTags() {
-    void navigate({
-      to: "/adult/tags",
-      search: {
-        tag: undefined,
-        all: true,
-        page: 1,
-      },
-    }).then(() => {
-      window.scrollTo({
-        top: 0,
-        behavior: "auto",
-      });
-    });
-  }
-
-  function goToAllTagsPage(
-    nextPage: number,
-  ) {
-    if (
-      nextPage < 1 ||
-      nextPage > allTagsTotalPages ||
-      nextPage === allTagsCurrentPage
-    ) {
-      return;
-    }
-
-    void navigate({
-      to: "/adult/tags",
-      search: {
-        tag: undefined,
-        all: true,
-        page: nextPage,
       },
     }).then(() => {
       window.scrollTo({
@@ -334,27 +211,8 @@ function AdultTagsPage() {
     void navigate({
       to: "/adult/tags",
       search: {
-        tag:
-          selectedTag?.name ??
-          tag,
-        all: undefined,
+        tag: selectedTag?.name ?? tag,
         page: nextPage,
-      },
-    }).then(() => {
-      window.scrollTo({
-        top: 0,
-        behavior: "auto",
-      });
-    });
-  }
-
-  function backToTags() {
-    void navigate({
-      to: "/adult/tags",
-      search: {
-        tag: undefined,
-        all: undefined,
-        page: 1,
       },
     }).then(() => {
       window.scrollTo({
@@ -366,7 +224,7 @@ function AdultTagsPage() {
 
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
-      {!tag && !all ? (
+      {!tag ? (
         <>
           <section>
             <div className="flex items-center gap-3">
@@ -392,196 +250,29 @@ function AdultTagsPage() {
             </p>
           ) : (
             <section>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="font-display text-lg">
-                  Tags populares
-                </h2>
-              </div>
-
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {featuredTags.map(
-                  (item) => (
-                    <button
-                      key={item.name}
-                      type="button"
-                      onClick={() =>
-                        openTag(
-                          item.name,
-                        )
-                      }
-                      className="flex min-h-12 items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left text-sm font-medium text-fg transition-colors hover:bg-elevated"
-                    >
-                      <Tags className="size-4 shrink-0 text-muted" />
+                {data.tags.map((item) => (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onClick={() =>
+                      openTag(item.name)
+                    }
+                    className="flex min-h-12 items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left text-sm font-medium text-fg transition-colors hover:bg-elevated"
+                  >
+                    <Tags className="size-4 shrink-0 text-muted" />
 
-                      <span className="min-w-0 flex-1 truncate">
-                        {item.name}
-                      </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {item.name}
+                    </span>
 
-                      <span className="shrink-0 text-xs text-muted">
-                        {item.count}
-                      </span>
-                    </button>
-                  ),
-                )}
+                    <span className="shrink-0 text-xs text-muted">
+                      {item.count}
+                    </span>
+                  </button>
+                ))}
               </div>
-
-              {data.tags.length >
-                featuredTags.length && (
-                <button
-                  type="button"
-                  onClick={
-                    openAllTags
-                  }
-                  className="mt-4 flex w-full items-center justify-center rounded-xl border border-border bg-surface px-4 py-3 text-sm font-medium text-fg transition-colors hover:bg-elevated"
-                >
-                  Ver todas as tags
-                </button>
-              )}
             </section>
-          )}
-        </>
-      ) : all ? (
-        <>
-          <section>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-elevated">
-                  <Tags className="size-5 text-fg" />
-                </div>
-
-                <div className="min-w-0">
-                  <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-                    Todas as tags
-                  </h1>
-
-                  <p className="mt-1 text-sm text-muted">
-                    Explore todas as tags disponíveis no conteúdo +18.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={backToTags}
-                aria-label="Voltar para tags populares"
-                title="Voltar para tags populares"
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-elevated hover:text-fg"
-              >
-                <span
-                  className="text-2xl leading-none"
-                  aria-hidden="true"
-                >
-                  ×
-                </span>
-              </button>
-            </div>
-          </section>
-
-          {data.tags.length === 0 ? (
-            <p className="py-16 text-center text-muted">
-              Nenhuma tag disponível no momento.
-            </p>
-          ) : (
-            <>
-              <section>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                  {paginatedTags.map(
-                    (item) => (
-                      <button
-                        key={item.name}
-                        type="button"
-                        onClick={() =>
-                          openTag(
-                            item.name,
-                          )
-                        }
-                        className="flex min-h-12 items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left text-sm font-medium text-fg transition-colors hover:bg-elevated"
-                      >
-                        <Tags className="size-4 shrink-0 text-muted" />
-
-                        <span className="min-w-0 flex-1 truncate">
-                          {item.name}
-                        </span>
-
-                        <span className="shrink-0 text-xs text-muted">
-                          {item.count}
-                        </span>
-                      </button>
-                    ),
-                  )}
-                </div>
-              </section>
-
-              {allTagsTotalPages > 1 && (
-                <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      goToAllTagsPage(
-                        allTagsCurrentPage -
-                          1,
-                      )
-                    }
-                    disabled={
-                      allTagsCurrentPage ===
-                      1
-                    }
-                    aria-label="Página anterior"
-                    className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-                  >
-                    <ChevronLeft className="size-5" />
-                  </button>
-
-                  <div className="flex items-center gap-1">
-                    {pageNumbers.map(
-                      (pageNumber) => (
-                        <button
-                          key={pageNumber}
-                          type="button"
-                          onClick={() =>
-                            goToAllTagsPage(
-                              pageNumber,
-                            )
-                          }
-                          aria-current={
-                            pageNumber ===
-                            allTagsCurrentPage
-                              ? "page"
-                              : undefined
-                          }
-                          className={
-                            pageNumber ===
-                            allTagsCurrentPage
-                              ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
-                              : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
-                          }
-                        >
-                          {pageNumber}
-                        </button>
-                      ),
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      goToAllTagsPage(
-                        allTagsCurrentPage +
-                          1,
-                      )
-                    }
-                    disabled={
-                      allTagsCurrentPage ===
-                      allTagsTotalPages
-                    }
-                    aria-label="Próxima página"
-                    className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-                  >
-                    <ChevronRight className="size-5" />
-                  </button>
-                </div>
-              )}
-            </>
           )}
         </>
       ) : (
@@ -595,8 +286,7 @@ function AdultTagsPage() {
 
                 <div className="min-w-0">
                   <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-                    {selectedTag?.name ??
-                      tag}
+                    {selectedTag?.name ?? tag}
                   </h1>
 
                   <p className="mt-1 text-sm text-muted">
@@ -627,8 +317,7 @@ function AdultTagsPage() {
             <p className="py-16 text-center text-muted">
               Essa tag não está disponível no catálogo +18.
             </p>
-          ) : paginatedItems.length ===
-            0 ? (
+          ) : paginatedItems.length === 0 ? (
             <p className="py-16 text-center text-muted">
               Nenhum anime encontrado para esta tag.
             </p>
@@ -646,75 +335,74 @@ function AdultTagsPage() {
             </div>
           )}
 
-          {selectedTag &&
-            totalPages > 1 && (
-              <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    goToPage(
-                      currentPage - 1,
-                    )
-                  }
-                  disabled={
-                    currentPage === 1
-                  }
-                  aria-label="Página anterior"
-                  className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-                >
-                  <ChevronLeft className="size-5" />
-                </button>
+          {selectedTag && totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
+              <button
+                type="button"
+                onClick={() =>
+                  goToPage(
+                    currentPage - 1,
+                  )
+                }
+                disabled={
+                  currentPage === 1
+                }
+                aria-label="Página anterior"
+                className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+              >
+                <ChevronLeft className="size-5" />
+              </button>
 
-                <div className="flex items-center gap-1">
-                  {tagPageNumbers.map(
-                    (pageNumber) => (
-                      <button
-                        key={pageNumber}
-                        type="button"
-                        onClick={() =>
-                          goToPage(
-                            pageNumber,
-                          )
-                        }
-                        aria-current={
-                          pageNumber ===
-                          currentPage
-                            ? "page"
-                            : undefined
-                        }
-                        className={
-                          pageNumber ===
-                          currentPage
-                            ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
-                            : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
-                        }
-                      >
-                        {pageNumber}
-                      </button>
-                    ),
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    goToPage(
-                      currentPage + 1,
-                    )
-                  }
-                  disabled={
-                    currentPage ===
-                    totalPages
-                  }
-                  aria-label="Próxima página"
-                  className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-                >
-                  <ChevronRight className="size-5" />
-                </button>
+              <div className="flex items-center gap-1">
+                {pageNumbers.map(
+                  (pageNumber) => (
+                    <button
+                      key={pageNumber}
+                      type="button"
+                      onClick={() =>
+                        goToPage(
+                          pageNumber,
+                        )
+                      }
+                      aria-current={
+                        pageNumber ===
+                        currentPage
+                          ? "page"
+                          : undefined
+                      }
+                      className={
+                        pageNumber ===
+                        currentPage
+                          ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
+                          : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+                      }
+                    >
+                      {pageNumber}
+                    </button>
+                  ),
+                )}
               </div>
-            )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  goToPage(
+                    currentPage + 1,
+                  )
+                }
+                disabled={
+                  currentPage ===
+                  totalPages
+                }
+                aria-label="Próxima página"
+                className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+              >
+                <ChevronRight className="size-5" />
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
   );
-    }
+}
