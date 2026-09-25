@@ -31,6 +31,7 @@ export type AutomaticNewsItem = {
 const ANILIST = "https://graphql.anilist.co";
 
 const ADULT_NEWS_RSS_FEEDS = [
+  "https://eroeronews.com/categorias/estrenos/feed/",
   "https://www.lune-soft.jp/feed",
 ];
 
@@ -1163,6 +1164,30 @@ function formatRssDate(
     return "";
   }
 
+  // Most feeds provide the publication date in the source's own calendar/timezone.
+  // Keep that calendar date and only convert the presentation to Brazilian format.
+  const isoMatch = value.match(
+    /(20\d{2})-(\d{1,2})-(\d{1,2})/,
+  );
+
+  if (isoMatch) {
+    return `${isoMatch[3].padStart(2, "0")}/${isoMatch[2].padStart(2, "0")}/${isoMatch[1]}`;
+  }
+
+  const rfcMatch = value.match(
+    /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(20\d{2})/i,
+  );
+
+  if (rfcMatch) {
+    const months: Record<string, string> = {
+      jan: "01", feb: "02", mar: "03", apr: "04",
+      may: "05", jun: "06", jul: "07", aug: "08",
+      sep: "09", oct: "10", nov: "11", dec: "12",
+    };
+
+    return `${rfcMatch[1].padStart(2, "0")}/${months[rfcMatch[2].toLowerCase()]}/${rfcMatch[3]}`;
+  }
+
   const timestamp = Date.parse(value);
 
   if (Number.isNaN(timestamp)) {
@@ -1175,10 +1200,9 @@ function formatRssDate(
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+      timeZone: "America/Sao_Paulo",
     },
-  ).format(
-    new Date(timestamp),
-  );
+  ).format(new Date(timestamp));
 }
 
 function typeFromRss(
@@ -1590,22 +1614,30 @@ function parseLuneRssItems(
       continue;
     }
 
-    // O RSS da Lune reúne vários tipos de conteúdo da empresa.
-    // A categoria "アニメ" é a separação oficial de notícias de anime adulto.
-    if (!categories.includes("アニメ")) {
-      continue;
-    }
-
-    // Mantemos apenas notícias claramente relacionadas a OVAs/animações adultas.
-    const value = `${title} ${description}`.toLowerCase();
-    const isHentaiAnime =
-      value.includes("ova") ||
-      value.includes("アニメ化") ||
+    // A fonte principal é especializada em notícias hentai.
+    // Ainda assim, filtramos para manter somente anime/OVA e
+    // eliminar manga, manhwa, manhua, jogos e outros conteúdos.
+    const value = `${title} ${description} ${categories}`.toLowerCase();
+    const isAnimeNews =
+      /\bova\b/i.test(value) ||
+      value.includes("anime") ||
+      value.includes("animada") ||
+      value.includes("adaptación animada") ||
+      value.includes("episodio") ||
+      value.includes("trailer") ||
+      value.includes("tráiler") ||
       value.includes("アニメ") ||
-      value.includes("発売") ||
-      value.includes("配信");
+      value.includes("アニメ化");
 
-    if (!isHentaiAnime) {
+    const isNonAnime =
+      value.includes("manhwa") ||
+      value.includes("manhua") ||
+      value.includes("manga hentai") ||
+      value.includes("manga +18") ||
+      value.includes("jav") ||
+      value.includes("live action");
+
+    if (!isAnimeNews || isNonAnime) {
       continue;
     }
 
@@ -1708,7 +1740,9 @@ async function fetchLuneAdultArticle(
       isAdult: true,
       url: article.url,
       publishedAt: article.publishedAt,
-      source: "Lune Soft / Lune Pictures",
+      source: article.url.includes("eroeronews.com")
+        ? "EroEro News"
+        : "Lune Soft / Lune Pictures",
       articleImages:
         proxiedImages.length
           ? proxiedImages
@@ -1716,6 +1750,143 @@ async function fetchLuneAdultArticle(
     };
   } catch {
     return null;
+  }
+}
+
+async function fetchEroEroNewsPageFallback(): Promise<AutomaticNewsItem[]> {
+  try {
+    const response = await fetch(
+      "https://eroeronews.com/categorias/estrenos/",
+      {
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "User-Agent": "Hikari/1.0 (adult hentai news)",
+        },
+        signal: AbortSignal.timeout(12000),
+      },
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const html = await response.text();
+    const results: {
+      title: string;
+      description: string;
+      url: string;
+      publishedAt: string;
+      categories: string;
+      image: string;
+    }[] = [];
+
+    const datePattern = /(?:Estrenos[^<]{0,120})?<[^>]+>\s*([^<]{8,300})\s*<\/[^>]+>[\s\S]{0,1200}?((?:20\d{2})-(\d{2})-(\d{2})T[^<\s]+)/gi;
+    for (const match of html.matchAll(datePattern)) {
+      const title = stripPageText(match[1] ?? "");
+      if (!title || !/\bOVA\b|anime|animada|trailer|tráiler/i.test(title)) continue;
+      const iso = match[2];
+      const urlMatch = html.slice(Math.max(0, (match.index ?? 0) - 1500), (match.index ?? 0) + 1500).match(/href=["']([^"']+)["']/i);
+      if (!urlMatch) continue;
+      results.push({
+        title,
+        description: title,
+        url: new URL(urlMatch[1], "https://eroeronews.com/").href,
+        publishedAt: iso,
+        categories: "Estrenos",
+        image: "",
+      });
+    }
+
+    const articles = Array.from(new Map(results.map((item) => [item.url, item])).values()).slice(0, 30);
+    const converted = await Promise.all(articles.map((article) => fetchLuneAdultArticle(article)));
+    return converted.filter((item): item is AutomaticNewsItem => Boolean(item)).map((item) => ({
+      ...item,
+      source: "EroEro News",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function parseLuneNewsPage(
+  html: string,
+): {
+  title: string;
+  description: string;
+  url: string;
+  publishedAt: string;
+  categories: string;
+  image: string;
+}[] {
+  const results: {
+    title: string;
+    description: string;
+    url: string;
+    publishedAt: string;
+    categories: string;
+    image: string;
+  }[] = [];
+
+  // Fallback usado apenas quando o RSS não entregar itens.
+  // A própria página oficial da Lune lista as notícias da categoria アニメ.
+  const pattern = /(?:アニメ)\s+(20\d{2})\.(\d{1,2})\.(\d{1,2})[\s\S]{0,1200}?<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+  for (const match of html.matchAll(pattern)) {
+    const year = match[1];
+    const month = match[2].padStart(2, "0");
+    const day = match[3].padStart(2, "0");
+    const url = new URL(match[4], "https://www.lune-soft.jp/").href;
+    const title = stripPageText(match[5]);
+
+    if (!title || !url || !/\bOVA\b|アニメ化/i.test(title)) {
+      continue;
+    }
+
+    results.push({
+      title,
+      description: title,
+      url,
+      publishedAt: `${year}-${month}-${day}`,
+      categories: "アニメ",
+      image: "",
+    });
+  }
+
+  return Array.from(
+    new Map(results.map((item) => [item.url, item])).values(),
+  ).slice(0, 30);
+}
+
+async function fetchLuneNewsPageFallback(): Promise<
+  AutomaticNewsItem[]
+> {
+  try {
+    const response = await fetch(
+      "https://www.lune-soft.jp/news/categories/event",
+      {
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "User-Agent": "Hikari/1.0 (adult hentai news)",
+        },
+        signal: AbortSignal.timeout(12000),
+      },
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const html = await response.text();
+    const articles = parseLuneNewsPage(html);
+    const results = await Promise.all(
+      articles.map((article) => fetchLuneAdultArticle(article)),
+    );
+
+    return results.filter(
+      (item): item is AutomaticNewsItem => Boolean(item),
+    );
+  } catch {
+    return [];
   }
 }
 
@@ -1739,6 +1910,12 @@ async function fetchAdultNewsFeed(
   const xml = await response.text();
   const articles = parseLuneRssItems(xml);
 
+  if (!articles.length) {
+    return feedUrl.includes("eroeronews.com")
+      ? fetchEroEroNewsPageFallback()
+      : fetchLuneNewsPageFallback();
+  }
+
   const now = Date.now();
   const minimum =
     now - 90 * 24 * 60 * 60 * 1000;
@@ -1752,6 +1929,12 @@ async function fetchAdultNewsFeed(
       timestamp >= minimum
     );
   });
+
+  if (!recent.length) {
+    return feedUrl.includes("eroeronews.com")
+      ? fetchEroEroNewsPageFallback()
+      : fetchLuneNewsPageFallback();
+  }
 
   const results = await Promise.all(
     recent.map((article) =>
@@ -1853,7 +2036,7 @@ export const fetchAdultNews =
     method: "GET",
   }).handler(async () => {
     const key =
-      "automatic-adult-news:lune-hentai:v3";
+      "automatic-adult-news:hentai-recentes:v4";
 
     const cached =
       fromCache(key);
