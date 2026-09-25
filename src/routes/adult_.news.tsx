@@ -1350,7 +1350,7 @@ function NewsPage() {
                             ${
                               paginationPage ===
                               item
-                                ? "border-fg bg-fg text-background"
+                                ? "border-fg bg-fg text-black"
                                 : "border-border bg-card text-muted"
                             }
                           `}
