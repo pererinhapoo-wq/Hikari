@@ -600,10 +600,94 @@ function looksSpanish(value: string): boolean {
     " estas ", " nueva ", " nuevo ",
     " estrenos ", " tráiler ", " termina ",
     " fueron ", " vendidos ", " imágenes ",
-    " revelan ",
+    " revelan ", " adaptación ", " animada ",
+    " primeras ", " detalles ", " septiembre ",
   ];
 
   return markers.filter((marker) => text.includes(marker)).length >= 2;
+}
+
+function fallbackSpanishToPortuguese(value: string): string {
+  let text = value;
+
+  const phrases: Array<[RegExp, string]> = [
+    [/\bEstos fueron\b/gi, "Estes foram"],
+    [/\bEstas son\b/gi, "Estas são"],
+    [/\bEstos son\b/gi, "Estes são"],
+    [/\bMira los\b/gi, "Veja os"],
+    [/\bMira las\b/gi, "Veja as"],
+    [/\bRevelan más detalles\b/gi, "Revelam mais detalhes"],
+    [/\bprimeras imágenes\b/gi, "primeiras imagens"],
+    [/\badaptación animada\b/gi, "adaptação animada"],
+    [/\badaptación\b/gi, "adaptação"],
+    [/\banimada\b/gi, "animada"],
+    [/\banimado\b/gi, "animado"],
+    [/\bestren[aá]s?\b/gi, "estreias"],
+    [/\btráileres\b/gi, "trailers"],
+    [/\btráiler\b/gi, "trailer"],
+    [/\bvendidos\b/gi, "vendidos"],
+    [/\bvendi[dt]as?\b/gi, "vendidas"],
+    [/\bdetalles\b/gi, "detalhes"],
+    [/\bimágenes\b/gi, "imagens"],
+    [/\bpublicado\b/gi, "publicado"],
+    [/\bpublicada\b/gi, "publicada"],
+    [/\bnueva\b/gi, "nova"],
+    [/\bnuevo\b/gi, "novo"],
+    [/\bnuevos\b/gi, "novos"],
+    [/\bnuevas\b/gi, "novas"],
+    [/\bprimera\b/gi, "primeira"],
+    [/\bprimer\b/gi, "primeiro"],
+    [/\bprimeros\b/gi, "primeiros"],
+    [/\búltimo\b/gi, "último"],
+    [/\búltimos\b/gi, "últimos"],
+    [/\búltima\b/gi, "última"],
+    [/\búltimas\b/gi, "últimas"],
+    [/\bcalientes\b/gi, "quentes"],
+    [/\bpadre\b/gi, "pai"],
+    [/\bcolegiala\b/gi, "colegial"],
+    [/\babusada\b/gi, "abusada"],
+    [/\babusado\b/gi, "abusado"],
+    [/\bvendida\b/gi, "vendida"],
+    [/\bvendido\b/gi, "vendido"],
+    [/\bseptiembre\b/gi, "setembro"],
+    [/\boctubre\b/gi, "outubro"],
+    [/\bnoviembre\b/gi, "novembro"],
+    [/\bdiciembre\b/gi, "dezembro"],
+    [/\bagosto\b/gi, "agosto"],
+    [/\bjulio\b/gi, "julho"],
+    [/\bjunio\b/gi, "junho"],
+    [/\bmayo\b/gi, "maio"],
+    [/\babril\b/gi, "abril"],
+    [/\bmarzo\b/gi, "março"],
+    [/\bfebrero\b/gi, "fevereiro"],
+    [/\benero\b/gi, "janeiro"],
+    [/\bpara\b/gi, "para"],
+    [/\bcon\b/gi, "com"],
+    [/\bpor\b/gi, "por"],
+    [/\bdel\b/gi, "do"],
+    [/\blas\b/gi, "as"],
+    [/\blos\b/gi, "os"],
+    [/\buna\b/gi, "uma"],
+    [/\buno\b/gi, "um"],
+    [/\bque\b/gi, "que"],
+    [/\bse\b/gi, "se"],
+    [/\bson\b/gi, "são"],
+    [/\bfueron\b/gi, "foram"],
+    [/\bfue\b/gi, "foi"],
+    [/\btermina\b/gi, "termina"],
+    [/\brevelan\b/gi, "revelam"],
+    [/\bmás\b/gi, "mais"],
+    [/\bmenos\b/gi, "menos"],
+    [/\bde\b/gi, "de"],
+    [/\bel\b/gi, "o"],
+    [/\bla\b/gi, "a"],
+  ];
+
+  for (const [pattern, replacement] of phrases) {
+    text = text.replace(pattern, replacement);
+  }
+
+  return text.replace(/\s+/g, " ").trim();
 }
 
 async function translateTextToPortuguese(
@@ -615,30 +699,22 @@ async function translateTextToPortuguese(
     return text;
   }
 
-  const MAX_QUERY_CHARS = 450;
+  const GOOGLE_MAX_CHARS = 420;
+  const MYMEMORY_MAX_BYTES = 420;
 
-  const splitIntoChunks = (
-    input: string,
-  ): string[] => {
+  const splitForGoogle = (input: string): string[] => {
     const chunks: string[] = [];
     let remaining = input.trim();
 
-    while (remaining.length > MAX_QUERY_CHARS) {
-      let cut = remaining.lastIndexOf(
-        " ",
-        MAX_QUERY_CHARS,
-      );
+    while (remaining.length > GOOGLE_MAX_CHARS) {
+      let cut = remaining.lastIndexOf(" ", GOOGLE_MAX_CHARS);
 
-      if (cut < 120) {
-        cut = MAX_QUERY_CHARS;
+      if (cut < 100) {
+        cut = GOOGLE_MAX_CHARS;
       }
 
-      chunks.push(
-        remaining.slice(0, cut).trim(),
-      );
-      remaining = remaining
-        .slice(cut)
-        .trim();
+      chunks.push(remaining.slice(0, cut).trim());
+      remaining = remaining.slice(cut).trim();
     }
 
     if (remaining) {
@@ -648,29 +724,38 @@ async function translateTextToPortuguese(
     return chunks;
   };
 
-  const buildGoogleUrl = (
-    baseUrl: string,
-    chunk: string,
-  ): string => {
-    const url = new URL(baseUrl);
+  const splitForMyMemory = (input: string): string[] => {
+    const chunks: string[] = [];
+    let current = "";
 
-    url.searchParams.set("client", "gtx");
-    url.searchParams.set("sl", "es");
-    url.searchParams.set("tl", "pt");
-    url.searchParams.set("dt", "t");
-    url.searchParams.set("q", chunk);
+    for (const word of input.trim().split(/\s+/)) {
+      const candidate = current ? `${current} ${word}` : word;
 
-    return url.toString();
+      if (
+        new TextEncoder().encode(candidate).length >
+        MYMEMORY_MAX_BYTES
+      ) {
+        if (current) {
+          chunks.push(current);
+        }
+        current = word;
+      } else {
+        current = candidate;
+      }
+    }
+
+    if (current) {
+      chunks.push(current);
+    }
+
+    return chunks;
   };
 
-  const extractGoogleTranslation = (
-    data: unknown,
-  ): string => {
+  const extractGoogleTranslation = (data: unknown): string => {
     if (Array.isArray(data) && Array.isArray(data[0])) {
       return data[0]
         .filter(
-          (part): part is unknown[] =>
-            Array.isArray(part),
+          (part): part is unknown[] => Array.isArray(part),
         )
         .map((part) => String(part[0] ?? ""))
         .join("")
@@ -684,9 +769,7 @@ async function translateTextToPortuguese(
     ) {
       const sentences = (
         data as {
-          sentences?: Array<{
-            trans?: string;
-          }>;
+          sentences?: Array<{ trans?: string }>;
         }
       ).sentences;
 
@@ -701,7 +784,7 @@ async function translateTextToPortuguese(
     return "";
   };
 
-  const translateChunkWithGoogle = async (
+  const translateWithGoogle = async (
     chunk: string,
   ): Promise<string> => {
     const endpoints = [
@@ -712,35 +795,33 @@ async function translateTextToPortuguese(
 
     for (const endpoint of endpoints) {
       try {
-        const url = buildGoogleUrl(
-          endpoint,
-          chunk,
-        );
+        const url = new URL(endpoint);
+        url.searchParams.set("client", "gtx");
+        url.searchParams.set("sl", "es");
+        url.searchParams.set("tl", "pt-BR");
+        url.searchParams.set("dt", "t");
+        url.searchParams.set("dj", "1");
+        url.searchParams.set("q", chunk);
 
-        const response = await fetch(
-          url,
-          {
-            headers: {
-              Accept: "application/json",
-              "User-Agent":
-                "Mozilla/5.0 (compatible; Hikari/1.0; adult news translation)",
-            },
-            signal: AbortSignal.timeout(7000),
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/json,text/plain,*/*",
+            "User-Agent":
+              "Mozilla/5.0 (compatible; Hikari/1.0; adult news translation)",
           },
-        );
+          cache: "no-store",
+          signal: AbortSignal.timeout(8000),
+        });
 
         if (!response.ok) {
           continue;
         }
 
         const data = (await response.json()) as unknown;
-        const translated =
-          extractGoogleTranslation(data);
+        const translated = extractGoogleTranslation(data);
 
-        if (
-          translated &&
-          translated !== chunk
-        ) {
+        if (translated && translated !== chunk) {
           return translated;
         }
       } catch {
@@ -751,21 +832,25 @@ async function translateTextToPortuguese(
     return "";
   };
 
-  const translateChunkWithMyMemory = async (
+  const translateWithMyMemory = async (
     chunk: string,
   ): Promise<string> => {
     try {
-      const response = await fetch(
-        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=es|pt-BR`,
-        {
-          headers: {
-            Accept: "application/json",
-            "User-Agent":
-              "Hikari/1.0 (adult news translation)",
-          },
-          signal: AbortSignal.timeout(7000),
-        },
+      const url = new URL(
+        "https://api.mymemory.translated.net/get",
       );
+      url.searchParams.set("q", chunk);
+      url.searchParams.set("langpair", "es|pt-BR");
+
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Hikari/1.0 (adult news translation)",
+        },
+        cache: "no-store",
+        signal: AbortSignal.timeout(8000),
+      });
 
       if (!response.ok) {
         return "";
@@ -778,38 +863,58 @@ async function translateTextToPortuguese(
       const translated =
         data.responseData?.translatedText?.trim() ?? "";
 
-      if (
-        translated &&
-        translated !== chunk
-      ) {
+      if (translated && translated !== chunk) {
         return translated;
       }
     } catch {
-      // Mantém o bloco original se o fallback falhar.
+      // Usa o fallback local abaixo.
     }
 
     return "";
   };
 
-  const chunks = splitIntoChunks(text);
-  const translatedChunks: string[] = [];
+  const googleChunks = splitForGoogle(text);
+  const googleResults: string[] = [];
+  let googleSucceeded = true;
 
-  for (const chunk of chunks) {
-    const translated =
-      (await translateChunkWithGoogle(chunk)) ||
-      (await translateChunkWithMyMemory(chunk));
+  for (const chunk of googleChunks) {
+    const translated = await translateWithGoogle(chunk);
 
-    translatedChunks.push(
-      translated || chunk,
-    );
+    if (!translated) {
+      googleSucceeded = false;
+      break;
+    }
+
+    googleResults.push(translated);
   }
 
-  const translated = translatedChunks
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+  if (googleSucceeded && googleResults.length === googleChunks.length) {
+    return googleResults.join(" ").replace(/\s+/g, " ").trim();
+  }
 
-  return translated || text;
+  const myMemoryChunks = splitForMyMemory(text);
+  const myMemoryResults: string[] = [];
+  let myMemorySucceeded = true;
+
+  for (const chunk of myMemoryChunks) {
+    const translated = await translateWithMyMemory(chunk);
+
+    if (!translated) {
+      myMemorySucceeded = false;
+      break;
+    }
+
+    myMemoryResults.push(translated);
+  }
+
+  if (
+    myMemorySucceeded &&
+    myMemoryResults.length === myMemoryChunks.length
+  ) {
+    return myMemoryResults.join(" ").replace(/\s+/g, " ").trim();
+  }
+
+  return fallbackSpanishToPortuguese(text) || text;
 }
 
 async function translateEroEroItem(
