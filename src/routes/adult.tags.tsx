@@ -157,20 +157,23 @@ function AdultTagsPage() {
     locals,
   );
 
-  const displayedTags = MAIN_ADULT_TAGS
-    .map((mainTag) => {
-      const found = data.tags.find((item) => {
-        const normalizedItem = normalizeAdultTag(item.name);
-        return mainTag.aliases.some(
-          (alias) => normalizeAdultTag(alias) === normalizedItem,
-        );
-      });
+  const displayedTags = MAIN_ADULT_TAGS.map((mainTag) => {
+    const found = data.tags.find((item) =>
+      mainTag.aliases.some(
+        (alias) =>
+          normalizeAdultTag(alias) ===
+          normalizeAdultTag(item.name),
+      ),
+    );
 
-      return found
-        ? { ...found, name: mainTag.name }
-        : null;
-    })
-    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    return (
+      found ?? {
+        name: mainTag.name,
+        count: 0,
+        animeIds: [],
+      }
+    );
+  });
 
   const normalizeTag = (
     value: string,
@@ -179,11 +182,26 @@ function AdultTagsPage() {
       "pt-BR",
     );
 
-  const selectedTag = tag
-    ? data.tags.find(
-        (item) =>
-          normalizeTag(item.name) ===
-          normalizeTag(tag),
+  const selectedMainTag = tag
+    ? MAIN_ADULT_TAGS.find(
+        (mainTag) =>
+          normalizeAdultTag(mainTag.name) ===
+            normalizeAdultTag(tag) ||
+          mainTag.aliases.some(
+            (alias) =>
+              normalizeAdultTag(alias) ===
+              normalizeAdultTag(tag),
+          ),
+      )
+    : undefined;
+
+  const selectedTag = selectedMainTag
+    ? data.tags.find((item) =>
+        selectedMainTag.aliases.some(
+          (alias) =>
+            normalizeAdultTag(alias) ===
+            normalizeAdultTag(item.name),
+        ),
       )
     : undefined;
 
@@ -340,13 +358,13 @@ function AdultTagsPage() {
 
                 <div className="min-w-0">
                   <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-                    {selectedTag?.name ?? tag}
+                    {selectedMainTag?.name ?? tag}
                   </h1>
 
                   <p className="mt-1 text-sm text-muted">
                     {selectedTag
                       ? `${selectedTag.count} anime(s) com esta tag.`
-                      : "Tag não encontrada."}
+                      : `${selectedMainTag?.name ?? tag} — 0 anime(s) com esta tag.`}
                   </p>
                 </div>
               </div>
