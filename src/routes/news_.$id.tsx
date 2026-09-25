@@ -48,6 +48,10 @@ type NewsItem = {
   trailerUrl?: string;
   isAdult?: boolean;
   articleImages?: string[];
+  mentionedHentai?: {
+    title: string;
+    image: string;
+  }[];
   anime?: AnimeInfo;
 };
 
@@ -730,6 +734,12 @@ function automaticToNewsItem(
         ? item.articleImages
         : [],
 
+    mentionedHentai:
+      "mentionedHentai" in item &&
+      Array.isArray(item.mentionedHentai)
+        ? item.mentionedHentai
+        : [],
+
     anime:
       anime ?? undefined,
   };
@@ -1019,6 +1029,80 @@ function NewsDetailsPage() {
                 ),
               )}
           </div>
+
+          {/* HENTAIS CITADOS NA MATÉRIA */}
+          {news.mentionedHentai &&
+            news.mentionedHentai.length > 0 && (
+              <section
+                className="
+                  mt-8
+                  space-y-4
+                "
+              >
+                <div className="flex items-center gap-2">
+                  <Clapperboard className="size-5 text-accent" />
+
+                  <h2
+                    className="
+                      font-display
+                      text-lg
+                      tracking-tight
+                      text-fg
+                    "
+                  >
+                    Hentai citados na notícia
+                  </h2>
+                </div>
+
+                <div
+                  className="
+                    grid
+                    grid-cols-1
+                    gap-4
+                    sm:grid-cols-2
+                  "
+                >
+                  {news.mentionedHentai.map(
+                    (hentai) => (
+                      <div
+                        key={`${hentai.title}-${hentai.image}`}
+                        className="
+                          overflow-hidden
+                          rounded-2xl
+                          bg-black
+                          shadow-[var(--shadow-border)]
+                        "
+                      >
+                        <img
+                          src={hentai.image}
+                          alt={hentai.title}
+                          loading="lazy"
+                          className="
+                            aspect-video
+                            h-auto
+                            w-full
+                            object-contain
+                          "
+                        />
+
+                        <div
+                          className="
+                            px-4
+                            py-3
+                            text-sm
+                            font-medium
+                            leading-6
+                            text-fg
+                          "
+                        >
+                          {hentai.title}
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </section>
+            )}
 
           {/* IMAGENS DA MATÉRIA */}
           {news.articleImages &&
