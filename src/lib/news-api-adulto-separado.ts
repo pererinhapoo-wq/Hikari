@@ -1130,9 +1130,16 @@ function typeFromRss(
 }
 
 async function fetchLuneAnimeReleaseNews(): Promise<AutomaticNewsItem[]> {
-  const now = Date.now();
-  const minTime = now - 1000 * 60 * 60 * 24 * 120;
-  const maxTime = now + 1000 * 60 * 60 * 24 * 180;
+  const now = new Date();
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  const minTime = today.getTime();
+  const maxTime =
+    today.getTime() +
+    1000 * 60 * 60 * 24 * 180;
 
   const discovered = new Map<
     string,
