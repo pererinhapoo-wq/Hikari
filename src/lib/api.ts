@@ -2481,6 +2481,57 @@ export const fetchAdultCatalog =
     },
   );
 
+
+const MAIN_ADULT_TAGS = [
+  { name: "Anal", aliases: ["Anal"] },
+  { name: "Boquete", aliases: ["Blow Job", "Blowjob"] },
+  { name: "Brinquedos", aliases: ["Toys"] },
+  { name: "Comédia", aliases: ["Comedy"] },
+  { name: "Dark Skin", aliases: ["Dark Skin"] },
+  { name: "Ecchi", aliases: ["Ecchi"] },
+  { name: "Empregada", aliases: ["Maid"] },
+  { name: "Enfermeira", aliases: ["Nurse"] },
+  { name: "Elfos", aliases: ["Elf", "Elves"] },
+  { name: "Esporte", aliases: ["Sports", "Sport"] },
+  { name: "Futanari", aliases: ["Futanari"] },
+  { name: "Harém", aliases: ["Harem"] },
+  { name: "Incesto", aliases: ["Incest"] },
+  { name: "Lactante", aliases: ["Breast Feeding", "Lactation"] },
+  { name: "Magia", aliases: ["Magic"] },
+  { name: "Masturbação", aliases: ["Masturbation"] },
+  { name: "Milf", aliases: ["MILF"] },
+  { name: "Orgia", aliases: ["Orgy"] },
+  { name: "Peitões", aliases: ["Large Breasts", "Big Breasts"] },
+  { name: "Professora", aliases: ["Teacher"] },
+  { name: "Romance", aliases: ["Romance"] },
+  { name: "Submissão", aliases: ["Submission"] },
+  { name: "Tentáculos", aliases: ["Tentacles"] },
+  { name: "Terror", aliases: ["Horror"] },
+  { name: "Vida Escolar", aliases: ["School Life"] },
+  { name: "Vampiros", aliases: ["Vampire", "Vampires"] },
+  { name: "Virgem", aliases: ["Virgin"] },
+  { name: "Yaoi", aliases: ["Yaoi"] },
+  { name: "Yuri", aliases: ["Yuri"] },
+  { name: "NTR", aliases: ["NTR"] },
+  { name: "Netorare", aliases: ["Netorare"] },
+  { name: "Cosplay", aliases: ["Cosplay"] },
+  { name: "Voyeur", aliases: ["Voyeur"] },
+  { name: "Exibicionismo", aliases: ["Exhibitionism"] },
+  { name: "BDSM", aliases: ["BDSM"] },
+  { name: "Amiga de infância", aliases: ["Childhood Friend"] },
+  { name: "Senpai", aliases: ["Senpai"] },
+  { name: "Vizinha", aliases: ["Neighbor", "Neighbors"] },
+  { name: "Office / Escritório", aliases: ["Office Lady", "Office"] },
+] as const;
+
+function normalizeAdultTagName(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 type AdultTagCatalog = {
   items: SlimAnime[];
   tags: Array<{
@@ -2799,28 +2850,54 @@ export const fetchAdultTags =
         }
       }
 
-      const tags =
+      const sourceTags =
         Array.from(
           tagMap.values(),
-        )
-          .map((tag) => ({
-            name: tag.name,
+        );
 
-            count:
-              tag.animeIds.size,
+      const tags =
+        MAIN_ADULT_TAGS
+          .map((mainTag) => {
+            const aliases = new Set(
+              [
+                mainTag.name,
+                ...mainTag.aliases,
+              ].map(normalizeAdultTagName),
+            );
 
-            animeIds:
-              Array.from(
-                tag.animeIds,
-              ),
-          }))
-          .sort(
-            (a, b) =>
-              b.count - a.count ||
-              a.name.localeCompare(
-                b.name,
-                "pt-BR",
-              ),
+            const matching =
+              sourceTags.filter((tag) =>
+                aliases.has(
+                  normalizeAdultTagName(
+                    tag.name,
+                  ),
+                ),
+              );
+
+            if (matching.length === 0) {
+              return null;
+            }
+
+            const animeIds = new Set<string>();
+
+            for (const tag of matching) {
+              for (const animeId of tag.animeIds) {
+                animeIds.add(animeId);
+              }
+            }
+
+            return {
+              name: mainTag.name,
+              count: animeIds.size,
+              animeIds: Array.from(animeIds),
+            };
+          })
+          .filter(
+            (tag): tag is {
+              name: string;
+              count: number;
+              animeIds: string[];
+            } => Boolean(tag),
           );
 
       return toCache(
