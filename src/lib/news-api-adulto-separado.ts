@@ -495,7 +495,7 @@ async function fetchArticleImages(
 
 async function proxyRssImage(
   imageUrl: string,
-  maxImageBytes = 1_500_000,
+  _maxImageBytes = 1_500_000,
 ): Promise<string> {
   const url = imageUrl.trim();
 
@@ -503,90 +503,9 @@ async function proxyRssImage(
     return "";
   }
 
-  const MAX_IMAGE_BYTES = maxImageBytes;
-
-  try {
-    const response =
-      await fetch(
-        url,
-        {
-          headers: {
-            Accept:
-              "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-            Referer:
-              `${new URL(url).origin}/`,
-            "User-Agent":
-              "Hikari/1.0 (adult news image)",
-          },
-          signal:
-            AbortSignal.timeout(8000),
-        },
-      );
-
-    if (!response.ok) {
-      return "";
-    }
-
-    const contentType =
-      (response.headers.get(
-        "content-type",
-      ) ?? "")
-        .split(";", 1)[0]
-        .trim()
-        .toLowerCase();
-
-    if (!contentType.startsWith("image/")) {
-      return "";
-    }
-
-    const contentLength = Number(
-      response.headers.get(
-        "content-length",
-      ) ?? "0",
-    );
-
-    if (
-      Number.isFinite(contentLength) &&
-      contentLength > MAX_IMAGE_BYTES
-    ) {
-      return "";
-    }
-
-    const buffer =
-      new Uint8Array(
-        await response.arrayBuffer(),
-      );
-
-    if (
-      buffer.byteLength >
-      MAX_IMAGE_BYTES
-    ) {
-      return "";
-    }
-
-    let binary = "";
-    const CHUNK_SIZE = 0x8000;
-
-    for (
-      let index = 0;
-      index < buffer.length;
-      index += CHUNK_SIZE
-    ) {
-      binary += String.fromCharCode(
-        ...buffer.subarray(
-          index,
-          Math.min(
-            index + CHUNK_SIZE,
-            buffer.length,
-          ),
-        ),
-      );
-    }
-
-    return `data:${contentType};base64,${btoa(binary)}`;
-  } catch {
-    return "";
-  }
+  // Usa um proxy de imagens para evitar bloqueios de hotlink
+  // dos sites de origem no navegador do visitante.
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=900&q=82`;
 }
 
 function looksSpanish(value: string): boolean {
@@ -2018,7 +1937,11 @@ async function fetchAdultNewsFeed(
         ];
 
         if (item.image) {
-          rssImage = item.image;
+          rssImage =
+            (await proxyRssImage(
+              item.image,
+              5_000_000,
+            )) || item.image;
         }
 
         if (item.url) {
@@ -2036,9 +1959,35 @@ async function fetchAdultNewsFeed(
           ).slice(0, 8);
 
           if (!rssImage && pageImages.length) {
-            rssImage = pageImages[0];
+            for (const pageImage of pageImages) {
+              const proxied =
+                await proxyRssImage(
+                  pageImage,
+                  5_000_000,
+                );
+
+              if (proxied) {
+                rssImage = proxied;
+                break;
+              }
+            }
           }
         }
+
+        const proxiedArticleImages =
+          (
+            await Promise.all(
+              articleImages.map(async (imageUrl) => {
+                const proxied =
+                  await proxyRssImage(
+                    imageUrl,
+                    5_000_000,
+                  );
+
+                return proxied;
+              }),
+            )
+          ).filter(Boolean);
 
         const mentionedHentai =
           await fetchMentionedHentai(
@@ -2051,10 +2000,11 @@ async function fetchAdultNewsFeed(
           title,
           description,
           image:
+            proxiedArticleImages[0] ||
             rssImage ||
-            articleImages[0] ||
             ADULT_IMAGE_FALLBACK,
-          articleImages,
+          articleImages:
+            proxiedArticleImages,
           mentionedHentai,
         };
       },
