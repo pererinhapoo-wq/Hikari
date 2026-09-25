@@ -282,6 +282,60 @@ function firstXmlValue(
   );
 }
 
+
+function looksSpanish(value: string): boolean {
+  const text = ` ${value.toLowerCase()} `;
+  const markers = [
+    " el ", " la ", " los ", " las ", " un ", " una ",
+    " de ", " del ", " para ", " con ", " por ", " que ",
+    " se ", " este ", " estos ", " nueva ", " nuevo ",
+    " estrenos", " tráiler", " termina ", " fueron ",
+    " vendidos", " imágenes", " revelan ",
+  ];
+  return markers.filter((marker) => text.includes(marker)).length >= 2;
+}
+
+async function translateToPortuguese(value: string): Promise<string> {
+  const text = value.trim();
+
+  if (!text || !looksSpanish(text)) {
+    return text;
+  }
+
+  try {
+    const response = await fetch(
+      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt&dt=t&q=${encodeURIComponent(text.slice(0, 4500))}`,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Hikari/1.0 (adult news)",
+        },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+
+    if (!response.ok) {
+      return text;
+    }
+
+    const data = (await response.json()) as unknown;
+
+    if (!Array.isArray(data) || !Array.isArray(data[0])) {
+      return text;
+    }
+
+    const translated = data[0]
+      .filter((part): part is unknown[] => Array.isArray(part))
+      .map((part) => String(part[0] ?? ""))
+      .join("")
+      .trim();
+
+    return translated || text;
+  } catch {
+    return text;
+  }
+}
+
 function imageFromRss(
   block: string,
 ): string {
@@ -301,14 +355,38 @@ function imageFromRss(
     return decodeXml(enclosure[1]);
   }
 
+  const lazyImage = block.match(
+    /<(?:img|source)[^>]+(?:data-src|data-lazy-src|data-original)=["']([^"']+)["'][^>]*>/i,
+  );
+
+  if (lazyImage?.[1]) {
+    return decodeXml(lazyImage[1]);
+  }
+
+  const ogImage =
+    block.match(
+      /<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    ) ||
+    block.match(
+      /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["'][^>]*>/i,
+    );
+
+  if (ogImage?.[1]) {
+    return decodeXml(ogImage[1]);
+  }
+
   const content = firstXmlValue(
     block,
     "content:encoded",
   );
 
-  const image = content.match(
-    /<img[^>]+src=["']([^"']+)["'][^>]*>/i,
-  );
+  const image =
+    content.match(
+      /<img[^>]+src=["']([^"']+)["'][^>]*>/i,
+    ) ||
+    content.match(
+      /<img[^>]+(?:data-src|data-lazy-src|data-original)=["']([^"']+)["'][^>]*>/i,
+    );
 
   return decodeXml(
     image?.[1] ?? "",
@@ -420,7 +498,7 @@ async function fetchAdultNewsFeed(): Promise<
       /<item\b[\s\S]*?<\/item>/gi,
     ) ?? [];
 
-  return items
+  const parsed = items
     .map(
       (item, index): AutomaticNewsItem | null => {
         const title = firstXmlValue(
@@ -492,6 +570,14 @@ async function fetchAdultNewsFeed(): Promise<
       ): item is AutomaticNewsItem =>
         Boolean(item?.title && item?.url),
     );
+
+  return Promise.all(
+    parsed.map(async (item) => ({
+      ...item,
+      title: await translateToPortuguese(item.title),
+      description: await translateToPortuguese(item.description),
+    })),
+  );
 }
 
 export const fetchAutomaticNews =
