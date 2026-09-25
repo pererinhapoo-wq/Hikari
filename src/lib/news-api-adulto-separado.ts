@@ -690,6 +690,8 @@ function fallbackSpanishToPortuguese(value: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+const translationCache = new Map<string, string>();
+
 async function translateTextToPortuguese(
   value: string,
 ): Promise<string> {
@@ -697,6 +699,12 @@ async function translateTextToPortuguese(
 
   if (!text || !looksSpanish(text)) {
     return text;
+  }
+
+  const cached = translationCache.get(text);
+
+  if (cached) {
+    return cached;
   }
 
   const GOOGLE_MAX_CHARS = 420;
@@ -794,38 +802,50 @@ async function translateTextToPortuguese(
     ];
 
     for (const endpoint of endpoints) {
-      try {
-        const url = new URL(endpoint);
-        url.searchParams.set("client", "gtx");
-        url.searchParams.set("sl", "es");
-        url.searchParams.set("tl", "pt-BR");
-        url.searchParams.set("dt", "t");
-        url.searchParams.set("dj", "1");
-        url.searchParams.set("q", chunk);
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const url = new URL(endpoint);
+          url.searchParams.set("client", "gtx");
+          url.searchParams.set("sl", "es");
+          url.searchParams.set("tl", "pt-BR");
+          url.searchParams.set("hl", "pt-BR");
+          url.searchParams.set("dt", "t");
+          url.searchParams.set("dj", "1");
+          url.searchParams.set("q", chunk);
 
-        const response = await fetch(url.toString(), {
-          method: "GET",
-          headers: {
-            Accept: "application/json,text/plain,*/*",
-            "User-Agent":
-              "Mozilla/5.0 (compatible; Hikari/1.0; adult news translation)",
-          },
-          cache: "no-store",
-          signal: AbortSignal.timeout(8000),
-        });
+          const response = await fetch(url.toString(), {
+            method: "GET",
+            headers: {
+              Accept: "application/json,text/plain,*/*",
+              "User-Agent":
+                "Mozilla/5.0 (compatible; Hikari/1.0; adult news translation)",
+            },
+            cache: "no-store",
+            signal: AbortSignal.timeout(8000),
+          });
 
-        if (!response.ok) {
-          continue;
+          if (!response.ok) {
+            if (attempt === 0) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, 500),
+              );
+            }
+            continue;
+          }
+
+          const data = (await response.json()) as unknown;
+          const translated = extractGoogleTranslation(data);
+
+          if (translated && translated !== chunk) {
+            return translated;
+          }
+        } catch {
+          if (attempt === 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 500),
+            );
+          }
         }
-
-        const data = (await response.json()) as unknown;
-        const translated = extractGoogleTranslation(data);
-
-        if (translated && translated !== chunk) {
-          return translated;
-        }
-      } catch {
-        // Tenta o próximo endpoint.
       }
     }
 
@@ -835,39 +855,50 @@ async function translateTextToPortuguese(
   const translateWithMyMemory = async (
     chunk: string,
   ): Promise<string> => {
-    try {
-      const url = new URL(
-        "https://api.mymemory.translated.net/get",
-      );
-      url.searchParams.set("q", chunk);
-      url.searchParams.set("langpair", "es|pt-BR");
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const url = new URL(
+          "https://api.mymemory.translated.net/get",
+        );
+        url.searchParams.set("q", chunk);
+        url.searchParams.set("langpair", "es|pt-BR");
 
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "Hikari/1.0 (adult news translation)",
-        },
-        cache: "no-store",
-        signal: AbortSignal.timeout(8000),
-      });
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Hikari/1.0 (adult news translation)",
+          },
+          cache: "no-store",
+          signal: AbortSignal.timeout(8000),
+        });
 
-      if (!response.ok) {
-        return "";
+        if (!response.ok) {
+          if (attempt === 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 500),
+            );
+          }
+          continue;
+        }
+
+        const data = (await response.json()) as {
+          responseData?: { translatedText?: string };
+        };
+
+        const translated =
+          data.responseData?.translatedText?.trim() ?? "";
+
+        if (translated && translated !== chunk) {
+          return translated;
+        }
+      } catch {
+        if (attempt === 0) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 500),
+          );
+        }
       }
-
-      const data = (await response.json()) as {
-        responseData?: { translatedText?: string };
-      };
-
-      const translated =
-        data.responseData?.translatedText?.trim() ?? "";
-
-      if (translated && translated !== chunk) {
-        return translated;
-      }
-    } catch {
-      // Usa o fallback local abaixo.
     }
 
     return "";
@@ -889,7 +920,12 @@ async function translateTextToPortuguese(
   }
 
   if (googleSucceeded && googleResults.length === googleChunks.length) {
-    return googleResults.join(" ").replace(/\s+/g, " ").trim();
+    const translated = googleResults
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    translationCache.set(text, translated);
+    return translated;
   }
 
   const myMemoryChunks = splitForMyMemory(text);
@@ -911,10 +947,17 @@ async function translateTextToPortuguese(
     myMemorySucceeded &&
     myMemoryResults.length === myMemoryChunks.length
   ) {
-    return myMemoryResults.join(" ").replace(/\s+/g, " ").trim();
+    const translated = myMemoryResults
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    translationCache.set(text, translated);
+    return translated;
   }
 
-  return fallbackSpanishToPortuguese(text) || text;
+  const fallback = fallbackSpanishToPortuguese(text) || text;
+  translationCache.set(text, fallback);
+  return fallback;
 }
 
 async function translateEroEroItem(
@@ -1935,19 +1978,33 @@ async function fetchAdultNewsFeed(
       );
     });
 
+  const translations = new Map<
+    string,
+    { title: string; description: string }
+  >();
+
+  for (const item of hentaiOnly) {
+    if (item.source !== "EroEro News") {
+      continue;
+    }
+
+    translations.set(
+      item.id,
+      await translateEroEroItem(
+        item.title,
+        item.description,
+      ),
+    );
+  }
+
   return Promise.all(
     hentaiOnly.map(
       async (item) => {
         const translated =
-          item.source === "EroEro News"
-            ? await translateEroEroItem(
-                item.title,
-                item.description,
-              )
-            : {
-                title: item.title,
-                description: item.description,
-              };
+          translations.get(item.id) ?? {
+            title: item.title,
+            description: item.description,
+          };
 
         const title = translated.title;
         const description = translated.description;
