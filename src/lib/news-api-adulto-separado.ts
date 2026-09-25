@@ -381,11 +381,13 @@ function isAdultAnimeNews(
   description: string,
   categories: string,
 ): boolean {
+  // IMPORTANTE: AnimeFesta também publica animes comuns.
+  // Portanto, "AnimeFesta", "配信" ou "アニメ" NÃO são
+  // suficientes para considerar uma notícia como +18.
   const value =
-    `${title} ${description} ${categories}`.toLowerCase();
+    `${title} ${description}`.toLowerCase();
 
   const animeMarkers = [
-    "animefesta",
     "アニメ",
     "tvアニメ",
     "ova",
@@ -394,13 +396,22 @@ function isAdultAnimeNews(
     "デレギュラ",
   ];
 
+  // Marcadores que identificam a versão adulta/premium da obra.
+  // "セクシー" sozinho foi removido porque também aparece em
+  // notícias promocionais, entrevistas e eventos de AnimeFesta.
   const adultMarkers = [
     "プレミアム版",
+    "プレミアムver",
+    "プレミアムｖｅｒ",
     "規制解除",
+    "規制解除版",
     "完全デレギュラ版",
-    "デレギュラ",
-    "セクシー",
+    "完全デレギュラver",
+    "デレギュラ版",
+    "デレギュラver",
     "艶姿",
+    "ノーカットver",
+    "ノーカット版",
   ];
 
   const isAnime = animeMarkers.some((marker) =>
@@ -415,8 +426,28 @@ function isAdultAnimeNews(
     return false;
   }
 
+  // Notícias que são apenas eventos, entrevistas ou campanhas
+  // promocionais não são notícias do hentai/anime adulto em si.
+  const nonNewsAdultEventMarkers = [
+    "同時視聴企画",
+    "同時視聴",
+    "プロデュース",
+    "放送記念",
+    "企画実施",
+    "イベント",
+    "インタビュー",
+  ];
+
+  if (
+    nonNewsAdultEventMarkers.some((marker) =>
+      value.includes(marker),
+    )
+  ) {
+    return false;
+  }
+
   // O feed pode mencionar mangá como obra de origem.
-  // Isso não torna a notícia uma notícia de mangá: aqui filtramos
+  // Isso não torna a notícia uma notícia de mangá: filtramos
   // somente quando o próprio título/categoria indica mangá/manhwa/manhua.
   const titleAndCategories =
     `${title} ${categories}`.toLowerCase();
