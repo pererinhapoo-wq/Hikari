@@ -1915,14 +1915,29 @@ async function fetchAdultNewsFeed(
   const articles = parseLuneRssItems(xml);
 
   if (!articles.length) {
-    return feedUrl.includes("eroeronews.com")
-      ? fetchEroEroNewsPageFallback()
-      : fetchLuneNewsPageFallback();
+    const fallback = feedUrl.includes("eroeronews.com")
+      ? await fetchEroEroNewsPageFallback()
+      : await fetchLuneNewsPageFallback();
+
+    const fallbackMinimum =
+      Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    return fallback.filter((item) => {
+      const timestamp = item.publishedAt
+        ? Date.parse(item.publishedAt)
+        : NaN;
+
+      return (
+        !Number.isNaN(timestamp) &&
+        timestamp <= Date.now() + 24 * 60 * 60 * 1000 &&
+        timestamp >= fallbackMinimum
+      );
+    });
   }
 
   const now = Date.now();
   const minimum =
-    now - 30 * 24 * 60 * 60 * 1000;
+    now - 7 * 24 * 60 * 60 * 1000;
 
   const recent = articles.filter((article) => {
     const timestamp = Date.parse(article.publishedAt);
@@ -1935,9 +1950,24 @@ async function fetchAdultNewsFeed(
   });
 
   if (!recent.length) {
-    return feedUrl.includes("eroeronews.com")
-      ? fetchEroEroNewsPageFallback()
-      : fetchLuneNewsPageFallback();
+    const fallback = feedUrl.includes("eroeronews.com")
+      ? await fetchEroEroNewsPageFallback()
+      : await fetchLuneNewsPageFallback();
+
+    const fallbackMinimum =
+      Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    return fallback.filter((item) => {
+      const timestamp = item.publishedAt
+        ? Date.parse(item.publishedAt)
+        : NaN;
+
+      return (
+        !Number.isNaN(timestamp) &&
+        timestamp <= Date.now() + 24 * 60 * 60 * 1000 &&
+        timestamp >= fallbackMinimum
+      );
+    });
   }
 
   const results = await Promise.all(
@@ -2040,7 +2070,7 @@ export const fetchAdultNews =
     method: "GET",
   }).handler(async () => {
     const key =
-      "automatic-adult-news:hentai-recentes-30-dias:v5";
+      "automatic-adult-news:hentai-recentes-7-dias:v6";
 
     const cached =
       fromCache(key);
@@ -2062,7 +2092,7 @@ export const fetchAdultNews =
 
       const now = Date.now();
       const minimum =
-        now - 30 * 24 * 60 * 60 * 1000;
+        now - 7 * 24 * 60 * 60 * 1000;
 
       const unique =
         Array.from(
