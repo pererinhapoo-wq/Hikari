@@ -1319,7 +1319,7 @@ async function fetchAdultNewsFeed(
           (
             await Promise.all(
               articleImages.map((imageUrl) =>
-                proxyRssImage(imageUrl, 700_000),
+                proxyRssImage(imageUrl, 5_000_000),
               ),
             )
           ).filter(Boolean);
