@@ -170,6 +170,81 @@ function formatDate(
   );
 }
 
+function formatEventDate(timestamp: number): string {
+  const timeZone = "America/Recife";
+
+  const getLocalDay = (value: Date) => {
+    const parts = new Intl.DateTimeFormat(
+      "en-US",
+      {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        timeZone,
+      },
+    ).formatToParts(value);
+
+    const year = Number(
+      parts.find((part) => part.type === "year")?.value,
+    );
+    const month = Number(
+      parts.find((part) => part.type === "month")?.value,
+    );
+    const day = Number(
+      parts.find((part) => part.type === "day")?.value,
+    );
+
+    return Date.UTC(year, month - 1, day);
+  };
+
+  const eventDay = getLocalDay(new Date(timestamp));
+  const todayDay = getLocalDay(new Date());
+  const diffDays = Math.round(
+    (eventDay - todayDay) / 86_400_000,
+  );
+
+  if (diffDays === 0) {
+    return "Hoje";
+  }
+
+  if (diffDays === -1) {
+    return "Ontem";
+  }
+
+  if (diffDays === 1) {
+    return "Amanhã";
+  }
+
+  if (diffDays < 0 && diffDays >= -30) {
+    return `Há ${Math.abs(diffDays)} dias`;
+  }
+
+  if (diffDays > 0 && diffDays <= 60) {
+    return `Em ${diffDays} dias`;
+  }
+
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone,
+    },
+  ).format(new Date(timestamp));
+}
+
+function formatEventTime(timestamp: number): string {
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Recife",
+    },
+  ).format(new Date(timestamp));
+}
+
 function formatAiringDate(
   airingAt: number,
 ): string {
