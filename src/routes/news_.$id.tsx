@@ -45,6 +45,7 @@ type NewsItem = {
   image: string;
   animeId?: string;
   trailerUrl?: string;
+  isAdult?: boolean;
   anime?: AnimeInfo;
 };
 
@@ -567,29 +568,53 @@ export const Route = createFileRoute(
       return {
         automaticNews: [],
         automaticAnime: null,
+        isAdultNews: false,
       };
     }
 
     /*
-     * Para notícias automáticas, buscamos o catálogo somente
-     * quando realmente precisamos dele para localizar a notícia.
+     * As notícias automáticas +18 usam os mesmos prefixos
+     * de ID das notícias normais (auto-season, auto-trailer,
+     * auto-episode etc.). Por isso não podemos descobrir a
+     * origem apenas pelo ID.
+     *
+     * Procuramos a notícia nas duas fontes e usamos a fonte
+     * em que ela realmente existir.
      */
-    const isAdultNews =
-      params.id.startsWith(
-        "auto-adult-",
-      );
+    const [
+      adultNews,
+      normalNews,
+    ] = await Promise.all([
+      fetchAdultNews(),
+      fetchAutomaticNews(),
+    ]);
 
-    const automaticNews =
-      isAdultNews
-        ? await fetchAdultNews()
-        : await fetchAutomaticNews();
-
-    const automaticItem =
-      automaticNews.find(
+    const adultItem =
+      adultNews.find(
         (item) =>
           item.id ===
           params.id,
       );
+
+    const normalItem =
+      normalNews.find(
+        (item) =>
+          item.id ===
+          params.id,
+      );
+
+    const isAdultNews =
+      Boolean(adultItem);
+
+    const automaticNews =
+      isAdultNews
+        ? adultNews
+        : normalNews;
+
+    const automaticItem =
+      isAdultNews
+        ? adultItem
+        : normalItem;
 
     let automaticAnime:
       | AnimeInfo
@@ -620,6 +645,7 @@ export const Route = createFileRoute(
     return {
       automaticNews,
       automaticAnime,
+      isAdultNews,
     };
   },
 
@@ -687,6 +713,9 @@ function automaticToNewsItem(
     trailerUrl:
       item.trailerUrl,
 
+    isAdult:
+      item.isAdult === true,
+
     anime:
       anime ?? undefined,
   };
@@ -696,15 +725,13 @@ function NewsDetailsPage() {
   const { id } =
     Route.useParams();
 
-  const isAdultNews =
-    id.startsWith("auto-adult-");
-
   const { page } =
     Route.useSearch();
 
   const {
     automaticNews,
     automaticAnime,
+    isAdultNews,
   } =
     Route.useLoaderData();
 
@@ -767,8 +794,8 @@ function NewsDetailsPage() {
       )
       .filter((item) =>
         isAdultNews
-          ? item.id.startsWith("auto-adult-")
-          : !item.id.startsWith("auto-adult-"),
+          ? item.isAdult === true
+          : item.isAdult !== true,
       )
       .slice(0, 3);
 
