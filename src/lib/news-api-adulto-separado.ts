@@ -1700,7 +1700,6 @@ async function buildNews(
           RECENT_EPISODE_WINDOW;
 
       return (
-        recentlyUpdated ||
         recentlyReleased ||
         upcoming ||
         recentlyAired
@@ -1937,8 +1936,7 @@ async function buildNews(
 
     if (
       trailerUrl &&
-      (recentlyUpdated ||
-        recentlyReleased ||
+      (recentlyReleased ||
         upcoming ||
         recentlyAired)
     ) {
@@ -1984,7 +1982,6 @@ async function buildNews(
           anime.isAdult === true,
       });
     } else if (
-      recentlyUpdated ||
       recentlyReleased ||
       upcoming ||
       recentlyAired
