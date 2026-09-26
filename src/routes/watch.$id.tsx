@@ -596,6 +596,9 @@ function WatchPage() {
                 controlsList="nodownload noremoteplayback"
                 onContextMenu={(event) => event.preventDefault()}
                 onTouchEnd={handlePlayerTap}
+                style={{
+                  touchAction: "pan-x",
+                }}
                 className="size-full select-none bg-black object-contain"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
@@ -617,7 +620,7 @@ function WatchPage() {
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                   <div
                     onPointerDown={showControls}
-                    className="pointer-events-auto flex items-center gap-2 sm:gap-3">
+                    className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/15 bg-black/25 px-2 py-2 shadow-[0_8px_35px_rgba(0,0,0,0.28)] backdrop-blur-2xl ring-1 ring-white/5 sm:gap-3 sm:px-2.5">
                   <button
                     type="button"
                     onClick={() => seekBy(-10)}
@@ -655,8 +658,9 @@ function WatchPage() {
               {controlsVisible && (
                 <div
                   onPointerDown={showControls}
-                  className="absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-5 sm:pb-4"
+                  className="absolute inset-x-0 bottom-0 px-2 pb-2 sm:px-4 sm:pb-4"
                 >
+                  <div className="rounded-2xl border border-white/15 bg-black/25 px-3 py-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.32)] backdrop-blur-2xl ring-1 ring-white/5 sm:px-4 sm:py-3">
                 <input
                   aria-label="Progresso do episódio"
                   type="range"
@@ -680,7 +684,7 @@ function WatchPage() {
                 />
 
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[11px] font-medium tracking-wide text-white/90 backdrop-blur-md sm:text-xs">
+                  <div className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium tracking-wide text-white/90 shadow-[0_4px_15px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:text-xs">
                     <span>{formatTime(currentTime)}</span>
                     <span className="text-white/30">/</span>
                     <span className="text-white/60">{formatTime(duration)}</span>
@@ -691,7 +695,7 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={() => setSettingsOpen((open) => !open)}
-                        className={`flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 ${
+                        className={`flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white shadow-[0_4px_15px_rgba(0,0,0,0.2)] backdrop-blur-xl transition hover:bg-white/10 active:scale-95 ${
                           settingsOpen ? "bg-white/15" : ""
                         }`}
                         aria-label="Configurações do player"
@@ -701,7 +705,7 @@ function WatchPage() {
                       </button>
 
                       {settingsOpen && (
-                        <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
+                        <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/15 bg-[#111116]/90 p-2 text-sm shadow-2xl backdrop-blur-2xl">
                           <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
                             Player
                           </div>
@@ -730,13 +734,13 @@ function WatchPage() {
                     <button
                       type="button"
                       onClick={handleFullscreen}
-                      className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95"
+                      className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white shadow-[0_4px_15px_rgba(0,0,0,0.2)] backdrop-blur-xl transition hover:bg-white/10 active:scale-95"
                       aria-label="Tela cheia"
                     >
                       <Maximize className="size-4" />
                     </button>
                   </div>
-                </div>
+                  </div>
                 </div>
               )}
             </>
@@ -1076,6 +1080,23 @@ function CommentsSection({
 
   const [gifOpen, setGifOpen] =
     useState(false);
+
+  useEffect(() => {
+    if (!gifOpen) {
+      return;
+    }
+
+    const previousOverflow =
+      document.body.style.overflow;
+
+    document.body.style.overflow =
+      "hidden";
+
+    return () => {
+      document.body.style.overflow =
+        previousOverflow;
+    };
+  }, [gifOpen]);
 
   const [gifSearch, setGifSearch] =
     useState("");
