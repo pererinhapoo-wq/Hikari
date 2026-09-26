@@ -116,11 +116,15 @@ function WatchPage() {
       return null;
     }
 
-    return (
-      episodes.find(
-        (e) => e.id === epQuery,
-      ) ?? episodes[0]
-    );
+    if (epQuery) {
+      return (
+        episodes.find(
+          (e) => e.id === epQuery,
+        ) ?? null
+      );
+    }
+
+    return episodes[0];
   }, [episodes, epQuery]);
 
   const idx = current
@@ -497,6 +501,7 @@ function WatchPage() {
                 onContextMenu={(event) => event.preventDefault()}
                 onTouchEnd={handlePlayerTap}
                 className="size-full select-none bg-black object-contain"
+                style={{ touchAction: "pan-x" }}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onLoadedMetadata={(event) => {
@@ -991,20 +996,6 @@ function CommentsSection({
   const gifGalleryInputRef =
     useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!gifOpen) return;
-
-    const previousOverflow =
-      document.body.style.overflow;
-
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow =
-        previousOverflow;
-    };
-  }, [gifOpen]);
-
   /* ====================================================== */
   /* USUÁRIO ATUAL                                          */
   /* ====================================================== */
@@ -1294,8 +1285,7 @@ function CommentsSection({
                     images?.original?.url;
 
                   const preview =
-                    images?.downsized_large?.url ||
-                    images?.downsized?.url ||
+                    images?.fixed_width_small?.url ||
                     images?.fixed_width?.url ||
                     images?.original?.url;
 
@@ -2776,12 +2766,7 @@ function CommentsSection({
                     </form>
                   </div>
 
-                  <div
-                    className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
-                    onTouchMove={(event) => {
-                      event.stopPropagation();
-                    }}
-                  >
+                  <div className="min-h-0 flex-1 overflow-y-auto p-4">
                     {gifError && (
                       <div className="rounded-lg border border-white/5 bg-surface p-4 text-sm text-red-400">
                         {gifError}
