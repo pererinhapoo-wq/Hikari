@@ -1126,7 +1126,7 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
 
   const recentWindow =
     now -
-    30 * 24 * 60 * 60;
+    90 * 24 * 60 * 60;
 
   const seen =
     new Set<number>();
