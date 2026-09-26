@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Logo } from "@/components/logo";
-import { authClient, authEnabled } from "@/lib/auth/client";
+import { authEnabled, signIn } from "@/lib/auth/client";
 
 export const Route = createFileRoute("/login")({
   component: Login,
@@ -27,8 +27,7 @@ function Login() {
             <button
               type="button"
               onClick={() =>
-                void authClient.signIn.social({
-                  provider: "google",
+                void signIn("google", {
                   callbackURL: "/account",
                 })
               }
