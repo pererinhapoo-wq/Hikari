@@ -642,7 +642,8 @@ function WatchPage() {
                 style={{
                   touchAction: "pan-x",
                 }}
-                className="size-full select-none bg-black object-contain"
+                className="relative z-0 size-full select-none bg-black object-contain"
+                 data-player-video="true"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onLoadedMetadata={(event) => {
@@ -660,7 +661,7 @@ function WatchPage() {
               />
 
               {controlsVisible && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3">
@@ -701,7 +702,7 @@ function WatchPage() {
               {controlsVisible && (
                 <div
                   onPointerDown={showControls}
-                  className="absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-5 sm:pb-4"
+                  className="absolute inset-x-0 bottom-0 z-10 px-3 pb-3 sm:px-5 sm:pb-4"
                 >
                   <input
                     aria-label="Progresso do episódio"
@@ -736,7 +737,7 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={toggleMute}
-                        className="flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-11"
+                        className="flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition hover:bg-white/10 active:scale-95 sm:size-11"
                         aria-label={isMuted ? "Ativar som" : "Silenciar"}
                       >
                         {isMuted ? (
@@ -750,7 +751,7 @@ function WatchPage() {
                         <button
                           type="button"
                           onClick={() => setSettingsOpen((open) => !open)}
-                          className={`flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-11 ${
+                          className={`flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition hover:bg-white/10 active:scale-95 sm:size-11 ${
                             settingsOpen ? "bg-white/15" : ""
                           }`}
                           aria-label="Configurações do player"
@@ -787,7 +788,7 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={handleFullscreen}
-                        className="flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-11"
+                        className="flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition hover:bg-white/10 active:scale-95 sm:size-11"
                         aria-label="Tela cheia"
                       >
                         <Maximize className="size-5 sm:size-4" />
