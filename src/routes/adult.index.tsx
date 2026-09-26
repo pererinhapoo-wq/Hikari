@@ -89,11 +89,13 @@ function AdultPage() {
 
       {items.length > 0 ? (
         <>
-          <AnimeRow
-            title="Novos episódios"
-            href="/adult/recent"
-            items={recentItems}
-          />
+          <div className="[&_.rail>*]:min-w-[135px]">
+            <AnimeRow
+              title="Novos episódios"
+              href="/adult/recent"
+              items={recentItems}
+            />
+          </div>
 
           <AnimeRow
             title="Hentai"
