@@ -1128,48 +1128,6 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
     now -
     30 * 24 * 60 * 60;
 
-  const data =
-    await anilistGraphQL<{
-      Page: {
-        airingSchedules: {
-          airingAt: number;
-          episode: number;
-          media?: AniMedia | null;
-        }[];
-      };
-    }>(
-      `
-      query RecentAdultReleases(
-        $airingAtGreater: Int,
-        $airingAtLesser: Int
-      ) {
-        Page(
-          page: 1,
-          perPage: 30
-        ) {
-          airingSchedules(
-            airingAt_greater: $airingAtGreater,
-            airingAt_lesser: $airingAtLesser,
-            sort: TIME_DESC
-          ) {
-            airingAt
-            episode
-            media {
-              ${CARD_FIELDS}
-            }
-          }
-        }
-      }
-      `,
-      {
-        airingAtGreater:
-          recentWindow,
-
-        airingAtLesser:
-          now,
-      },
-    );
-
   const seen =
     new Set<number>();
 
@@ -1177,39 +1135,90 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
     [];
 
   for (
-    const item of
-      data.Page
-        .airingSchedules ?? []
+    let page = 1;
+    page <= 3 && releases.length < 18;
+    page++
   ) {
-    const media =
-      item.media;
+    const data =
+      await anilistGraphQL<{
+        Page: {
+          airingSchedules: {
+            airingAt: number;
+            episode: number;
+            media?: AniMedia | null;
+          }[];
+        };
+      }>(
+        `
+        query RecentAdultReleases(
+          $airingAtGreater: Int,
+          $airingAtLesser: Int,
+          $page: Int!
+        ) {
+          Page(
+            page: $page,
+            perPage: 30
+          ) {
+            airingSchedules(
+              airingAt_greater: $airingAtGreater,
+              airingAt_lesser: $airingAtLesser,
+              sort: TIME_DESC
+            ) {
+              airingAt
+              episode
+              media {
+                ${CARD_FIELDS}
+              }
+            }
+          }
+        }
+        `,
+        {
+          airingAtGreater:
+            recentWindow,
 
-    if (!media?.id) {
-      continue;
-    }
+          airingAtLesser:
+            now,
 
-    if (
-      !isHentaiAnime(media)
+          page,
+        },
+      );
+
+    for (
+      const item of
+        data.Page
+          .airingSchedules ?? []
     ) {
-      continue;
-    }
+      const media =
+        item.media;
 
-    if (
-      seen.has(media.id)
-    ) {
-      continue;
-    }
+      if (!media?.id) {
+        continue;
+      }
 
-    seen.add(media.id);
+      if (
+        !isHentaiAnime(media)
+      ) {
+        continue;
+      }
 
-    releases.push(
-      mapAniSlim(media),
-    );
+      if (
+        seen.has(media.id)
+      ) {
+        continue;
+      }
 
-    if (
-      releases.length >= 18
-    ) {
-      break;
+      seen.add(media.id);
+
+      releases.push(
+        mapAniSlim(media),
+      );
+
+      if (
+        releases.length >= 18
+      ) {
+        break;
+      }
     }
   }
 
