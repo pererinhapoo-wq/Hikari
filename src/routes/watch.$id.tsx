@@ -676,13 +676,13 @@ function WatchPage() {
                   <button
                     type="button"
                     onClick={togglePlay}
-                    className="flex size-10 items-center justify-center rounded-full border border-[#c98cff]/70 bg-[#a855f7]/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition hover:bg-[#b56cff] active:scale-95 sm:size-12"
+                    className="flex size-16 items-center justify-center rounded-full border border-[#c98cff]/70 bg-[#a855f7]/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition hover:bg-[#b56cff] active:scale-95 sm:size-12"
                     aria-label={isPlaying ? "Pausar" : "Reproduzir"}
                   >
                     {isPlaying ? (
-                      <Pause className="size-4 fill-current sm:size-5" />
+                      <Pause className="size-6 fill-current sm:size-5" />
                     ) : (
-                      <Play className="ml-0.5 size-4 fill-current sm:size-5" />
+                      <Play className="ml-0.5 size-6 fill-current sm:size-5" />
                     )}
                   </button>
 
@@ -732,43 +732,31 @@ function WatchPage() {
                       <span className="text-white/65">{formatTime(duration)}</span>
                     </div>
 
-                    <div className="pointer-events-auto flex items-center gap-1.5">
-                      <div className="flex items-center overflow-hidden rounded-full border border-white/10 bg-black/55 backdrop-blur-md">
-                        <button
-                          type="button"
-                          onClick={toggleMute}
-                          className="flex size-9 items-center justify-center text-white transition hover:bg-white/10 active:scale-95"
-                          aria-label={isMuted ? "Ativar som" : "Silenciar"}
-                        >
-                          {isMuted ? (
-                            <VolumeX className="size-4" />
-                          ) : (
-                            <Volume2 className="size-4" />
-                          )}
-                        </button>
-                        <input
-                          aria-label="Volume"
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={isMuted ? 0 : volume}
-                          onChange={(event) => setVideoVolume(Number(event.target.value))}
-                          className="mr-2 hidden h-1 w-20 cursor-pointer appearance-none rounded-full accent-[#b56cff] sm:block"
-                        />
-                      </div>
+                    <div className="pointer-events-auto flex items-center gap-2 sm:gap-1.5">
+                      <button
+                        type="button"
+                        onClick={toggleMute}
+                        className="flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-11"
+                        aria-label={isMuted ? "Ativar som" : "Silenciar"}
+                      >
+                        {isMuted ? (
+                          <VolumeX className="size-5 sm:size-4" />
+                        ) : (
+                          <Volume2 className="size-5 sm:size-4" />
+                        )}
+                      </button>
 
                       <div className="relative">
                         <button
                           type="button"
                           onClick={() => setSettingsOpen((open) => !open)}
-                          className={`flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 ${
+                          className={`flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-11 ${
                             settingsOpen ? "bg-white/15" : ""
                           }`}
                           aria-label="Configurações do player"
                           aria-expanded={settingsOpen}
                         >
-                          <Settings className="size-4" />
+                          <Settings className="size-5 sm:size-4" />
                         </button>
 
                         {settingsOpen && (
@@ -799,10 +787,10 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={handleFullscreen}
-                        className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95"
+                        className="flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white/10 active:scale-95 sm:size-11"
                         aria-label="Tela cheia"
                       >
-                        <Maximize className="size-4" />
+                        <Maximize className="size-5 sm:size-4" />
                       </button>
                     </div>
                   </div>
