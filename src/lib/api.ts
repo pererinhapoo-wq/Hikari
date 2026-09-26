@@ -1136,7 +1136,7 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
 
   for (
     let page = 1;
-    page <= 3 && releases.length < 18;
+    page <= 10 && releases.length < 18;
     page++
   ) {
     const data =
