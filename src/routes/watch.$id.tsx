@@ -11,9 +11,13 @@ import {
   Image as ImageIcon,
   MessageCircle,
   MoreVertical,
+  Pause,
+  Play,
   Search,
   Send,
+  Settings,
   Trash2,
+  Maximize,
   X,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
@@ -22,6 +26,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type TouchEvent,
 } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -170,10 +175,233 @@ function WatchPage() {
 
   const [playerIndex, setPlayerIndex] =
     useState(0);
+  const [episodesOpen, setEpisodesOpen] =
+    useState(false);
 
   useEffect(() => {
     setPlayerIndex(0);
   }, [current?.id]);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerRef = useRef<HTMLDivElement | null>(null);
+  const lastTapRef = useRef<{
+    time: number;
+    side: "left" | "right";
+  } | null>(null);
+  const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controlsHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [playbackRate, setPlaybackRate] = useState(1);
+
+  const clearControlsHideTimer = () => {
+    if (controlsHideTimeoutRef.current) {
+      clearTimeout(controlsHideTimeoutRef.current);
+      controlsHideTimeoutRef.current = null;
+    }
+  };
+
+  const showControls = () => {
+    clearControlsHideTimer();
+    setControlsVisible(true);
+
+    if (isPlaying) {
+      controlsHideTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false);
+        controlsHideTimeoutRef.current = null;
+      }, 5000);
+    }
+  };
+
+  const hideControls = () => {
+    clearControlsHideTimer();
+    setControlsVisible(false);
+  };
+
+  useEffect(() => {
+    clearControlsHideTimer();
+
+    if (isPlaying) {
+      controlsHideTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false);
+        controlsHideTimeoutRef.current = null;
+      }, 5000);
+    } else {
+      setControlsVisible(true);
+    }
+
+    return clearControlsHideTimer;
+  }, [isPlaying]);
+
+  const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return "00:00";
+
+    const total = Math.floor(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    }
+
+    return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const seekBy = (seconds: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const nextTime = Math.min(
+      Math.max(video.currentTime + seconds, 0),
+      Number.isFinite(video.duration) ? video.duration : video.currentTime + seconds,
+    );
+
+    video.currentTime = nextTime;
+    setCurrentTime(nextTime);
+  };
+
+  const togglePlay = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      try {
+        await video.play();
+      } catch {
+        // O navegador pode bloquear autoplay/interação programática.
+      }
+    } else {
+      video.pause();
+    }
+  };
+
+  const handlePlayerTap = (event: TouchEvent<HTMLVideoElement>) => {
+    const now = Date.now();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+
+    const side =
+      touch.clientX - rect.left < rect.width / 2
+        ? "left"
+        : "right";
+    const previous = lastTapRef.current;
+
+    if (
+      previous &&
+      previous.side === side &&
+      now - previous.time < 320
+    ) {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = null;
+      }
+
+      seekBy(side === "left" ? -10 : 10);
+      showControls();
+      lastTapRef.current = null;
+      return;
+    }
+
+    lastTapRef.current = { time: now, side };
+
+    if (tapTimeoutRef.current) {
+      clearTimeout(tapTimeoutRef.current);
+    }
+
+    tapTimeoutRef.current = setTimeout(() => {
+      // Um toque simples apenas alterna a visibilidade dos controles.
+      // Pausar/reproduzir fica somente no botão central.
+      if (controlsVisible) {
+        hideControls();
+      } else {
+        showControls();
+      }
+      lastTapRef.current = null;
+      tapTimeoutRef.current = null;
+    }, 220);
+  };
+
+  const lockLandscape = async () => {
+    try {
+      if (
+        typeof screen !== "undefined" &&
+        screen.orientation &&
+        typeof screen.orientation.lock === "function"
+      ) {
+        await screen.orientation.lock("landscape");
+      }
+    } catch {
+      // Alguns navegadores móveis não permitem travar a orientação.
+    }
+  };
+
+  const unlockOrientation = async () => {
+    try {
+      if (
+        typeof screen !== "undefined" &&
+        screen.orientation &&
+        typeof screen.orientation.unlock === "function"
+      ) {
+        screen.orientation.unlock();
+      }
+    } catch {
+      // Alguns navegadores não permitem liberar a orientação por script.
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (document.fullscreenElement) {
+        void lockLandscape();
+      } else {
+        void unlockOrientation();
+      }
+    };
+
+    document.addEventListener(
+      "fullscreenchange",
+      handleFullscreenChange,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "fullscreenchange",
+        handleFullscreenChange,
+      );
+      void unlockOrientation();
+    };
+  }, []);
+
+  const handleFullscreen = async () => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        await unlockOrientation();
+      } else {
+        await player.requestFullscreen();
+        await lockLandscape();
+      }
+    } catch {
+      // Alguns navegadores móveis não permitem fullscreen/orientação.
+    }
+  };
+
+
+
+  const changePlaybackRate = (rate: number) => {
+    const video = videoRef.current;
+    setPlaybackRate(rate);
+    if (video) video.playbackRate = rate;
+  };
 
   if (!anime) {
     return (
@@ -202,10 +430,48 @@ function WatchPage() {
       ? playUrl
       : null;
 
+  const bunnyEmbedSource =
+    playerIndex === 1 && current?.videoUrl2
+      ? (() => {
+          const value = current.videoUrl2;
+
+          if (value.includes("player.mediadelivery.net/embed/")) {
+            return value;
+          }
+
+          const match = value.match(
+            /b-cdn\.net\/(?:[^/]+\/)?([0-9a-f-]{36})\/playlist\.m3u8/i,
+          );
+
+          return match
+            ? `https://player.mediadelivery.net/embed/759317/${match[1]}?autoplay=false&loop=false&muted=false&preload=true&responsive=true`
+            : null;
+        })()
+      : null;
+
+  const muxEmbedSource =
+    playerIndex === 2 && current?.videoUrl3
+      ? (() => {
+          const value = current.videoUrl3.trim();
+
+          if (value.includes("player.mux.com/")) {
+            return value;
+          }
+
+          if (value) {
+            return `https://player.mux.com/${value}`;
+          }
+
+          return null;
+        })()
+      : null;
+
   const external =
     playUrl &&
     !yt &&
-    !file
+    !file &&
+    !bunnyEmbedSource &&
+    !muxEmbedSource
       ? playUrl
       : null;
 
@@ -261,10 +527,11 @@ function WatchPage() {
                     key={index}
                     type="button"
                     size="sm"
-                    variant={
+                    variant="outline"
+                    className={
                       playerIndex === index
-                        ? "default"
-                        : "outline"
+                        ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
+                        : "rounded-xl border-white/10 bg-white/[0.03] px-5 text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
                     }
                     onClick={() =>
                       setPlayerIndex(index)
@@ -282,13 +549,17 @@ function WatchPage() {
         {/* PLAYER */}
         {/* ================================================== */}
 
-        <div className="aspect-video overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-border)]">
+        <div
+          ref={playerRef}
+          onPointerMove={(event) => {
+            if (event.pointerType !== "touch") {
+              showControls();
+            }
+          }}
+          className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]"
+        >
 
-          {epQuery && !current ? (
-            <div className="flex size-full items-center justify-center text-sm text-muted">
-              Carregando episódio...
-            </div>
-          ) : yt ? (
+          {yt ? (
             <iframe
               title={`${title} — player`}
               src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&rel=0`}
@@ -296,13 +567,179 @@ function WatchPage() {
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
-          ) : file ? (
-            <video
-              src={file}
-              controls
-              autoPlay
-              className="size-full bg-bg object-contain"
+          ) : bunnyEmbedSource ? (
+            <iframe
+              title={`${title} — Bunny Player`}
+              src={bunnyEmbedSource}
+              loading="lazy"
+              className="size-full border-0 bg-black"
+              allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
             />
+          ) : muxEmbedSource ? (
+            <iframe
+              title={`${title} — Mux Player`}
+              src={muxEmbedSource}
+              loading="lazy"
+              className="size-full border-0 bg-black"
+              allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+              allowFullScreen
+            />
+          ) : file ? (
+            <>
+              <video
+                ref={videoRef}
+                src={file ?? undefined}
+                autoPlay={false}
+                playsInline
+                disablePictureInPicture
+                controlsList="nodownload noremoteplayback"
+                onContextMenu={(event) => event.preventDefault()}
+                onTouchEnd={handlePlayerTap}
+                className="size-full select-none bg-black object-contain"
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onLoadedMetadata={(event) => {
+                  setDuration(event.currentTarget.duration);
+                  event.currentTarget.playbackRate = playbackRate;
+                }}
+                onTimeUpdate={(event) =>
+                  setCurrentTime(event.currentTarget.currentTime)
+                }
+                onDurationChange={(event) =>
+                  setDuration(event.currentTarget.duration)
+                }
+              />
+
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/10" />
+
+              {controlsVisible && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div
+                    onPointerDown={showControls}
+                    className="pointer-events-auto flex items-center gap-2 sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={() => seekBy(-10)}
+                    className="flex h-8 min-w-12 items-center justify-center rounded-full border-0 bg-transparent px-1 text-[11px] font-semibold text-white transition hover:bg-white/10 active:scale-95 sm:h-9 sm:min-w-14 sm:text-xs"
+                    aria-label="Voltar 10 segundos"
+                  >
+                    -10s
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={togglePlay}
+                    className="flex size-10 items-center justify-center rounded-full border border-[#c98cff]/70 bg-[#a855f7]/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition hover:bg-[#b56cff] active:scale-95 sm:size-12"
+                    aria-label={isPlaying ? "Pausar" : "Reproduzir"}
+                  >
+                    {isPlaying ? (
+                      <Pause className="size-4 fill-current sm:size-5" />
+                    ) : (
+                      <Play className="ml-0.5 size-4 fill-current sm:size-5" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => seekBy(10)}
+                    className="flex h-8 min-w-12 items-center justify-center rounded-full border-0 bg-transparent px-1 text-[11px] font-semibold text-white transition hover:bg-white/10 active:scale-95 sm:h-9 sm:min-w-14 sm:text-xs"
+                    aria-label="Avançar 10 segundos"
+                  >
+                    +10s
+                  </button>
+                  </div>
+                </div>
+              )}
+
+              {controlsVisible && (
+                <div
+                  onPointerDown={showControls}
+                  className="absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-5 sm:pb-4"
+                >
+                <input
+                  aria-label="Progresso do episódio"
+                  type="range"
+                  min={0}
+                  max={duration || 0}
+                  step={0.1}
+                  value={Math.min(currentTime, duration || 0)}
+                  onChange={(event) => {
+                    const nextTime = Number(event.target.value);
+                    if (videoRef.current) videoRef.current.currentTime = nextTime;
+                    setCurrentTime(nextTime);
+                  }}
+                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-[#b56cff]"
+                  style={{
+                    background: `linear-gradient(to right, #b56cff 0%, #b56cff ${
+                      duration > 0 ? (currentTime / duration) * 100 : 0
+                    }%, rgba(255,255,255,0.22) ${
+                      duration > 0 ? (currentTime / duration) * 100 : 0
+                    }%, rgba(255,255,255,0.22) 100%)`,
+                  }}
+                />
+
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[11px] font-medium tracking-wide text-white/90 backdrop-blur-md sm:text-xs">
+                    <span>{formatTime(currentTime)}</span>
+                    <span className="text-white/30">/</span>
+                    <span className="text-white/60">{formatTime(duration)}</span>
+                  </div>
+
+                  <div className="pointer-events-auto flex items-center gap-1.5">
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setSettingsOpen((open) => !open)}
+                        className={`flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95 ${
+                          settingsOpen ? "bg-white/15" : ""
+                        }`}
+                        aria-label="Configurações do player"
+                        aria-expanded={settingsOpen}
+                      >
+                        <Settings className="size-4" />
+                      </button>
+
+                      {settingsOpen && (
+                        <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
+                          <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                            Player
+                          </div>
+
+                          <div className="mt-1 rounded-xl px-3 py-2.5">
+                            <div className="mb-2 text-white/75">Velocidade</div>
+                            <div className="grid grid-cols-5 gap-1">
+                              {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                                <button
+                                  key={rate}
+                                  type="button"
+                                  onClick={() => changePlaybackRate(rate)}
+                                  className={`rounded-lg px-1 py-1.5 text-[11px] ${playbackRate === rate ? "bg-[#a855f7] text-white" : "bg-white/5 text-white/65 hover:bg-white/10"}`}
+                                >
+                                  {rate}x
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleFullscreen}
+                      className="flex size-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-md transition hover:bg-white/10 active:scale-95"
+                      aria-label="Tela cheia"
+                    >
+                      <Maximize className="size-4" />
+                    </button>
+                  </div>
+                </div>
+                </div>
+              )}
+            </>
           ) : external ? (
             <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
 
@@ -366,16 +803,17 @@ function WatchPage() {
         </div>
 
         {/* ================================================== */}
-        {/* ANTERIOR / PRÓXIMO */}
+        {/* NAVEGAÇÃO DOS EPISÓDIOS */}
         {/* ================================================== */}
 
-        <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="mt-4 flex items-center gap-2">
 
           {prev ? (
             <Button
               asChild
               variant="outline"
               size="sm"
+              className="flex-1 sm:flex-none"
             >
               <Link
                 to="/watch/$id"
@@ -391,13 +829,40 @@ function WatchPage() {
               </Link>
             </Button>
           ) : (
-            <span />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled
+              className="flex-1 sm:flex-none"
+            >
+              <ChevronLeft className="size-4" />
+              Anterior
+            </Button>
           )}
 
-          {next && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setEpisodesOpen((open) => !open)}
+            aria-expanded={episodesOpen}
+            className="flex-1 sm:flex-none"
+          >
+            Episódios
+            <ChevronDown
+              className={cn(
+                "size-4 transition-transform",
+                episodesOpen && "rotate-180",
+              )}
+            />
+          </Button>
+
+          {next ? (
             <Button
               asChild
               size="sm"
+              className="flex-1 sm:flex-none"
             >
               <Link
                 to="/watch/$id"
@@ -412,61 +877,65 @@ function WatchPage() {
                 <ChevronRight className="size-4" />
               </Link>
             </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              disabled
+              className="flex-1 sm:flex-none"
+            >
+              Próximo
+              <ChevronRight className="size-4" />
+            </Button>
           )}
 
         </div>
 
         {/* ================================================== */}
-        {/* LISTA DE EPISÓDIOS */}
+        {/* BARRINHA DE EPISÓDIOS */}
         {/* ================================================== */}
 
-        {episodes.length > 0 && (
-          <section className="mt-6">
+        {episodesOpen && episodes.length > 0 && (
+          <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-surface shadow-xl">
 
-            <h2 className="mb-3 font-display text-xl">
-              Episódios
-            </h2>
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <span className="font-medium">Episódios</span>
+              <span className="text-xs text-muted">
+                {episodes.length} episódios
+              </span>
+            </div>
 
-            <ol className="grid max-h-[40vh] gap-1 overflow-y-auto sm:grid-cols-2">
-
-              {episodes.map(
-                (ep) => (
-                  <li key={ep.id}>
-
-                    <Link
-                      to="/watch/$id"
-                      params={{
-                        id: anime.id,
-                      }}
-                      search={{
-                        ep: ep.id,
-                      }}
-                      className={cn(
-                        "flex min-h-12 items-center gap-3 rounded-md px-3 text-sm",
-                        current?.id ===
-                          ep.id
-                          ? "bg-elevated text-fg"
-                          : "text-muted hover:bg-surface hover:text-fg",
-                      )}
-                    >
-
-                      <span className="w-8 tabular-nums text-xs text-subtle">
-                        {ep.number}
-                      </span>
-
-                      <span className="truncate">
-                        {ep.title}
-                      </span>
-
-                    </Link>
-
-                  </li>
-                ),
-              )}
-
+            <ol className="max-h-[45vh] overflow-y-auto p-2">
+              {episodes.map((ep) => (
+                <li key={ep.id}>
+                  <Link
+                    to="/watch/$id"
+                    params={{
+                      id: anime.id,
+                    }}
+                    search={{
+                      ep: ep.id,
+                    }}
+                    onClick={() => setEpisodesOpen(false)}
+                    className={cn(
+                      "flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm transition-colors",
+                      current?.id === ep.id
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated/70 hover:text-fg",
+                    )}
+                  >
+                    <span className="w-8 shrink-0 tabular-nums text-xs text-subtle">
+                      {ep.number}
+                    </span>
+                    <span className="truncate">
+                      {ep.title}
+                    </span>
+                  </Link>
+                </li>
+              ))}
             </ol>
 
-          </section>
+          </div>
         )}
 
         {/* ================================================== */}
@@ -4018,4 +4487,4 @@ function CommentCard({
 
     </article>
   );
-        }
+    }
