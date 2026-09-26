@@ -109,9 +109,33 @@ export const authConfigured =
 // the broker's preview client accepts.
 const explicitBaseURL = env("BETTER_AUTH_URL");
 
+/**
+ * Vercel gives every deployment its own host and also exposes the stable branch
+ * URL. Preview deployments therefore need to be accepted dynamically instead
+ * of trusting only the production BETTER_AUTH_URL.
+ */
+const vercelHosts = [
+  env("VERCEL_URL"),
+  env("VERCEL_BRANCH_URL"),
+].filter((host): host is string => Boolean(host));
+
+const explicitBaseHost = explicitBaseURL
+  ? (() => {
+      try {
+        return new URL(explicitBaseURL).host;
+      } catch {
+        return undefined;
+      }
+    })()
+  : undefined;
+
 // Explicit `string[]` (not a readonly tuple) — Better Auth's DynamicBaseURLConfig
 // requires a mutable `allowedHosts: string[]`.
-const previewAllowedHosts: string[] = [...PREVIEW_ALLOWED_HOSTS];
+const previewAllowedHosts: string[] = [
+  ...PREVIEW_ALLOWED_HOSTS,
+  ...vercelHosts,
+  ...(explicitBaseHost ? [explicitBaseHost] : []),
+];
 
 // Local `npm run dev` (port 8080 contract). Browsers may send Origin as any of
 // these for the same server — trusting only `localhost` rejects `127.0.0.1` and
@@ -122,33 +146,43 @@ const LOCAL_DEV_ORIGINS: string[] = [
   "http://[::1]:8080",
 ];
 
-const baseURL = explicitBaseURL ?? {
-  // Include loopback hosts so dynamic baseURL resolves for local email/password
-  // (not only the preview wildcard).
-  allowedHosts: [...previewAllowedHosts, "localhost", "127.0.0.1", "[::1]"],
+const baseURL = {
+  // Include the current Vercel deployment/branch hosts so Better Auth resolves
+  // the actual Preview URL instead of always resolving to production.
+  allowedHosts: [
+    ...previewAllowedHosts,
+    "localhost",
+    "127.0.0.1",
+    "[::1]",
+  ],
 
   // `auto` → trust both http:// and https:// expansions of allowedHosts
   // (preview is https; local dev is http).
   protocol: "auto" as const,
-  fallback: "http://localhost:8080",
+
+  // Production remains the fallback when no request host is available.
+  fallback: explicitBaseURL ?? "http://localhost:8080",
 };
 
 // Origins Better Auth accepts on credentialed POSTs (sign-up/sign-in, etc.).
 // Missing entries here surface as FORBIDDEN "Invalid origin".
-const trustedOrigins: string[] = explicitBaseURL
-  ? [explicitBaseURL, ...LOCAL_DEV_ORIGINS]
-  : [
-      // Host wildcards (matched against Origin's host)
-      ...previewAllowedHosts,
+const trustedOrigins: string[] = [
+  ...(explicitBaseURL ? [explicitBaseURL] : []),
 
-      // Full-origin wildcards (matched against Origin)
-      ...previewAllowedHosts.flatMap((host) => [
-        `https://${host}`,
-        `http://${host}`,
-      ]),
+  // Current Vercel deployment and branch URLs.
+  ...vercelHosts.map((host) => `https://${host}`),
 
-      ...LOCAL_DEV_ORIGINS,
-    ];
+  // Host wildcards (matched against Origin's host)
+  ...PREVIEW_ALLOWED_HOSTS,
+
+  // Full-origin wildcards (matched against Origin)
+  ...PREVIEW_ALLOWED_HOSTS.flatMap((host) => [
+    `https://${host}`,
+    `http://${host}`,
+  ]),
+
+  ...LOCAL_DEV_ORIGINS,
+];
 
 const databaseUrl = env("DATABASE_URL");
 
