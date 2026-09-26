@@ -20,6 +20,7 @@ import {
   Maximize,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import {
