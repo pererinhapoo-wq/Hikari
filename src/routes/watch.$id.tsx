@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
   Ban,
@@ -18,7 +18,8 @@ import {
   Settings,
   Trash2,
   Maximize,
-  X,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import {
@@ -80,6 +81,7 @@ export const Route = createFileRoute("/watch/$id")({
 
 function WatchPage() {
   const { id } = Route.useParams();
+  const navigate = useNavigate();
 
   const {
     ep: epQuery,
@@ -197,6 +199,8 @@ function WatchPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
 
   const clearControlsHideTimer = () => {
     if (controlsHideTimeoutRef.current) {
@@ -277,6 +281,35 @@ function WatchPage() {
       }
     } else {
       video.pause();
+    }
+  };
+
+  const setVideoVolume = (nextVolume: number) => {
+    const next = Math.min(1, Math.max(0, nextVolume));
+    const video = videoRef.current;
+
+    setVolume(next);
+    setIsMuted(next === 0);
+
+    if (video) {
+      video.volume = next;
+      video.muted = next === 0;
+    }
+  };
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.muted || video.volume === 0) {
+      const restored = volume > 0 ? volume : 1;
+      video.muted = false;
+      video.volume = restored;
+      setVolume(restored);
+      setIsMuted(false);
+    } else {
+      video.muted = true;
+      setIsMuted(true);
     }
   };
 
@@ -482,31 +515,41 @@ function WatchPage() {
       {/* CABEÇALHO */}
       {/* ================================================== */}
 
-      <header className="flex h-14 items-center gap-2 px-3 sm:px-5">
+      <header className="flex min-h-16 items-center gap-3 px-3 py-2.5 sm:px-5">
 
-        <Link
-          to="/anime/$id"
-          params={{
-            id: anime.id,
+        <button
+          type="button"
+          onClick={() => {
+            if (window.history.length > 1) {
+              window.history.back();
+              return;
+            }
+
+            navigate({
+              to: "/anime/$id",
+              params: { id: anime.id },
+            });
           }}
-          className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
-          aria-label="Fechar player"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/80 transition hover:bg-white/[0.08] hover:text-white active:scale-95"
+          aria-label="Voltar"
         >
-          <X className="size-5" />
-        </Link>
+          <ChevronLeft className="size-5" />
+        </button>
 
         <div className="min-w-0 flex-1">
-
-          <p className="truncate text-sm font-medium">
+          <Link
+            to="/anime/$id"
+            params={{ id: anime.id }}
+            className="block truncate text-[20px] font-semibold leading-tight text-white transition hover:text-[#c084fc]"
+          >
             {title}
-          </p>
+          </Link>
 
-          <p className="truncate text-xs text-muted">
+          <p className="truncate pt-0.5 text-[14px] leading-tight text-white/55">
             {current
               ? `Episódio ${current.number} · ${current.title}`
               : "Trailer"}
           </p>
-
         </div>
 
       </header>
@@ -599,12 +642,15 @@ function WatchPage() {
                 style={{
                   touchAction: "pan-x",
                 }}
-                className="size-full select-none bg-black object-contain"
+                className="relative z-0 size-full select-none bg-black object-contain"
+                 data-player-video="true"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onLoadedMetadata={(event) => {
                   setDuration(event.currentTarget.duration);
                   event.currentTarget.playbackRate = playbackRate;
+                  event.currentTarget.volume = volume;
+                  event.currentTarget.muted = isMuted;
                 }}
                 onTimeUpdate={(event) =>
                   setCurrentTime(event.currentTarget.currentTime)
@@ -614,13 +660,11 @@ function WatchPage() {
                 }
               />
 
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/10" />
-
               {controlsVisible && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                   <div
                     onPointerDown={showControls}
-                    className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/15 bg-black/25 px-2 py-2 shadow-[0_8px_35px_rgba(0,0,0,0.28)] backdrop-blur-2xl ring-1 ring-white/5 sm:gap-3 sm:px-2.5">
+                    className="pointer-events-auto flex items-center gap-2 sm:gap-3">
                   <button
                     type="button"
                     onClick={() => seekBy(-10)}
@@ -633,13 +677,13 @@ function WatchPage() {
                   <button
                     type="button"
                     onClick={togglePlay}
-                    className="flex size-10 items-center justify-center rounded-full border border-[#c98cff]/70 bg-[#a855f7]/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition hover:bg-[#b56cff] active:scale-95 sm:size-12"
+                    className="flex size-16 items-center justify-center rounded-full border border-[#c98cff]/70 bg-[#a855f7]/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition hover:bg-[#b56cff] active:scale-95 sm:size-12"
                     aria-label={isPlaying ? "Pausar" : "Reproduzir"}
                   >
                     {isPlaying ? (
-                      <Pause className="size-4 fill-current sm:size-5" />
+                      <Pause className="size-6 fill-current sm:size-5" />
                     ) : (
-                      <Play className="ml-0.5 size-4 fill-current sm:size-5" />
+                      <Play className="ml-0.5 size-6 fill-current sm:size-5" />
                     )}
                   </button>
 
@@ -658,88 +702,98 @@ function WatchPage() {
               {controlsVisible && (
                 <div
                   onPointerDown={showControls}
-                  className="absolute inset-x-0 bottom-0 px-2 pb-2 sm:px-4 sm:pb-4"
+                  className="absolute inset-x-0 bottom-0 z-10 px-3 pb-3 sm:px-5 sm:pb-4"
                 >
-                  <div className="rounded-2xl border border-white/15 bg-black/25 px-3 py-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.32)] backdrop-blur-2xl ring-1 ring-white/5 sm:px-4 sm:py-3">
-                <input
-                  aria-label="Progresso do episódio"
-                  type="range"
-                  min={0}
-                  max={duration || 0}
-                  step={0.1}
-                  value={Math.min(currentTime, duration || 0)}
-                  onChange={(event) => {
-                    const nextTime = Number(event.target.value);
-                    if (videoRef.current) videoRef.current.currentTime = nextTime;
-                    setCurrentTime(nextTime);
-                  }}
-                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-[#b56cff]"
-                  style={{
-                    background: `linear-gradient(to right, #b56cff 0%, #b56cff ${
-                      duration > 0 ? (currentTime / duration) * 100 : 0
-                    }%, rgba(255,255,255,0.22) ${
-                      duration > 0 ? (currentTime / duration) * 100 : 0
-                    }%, rgba(255,255,255,0.22) 100%)`,
-                  }}
-                />
+                  <input
+                    aria-label="Progresso do episódio"
+                    type="range"
+                    min={0}
+                    max={duration || 0}
+                    step={0.1}
+                    value={Math.min(currentTime, duration || 0)}
+                    onChange={(event) => {
+                      const nextTime = Number(event.target.value);
+                      if (videoRef.current) videoRef.current.currentTime = nextTime;
+                      setCurrentTime(nextTime);
+                    }}
+                    className="h-1 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-[#b56cff]"
+                    style={{
+                      background: `linear-gradient(to right, #b56cff 0%, #b56cff ${
+                        duration > 0 ? (currentTime / duration) * 100 : 0
+                      }%, rgba(255,255,255,0.25) ${
+                        duration > 0 ? (currentTime / duration) * 100 : 0
+                      }%, rgba(255,255,255,0.25) 100%)`,
+                    }}
+                  />
 
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium tracking-wide text-white/90 shadow-[0_4px_15px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:text-xs">
-                    <span>{formatTime(currentTime)}</span>
-                    <span className="text-white/30">/</span>
-                    <span className="text-white/60">{formatTime(duration)}</span>
-                  </div>
-
-                  <div className="pointer-events-auto flex items-center gap-1.5">
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setSettingsOpen((open) => !open)}
-                        className={`flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white shadow-[0_4px_15px_rgba(0,0,0,0.2)] backdrop-blur-xl transition hover:bg-white/10 active:scale-95 ${
-                          settingsOpen ? "bg-white/15" : ""
-                        }`}
-                        aria-label="Configurações do player"
-                        aria-expanded={settingsOpen}
-                      >
-                        <Settings className="size-4" />
-                      </button>
-
-                      {settingsOpen && (
-                        <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/15 bg-[#111116]/90 p-2 text-sm shadow-2xl backdrop-blur-2xl">
-                          <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
-                            Player
-                          </div>
-
-                          <div className="mt-1 rounded-xl px-3 py-2.5">
-                            <div className="mb-2 text-white/75">Velocidade</div>
-                            <div className="grid grid-cols-5 gap-1">
-                              {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
-                                <button
-                                  key={rate}
-                                  type="button"
-                                  onClick={() => changePlaybackRate(rate)}
-                                  className={`rounded-lg px-1 py-1.5 text-[11px] ${playbackRate === rate ? "bg-[#a855f7] text-white" : "bg-white/5 text-white/65 hover:bg-white/10"}`}
-                                >
-                                  {rate}x
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-
-                        </div>
-                      )}
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5 text-[12px] font-medium tabular-nums tracking-wide text-white sm:text-[13px]">
+                      <span>{formatTime(currentTime)}</span>
+                      <span className="text-white/35">/</span>
+                      <span className="text-white/65">{formatTime(duration)}</span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleFullscreen}
-                      className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white shadow-[0_4px_15px_rgba(0,0,0,0.2)] backdrop-blur-xl transition hover:bg-white/10 active:scale-95"
-                      aria-label="Tela cheia"
-                    >
-                      <Maximize className="size-4" />
-                    </button>
-                  </div>
+                    <div className="pointer-events-auto flex items-center gap-2 sm:gap-1.5">
+                      <button
+                        type="button"
+                        onClick={toggleMute}
+                        className="flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition hover:bg-white/10 active:scale-95 sm:size-11"
+                        aria-label={isMuted ? "Ativar som" : "Silenciar"}
+                      >
+                        {isMuted ? (
+                          <VolumeX className="size-5 sm:size-4" />
+                        ) : (
+                          <Volume2 className="size-5 sm:size-4" />
+                        )}
+                      </button>
+
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setSettingsOpen((open) => !open)}
+                          className={`flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition hover:bg-white/10 active:scale-95 sm:size-11 ${
+                            settingsOpen ? "bg-white/15" : ""
+                          }`}
+                          aria-label="Configurações do player"
+                          aria-expanded={settingsOpen}
+                        >
+                          <Settings className="size-5 sm:size-4" />
+                        </button>
+
+                        {settingsOpen && (
+                          <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
+                            <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                              Configurações
+                            </div>
+
+                            <div className="mt-1 rounded-xl px-3 py-2.5">
+                              <div className="mb-2 text-white/75">Velocidade</div>
+                              <div className="grid grid-cols-5 gap-1">
+                                {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                                  <button
+                                    key={rate}
+                                    type="button"
+                                    onClick={() => changePlaybackRate(rate)}
+                                    className={`rounded-lg px-1 py-1.5 text-[11px] ${playbackRate === rate ? "bg-[#a855f7] text-white" : "bg-white/5 text-white/65 hover:bg-white/10"}`}
+                                  >
+                                    {rate}x
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleFullscreen}
+                        className="flex size-14 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition hover:bg-white/10 active:scale-95 sm:size-11"
+                        aria-label="Tela cheia"
+                      >
+                        <Maximize className="size-5 sm:size-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -821,6 +875,7 @@ function WatchPage() {
             >
               <Link
                 to="/watch/$id"
+                replace
                 params={{
                   id: anime.id,
                 }}
@@ -870,6 +925,7 @@ function WatchPage() {
             >
               <Link
                 to="/watch/$id"
+                replace
                 params={{
                   id: anime.id,
                 }}
@@ -914,6 +970,7 @@ function WatchPage() {
                 <li key={ep.id}>
                   <Link
                     to="/watch/$id"
+                    replace
                     params={{
                       id: anime.id,
                     }}
