@@ -12,18 +12,16 @@ export function AnimeRow({
   href,
   items,
   loading,
-  className,
 }: {
   title: string;
   href?: string;
   items: SlimAnime[];
   loading?: boolean;
-  className?: string;
 }) {
   if (!loading && items.length === 0) return null;
 
   return (
-    <section className={`space-y-3 ${className ?? ""}`}>
+    <section className="space-y-3">
       <div className="flex items-center justify-between gap-3 px-1">
         <h2 className="font-display text-lg tracking-tight text-fg sm:text-2xl">
           {title}
@@ -56,22 +54,7 @@ export function AnimeRow({
         )}
       </div>
 
-      <div
-        className={`rail -mx-4 px-4 sm:-mx-6 sm:px-6 ${
-          title === "Novos episódios"
-            ? "touch-pan-x overscroll-x-contain"
-            : ""
-        }`}
-        style={
-          title === "Novos episódios"
-            ? {
-                WebkitOverflowScrolling: "touch",
-                touchAction: "pan-x",
-                overscrollBehaviorX: "contain",
-              }
-            : undefined
-        }
-      >
+      <div className="rail -mx-4 px-4 sm:-mx-6 sm:px-6">
         {loading
           ? Array.from({ length: 8 }, (_, i) => (
               <AnimeCardSkeleton key={i} />
@@ -82,4 +65,4 @@ export function AnimeRow({
       </div>
     </section>
   );
-                       }
+}
