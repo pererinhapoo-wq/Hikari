@@ -3,10 +3,16 @@ import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
-import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/types";
+import {
+  animeToLocal,
+  type Episode,
+  type LocalAnime,
+  type Season,
+} from "@/lib/types";
 import { useHikariStore } from "@/lib/store";
 import { youtubeIdFrom } from "@/lib/utils";
 import { uploadVideoToCloudinary } from "@/lib/cloudinary";
+import { uploadVideoToB2 } from "@/lib/b2";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +22,10 @@ import { FORMAT_PT, STATUS_PT, SEASON_PT } from "@/lib/labels";
 
 export const Route = createFileRoute("/admin/$id")({
   validateSearch: (raw: Record<string, unknown>): { importId?: string } => ({
-    importId: typeof raw.importId === "string" && raw.importId ? raw.importId : undefined,
+    importId:
+      typeof raw.importId === "string" && raw.importId
+        ? raw.importId
+        : undefined,
   }),
   loaderDeps: ({ search }) => ({ importId: search.importId }),
   loader: async ({ params, deps }) => {
@@ -82,7 +91,9 @@ function AdminEditor() {
     const locals = useHikariStore.getState().animes;
     const existing =
       locals.find((a) => a.id === id) ||
-      (remote?.anilistId ? locals.find((a) => a.anilistId === remote.anilistId) : undefined);
+      (remote?.anilistId
+        ? locals.find((a) => a.anilistId === remote.anilistId)
+        : undefined);
     const next = existing ?? (remote ? animeToLocal(remote) : emptyLocal());
     setForm(next);
     setGenreText(next.genres.join(", "));
@@ -106,7 +117,8 @@ function AdminEditor() {
     const next: LocalAnime = {
       ...current,
       genres,
-      trailerId: youtubeIdFrom(current.trailerId) ?? (current.trailerId || null),
+      trailerId:
+        youtubeIdFrom(current.trailerId) ?? (current.trailerId || null),
       updatedAt: Date.now(),
     };
     if (!next.titleRomaji && !next.titleEnglish && !next.titleNative) {
@@ -141,13 +153,22 @@ function AdminEditor() {
   function patchSeason(sid: string, patch: Partial<Season>) {
     setForm((f) =>
       f
-        ? { ...f, seasons: f.seasons.map((s) => (s.id === sid ? { ...s, ...patch } : s)) }
+        ? {
+            ...f,
+            seasons: f.seasons.map((s) =>
+              s.id === sid ? { ...s, ...patch } : s,
+            ),
+          }
         : f,
     );
   }
 
   function removeSeason(sid: string) {
-    setForm((f) => (f ? { ...f, seasons: f.seasons.filter((s) => s.id !== sid) } : f));
+    setForm((f) =>
+      f
+        ? { ...f, seasons: f.seasons.filter((s) => s.id !== sid) }
+        : f,
+    );
   }
 
   function addEpisode(sid: string) {
@@ -177,7 +198,12 @@ function AdminEditor() {
             ...f,
             seasons: f.seasons.map((s) =>
               s.id === sid
-                ? { ...s, episodes: s.episodes.map((e) => (e.id === eid ? { ...e, ...patch } : e)) }
+                ? {
+                    ...s,
+                    episodes: s.episodes.map((e) =>
+                      e.id === eid ? { ...e, ...patch } : e,
+                    ),
+                  }
                 : s,
             ),
           }
@@ -191,7 +217,12 @@ function AdminEditor() {
         ? {
             ...f,
             seasons: f.seasons.map((s) =>
-              s.id === sid ? { ...s, episodes: s.episodes.filter((e) => e.id !== eid) } : s,
+              s.id === sid
+                ? {
+                    ...s,
+                    episodes: s.episodes.filter((e) => e.id !== eid),
+                  }
+                : s,
             ),
           }
         : f,
@@ -233,7 +264,11 @@ function AdminEditor() {
         <div className="space-y-3">
           <div className="overflow-hidden rounded-lg bg-elevated shadow-[var(--shadow-border)]">
             {form.cover ? (
-              <img src={form.cover} alt="" className="aspect-2/3 w-full object-cover" />
+              <img
+                src={form.cover}
+                alt=""
+                className="aspect-2/3 w-full object-cover"
+              />
             ) : (
               <div className="flex aspect-2/3 items-center justify-center text-xs text-subtle">
                 Sem capa
@@ -243,25 +278,46 @@ function AdminEditor() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Título (romaji)" className="sm:col-span-2">
-            <Input value={form.titleRomaji} onChange={(e) => set("titleRomaji", e.target.value)} />
+            <Input
+              value={form.titleRomaji}
+              onChange={(e) => set("titleRomaji", e.target.value)}
+            />
           </Field>
           <Field label="Título em inglês">
-            <Input value={form.titleEnglish} onChange={(e) => set("titleEnglish", e.target.value)} />
+            <Input
+              value={form.titleEnglish}
+              onChange={(e) => set("titleEnglish", e.target.value)}
+            />
           </Field>
           <Field label="Título original">
-            <Input value={form.titleNative} onChange={(e) => set("titleNative", e.target.value)} />
+            <Input
+              value={form.titleNative}
+              onChange={(e) => set("titleNative", e.target.value)}
+            />
           </Field>
           <Field label="URL da capa" className="sm:col-span-2">
-            <Input value={form.cover} onChange={(e) => set("cover", e.target.value)} />
+            <Input
+              value={form.cover}
+              onChange={(e) => set("cover", e.target.value)}
+            />
           </Field>
           <Field label="URL do banner" className="sm:col-span-2">
-            <Input value={form.banner} onChange={(e) => set("banner", e.target.value)} />
+            <Input
+              value={form.banner}
+              onChange={(e) => set("banner", e.target.value)}
+            />
           </Field>
           <Field label="Sinopse" className="sm:col-span-2">
-            <Textarea value={form.synopsis} onChange={(e) => set("synopsis", e.target.value)} />
+            <Textarea
+              value={form.synopsis}
+              onChange={(e) => set("synopsis", e.target.value)}
+            />
           </Field>
           <Field label="Gêneros (vírgula)" className="sm:col-span-2">
-            <Input value={genreText} onChange={(e) => setGenreText(e.target.value)} />
+            <Input
+              value={genreText}
+              onChange={(e) => setGenreText(e.target.value)}
+            />
           </Field>
           <Field label="Nota (0–100)">
             <Input
@@ -269,18 +325,31 @@ function AdminEditor() {
               min={0}
               max={100}
               value={form.score ?? ""}
-              onChange={(e) => set("score", e.target.value === "" ? null : Number(e.target.value))}
+              onChange={(e) =>
+                set(
+                  "score",
+                  e.target.value === "" ? null : Number(e.target.value),
+                )
+              }
             />
           </Field>
           <Field label="Ano">
             <Input
               type="number"
               value={form.year ?? ""}
-              onChange={(e) => set("year", e.target.value === "" ? null : Number(e.target.value))}
+              onChange={(e) =>
+                set(
+                  "year",
+                  e.target.value === "" ? null : Number(e.target.value),
+                )
+              }
             />
           </Field>
           <Field label="Formato">
-            <NativeSelect value={form.format} onChange={(e) => set("format", e.target.value)}>
+            <NativeSelect
+              value={form.format}
+              onChange={(e) => set("format", e.target.value)}
+            >
               {Object.entries(FORMAT_PT).map(([k, v]) => (
                 <option key={k} value={k}>
                   {v}
@@ -289,7 +358,10 @@ function AdminEditor() {
             </NativeSelect>
           </Field>
           <Field label="Status">
-            <NativeSelect value={form.status} onChange={(e) => set("status", e.target.value)}>
+            <NativeSelect
+              value={form.status}
+              onChange={(e) => set("status", e.target.value)}
+            >
               {Object.entries(STATUS_PT).map(([k, v]) => (
                 <option key={k} value={k}>
                   {v}
@@ -313,7 +385,9 @@ function AdminEditor() {
           <Field label="Trailer (YouTube URL ou ID)">
             <Input
               value={form.trailerId ?? ""}
-              onChange={(e) => set("trailerId", e.target.value || null)}
+              onChange={(e) =>
+                set("trailerId", e.target.value || null)
+              }
             />
           </Field>
           <label className="flex h-11 items-center gap-2 text-sm text-muted sm:col-span-2">
@@ -330,28 +404,49 @@ function AdminEditor() {
 
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-2xl">Temporadas e episódios</h2>
-          <Button type="button" variant="outline" size="sm" onClick={addSeason}>
+          <h2 className="font-display text-2xl">
+            Temporadas e episódios
+          </h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addSeason}
+          >
             <Plus className="size-4" />
             Temporada
           </Button>
         </div>
+
         {form.seasons.map((season) => (
-          <div key={season.id} className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)]">
+          <div
+            key={season.id}
+            className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)]"
+          >
             <div className="flex flex-col gap-3 sm:flex-row">
               <Field label="Nome" className="flex-1">
                 <Input
                   value={season.title}
-                  onChange={(e) => patchSeason(season.id, { title: e.target.value })}
+                  onChange={(e) =>
+                    patchSeason(season.id, {
+                      title: e.target.value,
+                    })
+                  }
                 />
               </Field>
+
               <Field label="Nº" className="w-24">
                 <Input
                   type="number"
                   value={season.number}
-                  onChange={(e) => patchSeason(season.id, { number: Number(e.target.value) })}
+                  onChange={(e) =>
+                    patchSeason(season.id, {
+                      number: Number(e.target.value),
+                    })
+                  }
                 />
               </Field>
+
               <Button
                 type="button"
                 variant="ghost"
@@ -363,86 +458,147 @@ function AdminEditor() {
                 <Trash2 className="size-4 text-danger" />
               </Button>
             </div>
+
             <ul className="mt-4 space-y-3">
               {season.episodes.map((ep) => (
-                <li key={ep.id} className="rounded-lg bg-elevated p-3">
+                <li
+                  key={ep.id}
+                  className="rounded-lg bg-elevated p-3"
+                >
                   <div className="grid gap-2 sm:grid-cols-12">
                     <Field label="#" className="sm:col-span-1">
                       <Input
                         type="number"
                         value={ep.number}
                         onChange={(e) =>
-                          patchEpisode(season.id, ep.id, { number: Number(e.target.value) })
+                          patchEpisode(season.id, ep.id, {
+                            number: Number(e.target.value),
+                          })
                         }
                       />
                     </Field>
+
                     <Field label="Título" className="sm:col-span-5">
                       <Input
                         value={ep.title}
-                        onChange={(e) => patchEpisode(season.id, ep.id, { title: e.target.value })}
+                        onChange={(e) =>
+                          patchEpisode(season.id, ep.id, {
+                            title: e.target.value,
+                          })
+                        }
                       />
                     </Field>
+
                     <Field label="Duração" className="sm:col-span-2">
                       <Input
                         value={ep.duration ?? ""}
                         onChange={(e) =>
-                          patchEpisode(season.id, ep.id, { duration: e.target.value })
+                          patchEpisode(season.id, ep.id, {
+                            duration: e.target.value,
+                          })
                         }
                         placeholder="24 min"
                       />
                     </Field>
+
                     {[
-                      { key: "videoUrl" as const, label: "Player 1" },
-                      { key: "videoUrl2" as const, label: "Player 2" },
-                      { key: "videoUrl3" as const, label: "Player 3" },
+                      {
+                        key: "videoUrl" as const,
+                        label: "Player 1",
+                      },
+                      {
+                        key: "videoUrl2" as const,
+                        label: "Player 2",
+                      },
+                      {
+                        key: "videoUrl3" as const,
+                        label: "Player 3",
+                      },
                     ].map(({ key, label }) => (
-                      <Field key={key} label={`${label} — URL do vídeo`} className="sm:col-span-4">
+                      <Field
+                        key={key}
+                        label={`${label} — URL do vídeo`}
+                        className="sm:col-span-4"
+                      >
                         <div className="flex gap-2">
                           <Input
                             value={ep[key] ?? ""}
-                            onChange={(e) => patchEpisode(season.id, ep.id, { [key]: e.target.value })}
+                            onChange={(e) =>
+                              patchEpisode(season.id, ep.id, {
+                                [key]: e.target.value,
+                              })
+                            }
                             placeholder="URL do vídeo"
                           />
+
                           <Button
                             type="button"
                             variant="outline"
                             className="shrink-0"
-                            disabled={uploadingEpisode === `${ep.id}-${key}`}
+                            disabled={
+                              uploadingEpisode === `${ep.id}-${key}`
+                            }
                             onClick={async () => {
                               const uploadId = `${ep.id}-${key}`;
                               setUploadingEpisode(uploadId);
+
                               try {
-                                await uploadVideoToCloudinary((url) => {
-                                  patchEpisode(season.id, ep.id, { [key]: url });
-                                  toast.success(`${label} enviado com sucesso.`);
+                                const uploader =
+                                  key === "videoUrl"
+                                    ? uploadVideoToB2
+                                    : uploadVideoToCloudinary;
+
+                                await uploader((url) => {
+                                  patchEpisode(season.id, ep.id, {
+                                    [key]: url,
+                                  });
+
+                                  toast.success(
+                                    `${label} enviado com sucesso.`,
+                                  );
                                 });
                               } catch (error) {
-                                toast.error(error instanceof Error ? error.message : "Falha no upload.");
+                                toast.error(
+                                  error instanceof Error
+                                    ? error.message
+                                    : "Falha no upload.",
+                                );
                               } finally {
                                 setUploadingEpisode(null);
                               }
                             }}
                           >
-                            {uploadingEpisode === `${ep.id}-${key}` ? "Abrindo…" : "Enviar"}
+                            {uploadingEpisode === `${ep.id}-${key}`
+                              ? "Abrindo…"
+                              : "Enviar"}
                           </Button>
                         </div>
                       </Field>
                     ))}
-                    <Field label="Thumb" className="sm:col-span-11">
+
+                    <Field
+                      label="Thumb"
+                      className="sm:col-span-11"
+                    >
                       <Input
                         value={ep.thumbnail ?? ""}
                         onChange={(e) =>
-                          patchEpisode(season.id, ep.id, { thumbnail: e.target.value })
+                          patchEpisode(season.id, ep.id, {
+                            thumbnail: e.target.value,
+                          })
                         }
                       />
                     </Field>
+
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       className="sm:col-span-1 sm:self-end"
                       aria-label="Remover episódio"
-                      onClick={() => removeEpisode(season.id, ep.id)}
+                      onClick={() =>
+                        removeEpisode(season.id, ep.id)
+                      }
                     >
                       <Trash2 className="size-4 text-danger" />
                     </Button>
@@ -450,6 +606,7 @@ function AdminEditor() {
                 </li>
               ))}
             </ul>
+
             <Button
               type="button"
               variant="outline"
@@ -482,4 +639,4 @@ function Field({
       {children}
     </label>
   );
-}
+                                }
