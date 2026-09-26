@@ -596,6 +596,9 @@ function WatchPage() {
                 controlsList="nodownload noremoteplayback"
                 onContextMenu={(event) => event.preventDefault()}
                 onTouchEnd={handlePlayerTap}
+                style={{
+                  touchAction: "pan-x",
+                }}
                 className="size-full select-none bg-black object-contain"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
@@ -1076,6 +1079,23 @@ function CommentsSection({
 
   const [gifOpen, setGifOpen] =
     useState(false);
+
+  useEffect(() => {
+    if (!gifOpen) {
+      return;
+    }
+
+    const previousOverflow =
+      document.body.style.overflow;
+
+    document.body.style.overflow =
+      "hidden";
+
+    return () => {
+      document.body.style.overflow =
+        previousOverflow;
+    };
+  }, [gifOpen]);
 
   const [gifSearch, setGifSearch] =
     useState("");
