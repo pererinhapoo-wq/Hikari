@@ -1136,7 +1136,7 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
 
   for (
     let page = 1;
-    page <= 20 && releases.length < 18;
+    page <= 20 && releases.length < 50;
     page++
   ) {
     const data =
@@ -1215,7 +1215,7 @@ async function fetchRecentAdultReleasesFromAni(): Promise<
       );
 
       if (
-        releases.length >= 18
+        releases.length >= 50
       ) {
         break;
       }
