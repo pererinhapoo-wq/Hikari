@@ -116,15 +116,11 @@ function WatchPage() {
       return null;
     }
 
-    if (epQuery) {
-      return (
-        episodes.find(
-          (e) => e.id === epQuery,
-        ) ?? null
-      );
-    }
-
-    return episodes[0];
+    return (
+      episodes.find(
+        (e) => e.id === epQuery,
+      ) ?? episodes[0]
+    );
   }, [episodes, epQuery]);
 
   const idx = current
@@ -501,7 +497,6 @@ function WatchPage() {
                 onContextMenu={(event) => event.preventDefault()}
                 onTouchEnd={handlePlayerTap}
                 className="size-full select-none bg-black object-contain"
-                style={{ touchAction: "pan-x" }}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onLoadedMetadata={(event) => {
