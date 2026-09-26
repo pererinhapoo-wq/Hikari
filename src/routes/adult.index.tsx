@@ -89,15 +89,11 @@ function AdultPage() {
 
       {items.length > 0 ? (
         <>
-          <div
-            className="[&_.rail]:overflow-x-auto [&_.rail]:overscroll-x-contain [&_.rail]:touch-pan-x [&_.rail]:scroll-smooth"
-          >
-            <AnimeRow
-              title="Novos episódios"
-              href="/adult/recent"
-              items={recentItems}
-            />
-          </div>
+          <AnimeRow
+            title="Novos episódios"
+            href="/adult/recent"
+            items={recentItems}
+          />
 
           <AnimeRow
             title="Hentai"
