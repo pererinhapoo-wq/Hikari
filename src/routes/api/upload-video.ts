@@ -1,47 +1,70 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const endpoint = process.env.B2_ENDPOINT;
-const bucket = process.env.B2_BUCKET;
-const region =
-  process.env.B2_REGION ||
-  endpoint?.match(/s3\.([^.]+)\.backblazeb2\.com/)?.[1] ||
-  "us-east-005";
+const MAX_FILE_SIZE = 900 * 1024 * 1024;
 
-if (!endpoint || !bucket) {
-  console.error("B2 não configurado: B2_ENDPOINT ou B2_BUCKET ausente.");
+const ALLOWED_TYPES = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+]);
+
+function getB2Client() {
+  const endpoint = process.env.B2_ENDPOINT;
+  const region = process.env.B2_REGION;
+  const keyId = process.env.B2_KEY_ID;
+  const applicationKey = process.env.B2_APPLICATION_KEY;
+
+  if (!endpoint || !region || !keyId || !applicationKey) {
+    throw new Error("Configuração do Backblaze B2 não está disponível.");
+  }
+
+  return new S3Client({
+    endpoint,
+    region,
+    credentials: {
+      accessKeyId: keyId,
+      secretAccessKey: applicationKey,
+    },
+  });
 }
 
-const b2 = new S3Client({
-  endpoint,
-  region,
-  credentials: {
-    accessKeyId: process.env.B2_KEY_ID || "",
-    secretAccessKey: process.env.B2_APPLICATION_KEY || "",
-  },
-});
+function getBucket() {
+  const bucket = process.env.B2_BUCKET;
+
+  if (!bucket) {
+    throw new Error("B2_BUCKET não está configurado.");
+  }
+
+  return bucket;
+}
 
 export const Route = createFileRoute("/api/upload-video")({
   server: {
     handlers: {
       POST: async ({ request }) => {
         try {
-          const body = await request.json();
+          const body = (await request.json()) as {
+            filename?: string;
+            contentType?: string;
+            size?: number;
+          };
 
           const filename =
             typeof body.filename === "string" ? body.filename : "";
-          const contentType =
-            typeof body.contentType === "string"
-              ? body.contentType
-              : "application/octet-stream";
-          const size = Number(body.size);
 
-          const allowedTypes = [
-            "video/mp4",
-            "video/webm",
-            "video/quicktime",
-          ];
+          const contentType =
+            typeof body.contentType === "string" ? body.contentType : "";
+
+          const size =
+            typeof body.size === "number" && Number.isFinite(body.size)
+              ? body.size
+              : 0;
 
           if (!filename) {
             return Response.json(
@@ -50,34 +73,48 @@ export const Route = createFileRoute("/api/upload-video")({
             );
           }
 
-          if (!allowedTypes.includes(contentType)) {
+          if (!ALLOWED_TYPES.has(contentType)) {
             return Response.json(
-              { error: "Tipo de vídeo não permitido." },
+              {
+                error:
+                  "Tipo de vídeo não permitido. Use MP4, WebM ou MOV.",
+              },
               { status: 400 },
             );
           }
 
-          if (!Number.isFinite(size) || size <= 0) {
+          if (size <= 0) {
             return Response.json(
               { error: "Tamanho do arquivo inválido." },
               { status: 400 },
             );
           }
 
-          const maxSize = 900 * 1024 * 1024;
-
-          if (size > maxSize) {
+          if (size > MAX_FILE_SIZE) {
             return Response.json(
               { error: "O vídeo ultrapassa o limite de 900 MB." },
               { status: 400 },
             );
           }
 
-          const safeName = filename
-            .replace(/[^a-zA-Z0-9._-]/g, "_")
-            .replace(/_+/g, "_");
+          const extension =
+            filename.includes(".")
+              ? filename.slice(filename.lastIndexOf(".")).toLowerCase()
+              : "";
 
-          const key = `hikari/episodes/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+          const safeExtension =
+            extension && /^[.a-z0-9]+$/.test(extension)
+              ? extension
+              : contentType === "video/mp4"
+                ? ".mp4"
+                : contentType === "video/webm"
+                  ? ".webm"
+                  : ".mov";
+
+          const key = `hikari/episodes/${crypto.randomUUID()}${safeExtension}`;
+
+          const client = getB2Client();
+          const bucket = getBucket();
 
           const command = new PutObjectCommand({
             Bucket: bucket,
@@ -85,18 +122,11 @@ export const Route = createFileRoute("/api/upload-video")({
             ContentType: contentType,
           });
 
-          const uploadUrl = await getSignedUrl(b2, command, {
-            expiresIn: 60 * 15,
+          const uploadUrl = await getSignedUrl(client, command, {
+            expiresIn: 3600,
           });
 
-          const videoCommand = new GetObjectCommand({
-            Bucket: bucket,
-            Key: key,
-          });
-
-          const videoUrl = await getSignedUrl(b2, videoCommand, {
-            expiresIn: 60 * 60 * 24 * 7,
-          });
+          const videoUrl = `/api/upload-video?key=${encodeURIComponent(key)}`;
 
           return Response.json({
             uploadUrl,
@@ -123,20 +153,30 @@ export const Route = createFileRoute("/api/upload-video")({
           const url = new URL(request.url);
           const key = url.searchParams.get("key");
 
-          if (!key || !key.startsWith("hikari/episodes/")) {
+          if (!key) {
+            return Response.json(
+              { error: "Chave do vídeo não informada." },
+              { status: 400 },
+            );
+          }
+
+          if (!key.startsWith("hikari/episodes/")) {
             return Response.json(
               { error: "Chave de vídeo inválida." },
               { status: 400 },
             );
           }
 
+          const client = getB2Client();
+          const bucket = getBucket();
+
           const command = new GetObjectCommand({
             Bucket: bucket,
             Key: key,
           });
 
-          const signedUrl = await getSignedUrl(b2, command, {
-            expiresIn: 60 * 60 * 24 * 7,
+          const signedUrl = await getSignedUrl(client, command, {
+            expiresIn: 3600,
           });
 
           return Response.redirect(signedUrl, 302);
