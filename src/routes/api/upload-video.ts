@@ -14,57 +14,66 @@ const ALLOWED_TYPES = new Set([
   "video/quicktime",
 ]);
 
-function getB2Client() {
+function getB2Config() {
   const endpoint = process.env.B2_ENDPOINT;
   const region = process.env.B2_REGION;
+  const bucket = process.env.B2_BUCKET;
   const keyId = process.env.B2_KEY_ID;
   const applicationKey = process.env.B2_APPLICATION_KEY;
 
-  if (!endpoint || !region || !keyId || !applicationKey) {
+  if (!endpoint || !region || !bucket || !keyId || !applicationKey) {
     throw new Error("Configuração do Backblaze B2 não está disponível.");
   }
 
-  return new S3Client({
+  return {
     endpoint,
     region,
-    credentials: {
-      accessKeyId: keyId,
-      secretAccessKey: applicationKey,
-    },
-  });
+    bucket,
+    keyId,
+    applicationKey,
+  };
 }
 
-function getBucket() {
-  const bucket = process.env.B2_BUCKET;
+function createB2Client() {
+  const config = getB2Config();
 
-  if (!bucket) {
-    throw new Error("B2_BUCKET não está configurado.");
-  }
-
-  return bucket;
+  return {
+    client: new S3Client({
+      endpoint: config.endpoint,
+      region: config.region,
+      credentials: {
+        accessKeyId: config.keyId,
+        secretAccessKey: config.applicationKey,
+      },
+      forcePathStyle: false,
+    }),
+    bucket: config.bucket,
+  };
 }
+
+type UploadBody = {
+  filename?: unknown;
+  contentType?: unknown;
+  size?: unknown;
+};
 
 export const Route = createFileRoute("/api/upload-video")({
   server: {
     handlers: {
       POST: async ({ request }) => {
         try {
-          const body = (await request.json()) as {
-            filename?: string;
-            contentType?: string;
-            size?: number;
-          };
+          const body = (await request.json()) as UploadBody;
 
           const filename =
-            typeof body.filename === "string" ? body.filename : "";
+            typeof body.filename === "string" ? body.filename.trim() : "";
 
           const contentType =
-            typeof body.contentType === "string" ? body.contentType : "";
+            typeof body.contentType === "string"
+              ? body.contentType.trim().toLowerCase()
+              : "";
 
           const size =
-            typeof body.size === "number" && Number.isFinite(body.size)
-              ? body.size
-              : 0;
+            typeof body.size === "number" ? body.size : Number(body.size);
 
           if (!filename) {
             return Response.json(
@@ -83,7 +92,7 @@ export const Route = createFileRoute("/api/upload-video")({
             );
           }
 
-          if (size <= 0) {
+          if (!Number.isFinite(size) || size <= 0) {
             return Response.json(
               { error: "Tamanho do arquivo inválido." },
               { status: 400 },
@@ -92,38 +101,38 @@ export const Route = createFileRoute("/api/upload-video")({
 
           if (size > MAX_FILE_SIZE) {
             return Response.json(
-              { error: "O vídeo ultrapassa o limite de 900 MB." },
+              {
+                error: "O vídeo ultrapassa o limite de 900 MB.",
+              },
               { status: 400 },
             );
           }
 
-          const extension =
-            filename.includes(".")
-              ? filename.slice(filename.lastIndexOf(".")).toLowerCase()
-              : "";
+          const { client, bucket } = createB2Client();
 
-          const safeExtension =
-            extension && /^[.a-z0-9]+$/.test(extension)
-              ? extension
-              : contentType === "video/mp4"
-                ? ".mp4"
-                : contentType === "video/webm"
-                  ? ".webm"
-                  : ".mov";
+          const safeFilename = filename
+            .split("/")
+            .pop()
+            ?.replace(/[^a-zA-Z0-9._-]/g, "_");
 
-          const key = `hikari/episodes/${crypto.randomUUID()}${safeExtension}`;
+          if (!safeFilename) {
+            return Response.json(
+              { error: "Nome do arquivo inválido." },
+              { status: 400 },
+            );
+          }
 
-          const client = getB2Client();
-          const bucket = getBucket();
+          const key = `hikari/episodes/${Date.now()}-${crypto.randomUUID()}-${safeFilename}`;
 
           const command = new PutObjectCommand({
             Bucket: bucket,
             Key: key,
             ContentType: contentType,
+            ContentLength: size,
           });
 
           const uploadUrl = await getSignedUrl(client, command, {
-            expiresIn: 3600,
+            expiresIn: 60 * 15,
           });
 
           const videoUrl = `/api/upload-video?key=${encodeURIComponent(key)}`;
@@ -143,7 +152,7 @@ export const Route = createFileRoute("/api/upload-video")({
                   ? error.message
                   : "Falha ao preparar o upload.",
             },
-            { status: 500 },
+            { status: 400 },
           );
         }
       },
@@ -162,13 +171,12 @@ export const Route = createFileRoute("/api/upload-video")({
 
           if (!key.startsWith("hikari/episodes/")) {
             return Response.json(
-              { error: "Chave de vídeo inválida." },
+              { error: "Chave do vídeo inválida." },
               { status: 400 },
             );
           }
 
-          const client = getB2Client();
-          const bucket = getBucket();
+          const { client, bucket } = createB2Client();
 
           const command = new GetObjectCommand({
             Bucket: bucket,
@@ -176,12 +184,12 @@ export const Route = createFileRoute("/api/upload-video")({
           });
 
           const signedUrl = await getSignedUrl(client, command, {
-            expiresIn: 3600,
+            expiresIn: 60 * 60,
           });
 
           return Response.redirect(signedUrl, 302);
         } catch (error) {
-          console.error("Erro ao gerar URL do B2:", error);
+          console.error("Erro ao gerar URL do vídeo B2:", error);
 
           return Response.json(
             {
@@ -190,7 +198,7 @@ export const Route = createFileRoute("/api/upload-video")({
                   ? error.message
                   : "Falha ao gerar URL do vídeo.",
             },
-            { status: 500 },
+            { status: 400 },
           );
         }
       },
