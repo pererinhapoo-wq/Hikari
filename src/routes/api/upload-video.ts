@@ -6,7 +6,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const MAX_FILE_SIZE = 900 * 1024 * 1024;
+const MAX_UPLOAD_SIZE = 900 * 1024 * 1024;
 
 const ALLOWED_TYPES = new Set([
   "video/mp4",
@@ -14,7 +14,7 @@ const ALLOWED_TYPES = new Set([
   "video/quicktime",
 ]);
 
-function getB2Config() {
+function getB2Client() {
   const endpoint = process.env.B2_ENDPOINT;
   const region = process.env.B2_REGION;
   const bucket = process.env.B2_BUCKET;
@@ -22,58 +22,52 @@ function getB2Config() {
   const applicationKey = process.env.B2_APPLICATION_KEY;
 
   if (!endpoint || !region || !bucket || !keyId || !applicationKey) {
-    throw new Error("Configuração do Backblaze B2 não está disponível.");
+    throw new Error(
+      "Configuração do Backblaze B2 incompleta. Verifique B2_ENDPOINT, B2_REGION, B2_BUCKET, B2_KEY_ID e B2_APPLICATION_KEY.",
+    );
   }
 
   return {
-    endpoint,
-    region,
-    bucket,
-    keyId,
-    applicationKey,
-  };
-}
-
-function createB2Client() {
-  const config = getB2Config();
-
-  return {
     client: new S3Client({
-      endpoint: config.endpoint,
-      region: config.region,
+      endpoint,
+      region,
+      forcePathStyle: true,
       credentials: {
-        accessKeyId: config.keyId,
-        secretAccessKey: config.applicationKey,
+        accessKeyId: keyId,
+        secretAccessKey: applicationKey,
       },
-      forcePathStyle: false,
     }),
-    bucket: config.bucket,
+    bucket,
   };
 }
 
-type UploadBody = {
-  filename?: unknown;
-  contentType?: unknown;
-  size?: unknown;
+type HandleUploadBody = {
+  filename?: string;
+  contentType?: string;
+  size?: number;
 };
+
+function sanitizeFilename(filename: string) {
+  const cleaned = filename
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/_+/g, "_");
+
+  return cleaned || "video.mp4";
+}
 
 export const Route = createFileRoute("/api/upload-video")({
   server: {
     handlers: {
       POST: async ({ request }) => {
         try {
-          const body = (await request.json()) as UploadBody;
+          const body = (await request.json()) as HandleUploadBody;
 
           const filename =
-            typeof body.filename === "string" ? body.filename.trim() : "";
-
+            typeof body.filename === "string" ? body.filename : "";
           const contentType =
-            typeof body.contentType === "string"
-              ? body.contentType.trim().toLowerCase()
-              : "";
-
-          const size =
-            typeof body.size === "number" ? body.size : Number(body.size);
+            typeof body.contentType === "string" ? body.contentType : "";
+          const size = typeof body.size === "number" ? body.size : 0;
 
           if (!filename) {
             return Response.json(
@@ -86,7 +80,7 @@ export const Route = createFileRoute("/api/upload-video")({
             return Response.json(
               {
                 error:
-                  "Tipo de vídeo não permitido. Use MP4, WebM ou MOV.",
+                  "Tipo de vídeo não permitido. Use MP4, WebM ou QuickTime.",
               },
               { status: 400 },
             );
@@ -99,43 +93,31 @@ export const Route = createFileRoute("/api/upload-video")({
             );
           }
 
-          if (size > MAX_FILE_SIZE) {
+          if (size > MAX_UPLOAD_SIZE) {
             return Response.json(
-              {
-                error: "O vídeo ultrapassa o limite de 900 MB.",
-              },
+              { error: "O vídeo ultrapassa o limite de 900 MB." },
               { status: 400 },
             );
           }
 
-          const { client, bucket } = createB2Client();
+          const { client, bucket } = getB2Client();
 
-          const safeFilename = filename
-            .split("/")
-            .pop()
-            ?.replace(/[^a-zA-Z0-9._-]/g, "_");
-
-          if (!safeFilename) {
-            return Response.json(
-              { error: "Nome do arquivo inválido." },
-              { status: 400 },
-            );
-          }
-
-          const key = `hikari/episodes/${Date.now()}-${crypto.randomUUID()}-${safeFilename}`;
+          const safeFilename = sanitizeFilename(filename);
+          const key = `hikari/episodes/${crypto.randomUUID()}-${safeFilename}`;
 
           const command = new PutObjectCommand({
             Bucket: bucket,
             Key: key,
             ContentType: contentType,
-            ContentLength: size,
           });
 
           const uploadUrl = await getSignedUrl(client, command, {
-            expiresIn: 60 * 15,
+            expiresIn: 15 * 60,
           });
 
-          const videoUrl = `/api/upload-video?key=${encodeURIComponent(key)}`;
+          const origin = new URL(request.url).origin;
+          const videoUrl =
+            `${origin}/api/upload-video?key=${encodeURIComponent(key)}`;
 
           return Response.json({
             uploadUrl,
@@ -143,7 +125,7 @@ export const Route = createFileRoute("/api/upload-video")({
             key,
           });
         } catch (error) {
-          console.error("Erro ao preparar upload do B2:", error);
+          console.error("Erro ao preparar upload para o Backblaze B2:", error);
 
           return Response.json(
             {
@@ -152,7 +134,7 @@ export const Route = createFileRoute("/api/upload-video")({
                   ? error.message
                   : "Falha ao preparar o upload.",
             },
-            { status: 400 },
+            { status: 500 },
           );
         }
       },
@@ -171,12 +153,12 @@ export const Route = createFileRoute("/api/upload-video")({
 
           if (!key.startsWith("hikari/episodes/")) {
             return Response.json(
-              { error: "Chave do vídeo inválida." },
+              { error: "Chave de vídeo inválida." },
               { status: 400 },
             );
           }
 
-          const { client, bucket } = createB2Client();
+          const { client, bucket } = getB2Client();
 
           const command = new GetObjectCommand({
             Bucket: bucket,
@@ -189,7 +171,7 @@ export const Route = createFileRoute("/api/upload-video")({
 
           return Response.redirect(signedUrl, 302);
         } catch (error) {
-          console.error("Erro ao gerar URL do vídeo B2:", error);
+          console.error("Erro ao gerar URL do vídeo:", error);
 
           return Response.json(
             {
@@ -198,7 +180,7 @@ export const Route = createFileRoute("/api/upload-video")({
                   ? error.message
                   : "Falha ao gerar URL do vídeo.",
             },
-            { status: 400 },
+            { status: 500 },
           );
         }
       },
