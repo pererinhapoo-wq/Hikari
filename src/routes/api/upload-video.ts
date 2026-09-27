@@ -1,3 +1,4 @@
+import { createFileRoute } from "@tanstack/react-router";
 import {
   GetObjectCommand,
   PutObjectCommand,
@@ -6,17 +7,13 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const endpoint = process.env.B2_ENDPOINT;
+const region = process.env.B2_REGION;
 const bucket = process.env.B2_BUCKET;
 const keyId = process.env.B2_KEY_ID;
 const applicationKey = process.env.B2_APPLICATION_KEY;
 
-const region =
-  process.env.B2_REGION ||
-  endpoint?.match(/s3\.([^.]+)\.backblazeb2\.com/)?.[1] ||
-  "us-east-005";
-
 const s3 =
-  endpoint && bucket && keyId && applicationKey
+  endpoint && region && keyId && applicationKey
     ? new S3Client({
         endpoint,
         region,
@@ -27,101 +24,86 @@ const s3 =
       })
     : null;
 
-const MAX_SIZE = 900 * 1024 * 1024;
-
 const ALLOWED_TYPES = new Set([
   "video/mp4",
   "video/webm",
   "video/quicktime",
 ]);
 
-function getConfigError() {
-  if (!endpoint) return "B2_ENDPOINT não está configurado.";
-  if (!bucket) return "B2_BUCKET não está configurado.";
-  if (!keyId) return "B2_KEY_ID não está configurado.";
-  if (!applicationKey) return "B2_APPLICATION_KEY não está configurado.";
+const MAX_SIZE = 900 * 1024 * 1024;
 
-  return null;
+function jsonError(message: string, status = 400) {
+  return Response.json(
+    {
+      error: message,
+    },
+    {
+      status,
+    },
+  );
 }
 
-export async function POST({ request }: { request: Request }) {
+async function handlePost({ request }: { request: Request }) {
   try {
-    const configError = getConfigError();
-
-    if (configError || !s3 || !bucket) {
-      return Response.json(
-        {
-          error: configError ?? "Backblaze B2 não está configurado.",
-        },
-        { status: 500 },
+    if (!s3 || !bucket) {
+      return jsonError(
+        "Backblaze B2 não está configurado no servidor.",
+        500,
       );
     }
 
     const body = await request.json();
 
     const filename =
-      typeof body?.filename === "string" ? body.filename.trim() : "";
+      typeof body?.filename === "string"
+        ? body.filename
+        : "video.mp4";
 
     const contentType =
       typeof body?.contentType === "string"
-        ? body.contentType.trim()
+        ? body.contentType
         : "";
 
-    const size =
-      typeof body?.size === "number" ? body.size : 0;
-
-    if (!filename) {
-      return Response.json(
-        { error: "Nome do arquivo não informado." },
-        { status: 400 },
-      );
-    }
+    const size = Number(body?.size);
 
     if (!ALLOWED_TYPES.has(contentType)) {
-      return Response.json(
-        {
-          error:
-            "Tipo de vídeo não permitido. Use MP4, WebM ou QuickTime.",
-        },
-        { status: 400 },
+      return jsonError("Tipo de vídeo não permitido.");
+    }
+
+    if (
+      !Number.isFinite(size) ||
+      size <= 0 ||
+      size > MAX_SIZE
+    ) {
+      return jsonError(
+        "Tamanho do vídeo inválido ou acima de 900 MB.",
       );
     }
 
-    if (!Number.isFinite(size) || size <= 0) {
-      return Response.json(
-        { error: "Tamanho do arquivo inválido." },
-        { status: 400 },
-      );
-    }
+    const lowerFilename = filename.toLowerCase();
 
-    if (size > MAX_SIZE) {
-      return Response.json(
-        {
-          error: "O vídeo ultrapassa o limite de 900 MB.",
-        },
-        { status: 400 },
-      );
-    }
+    const extension = lowerFilename.endsWith(".webm")
+      ? ".webm"
+      : lowerFilename.endsWith(".mov")
+        ? ".mov"
+        : ".mp4";
 
-    const safeFilename = filename
-      .replace(/\\/g, "/")
-      .split("/")
-      .pop()
-      ?.replace(/[^a-zA-Z0-9._-]/g, "_") || "video.mp4";
+    const key = `hikari/episodes/${crypto.randomUUID()}${extension}`;
 
-    const key = `hikari/episodes/${crypto.randomUUID()}-${safeFilename}`;
+    const uploadUrl = await getSignedUrl(
+      s3,
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        ContentType: contentType,
+      }),
+      {
+        expiresIn: 60 * 60,
+      },
+    );
 
-    const command = new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      ContentType: contentType,
-    });
-
-    const uploadUrl = await getSignedUrl(s3, command, {
-      expiresIn: 60 * 30,
-    });
-
-    const videoUrl = `/api/upload-video?key=${encodeURIComponent(key)}`;
+    const videoUrl =
+      `/api/upload-video?key=${encodeURIComponent(key)}`;
 
     return Response.json({
       uploadUrl,
@@ -129,71 +111,68 @@ export async function POST({ request }: { request: Request }) {
       key,
     });
   } catch (error) {
-    console.error("Erro ao preparar upload para o Backblaze B2:", error);
+    console.error(
+      "Erro ao preparar upload do Backblaze B2:",
+      error,
+    );
 
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Falha ao preparar o upload.",
-      },
-      { status: 500 },
+    return jsonError(
+      error instanceof Error
+        ? `Falha ao preparar o upload: ${error.message}`
+        : "Falha ao preparar o upload.",
+      500,
     );
   }
 }
 
-export async function GET({ request }: { request: Request }) {
+async function handleGet({ request }: { request: Request }) {
   try {
-    const configError = getConfigError();
-
-    if (configError || !s3 || !bucket) {
-      return Response.json(
-        {
-          error: configError ?? "Backblaze B2 não está configurado.",
-        },
-        { status: 500 },
+    if (!s3 || !bucket) {
+      return jsonError(
+        "Backblaze B2 não está configurado no servidor.",
+        500,
       );
     }
 
     const url = new URL(request.url);
     const key = url.searchParams.get("key");
 
-    if (!key) {
-      return Response.json(
-        { error: "Chave do vídeo não informada." },
-        { status: 400 },
-      );
+    if (!key || !key.startsWith("hikari/episodes/")) {
+      return jsonError("Chave de vídeo inválida.");
     }
 
-    if (!key.startsWith("hikari/episodes/")) {
-      return Response.json(
-        { error: "Chave de vídeo inválida." },
-        { status: 400 },
-      );
-    }
-
-    const command = new GetObjectCommand({
-      Bucket: bucket,
-      Key: key,
-    });
-
-    const signedUrl = await getSignedUrl(s3, command, {
-      expiresIn: 60 * 60,
-    });
-
-    return Response.redirect(signedUrl, 302);
-  } catch (error) {
-    console.error("Erro ao gerar URL do vídeo B2:", error);
-
-    return Response.json(
+    const downloadUrl = await getSignedUrl(
+      s3,
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Falha ao gerar URL do vídeo.",
+        expiresIn: 60 * 60,
       },
-      { status: 500 },
+    );
+
+    return Response.redirect(downloadUrl, 302);
+  } catch (error) {
+    console.error(
+      "Erro ao preparar download do Backblaze B2:",
+      error,
+    );
+
+    return jsonError(
+      error instanceof Error
+        ? `Falha ao preparar o vídeo: ${error.message}`
+        : "Falha ao preparar o vídeo.",
+      500,
     );
   }
-  }
+}
+
+export const Route = createFileRoute("/api/upload-video")({
+  server: {
+    handlers: {
+      POST: handlePost,
+      GET: handleGet,
+    },
+  },
+});
