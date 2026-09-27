@@ -14,6 +14,12 @@ const ALLOWED_TYPES = new Set([
   "video/quicktime",
 ]);
 
+type UploadBody = {
+  filename?: string;
+  contentType?: string;
+  size?: number;
+};
+
 function getB2Client() {
   const endpoint = process.env.B2_ENDPOINT;
   const region = process.env.B2_REGION;
@@ -41,12 +47,6 @@ function getB2Client() {
   };
 }
 
-type HandleUploadBody = {
-  filename?: string;
-  contentType?: string;
-  size?: number;
-};
-
 function sanitizeFilename(filename: string) {
   const cleaned = filename
     .trim()
@@ -61,12 +61,14 @@ export const Route = createFileRoute("/api/upload-video")({
     handlers: {
       POST: async ({ request }) => {
         try {
-          const body = (await request.json()) as HandleUploadBody;
+          const body = (await request.json()) as UploadBody;
 
           const filename =
             typeof body.filename === "string" ? body.filename : "";
+
           const contentType =
             typeof body.contentType === "string" ? body.contentType : "";
+
           const size = typeof body.size === "number" ? body.size : 0;
 
           if (!filename) {
@@ -103,6 +105,7 @@ export const Route = createFileRoute("/api/upload-video")({
           const { client, bucket } = getB2Client();
 
           const safeFilename = sanitizeFilename(filename);
+
           const key = `hikari/episodes/${crypto.randomUUID()}-${safeFilename}`;
 
           const command = new PutObjectCommand({
@@ -116,6 +119,7 @@ export const Route = createFileRoute("/api/upload-video")({
           });
 
           const origin = new URL(request.url).origin;
+
           const videoUrl =
             `${origin}/api/upload-video?key=${encodeURIComponent(key)}`;
 
@@ -125,7 +129,10 @@ export const Route = createFileRoute("/api/upload-video")({
             key,
           });
         } catch (error) {
-          console.error("Erro ao preparar upload para o Backblaze B2:", error);
+          console.error(
+            "Erro ao preparar upload para o Backblaze B2:",
+            error,
+          );
 
           return Response.json(
             {
