@@ -1,11 +1,22 @@
-export async function uploadVideoToB2(
-  onDone: (url: string) => void,
-): Promise<void> {
-  if (typeof window === "undefined") {
-    throw new Error("Navegador necessário.");
-  }
+const MAX_VIDEO_SIZE = 900 * 1024 * 1024;
 
+const ALLOWED_TYPES = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+]);
+
+type PrepareUploadResponse = {
+  uploadUrl: string;
+  videoUrl: string;
+  key: string;
+};
+
+export async function uploadVideoToB2(
+  onDone: (videoUrl: string) => void,
+): Promise<void> {
   const input = document.createElement("input");
+
   input.type = "file";
   input.accept = "video/mp4,video/webm,video/quicktime";
   input.style.display = "none";
@@ -13,20 +24,27 @@ export async function uploadVideoToB2(
   document.body.appendChild(input);
 
   try {
-    const file = await new Promise<File>((resolve, reject) => {
+    const file = await new Promise<File | null>((resolve) => {
       input.onchange = () => {
-        const selectedFile = input.files?.[0];
-
-        if (!selectedFile) {
-          reject(new Error("Nenhum vídeo selecionado."));
-          return;
-        }
-
-        resolve(selectedFile);
+        resolve(input.files?.[0] ?? null);
       };
 
       input.click();
     });
+
+    if (!file) {
+      return;
+    }
+
+    if (!ALLOWED_TYPES.has(file.type)) {
+      throw new Error(
+        "Formato de vídeo não permitido. Use MP4, WebM ou MOV.",
+      );
+    }
+
+    if (file.size > MAX_VIDEO_SIZE) {
+      throw new Error("O vídeo não pode ter mais de 900 MB.");
+    }
 
     const prepareResponse = await fetch("/api/upload-video", {
       method: "POST",
@@ -40,19 +58,21 @@ export async function uploadVideoToB2(
       }),
     });
 
-    const prepareData = (await prepareResponse.json()) as {
-      uploadUrl?: string;
-      videoUrl?: string;
-      error?: string;
-    };
+    if (!prepareResponse.ok) {
+      const message = await prepareResponse.text().catch(() => "");
 
-    if (
-      !prepareResponse.ok ||
-      !prepareData.uploadUrl ||
-      !prepareData.videoUrl
-    ) {
       throw new Error(
-        prepareData.error || "Não foi possível preparar o upload.",
+        message ||
+          `Falha ao preparar o upload (${prepareResponse.status}).`,
+      );
+    }
+
+    const prepareData =
+      (await prepareResponse.json()) as PrepareUploadResponse;
+
+    if (!prepareData.uploadUrl || !prepareData.videoUrl) {
+      throw new Error(
+        "O servidor não retornou as URLs necessárias para o upload.",
       );
     }
 
@@ -65,8 +85,11 @@ export async function uploadVideoToB2(
     });
 
     if (!uploadResponse.ok) {
+      const message = await uploadResponse.text().catch(() => "");
+
       throw new Error(
-        `Falha no upload para o Backblaze B2 (${uploadResponse.status}).`,
+        message ||
+          `Falha no upload para o Backblaze B2 (${uploadResponse.status}).`,
       );
     }
 
