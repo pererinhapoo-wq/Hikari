@@ -46,7 +46,11 @@ export async function uploadVideoToB2(
       error?: string;
     };
 
-    if (!prepareResponse.ok || !prepareData.uploadUrl || !prepareData.videoUrl) {
+    if (
+      !prepareResponse.ok ||
+      !prepareData.uploadUrl ||
+      !prepareData.videoUrl
+    ) {
       throw new Error(
         prepareData.error || "Não foi possível preparar o upload.",
       );
@@ -70,4 +74,4 @@ export async function uploadVideoToB2(
   } finally {
     input.remove();
   }
-          }
+}
