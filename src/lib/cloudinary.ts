@@ -28,11 +28,12 @@ export async function uploadVideoToCloudinary(
       input.click();
     });
 
-    const MAX_FILE_SIZE = 900 * 1024 * 1024;
-
-    if (file.size > MAX_FILE_SIZE) {
+    if (file.size > 900 * 1024 * 1024) {
       throw new Error("O vídeo ultrapassa o limite de 900 MB.");
     }
+
+    const contentType =
+      file.type || "application/octet-stream";
 
     const prepareResponse = await fetch("/api/upload-video", {
       method: "POST",
@@ -41,7 +42,7 @@ export async function uploadVideoToCloudinary(
       },
       body: JSON.stringify({
         filename: file.name,
-        contentType: file.type,
+        contentType,
         size: file.size,
       }),
     });
@@ -58,28 +59,29 @@ export async function uploadVideoToCloudinary(
       );
     }
 
-    if (!prepareData.videoUrl) {
-      throw new Error("A URL do vídeo não foi gerada.");
-    }
-
     const uploadResponse = await fetch(prepareData.uploadUrl, {
       method: "PUT",
       headers: {
-        "Content-Type": file.type,
+        "Content-Type": contentType,
       },
       body: file,
     });
 
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text().catch(() => "");
+      console.error("Erro no upload para o Backblaze:", errorText);
 
       throw new Error(
-        errorText || `Falha no upload do vídeo (${uploadResponse.status}).`,
+        `Falha no upload para o Backblaze (${uploadResponse.status}).`,
       );
+    }
+
+    if (!prepareData.videoUrl) {
+      throw new Error("O Backblaze não retornou a URL do vídeo.");
     }
 
     onDone(prepareData.videoUrl);
   } finally {
     input.remove();
   }
-      }
+}
