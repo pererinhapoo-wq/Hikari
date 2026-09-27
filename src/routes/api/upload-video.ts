@@ -1,35 +1,11 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const endpoint = process.env.B2_ENDPOINT;
-const bucket = process.env.B2_BUCKET;
-const keyId = process.env.B2_KEY_ID;
-const applicationKey = process.env.B2_APPLICATION_KEY;
-
-const region =
-  process.env.B2_REGION ||
-  endpoint?.match(/s3\.([^.]+)\.backblazeb2\.com/)?.[1] ||
-  "us-east-005";
-
-const s3 =
-  endpoint && keyId && applicationKey
-    ? new S3Client({
-        endpoint,
-        region,
-        credentials: {
-          accessKeyId: keyId,
-          secretAccessKey: applicationKey,
-        },
-      })
-    : null;
-
-type UploadBody = {
-  filename?: string;
-  contentType?: string;
-  size?: number;
-};
-
-const MAX_SIZE = 900 * 1024 * 1024;
+const MAX_FILE_SIZE = 900 * 1024 * 1024;
 
 const ALLOWED_TYPES = new Set([
   "video/mp4",
@@ -37,78 +13,104 @@ const ALLOWED_TYPES = new Set([
   "video/quicktime",
 ]);
 
-function sanitizeFilename(filename: string) {
-  const cleaned = filename
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .replace(/_+/g, "_");
+function getB2Client() {
+  const endpoint = process.env.B2_ENDPOINT;
+  const region = process.env.B2_REGION;
+  const accessKeyId = process.env.B2_KEY_ID;
+  const secretAccessKey = process.env.B2_APPLICATION_KEY;
 
-  return cleaned || "video.mp4";
+  if (!endpoint) {
+    throw new Error("B2_ENDPOINT não está configurado.");
+  }
+
+  if (!region) {
+    throw new Error("B2_REGION não está configurado.");
+  }
+
+  if (!accessKeyId) {
+    throw new Error("B2_KEY_ID não está configurado.");
+  }
+
+  if (!secretAccessKey) {
+    throw new Error("B2_APPLICATION_KEY não está configurado.");
+  }
+
+  return new S3Client({
+    endpoint,
+    region,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  });
 }
 
-function jsonError(message: string, status = 400) {
-  return Response.json(
-    {
-      error: message,
-    },
-    { status },
-  );
+function getBucket() {
+  const bucket = process.env.B2_BUCKET;
+
+  if (!bucket) {
+    throw new Error("B2_BUCKET não está configurado.");
+  }
+
+  return bucket;
 }
 
 export async function POST({ request }: { request: Request }) {
   try {
-    if (!s3 || !endpoint || !bucket || !keyId || !applicationKey) {
-      console.error("Configuração do Backblaze B2 incompleta.", {
-        hasEndpoint: Boolean(endpoint),
-        hasBucket: Boolean(bucket),
-        hasKeyId: Boolean(keyId),
-        hasApplicationKey: Boolean(applicationKey),
-      });
-
-      return jsonError(
-        "Backblaze B2 não está configurado corretamente no servidor.",
-        500,
-      );
-    }
-
-    let body: UploadBody;
-
-    try {
-      body = (await request.json()) as UploadBody;
-    } catch {
-      return jsonError("Corpo da requisição inválido.");
-    }
+    const body = await request.json();
 
     const filename =
-      typeof body.filename === "string" && body.filename.trim()
-        ? body.filename
-        : "video.mp4";
+      typeof body.filename === "string" ? body.filename.trim() : "";
 
     const contentType =
-      typeof body.contentType === "string" ? body.contentType : "";
+      typeof body.contentType === "string" ? body.contentType.trim() : "";
 
-    const size =
-      typeof body.size === "number" && Number.isFinite(body.size)
-        ? body.size
-        : 0;
+    const size = Number(body.size);
 
-    if (!ALLOWED_TYPES.has(contentType)) {
-      return jsonError(
-        "Tipo de vídeo não permitido. Use MP4, WebM ou MOV.",
+    if (!filename) {
+      return Response.json(
+        { error: "Nome do arquivo não informado." },
+        { status: 400 },
       );
     }
 
-    if (size <= 0) {
-      return jsonError("Tamanho do vídeo inválido.");
+    if (!ALLOWED_TYPES.has(contentType)) {
+      return Response.json(
+        { error: "Tipo de vídeo não permitido." },
+        { status: 400 },
+      );
     }
 
-    if (size > MAX_SIZE) {
-      return jsonError("O vídeo ultrapassa o limite de 900 MB.");
+    if (!Number.isFinite(size) || size <= 0) {
+      return Response.json(
+        { error: "Tamanho do arquivo inválido." },
+        { status: 400 },
+      );
     }
 
-    const safeFilename = sanitizeFilename(filename);
+    if (size > MAX_FILE_SIZE) {
+      return Response.json(
+        { error: "O vídeo ultrapassa o limite de 900 MB." },
+        { status: 400 },
+      );
+    }
 
-    const key = `hikari/episodes/${crypto.randomUUID()}-${safeFilename}`;
+    const extension =
+      filename.includes(".")
+        ? filename.slice(filename.lastIndexOf(".")).toLowerCase()
+        : "";
+
+    const safeExtension =
+      extension === ".mp4" ||
+      extension === ".webm" ||
+      extension === ".mov"
+        ? extension
+        : ".mp4";
+
+    const key = `hikari/episodes/${crypto.randomUUID()}${safeExtension}`;
+
+    const client = getB2Client();
+    const bucket = getBucket();
 
     const command = new PutObjectCommand({
       Bucket: bucket,
@@ -116,11 +118,17 @@ export async function POST({ request }: { request: Request }) {
       ContentType: contentType,
     });
 
-    const uploadUrl = await getSignedUrl(s3, command, {
+    const uploadUrl = await getSignedUrl(client, command, {
       expiresIn: 60 * 15,
     });
 
-    const videoUrl = `/api/upload-video?key=${encodeURIComponent(key)}`;
+    const endpoint = process.env.B2_ENDPOINT;
+
+    if (!endpoint) {
+      throw new Error("B2_ENDPOINT não está configurado.");
+    }
+
+    const videoUrl = `${endpoint.replace(/\/$/, "")}/${bucket}/${key}`;
 
     return Response.json({
       uploadUrl,
@@ -130,53 +138,61 @@ export async function POST({ request }: { request: Request }) {
   } catch (error) {
     console.error("Erro ao preparar upload para o Backblaze B2:", error);
 
-    return jsonError(
-      error instanceof Error
-        ? error.message
-        : "Falha ao preparar o upload.",
-      500,
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Falha ao preparar o upload.",
+      },
+      { status: 500 },
     );
   }
 }
 
 export async function GET({ request }: { request: Request }) {
   try {
-    if (!s3 || !bucket) {
-      return jsonError(
-        "Backblaze B2 não está configurado corretamente no servidor.",
-        500,
-      );
-    }
-
     const url = new URL(request.url);
     const key = url.searchParams.get("key");
 
     if (!key) {
-      return jsonError("Chave do vídeo não informada.");
+      return Response.json(
+        { error: "Key não informada." },
+        { status: 400 },
+      );
     }
 
     if (!key.startsWith("hikari/episodes/")) {
-      return jsonError("Chave do vídeo inválida.", 403);
+      return Response.json(
+        { error: "Key inválida." },
+        { status: 400 },
+      );
     }
+
+    const client = getB2Client();
+    const bucket = getBucket();
 
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,
     });
 
-    const videoUrl = await getSignedUrl(s3, command, {
+    const signedUrl = await getSignedUrl(client, command, {
       expiresIn: 60 * 60,
     });
 
-    return Response.redirect(videoUrl, 302);
+    return Response.redirect(signedUrl, 302);
   } catch (error) {
-    console.error("Erro ao gerar URL do vídeo no Backblaze B2:", error);
+    console.error("Erro ao gerar URL do vídeo:", error);
 
-    return jsonError(
-      error instanceof Error
-        ? error.message
-        : "Falha ao gerar URL do vídeo.",
-      500,
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Falha ao gerar URL do vídeo.",
+      },
+      { status: 500 },
     );
   }
-      }
+}
