@@ -18,16 +18,10 @@ export const Route = createFileRoute("/admin/$id")({
   validateSearch: (raw: Record<string, unknown>): { importId?: string } => ({
     importId: typeof raw.importId === "string" && raw.importId ? raw.importId : undefined,
   }),
-
   loaderDeps: ({ search }) => ({ importId: search.importId }),
-
   loader: async ({ params, deps }) => {
     const fetchId = params.id === "new" ? deps.importId : params.id;
-
-    if (!fetchId || fetchId.startsWith("local-")) {
-      return { remote: null };
-    }
-
+    if (!fetchId || fetchId.startsWith("local-")) return { remote: null };
     try {
       const remote = await fetchAnimeDetail({ data: { id: fetchId } });
       return { remote };
@@ -35,13 +29,11 @@ export const Route = createFileRoute("/admin/$id")({
       return { remote: null };
     }
   },
-
   component: AdminEditor,
 });
 
 function emptyLocal(): LocalAnime {
   const now = Date.now();
-
   return {
     id: `local-${crypto.randomUUID()}`,
     titleRomaji: "",
@@ -59,7 +51,6 @@ function emptyLocal(): LocalAnime {
     year: new Date().getFullYear(),
     trailerId: null,
     hidden: false,
-
     seasons: [
       {
         id: `s-${crypto.randomUUID()}`,
@@ -68,7 +59,6 @@ function emptyLocal(): LocalAnime {
         episodes: [],
       },
     ],
-
     createdAt: now,
     updatedAt: now,
   };
@@ -78,14 +68,11 @@ function AdminEditor() {
   const { id } = Route.useParams();
   const { importId } = Route.useSearch();
   const { remote } = Route.useLoaderData();
-
   const navigate = useNavigate();
-
   const stored = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
   const upsertAnime = useHikariStore((s) => s.upsertAnime);
   const removeAnime = useHikariStore((s) => s.removeAnime);
-
   const [form, setForm] = useState<LocalAnime | null>(null);
   const [genreText, setGenreText] = useState("");
   const [uploadingEpisode, setUploadingEpisode] = useState<string | null>(null);
@@ -94,7 +81,6 @@ function AdminEditor() {
     if (!hydrated) return;
 
     const locals = useHikariStore.getState().animes;
-
     const existing =
       locals.find((a) => a.id === id) ||
       (remote?.anilistId
@@ -113,10 +99,7 @@ function AdminEditor() {
 
   const current = form;
 
-  function set<K extends keyof LocalAnime>(
-    key: K,
-    value: LocalAnime[K],
-  ) {
+  function set<K extends keyof LocalAnime>(key: K, value: LocalAnime[K]) {
     setForm((f) => (f ? { ...f, [key]: value } : f));
   }
 
@@ -129,29 +112,18 @@ function AdminEditor() {
     const next: LocalAnime = {
       ...current,
       genres,
-      trailerId:
-        youtubeIdFrom(current.trailerId) ??
-        (current.trailerId || null),
+      trailerId: youtubeIdFrom(current.trailerId) ?? (current.trailerId || null),
       updatedAt: Date.now(),
     };
 
-    if (
-      !next.titleRomaji &&
-      !next.titleEnglish &&
-      !next.titleNative
-    ) {
+    if (!next.titleRomaji && !next.titleEnglish && !next.titleNative) {
       toast.error("Dê um título ao anime.");
       return;
     }
 
     upsertAnime(next);
-
     toast.success("Salvo neste dispositivo.");
-
-    void navigate({
-      to: "/admin/$id",
-      params: { id: next.id },
-    });
+    void navigate({ to: "/admin/$id", params: { id: next.id } });
   }
 
   function addSeason() {
@@ -175,18 +147,13 @@ function AdminEditor() {
     );
   }
 
-  function patchSeason(
-    sid: string,
-    patch: Partial<Season>,
-  ) {
+  function patchSeason(sid: string, patch: Partial<Season>) {
     setForm((f) =>
       f
         ? {
             ...f,
             seasons: f.seasons.map((s) =>
-              s.id === sid
-                ? { ...s, ...patch }
-                : s,
+              s.id === sid ? { ...s, ...patch } : s,
             ),
           }
         : f,
@@ -198,9 +165,7 @@ function AdminEditor() {
       f
         ? {
             ...f,
-            seasons: f.seasons.filter(
-              (s) => s.id !== sid,
-            ),
+            seasons: f.seasons.filter((s) => s.id !== sid),
           }
         : f,
     );
@@ -214,8 +179,7 @@ function AdminEditor() {
             seasons: f.seasons.map((s) => {
               if (s.id !== sid) return s;
 
-              const number =
-                (s.episodes.at(-1)?.number ?? 0) + 1;
+              const number = (s.episodes.at(-1)?.number ?? 0) + 1;
 
               const ep: Episode = {
                 id: `e-${crypto.randomUUID()}`,
@@ -247,9 +211,7 @@ function AdminEditor() {
                 ? {
                     ...s,
                     episodes: s.episodes.map((e) =>
-                      e.id === eid
-                        ? { ...e, ...patch }
-                        : e,
+                      e.id === eid ? { ...e, ...patch } : e,
                     ),
                   }
                 : s,
@@ -259,10 +221,7 @@ function AdminEditor() {
     );
   }
 
-  function removeEpisode(
-    sid: string,
-    eid: string,
-  ) {
+  function removeEpisode(sid: string, eid: string) {
     setForm((f) =>
       f
         ? {
@@ -271,9 +230,7 @@ function AdminEditor() {
               s.id === sid
                 ? {
                     ...s,
-                    episodes: s.episodes.filter(
-                      (e) => e.id !== eid,
-                    ),
+                    episodes: s.episodes.filter((e) => e.id !== eid),
                   }
                 : s,
             ),
@@ -294,36 +251,27 @@ function AdminEditor() {
           </Link>
 
           <h1 className="mt-1 font-display text-3xl tracking-tight">
-            {id === "new" && !importId
-              ? "Novo anime"
-              : "Editar anime"}
+            {id === "new" && !importId ? "Novo anime" : "Editar anime"}
           </h1>
         </div>
 
         <div className="flex gap-2">
           {id !== "new" &&
-            stored.some(
-              (a) => a.id === current.id,
-            ) && (
+            stored.some((a) => a.id === current.id) && (
               <Button
                 type="button"
                 variant="ghost"
                 onClick={() => {
                   removeAnime(current.id);
                   toast.success("Excluído.");
-                  void navigate({
-                    to: "/admin",
-                  });
+                  void navigate({ to: "/admin" });
                 }}
               >
                 Excluir
               </Button>
             )}
 
-          <Button
-            type="button"
-            onClick={save}
-          >
+          <Button type="button" onClick={save}>
             Salvar
           </Button>
         </div>
@@ -347,17 +295,11 @@ function AdminEditor() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Título (romaji)"
-            className="sm:col-span-2"
-          >
+          <Field label="Título (romaji)" className="sm:col-span-2">
             <Input
               value={form.titleRomaji}
               onChange={(e) =>
-                set(
-                  "titleRomaji",
-                  e.target.value,
-                )
+                set("titleRomaji", e.target.value)
               }
             />
           </Field>
@@ -366,10 +308,7 @@ function AdminEditor() {
             <Input
               value={form.titleEnglish}
               onChange={(e) =>
-                set(
-                  "titleEnglish",
-                  e.target.value,
-                )
+                set("titleEnglish", e.target.value)
               }
             />
           </Field>
@@ -378,10 +317,7 @@ function AdminEditor() {
             <Input
               value={form.titleNative}
               onChange={(e) =>
-                set(
-                  "titleNative",
-                  e.target.value,
-                )
+                set("titleNative", e.target.value)
               }
             />
           </Field>
@@ -417,10 +353,7 @@ function AdminEditor() {
             <Textarea
               value={form.synopsis}
               onChange={(e) =>
-                set(
-                  "synopsis",
-                  e.target.value,
-                )
+                set("synopsis", e.target.value)
               }
             />
           </Field>
@@ -473,19 +406,14 @@ function AdminEditor() {
             <NativeSelect
               value={form.format}
               onChange={(e) =>
-                set(
-                  "format",
-                  e.target.value,
-                )
+                set("format", e.target.value)
               }
             >
-              {Object.entries(FORMAT_PT).map(
-                ([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ),
-              )}
+              {Object.entries(FORMAT_PT).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
             </NativeSelect>
           </Field>
 
@@ -493,19 +421,14 @@ function AdminEditor() {
             <NativeSelect
               value={form.status}
               onChange={(e) =>
-                set(
-                  "status",
-                  e.target.value,
-                )
+                set("status", e.target.value)
               }
             >
-              {Object.entries(STATUS_PT).map(
-                ([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ),
-              )}
+              {Object.entries(STATUS_PT).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
             </NativeSelect>
           </Field>
 
@@ -513,21 +436,16 @@ function AdminEditor() {
             <NativeSelect
               value={form.season ?? ""}
               onChange={(e) =>
-                set(
-                  "season",
-                  e.target.value || null,
-                )
+                set("season", e.target.value || null)
               }
             >
               <option value="">—</option>
 
-              {Object.entries(SEASON_PT).map(
-                ([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ),
-              )}
+              {Object.entries(SEASON_PT).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
             </NativeSelect>
           </Field>
 
@@ -548,10 +466,7 @@ function AdminEditor() {
               type="checkbox"
               checked={form.hidden}
               onChange={(e) =>
-                set(
-                  "hidden",
-                  e.target.checked,
-                )
+                set("hidden", e.target.checked)
               }
               className="size-4 accent-primary"
             />
@@ -591,12 +506,9 @@ function AdminEditor() {
                 <Input
                   value={season.title}
                   onChange={(e) =>
-                    patchSeason(
-                      season.id,
-                      {
-                        title: e.target.value,
-                      },
-                    )
+                    patchSeason(season.id, {
+                      title: e.target.value,
+                    })
                   }
                 />
               </Field>
@@ -609,14 +521,9 @@ function AdminEditor() {
                   type="number"
                   value={season.number}
                   onChange={(e) =>
-                    patchSeason(
-                      season.id,
-                      {
-                        number: Number(
-                          e.target.value,
-                        ),
-                      },
-                    )
+                    patchSeason(season.id, {
+                      number: Number(e.target.value),
+                    })
                   }
                 />
               </Field>
@@ -674,8 +581,7 @@ function AdminEditor() {
                             season.id,
                             ep.id,
                             {
-                              title:
-                                e.target.value,
+                              title: e.target.value,
                             },
                           )
                         }
@@ -715,88 +621,80 @@ function AdminEditor() {
                         key: "videoUrl3" as const,
                         label: "Player 3",
                       },
-                    ].map(
-                      ({ key, label }) => (
-                        <Field
-                          key={key}
-                          label={`${label} — URL do vídeo`}
-                          className="sm:col-span-4"
-                        >
-                          <div className="flex gap-2">
-                            <Input
-                              value={
-                                ep[key] ?? ""
-                              }
-                              onChange={(e) =>
-                                patchEpisode(
-                                  season.id,
-                                  ep.id,
-                                  {
-                                    [key]:
-                                      e.target
-                                        .value,
-                                  },
-                                )
-                              }
-                              placeholder="URL do vídeo"
-                            />
+                    ].map(({ key, label }) => (
+                      <Field
+                        key={key}
+                        label={`${label} — URL do vídeo`}
+                        className="sm:col-span-4"
+                      >
+                        <div className="flex gap-2">
+                          <Input
+                            value={ep[key] ?? ""}
+                            onChange={(e) =>
+                              patchEpisode(
+                                season.id,
+                                ep.id,
+                                {
+                                  [key]:
+                                    e.target.value,
+                                },
+                              )
+                            }
+                            placeholder="URL do vídeo"
+                          />
 
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="shrink-0"
-                              disabled={
-                                uploadingEpisode ===
-                                `${ep.id}-${key}`
-                              }
-                              onClick={async () => {
-                                const uploadId =
-                                  `${ep.id}-${key}`;
-
-                                setUploadingEpisode(
-                                  uploadId,
-                                );
-
-                                try {
-                                  await uploadVideoToB2(
-                                    (url) => {
-                                      patchEpisode(
-                                        season.id,
-                                        ep.id,
-                                        {
-                                          [key]:
-                                            url,
-                                        },
-                                      );
-
-                                      toast.success(
-                                        `${label} enviado com sucesso.`,
-                                      );
-                                    },
-                                  );
-                                } catch (error) {
-                                  toast.error(
-                                    error instanceof
-                                      Error
-                                      ? error.message
-                                      : "Falha no upload.",
-                                  );
-                                } finally {
-                                  setUploadingEpisode(
-                                    null,
-                                  );
-                                }
-                              }}
-                            >
-                              {uploadingEpisode ===
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="shrink-0"
+                            disabled={
+                              uploadingEpisode ===
                               `${ep.id}-${key}`
-                                ? "Abrindo…"
-                                : "Enviar"}
-                            </Button>
-                          </div>
-                        </Field>
-                      ),
-                    )}
+                            }
+                            onClick={async () => {
+                              const uploadId = `${ep.id}-${key}`;
+
+                              setUploadingEpisode(
+                                uploadId,
+                              );
+
+                              try {
+                                await uploadVideoToB2(
+                                  (url) => {
+                                    patchEpisode(
+                                      season.id,
+                                      ep.id,
+                                      {
+                                        [key]: url,
+                                      },
+                                    );
+
+                                    toast.success(
+                                      `${label} enviado com sucesso.`,
+                                    );
+                                  },
+                                );
+                              } catch (error) {
+                                toast.error(
+                                  error instanceof Error
+                                    ? error.message
+                                    : "Falha no upload.",
+                                );
+                              } finally {
+                                setUploadingEpisode(
+                                  null,
+                                );
+                              }
+                            }}
+                          >
+                            {uploadingEpisode ===
+                            `${ep.id}-${key}`
+                              ? "Abrindo…"
+                              : "Enviar"}
+                          </Button>
+                        </div>
+                      </Field>
+                    ))}
 
                     <Field
                       label="Thumb"
@@ -870,8 +768,7 @@ function Field({
       <Label className="mb-1.5 block">
         {label}
       </Label>
-
       {children}
     </label>
   );
-  }
+    }
