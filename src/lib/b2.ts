@@ -90,4 +90,4 @@ export function uploadVideoToB2(onDone: (videoUrl: string) => void): Promise<voi
 
     input.click();
   });
-                             }
+            }
