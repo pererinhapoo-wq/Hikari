@@ -1,17 +1,3 @@
-const MAX_VIDEO_SIZE = 900 * 1024 * 1024;
-
-const ALLOWED_TYPES = new Set([
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-]);
-
-type PrepareUploadResponse = {
-  uploadUrl: string;
-  videoUrl: string;
-  key: string;
-};
-
 export async function uploadVideoToB2(
   onDone: (videoUrl: string) => void,
 ): Promise<void> {
@@ -24,25 +10,36 @@ export async function uploadVideoToB2(
   document.body.appendChild(input);
 
   try {
-    const file = await new Promise<File | null>((resolve) => {
+    const file = await new Promise<File>((resolve, reject) => {
       input.onchange = () => {
-        resolve(input.files?.[0] ?? null);
+        const selected = input.files?.[0];
+
+        if (!selected) {
+          reject(new Error("Nenhum vídeo selecionado."));
+          return;
+        }
+
+        resolve(selected);
       };
 
       input.click();
     });
 
-    if (!file) {
-      return;
-    }
+    const allowedTypes = [
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+    ];
 
-    if (!ALLOWED_TYPES.has(file.type)) {
+    if (!allowedTypes.includes(file.type)) {
       throw new Error(
-        "Formato de vídeo não permitido. Use MP4, WebM ou MOV.",
+        "Formato inválido. Use MP4, WebM ou QuickTime.",
       );
     }
 
-    if (file.size > MAX_VIDEO_SIZE) {
+    const maxSize = 900 * 1024 * 1024;
+
+    if (file.size > maxSize) {
       throw new Error("O vídeo não pode ter mais de 900 MB.");
     }
 
@@ -67,13 +64,18 @@ export async function uploadVideoToB2(
       );
     }
 
-    const prepareData =
-      (await prepareResponse.json()) as PrepareUploadResponse;
+    const prepareData = (await prepareResponse.json()) as {
+      uploadUrl?: string;
+      videoUrl?: string;
+      key?: string;
+    };
 
-    if (!prepareData.uploadUrl || !prepareData.videoUrl) {
-      throw new Error(
-        "O servidor não retornou as URLs necessárias para o upload.",
-      );
+    if (!prepareData.uploadUrl) {
+      throw new Error("O servidor não retornou a URL de upload.");
+    }
+
+    if (!prepareData.videoUrl) {
+      throw new Error("O servidor não retornou a URL do vídeo.");
     }
 
     const uploadResponse = await fetch(prepareData.uploadUrl, {
