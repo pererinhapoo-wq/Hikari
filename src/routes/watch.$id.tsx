@@ -637,7 +637,7 @@ function WatchPage() {
             height: 56px !important;
             padding: 0 12px 4px !important;
             display: block !important;
-            background: linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0)) !important;
+            background: transparent !important;
             z-index: 10 !important;
           }
 
@@ -676,11 +676,10 @@ function WatchPage() {
           }
 
           .hikari-player .hikari-progress-shell > div:nth-child(2) {
-            width: 7px !important;
-            height: 7px !important;
+            width: 6px !important;
+            height: 6px !important;
             background: #a855f7 !important;
-            box-shadow: 0 0 7px rgba(168,85,247,.85) !important;
-            z-index: 2 !important;
+            box-shadow: 0 0 6px rgba(168,85,247,.75) !important;
           }
 
           .hikari-player .hikari-mobile-time-row {
@@ -825,7 +824,7 @@ function WatchPage() {
                   onPointerDown={showControls}
                   className="hikari-mobile-controls absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
                 >
-                  <div className="hikari-progress-shell relative h-5 rounded-full border border-white/10 bg-black/30 px-2 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)] sm:h-7 sm:px-3">
+                  <div className="hikari-progress-shell relative h-5 rounded-full border-0 bg-transparent px-2 shadow-none sm:h-7 sm:px-3">
                     <div className="hikari-progress-track pointer-events-none absolute inset-x-2 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20 sm:inset-x-3 sm:h-1.5">
                       <div
                         className="h-full rounded-full bg-white/90"
@@ -836,9 +835,9 @@ function WatchPage() {
                     </div>
 
                     <div
-                      className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
+                      className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-[#a855f7] shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
                       style={{
-                        left: `${duration > 0 ? Math.min(99.2, Math.max(0.8, (currentTime / duration) * 100)) : 0.8}%`,
+                        left: `${duration > 0 ? Math.min(99.5, Math.max(0.5, (currentTime / duration) * 100)) : 0.5}%`,
                       }}
                     />
 
@@ -858,7 +857,7 @@ function WatchPage() {
                     />
                   </div>
 
-                  <div className="hikari-mobile-time-row mt-1 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2 py-1 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
+                  <div className="hikari-mobile-time-row mt-1 flex items-center gap-1.5 rounded-full border-0 bg-transparent px-2 py-1 shadow-none sm:gap-2 sm:px-3 sm:py-1.5">
                     <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
                       <span>{formatTime(currentTime)}</span>
                       <span className="text-white/35">/</span>
