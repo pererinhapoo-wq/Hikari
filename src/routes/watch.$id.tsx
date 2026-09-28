@@ -645,7 +645,7 @@ function WatchPage() {
             position: absolute !important;
             left: 12px !important;
             right: 12px !important;
-            bottom: 3px !important;
+            bottom: 1px !important;
             top: auto !important;
             width: auto !important;
             height: 4px !important;
@@ -767,7 +767,7 @@ function WatchPage() {
               />
 
               {controlsVisible && (
-                <div className="pointer-events-none absolute inset-x-0 top-[32%] z-10 flex -translate-y-1/2 items-center justify-center sm:top-[40%]">
+                <div className="pointer-events-none absolute inset-x-0 top-[50%] z-10 flex -translate-y-1/2 items-center justify-center sm:top-[40%]">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
