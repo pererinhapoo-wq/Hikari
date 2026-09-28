@@ -285,11 +285,7 @@ function AnimePage() {
   );
 
   if (!anime && !hydrated) {
-    return (
-      <div className="py-24 text-center">
-        <div className="mx-auto h-8 w-48 animate-pulse rounded bg-elevated" />
-      </div>
-    );
+    return null;
   }
 
   if (!anime) {
