@@ -4578,47 +4578,36 @@ function CommentCard({
               </label>
 
               <div className="mt-3 flex items-center justify-end gap-2">
+  <Button
+    type="button"
+    size="sm"
+    variant="outline"
+    onClick={onCancelReply}
+    disabled={replySending}
+  >
+    Cancelar
+  </Button>
 
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={
-                                   }
-                  disabled={
-                    replySending
-                  }
-                >
-                  Cancelar
-                </Button>
+  <Button
+    type="button"
+    size="sm"
+    onClick={onSendReply}
+    disabled={!replyText.trim() || replySending}
+  >
+    <Send className="size-4" />
 
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={
-                    onSendReply
-                  }
-                  disabled={
-                    !replyText.trim() ||
-                    replySending
-                  }
-                >
-                  <Send className="size-4" />
+    {replySending
+      ? "Enviando..."
+      : "Responder"}
+  </Button>
+</div>
 
-                  {replySending
-                    ? "Enviando..."
-                    : "Responder"}
-                </Button>
+</div>
+)}
 
-              </div>
+</div>
 
-            </div>
-          )}
-
-        </div>
-
-      </div>
-
-    </article>
-  );
-        }
+</div>
+</article>
+);
+}
