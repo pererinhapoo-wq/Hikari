@@ -198,7 +198,7 @@ function WatchPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
@@ -231,12 +231,12 @@ function WatchPage() {
     clearControlsHideTimer();
 
     if (isPlaying) {
-      setControlsVisible(true);
-
       controlsHideTimeoutRef.current = setTimeout(() => {
         setControlsVisible(false);
         controlsHideTimeoutRef.current = null;
       }, 5000);
+    } else {
+      setControlsVisible(true);
     }
 
     return clearControlsHideTimer;
@@ -275,8 +275,6 @@ function WatchPage() {
     if (!video) return;
 
     if (video.paused) {
-      showControls();
-
       try {
         await video.play();
       } catch {
@@ -659,19 +657,6 @@ function WatchPage() {
                   setDuration(event.currentTarget.duration)
                 }
               />
-
-              {!controlsVisible && !isPlaying && (
-                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-                  <button
-                    type="button"
-                    onClick={togglePlay}
-                    className="pointer-events-auto flex size-14 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:border-white/45 hover:bg-white/20 active:scale-95 sm:size-16"
-                    aria-label="Reproduzir"
-                  >
-                    <Play className="ml-0.5 size-6 fill-current" />
-                  </button>
-                </div>
-              )}
 
               {controlsVisible && (
                 <div className="pointer-events-none absolute inset-x-0 top-[50%] z-10 flex -translate-y-1/2 items-center justify-center">
