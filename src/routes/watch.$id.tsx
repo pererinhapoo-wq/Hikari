@@ -751,7 +751,7 @@ function WatchPage() {
                   onPointerDown={showControls}
                   className="absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
                 >
-                  <div className="relative h-7 rounded-full border border-white/10 bg-black/30 px-3 shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  <div className="relative h-7 rounded-full border border-white/10 bg-transparent px-3 shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
                     <div className="pointer-events-none absolute inset-x-3 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-white/20">
                       <div
                         className="h-full rounded-full bg-white/90"
@@ -762,15 +762,11 @@ function WatchPage() {
                     </div>
 
                     <div
-                      className="pointer-events-none absolute inset-x-3 top-1/2 h-1.5 -translate-y-1/2"
-                    >
-                      <div
-                        className="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.55)]"
-                        style={{
-                          left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-                        }}
-                      />
-                    </div>
+                      className="pointer-events-none absolute top-1/2 size-2 -translate-y-1/2 -translate-x-1/2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.55)]"
+                      style={{
+                        left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                      }}
+                    />
 
                     <input
                       aria-label="Progresso do episódio"
@@ -788,7 +784,7 @@ function WatchPage() {
                     />
                   </div>
 
-                  <div className="mt-1 flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
+                  <div className="mt-1 flex items-center gap-2 rounded-full border border-white/15 bg-transparent px-3 py-1.5 shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
                     <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
                       <span>{formatTime(currentTime)}</span>
                       <span className="text-white/35">/</span>
