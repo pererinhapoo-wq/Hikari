@@ -627,8 +627,10 @@ function WatchPage() {
           ) : file ? (
             <>
               <video
+                key={file}
                 ref={videoRef}
                 src={file ?? undefined}
+                preload="metadata"
                 autoPlay={false}
                 playsInline
                 disablePictureInPicture
@@ -657,40 +659,41 @@ function WatchPage() {
               />
 
               {controlsVisible && (
-                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                <div className="pointer-events-none absolute inset-x-0 top-[40%] z-10 flex -translate-y-1/2 items-center justify-center">
                   <div
                     onPointerDown={showControls}
-                    className="pointer-events-auto flex items-center gap-3 sm:gap-4">
-                  <button
-                    type="button"
-                    onClick={() => seekBy(-10)}
-                    className="flex size-12 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/30 active:scale-95 sm:size-11 sm:text-[11px]"
-                    aria-label="Voltar 10 segundos"
+                    className="pointer-events-auto flex items-center gap-2 sm:gap-3"
                   >
-                    -10s
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => seekBy(-10)}
+                      className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      aria-label="Voltar 10 segundos"
+                    >
+                      -10s
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={togglePlay}
-                    className="flex size-16 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:bg-white/20 hover:border-white/45 active:scale-95 sm:size-14"
-                    aria-label={isPlaying ? "Pausar" : "Reproduzir"}
-                  >
-                    {isPlaying ? (
-                      <Pause className="size-5 fill-current sm:size-5" />
-                    ) : (
-                      <Play className="ml-0.5 size-5 fill-current sm:size-5" />
-                    )}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      className="flex size-12 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:border-white/45 hover:bg-white/20 active:scale-95 sm:size-14"
+                      aria-label={isPlaying ? "Pausar" : "Reproduzir"}
+                    >
+                      {isPlaying ? (
+                        <Pause className="size-5 fill-current" />
+                      ) : (
+                        <Play className="ml-0.5 size-5 fill-current" />
+                      )}
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => seekBy(10)}
-                    className="flex size-12 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/30 active:scale-95 sm:size-11 sm:text-[11px]"
-                    aria-label="Avançar 10 segundos"
-                  >
-                    +10s
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => seekBy(10)}
+                      className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      aria-label="Avançar 10 segundos"
+                    >
+                      +10s
+                    </button>
                   </div>
                 </div>
               )}
