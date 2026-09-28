@@ -4584,4 +4584,41 @@ function CommentCard({
                   size="sm"
                   variant="outline"
                   onClick={
-                 
+                                   }
+                  disabled={
+                    replySending
+                  }
+                >
+                  Cancelar
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={
+                    onSendReply
+                  }
+                  disabled={
+                    !replyText.trim() ||
+                    replySending
+                  }
+                >
+                  <Send className="size-4" />
+
+                  {replySending
+                    ? "Enviando..."
+                    : "Responder"}
+                </Button>
+
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+      </div>
+
+    </article>
+  );
+        }
