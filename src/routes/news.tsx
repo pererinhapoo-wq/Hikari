@@ -1152,9 +1152,7 @@ function NewsPage() {
                         <CalendarDays className="size-3.5" />
 
                         <span>
-                          {
-                            item.date
-                          }
+                          {item.date} · {formatRelativeNewsTime(item.date, "time" in item && typeof item.time === "string" ? item.time : undefined)}
                         </span>
                       </div>
                     </div>
