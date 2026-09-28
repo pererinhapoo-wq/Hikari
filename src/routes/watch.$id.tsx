@@ -638,6 +638,11 @@ function WatchPage() {
             padding: 0 12px 4px !important;
             display: block !important;
             background: transparent !important;
+            background-image: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            filter: none !important;
+            mix-blend-mode: normal !important;
             z-index: 10 !important;
           }
 
@@ -678,6 +683,7 @@ function WatchPage() {
           .hikari-player .hikari-progress-shell > div:nth-child(2) {
             width: 6px !important;
             height: 6px !important;
+            top: -3px !important;
             background: #a855f7 !important;
             box-shadow: 0 0 6px rgba(168,85,247,.75) !important;
           }
@@ -713,6 +719,7 @@ function WatchPage() {
             gap: 2px !important;
           }
 
+          .hikari-player .hikari-mobile-time-row,
           .hikari-player .hikari-volume,
           .hikari-player .hikari-settings,
           .hikari-player .hikari-mobile-fullscreen {
@@ -760,6 +767,9 @@ function WatchPage() {
                 onTouchEnd={handlePlayerTap}
                 style={{
                   touchAction: "pan-x",
+                  filter: "none",
+                  opacity: 1,
+                  mixBlendMode: "normal",
                 }}
                 className="relative z-0 size-full select-none bg-black object-contain"
                  data-player-video="true"
