@@ -183,6 +183,8 @@ function WatchPage() {
 
   useEffect(() => {
     setPlayerIndex(0);
+    setHasStarted(false);
+    setControlsVisible(false);
   }, [current?.id]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -198,7 +200,8 @@ function WatchPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
@@ -230,6 +233,11 @@ function WatchPage() {
   useEffect(() => {
     clearControlsHideTimer();
 
+    if (!hasStarted) {
+      setControlsVisible(false);
+      return clearControlsHideTimer;
+    }
+
     if (isPlaying) {
       controlsHideTimeoutRef.current = setTimeout(() => {
         setControlsVisible(false);
@@ -240,7 +248,7 @@ function WatchPage() {
     }
 
     return clearControlsHideTimer;
-  }, [isPlaying]);
+  }, [isPlaying, hasStarted]);
 
   const formatTime = (seconds: number) => {
     if (!Number.isFinite(seconds) || seconds < 0) return "00:00";
@@ -282,6 +290,21 @@ function WatchPage() {
       }
     } else {
       video.pause();
+    }
+  };
+
+  const startPlayback = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    setHasStarted(true);
+    setControlsVisible(true);
+    clearControlsHideTimer();
+
+    try {
+      await video.play();
+    } catch {
+      // O navegador pode bloquear a reprodução programática.
     }
   };
 
@@ -595,7 +618,7 @@ function WatchPage() {
               showControls();
             }
           }}
-          className="hikari-player relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]"
+          className="hikari-player hikari-player-mobile-fix relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]"
         >
 
           {yt ? (
@@ -626,118 +649,11 @@ function WatchPage() {
             />
           ) : file ? (
             <>
-      <style>{`
-        @media (max-width: 767px) {
-          /* MOBILE ONLY — controles sobrepostos ao vídeo, como na referência. */
-          .hikari-player .hikari-mobile-controls {
-            position: absolute !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            height: 58px !important;
-            padding: 0 12px 5px !important;
-            display: block !important;
-            background: linear-gradient(to top, rgba(0,0,0,.68), rgba(0,0,0,0)) !important;
-            z-index: 10 !important;
-          }
-
-          .hikari-player .hikari-progress-shell {
-            position: absolute !important;
-            left: 12px !important;
-            right: 12px !important;
-            bottom: 1px !important;
-            top: auto !important;
-            width: auto !important;
-            height: 4px !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: 0 !important;
-            border-radius: 999px !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-          }
-
-          .hikari-player .hikari-progress-track {
-            position: absolute !important;
-            left: 0 !important;
-            right: 0 !important;
-            top: 50% !important;
-            height: 2px !important;
-            transform: translateY(-50%) !important;
-            background: rgba(255,255,255,.42) !important;
-            border-radius: 999px !important;
-          }
-
-          .hikari-player .hikari-progress-track > div {
-            height: 100% !important;
-            background: rgba(255,255,255,.95) !important;
-          }
-
-          .hikari-player .hikari-progress-shell > div:nth-child(2) {
-            width: 7px !important;
-            height: 7px !important;
-            background: #fff !important;
-            box-shadow: 0 0 5px rgba(255,255,255,.55) !important;
-          }
-
-          .hikari-player .hikari-mobile-time-row {
-            position: absolute !important;
-            left: 12px !important;
-            right: 12px !important;
-            bottom: 9px !important;
-            top: auto !important;
-            width: auto !important;
-            height: 30px !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 8px !important;
-            border: 0 !important;
-            border-radius: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-          }
-
-          .hikari-player .hikari-mobile-time-row > div:first-child {
-            font-size: 10px !important;
-            line-height: 1 !important;
-            text-shadow: 0 1px 3px rgba(0,0,0,.95) !important;
-          }
-
-          .hikari-player .hikari-mobile-time-row > div:last-child {
-            gap: 4px !important;
-          }
-
-          .hikari-player .hikari-volume,
-          .hikari-player .hikari-settings,
-          .hikari-player .hikari-mobile-fullscreen {
-            width: 30px !important;
-            height: 30px !important;
-            border: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-          }
-
-          .hikari-player .hikari-volume svg,
-          .hikari-player .hikari-settings svg,
-          .hikari-player .hikari-mobile-fullscreen svg {
-            width: 17px !important;
-            height: 17px !important;
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,.95));
-          }
-        }
-      `}</style>
               <video
                 key={file}
                 ref={videoRef}
                 src={file ?? undefined}
+                poster={current?.thumbnail || anime.cover || undefined}
                 preload="metadata"
                 autoPlay={false}
                 playsInline
@@ -747,6 +663,8 @@ function WatchPage() {
                 onTouchEnd={handlePlayerTap}
                 style={{
                   touchAction: "pan-x",
+                  filter: "none",
+                  opacity: 1,
                 }}
                 className="relative z-0 size-full select-none bg-black object-contain"
                  data-player-video="true"
@@ -766,8 +684,30 @@ function WatchPage() {
                 }
               />
 
-              {controlsVisible && (
-                <div className="pointer-events-none absolute inset-x-0 top-[50%] z-10 flex -translate-y-1/2 items-center justify-center sm:top-[40%]">
+              {!hasStarted && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black">
+                  {current?.thumbnail || anime.cover ? (
+                    <img
+                      src={current?.thumbnail || anime.cover || ""}
+                      alt={current?.title || title}
+                      className="absolute inset-0 size-full object-contain"
+                      draggable={false}
+                    />
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={startPlayback}
+                    className="relative z-10 flex size-20 items-center justify-center rounded-full border border-white/30 bg-black/45 text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-xl transition hover:bg-white/20 active:scale-95 sm:size-24"
+                    aria-label="Reproduzir episódio"
+                  >
+                    <Play className="ml-1 size-9 fill-current sm:size-10" />
+                  </button>
+                </div>
+              )}
+
+              {hasStarted && controlsVisible && (
+                <div className="pointer-events-none absolute inset-x-0 top-[40%] z-10 flex -translate-y-1/2 items-center justify-center">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
@@ -775,7 +715,7 @@ function WatchPage() {
                     <button
                       type="button"
                       onClick={() => seekBy(-10)}
-                      className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      className="relative -translate-y-1 flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
                       aria-label="Voltar 10 segundos"
                     >
                       -10s
@@ -797,7 +737,7 @@ function WatchPage() {
                     <button
                       type="button"
                       onClick={() => seekBy(10)}
-                      className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      className="relative -translate-y-1 flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
                       aria-label="Avançar 10 segundos"
                     >
                       +10s
@@ -806,15 +746,15 @@ function WatchPage() {
                 </div>
               )}
 
-              {controlsVisible && (
+              {hasStarted && controlsVisible && (
                 <div
                   onPointerDown={showControls}
                   className="hikari-mobile-controls absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
                 >
-                  <div className="hikari-progress-shell relative h-5 rounded-full border border-white/10 bg-black/30 px-2 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)] sm:h-7 sm:px-3">
-                    <div className="hikari-progress-track pointer-events-none absolute inset-x-2 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20 sm:inset-x-3 sm:h-1.5">
+                  <div className="hikari-progress-shell relative h-7 rounded-full border border-white/10 bg-black/30 px-3 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    <div className="hikari-progress-track pointer-events-none absolute inset-x-3 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-white/20">
                       <div
-                        className="h-full rounded-full bg-white/90"
+                        className="hikari-progress-fill h-full rounded-full bg-white/90"
                         style={{
                           width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
                         }}
@@ -822,7 +762,7 @@ function WatchPage() {
                     </div>
 
                     <div
-                      className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
+                      className="hikari-progress-dot pointer-events-none absolute top-1/2 z-10 size-2 -translate-y-1/2 -translate-x-1/2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.55)]"
                       style={{
                         left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
                       }}
@@ -840,11 +780,11 @@ function WatchPage() {
                         if (videoRef.current) videoRef.current.currentTime = nextTime;
                         setCurrentTime(nextTime);
                       }}
-                      className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+                      className="hikari-progress-input absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
                     />
                   </div>
 
-                  <div className="hikari-mobile-time-row mt-1 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2 py-1 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
+                  <div className="hikari-time-row mt-1 flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
                     <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
                       <span>{formatTime(currentTime)}</span>
                       <span className="text-white/35">/</span>
@@ -855,13 +795,13 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={toggleMute}
-                        className="hikari-volume flex size-8 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
                         aria-label={isMuted ? "Ativar som" : "Silenciar"}
                       >
                         {isMuted ? (
-                          <VolumeX className="size-3.5 sm:size-4" />
+                          <VolumeX className="size-4 sm:size-4" />
                         ) : (
-                          <Volume2 className="size-3.5 sm:size-4" />
+                          <Volume2 className="size-4 sm:size-4" />
                         )}
                       </button>
 
@@ -869,13 +809,13 @@ function WatchPage() {
                         <button
                           type="button"
                           onClick={() => setSettingsOpen((open) => !open)}
-                          className={`hikari-settings flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10 ${
+                          className={`flex size-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10 ${
                             settingsOpen ? "bg-white/15" : ""
                           }`}
                           aria-label="Configurações do player"
                           aria-expanded={settingsOpen}
                         >
-                          <Settings className="size-3.5 sm:size-4" />
+                          <Settings className="size-4 sm:size-4" />
                         </button>
 
                         {settingsOpen && (
@@ -906,7 +846,7 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={handleFullscreen}
-                        className="hikari-mobile-fullscreen flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
                         aria-label="Tela cheia"
                       >
                         <Maximize className="size-4 sm:size-4" />
@@ -1136,6 +1076,66 @@ function WatchPage() {
         />
 
       </div>
+
+      <style>{`
+        @media (max-width: 639px), (hover: none) and (pointer: coarse) {
+          /* MOBILE ONLY: deixa o player com o visual da referência.
+             Nenhum botão/controle é criado, removido ou reposicionado. */
+          .hikari-player-mobile-fix .hikari-mobile-controls {
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            padding: 0 8px 6px !important;
+          }
+
+          .hikari-player-mobile-fix .hikari-progress-shell {
+            height: 4px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            overflow: visible !important;
+          }
+
+          .hikari-player-mobile-fix .hikari-progress-track {
+            left: 0 !important;
+            right: 0 !important;
+            top: 50% !important;
+            height: 3px !important;
+            border-radius: 999px !important;
+            background: rgba(255,255,255,0.28) !important;
+            overflow: hidden !important;
+          }
+
+          .hikari-player-mobile-fix .hikari-progress-fill {
+            background: #a855f7 !important;
+          }
+
+          .hikari-player-mobile-fix .hikari-progress-dot {
+            width: 9px !important;
+            height: 9px !important;
+            background: #a855f7 !important;
+            box-shadow: 0 0 8px rgba(168,85,247,0.55) !important;
+            transform: translateY(-50%) translateX(0) !important;
+          }
+
+          .hikari-player-mobile-fix .hikari-time-row {
+            margin-top: 4px !important;
+            min-height: 38px !important;
+            padding: 0 2px !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
