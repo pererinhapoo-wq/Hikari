@@ -521,11 +521,6 @@ function WatchPage() {
         <button
           type="button"
           onClick={() => {
-            if (window.history.length > 1) {
-              window.history.back();
-              return;
-            }
-
             navigate({
               to: "/anime/$id",
               params: { id: anime.id },
@@ -1469,11 +1464,10 @@ function CommentsSection({
                     gif?.images;
 
                   const url =
-                    images?.fixed_width?.url ||
-                    images?.original?.url;
+                    images?.original?.url ||
+                    images?.fixed_width?.url;
 
                   const preview =
-                    images?.fixed_width_small?.url ||
                     images?.fixed_width?.url ||
                     images?.original?.url;
 
