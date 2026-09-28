@@ -628,25 +628,140 @@ function WatchPage() {
             <>
       <style>{`
         @media (max-width: 639px) {
+          /* MOBILE ONLY — visual baseado exatamente na referência escolhida.
+             Desktop permanece intacto. Nenhum controle novo é criado. */
+          .hikari-player:not(:fullscreen) .hikari-mobile-controls {
+            position: absolute !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            height: 72px !important;
+            padding: 0 12px 5px !important;
+            display: block !important;
+            background: linear-gradient(to top, rgba(0,0,0,.62), rgba(0,0,0,0)) !important;
+            z-index: 10 !important;
+            box-sizing: border-box !important;
+          }
+
+          /* A barra fica sempre no limite inferior e não empurra os outros controles. */
           .hikari-player:not(:fullscreen) .hikari-progress-shell {
-            height: 20px;
-            transform: translateY(4px);
+            position: absolute !important;
+            left: 12px !important;
+            right: 12px !important;
+            bottom: 0 !important;
+            top: auto !important;
+            width: auto !important;
+            height: 5px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-radius: 999px !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-sizing: border-box !important;
           }
 
           .hikari-player:not(:fullscreen) .hikari-progress-track {
-            height: 4px;
+            position: absolute !important;
+            left: 0 !important;
+            right: 0 !important;
+            top: 50% !important;
+            height: 2px !important;
+            transform: translateY(-50%) !important;
+            background: rgba(255,255,255,.42) !important;
+            border-radius: 999px !important;
           }
 
+          .hikari-player:not(:fullscreen) .hikari-progress-track > div {
+            height: 100% !important;
+            background: rgba(255,255,255,.95) !important;
+          }
+
+          .hikari-player:not(:fullscreen) .hikari-progress-shell > div:nth-child(2) {
+            width: 7px !important;
+            height: 7px !important;
+            background: #fff !important;
+            box-shadow: 0 0 5px rgba(255,255,255,.55) !important;
+          }
+
+          /* Uma única linha: tempo à esquerda e os 3 controles existentes à direita. */
+          .hikari-player:not(:fullscreen) .hikari-mobile-time-row {
+            position: absolute !important;
+            left: 12px !important;
+            right: 12px !important;
+            bottom: 12px !important;
+            top: auto !important;
+            width: auto !important;
+            height: 32px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 8px !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-sizing: border-box !important;
+          }
+
+          .hikari-player:not(:fullscreen) .hikari-mobile-time-row > div:first-child {
+            flex: 0 0 auto !important;
+            min-width: 0 !important;
+            font-size: 10px !important;
+            line-height: 32px !important;
+            text-shadow: 0 1px 3px rgba(0,0,0,.95) !important;
+            white-space: nowrap !important;
+          }
+
+          .hikari-player:not(:fullscreen) .hikari-mobile-time-row > div:last-child {
+            flex: 0 0 auto !important;
+            margin-left: auto !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 2px !important;
+            height: 32px !important;
+          }
+
+          /* Somente os botões que o Hikari já possui; sem novas caixas ou ícones. */
           .hikari-player:not(:fullscreen) .hikari-volume,
-          .hikari-player:not(:fullscreen) .hikari-settings {
-            width: 32px;
-            height: 32px;
+          .hikari-player:not(:fullscreen) .hikari-settings,
+          .hikari-player:not(:fullscreen) .hikari-mobile-fullscreen {
+            width: 30px !important;
+            height: 30px !important;
+            min-width: 30px !important;
+            min-height: 30px !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-radius: 999px !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex: 0 0 30px !important;
           }
 
           .hikari-player:not(:fullscreen) .hikari-volume svg,
-          .hikari-player:not(:fullscreen) .hikari-settings svg {
-            width: 15px;
-            height: 15px;
+          .hikari-player:not(:fullscreen) .hikari-settings svg,
+          .hikari-player:not(:fullscreen) .hikari-mobile-fullscreen svg {
+            width: 17px !important;
+            height: 17px !important;
+            flex: 0 0 auto !important;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,.95));
+          }
+
+          /* O menu de configurações sobe a partir do botão, sem sair da área do player. */
+          .hikari-player:not(:fullscreen) .hikari-settings + * {
+            bottom: 34px !important;
+            right: 0 !important;
           }
         }
       `}</style>
@@ -725,7 +840,7 @@ function WatchPage() {
               {controlsVisible && (
                 <div
                   onPointerDown={showControls}
-                  className="absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
+                  className="hikari-mobile-controls absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
                 >
                   <div className="hikari-progress-shell relative h-5 rounded-full border border-white/10 bg-black/30 px-2 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)] sm:h-7 sm:px-3">
                     <div className="hikari-progress-track pointer-events-none absolute inset-x-2 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20 sm:inset-x-3 sm:h-1.5">
@@ -738,7 +853,7 @@ function WatchPage() {
                     </div>
 
                     <div
-                      className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.55)] sm:size-2"
+                      className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
                       style={{
                         left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
                       }}
@@ -760,7 +875,7 @@ function WatchPage() {
                     />
                   </div>
 
-                  <div className="mt-1 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2 py-1 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
+                  <div className="hikari-mobile-time-row mt-1 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2 py-1 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
                     <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
                       <span>{formatTime(currentTime)}</span>
                       <span className="text-white/35">/</span>
@@ -822,7 +937,7 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={handleFullscreen}
-                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                        className="hikari-mobile-fullscreen flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
                         aria-label="Tela cheia"
                       >
                         <Maximize className="size-4 sm:size-4" />
