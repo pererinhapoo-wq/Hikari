@@ -686,6 +686,7 @@ function WatchPage() {
             background: #a855f7 !important;
             box-shadow: 0 0 7px rgba(168,85,247,.85) !important;
             z-index: 2 !important;
+            transform: translate(-50%, -50%) translateY(-3px) !important;
           }
 
           .hikari-player .hikari-mobile-time-row {
