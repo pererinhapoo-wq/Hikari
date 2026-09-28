@@ -13,7 +13,13 @@ export type AutomaticNewsItem = {
     | "NOVO EPISÓDIO"
     | "PRÓXIMO LANÇAMENTO"
     | "DESTAQUE"
-    | "NOVO HENTAI";
+    | "NOVO HENTAI"
+    | "ANÚNCIO"
+    | "RUMOR"
+    | "NOVO VISUAL"
+    | "DATA DE ESTREIA"
+    | "ELENCO"
+    | "NOTÍCIA";
   title: string;
   description: string;
   date: string;
@@ -21,6 +27,11 @@ export type AutomaticNewsItem = {
   animeId: string;
   trailerUrl?: string;
   isAdult?: boolean;
+  source?: string;
+  sourceUrl?: string;
+  publishedAt?: string;
+  articleImages?: string[];
+  isRumor?: boolean;
 };
 
 const ANILIST =
@@ -818,6 +829,417 @@ async function fetchAdultCatalogNews(): Promise<
   );
 }
 
+type ExternalNewsItem = {
+  id: string;
+  title: string;
+  description: string;
+  publishedAt: string;
+  url: string;
+  image: string;
+  articleImages: string[];
+  source: string;
+  type: AutomaticNewsItem["type"];
+  isRumor: boolean;
+  animeId: string;
+  trailerUrl?: string;
+};
+
+const EXTERNAL_NEWS_FEEDS = [
+  {
+    name: "MyAnimeList",
+    url: "https://myanimelist.net/rss/news.xml",
+  },
+  {
+    name: "Anime Corner",
+    url: "https://animecorner.me/category/anime-news/feed/",
+  },
+  {
+    name: "Anime News Network",
+    url: "https://www.animenewsnetwork.com/all/rss.xml?ann-edition=us",
+  },
+] as const;
+
+function xmlDecode(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function xmlTag(
+  block: string,
+  name: string,
+): string {
+  const match = block.match(
+    new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`, "i"),
+  );
+
+  return xmlDecode(match?.[1]?.trim() ?? "");
+}
+
+function xmlAttribute(
+  block: string,
+  tag: string,
+  attribute: string,
+): string {
+  const match = block.match(
+    new RegExp(`<${tag}\\b[^>]*\\b${attribute}=["']([^"']+)["'][^>]*>`, "i"),
+  );
+
+  return xmlDecode(match?.[1]?.trim() ?? "");
+}
+
+function absoluteUrl(
+  value: string,
+  baseUrl: string,
+): string {
+  try {
+    return new URL(value, baseUrl).toString();
+  } catch {
+    return "";
+  }
+}
+
+function stripMarkup(value: string): string {
+  return stripHtml(
+    value
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function imageFromHtml(
+  html: string,
+  baseUrl: string,
+): string {
+  const og = html.match(
+    /<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+  );
+
+  if (og?.[1]) {
+    return absoluteUrl(og[1], baseUrl);
+  }
+
+  const reverseOg = html.match(
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["'][^>]*>/i,
+  );
+
+  return reverseOg?.[1]
+    ? absoluteUrl(reverseOg[1], baseUrl)
+    : "";
+}
+
+function imagesFromHtml(
+  html: string,
+  baseUrl: string,
+): string[] {
+  const images = new Set<string>();
+  const pattern = /<img\b[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(html)) && images.size < 8) {
+    const url = absoluteUrl(match[1], baseUrl);
+    if (url && !url.startsWith("data:")) {
+      images.add(url);
+    }
+  }
+
+  return Array.from(images);
+}
+
+function typeFromExternalNews(
+  title: string,
+): {
+  type: AutomaticNewsItem["type"];
+  isRumor: boolean;
+} {
+  const normalized = title.toLowerCase();
+
+  const isRumor =
+    /\b(rumou?r|rumor|leak|leaked|scoop|according to leaks|reportedly|allegedly)\b/i.test(
+      normalized,
+    );
+
+  if (isRumor) {
+    return {
+      type: "RUMOR",
+      isRumor: true,
+    };
+  }
+
+  if (/\b(trailer|pv|teaser|promo|promotional video|cm)\b/i.test(normalized)) {
+    return { type: "TRAILER", isRumor: false };
+  }
+
+  if (/\b(new season|season [0-9ivx]+|season [0-9ivx]+ announced|sequel|second season|third season|fourth season|returning)\b/i.test(normalized)) {
+    return { type: "NOVA TEMPORADA", isRumor: false };
+  }
+
+  if (/\b(key visual|new visual|visual revealed|poster|artwork|illustration)\b/i.test(normalized)) {
+    return { type: "NOVO VISUAL", isRumor: false };
+  }
+
+  if (/\b(release date|premiere date|premieres|premiere|debut|starts? airing|air date)\b/i.test(normalized)) {
+    return { type: "DATA DE ESTREIA", isRumor: false };
+  }
+
+  if (/\b(cast|staff|voice actor|voice actress|additional cast|additional staff)\b/i.test(normalized)) {
+    return { type: "ELENCO", isRumor: false };
+  }
+
+  if (/\b(anime adaptation|anime announced|gets an anime|anime project|anime series announced|adaptation announced)\b/i.test(normalized)) {
+    return { type: "ANÚNCIO", isRumor: false };
+  }
+
+  return { type: "NOTÍCIA", isRumor: false };
+}
+
+function formatExternalDate(
+  iso: string,
+): string {
+  const timestamp = Date.parse(iso);
+  if (Number.isNaN(timestamp)) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(timestamp));
+}
+
+async function fetchExternalFeed(
+  feed: (typeof EXTERNAL_NEWS_FEEDS)[number],
+): Promise<ExternalNewsItem[]> {
+  const response = await fetch(feed.url, {
+    headers: {
+      Accept: "application/rss+xml, application/xml, text/xml",
+      "User-Agent": "Hikari/1.0 (anime news)",
+    },
+    signal: AbortSignal.timeout(12000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`${feed.name} indisponível (${response.status})`);
+  }
+
+  const xml = await response.text();
+  const blocks = xml.match(/<item\b[\s\S]*?<\/item>/gi) ?? [];
+
+  const parsed = blocks.slice(0, 30).map((block): ExternalNewsItem | null => {
+    const url =
+      xmlTag(block, "link") ||
+      xmlAttribute(block, "guid", "isPermaLink");
+    const title = xmlTag(block, "title");
+    const publishedAt =
+      xmlTag(block, "pubDate") ||
+      xmlTag(block, "dc:date") ||
+      xmlTag(block, "published") ||
+      xmlTag(block, "updated");
+
+    if (!title || !url || !publishedAt) {
+      return null;
+    }
+
+    const content =
+      xmlTag(block, "content:encoded") ||
+      xmlTag(block, "description") ||
+      "";
+
+    const image =
+      xmlAttribute(block, "media:content", "url") ||
+      xmlAttribute(block, "media:thumbnail", "url") ||
+      xmlAttribute(block, "enclosure", "url") ||
+      imageFromHtml(content, url);
+
+    const articleImages = imagesFromHtml(content, url);
+    const classified = typeFromExternalNews(title);
+
+    return {
+      id: `external-${encodeURIComponent(url)}`,
+      title,
+      description: stripMarkup(content).slice(0, 700),
+      publishedAt: new Date(publishedAt).toISOString(),
+      url,
+      image: image || articleImages[0] || "",
+      articleImages,
+      source: feed.name,
+      type: classified.type,
+      isRumor: classified.isRumor,
+      animeId: "",
+    };
+  }).filter(Boolean) as ExternalNewsItem[];
+
+  const enriched = await Promise.all(
+    parsed.map(async (item) => {
+      try {
+        const response = await fetch(item.url, {
+          headers: {
+            Accept: "text/html,application/xhtml+xml",
+            "User-Agent": "Hikari/1.0 (anime news)",
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (response.ok) {
+          const html = await response.text();
+          item.image =
+            imageFromHtml(html, item.url) || item.image;
+          item.articleImages = Array.from(
+            new Set([
+              ...item.articleImages,
+              ...imagesFromHtml(html, item.url),
+            ]),
+          ).slice(0, 8);
+
+          const pageDescription =
+            html.match(
+              /<meta[^>]+(?:property|name)=["'](?:og:description|description)["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+            )?.[1] ?? "";
+
+          if (pageDescription) {
+            item.description = stripMarkup(pageDescription).slice(0, 700);
+          }
+        }
+      } catch {
+        // Mantém o item do RSS mesmo se a página original falhar.
+      }
+
+      const animeId = await findAniListAnimeId(item.title);
+      item.animeId = animeId;
+
+      if (item.type === "TRAILER" && item.url.includes("youtube.com")) {
+        item.trailerUrl = item.url;
+      }
+
+      return item;
+    }),
+  );
+
+  return enriched;
+}
+
+const aniListSearchCache = new Map<string, string>();
+
+async function findAniListAnimeId(
+  newsTitle: string,
+): Promise<string> {
+  const cleaned = newsTitle
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(new trailer|trailer|teaser|pv|visual|key visual|announced|revealed|season [0-9ivx]+|premiere date|release date)\b/gi, " ")
+    .replace(/[:|—–-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned || cleaned.length < 3) {
+    return "";
+  }
+
+  const key = cleaned.toLowerCase();
+  const cached = aniListSearchCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const response = await fetch(ANILIST, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        query: `
+          query FindAnime($search: String) {
+            Page(page: 1, perPage: 3) {
+              media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
+                id
+                isAdult
+              }
+            }
+          }
+        `,
+        variables: { search: cleaned.slice(0, 100) },
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!response.ok) {
+      return "";
+    }
+
+    const json = (await response.json()) as {
+      data?: { Page?: { media?: { id: number; isAdult?: boolean | null }[] } };
+    };
+
+    const match =
+      json.data?.Page?.media?.find(
+        (media) => media.isAdult !== true,
+      ) ?? json.data?.Page?.media?.[0];
+
+    if (!match?.id) {
+      return "";
+    }
+
+    const id = String(match.id);
+    aniListSearchCache.set(key, id);
+    return id;
+  } catch {
+    return "";
+  }
+}
+
+async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
+  const results = await Promise.allSettled(
+    EXTERNAL_NEWS_FEEDS.map((feed) => fetchExternalFeed(feed)),
+  );
+
+  const merged = results.flatMap((result) =>
+    result.status === "fulfilled" ? result.value : [],
+  );
+
+  const unique = new Map<string, ExternalNewsItem>();
+  for (const item of merged) {
+    const key = item.url || `${item.source}:${item.title}`;
+    if (!unique.has(key)) {
+      unique.set(key, item);
+    }
+  }
+
+  const sorted = Array.from(unique.values()).sort(
+    (a, b) =>
+      Date.parse(b.publishedAt) -
+      Date.parse(a.publishedAt),
+  );
+
+  return Promise.all(
+    sorted.map(async (item) => ({
+      id: item.id,
+      type: item.type,
+      title: await translateToPortuguese(item.title),
+      description:
+        (await translateToPortuguese(item.description)) ||
+        "Nova notícia de anime.",
+      date: formatExternalDate(item.publishedAt),
+      image: item.image,
+      animeId: item.animeId,
+      trailerUrl: item.trailerUrl,
+      source: item.source,
+      sourceUrl: item.url,
+      publishedAt: item.publishedAt,
+      articleImages: item.articleImages,
+      isRumor: item.isRumor,
+    })),
+  );
+}
+
 async function buildNews(
   media: AniMedia[],
   latestEpisodes: Map<
@@ -1167,65 +1589,66 @@ export const fetchAutomaticNews =
   createServerFn({
     method: "GET",
   }).handler(async () => {
-    const current =
-      currentAnimeSeason();
+    const current = currentAnimeSeason();
+    const season = String(current.season).toUpperCase();
+    const year = Number(current.year);
+    const key = `automatic-news:v2:${season}:${year}`;
 
-    const season =
-      String(
-        current.season,
-      ).toUpperCase();
-
-    const year =
-      Number(
-        current.year,
-      );
-
-    const key =
-      `automatic-news:${season}:${year}`;
-
-    const cached =
-      fromCache(key);
-
+    const cached = fromCache(key);
     if (cached) {
-      return cached.filter(
-        (item) =>
-          item.isAdult !== true,
-      );
+      return cached.filter((item) => item.isAdult !== true);
     }
 
     try {
-      const [
-        media,
-        latestEpisodes,
-      ] =
+      const [media, latestEpisodes, externalNews] =
         await Promise.all([
-          fetchSeason(
-            season,
-            year,
-          ),
+          fetchSeason(season, year),
           fetchLatestAiredEpisodes(),
+          fetchExternalNews(),
         ]);
 
-      const nonAdultMedia =
-        media.filter(
-          (anime) =>
-            anime.isAdult !== true,
-        );
-
-      const news =
-        await buildNews(
-          nonAdultMedia,
-          latestEpisodes,
-        );
-
-      return toCache(
-        key,
-        news,
+      const nonAdultMedia = media.filter(
+        (anime) => anime.isAdult !== true,
       );
+
+      const catalogNews = await buildNews(
+        nonAdultMedia,
+        latestEpisodes,
+      );
+
+      const combined = [
+        ...externalNews,
+        ...catalogNews,
+      ]
+        .filter((item) => item.isAdult !== true && Boolean(item.image))
+        .sort((a, b) => {
+          const aTime = a.publishedAt
+            ? Date.parse(a.publishedAt)
+            : parseNewsDateServer(a.date);
+          const bTime = b.publishedAt
+            ? Date.parse(b.publishedAt)
+            : parseNewsDateServer(b.date);
+          return bTime - aTime;
+        });
+
+      return toCache(key, combined);
     } catch {
       return [];
     }
   });
+
+function parseNewsDateServer(value: string): number {
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) {
+    return Date.parse(value) || 0;
+  }
+
+  return new Date(
+    Number(match[3]),
+    Number(match[2]) - 1,
+    Number(match[1]),
+  ).getTime();
+}
 
 export const fetchAdultNews =
   createServerFn({
