@@ -751,8 +751,8 @@ function WatchPage() {
                   onPointerDown={showControls}
                   className="absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
                 >
-                  <div className="relative h-7 rounded-full border border-white/10 bg-black/30 px-3 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                    <div className="pointer-events-none absolute inset-x-3 top-1/2 h-1.5 -translate-y-1/2 overflow-visible rounded-full bg-white/20">
+                  <div className="relative h-4 px-0">
+                    <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-visible rounded-full bg-white/35">
                       <div
                         className="relative h-full rounded-full bg-white/90"
                         style={{
