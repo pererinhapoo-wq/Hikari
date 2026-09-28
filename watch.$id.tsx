@@ -784,7 +784,7 @@ function WatchPage() {
                     />
                   </div>
 
-                  <div className="mt-1 flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
+                  <div className="mt-3 flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
                     <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
                       <span>{formatTime(currentTime)}</span>
                       <span className="text-white/35">/</span>
@@ -795,7 +795,7 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={toggleMute}
-                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                        className="flex size-8 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-8"
                         aria-label={isMuted ? "Ativar som" : "Silenciar"}
                       >
                         {isMuted ? (
@@ -809,7 +809,7 @@ function WatchPage() {
                         <button
                           type="button"
                           onClick={() => setSettingsOpen((open) => !open)}
-                          className={`flex size-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10 ${
+                          className={`flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9 ${
                             settingsOpen ? "bg-white/15" : ""
                           }`}
                           aria-label="Configurações do player"
