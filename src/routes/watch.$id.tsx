@@ -707,7 +707,7 @@ function WatchPage() {
               )}
 
               {hasStarted && controlsVisible && (
-                <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 items-center justify-center">
+                <div className="pointer-events-none absolute inset-x-0 top-[40%] z-10 flex -translate-y-1/2 items-center justify-center">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
