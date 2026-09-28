@@ -663,11 +663,13 @@ function WatchPage() {
                 onTouchEnd={handlePlayerTap}
                 style={{
                   touchAction: "pan-x",
-                  filter: controlsVisible ? "brightness(1.08) saturate(1.05)" : "none",
+                  filter: "none",
                   opacity: 1,
                   transform: "translateZ(0)",
                   willChange: "transform",
                   backfaceVisibility: "hidden",
+                  isolation: "isolate",
+                  contain: "paint",
                 }}
                 className="relative z-0 size-full select-none bg-black object-contain"
                  data-player-video="true"
