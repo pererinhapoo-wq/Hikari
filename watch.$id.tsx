@@ -627,29 +627,28 @@ function WatchPage() {
           ) : file ? (
             <>
       <style>{`
-        @media (max-width: 639px) {
-          /* MOBILE ONLY — visual baseado na referência enviada.
-             Desktop permanece intacto e nenhum controle novo é criado. */
-          .hikari-player:not(:fullscreen) .hikari-mobile-controls {
+        @media (max-width: 767px) {
+          /* MOBILE ONLY — controles sobrepostos ao vídeo, como na referência. */
+          .hikari-player .hikari-mobile-controls {
             position: absolute !important;
             left: 0 !important;
             right: 0 !important;
             bottom: 0 !important;
-            height: 64px !important;
-            padding: 0 12px 6px !important;
+            height: 58px !important;
+            padding: 0 12px 5px !important;
             display: block !important;
-            background: linear-gradient(to top, rgba(0,0,0,.58), transparent) !important;
+            background: linear-gradient(to top, rgba(0,0,0,.68), rgba(0,0,0,0)) !important;
+            z-index: 10 !important;
           }
 
-          /* Linha fina fica sozinha no limite inferior. */
-          .hikari-player:not(:fullscreen) .hikari-progress-shell {
+          .hikari-player .hikari-progress-shell {
             position: absolute !important;
             left: 12px !important;
             right: 12px !important;
             bottom: 0 !important;
             top: auto !important;
             width: auto !important;
-            height: 5px !important;
+            height: 4px !important;
             margin: 0 !important;
             padding: 0 !important;
             border: 0 !important;
@@ -660,36 +659,37 @@ function WatchPage() {
             -webkit-backdrop-filter: none !important;
           }
 
-          .hikari-player:not(:fullscreen) .hikari-progress-track {
+          .hikari-player .hikari-progress-track {
+            position: absolute !important;
             left: 0 !important;
             right: 0 !important;
             top: 50% !important;
             height: 2px !important;
             transform: translateY(-50%) !important;
-            background: rgba(255,255,255,.38) !important;
+            background: rgba(255,255,255,.42) !important;
+            border-radius: 999px !important;
           }
 
-          .hikari-player:not(:fullscreen) .hikari-progress-track > div {
+          .hikari-player .hikari-progress-track > div {
             height: 100% !important;
             background: rgba(255,255,255,.95) !important;
           }
 
-          .hikari-player:not(:fullscreen) .hikari-progress-shell > div:nth-child(2) {
+          .hikari-player .hikari-progress-shell > div:nth-child(2) {
             width: 7px !important;
             height: 7px !important;
             background: #fff !important;
             box-shadow: 0 0 5px rgba(255,255,255,.55) !important;
           }
 
-          /* Tempo + volume/configurações/fullscreen ficam numa única linha
-             transparente, acima da barra, como na referência. */
-          .hikari-player:not(:fullscreen) .hikari-mobile-time-row {
+          .hikari-player .hikari-mobile-time-row {
             position: absolute !important;
             left: 12px !important;
             right: 12px !important;
-            bottom: 10px !important;
+            bottom: 9px !important;
             top: auto !important;
             width: auto !important;
+            height: 30px !important;
             margin: 0 !important;
             padding: 0 !important;
             display: flex !important;
@@ -703,19 +703,19 @@ function WatchPage() {
             -webkit-backdrop-filter: none !important;
           }
 
-          .hikari-player:not(:fullscreen) .hikari-mobile-time-row > div:first-child {
+          .hikari-player .hikari-mobile-time-row > div:first-child {
             font-size: 10px !important;
             line-height: 1 !important;
-            text-shadow: 0 1px 3px rgba(0,0,0,.9) !important;
+            text-shadow: 0 1px 3px rgba(0,0,0,.95) !important;
           }
 
-          .hikari-player:not(:fullscreen) .hikari-mobile-time-row > div:last-child {
-            gap: 6px !important;
+          .hikari-player .hikari-mobile-time-row > div:last-child {
+            gap: 4px !important;
           }
 
-          .hikari-player:not(:fullscreen) .hikari-volume,
-          .hikari-player:not(:fullscreen) .hikari-settings,
-          .hikari-player:not(:fullscreen) .hikari-mobile-fullscreen {
+          .hikari-player .hikari-volume,
+          .hikari-player .hikari-settings,
+          .hikari-player .hikari-mobile-fullscreen {
             width: 30px !important;
             height: 30px !important;
             border: 0 !important;
@@ -725,12 +725,12 @@ function WatchPage() {
             -webkit-backdrop-filter: none !important;
           }
 
-          .hikari-player:not(:fullscreen) .hikari-volume svg,
-          .hikari-player:not(:fullscreen) .hikari-settings svg,
-          .hikari-player:not(:fullscreen) .hikari-mobile-fullscreen svg {
+          .hikari-player .hikari-volume svg,
+          .hikari-player .hikari-settings svg,
+          .hikari-player .hikari-mobile-fullscreen svg {
             width: 17px !important;
             height: 17px !important;
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,.9));
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,.95));
           }
         }
       `}</style>
