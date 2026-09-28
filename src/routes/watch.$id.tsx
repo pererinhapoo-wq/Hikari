@@ -663,7 +663,7 @@ function WatchPage() {
                 onTouchEnd={handlePlayerTap}
                 style={{
                   touchAction: "pan-x",
-                  filter: "none",
+                  filter: controlsVisible ? "brightness(1.08) saturate(1.05)" : "none",
                   opacity: 1,
                   transform: "translateZ(0)",
                   willChange: "transform",
