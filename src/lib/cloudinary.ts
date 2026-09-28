@@ -1,3 +1,5 @@
+import { upload } from "@vercel/blob/client";
+
 export async function uploadVideoToCloudinary(
   onDone: (url: string) => void,
 ): Promise<void> {
@@ -35,52 +37,18 @@ export async function uploadVideoToCloudinary(
     const contentType =
       file.type || "application/octet-stream";
 
-    const prepareResponse = await fetch("/api/upload-video", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        filename: file.name,
+    const blob = await upload(
+      `hikari/episodes/${file.name}`,
+      file,
+      {
+        access: "public",
+        handleUploadUrl: "/api/upload-video",
+        multipart: true,
         contentType,
-        size: file.size,
-      }),
-    });
-
-    const prepareData = (await prepareResponse.json()) as {
-      uploadUrl?: string;
-      videoUrl?: string;
-      error?: string;
-    };
-
-    if (!prepareResponse.ok || !prepareData.uploadUrl) {
-      throw new Error(
-        prepareData.error || "Não foi possível preparar o upload.",
-      );
-    }
-
-    const uploadResponse = await fetch(prepareData.uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": contentType,
       },
-      body: file,
-    });
+    );
 
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text().catch(() => "");
-      console.error("Erro no upload para o Backblaze:", errorText);
-
-      throw new Error(
-        `Falha no upload para o Backblaze (${uploadResponse.status}).`,
-      );
-    }
-
-    if (!prepareData.videoUrl) {
-      throw new Error("O Backblaze não retornou a URL do vídeo.");
-    }
-
-    onDone(prepareData.videoUrl);
+    onDone(blob.url);
   } finally {
     input.remove();
   }
