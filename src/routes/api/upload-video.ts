@@ -1,5 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { handleUpload } from "@vercel/blob/client";
+import {
+  handleUpload,
+  type HandleUploadBody,
+} from "@vercel/blob/client";
 
 const ALLOWED_TYPES = [
   "video/mp4",
@@ -11,7 +14,7 @@ const MAX_SIZE = 900 * 1024 * 1024;
 
 async function handlePost({ request }: { request: Request }) {
   try {
-    const body = await request.json();
+    const body = (await request.json()) as HandleUploadBody;
 
     const jsonResponse = await handleUpload({
       token: process.env.BLOB_READ_WRITE_TOKEN,
