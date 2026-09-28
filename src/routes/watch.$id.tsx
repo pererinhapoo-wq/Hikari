@@ -660,11 +660,11 @@ function WatchPage() {
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                   <div
                     onPointerDown={showControls}
-                    className="pointer-events-auto flex items-center gap-4 sm:gap-5">
+                    className="pointer-events-auto flex items-center gap-3 sm:gap-4">
                   <button
                     type="button"
                     onClick={() => seekBy(-10)}
-                    className="flex size-14 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[11px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/30 active:scale-95 sm:size-12 sm:text-xs"
+                    className="flex size-12 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/30 active:scale-95 sm:size-11 sm:text-[11px]"
                     aria-label="Voltar 10 segundos"
                   >
                     -10s
@@ -673,20 +673,20 @@ function WatchPage() {
                   <button
                     type="button"
                     onClick={togglePlay}
-                    className="flex size-20 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:bg-white/20 hover:border-white/45 active:scale-95 sm:size-16"
+                    className="flex size-16 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:bg-white/20 hover:border-white/45 active:scale-95 sm:size-14"
                     aria-label={isPlaying ? "Pausar" : "Reproduzir"}
                   >
                     {isPlaying ? (
-                      <Pause className="size-6 fill-current sm:size-5" />
+                      <Pause className="size-5 fill-current sm:size-5" />
                     ) : (
-                      <Play className="ml-0.5 size-6 fill-current sm:size-5" />
+                      <Play className="ml-0.5 size-5 fill-current sm:size-5" />
                     )}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => seekBy(10)}
-                    className="flex size-14 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[11px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/30 active:scale-95 sm:size-12 sm:text-xs"
+                    className="flex size-12 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/30 active:scale-95 sm:size-11 sm:text-[11px]"
                     aria-label="Avançar 10 segundos"
                   >
                     +10s
@@ -700,30 +700,41 @@ function WatchPage() {
                   onPointerDown={showControls}
                   className="absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
                 >
-                  <input
-                    aria-label="Progresso do episódio"
-                    type="range"
-                    min={0}
-                    max={duration || 0}
-                    step={0.1}
-                    value={Math.min(currentTime, duration || 0)}
-                    onChange={(event) => {
-                      const nextTime = Number(event.target.value);
-                      if (videoRef.current) videoRef.current.currentTime = nextTime;
-                      setCurrentTime(nextTime);
-                    }}
-                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-white"
-                    style={{
-                      background: `linear-gradient(to right, #b56cff 0%, #b56cff ${
-                        duration > 0 ? (currentTime / duration) * 100 : 0
-                      }%, rgba(255,255,255,0.25) ${
-                        duration > 0 ? (currentTime / duration) * 100 : 0
-                      }%, rgba(255,255,255,0.25) 100%)`,
-                    }}
-                  />
+                  <div className="relative h-7 rounded-full border border-white/10 bg-black/30 px-3 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    <div className="pointer-events-none absolute inset-x-3 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-white/20">
+                      <div
+                        className="h-full rounded-full bg-white/90"
+                        style={{
+                          width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
 
-                  <div className="mt-2 flex items-center gap-2 rounded-2xl border border-white/15 bg-black/35 px-3 py-2 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-3 sm:px-4 sm:py-2.5">
-                    <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[12px]">
+                    <div
+                      className="pointer-events-none absolute top-1/2 size-2 -translate-y-1/2 -translate-x-1/2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.55)]"
+                      style={{
+                        left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                      }}
+                    />
+
+                    <input
+                      aria-label="Progresso do episódio"
+                      type="range"
+                      min={0}
+                      max={duration || 0}
+                      step={0.1}
+                      value={Math.min(currentTime, duration || 0)}
+                      onChange={(event) => {
+                        const nextTime = Number(event.target.value);
+                        if (videoRef.current) videoRef.current.currentTime = nextTime;
+                        setCurrentTime(nextTime);
+                      }}
+                      className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+                    />
+                  </div>
+
+                  <div className="mt-1 flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
+                    <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
                       <span>{formatTime(currentTime)}</span>
                       <span className="text-white/35">/</span>
                       <span className="text-white/65">{formatTime(duration)}</span>
@@ -733,13 +744,13 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={toggleMute}
-                        className="flex size-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10"
+                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
                         aria-label={isMuted ? "Ativar som" : "Silenciar"}
                       >
                         {isMuted ? (
-                          <VolumeX className="size-5 sm:size-4" />
+                          <VolumeX className="size-4 sm:size-4" />
                         ) : (
-                          <Volume2 className="size-5 sm:size-4" />
+                          <Volume2 className="size-4 sm:size-4" />
                         )}
                       </button>
 
@@ -753,7 +764,7 @@ function WatchPage() {
                           aria-label="Configurações do player"
                           aria-expanded={settingsOpen}
                         >
-                          <Settings className="size-5 sm:size-4" />
+                          <Settings className="size-4 sm:size-4" />
                         </button>
 
                         {settingsOpen && (
@@ -784,10 +795,10 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={handleFullscreen}
-                        className="flex size-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10"
+                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
                         aria-label="Tela cheia"
                       >
-                        <Maximize className="size-5 sm:size-4" />
+                        <Maximize className="size-4 sm:size-4" />
                       </button>
                     </div>
                   </div>
