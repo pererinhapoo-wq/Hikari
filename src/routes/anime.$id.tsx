@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Bookmark,
@@ -57,6 +57,7 @@ export const Route = createFileRoute("/anime/$id")({
 });
 
 function AnimePage() {
+  const navigate = useNavigate();
   const { id } = Route.useParams();
   const { remote } = Route.useLoaderData();
 
@@ -361,9 +362,7 @@ function AnimePage() {
   };
 
   const handleBack = () => {
-    if (window.history.length > 1) {
-      window.history.back();
-    }
+    void navigate({ to: "/" });
   };
 
   const bannerIsReady =
