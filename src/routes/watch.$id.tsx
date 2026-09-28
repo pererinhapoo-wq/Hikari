@@ -92,6 +92,7 @@ function WatchPage() {
   const { remote } = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
+  const hydrated = useHikariStore((s) => s.hydrated);
 
   const markContinue = useHikariStore(
     (s) => s.markContinue,
@@ -459,6 +460,14 @@ function WatchPage() {
     setPlaybackRate(rate);
     if (video) video.playbackRate = rate;
   };
+
+  if (!anime && !hydrated) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-bg text-fg">
+        <p>Carregando…</p>
+      </div>
+    );
+  }
 
   if (!anime) {
     return (
