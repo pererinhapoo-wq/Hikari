@@ -659,7 +659,7 @@ function WatchPage() {
               />
 
               {controlsVisible && (
-                <div className="pointer-events-none absolute inset-x-0 top-[40%] z-10 flex -translate-y-1/2 items-center justify-center">
+                <div className="pointer-events-none absolute inset-x-0 top-[50%] z-10 flex -translate-y-1/2 items-center justify-center">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
@@ -667,7 +667,7 @@ function WatchPage() {
                     <button
                       type="button"
                       onClick={() => seekBy(-10)}
-                      className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
                       aria-label="Voltar 10 segundos"
                     >
                       -10s
@@ -676,7 +676,7 @@ function WatchPage() {
                     <button
                       type="button"
                       onClick={togglePlay}
-                      className="flex size-12 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:border-white/45 hover:bg-white/20 active:scale-95 sm:size-14"
+                      className="flex size-12 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)]-2xl transition hover:border-white/45 hover:bg-white/20 active:scale-95 sm:size-14"
                       aria-label={isPlaying ? "Pausar" : "Reproduzir"}
                     >
                       {isPlaying ? (
@@ -689,7 +689,7 @@ function WatchPage() {
                     <button
                       type="button"
                       onClick={() => seekBy(10)}
-                      className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
                       aria-label="Avançar 10 segundos"
                     >
                       +10s
@@ -747,7 +747,7 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={toggleMute}
-                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
                         aria-label={isMuted ? "Ativar som" : "Silenciar"}
                       >
                         {isMuted ? (
@@ -761,7 +761,7 @@ function WatchPage() {
                         <button
                           type="button"
                           onClick={() => setSettingsOpen((open) => !open)}
-                          className={`flex size-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10 ${
+                          className={`flex size-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10 ${
                             settingsOpen ? "bg-white/15" : ""
                           }`}
                           aria-label="Configurações do player"
@@ -771,7 +771,7 @@ function WatchPage() {
                         </button>
 
                         {settingsOpen && (
-                          <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
+                          <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl">
                             <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
                               Configurações
                             </div>
@@ -798,7 +798,7 @@ function WatchPage() {
                       <button
                         type="button"
                         onClick={handleFullscreen}
-                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                        className="flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
                         aria-label="Tela cheia"
                       >
                         <Maximize className="size-4 sm:size-4" />
@@ -3038,7 +3038,7 @@ function CommentsSection({
                   }
                   aria-label="Remover imagem"
                   title="Remover imagem"
-                  className="absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/75 text-white backdrop-blur-sm transition-colors hover:bg-black disabled:opacity-50"
+                  className="absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/75 text-white transition-colors hover:bg-black disabled:opacity-50"
                 >
                   <X className="size-4" />
                 </button>
@@ -3060,7 +3060,7 @@ function CommentsSection({
                   disabled={sending || imageUploading}
                   aria-label="Remover GIF"
                   title="Remover GIF"
-                  className="absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/75 text-white backdrop-blur-sm transition-colors hover:bg-black disabled:opacity-50"
+                  className="absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/75 text-white transition-colors hover:bg-black disabled:opacity-50"
                 >
                   <X className="size-4" />
                 </button>
