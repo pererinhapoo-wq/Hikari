@@ -627,22 +627,17 @@ function WatchPage() {
           ) : file ? (
             <>
       <style>{`
-        @media (hover: none) and (pointer: coarse) {
-          /* MOBILE ONLY — visual integrado ao vídeo. Desktop permanece igual. */
+        @media (max-width: 767px) {
+          /* MOBILE ONLY — controles sobrepostos ao vídeo, como na referência. */
           .hikari-player .hikari-mobile-controls {
             position: absolute !important;
             left: 0 !important;
             right: 0 !important;
             bottom: 0 !important;
-            height: 56px !important;
-            padding: 0 12px 4px !important;
+            height: 58px !important;
+            padding: 0 12px 5px !important;
             display: block !important;
-            background: transparent !important;
-            background-image: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            filter: none !important;
-            mix-blend-mode: normal !important;
+            background: linear-gradient(to top, rgba(0,0,0,.68), rgba(0,0,0,0)) !important;
             z-index: 10 !important;
           }
 
@@ -650,10 +645,10 @@ function WatchPage() {
             position: absolute !important;
             left: 12px !important;
             right: 12px !important;
-            bottom: 0 !important;
+            bottom: 3px !important;
             top: auto !important;
             width: auto !important;
-            height: 3px !important;
+            height: 4px !important;
             margin: 0 !important;
             padding: 0 !important;
             border: 0 !important;
@@ -671,7 +666,7 @@ function WatchPage() {
             top: 50% !important;
             height: 2px !important;
             transform: translateY(-50%) !important;
-            background: rgba(255,255,255,.35) !important;
+            background: rgba(255,255,255,.42) !important;
             border-radius: 999px !important;
           }
 
@@ -683,20 +678,18 @@ function WatchPage() {
           .hikari-player .hikari-progress-shell > div:nth-child(2) {
             width: 7px !important;
             height: 7px !important;
-            background: #a855f7 !important;
-            box-shadow: 0 0 7px rgba(168,85,247,.85) !important;
-            z-index: 2 !important;
-            transform: translate(-50%, -50%) translateY(-3px) !important;
+            background: #fff !important;
+            box-shadow: 0 0 5px rgba(255,255,255,.55) !important;
           }
 
           .hikari-player .hikari-mobile-time-row {
             position: absolute !important;
             left: 12px !important;
             right: 12px !important;
-            bottom: 8px !important;
+            bottom: 9px !important;
             top: auto !important;
             width: auto !important;
-            height: 28px !important;
+            height: 30px !important;
             margin: 0 !important;
             padding: 0 !important;
             display: flex !important;
@@ -713,11 +706,11 @@ function WatchPage() {
           .hikari-player .hikari-mobile-time-row > div:first-child {
             font-size: 10px !important;
             line-height: 1 !important;
-            text-shadow: 0 1px 4px rgba(0,0,0,.95) !important;
+            text-shadow: 0 1px 3px rgba(0,0,0,.95) !important;
           }
 
           .hikari-player .hikari-mobile-time-row > div:last-child {
-            gap: 2px !important;
+            gap: 4px !important;
           }
 
           .hikari-player .hikari-volume,
@@ -737,20 +730,7 @@ function WatchPage() {
           .hikari-player .hikari-mobile-fullscreen svg {
             width: 17px !important;
             height: 17px !important;
-            filter: drop-shadow(0 1px 3px rgba(0,0,0,.95));
-          }
-
-          .hikari-player > video + div {
-            top: 50% !important;
-          }
-
-          .hikari-player .hikari-skip {
-            width: 38px !important;
-            height: 38px !important;
-            background: rgba(0,0,0,.28) !important;
-            box-shadow: 0 5px 20px rgba(0,0,0,.3) !important;
-            backdrop-filter: blur(8px) !important;
-            -webkit-backdrop-filter: blur(8px) !important;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,.95));
           }
         }
       `}</style>
@@ -787,7 +767,7 @@ function WatchPage() {
               />
 
               {controlsVisible && (
-                <div className="pointer-events-none absolute inset-0 z-10 flex -translate-y-1/2 items-center justify-center sm:inset-x-0 sm:inset-y-auto sm:top-[40%]">
+                <div className="pointer-events-none absolute inset-x-0 top-[32%] z-10 flex -translate-y-1/2 items-center justify-center sm:top-[40%]">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
@@ -844,7 +824,7 @@ function WatchPage() {
                     <div
                       className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
                       style={{
-                        left: `${duration > 0 ? Math.min(99.3, Math.max(1.2, (currentTime / duration) * 100)) : 1.2}%`,
+                        left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
                       }}
                     />
 
