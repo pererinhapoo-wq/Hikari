@@ -618,7 +618,7 @@ function WatchPage() {
               showControls();
             }
           }}
-          className="hikari-player hikari-player-mobile-fix relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]"
+          className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]"
         >
 
           {yt ? (
@@ -707,7 +707,7 @@ function WatchPage() {
               )}
 
               {hasStarted && controlsVisible && (
-                <div className="pointer-events-none absolute inset-x-0 top-[40%] z-10 flex -translate-y-1/2 items-center justify-center">
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
@@ -749,24 +749,21 @@ function WatchPage() {
               {hasStarted && controlsVisible && (
                 <div
                   onPointerDown={showControls}
-                  className="hikari-mobile-controls absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
+                  className="absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
                 >
-                  <div className="hikari-progress-shell relative h-7 rounded-full border border-white/10 bg-black/30 px-3 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
-                    <div className="hikari-progress-track pointer-events-none absolute inset-x-3 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-white/20">
+                  <div className="relative h-7 rounded-full border border-white/10 bg-black/30 px-3 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    <div className="pointer-events-none absolute inset-x-3 top-1/2 h-1.5 -translate-y-1/2 overflow-visible rounded-full bg-white/20">
                       <div
-                        className="hikari-progress-fill h-full rounded-full bg-white/90"
+                        className="relative h-full rounded-full bg-white/90"
                         style={{
                           width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
                         }}
-                      />
+                      >
+                        <div
+                          className="absolute right-0 top-1/2 size-2 -translate-y-1/2 translate-x-1/2 rounded-full bg-[#a855f7] shadow-[0_0_8px_rgba(168,85,247,0.75)]"
+                        />
+                      </div>
                     </div>
-
-                    <div
-                      className="hikari-progress-dot pointer-events-none absolute top-1/2 z-10 size-2 -translate-y-1/2 -translate-x-1/2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.55)]"
-                      style={{
-                        left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-                      }}
-                    />
 
                     <input
                       aria-label="Progresso do episódio"
@@ -780,11 +777,11 @@ function WatchPage() {
                         if (videoRef.current) videoRef.current.currentTime = nextTime;
                         setCurrentTime(nextTime);
                       }}
-                      className="hikari-progress-input absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+                      className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
                     />
                   </div>
 
-                  <div className="hikari-time-row mt-1 flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
+                  <div className="mt-1 flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
                     <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
                       <span>{formatTime(currentTime)}</span>
                       <span className="text-white/35">/</span>
@@ -1076,66 +1073,6 @@ function WatchPage() {
         />
 
       </div>
-
-      <style>{`
-        @media (max-width: 639px), (hover: none) and (pointer: coarse) {
-          /* MOBILE ONLY: deixa o player com o visual da referência.
-             Nenhum botão/controle é criado, removido ou reposicionado. */
-          .hikari-player-mobile-fix .hikari-mobile-controls {
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            padding: 0 8px 6px !important;
-          }
-
-          .hikari-player-mobile-fix .hikari-progress-shell {
-            height: 4px !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: 0 !important;
-            border-radius: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            overflow: visible !important;
-          }
-
-          .hikari-player-mobile-fix .hikari-progress-track {
-            left: 0 !important;
-            right: 0 !important;
-            top: 50% !important;
-            height: 3px !important;
-            border-radius: 999px !important;
-            background: rgba(255,255,255,0.28) !important;
-            overflow: hidden !important;
-          }
-
-          .hikari-player-mobile-fix .hikari-progress-fill {
-            background: #a855f7 !important;
-          }
-
-          .hikari-player-mobile-fix .hikari-progress-dot {
-            width: 9px !important;
-            height: 9px !important;
-            background: #a855f7 !important;
-            box-shadow: 0 0 8px rgba(168,85,247,0.55) !important;
-            transform: translateY(-50%) translateX(0) !important;
-          }
-
-          .hikari-player-mobile-fix .hikari-time-row {
-            margin-top: 4px !important;
-            min-height: 38px !important;
-            padding: 0 2px !important;
-            border: 0 !important;
-            border-radius: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }
