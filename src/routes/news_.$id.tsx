@@ -1029,7 +1029,7 @@ function NewsDetailsPage() {
             <CalendarDays className="size-4" />
 
             <span>
-              {news.date} · {formatRelativeNewsTime(news.date, news.time)}{news.time ? ` às ${news.time}` : ""}
+              {news.date} · {formatRelativeNewsTime(news.date, news.time)}
             </span>
           </div>
 
