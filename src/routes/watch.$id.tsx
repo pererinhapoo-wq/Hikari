@@ -516,7 +516,7 @@ function WatchPage() {
       {/* CABEÇALHO */}
       {/* ================================================== */}
 
-      <header className="hidden min-h-16 items-center gap-3 px-3 py-2.5 sm:flex sm:px-5">
+      <header className="flex min-h-16 items-center gap-3 px-3 py-2.5 sm:px-5">
 
         <button
           type="button"
@@ -598,39 +598,6 @@ function WatchPage() {
           className="hikari-player relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]"
         >
 
-          {/* Cabeçalho móvel: os mesmos controles do Hikari, agora sobre o vídeo. */}
-          <div className="hikari-mobile-header pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start gap-2 px-3 pt-3 sm:hidden">
-            <button
-              type="button"
-              onClick={() => {
-                navigate({
-                  to: "/anime/$id",
-                  params: { id: anime.id },
-                });
-              }}
-              className="pointer-events-auto flex size-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/25 text-white/90 backdrop-blur-md transition active:scale-95"
-              aria-label="Voltar"
-            >
-              <ChevronLeft className="size-5" />
-            </button>
-
-            <div className="min-w-0 flex-1 pt-0.5 text-shadow-sm">
-              <Link
-                to="/anime/$id"
-                params={{ id: anime.id }}
-                className="pointer-events-auto block truncate text-[15px] font-semibold leading-tight text-white"
-              >
-                {title}
-              </Link>
-
-              <p className="truncate pt-0.5 text-[11px] leading-tight text-white/70">
-                {current
-                  ? `Episódio ${current.number} · ${current.title}`
-                  : "Trailer"}
-              </p>
-            </div>
-          </div>
-
           {yt ? (
             <iframe
               title={`${title} — player`}
@@ -660,26 +627,17 @@ function WatchPage() {
           ) : file ? (
             <>
       <style>{`
-        @media (max-width: 639px) {
-          /* MOBILE ONLY — visual integrado ao vídeo. Desktop permanece igual. */
-          .hikari-player .hikari-mobile-header {
-            background: linear-gradient(to bottom, rgba(0,0,0,.62), rgba(0,0,0,0));
-            padding-bottom: 22px;
-          }
-
-          .hikari-player .hikari-mobile-header .text-shadow-sm {
-            text-shadow: 0 1px 4px rgba(0,0,0,.95);
-          }
-
+        @media (max-width: 767px) {
+          /* MOBILE ONLY — controles sobrepostos ao vídeo, como na referência. */
           .hikari-player .hikari-mobile-controls {
             position: absolute !important;
             left: 0 !important;
             right: 0 !important;
             bottom: 0 !important;
-            height: 56px !important;
-            padding: 0 12px 4px !important;
+            height: 58px !important;
+            padding: 0 12px 5px !important;
             display: block !important;
-            background: linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0)) !important;
+            background: linear-gradient(to top, rgba(0,0,0,.68), rgba(0,0,0,0)) !important;
             z-index: 10 !important;
           }
 
@@ -690,7 +648,7 @@ function WatchPage() {
             bottom: 0 !important;
             top: auto !important;
             width: auto !important;
-            height: 3px !important;
+            height: 4px !important;
             margin: 0 !important;
             padding: 0 !important;
             border: 0 !important;
@@ -708,7 +666,7 @@ function WatchPage() {
             top: 50% !important;
             height: 2px !important;
             transform: translateY(-50%) !important;
-            background: rgba(255,255,255,.35) !important;
+            background: rgba(255,255,255,.42) !important;
             border-radius: 999px !important;
           }
 
@@ -718,8 +676,8 @@ function WatchPage() {
           }
 
           .hikari-player .hikari-progress-shell > div:nth-child(2) {
-            width: 6px !important;
-            height: 6px !important;
+            width: 7px !important;
+            height: 7px !important;
             background: #fff !important;
             box-shadow: 0 0 5px rgba(255,255,255,.55) !important;
           }
@@ -728,10 +686,10 @@ function WatchPage() {
             position: absolute !important;
             left: 12px !important;
             right: 12px !important;
-            bottom: 8px !important;
+            bottom: 9px !important;
             top: auto !important;
             width: auto !important;
-            height: 28px !important;
+            height: 30px !important;
             margin: 0 !important;
             padding: 0 !important;
             display: flex !important;
@@ -748,11 +706,11 @@ function WatchPage() {
           .hikari-player .hikari-mobile-time-row > div:first-child {
             font-size: 10px !important;
             line-height: 1 !important;
-            text-shadow: 0 1px 4px rgba(0,0,0,.95) !important;
+            text-shadow: 0 1px 3px rgba(0,0,0,.95) !important;
           }
 
           .hikari-player .hikari-mobile-time-row > div:last-child {
-            gap: 2px !important;
+            gap: 4px !important;
           }
 
           .hikari-player .hikari-volume,
@@ -772,20 +730,7 @@ function WatchPage() {
           .hikari-player .hikari-mobile-fullscreen svg {
             width: 17px !important;
             height: 17px !important;
-            filter: drop-shadow(0 1px 3px rgba(0,0,0,.95));
-          }
-
-          .hikari-player > video + div {
-            top: 50% !important;
-          }
-
-          .hikari-player .hikari-skip {
-            width: 38px !important;
-            height: 38px !important;
-            background: rgba(0,0,0,.28) !important;
-            box-shadow: 0 5px 20px rgba(0,0,0,.3) !important;
-            backdrop-filter: blur(8px) !important;
-            -webkit-backdrop-filter: blur(8px) !important;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,.95));
           }
         }
       `}</style>
@@ -822,7 +767,7 @@ function WatchPage() {
               />
 
               {controlsVisible && (
-                <div className="pointer-events-none absolute inset-x-0 top-[50%] z-10 flex -translate-y-1/2 items-center justify-center sm:top-[40%]">
+                <div className="pointer-events-none absolute inset-x-0 top-[32%] z-10 flex -translate-y-1/2 items-center justify-center sm:top-[40%]">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
