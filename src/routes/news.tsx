@@ -143,6 +143,47 @@ function parseNewsDate(
   return 0;
 }
 
+function formatRelativeNewsTime(
+  dateValue: string,
+  timeValue?: string,
+) {
+  if (!dateValue) return "";
+
+  const normalized = dateValue.trim();
+  let date: Date | null = null;
+
+  const numericMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (numericMatch) {
+    const [, day, month, year] = numericMatch;
+    date = new Date(Number(year), Number(month) - 1, Number(day));
+  } else {
+    const parsed = Date.parse(normalized);
+    if (!Number.isNaN(parsed)) date = new Date(parsed);
+  }
+
+  if (!date) return "";
+
+  if (timeValue) {
+    const timeMatch = timeValue.trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (timeMatch) {
+      date.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
+    }
+  }
+
+  const now = new Date();
+  const diffMs = Math.max(0, now.getTime() - date.getTime());
+  const minutes = Math.floor(diffMs / 60000);
+
+  if (minutes < 1) return "Há menos de 1 minuto";
+  if (minutes < 60) return `Há ${minutes} ${minutes === 1 ? "minuto" : "minutos"}`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Há ${hours} ${hours === 1 ? "hora" : "horas"}`;
+
+  const days = Math.floor(hours / 24);
+  return `Há ${days} ${days === 1 ? "dia" : "dias"}`;
+}
+
 function normalizeSearchText(
   value: string,
 ) {
@@ -831,9 +872,7 @@ function NewsPage() {
 
                               {" · "}
 
-                              {
-                                item.date
-                              }
+                              {item.date} · {formatRelativeNewsTime(item.date, "time" in item && typeof item.time === "string" ? item.time : undefined)}
                             </p>
                           </div>
                         </Link>
@@ -1215,7 +1254,7 @@ function NewsPage() {
                           ${
                             currentPage ===
                             page
-                              ? "border-fg bg-fg text-background"
+                              ? "border-accent/50 bg-accent/15 text-accent"
                               : "border-border bg-card text-muted"
                           }
                         `}
