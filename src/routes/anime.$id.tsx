@@ -57,9 +57,11 @@ export const Route = createFileRoute("/anime/$id")({
 });
 
 function AnimePage() {
-  const navigate = useNavigate();
   const { id } = Route.useParams();
   const { remote } = Route.useLoaderData();
+  const navigate = useNavigate();
+
+  const hydrated = useHikariStore((s) => s.hydrated);
 
   const { user } = useCurrentUserState();
   const canEdit = isHikariAdmin(user?.primaryEmail);
@@ -281,6 +283,14 @@ function AnimePage() {
       })),
     [currentEpisodes, currentSeason?.id],
   );
+
+  if (!anime && !hydrated) {
+    return (
+      <div className="py-24 text-center">
+        <div className="mx-auto h-8 w-48 animate-pulse rounded bg-elevated" />
+      </div>
+    );
+  }
 
   if (!anime) {
     return (
