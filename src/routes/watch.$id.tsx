@@ -676,10 +676,11 @@ function WatchPage() {
           }
 
           .hikari-player .hikari-progress-shell > div:nth-child(2) {
-            width: 6px !important;
-            height: 6px !important;
-            background: #fff !important;
-            box-shadow: 0 0 5px rgba(255,255,255,.55) !important;
+            width: 7px !important;
+            height: 7px !important;
+            background: #a855f7 !important;
+            box-shadow: 0 0 7px rgba(168,85,247,.85) !important;
+            z-index: 2 !important;
           }
 
           .hikari-player .hikari-mobile-time-row {
@@ -837,7 +838,7 @@ function WatchPage() {
                     <div
                       className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
                       style={{
-                        left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                        left: `${duration > 0 ? Math.min(99.2, Math.max(0.8, (currentTime / duration) * 100)) : 0.8}%`,
                       }}
                     />
 
