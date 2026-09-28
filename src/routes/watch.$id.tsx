@@ -183,8 +183,6 @@ function WatchPage() {
 
   useEffect(() => {
     setPlayerIndex(0);
-    setHasStarted(false);
-    setControlsVisible(false);
   }, [current?.id]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -201,7 +199,6 @@ function WatchPage() {
   const [duration, setDuration] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
@@ -233,22 +230,17 @@ function WatchPage() {
   useEffect(() => {
     clearControlsHideTimer();
 
-    if (!hasStarted) {
-      setControlsVisible(false);
-      return clearControlsHideTimer;
-    }
-
     if (isPlaying) {
+      setControlsVisible(true);
+
       controlsHideTimeoutRef.current = setTimeout(() => {
         setControlsVisible(false);
         controlsHideTimeoutRef.current = null;
       }, 5000);
-    } else {
-      setControlsVisible(true);
     }
 
     return clearControlsHideTimer;
-  }, [isPlaying, hasStarted]);
+  }, [isPlaying]);
 
   const formatTime = (seconds: number) => {
     if (!Number.isFinite(seconds) || seconds < 0) return "00:00";
@@ -283,6 +275,8 @@ function WatchPage() {
     if (!video) return;
 
     if (video.paused) {
+      showControls();
+
       try {
         await video.play();
       } catch {
@@ -290,21 +284,6 @@ function WatchPage() {
       }
     } else {
       video.pause();
-    }
-  };
-
-  const startPlayback = async () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    setHasStarted(true);
-    setControlsVisible(true);
-    clearControlsHideTimer();
-
-    try {
-      await video.play();
-    } catch {
-      // O navegador pode bloquear a reprodução programática.
     }
   };
 
@@ -653,7 +632,6 @@ function WatchPage() {
                 key={file}
                 ref={videoRef}
                 src={file ?? undefined}
-                poster={current?.thumbnail || anime.cover || undefined}
                 preload="metadata"
                 autoPlay={false}
                 playsInline
@@ -663,8 +641,6 @@ function WatchPage() {
                 onTouchEnd={handlePlayerTap}
                 style={{
                   touchAction: "pan-x",
-                  filter: "none",
-                  opacity: 1,
                 }}
                 className="relative z-0 size-full select-none bg-black object-contain"
                  data-player-video="true"
@@ -684,30 +660,21 @@ function WatchPage() {
                 }
               />
 
-              {!hasStarted && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black">
-                  {current?.thumbnail || anime.cover ? (
-                    <img
-                      src={current?.thumbnail || anime.cover || ""}
-                      alt={current?.title || title}
-                      className="absolute inset-0 size-full object-contain"
-                      draggable={false}
-                    />
-                  ) : null}
-
+              {!controlsVisible && !isPlaying && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                   <button
                     type="button"
-                    onClick={startPlayback}
-                    className="relative z-10 flex size-20 items-center justify-center rounded-full border border-white/30 bg-black/45 text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-xl transition hover:bg-white/20 active:scale-95 sm:size-24"
-                    aria-label="Reproduzir episódio"
+                    onClick={togglePlay}
+                    className="pointer-events-auto flex size-14 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:border-white/45 hover:bg-white/20 active:scale-95 sm:size-16"
+                    aria-label="Reproduzir"
                   >
-                    <Play className="ml-1 size-9 fill-current sm:size-10" />
+                    <Play className="ml-0.5 size-6 fill-current" />
                   </button>
                 </div>
               )}
 
-              {hasStarted && controlsVisible && (
-                <div className="pointer-events-none absolute inset-x-0 top-[40%] z-10 flex -translate-y-1/2 items-center justify-center">
+              {controlsVisible && (
+                <div className="pointer-events-none absolute inset-x-0 top-[50%] z-10 flex -translate-y-1/2 items-center justify-center">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
@@ -715,7 +682,7 @@ function WatchPage() {
                     <button
                       type="button"
                       onClick={() => seekBy(-10)}
-                      className="relative -translate-y-1 flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
                       aria-label="Voltar 10 segundos"
                     >
                       -10s
@@ -737,7 +704,7 @@ function WatchPage() {
                     <button
                       type="button"
                       onClick={() => seekBy(10)}
-                      className="relative -translate-y-1 flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
                       aria-label="Avançar 10 segundos"
                     >
                       +10s
@@ -746,12 +713,12 @@ function WatchPage() {
                 </div>
               )}
 
-              {hasStarted && controlsVisible && (
+              {controlsVisible && (
                 <div
                   onPointerDown={showControls}
                   className="absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
                 >
-                  <div className="relative h-7 rounded-full border border-white/10 bg-black/30 px-3 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  <div className="relative h-7 rounded-full border border-white/10 bg-transparent px-3 shadow-[0_8px_28px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.06)]">
                     <div className="pointer-events-none absolute inset-x-3 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-white/20">
                       <div
                         className="h-full rounded-full bg-white/90"
@@ -784,7 +751,7 @@ function WatchPage() {
                     />
                   </div>
 
-                  <div className="mt-1 flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
+                  <div className="mt-1 flex items-center gap-2 rounded-full border border-white/15 bg-transparent px-3 py-1.5 shadow-[0_10px_35px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
                     <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
                       <span>{formatTime(currentTime)}</span>
                       <span className="text-white/35">/</span>
@@ -4578,36 +4545,48 @@ function CommentCard({
               </label>
 
               <div className="mt-3 flex items-center justify-end gap-2">
-  <Button
-    type="button"
-    size="sm"
-    variant="outline"
-    onClick={onCancelReply}
-    disabled={replySending}
-  >
-    Cancelar
-  </Button>
 
-  <Button
-    type="button"
-    size="sm"
-    onClick={onSendReply}
-    disabled={!replyText.trim() || replySending}
-  >
-    <Send className="size-4" />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={
+                    onCancelReply
+                  }
+                  disabled={
+                    replySending
+                  }
+                >
+                  Cancelar
+                </Button>
 
-    {replySending
-      ? "Enviando..."
-      : "Responder"}
-  </Button>
-</div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={
+                    onSendReply
+                  }
+                  disabled={
+                    !replyText.trim() ||
+                    replySending
+                  }
+                >
+                  <Send className="size-4" />
 
-</div>
-)}
+                  {replySending
+                    ? "Enviando..."
+                    : "Responder"}
+                </Button>
 
-</div>
+              </div>
 
-</div>
-</article>
-);
-}
+            </div>
+          )}
+
+        </div>
+
+      </div>
+
+    </article>
+  );
+    }
