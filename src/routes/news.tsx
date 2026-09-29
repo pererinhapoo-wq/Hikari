@@ -88,6 +88,7 @@ async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
               english
               romaji
             }
+            bannerImage
             coverImage {
               extraLarge
               large
