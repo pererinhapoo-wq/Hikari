@@ -4,6 +4,11 @@ import { z } from "zod";
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
 
+const GROQ_API_URL =
+  "https://api.groq.com/openai/v1/chat/completions";
+
+const GROQ_MODEL = "openai/gpt-oss-120b";
+
 const reviewSchema = z.object({
   title: z.string().trim().min(1).max(1000),
   description: z.string().trim().max(10000).default(""),
@@ -47,57 +52,49 @@ function fallbackResult(
   };
 }
 
-function extractResponseText(json: unknown): string {
-  if (!json || typeof json !== "object") {
-    return "";
-  }
-
+function extractGeminiResponseText(json: unknown): string {
+  if (!json || typeof json !== "object") return "";
   const value = json as {
     candidates?: Array<{
-      content?: {
-        parts?: Array<{
-          text?: string;
-        }>;
-      };
+      content?: { parts?: Array<{ text?: string }> };
     }>;
   };
-
-  if (!Array.isArray(value.candidates)) {
-    return "";
-  }
-
+  if (!Array.isArray(value.candidates)) return "";
   for (const candidate of value.candidates) {
     const parts = candidate.content?.parts;
-
-    if (!Array.isArray(parts)) {
-      continue;
-    }
-
+    if (!Array.isArray(parts)) continue;
     for (const part of parts) {
-      if (
-        typeof part.text === "string" &&
-        part.text.trim()
-      ) {
+      if (typeof part.text === "string" && part.text.trim()) {
         return part.text.trim();
       }
     }
   }
-
   return "";
 }
 
-function parseJsonResult(
-  text: string,
-): HikariAIReviewResult | null {
+function extractGroqResponseText(json: unknown): string {
+  if (!json || typeof json !== "object") return "";
+  const value = json as {
+    choices?: Array<{ message?: { content?: unknown } }>;
+  };
+  if (!Array.isArray(value.choices)) return "";
+  for (const choice of value.choices) {
+    const content = choice.message?.content;
+    if (typeof content === "string" && content.trim()) {
+      return content.trim();
+    }
+  }
+  return "";
+}
+
+function parseJsonResult(text: string): HikariAIReviewResult | null {
   try {
     const cleaned = text
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")
       .replace(/\s*```$/i, "")
       .trim();
-
     const parsed = JSON.parse(cleaned) as Partial<HikariAIReviewResult>;
-
     if (
       typeof parsed.approved !== "boolean" ||
       typeof parsed.isAnime !== "boolean" ||
@@ -107,9 +104,7 @@ function parseJsonResult(
       typeof parsed.title !== "string" ||
       typeof parsed.description !== "string" ||
       typeof parsed.reason !== "string"
-    ) {
-      return null;
-    }
+    ) return null;
 
     const labels = [
       "Confirmado",
@@ -118,7 +113,6 @@ function parseJsonResult(
       "Nova temporada",
       "Anúncio",
     ] as const;
-
     const label = labels.includes(
       parsed.label as (typeof labels)[number],
     )
@@ -141,22 +135,14 @@ function parseJsonResult(
   }
 }
 
-export const reviewHikariAINews = createServerFn({
-  method: "POST",
-})
-  .inputValidator(reviewSchema)
-  .handler(async ({ data }) => {
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-
-    if (!apiKey) {
-      return fallbackResult(
-        data.title,
-        data.description,
-        "GEMINI_API_KEY ainda não está configurada no servidor.",
-      );
-    }
-
-    const prompt = `
+function buildReviewPrompt(data: {
+  title: string;
+  description: string;
+  source: string;
+  sourceUrl: string;
+  animeName: string;
+}) {
+  return `
 Você é a Hikari AI, responsável pela revisão automática
 de notícias do site Hikari.
 
@@ -237,81 +223,157 @@ DEVOLVA EXATAMENTE ESTE FORMATO JSON:
   "reason": "Motivo curto da decisão"
 }
 `;
+}
 
-    try {
-      const response = await fetch(
-        GEMINI_API_URL,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: prompt,
-                  },
-                ],
-              },
-            ],
-            generationConfig: {
-              responseMimeType: "application/json",
-              temperature: 0.1,
-            },
-          }),
-          signal: AbortSignal.timeout(30000),
+async function requestGemini(apiKey: string, prompt: string) {
+  try {
+    const response = await fetch(GEMINI_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.1,
         },
-      );
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        result: null,
+        reason: `Gemini retornou HTTP ${response.status}: ${errorText.slice(0, 300)}`,
+      };
+    }
 
-        return fallbackResult(
-          data.title,
-          data.description,
-          `Gemini retornou HTTP ${response.status}: ${errorText.slice(
-            0,
-            300,
-          )}`,
-        );
-      }
+    const json = (await response.json()) as unknown;
+    const text = extractGeminiResponseText(json);
+    if (!text) {
+      return {
+        result: null,
+        reason: "A Hikari AI não recebeu uma resposta válida do Gemini.",
+      };
+    }
 
-      const json = (await response.json()) as unknown;
+    const result = parseJsonResult(text);
+    if (!result) {
+      return {
+        result: null,
+        reason: "A resposta do Gemini não estava no formato esperado.",
+      };
+    }
 
-      const text = extractResponseText(json);
+    return { result, reason: "Gemini" };
+  } catch (error) {
+    const reason =
+      error instanceof Error
+        ? error.message
+        : "Erro desconhecido ao consultar o Gemini.";
+    return { result: null, reason: `Falha na Hikari AI: ${reason}` };
+  }
+}
 
-      if (!text) {
-        return fallbackResult(
-          data.title,
-          data.description,
-          "A Hikari AI não recebeu uma resposta válida do Gemini.",
-        );
-      }
+async function requestGroq(apiKey: string, prompt: string) {
+  try {
+    const response = await fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Você é a Hikari AI. Responda somente com JSON válido seguindo exatamente o formato solicitado.",
+          },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 1200,
+        response_format: { type: "json_object" },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
 
-      const result = parseJsonResult(text);
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        result: null,
+        reason: `Groq retornou HTTP ${response.status}: ${errorText.slice(0, 300)}`,
+      };
+    }
 
-      if (!result) {
-        return fallbackResult(
-          data.title,
-          data.description,
-          "A resposta da Hikari AI não estava no formato esperado.",
-        );
-      }
+    const json = (await response.json()) as unknown;
+    const text = extractGroqResponseText(json);
+    if (!text) {
+      return {
+        result: null,
+        reason: "A Hikari AI não recebeu uma resposta válida do Groq.",
+      };
+    }
 
-      return result;
-    } catch (error) {
-      const reason =
-        error instanceof Error
-          ? error.message
-          : "Erro desconhecido ao consultar o Gemini.";
+    const result = parseJsonResult(text);
+    if (!result) {
+      return {
+        result: null,
+        reason: "A resposta do Groq não estava no formato esperado.",
+      };
+    }
 
+    return { result, reason: "Groq" };
+  } catch (error) {
+    const reason =
+      error instanceof Error
+        ? error.message
+        : "Erro desconhecido ao consultar o Groq.";
+    return {
+      result: null,
+      reason: `Falha na Hikari AI com Groq: ${reason}`,
+    };
+  }
+}
+
+export const reviewHikariAINews = createServerFn({
+  method: "POST",
+})
+  .inputValidator(reviewSchema)
+  .handler(async ({ data }) => {
+    const prompt = buildReviewPrompt(data);
+    const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
+    const groqApiKey = process.env.GROQ_API_KEY?.trim();
+
+    let geminiReason = "";
+
+    if (geminiApiKey) {
+      const gemini = await requestGemini(geminiApiKey, prompt);
+      if (gemini.result) return gemini.result;
+      geminiReason = gemini.reason;
+    } else {
+      geminiReason =
+        "GEMINI_API_KEY ainda não está configurada no servidor.";
+    }
+
+    if (groqApiKey) {
+      const groq = await requestGroq(groqApiKey, prompt);
+      if (groq.result) return groq.result;
       return fallbackResult(
         data.title,
         data.description,
-        `Falha na Hikari AI: ${reason}`,
+        `${geminiReason} | ${groq.reason}`,
       );
     }
+
+    return fallbackResult(
+      data.title,
+      data.description,
+      `${geminiReason} | GROQ_API_KEY ainda não está configurada no servidor.`,
+    );
   });
