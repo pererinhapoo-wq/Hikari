@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { reviewHikariAINews } from "./api-hikari-ai-review";
+
 import {
   currentAnimeSeason,
   stripHtml,
@@ -1297,6 +1299,133 @@ async function fetchExternalFeed(
   return enriched;
 }
 
+const hikariAIReviewCache = new Map<
+  string,
+  {
+    at: number;
+    item: ExternalNewsItem | null;
+  }
+>();
+
+const HIKARI_AI_REVIEW_TTL = 60 * 60 * 1000;
+
+function typeFromHikariAIReview(
+  label: string,
+): {
+  type: AutomaticNewsItem["type"];
+  isRumor: boolean;
+} {
+  switch (label) {
+    case "Rumor":
+      return { type: "RUMOR", isRumor: true };
+    case "Trailer/PV":
+      return { type: "TRAILER", isRumor: false };
+    case "Nova temporada":
+      return { type: "NOVA TEMPORADA", isRumor: false };
+    case "Anúncio":
+      return { type: "ANÚNCIO", isRumor: false };
+    case "Confirmado":
+    default:
+      return { type: "NOTÍCIA", isRumor: false };
+  }
+}
+
+async function reviewExternalNewsInBatches(
+  items: ExternalNewsItem[],
+  concurrency = 3,
+): Promise<(ExternalNewsItem | null)[]> {
+  const results: (ExternalNewsItem | null)[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await reviewExternalNewsWithHikariAI(items[index]);
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(concurrency, items.length) },
+      () => worker(),
+    ),
+  );
+
+  return results;
+}
+
+async function reviewExternalNewsWithHikariAI(
+  item: ExternalNewsItem,
+): Promise<ExternalNewsItem | null> {
+  const cacheKey = `${item.url}|${item.title}`;
+  const cached = hikariAIReviewCache.get(cacheKey);
+
+  if (cached && Date.now() - cached.at <= HIKARI_AI_REVIEW_TTL) {
+    return cached.item;
+  }
+
+  try {
+    const knownAnime = item.animeId
+      ? await fetchAniListMeta(item.animeId)
+      : null;
+
+    const review = await reviewHikariAINews({
+      title: item.title,
+      description: item.description,
+      source: item.source,
+      sourceUrl: item.url,
+      animeName: knownAnime?.title || "",
+    });
+
+    if (!review.approved || !review.isAnime || review.isGameNews) {
+      hikariAIReviewCache.set(cacheKey, {
+        at: Date.now(),
+        item: null,
+      });
+      return null;
+    }
+
+    const classified = typeFromHikariAIReview(review.label);
+    const animeId =
+      item.animeId ||
+      (review.animeName
+        ? await findAniListAnimeId(review.animeName)
+        : "");
+
+    const reviewedItem: ExternalNewsItem = {
+      ...item,
+      title: finalizeExternalNewsTitle(
+        review.title || item.title,
+      ),
+      description:
+        review.description?.trim() ||
+        item.description,
+      type: classified.type,
+      isRumor: classified.isRumor,
+      animeId,
+    };
+
+    if (animeId && !item.bannerImage) {
+      const meta = await fetchAniListMeta(animeId);
+      reviewedItem.image = meta.image || reviewedItem.image;
+      reviewedItem.bannerImage = meta.bannerImage || reviewedItem.bannerImage;
+    }
+
+    hikariAIReviewCache.set(cacheKey, {
+      at: Date.now(),
+      item: reviewedItem,
+    });
+
+    return reviewedItem;
+  } catch {
+    // Se a IA estiver temporariamente indisponível, mantém a notícia
+    // original para não derrubar o feed inteiro. O filtro de jogos
+    // continua sendo aplicado antes desta etapa.
+    return item;
+  }
+}
+
 const aniListSearchCache = new Map<string, string>();
 const aniListMetaCache = new Map<string, {
   title: string;
@@ -1868,13 +1997,20 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
       Date.parse(a.publishedAt),
   );
 
+  // Revisa primeiro as notícias mais recentes. O restante continua
+  // disponível nas fontes e poderá entrar na próxima atualização do cache.
+  const candidates = sorted.slice(0, 36);
+  const reviewed = (
+    await reviewExternalNewsInBatches(candidates, 3)
+  ).filter((item): item is ExternalNewsItem => Boolean(item));
+
   return Promise.all(
-    sorted.map(async (item) => ({
+    reviewed.map(async (item) => ({
       id: item.id,
       type: item.type,
       title: item.title,
       description:
-        (await translateToPortuguese(item.description)) ||
+        item.description ||
         "Descrição indisponível.",
       date: formatExternalDate(item.publishedAt),
       image: item.image,
