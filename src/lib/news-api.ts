@@ -220,98 +220,88 @@ function cleanDescription(
 async function translateToPortuguese(
   text: string,
 ): Promise<string> {
-  const cleaned = text.trim();
+  const cleaned =
+    text.trim();
 
   if (!cleaned) {
     return "";
   }
 
-  const cached = translationCache.get(cleaned);
+  const cached =
+    translationCache.get(
+      cleaned,
+    );
 
   if (cached) {
     return cached;
   }
 
-  const googleTranslate = async (): Promise<string> => {
-    try {
-      const url =
-        "https://translate.googleapis.com/translate_a/single" +
-        "?client=gtx" +
-        "&sl=auto" +
-        "&tl=pt" +
-        "&dt=t" +
-        `&q=${encodeURIComponent(cleaned.slice(0, 5000))}`;
+  try {
+    const url =
+      "https://translate.googleapis.com/translate_a/single" +
+      "?client=gtx" +
+      "&sl=auto" +
+      "&tl=pt" +
+      "&dt=t" +
+      `&q=${encodeURIComponent(
+        cleaned.slice(0, 5000),
+      )}`;
 
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(8000),
-      });
+    const response =
+      await fetch(
+        url,
+        {
+          signal:
+            AbortSignal.timeout(
+              8000,
+            ),
+        },
+      );
 
-      if (!response.ok) {
-        return "";
-      }
+    if (!response.ok) {
+      return cleaned;
+    }
 
-      const json = (await response.json()) as unknown;
+    const json =
+      (await response.json()) as unknown;
 
-      if (!Array.isArray(json) || !Array.isArray(json[0])) {
-        return "";
-      }
+    if (
+      !Array.isArray(json) ||
+      !Array.isArray(json[0])
+    ) {
+      return cleaned;
+    }
 
-      return json[0]
+    const translated =
+      json[0]
         .filter(
           (part) =>
             Array.isArray(part) &&
-            typeof part[0] === "string",
+            typeof part[0] ===
+              "string",
         )
-        .map((part) => part[0] as string)
+        .map(
+          (part) =>
+            part[0] as string,
+        )
         .join("")
         .trim();
-    } catch {
-      return "";
+
+    if (!translated) {
+      return cleaned;
     }
-  };
 
-  const myMemoryTranslate = async (): Promise<string> => {
-    try {
-      const url =
-        "https://api.mymemory.translated.net/get" +
-        `?q=${encodeURIComponent(cleaned.slice(0, 500))}` +
-        "&langpair=en|pt-BR";
+    translationCache.set(
+      cleaned,
+      translated,
+    );
 
-      const response = await fetch(url, {
-        headers: {
-          Accept: "application/json",
-        },
-        signal: AbortSignal.timeout(8000),
-      });
-
-      if (!response.ok) {
-        return "";
-      }
-
-      const json = (await response.json()) as {
-        responseData?: { translatedText?: string };
-      };
-
-      return json.responseData?.translatedText?.trim() ?? "";
-    } catch {
-      return "";
-    }
-  };
-
-  const google = await googleTranslate();
-  if (google && google.toLowerCase() !== cleaned.toLowerCase()) {
-    translationCache.set(cleaned, google);
-    return google;
+    return translated;
+  } catch {
+    return cleaned;
   }
-
-  const fallback = await myMemoryTranslate();
-  if (fallback && fallback.toLowerCase() !== cleaned.toLowerCase()) {
-    translationCache.set(cleaned, fallback);
-    return fallback;
-  }
-
-  return cleaned;
 }
+
 async function descriptionOf(
   media: AniMedia,
 ): Promise<string> {
@@ -864,8 +854,8 @@ const EXTERNAL_NEWS_FEEDS = [
     url: "https://animecorner.me/category/anime-news/feed/",
   },
   {
-    name: "AnimeHunch",
-    url: "https://animehunch.com/feed/",
+    name: "Anime Herald",
+    url: "https://www.animeherald.com/feed/",
   },
 ] as const;
 
@@ -974,6 +964,25 @@ function isGameNews(
   ) || /(?:^|[\\s:/_-])game(?:$|[\\s:/_-])/i.test(normalized);
 }
 
+function isMangaOnlyNews(
+  title: string,
+  content: string,
+): boolean {
+  const normalized = `${title} ${content}`.toLowerCase();
+
+  const mangaSignal =
+    /\\b(manga|manhwa|manhua|chapter|chapters|volume|vol\.?|serialization|serializes|weekly shonen jump)\\b/i.test(
+      normalized,
+    );
+
+  const animeSignal =
+    /\\b(anime|tv anime|anime adaptation|anime series|season [0-9ivx]+|cour|trailer|teaser|pv|promotional video|voice cast|voice actor|voice actress|anime film|anime movie|episode|episodes|airing|premiere|broadcast|studio)\\b/i.test(
+      normalized,
+    );
+
+  return mangaSignal && !animeSignal;
+}
+
 function typeFromExternalNews(
   title: string,
 ): {
@@ -1080,7 +1089,10 @@ async function fetchExternalFeed(
       xmlAttribute(block, "enclosure", "url") ||
       imageFromHtml(content, url);
 
-    if (isGameNews(title, content, url)) {
+    if (
+      isGameNews(title, content, url) ||
+      isMangaOnlyNews(title, content)
+    ) {
       return null;
     }
 
@@ -1618,7 +1630,7 @@ export const fetchAutomaticNews =
     const current = currentAnimeSeason();
     const season = String(current.season).toUpperCase();
     const year = Number(current.year);
-    const key = `automatic-news:v2:${season}:${year}`;
+    const key = `automatic-news:v3:${season}:${year}`;
 
     const cached = fromCache(key);
     if (cached) {
