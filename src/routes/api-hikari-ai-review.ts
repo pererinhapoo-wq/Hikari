@@ -15,7 +15,7 @@ const reviewSchema = z.object({
   source: z.string().trim().max(500).default(""),
   sourceUrl: z.string().trim().max(2000).default(""),
   animeName: z.string().trim().max(500).default(""),
-  provider: z.enum(["auto", "gemini", "groq"]).default("auto"),
+  provider: z.enum(["gemini", "groq"]).optional(),
 });
 
 type HikariAIReviewResult = {
@@ -33,7 +33,7 @@ type HikariAIReviewResult = {
   title: string;
   description: string;
   reason: string;
-  provider: "Gemini" | "Groq" | "Fallback";
+  provider?: "Gemini" | "Groq";
 };
 
 function fallbackResult(
@@ -51,7 +51,6 @@ function fallbackResult(
     title,
     description,
     reason,
-    provider: "Fallback",
   };
 }
 
@@ -347,24 +346,11 @@ async function requestGroq(apiKey: string, prompt: string) {
 export const reviewHikariAINews = createServerFn({
   method: "POST",
 })
-  .validator(reviewSchema)
+  .inputValidator(reviewSchema)
   .handler(async ({ data }) => {
     const prompt = buildReviewPrompt(data);
     const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
     const groqApiKey = process.env.GROQ_API_KEY?.trim();
-
-    if (data.provider === "groq") {
-      if (!groqApiKey) {
-        return fallbackResult(
-          data.title,
-          data.description,
-          "GROQ_API_KEY ainda não está configurada no servidor.",
-        );
-      }
-      const groq = await requestGroq(groqApiKey, prompt);
-      if (groq.result) return { ...groq.result, provider: "Groq" as const };
-      return fallbackResult(data.title, data.description, groq.reason);
-    }
 
     let geminiReason = "";
 
