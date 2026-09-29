@@ -231,6 +231,10 @@ function HikariAIPage() {
               {testing ? <Loader2 className="size-4 animate-spin" /> : <Bot className="size-4" />}
               Testar Groq
             </Button>
+            <Button type="button" variant="outline" onClick={() => handleTestAI("auto")} disabled={testing}>
+              {testing ? <Loader2 className="size-4 animate-spin" /> : <Bot className="size-4" />}
+              Testar Fallback
+            </Button>
           </div>
         </div>
 
