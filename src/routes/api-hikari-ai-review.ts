@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const OPENAI_API_URL = "https://api.openai.com/v1/responses";
-const OPENAI_MODEL = "gpt-5.6-luna";
+const GEMINI_API_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent";
 
 const reviewSchema = z.object({
   title: z.string().trim().min(1).max(1000),
@@ -53,38 +53,32 @@ function extractResponseText(json: unknown): string {
   }
 
   const value = json as {
-    output_text?: string;
-    output?: Array<{
-      content?: Array<{
-        type?: string;
-        text?: string;
-      }>;
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{
+          text?: string;
+        }>;
+      };
     }>;
   };
 
-  if (
-    typeof value.output_text === "string" &&
-    value.output_text.trim()
-  ) {
-    return value.output_text.trim();
-  }
-
-  if (!Array.isArray(value.output)) {
+  if (!Array.isArray(value.candidates)) {
     return "";
   }
 
-  for (const item of value.output) {
-    if (!Array.isArray(item.content)) {
+  for (const candidate of value.candidates) {
+    const parts = candidate.content?.parts;
+
+    if (!Array.isArray(parts)) {
       continue;
     }
 
-    for (const content of item.content) {
+    for (const part of parts) {
       if (
-        content.type === "output_text" &&
-        typeof content.text === "string" &&
-        content.text.trim()
+        typeof part.text === "string" &&
+        part.text.trim()
       ) {
-        return content.text.trim();
+        return part.text.trim();
       }
     }
   }
@@ -96,7 +90,13 @@ function parseJsonResult(
   text: string,
 ): HikariAIReviewResult | null {
   try {
-    const parsed = JSON.parse(text) as Partial<HikariAIReviewResult>;
+    const cleaned = text
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+    const parsed = JSON.parse(cleaned) as Partial<HikariAIReviewResult>;
 
     if (
       typeof parsed.approved !== "boolean" ||
@@ -146,13 +146,13 @@ export const reviewHikariAINews = createServerFn({
 })
   .inputValidator(reviewSchema)
   .handler(async ({ data }) => {
-    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
 
     if (!apiKey) {
       return fallbackResult(
         data.title,
         data.description,
-        "OPENAI_API_KEY ainda não está configurada no servidor.",
+        "GEMINI_API_KEY ainda não está configurada no servidor.",
       );
     }
 
@@ -239,16 +239,26 @@ JSON OBRIGATÓRIO:
 
     try {
       const response = await fetch(
-        OPENAI_API_URL,
+        `${GEMINI_API_URL}?key=${encodeURIComponent(apiKey)}`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: OPENAI_MODEL,
-            input: prompt,
+            contents: [
+              {
+                parts: [
+                  {
+                    text: prompt,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.1,
+            },
           }),
           signal: AbortSignal.timeout(30000),
         },
@@ -260,7 +270,7 @@ JSON OBRIGATÓRIO:
         return fallbackResult(
           data.title,
           data.description,
-          `OpenAI retornou HTTP ${response.status}: ${errorText.slice(
+          `Gemini retornou HTTP ${response.status}: ${errorText.slice(
             0,
             300,
           )}`,
@@ -275,7 +285,7 @@ JSON OBRIGATÓRIO:
         return fallbackResult(
           data.title,
           data.description,
-          "A Hikari AI não recebeu uma resposta válida da OpenAI.",
+          "A Hikari AI não recebeu uma resposta válida do Gemini.",
         );
       }
 
@@ -294,7 +304,7 @@ JSON OBRIGATÓRIO:
       const reason =
         error instanceof Error
           ? error.message
-          : "Erro desconhecido ao consultar a OpenAI.";
+          : "Erro desconhecido ao consultar o Gemini.";
 
       return fallbackResult(
         data.title,
