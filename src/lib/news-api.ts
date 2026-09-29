@@ -198,10 +198,15 @@ function formatAiringDate(
 function titleOf(
   media: AniMedia,
 ): string {
+  // O nome do anime nunca deve cair para "native",
+  // pois isso pode retornar caracteres japoneses.
+  // A prioridade é sempre:
+  // 1. Inglês
+  // 2. Romaji
+  // 3. "Anime" como último recurso
   return (
-    media.title?.english ||
-    media.title?.romaji ||
-    media.title?.native ||
+    media.title?.english?.trim() ||
+    media.title?.romaji?.trim() ||
     "Anime"
   );
 }
@@ -259,7 +264,7 @@ async function translateToPortuguese(
       );
 
     if (!response.ok) {
-      return cleaned;
+      return "Descrição em português indisponível.";
     }
 
     const json =
@@ -269,7 +274,7 @@ async function translateToPortuguese(
       !Array.isArray(json) ||
       !Array.isArray(json[0])
     ) {
-      return cleaned;
+      return "Descrição em português indisponível.";
     }
 
     const translated =
@@ -288,7 +293,7 @@ async function translateToPortuguese(
         .trim();
 
     if (!translated) {
-      return cleaned;
+      return "Descrição em português indisponível.";
     }
 
     translationCache.set(
@@ -298,7 +303,7 @@ async function translateToPortuguese(
 
     return translated;
   } catch {
-    return cleaned;
+    return "Descrição em português indisponível.";
   }
 }
 
@@ -1235,7 +1240,7 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
       title: item.title,
       description:
         (await translateToPortuguese(item.description)) ||
-        "Descrição indisponível.",
+        "Descrição em português indisponível.",
       date: formatExternalDate(item.publishedAt),
       image: item.image,
       animeId: item.animeId,
