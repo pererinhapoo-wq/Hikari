@@ -854,8 +854,12 @@ const EXTERNAL_NEWS_FEEDS = [
     url: "https://animecorner.me/category/anime-news/feed/",
   },
   {
-    name: "Anime News Network",
-    url: "https://www.animenewsnetwork.com/all/rss.xml?ann-edition=us",
+    name: "Anime Trending",
+    url: "https://www.anitrendz.com/news/feed",
+  },
+  {
+    name: "Anime Herald",
+    url: "https://www.animeherald.com/feed",
   },
 ] as const;
 
