@@ -32,6 +32,7 @@ export type AutomaticNewsItem = {
   publishedAt?: string;
   articleImages?: string[];
   isRumor?: boolean;
+  xPosts?: string[];
 };
 
 const ANILIST =
@@ -198,15 +199,10 @@ function formatAiringDate(
 function titleOf(
   media: AniMedia,
 ): string {
-  // O nome do anime nunca deve cair para "native",
-  // pois isso pode retornar caracteres japoneses.
-  // A prioridade é sempre:
-  // 1. Inglês
-  // 2. Romaji
-  // 3. "Anime" como último recurso
   return (
-    media.title?.english?.trim() ||
-    media.title?.romaji?.trim() ||
+    media.title?.english ||
+    media.title?.romaji ||
+    media.title?.native ||
     "Anime"
   );
 }
@@ -225,142 +221,93 @@ function cleanDescription(
 async function translateToPortuguese(
   text: string,
 ): Promise<string> {
-  const cleaned = text.trim();
+  const cleaned =
+    text.trim();
 
   if (!cleaned) {
     return "";
   }
 
-  const cached = translationCache.get(cleaned);
+  const cached =
+    translationCache.get(
+      cleaned,
+    );
+
   if (cached) {
     return cached;
   }
 
-  // Primeiro tenta MyMemory. É uma API pública simples e não exige chave
-  // para esse uso; se falhar, tenta o endpoint do Google.
-  try {
-    const myMemoryUrl =
-      "https://api.mymemory.translated.net/get" +
-      `?q=${encodeURIComponent(cleaned.slice(0, 4500))}` +
-      "&langpair=en|pt-BR";
+  const source = cleaned.slice(
+    0,
+    5000,
+  );
 
-    const response = await fetch(myMemoryUrl, {
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "Hikari/1.0 (anime news)",
-      },
-    });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const url =
+        "https://translate.googleapis.com/translate_a/single" +
+        "?client=gtx" +
+        "&sl=auto" +
+        "&tl=pt" +
+        "&dt=t" +
+        `&q=${encodeURIComponent(source)}`;
 
-    if (response.ok) {
-      const json = (await response.json()) as {
-        responseData?: {
-          translatedText?: string;
-        };
-      };
+      const response =
+        await fetch(
+          url,
+          {
+            signal:
+              AbortSignal.timeout(
+                8000,
+              ),
+          },
+        );
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const json =
+        (await response.json()) as unknown;
+
+      if (
+        !Array.isArray(json) ||
+        !Array.isArray(json[0])
+      ) {
+        continue;
+      }
 
       const translated =
-        json.responseData?.translatedText?.trim() || "";
+        json[0]
+          .filter(
+            (part) =>
+              Array.isArray(part) &&
+              typeof part[0] ===
+                "string",
+          )
+          .map(
+            (part) =>
+              part[0] as string,
+          )
+          .join("")
+          .trim();
 
-      if (
-        translated &&
-        translated.toLowerCase() !== cleaned.toLowerCase()
-      ) {
-        translationCache.set(cleaned, translated);
-        return translated;
+      if (!translated) {
+        continue;
       }
+
+      translationCache.set(
+        cleaned,
+        translated,
+      );
+
+      return translated;
+    } catch {
+      // Tenta novamente uma vez antes de devolver o texto original.
     }
-  } catch {
-    // Tenta o segundo provedor abaixo.
   }
 
-  try {
-    const url =
-      "https://translate.googleapis.com/translate_a/single" +
-      "?client=gtx" +
-      "&sl=auto" +
-      "&tl=pt" +
-      "&dt=t" +
-      `&q=${encodeURIComponent(cleaned.slice(0, 5000))}`;
-
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "Hikari/1.0 (anime news)",
-      },
-    });
-
-    if (response.ok) {
-      const json = (await response.json()) as unknown;
-
-      if (
-        Array.isArray(json) &&
-        Array.isArray(json[0])
-      ) {
-        const translated =
-          json[0]
-            .filter(
-              (part) =>
-                Array.isArray(part) &&
-                typeof part[0] === "string",
-            )
-            .map((part) => part[0] as string)
-            .join("")
-            .trim();
-
-        if (translated) {
-          translationCache.set(cleaned, translated);
-          return translated;
-        }
-      }
-    }
-  } catch {
-    // Usa o fallback seguro abaixo.
-  }
-
-  return "";
-}
-
-async function translateNewsTitle(
-  title: string,
-  animeName: string,
-): Promise<string> {
-  const cleanedTitle = title.trim();
-  const cleanAnimeName = animeName.trim();
-
-  if (!cleanedTitle) {
-    return "";
-  }
-
-  if (!cleanAnimeName) {
-    const translated = await translateToPortuguese(cleanedTitle);
-    return translated || cleanedTitle;
-  }
-
-  // Protege o nome oficial do anime para traduzir somente o restante.
-  const token = "__HIKARI_ANIME_NAME__";
-  const escaped = cleanAnimeName.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&",
-  );
-
-  const protectedTitle = cleanedTitle.replace(
-    new RegExp(escaped, "ig"),
-    token,
-  );
-
-  const translated = await translateToPortuguese(protectedTitle);
-
-  if (!translated) {
-    // Nunca mostra mensagem de erro como título.
-    return cleanedTitle;
-  }
-
-  return translated
-    .replace(new RegExp(token, "g"), cleanAnimeName)
-    .replace(/\s+/g, " ")
-    .trim();
+  return cleaned;
 }
 
 async function descriptionOf(
@@ -381,11 +328,8 @@ async function descriptionOf(
     }.`;
   }
 
-  const translated = await translateToPortuguese(description);
-
-  return (
-    translated ||
-    `${titleOf(media)} — descrição da notícia em português indisponível no momento.`
+  return translateToPortuguese(
+    description,
   );
 }
 
@@ -906,14 +850,46 @@ type ExternalNewsItem = {
   isRumor: boolean;
   animeId: string;
   trailerUrl?: string;
+  xPosts?: string[];
 };
 
-const EXTERNAL_NEWS_FEEDS = [
+type ExternalNewsFeed =
+  | {
+      kind: "rss";
+      name: string;
+      url: string;
+    }
+  | {
+      kind: "x-mirror";
+      name: string;
+      url: string;
+      handle: string;
+    };
+
+const EXTERNAL_NEWS_FEEDS: ExternalNewsFeed[] = [
   {
+    kind: "rss",
+    name: "MyAnimeList",
+    url: "https://myanimelist.net/rss/news.xml",
+  },
+  {
+    kind: "rss",
     name: "Anime Corner",
     url: "https://animecorner.me/category/anime-news/feed/",
   },
-] as const;
+  {
+    kind: "x-mirror",
+    name: "SugoiLITE",
+    handle: "SugoiLITE",
+    url: "https://twstalker.com/SugoiLITE",
+  },
+  {
+    kind: "x-mirror",
+    name: "SugoiBingus",
+    handle: "SugoiBingus",
+    url: "https://twstalker.com/SugoiBingus",
+  },
+];
 
 function xmlDecode(value: string): string {
   return value
@@ -1082,11 +1058,127 @@ function formatExternalDate(
   }).format(new Date(timestamp));
 }
 
-async function fetchExternalFeed(
-  feed: (typeof EXTERNAL_NEWS_FEEDS)[number],
+
+async function fetchSugoiMirrorFeed(
+  feed: Extract<ExternalNewsFeed, { kind: "x-mirror" }>,
 ): Promise<ExternalNewsItem[]> {
   const response = await fetch(feed.url, {
-    cache: "no-store",
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "User-Agent": "Hikari/1.0 (anime news)",
+    },
+    signal: AbortSignal.timeout(12000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`${feed.name} indisponível (${response.status})`);
+  }
+
+  const html = await response.text();
+  const statusPattern = new RegExp(
+    `href=["']/${feed.handle}/status/(\\d+)["']`,
+    "gi",
+  );
+  const ids = new Set<string>();
+  let match: RegExpExecArray | null;
+
+  while ((match = statusPattern.exec(html)) && ids.size < 12) {
+    ids.add(match[1]);
+  }
+
+  const items = await Promise.all(
+    Array.from(ids).map(async (statusId): Promise<ExternalNewsItem | null> => {
+      const xUrl = `https://x.com/${feed.handle}/status/${statusId}`;
+      const mirrorUrl = `${feed.url}/status/${statusId}`;
+
+      try {
+        const statusResponse = await fetch(mirrorUrl, {
+          headers: {
+            Accept: "text/html,application/xhtml+xml",
+            "User-Agent": "Hikari/1.0 (anime news)",
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (!statusResponse.ok) {
+          return null;
+        }
+
+        const statusHtml = await statusResponse.text();
+        const description =
+          statusHtml.match(
+            /<meta[^>]+(?:property|name)=["'](?:og:description|description)["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+          )?.[1] ??
+          statusHtml.match(
+            /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:description|description)["'][^>]*>/i,
+          )?.[1] ??
+          "";
+
+        const ogTitle =
+          statusHtml.match(
+            /<meta[^>]+(?:property|name)=["']og:title["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+          )?.[1] ??
+          statusHtml.match(
+            /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:title["'][^>]*>/i,
+          )?.[1] ??
+          "";
+
+        const text = stripMarkup(description || ogTitle)
+          .replace(/^Sugoi(?: LITE|Bingus)?\s+(?:on X|on Twitter)\s*[:\-]?\s*/i, "")
+          .trim();
+
+        if (!text) {
+          return null;
+        }
+
+        const publishedAt =
+          statusHtml.match(
+            /<meta[^>]+(?:property|name)=["'](?:article:published_time|datePublished)["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+          )?.[1] ??
+          statusHtml.match(
+            /<time[^>]+datetime=["']([^"']+)["'][^>]*>/i,
+          )?.[1] ??
+          "";
+
+        const image = imageFromHtml(statusHtml, mirrorUrl);
+        const articleImages = imagesFromHtml(statusHtml, mirrorUrl);
+        if (isGameNews(text, "", xUrl)) {
+          return null;
+        }
+
+        return {
+          id: `sugoi-${feed.handle.toLowerCase()}-${statusId}`,
+          title: text,
+          description: text,
+          publishedAt: publishedAt && !Number.isNaN(Date.parse(publishedAt))
+            ? new Date(publishedAt).toISOString()
+            : new Date().toISOString(),
+          url: xUrl,
+          image: image || articleImages[0] || "",
+          articleImages,
+          source: feed.name,
+          type: "RUMOR",
+          isRumor: true,
+          animeId: "",
+          xPosts: [xUrl],
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return items.filter(Boolean) as ExternalNewsItem[];
+}
+
+async function fetchExternalFeed(
+  feed: ExternalNewsFeed,
+): Promise<ExternalNewsItem[]> {
+  if (feed.kind === "x-mirror") {
+    return fetchSugoiMirrorFeed(feed);
+  }
+
+  const response = await fetch(feed.url, {
     headers: {
       Accept: "application/rss+xml, application/xml, text/xml",
       "User-Agent": "Hikari/1.0 (anime news)",
@@ -1101,7 +1193,7 @@ async function fetchExternalFeed(
   const xml = await response.text();
   const blocks = xml.match(/<item\b[\s\S]*?<\/item>/gi) ?? [];
 
-  const parsed = blocks.slice(0, 50).map((block): ExternalNewsItem | null => {
+  const parsed = blocks.slice(0, 30).map((block): ExternalNewsItem | null => {
     const url =
       xmlTag(block, "link") ||
       xmlAttribute(block, "guid", "isPermaLink");
@@ -1184,22 +1276,7 @@ async function fetchExternalFeed(
         // Mantém o item do RSS mesmo se a página original falhar.
       }
 
-      const animeName = await findAniListAnimeName(item.title);
       const animeId = await findAniListAnimeId(item.title);
-
-      if (animeName) {
-        item.title = await translateNewsTitle(
-          item.title,
-          animeName,
-        );
-      } else {
-        const translatedTitle =
-          await translateToPortuguese(item.title);
-
-        item.title =
-          translatedTitle || item.title;
-      }
-
       item.animeId = animeId;
 
       if (item.type === "TRAILER" && item.url.includes("youtube.com")) {
@@ -1214,180 +1291,6 @@ async function fetchExternalFeed(
 }
 
 const aniListSearchCache = new Map<string, string>();
-
-const aniListAnimeNameCache = new Map<string, string>();
-
-function extractAnimeNameFallback(newsTitle: string): string {
-  let value = newsTitle
-    .replace(/\s+/g, " ")
-    .trim();
-
-  // Remove common article suffixes while preserving the franchise name.
-  value = value
-    .replace(/\s+(?:anime|manga)\s+(?:reveals?|announces?|announced|gets|receives?|confirms?|confirmed)\b[\s\S]*$/i, "")
-    .replace(/\s+(?:gets|receives?|announces?|announced|reveals?|revealed|confirms?|confirmed)\s+(?:an|a)\s+anime\b[\s\S]*$/i, "")
-    .replace(/\s+first\s+theatrical\s+anime\s+film\s+project\s+announced[\s\S]*$/i, "")
-    .replace(/\s+first\s+theatrical\s+anime\s+film\s+project\b[\s\S]*$/i, "")
-    .replace(/\s+(?:season|cour)\s+[0-9ivx]+\b[\s\S]*$/i, "")
-    .replace(/\s+(?:reveals?|revealed|announces?|announced|gets|receives?|confirms?|confirmed)\b[\s\S]*$/i, "")
-    .trim();
-
-  // Detecta formatos comuns em que o nome da franquia aparece antes de
-  // "Anime/Manga" ou no meio do título. Isso evita que o título inteiro
-  // seja tratado como nome do anime quando o AniList estiver indisponível.
-  const beforeAnime = newsTitle.match(
-    /^(.+?)\s+(?:anime|manga)\s+(?:to|reveals?|revealed|announces?|announced|gets|receives?|confirms?|confirmed)\b/i,
-  );
-
-  if (beforeAnime?.[1]) {
-    value = beforeAnime[1].trim();
-  } else {
-    const inEpisode = newsTitle.match(
-      /\bin\s+(.+?)\s+episode\s+\d+\b/i,
-    );
-
-    if (inEpisode?.[1]) {
-      value = inEpisode[1].trim();
-    }
-  }
-
-  // Strip a trailing article descriptor if the previous rules left one.
-  value = value
-    .replace(/\s+(?:anime|manga)\s*$/i, "")
-    .trim();
-
-  // Avoid returning a generic fragment.
-  if (value.length < 3 || /^(anime|manga|season|cour)$/i.test(value)) {
-    return "";
-  }
-
-  return value;
-}
-
-async function findAniListAnimeName(
-  newsTitle: string,
-): Promise<string> {
-  // Tenta várias formas do título original. Remover palavras demais antes
-  // da busca fazia alguns títulos não encontrarem o anime no AniList; quando
-  // isso acontecia, o tradutor acabava traduzindo o nome do anime também.
-  const original = newsTitle
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const candidates = Array.from(
-    new Set(
-      [
-        original,
-        original
-          .replace(
-            /\b(reveals?|revealed|announces?|announced|gets|receives?|reveals?|confirms?|confirmed)\b[\s\S]*$/i,
-            "",
-          )
-          .replace(/\s+/g, " ")
-          .trim(),
-        original
-          .replace(
-            /\b(first|new|official)\s+(trailer|teaser|visual|key visual|poster|pv)\b[\s\S]*$/i,
-            "",
-          )
-          .replace(/\s+/g, " ")
-          .trim(),
-        original
-          .replace(
-            /\b(anime|manga)\s+(reveals?|announces?|announced|gets|receives?|confirms?|confirmed)\b[\s\S]*$/i,
-            "",
-          )
-          .replace(/\s+/g, " ")
-          .trim(),
-      ].filter((value) => value.length >= 3),
-    ),
-  );
-
-  for (const candidate of candidates) {
-    const key = candidate.toLowerCase();
-    const cached = aniListAnimeNameCache.get(key);
-    if (cached) {
-      return cached;
-    }
-
-    try {
-      const response = await fetch(ANILIST, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          query: `
-            query FindAnimeName($search: String) {
-              Page(page: 1, perPage: 5) {
-                media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
-                  id
-                  isAdult
-                  title {
-                    english
-                    romaji
-                  }
-                }
-              }
-            }
-          `,
-          variables: { search: candidate.slice(0, 120) },
-        }),
-        signal: AbortSignal.timeout(8000),
-      });
-
-      if (!response.ok) {
-        continue;
-      }
-
-      const json = (await response.json()) as {
-        data?: {
-          Page?: {
-            media?: {
-              id: number;
-              isAdult?: boolean | null;
-              title?: {
-                english?: string | null;
-                romaji?: string | null;
-              } | null;
-            }[];
-          };
-        };
-      };
-
-      const media =
-        json.data?.Page?.media ?? [];
-
-      const match =
-        media.find(
-          (item) => item.isAdult !== true,
-        ) ?? media[0];
-
-      const animeName =
-        match?.title?.english?.trim() ||
-        match?.title?.romaji?.trim() ||
-        "";
-
-      if (animeName) {
-        // Cacheia todas as formas testadas para evitar novas consultas.
-        for (const value of candidates) {
-          aniListAnimeNameCache.set(
-            value.toLowerCase(),
-            animeName,
-          );
-        }
-        return animeName;
-      }
-    } catch {
-      // Tenta a próxima forma do título.
-    }
-  }
-
-  // If AniList is unavailable or does not match the title, keep a likely
-  // franchise name instead of translating the anime name into Portuguese.
-  return extractAnimeNameFallback(original);
-}
 
 async function findAniListAnimeId(
   newsTitle: string,
@@ -1488,7 +1391,7 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
       title: item.title,
       description:
         (await translateToPortuguese(item.description)) ||
-        "A descrição em português está temporariamente indisponível.",
+        "Descrição indisponível.",
       date: formatExternalDate(item.publishedAt),
       image: item.image,
       animeId: item.animeId,
@@ -1498,6 +1401,7 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
       publishedAt: item.publishedAt,
       articleImages: item.articleImages,
       isRumor: item.isRumor,
+      xPosts: item.xPosts,
     })),
   );
 }
