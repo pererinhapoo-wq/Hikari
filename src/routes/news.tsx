@@ -242,6 +242,15 @@ function NewsPage() {
 
   /*
    * =========================================================
+   * BANNER DE DESTAQUE
+   * =========================================================
+   * Banner exclusivo da /news.
+   * Não altera os botões Voltar/Buscar nem a paginação.
+   */
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+
+  /*
+   * =========================================================
    * NOTÍCIAS
    * =========================================================
    */
@@ -259,6 +268,35 @@ function NewsPage() {
         ),
     );
   }, [loaderNews]);
+
+  const featuredNews = useMemo(() => {
+    return news.slice(0, 5);
+  }, [news]);
+
+  useEffect(() => {
+    if (featuredNews.length <= 1) {
+      setFeaturedIndex(0);
+      return;
+    }
+
+    if (featuredIndex >= featuredNews.length) {
+      setFeaturedIndex(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setFeaturedIndex((current) =>
+        (current + 1) % featuredNews.length,
+      );
+    }, 6000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [featuredNews.length, featuredIndex]);
+
+  const featuredItem =
+    featuredNews[featuredIndex] ?? featuredNews[0];
 
   /*
    * =========================================================
@@ -983,6 +1021,162 @@ function NewsPage() {
             </div>
           </div>
         </section>
+
+        {/* =====================================================
+            BANNER DE DESTAQUE DA /NEWS
+        ====================================================== */}
+
+        {!isSearchMode && featuredItem && (
+          <section className="mb-7">
+            <Link
+              to="/news/$id"
+              params={{
+                id: featuredItem.id,
+              }}
+              search={{
+                page: currentPage,
+              }}
+              className="
+                group
+                relative
+                block
+                overflow-hidden
+                rounded-3xl
+                border
+                border-border
+                bg-card
+                shadow-sm
+              "
+            >
+              <div
+                className="
+                  relative
+                  aspect-[16/8]
+                  min-h-[220px]
+                  w-full
+                  overflow-hidden
+                  bg-black
+                  sm:aspect-[16/7]
+                  lg:aspect-[16/6]
+                "
+              >
+                <img
+                  src={featuredItem.image}
+                  alt={featuredItem.title}
+                  className="
+                    absolute
+                    inset-0
+                    h-full
+                    w-full
+                    object-cover
+                    transition-transform
+                    duration-700
+                    group-hover:scale-[1.02]
+                  "
+                  loading="eager"
+                />
+
+                <div
+                  className="
+                    absolute
+                    inset-0
+                    bg-gradient-to-t
+                    from-black
+                    via-black/55
+                    to-black/5
+                  "
+                />
+
+                <div
+                  className="
+                    absolute
+                    inset-x-0
+                    bottom-0
+                    p-5
+                    sm:p-7
+                    lg:p-8
+                  "
+                >
+                  <span
+                    className="
+                      inline-flex
+                      rounded-md
+                      bg-black/70
+                      px-2
+                      py-1
+                      text-[10px]
+                      font-semibold
+                      uppercase
+                      tracking-wide
+                      text-white
+                    "
+                  >
+                    {featuredItem.type}
+                  </span>
+
+                  <h2
+                    className="
+                      mt-3
+                      max-w-4xl
+                      line-clamp-2
+                      text-xl
+                      font-bold
+                      leading-tight
+                      text-white
+                      sm:text-2xl
+                      lg:text-3xl
+                    "
+                  >
+                    {featuredItem.title}
+                  </h2>
+
+                  <p
+                    className="
+                      mt-2
+                      hidden
+                      max-w-3xl
+                      line-clamp-2
+                      text-sm
+                      leading-relaxed
+                      text-white/75
+                      sm:block
+                    "
+                  >
+                    {featuredItem.description}
+                  </p>
+                </div>
+              </div>
+
+              <div
+                className="
+                  flex
+                  items-center
+                  justify-center
+                  gap-1.5
+                  bg-card
+                  px-4
+                  py-3
+                "
+              >
+                {featuredNews.map((item, index) => (
+                  <span
+                    key={item.id}
+                    className={`
+                      h-1.5
+                      rounded-full
+                      transition-all
+                      ${
+                        index === featuredIndex
+                          ? "w-6 bg-accent"
+                          : "w-1.5 bg-muted/50"
+                      }
+                    `}
+                  />
+                ))}
+              </div>
+            </Link>
+          </section>
+        )}
 
         {/* =====================================================
             CONTADOR
