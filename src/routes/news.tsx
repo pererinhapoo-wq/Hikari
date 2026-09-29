@@ -1793,8 +1793,8 @@ function NewsPage() {
             <div
               className="
                 grid
-                grid-cols-3
-                gap-2
+                grid-cols-2
+                gap-3
                 sm:grid-cols-2
                 sm:gap-4
                 lg:grid-cols-4
@@ -1816,16 +1816,16 @@ function NewsPage() {
                     <img
                       src={item.image}
                       alt={item.title}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-contain object-center"
                       loading="lazy"
                     />
                   </div>
 
-                  <div className="p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+                  <div className="p-3 sm:p-4">
+                    <p className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-accent sm:text-xs">
                       {formatCalendarDay(item.airingAt)} · {formatCalendarTime(item.airingAt)}
                     </p>
-                    <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-snug">
+                    <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-snug sm:text-base">
                       {item.title}
                     </h3>
                     <p className="mt-2 text-xs text-muted">
