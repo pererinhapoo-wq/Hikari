@@ -60,6 +60,108 @@ export const Route = createFileRoute(
 
 const NEWS_PER_PAGE = 8;
 
+type AnimeCalendarItem = {
+  id: number;
+  episode: number;
+  airingAt: number;
+  title: string;
+  image: string;
+};
+
+async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
+  const now = Math.floor(Date.now() / 1000);
+  const sevenDays = now + 7 * 24 * 60 * 60;
+
+  const query = `
+    query ($airingAtGreater: Int, $airingAtLesser: Int) {
+      Page(perPage: 20) {
+        airingSchedules(
+          airingAt_greater: $airingAtGreater
+          airingAt_lesser: $airingAtLesser
+          sort: TIME
+        ) {
+          airingAt
+          episode
+          media {
+            id
+            title {
+              english
+              romaji
+            }
+            coverImage {
+              large
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          airingAtGreater: now,
+          airingAtLesser: sevenDays,
+        },
+      }),
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const schedules = data?.data?.Page?.airingSchedules;
+
+    if (!Array.isArray(schedules)) return [];
+
+    return schedules
+      .filter(
+        (item: any) =>
+          item?.media &&
+          (item.media.title?.english || item.media.title?.romaji) &&
+          item?.airingAt &&
+          item?.episode,
+      )
+      .map((item: any) => ({
+        id: Number(item.media.id),
+        episode: Number(item.episode),
+        airingAt: Number(item.airingAt),
+        title:
+          item.media.title?.english?.trim() ||
+          item.media.title?.romaji?.trim() ||
+          "Anime",
+        image: item.media.coverImage?.large || "",
+      }))
+      .filter((item: AnimeCalendarItem) => item.image)
+      .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+function formatCalendarDay(timestamp: number) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  })
+    .format(new Date(timestamp * 1000))
+    .replace(".", "")
+    .replace(/\b\w/, (letter) => letter.toUpperCase());
+}
+
+function formatCalendarTime(timestamp: number) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp * 1000));
+}
+
 function parseNewsDate(
   date: string,
 ) {
@@ -248,6 +350,7 @@ function NewsPage() {
    * Não altera os botões Voltar/Buscar nem a paginação.
    */
   const [featuredIndex, setFeaturedIndex] = useState(0);
+  const [calendarEpisodes, setCalendarEpisodes] = useState<AnimeCalendarItem[]>([]);
 
   /*
    * =========================================================
@@ -297,6 +400,18 @@ function NewsPage() {
 
   const featuredItem =
     featuredNews[featuredIndex] ?? featuredNews[0];
+
+  useEffect(() => {
+    let active = true;
+
+    void fetchAnimeCalendar().then((items) => {
+      if (active) setCalendarEpisodes(items);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   /*
    * =========================================================
@@ -1523,9 +1638,6 @@ function NewsPage() {
                   <h2 className="text-xl font-semibold tracking-tight">
                     Em alta
                   </h2>
-                  <p className="mt-1 text-sm text-muted">
-                    Destaques atualizados automaticamente pelas notícias mais recentes.
-                  </p>
                 </div>
 
                 <div
@@ -1659,6 +1771,77 @@ function NewsPage() {
                 .
               </p>
             )}
+          </section>
+        )}
+
+        {/* =================================================
+            CALENDÁRIO DE ANIME
+        ================================================== */}
+
+        {!isSearchMode && calendarEpisodes.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold tracking-tight">
+                Calendário de Anime
+              </h2>
+            </div>
+
+            <div
+              className="
+                flex
+                gap-4
+                overflow-x-auto
+                pb-2
+                snap-x
+                snap-mandatory
+                [scrollbar-width:none]
+                [&::-webkit-scrollbar]:hidden
+                sm:grid
+                sm:grid-cols-2
+                sm:overflow-visible
+                lg:grid-cols-4
+              "
+            >
+              {calendarEpisodes.map((item) => (
+                <article
+                  key={`${item.id}-${item.airingAt}-${item.episode}`}
+                  className="
+                    w-[78vw]
+                    max-w-[300px]
+                    shrink-0
+                    snap-start
+                    overflow-hidden
+                    rounded-3xl
+                    border
+                    border-border
+                    bg-card
+                    sm:w-auto
+                    sm:max-w-none
+                  "
+                >
+                  <div className="relative aspect-[16/9] w-full overflow-hidden bg-black">
+                    <img
+                      src={item.image}
+                      alt={item.title}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+
+                  <div className="p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+                      {formatCalendarDay(item.airingAt)} · {formatCalendarTime(item.airingAt)}
+                    </p>
+                    <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-snug">
+                      {item.title}
+                    </h3>
+                    <p className="mt-2 text-xs text-muted">
+                      Episódio {item.episode}
+                    </p>
+                  </div>
+                </article>
+              ))}
+            </div>
           </section>
         )}
       </div>
