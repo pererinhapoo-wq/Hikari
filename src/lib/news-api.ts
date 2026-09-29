@@ -1232,6 +1232,25 @@ function extractAnimeNameFallback(newsTitle: string): string {
     .replace(/\s+(?:reveals?|revealed|announces?|announced|gets|receives?|confirms?|confirmed)\b[\s\S]*$/i, "")
     .trim();
 
+  // Detecta formatos comuns em que o nome da franquia aparece antes de
+  // "Anime/Manga" ou no meio do título. Isso evita que o título inteiro
+  // seja tratado como nome do anime quando o AniList estiver indisponível.
+  const beforeAnime = newsTitle.match(
+    /^(.+?)\s+(?:anime|manga)\s+(?:to|reveals?|revealed|announces?|announced|gets|receives?|confirms?|confirmed)\b/i,
+  );
+
+  if (beforeAnime?.[1]) {
+    value = beforeAnime[1].trim();
+  } else {
+    const inEpisode = newsTitle.match(
+      /\bin\s+(.+?)\s+episode\s+\d+\b/i,
+    );
+
+    if (inEpisode?.[1]) {
+      value = inEpisode[1].trim();
+    }
+  }
+
   // Strip a trailing article descriptor if the previous rules left one.
   value = value
     .replace(/\s+(?:anime|manga)\s*$/i, "")
