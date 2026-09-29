@@ -89,6 +89,7 @@ async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
               romaji
             }
             coverImage {
+              extraLarge
               large
             }
           }
@@ -135,7 +136,10 @@ async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
           item.media.title?.english?.trim() ||
           item.media.title?.romaji?.trim() ||
           "Anime",
-        image: item.media.coverImage?.large || "",
+        image:
+          item.media.coverImage?.extraLarge ||
+          item.media.coverImage?.large ||
+          "",
       }))
       .filter((item: AnimeCalendarItem) => item.image)
       .slice(0, 12);
