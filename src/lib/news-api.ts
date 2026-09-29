@@ -236,70 +236,77 @@ async function translateToPortuguese(
     return cached;
   }
 
-  try {
-    const url =
-      "https://translate.googleapis.com/translate_a/single" +
-      "?client=gtx" +
-      "&sl=auto" +
-      "&tl=pt" +
-      "&dt=t" +
-      `&q=${encodeURIComponent(
-        cleaned.slice(0, 5000),
-      )}`;
+  const source = cleaned.slice(
+    0,
+    5000,
+  );
 
-    const response =
-      await fetch(
-        url,
-        {
-          signal:
-            AbortSignal.timeout(
-              8000,
-            ),
-        },
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const url =
+        "https://translate.googleapis.com/translate_a/single" +
+        "?client=gtx" +
+        "&sl=auto" +
+        "&tl=pt" +
+        "&dt=t" +
+        `&q=${encodeURIComponent(source)}`;
+
+      const response =
+        await fetch(
+          url,
+          {
+            signal:
+              AbortSignal.timeout(
+                8000,
+              ),
+          },
+        );
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const json =
+        (await response.json()) as unknown;
+
+      if (
+        !Array.isArray(json) ||
+        !Array.isArray(json[0])
+      ) {
+        continue;
+      }
+
+      const translated =
+        json[0]
+          .filter(
+            (part) =>
+              Array.isArray(part) &&
+              typeof part[0] ===
+                "string",
+          )
+          .map(
+            (part) =>
+              part[0] as string,
+          )
+          .join("")
+          .trim();
+
+      if (!translated) {
+        continue;
+      }
+
+      translationCache.set(
+        cleaned,
+        translated,
       );
 
-    if (!response.ok) {
-      return cleaned;
+      return translated;
+    } catch {
+      // Tenta novamente uma vez antes de devolver o texto original.
     }
-
-    const json =
-      (await response.json()) as unknown;
-
-    if (
-      !Array.isArray(json) ||
-      !Array.isArray(json[0])
-    ) {
-      return cleaned;
-    }
-
-    const translated =
-      json[0]
-        .filter(
-          (part) =>
-            Array.isArray(part) &&
-            typeof part[0] ===
-              "string",
-        )
-        .map(
-          (part) =>
-            part[0] as string,
-        )
-        .join("")
-        .trim();
-
-    if (!translated) {
-      return cleaned;
-    }
-
-    translationCache.set(
-      cleaned,
-      translated,
-    );
-
-    return translated;
-  } catch {
-    return cleaned;
   }
+
+  return cleaned;
 }
 
 async function descriptionOf(
@@ -853,10 +860,6 @@ const EXTERNAL_NEWS_FEEDS = [
     name: "Anime Corner",
     url: "https://animecorner.me/category/anime-news/feed/",
   },
-  {
-    name: "Anime Herald",
-    url: "https://www.animeherald.com/feed/",
-  },
 ] as const;
 
 function xmlDecode(value: string): string {
@@ -962,25 +965,6 @@ function isGameNews(
   return /\\b(video game|video games|gaming|gameplay|game trailer|game pv|game announcement|game release|mobile game|gacha game|console game|pc game|playstation|xbox|nintendo|steam|switch|ps4|ps5|xbox series|xbox one|rpg game|action game|fighting game|visual novel game|smartphone game)\\b/i.test(
     normalized,
   ) || /(?:^|[\\s:/_-])game(?:$|[\\s:/_-])/i.test(normalized);
-}
-
-function isMangaOnlyNews(
-  title: string,
-  content: string,
-): boolean {
-  const normalized = `${title} ${content}`.toLowerCase();
-
-  const mangaSignal =
-    /\\b(manga|manhwa|manhua|chapter|chapters|volume|vol\.?|serialization|serializes|weekly shonen jump)\\b/i.test(
-      normalized,
-    );
-
-  const animeSignal =
-    /\\b(anime|tv anime|anime adaptation|anime series|season [0-9ivx]+|cour|trailer|teaser|pv|promotional video|voice cast|voice actor|voice actress|anime film|anime movie|episode|episodes|airing|premiere|broadcast|studio)\\b/i.test(
-      normalized,
-    );
-
-  return mangaSignal && !animeSignal;
 }
 
 function typeFromExternalNews(
@@ -1089,10 +1073,7 @@ async function fetchExternalFeed(
       xmlAttribute(block, "enclosure", "url") ||
       imageFromHtml(content, url);
 
-    if (
-      isGameNews(title, content, url) ||
-      isMangaOnlyNews(title, content)
-    ) {
+    if (isGameNews(title, content, url)) {
       return null;
     }
 
@@ -1630,7 +1611,7 @@ export const fetchAutomaticNews =
     const current = currentAnimeSeason();
     const season = String(current.season).toUpperCase();
     const year = Number(current.year);
-    const key = `automatic-news:v3:${season}:${year}`;
+    const key = `automatic-news:v2:${season}:${year}`;
 
     const cached = fromCache(key);
     if (cached) {
