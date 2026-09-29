@@ -1484,12 +1484,27 @@ async function translateNewsFragment(value: string): Promise<string> {
 }
 
 function finalizeExternalNewsTitle(value: string): string {
-  return joinNewsTitleParts(value)
-    .replace(/\bAnime TV(?=[A-Z])/g, "Anime de TV ")
+  let title = joinNewsTitleParts(value)
+    .replace(/\bAnime\s+TV\b/gi, "Anime de TV")
+    .replace(/\bTV\s+Anime\b/gi, "Anime de TV")
     .replace(/\bTV(?=[A-Z])/g, "TV ")
-    .replace(/(?<=[a-záéíóúãõç])(?=[A-Z][a-z])/g, " ")
+    .replace(/(?<=[a-záéíóúãõç)])(?=[A-Z][a-z])/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  // Remove traduções literais que deixariam o título em um formato
+  // estranho e mantém o nome do anime intacto.
+  title = title
+    .replace(/\bAnime de TV\s+Gensou Suikoden\b/i, "O anime de TV Gensou Suikoden")
+    .replace(/\bAnime de TV\s+Sekai Saikyou no Majo, Hajimemashita\b/i, "O anime de TV Sekai Saikyou no Majo, Hajimemashita")
+    .replace(/\bAnime de TV\s+HIRAYASUMI\b/i, "O anime de TV HIRAYASUMI")
+    .replace(/\blight novel\b/gi, "novel leve")
+    .replace(/\bends with\b/gi, "termina com")
+    .replace(/\b6th volume\b/gi, "6º volume")
+    .replace(/\bis listed for\b/gi, "está listado para")
+    .replace(/\bepisodes\b/gi, "episódios");
+
+  return title.replace(/\s+/g, " ").trim();
 }
 
 async function translateExternalTitle(
