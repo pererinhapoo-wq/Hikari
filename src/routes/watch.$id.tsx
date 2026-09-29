@@ -683,11 +683,44 @@ function WatchPage() {
             background: rgba(255,255,255,.95) !important;
           }
 
-          .hikari-player .hikari-progress-shell > div:nth-child(2) {
-            width: 6px !important;
-            height: 6px !important;
+          .hikari-player .hikari-progress-input {
+            appearance: none !important;
+            -webkit-appearance: none !important;
+            background: transparent !important;
+            opacity: 1 !important;
+          }
+
+          .hikari-player .hikari-progress-input::-webkit-slider-runnable-track {
+            height: 100% !important;
+            background: transparent !important;
+            border: 0 !important;
+          }
+
+          .hikari-player .hikari-progress-input::-webkit-slider-thumb {
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            width: 10px !important;
+            height: 10px !important;
+            margin-top: calc((100% - 10px) / 2) !important;
+            border: 0 !important;
+            border-radius: 999px !important;
             background: #a855f7 !important;
-            box-shadow: 0 0 6px rgba(168,85,247,.75) !important;
+            box-shadow: 0 0 8px rgba(168,85,247,.75) !important;
+          }
+
+          .hikari-player .hikari-progress-input::-moz-range-track {
+            height: 100% !important;
+            background: transparent !important;
+            border: 0 !important;
+          }
+
+          .hikari-player .hikari-progress-input::-moz-range-thumb {
+            width: 10px !important;
+            height: 10px !important;
+            border: 0 !important;
+            border-radius: 999px !important;
+            background: #a855f7 !important;
+            box-shadow: 0 0 8px rgba(168,85,247,.75) !important;
           }
 
           .hikari-player .hikari-mobile-time-row {
@@ -760,6 +793,7 @@ function WatchPage() {
                 ref={videoRef}
                 src={file ?? undefined}
                 preload="metadata"
+                poster={current?.thumbnail || anime?.cover || undefined}
                 autoPlay={false}
                 playsInline
                 disablePictureInPicture
@@ -842,13 +876,6 @@ function WatchPage() {
                       />
                     </div>
 
-                    <div
-                      className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-[#a855f7] shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
-                      style={{
-                        left: `${duration > 0 ? Math.min(99.5, Math.max(0.5, (currentTime / duration) * 100)) : 0.5}%`,
-                      }}
-                    />
-
                     <input
                       aria-label="Progresso do episódio"
                       type="range"
@@ -861,7 +888,7 @@ function WatchPage() {
                         if (videoRef.current) videoRef.current.currentTime = nextTime;
                         setCurrentTime(nextTime);
                       }}
-                      className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+                      className="hikari-progress-input absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent"
                     />
                   </div>
 
