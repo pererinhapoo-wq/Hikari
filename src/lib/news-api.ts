@@ -1183,6 +1183,7 @@ async function fetchExternalFeed(
   }
 
   const response = await fetch(feed.url, {
+    cache: "no-store",
     headers: {
       Accept: "application/rss+xml, application/xml, text/xml",
       "User-Agent": "Hikari/1.0 (anime news)",
