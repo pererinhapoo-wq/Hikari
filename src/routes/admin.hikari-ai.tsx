@@ -248,7 +248,7 @@ function HikariAIPage() {
                 >
                   {testResult.approved ? "✓" : "✕"}
                 </span>
-              )}
+              ) : null}
 
               <span>
                 {testResult.approved
