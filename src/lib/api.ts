@@ -208,9 +208,12 @@ async function anilistGraphQL<T>(
 ): Promise<T> {
   let lastError: unknown;
 
+  // O AniList pode ficar temporariamente lento ou retornar 5xx/429.
+  // Fazemos até 3 tentativas, com espera progressiva, para evitar
+  // que uma falha momentânea derrube a página inteira.
   for (
     let attempt = 0;
-    attempt < 2;
+    attempt < 3;
     attempt++
   ) {
     try {
@@ -236,21 +239,43 @@ async function anilistGraphQL<T>(
       );
 
       if (!res.ok) {
-        const shouldRetry =
+        const retryable =
           res.status === 429 ||
-          res.status >= 500;
+          res.status === 500 ||
+          res.status === 502 ||
+          res.status === 503 ||
+          res.status === 504;
 
         if (
-          shouldRetry &&
-          attempt === 0
+          retryable &&
+          attempt < 2
         ) {
+          const retryAfter = Number(
+            res.headers.get(
+              "Retry-After",
+            ),
+          );
+
+          const waitMs =
+            Number.isFinite(
+              retryAfter,
+            ) &&
+            retryAfter > 0
+              ? Math.min(
+                  retryAfter * 1000,
+                  10000,
+                )
+              : 1200 *
+                (attempt + 1);
+
           await new Promise(
             (resolve) =>
               setTimeout(
                 resolve,
-                350,
+                waitMs,
               ),
           );
+
           continue;
         }
 
@@ -286,12 +311,13 @@ async function anilistGraphQL<T>(
     } catch (error) {
       lastError = error;
 
-      if (attempt === 0) {
+      if (attempt < 2) {
         await new Promise(
           (resolve) =>
             setTimeout(
               resolve,
-              350,
+              1200 *
+                (attempt + 1),
             ),
         );
         continue;
