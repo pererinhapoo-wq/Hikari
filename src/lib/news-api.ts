@@ -1220,89 +1220,124 @@ const aniListAnimeNameCache = new Map<string, string>();
 async function findAniListAnimeName(
   newsTitle: string,
 ): Promise<string> {
-  const cleaned = newsTitle
-    .replace(/\[[^\]]*\]/g, " ")
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/\b(new trailer|trailer|teaser|pv|visual|key visual|announced|revealed|season [0-9ivx]+|premiere date|release date)\b/gi, " ")
-    .replace(/[:|—–-]+/g, " ")
+  // Tenta várias formas do título original. Remover palavras demais antes
+  // da busca fazia alguns títulos não encontrarem o anime no AniList; quando
+  // isso acontecia, o tradutor acabava traduzindo o nome do anime também.
+  const original = newsTitle
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!cleaned || cleaned.length < 3) {
-    return "";
-  }
+  const candidates = Array.from(
+    new Set(
+      [
+        original,
+        original
+          .replace(
+            /\b(reveals?|revealed|announces?|announced|gets|receives?|reveals?|confirms?|confirmed)\b[\s\S]*$/i,
+            "",
+          )
+          .replace(/\s+/g, " ")
+          .trim(),
+        original
+          .replace(
+            /\b(first|new|official)\s+(trailer|teaser|visual|key visual|poster|pv)\b[\s\S]*$/i,
+            "",
+          )
+          .replace(/\s+/g, " ")
+          .trim(),
+        original
+          .replace(
+            /\b(anime|manga)\s+(reveals?|announces?|announced|gets|receives?|confirms?|confirmed)\b[\s\S]*$/i,
+            "",
+          )
+          .replace(/\s+/g, " ")
+          .trim(),
+      ].filter((value) => value.length >= 3),
+    ),
+  );
 
-  const key = cleaned.toLowerCase();
-  const cached = aniListAnimeNameCache.get(key);
-  if (cached) {
-    return cached;
-  }
+  for (const candidate of candidates) {
+    const key = candidate.toLowerCase();
+    const cached = aniListAnimeNameCache.get(key);
+    if (cached) {
+      return cached;
+    }
 
-  try {
-    const response = await fetch(ANILIST, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        query: `
-          query FindAnimeName($search: String) {
-            Page(page: 1, perPage: 3) {
-              media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
-                id
-                isAdult
-                title {
-                  english
-                  romaji
+    try {
+      const response = await fetch(ANILIST, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          query: `
+            query FindAnimeName($search: String) {
+              Page(page: 1, perPage: 5) {
+                media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
+                  id
+                  isAdult
+                  title {
+                    english
+                    romaji
+                  }
                 }
               }
             }
-          }
-        `,
-        variables: { search: cleaned.slice(0, 100) },
-      }),
-      signal: AbortSignal.timeout(8000),
-    });
+          `,
+          variables: { search: candidate.slice(0, 120) },
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
 
-    if (!response.ok) {
-      return "";
-    }
+      if (!response.ok) {
+        continue;
+      }
 
-    const json = (await response.json()) as {
-      data?: {
-        Page?: {
-          media?: {
-            id: number;
-            isAdult?: boolean | null;
-            title?: {
-              english?: string | null;
-              romaji?: string | null;
-            } | null;
-          }[];
+      const json = (await response.json()) as {
+        data?: {
+          Page?: {
+            media?: {
+              id: number;
+              isAdult?: boolean | null;
+              title?: {
+                english?: string | null;
+                romaji?: string | null;
+              } | null;
+            }[];
+          };
         };
       };
-    };
 
-    const match =
-      json.data?.Page?.media?.find(
-        (media) => media.isAdult !== true,
-      ) ?? json.data?.Page?.media?.[0];
+      const media =
+        json.data?.Page?.media ?? [];
 
-    const animeName =
-      match?.title?.english?.trim() ||
-      match?.title?.romaji?.trim() ||
-      "";
+      const match =
+        media.find(
+          (item) => item.isAdult !== true,
+        ) ?? media[0];
 
-    if (!animeName) {
-      return "";
+      const animeName =
+        match?.title?.english?.trim() ||
+        match?.title?.romaji?.trim() ||
+        "";
+
+      if (animeName) {
+        // Cacheia todas as formas testadas para evitar novas consultas.
+        for (const value of candidates) {
+          aniListAnimeNameCache.set(
+            value.toLowerCase(),
+            animeName,
+          );
+        }
+        return animeName;
+      }
+    } catch {
+      // Tenta a próxima forma do título.
     }
-
-    aniListAnimeNameCache.set(key, animeName);
-    return animeName;
-  } catch {
-    return "";
   }
+
+  return "";
 }
 
 async function findAniListAnimeId(
