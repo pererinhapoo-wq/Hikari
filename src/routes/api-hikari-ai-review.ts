@@ -352,11 +352,57 @@ export const reviewHikariAINews = createServerFn({
     const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
     const groqApiKey = process.env.GROQ_API_KEY?.trim();
 
+    if (data.provider === "gemini") {
+      if (!geminiApiKey) {
+        return fallbackResult(
+          data.title,
+          data.description,
+          "GEMINI_API_KEY ainda não está configurada no servidor.",
+        );
+      }
+
+      const gemini = await requestGemini(geminiApiKey, prompt);
+
+      if (gemini.result) {
+        return { ...gemini.result, provider: "Gemini" as const };
+      }
+
+      return fallbackResult(
+        data.title,
+        data.description,
+        gemini.reason,
+      );
+    }
+
+    if (data.provider === "groq") {
+      if (!groqApiKey) {
+        return fallbackResult(
+          data.title,
+          data.description,
+          "GROQ_API_KEY ainda não está configurada no servidor.",
+        );
+      }
+
+      const groq = await requestGroq(groqApiKey, prompt);
+
+      if (groq.result) {
+        return { ...groq.result, provider: "Groq" as const };
+      }
+
+      return fallbackResult(
+        data.title,
+        data.description,
+        groq.reason,
+      );
+    }
+
     let geminiReason = "";
 
     if (geminiApiKey) {
       const gemini = await requestGemini(geminiApiKey, prompt);
-      if (gemini.result) return { ...gemini.result, provider: "Gemini" as const };
+      if (gemini.result) {
+        return { ...gemini.result, provider: "Gemini" as const };
+      }
       geminiReason = gemini.reason;
     } else {
       geminiReason =
@@ -365,7 +411,9 @@ export const reviewHikariAINews = createServerFn({
 
     if (groqApiKey) {
       const groq = await requestGroq(groqApiKey, prompt);
-      if (groq.result) return { ...groq.result, provider: "Groq" as const };
+      if (groq.result) {
+        return { ...groq.result, provider: "Groq" as const };
+      }
       return fallbackResult(
         data.title,
         data.description,
