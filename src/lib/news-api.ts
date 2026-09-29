@@ -920,39 +920,133 @@ function imageFromHtml(
   html: string,
   baseUrl: string,
 ): string {
-  const og = html.match(
+  const metadataPatterns = [
     /<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-  );
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["'][^>]*>/i,
+    /<meta[^>]+(?:property|name)=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']twitter:image(?::src)?["'][^>]*>/i,
+  ];
 
-  if (og?.[1]) {
-    return absoluteUrl(og[1], baseUrl);
+  for (const pattern of metadataPatterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      const url = absoluteUrl(match[1], baseUrl);
+      if (isUsableNewsImage(url)) {
+        return url;
+      }
+    }
   }
 
-  const reverseOg = html.match(
-    /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["'][^>]*>/i,
+  const imageSrc = html.match(
+    /<link[^>]+rel=["'][^"']*image_src[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>/i,
   );
 
-  return reverseOg?.[1]
-    ? absoluteUrl(reverseOg[1], baseUrl)
-    : "";
+  if (imageSrc?.[1]) {
+    const url = absoluteUrl(imageSrc[1], baseUrl);
+    if (isUsableNewsImage(url)) {
+      return url;
+    }
+  }
+
+  const jsonLdBlocks =
+    html.match(
+      /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+    ) ?? [];
+
+  for (const block of jsonLdBlocks) {
+    const raw = block
+      .replace(/^<script[^>]*>/i, "")
+      .replace(/<\/script>$/i, "")
+      .trim();
+
+    try {
+      const parsed = JSON.parse(raw) as
+        | Record<string, unknown>
+        | Array<Record<string, unknown>>;
+
+      const candidates = Array.isArray(parsed) ? parsed : [parsed];
+
+      for (const candidate of candidates) {
+        const image = candidate?.image;
+
+        if (typeof image === "string") {
+          const url = absoluteUrl(image, baseUrl);
+          if (isUsableNewsImage(url)) {
+            return url;
+          }
+        }
+
+        if (
+          image &&
+          typeof image === "object" &&
+          "url" in image &&
+          typeof image.url === "string"
+        ) {
+          const url = absoluteUrl(image.url, baseUrl);
+          if (isUsableNewsImage(url)) {
+            return url;
+          }
+        }
+      }
+    } catch {
+      // Ignora JSON-LD inválido e continua para os próximos candidatos.
+    }
+  }
+
+  return "";
+}
+
+function isUsableNewsImage(url: string): boolean {
+  if (!url || url.startsWith("data:")) {
+    return false;
+  }
+
+  const normalized = url.toLowerCase();
+
+  return !/\b(?:logo|favicon|icon|avatar|gravatar|sprite|placeholder|tracking|pixel|advert|ads|banner-ad)\b/i.test(
+    normalized,
+  );
 }
 
 function imagesFromHtml(
   html: string,
   baseUrl: string,
 ): string[] {
-  const images = new Set<string>();
-  const pattern = /<img\b[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  const images: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (value: string) => {
+    const url = absoluteUrl(value, baseUrl);
+
+    if (
+      !isUsableNewsImage(url) ||
+      seen.has(url) ||
+      images.length >= 8
+    ) {
+      return;
+    }
+
+    seen.add(url);
+    images.push(url);
+  };
+
+  const preferredPattern =
+    /<(?:figure|article)[^>]*>[\s\S]*?<img\b[^>]+(?:src|data-src|data-lazy-src)=["']([^"']+)["'][^>]*>[\s\S]*?<\/(?:figure|article)>/gi;
+
   let match: RegExpExecArray | null;
 
-  while ((match = pattern.exec(html)) && images.size < 8) {
-    const url = absoluteUrl(match[1], baseUrl);
-    if (url && !url.startsWith("data:")) {
-      images.add(url);
-    }
+  while ((match = preferredPattern.exec(html)) && images.length < 8) {
+    add(match[1]);
   }
 
-  return Array.from(images);
+  const imagePattern =
+    /<img\b[^>]*(?:src|data-src|data-lazy-src)=["']([^"']+)["'][^>]*>/gi;
+
+  while ((match = imagePattern.exec(html)) && images.length < 8) {
+    add(match[1]);
+  }
+
+  return images;
 }
 
 function isGameNews(
