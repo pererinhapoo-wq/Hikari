@@ -396,6 +396,12 @@ export function HikariPlayer({
                 onTouchEnd={handlePlayerTap}
                 style={{
                   touchAction: "pan-x",
+                  opacity: 1,
+                  filter: "none",
+                  mixBlendMode: "normal",
+                  transform: "translateZ(0)",
+                  backfaceVisibility: "hidden",
+                  WebkitBackfaceVisibility: "hidden",
                 }}
                 className="relative z-0 size-full select-none bg-black object-contain"
                  data-player-video="true"
