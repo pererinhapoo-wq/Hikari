@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  Bot,
   Download,
   Plus,
   Search,
@@ -193,6 +194,44 @@ function AdminIndex() {
           </label>
         </div>
       </header>
+
+      {/* Hikari AI */}
+      <section className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="grid size-11 shrink-0 place-items-center rounded-lg bg-elevated">
+              <Bot className="size-5" />
+            </div>
+
+            <div>
+              <h2 className="font-display text-lg">
+                Hikari AI
+              </h2>
+
+              <p className="mt-1 text-sm text-muted">
+                Central de inteligência artificial para revisão
+                de notícias e moderação do Hikari.
+              </p>
+
+              <p className="mt-2 text-xs text-subtle">
+                Estrutura criada. Provedor de IA ainda não
+                configurado.
+              </p>
+            </div>
+          </div>
+
+          <Button
+            asChild
+            variant="outline"
+            className="w-full sm:w-auto"
+          >
+            <Link to="/admin/hikari-ai">
+              <Bot className="size-4" />
+              Abrir Hikari AI
+            </Link>
+          </Button>
+        </div>
+      </section>
 
       <section className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">
         <h2 className="font-display text-lg">
@@ -438,4 +477,4 @@ function AdminIndex() {
       </Dialog>
     </div>
   );
-    }
+}
