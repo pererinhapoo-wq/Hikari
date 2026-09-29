@@ -300,6 +300,17 @@ function NewsPage() {
 
   /*
    * =========================================================
+   * EM ALTA
+   * =========================================================
+   * Seção automática baseada nas notícias mais recentes
+   * disponíveis no catálogo.
+   */
+  const hotNews = useMemo(() => {
+    return news.slice(0, 6);
+  }, [news]);
+
+  /*
+   * =========================================================
    * RESULTADOS ENQUANTO DIGITA
    * =========================================================
    */
@@ -1500,6 +1511,115 @@ function NewsPage() {
                   }
                 </p>
               </nav>
+            )}
+
+            {/* =================================================
+                EM ALTA
+            ================================================== */}
+
+            {!isSearchMode && hotNews.length > 0 && (
+              <section className="mt-10">
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold tracking-tight">
+                    Em alta
+                  </h2>
+                  <p className="mt-1 text-sm text-muted">
+                    Destaques atualizados automaticamente pelas notícias mais recentes.
+                  </p>
+                </div>
+
+                <div
+                  className="
+                    flex
+                    gap-4
+                    overflow-x-auto
+                    pb-2
+                    snap-x
+                    snap-mandatory
+                    [scrollbar-width:none]
+                    [&::-webkit-scrollbar]:hidden
+                  "
+                >
+                  {hotNews.map((item) => (
+                    <Link
+                      key={item.id}
+                      to="/news/$id"
+                      params={{
+                        id: item.id,
+                      }}
+                      search={{
+                        page: currentPage,
+                      }}
+                      className="
+                        group
+                        w-[78vw]
+                        max-w-[340px]
+                        shrink-0
+                        snap-start
+                        overflow-hidden
+                        rounded-3xl
+                        border
+                        border-border
+                        bg-card
+                        transition
+                        hover:bg-elevated
+                        sm:w-[300px]
+                      "
+                    >
+                      <div className="relative aspect-[16/9] w-full overflow-hidden bg-black">
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          className="
+                            h-full
+                            w-full
+                            object-cover
+                            transition-transform
+                            duration-500
+                            group-hover:scale-[1.03]
+                          "
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
+                        <span
+                          className="
+                            absolute
+                            bottom-3
+                            left-3
+                            rounded-md
+                            bg-black/70
+                            px-2
+                            py-1
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-wide
+                            text-white
+                          "
+                        >
+                          {item.type}
+                        </span>
+                      </div>
+
+                      <div className="p-4">
+                        <h3
+                          className="
+                            line-clamp-2
+                            text-sm
+                            font-semibold
+                            leading-snug
+                          "
+                        >
+                          {item.title}
+                        </h3>
+                        <p className="mt-2 text-xs text-muted">
+                          {item.date} · {formatRelativeNewsTime(item.date, "time" in item && typeof item.time === "string" ? item.time : undefined)}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </section>
             )}
           </>
         ) : (
