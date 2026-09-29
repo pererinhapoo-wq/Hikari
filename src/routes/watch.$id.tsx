@@ -589,12 +589,7 @@ function WatchPage() {
                       setPlayerIndex(index)
                     }
                   >
-                    Player {
-                      playerUrls
-                        .slice(0, index + 1)
-                        .filter(Boolean)
-                        .length
-                    }
+                    Player {playerUrls.slice(0, index + 1).filter(Boolean).length}
                   </Button>
                 ) : null,
             )}
@@ -4567,3 +4562,9 @@ function CommentCard({
               )}
               aria-label={
                 comment.liked
+                  ? "Remover curtida"
+                  : "Curtir comentário"
+              }
+            >
+
+        
