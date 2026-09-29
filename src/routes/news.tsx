@@ -69,6 +69,12 @@ type AnimeCalendarItem = {
   coverImage: string;
 };
 
+type AnimeRecommendationItem = {
+  id: number;
+  title: string;
+  image: string;
+};
+
 async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
   const now = Math.floor(Date.now() / 1000);
   const sevenDays = now + 7 * 24 * 60 * 60;
@@ -151,6 +157,110 @@ async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
       }))
       .filter((item: AnimeCalendarItem) => item.image)
       .slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchAnimeRecommendations(
+  animeIds: number[],
+): Promise<AnimeRecommendationItem[]> {
+  const ids = Array.from(new Set(animeIds))
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .slice(0, 6);
+
+  if (!ids.length) return [];
+
+  const fields = `
+    id
+    title {
+      english
+      romaji
+    }
+    coverImage {
+      extraLarge
+      large
+    }
+    isAdult
+  `;
+
+  const mediaQueries = ids
+    .map((id, index) => `
+      media${index}: Media(id: ${id}) {
+        recommendations(perPage: 6) {
+          nodes {
+            rating
+            mediaRecommendation {
+              ${fields}
+            }
+          }
+        }
+      }
+    `)
+    .join("\n");
+
+  const query = `
+    query {
+      ${mediaQueries}
+    }
+  `;
+
+  try {
+    const response = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const result: AnimeRecommendationItem[] = [];
+    const seen = new Set<number>();
+
+    for (let index = 0; index < ids.length; index += 1) {
+      const nodes = data?.data?.[`media${index}`]?.recommendations?.nodes;
+
+      if (!Array.isArray(nodes)) continue;
+
+      for (const node of nodes) {
+        const media = node?.mediaRecommendation;
+        const id = Number(media?.id);
+        const title =
+          media?.title?.english?.trim() ||
+          media?.title?.romaji?.trim() ||
+          "Anime";
+        const image =
+          media?.coverImage?.extraLarge ||
+          media?.coverImage?.large ||
+          "";
+
+        if (
+          !id ||
+          seen.has(id) ||
+          media?.isAdult ||
+          !image ||
+          !title
+        ) {
+          continue;
+        }
+
+        seen.add(id);
+        result.push({
+          id,
+          title,
+          image,
+        });
+
+        if (result.length >= 8) break;
+      }
+
+      if (result.length >= 8) break;
+    }
+
+    return result;
   } catch {
     return [];
   }
@@ -363,6 +473,7 @@ function NewsPage() {
    */
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [calendarEpisodes, setCalendarEpisodes] = useState<AnimeCalendarItem[]>([]);
+  const [recommendations, setRecommendations] = useState<AnimeRecommendationItem[]>([]);
 
   /*
    * =========================================================
@@ -424,6 +535,25 @@ function NewsPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!calendarEpisodes.length) {
+      setRecommendations([]);
+      return;
+    }
+
+    let active = true;
+
+    void fetchAnimeRecommendations(
+      calendarEpisodes.map((item) => item.id),
+    ).then((items) => {
+      if (active) setRecommendations(items);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [calendarEpisodes]);
 
   /*
    * =========================================================
@@ -1783,6 +1913,60 @@ function NewsPage() {
                 .
               </p>
             )}
+          </section>
+        )}
+
+        {/* =================================================
+            RECOMENDAÇÕES
+        ================================================== */}
+
+        {!isSearchMode && recommendations.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold tracking-tight">
+                Recomendações
+              </h2>
+            </div>
+
+            <div
+              className="
+                grid
+                grid-cols-2
+                gap-3
+                sm:grid-cols-3
+                sm:gap-4
+                lg:grid-cols-4
+              "
+            >
+              {recommendations.map((item) => (
+                <article
+                  key={item.id}
+                  className="
+                    min-w-0
+                    overflow-hidden
+                    rounded-3xl
+                    border
+                    border-border
+                    bg-card
+                  "
+                >
+                  <div className="relative aspect-[3/4] w-full overflow-hidden bg-black">
+                    <img
+                      src={item.image}
+                      alt={item.title}
+                      className="h-full w-full object-cover object-center"
+                      loading="lazy"
+                    />
+                  </div>
+
+                  <div className="p-3 sm:p-4">
+                    <h3 className="line-clamp-2 text-sm font-semibold leading-snug sm:text-base">
+                      {item.title}
+                    </h3>
+                  </div>
+                </article>
+              ))}
+            </div>
           </section>
         )}
 
