@@ -225,20 +225,53 @@ function cleanDescription(
 async function translateToPortuguese(
   text: string,
 ): Promise<string> {
-  const cleaned =
-    text.trim();
+  const cleaned = text.trim();
 
   if (!cleaned) {
     return "";
   }
 
-  const cached =
-    translationCache.get(
-      cleaned,
-    );
-
+  const cached = translationCache.get(cleaned);
   if (cached) {
     return cached;
+  }
+
+  // Primeiro tenta MyMemory. É uma API pública simples e não exige chave
+  // para esse uso; se falhar, tenta o endpoint do Google.
+  try {
+    const myMemoryUrl =
+      "https://api.mymemory.translated.net/get" +
+      `?q=${encodeURIComponent(cleaned.slice(0, 4500))}` +
+      "&langpair=en|pt-BR";
+
+    const response = await fetch(myMemoryUrl, {
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Hikari/1.0 (anime news)",
+      },
+    });
+
+    if (response.ok) {
+      const json = (await response.json()) as {
+        responseData?: {
+          translatedText?: string;
+        };
+      };
+
+      const translated =
+        json.responseData?.translatedText?.trim() || "";
+
+      if (
+        translated &&
+        translated.toLowerCase() !== cleaned.toLowerCase()
+      ) {
+        translationCache.set(cleaned, translated);
+        return translated;
+      }
+    }
+  } catch {
+    // Tenta o segundo provedor abaixo.
   }
 
   try {
@@ -248,63 +281,45 @@ async function translateToPortuguese(
       "&sl=auto" +
       "&tl=pt" +
       "&dt=t" +
-      `&q=${encodeURIComponent(
-        cleaned.slice(0, 5000),
-      )}`;
+      `&q=${encodeURIComponent(cleaned.slice(0, 5000))}`;
 
-    const response =
-      await fetch(
-        url,
-        {
-          signal:
-            AbortSignal.timeout(
-              8000,
-            ),
-        },
-      );
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Hikari/1.0 (anime news)",
+      },
+    });
 
-    if (!response.ok) {
-      return "Descrição em português indisponível.";
+    if (response.ok) {
+      const json = (await response.json()) as unknown;
+
+      if (
+        Array.isArray(json) &&
+        Array.isArray(json[0])
+      ) {
+        const translated =
+          json[0]
+            .filter(
+              (part) =>
+                Array.isArray(part) &&
+                typeof part[0] === "string",
+            )
+            .map((part) => part[0] as string)
+            .join("")
+            .trim();
+
+        if (translated) {
+          translationCache.set(cleaned, translated);
+          return translated;
+        }
+      }
     }
-
-    const json =
-      (await response.json()) as unknown;
-
-    if (
-      !Array.isArray(json) ||
-      !Array.isArray(json[0])
-    ) {
-      return "Descrição em português indisponível.";
-    }
-
-    const translated =
-      json[0]
-        .filter(
-          (part) =>
-            Array.isArray(part) &&
-            typeof part[0] ===
-              "string",
-        )
-        .map(
-          (part) =>
-            part[0] as string,
-        )
-        .join("")
-        .trim();
-
-    if (!translated) {
-      return "Descrição em português indisponível.";
-    }
-
-    translationCache.set(
-      cleaned,
-      translated,
-    );
-
-    return translated;
   } catch {
-    return "Descrição em português indisponível.";
+    // Usa o fallback seguro abaixo.
   }
+
+  return "";
 }
 
 async function translateNewsTitle(
@@ -319,13 +334,17 @@ async function translateNewsTitle(
   }
 
   if (!cleanAnimeName) {
-    return translateToPortuguese(cleanedTitle);
+    const translated = await translateToPortuguese(cleanedTitle);
+    return translated || cleanedTitle;
   }
 
-  // Protege o nome oficial do anime para que somente o restante
-  // do título seja traduzido para português.
+  // Protege o nome oficial do anime para traduzir somente o restante.
   const token = "__HIKARI_ANIME_NAME__";
-  const escaped = cleanAnimeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = cleanAnimeName.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&",
+  );
+
   const protectedTitle = cleanedTitle.replace(
     new RegExp(escaped, "ig"),
     token,
@@ -333,10 +352,8 @@ async function translateNewsTitle(
 
   const translated = await translateToPortuguese(protectedTitle);
 
-  if (
-    !translated ||
-    translated === "Descrição em português indisponível."
-  ) {
+  if (!translated) {
+    // Nunca mostra mensagem de erro como título.
     return cleanedTitle;
   }
 
@@ -364,8 +381,11 @@ async function descriptionOf(
     }.`;
   }
 
-  return translateToPortuguese(
-    description,
+  const translated = await translateToPortuguese(description);
+
+  return (
+    translated ||
+    `${titleOf(media)} — descrição da notícia em português indisponível no momento.`
   );
 }
 
@@ -1173,9 +1193,11 @@ async function fetchExternalFeed(
           animeName,
         );
       } else {
+        const translatedTitle =
+          await translateToPortuguese(item.title);
+
         item.title =
-          (await translateToPortuguese(item.title)) ||
-          item.title;
+          translatedTitle || item.title;
       }
 
       item.animeId = animeId;
@@ -1382,7 +1404,7 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
       title: item.title,
       description:
         (await translateToPortuguese(item.description)) ||
-        "Descrição em português indisponível.",
+        "A descrição em português está temporariamente indisponível.",
       date: formatExternalDate(item.publishedAt),
       image: item.image,
       animeId: item.animeId,
