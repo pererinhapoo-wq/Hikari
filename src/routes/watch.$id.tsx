@@ -4567,4 +4567,145 @@ function CommentCard({
               }
             >
 
-        
+              <Heart
+                className={cn(
+                  "size-4",
+                  comment.liked &&
+                    "fill-current",
+                )}
+              />
+
+              {comment.likes}
+
+            </button>
+
+            {!isReply && (
+              <button
+                type="button"
+                onClick={
+                  onStartReply
+                }
+                className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
+              >
+
+                <MessageCircle className="size-4" />
+
+                Responder
+
+              </button>
+            )}
+
+            {!isReply &&
+              replyCount > 0 && (
+                <span className="flex items-center gap-1.5 text-xs text-subtle">
+
+                  <MessageCircle className="size-4" />
+
+                  {replyCount}{" "}
+                  {replyCount ===
+                  1
+                    ? "Resposta"
+                    : "Respostas"}
+
+                </span>
+              )}
+
+          </div>
+
+          {/* =============================================== */}
+          {/* CAIXA DE RESPOSTA                                */}
+          {/* =============================================== */}
+
+          {isReplying && (
+            <div className="mt-4 rounded-lg border border-white/5 bg-bg p-3">
+
+              <textarea
+                value={
+                  replyText
+                }
+                onChange={(
+                  event,
+                ) => {
+                  onReplyChange(
+                    event.target
+                      .value,
+                  );
+                }}
+                rows={3}
+                maxLength={
+                  2000
+                }
+                placeholder="Escreva uma resposta..."
+                className="w-full resize-none rounded-lg border border-white/5 bg-surface px-3 py-2 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
+              />
+
+              <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-muted select-none">
+
+                <input
+                  type="checkbox"
+                  checked={
+                    replyIsSpoiler
+                  }
+                  onChange={(
+                    event,
+                  ) => {
+                    onReplySpoilerChange(
+                      event.target
+                        .checked,
+                    );
+                  }}
+                  className="size-4 accent-current"
+                />
+
+                <span>
+                  Marcar como spoiler
+                </span>
+
+              </label>
+
+              <div className="mt-3 flex items-center justify-end gap-2">
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={
+                    onCancelReply
+                  }
+                  disabled={
+                    replySending
+                  }
+                >
+                  Cancelar
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={
+                    onSendReply
+                  }
+                  disabled={
+                    !replyText.trim() ||
+                    replySending
+                  }
+                >
+                  <Send className="size-4" />
+
+                  {replySending
+                    ? "Enviando..."
+                    : "Responder"}
+                </Button>
+
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+      </div>
+
+    </article>
+  );
+    }
