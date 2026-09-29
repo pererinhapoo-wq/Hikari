@@ -347,7 +347,7 @@ async function requestGroq(apiKey: string, prompt: string) {
 export const reviewHikariAINews = createServerFn({
   method: "POST",
 })
-  .inputValidator(reviewSchema)
+  .validator(reviewSchema)
   .handler(async ({ data }) => {
     const prompt = buildReviewPrompt(data);
     const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
