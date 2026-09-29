@@ -1498,7 +1498,7 @@ function finalizeExternalNewsTitle(value: string): string {
     .replace(/\bAnime de TV\s+Gensou Suikoden\b/i, "O anime de TV Gensou Suikoden")
     .replace(/\bAnime de TV\s+Sekai Saikyou no Majo, Hajimemashita\b/i, "O anime de TV Sekai Saikyou no Majo, Hajimemashita")
     .replace(/\bAnime de TV\s+HIRAYASUMI\b/i, "O anime de TV HIRAYASUMI")
-    .replace(/\blight novel\b/gi, "novel leve")
+    .replace(/\blight novel\b/gi, "light novel")
     .replace(/\bends with\b/gi, "termina com")
     .replace(/\b6th volume\b/gi, "6º volume")
     .replace(/\bis listed for\b/gi, "está listado para")
