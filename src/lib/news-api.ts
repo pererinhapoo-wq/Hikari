@@ -1504,50 +1504,97 @@ async function translateExternalTitle(
     )
     .sort((a, b) => b.length - a.length);
 
+  const lowerCleaned = cleaned.toLocaleLowerCase();
   const animeName =
     titleCandidates.find((candidate) =>
-      cleaned.toLocaleLowerCase().includes(candidate.toLocaleLowerCase()),
+      lowerCleaned.includes(candidate.toLocaleLowerCase()),
     ) || meta.title;
 
   if (!animeName) {
     return translateNewsFragment(cleaned);
   }
 
-  const index = cleaned.toLocaleLowerCase().indexOf(
-    animeName.toLocaleLowerCase(),
+  const lowerAnimeName = animeName.toLocaleLowerCase();
+  const exactIndex = lowerCleaned.indexOf(lowerAnimeName);
+
+  // Algumas fontes colocam um nome curto e, entre parênteses, o nome oficial.
+  // Ex.: "SUIKODEN" (Gensou Suikoden). Nesse caso, substituímos todo o bloco
+  // pelo nome oficial do AniList, em vez de deixar o alias em inglês.
+  const quotedWithParenthetical = cleaned.match(
+    /["“”']([^"“”']{2,120})["“”']\s*\(([^()]{2,120})\)/,
   );
 
-  if (index < 0) {
-    const quoted = cleaned.match(/["“”']([^"“”']{2,120})["“”']/);
-    if (quoted?.[1]) {
-      const quotedName = quoted[1].trim();
-      const quotedIndex = cleaned.indexOf(quotedName);
-      if (quotedIndex >= 0) {
-        const before = cleaned.slice(0, quotedIndex);
-        const after = cleaned.slice(quotedIndex + quotedName.length);
+  if (quotedWithParenthetical && meta.title) {
+    const quotedName = quotedWithParenthetical[1].trim();
+    const parentheticalName = quotedWithParenthetical[2].trim();
+    const parentheticalMatches = titleCandidates.some(
+      (candidate) =>
+        candidate.toLocaleLowerCase() ===
+        parentheticalName.toLocaleLowerCase(),
+    );
+    const quotedMatches = titleCandidates.some(
+      (candidate) =>
+        candidate.toLocaleLowerCase() === quotedName.toLocaleLowerCase(),
+    );
+
+    if (parentheticalMatches || quotedMatches) {
+      const blockStart = quotedWithParenthetical.index ?? -1;
+      if (blockStart >= 0) {
+        const blockEnd =
+          blockStart + quotedWithParenthetical[0].length;
+        const before = cleaned.slice(0, blockStart);
+        const after = cleaned.slice(blockEnd);
         const [beforePt, afterPt] = await Promise.all([
           translateNewsFragment(before),
           translateNewsFragment(after),
         ]);
-        return `${beforePt}${quotedName}${afterPt}`
+
+        return `${beforePt}${meta.title}${afterPt}`
           .replace(/\s+/g, " ")
           .trim();
       }
     }
-
-    return translateNewsFragment(cleaned);
   }
 
-  const before = cleaned.slice(0, index);
-  const after = cleaned.slice(index + animeName.length);
-  const [beforePt, afterPt] = await Promise.all([
-    translateNewsFragment(before),
-    translateNewsFragment(after),
-  ]);
+  if (exactIndex >= 0) {
+    // Se o nome oficial aparece entre aspas e vem seguido de um alias entre
+    // parênteses, remove o alias para não duplicar o nome do anime.
+    const afterOfficial = cleaned.slice(exactIndex + animeName.length);
+    const aliasMatch = afterOfficial.match(/^\s*\(([^()]{2,120})\)/);
+    const endIndex = aliasMatch
+      ? exactIndex + animeName.length + aliasMatch[0].length
+      : exactIndex + animeName.length;
 
-  return `${beforePt}${animeName}${afterPt}`
-    .replace(/\s+/g, " ")
-    .trim();
+    const before = cleaned.slice(0, exactIndex);
+    const after = cleaned.slice(endIndex);
+    const [beforePt, afterPt] = await Promise.all([
+      translateNewsFragment(before),
+      translateNewsFragment(after),
+    ]);
+
+    return `${beforePt}${animeName}${afterPt}`
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  const quoted = cleaned.match(/["“”']([^"“”']{2,120})["“”']/);
+  if (quoted?.[1]) {
+    const quotedName = quoted[1].trim();
+    const quotedIndex = cleaned.indexOf(quotedName);
+    if (quotedIndex >= 0) {
+      const before = cleaned.slice(0, quotedIndex);
+      const after = cleaned.slice(quotedIndex + quotedName.length);
+      const [beforePt, afterPt] = await Promise.all([
+        translateNewsFragment(before),
+        translateNewsFragment(after),
+      ]);
+      return `${beforePt}${meta.title || quotedName}${afterPt}`
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+  }
+
+  return translateNewsFragment(cleaned);
 }
 
 async function findAniListAnimeId(
