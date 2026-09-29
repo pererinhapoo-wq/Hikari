@@ -1817,8 +1817,15 @@ function NewsPage() {
                   <div className="relative aspect-[16/9] w-full overflow-hidden bg-black">
                     <img
                       src={item.image}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 h-full w-full scale-110 object-cover object-center opacity-60 blur-xl"
+                      loading="lazy"
+                    />
+                    <img
+                      src={item.image}
                       alt={item.title}
-                      className="h-full w-full object-cover object-center"
+                      className="relative z-10 h-full w-full object-contain object-center"
                       loading="lazy"
                     />
                   </div>
