@@ -1301,15 +1301,17 @@ async function fetchExternalFeed(
 const aniListSearchCache = new Map<string, string>();
 const aniListMetaCache = new Map<string, {
   title: string;
+  english: string;
+  romaji: string;
   image: string;
   bannerImage: string;
 }>();
 
 async function fetchAniListMeta(
   animeId: string,
-): Promise<{ title: string; image: string; bannerImage: string }> {
+): Promise<{ title: string; english: string; romaji: string; image: string; bannerImage: string }> {
   if (!animeId) {
-    return { title: "", image: "", bannerImage: "" };
+    return { title: "", english: "", romaji: "", image: "", bannerImage: "" };
   }
 
   const cached = aniListMetaCache.get(animeId);
@@ -1348,7 +1350,7 @@ async function fetchAniListMeta(
     });
 
     if (!response.ok) {
-      return { title: "", image: "", bannerImage: "" };
+      return { title: "", english: "", romaji: "", image: "", bannerImage: "" };
     }
 
     const json = (await response.json()) as {
@@ -1370,14 +1372,16 @@ async function fetchAniListMeta(
 
     const media = json.data?.Media;
     if (!media || media.isAdult === true) {
-      return { title: "", image: "", bannerImage: "" };
+      return { title: "", english: "", romaji: "", image: "", bannerImage: "" };
     }
 
+    const english = media.title?.english?.trim() || "";
+    const romaji = media.title?.romaji?.trim() || "";
+
     const meta = {
-      title:
-        media.title?.english?.trim() ||
-        media.title?.romaji?.trim() ||
-        "",
+      title: english || romaji,
+      english,
+      romaji,
       image:
         media.coverImage?.extraLarge ||
         media.coverImage?.large ||
@@ -1388,7 +1392,7 @@ async function fetchAniListMeta(
     aniListMetaCache.set(animeId, meta);
     return meta;
   } catch {
-    return { title: "", image: "", bannerImage: "" };
+    return { title: "", english: "", romaji: "", image: "", bannerImage: "" };
   }
 }
 
@@ -1420,7 +1424,27 @@ async function translateExternalTitle(
   }
 
   const meta = await fetchAniListMeta(animeId);
-  const animeName = meta.title;
+
+  const titleCandidates = [
+    meta.english,
+    meta.romaji,
+    meta.title,
+  ]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value, index, list) =>
+      list.findIndex(
+        (item) => item.toLocaleLowerCase() === value.toLocaleLowerCase(),
+      ) === index,
+    )
+    .sort((a, b) => b.length - a.length);
+
+  // Escolhe o nome oficial que realmente aparece no título da fonte.
+  // Isso evita casos como: "SUIKODEN" (Gensou Suikoden).
+  const animeName =
+    titleCandidates.find((candidate) =>
+      cleaned.toLocaleLowerCase().includes(candidate.toLocaleLowerCase()),
+    ) || meta.title;
 
   if (!animeName) {
     return translateToPortuguese(cleaned);
@@ -1431,8 +1455,6 @@ async function translateExternalTitle(
   );
 
   if (index < 0) {
-    // Tenta proteger o nome entre aspas quando o texto da fonte não
-    // coincide exatamente com o título do AniList.
     const quoted = cleaned.match(/["“”']([^"“”']{2,120})["“”']/);
     if (quoted?.[1]) {
       const quotedName = quoted[1].trim();
