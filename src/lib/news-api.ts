@@ -1414,11 +1414,76 @@ function cleanExternalTitle(value: string): string {
     .trim();
 }
 
+function normalizePortugueseNewsFragment(value: string): string {
+  return value
+    .replace(/\bTV Anime\b/gi, "Anime de TV")
+    .replace(/\bis listed for\b/gi, "está listado com")
+    .replace(/\blisted for\b/gi, "listado com")
+    .replace(/\bepisodes\b/gi, "episódios")
+    .replace(/\bconsecutive episodes\b/gi, "episódios consecutivos")
+    .replace(/\bhas officially revealed\b/gi, "revelou oficialmente")
+    .replace(/\bofficially revealed\b/gi, "revelou oficialmente")
+    .replace(/\brevealed its latest promo\b/gi, "revelou sua última promoção")
+    .replace(/\breveals its latest promo\b/gi, "revela sua última promoção")
+    .replace(/\bEnds with\b/gi, "termina com")
+    .replace(/\bends with\b/gi, "termina com")
+    .replace(/\b6th Volume\b/gi, "6º volume")
+    .replace(/\b5th Volume\b/gi, "5º volume")
+    .replace(/\b4th Volume\b/gi, "4º volume")
+    .replace(/\b3rd Volume\b/gi, "3º volume")
+    .replace(/\b2nd Volume\b/gi, "2º volume")
+    .replace(/\b1st Volume\b/gi, "1º volume")
+    .replace(/\bVolume\b/gi, "volume")
+    .replace(/\bannounces\b/gi, "anuncia")
+    .replace(/\bannounced\b/gi, "anunciado")
+    .replace(/\breveals\b/gi, "revela")
+    .replace(/\brevealed\b/gi, "revelou")
+    .replace(/\bnew visual\b/gi, "novo visual")
+    .replace(/\blatest visual\b/gi, "novo visual")
+    .replace(/\badditional cast\b/gi, "elenco adicional")
+    .replace(/\bcast members\b/gi, "membros do elenco")
+    .replace(/\bmain cast\b/gi, "elenco principal")
+    .replace(/\bsecond teaser promotional\b/gi, "segundo teaser promocional")
+    .replace(/\bsecond promotional teaser\b/gi, "segundo teaser promocional")
+    .replace(/\bpromotional teaser\b/gi, "teaser promocional")
+    .replace(/\btrailer\b/gi, "trailer")
+    .replace(/\btheatrical film\b/gi, "filme para os cinemas")
+    .replace(/\bfilm project\b/gi, "projeto de filme")
+    .replace(/\bgets an anime adaptation\b/gi, "ganha adaptação para anime")
+    .replace(/\bwill get an anime adaptation\b/gi, "ganhará adaptação para anime")
+    .replace(/\bhas been announced\b/gi, "foi anunciado")
+    .replace(/\bhas announced\b/gi, "anunciou")
+    .replace(/\bnew season\b/gi, "nova temporada")
+    .replace(/\bsecond season\b/gi, "segunda temporada")
+    .replace(/\bthird season\b/gi, "terceira temporada")
+    .replace(/\bfirst season\b/gi, "primeira temporada")
+    .replace(/\bfirst project\b/gi, "primeiro projeto")
+    .replace(/\bfor the first time\b/gi, "pela primeira vez")
+    .replace(/\bthe anime\b/gi, "o anime")
+    .replace(/\bthe light novel\b/gi, "a light novel")
+    .replace(/\blight novel\b/gi, "light novel")
+    .replace(/\bJapanese TV\b/gi, "TV japonesa")
+    .replace(/\bwebsite\b/gi, "site oficial")
+    .replace(/\bofficial website\b/gi, "site oficial")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function translateNewsFragment(value: string): Promise<string> {
+  const translated = await translateToPortuguese(value);
+  return normalizePortugueseNewsFragment(translated || value);
+}
+
 async function translateExternalTitle(
   rawTitle: string,
   animeId: string,
 ): Promise<string> {
-  const cleaned = cleanExternalTitle(rawTitle);
+  const cleaned = cleanExternalTitle(rawTitle)
+    .replace(/&quot;|&#34;|&#x22;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+
   if (!cleaned) {
     return "";
   }
@@ -1439,15 +1504,13 @@ async function translateExternalTitle(
     )
     .sort((a, b) => b.length - a.length);
 
-  // Escolhe o nome oficial que realmente aparece no título da fonte.
-  // Isso evita casos como: "SUIKODEN" (Gensou Suikoden).
   const animeName =
     titleCandidates.find((candidate) =>
       cleaned.toLocaleLowerCase().includes(candidate.toLocaleLowerCase()),
     ) || meta.title;
 
   if (!animeName) {
-    return translateToPortuguese(cleaned);
+    return translateNewsFragment(cleaned);
   }
 
   const index = cleaned.toLocaleLowerCase().indexOf(
@@ -1463,8 +1526,8 @@ async function translateExternalTitle(
         const before = cleaned.slice(0, quotedIndex);
         const after = cleaned.slice(quotedIndex + quotedName.length);
         const [beforePt, afterPt] = await Promise.all([
-          translateToPortuguese(before),
-          translateToPortuguese(after),
+          translateNewsFragment(before),
+          translateNewsFragment(after),
         ]);
         return `${beforePt}${quotedName}${afterPt}`
           .replace(/\s+/g, " ")
@@ -1472,14 +1535,14 @@ async function translateExternalTitle(
       }
     }
 
-    return translateToPortuguese(cleaned);
+    return translateNewsFragment(cleaned);
   }
 
   const before = cleaned.slice(0, index);
   const after = cleaned.slice(index + animeName.length);
   const [beforePt, afterPt] = await Promise.all([
-    translateToPortuguese(before),
-    translateToPortuguese(after),
+    translateNewsFragment(before),
+    translateNewsFragment(after),
   ]);
 
   return `${beforePt}${animeName}${afterPt}`
