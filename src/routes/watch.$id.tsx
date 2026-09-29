@@ -589,12 +589,7 @@ function WatchPage() {
                       setPlayerIndex(index)
                     }
                   >
-                    Player {
-                      playerUrls
-                        .slice(0, index + 1)
-                        .filter(Boolean)
-                        .length
-                    }
+                    Player {index + 1}
                   </Button>
                 ) : null,
             )}
