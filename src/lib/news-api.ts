@@ -2031,9 +2031,22 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
       Date.parse(a.publishedAt),
   );
 
-  // Revisa primeiro as notícias mais recentes. O restante continua
-  // disponível nas fontes e poderá entrar na próxima atualização do cache.
-  const candidates = sorted.slice(0, 36);
+  // Reserva espaço para cada fonte antes da revisão da IA.
+  // Assim uma fonte muito movimentada não ocupa sozinha as vagas
+  // e impede que notícias recentes das outras fontes sejam analisadas.
+  const candidates = Array.from(
+    new Map(
+      EXTERNAL_NEWS_FEEDS.flatMap((feed) =>
+        sorted
+          .filter((item) => item.source === feed.name)
+          .slice(0, 10)
+          .map((item) => [item.url || `${item.source}:${item.title}`, item] as const),
+      ),
+    ).values(),
+  ).sort(
+    (a, b) =>
+      Date.parse(b.publishedAt) - Date.parse(a.publishedAt),
+  );
   const reviewed = (
     await reviewExternalNewsInBatches(candidates, 3)
   ).filter((item): item is ExternalNewsItem => Boolean(item));
