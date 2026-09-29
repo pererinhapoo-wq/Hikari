@@ -15,7 +15,7 @@ const reviewSchema = z.object({
   source: z.string().trim().max(500).default(""),
   sourceUrl: z.string().trim().max(2000).default(""),
   animeName: z.string().trim().max(500).default(""),
-  provider: z.enum(["auto", "gemini", "groq"]).optional(),
+  provider: z.enum(["gemini", "groq"]).optional(),
 });
 
 type HikariAIReviewResult = {
@@ -393,47 +393,6 @@ export const reviewHikariAINews = createServerFn({
         data.title,
         data.description,
         groq.reason,
-      );
-    }
-
-    if (data.provider === "auto") {
-      if (!geminiApiKey) {
-        return fallbackResult(
-          data.title,
-          data.description,
-          "GEMINI_API_KEY ainda não está configurada no servidor.",
-        );
-      }
-
-      // Teste controlado: usa uma chave inválida somente nesta chamada,
-      // sem alterar a GEMINI_API_KEY real do servidor.
-      const gemini = await requestGemini(
-        `${geminiApiKey}-fallback-test`,
-        prompt,
-      );
-
-      if (gemini.result) {
-        return { ...gemini.result, provider: "Gemini" as const };
-      }
-
-      if (!groqApiKey) {
-        return fallbackResult(
-          data.title,
-          data.description,
-          `${gemini.reason} | GROQ_API_KEY ainda não está configurada no servidor.`,
-        );
-      }
-
-      const groq = await requestGroq(groqApiKey, prompt);
-
-      if (groq.result) {
-        return { ...groq.result, provider: "Groq" as const };
-      }
-
-      return fallbackResult(
-        data.title,
-        data.description,
-        `${gemini.reason} | ${groq.reason}`,
       );
     }
 
