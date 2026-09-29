@@ -1282,9 +1282,8 @@ async function fetchExternalFeed(
       item.animeId = animeId;
       const animeMeta = await fetchAniListMeta(animeId);
       item.bannerImage = animeMeta.bannerImage || item.bannerImage;
-      item.title = await translateExternalTitle(
-        item.title,
-        animeId,
+      item.title = finalizeExternalNewsTitle(
+        await translateExternalTitle(item.title, animeId),
       );
 
       if (item.type === "TRAILER" && item.url.includes("youtube.com")) {
@@ -1414,6 +1413,16 @@ function cleanExternalTitle(value: string): string {
     .trim();
 }
 
+function joinNewsTitleParts(...parts: string[]): string {
+  return parts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .trim();
+}
+
 function normalizePortugueseNewsFragment(value: string): string {
   return value
     .replace(/\bTV Anime\b/gi, "Anime de TV")
@@ -1474,6 +1483,15 @@ async function translateNewsFragment(value: string): Promise<string> {
   return normalizePortugueseNewsFragment(translated || value);
 }
 
+function finalizeExternalNewsTitle(value: string): string {
+  return joinNewsTitleParts(value)
+    .replace(/\bAnime TV(?=[A-Z])/g, "Anime de TV ")
+    .replace(/\bTV(?=[A-Z])/g, "TV ")
+    .replace(/(?<=[a-záéíóúãõç])(?=[A-Z][a-z])/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function translateExternalTitle(
   rawTitle: string,
   animeId: string,
@@ -1493,12 +1511,14 @@ async function translateExternalTitle(
   // Isso evita depender exclusivamente do resultado de busca do AniList.
   // Ex.: "SUIKODEN" (Gensou Suikoden) -> Gensou Suikoden.
   const quotedWithParenthetical = cleaned.match(
-    /["“”']([^"“”']{2,120})["“”']\s*\(([^()]{2,160})\)/,
+    /(?:"([^"“”]{2,120})"|“([^”]{2,120})”)\s*\(([^()]{2,160})\)/,
   );
 
   if (quotedWithParenthetical) {
-    const quotedName = quotedWithParenthetical[1].trim();
-    const parentheticalName = quotedWithParenthetical[2].trim();
+    const quotedName = (
+      quotedWithParenthetical[1] || quotedWithParenthetical[2] || ""
+    ).trim();
+    const parentheticalName = quotedWithParenthetical[3].trim();
     const titleName =
       parentheticalName.length >= quotedName.length
         ? parentheticalName
@@ -1514,16 +1534,17 @@ async function translateExternalTitle(
         translateNewsFragment(after),
       ]);
 
-      return `${beforePt}${titleName}${afterPt}`
-        .replace(/\s+/g, " ")
-        .trim();
+      return joinNewsTitleParts(beforePt, titleName, afterPt);
     }
   }
 
   // Títulos entre aspas são preservados; somente o texto ao redor é traduzido.
   // Isso cobre HIRAYASUMI e títulos de light novel como
   // 'Sekai Saikyou no Majo, Hajimemashita'.
-  const quoted = cleaned.match(/["“”']([^"“”']{2,160})["“”']/);
+  const quoted =
+    cleaned.match(/"([^"“”]{2,160})"/) ||
+    cleaned.match(/“([^”]{2,160})”/) ||
+    cleaned.match(/'([^']{2,160})'/);
   if (quoted?.[1]) {
     const quotedName = quoted[1].trim();
     const quotedIndex = quoted.index ?? cleaned.indexOf(quoted[0]);
@@ -1535,9 +1556,7 @@ async function translateExternalTitle(
         translateNewsFragment(after),
       ]);
 
-      return `${beforePt}${quotedName}${afterPt}`
-        .replace(/\s+/g, " ")
-        .trim();
+      return joinNewsTitleParts(beforePt, quotedName, afterPt);
     }
   }
 
@@ -1555,13 +1574,11 @@ async function translateExternalTitle(
         translateNewsFragment(after),
       ]);
 
-      return `${beforePt}${official}${afterPt}`
-        .replace(/\s+/g, " ")
-        .trim();
+      return joinNewsTitleParts(beforePt, official, afterPt);
     }
   }
 
-  return translateNewsFragment(cleaned);
+  return joinNewsTitleParts(await translateNewsFragment(cleaned));
 }
 
 async function findAniListAnimeId(
@@ -1773,7 +1790,7 @@ async function fetchSugoiProfile(
 
     results.push({
       id: `sugoi-${handle.toLowerCase()}-${statusId}`,
-      title: translatedTitle || rawTitle,
+      title: finalizeExternalNewsTitle(translatedTitle || rawTitle),
       description: translatedTitle || rawTitle,
       publishedAt:
         publishedAt && !Number.isNaN(Date.parse(publishedAt))
