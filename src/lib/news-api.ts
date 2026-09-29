@@ -1378,6 +1378,24 @@ async function reviewExternalNewsWithHikariAI(
       animeName: knownAnime?.title || "",
     });
 
+    const aiReviewFailed =
+      review.reason.startsWith("GEMINI_API_KEY") ||
+      review.reason.startsWith("Gemini retornou HTTP") ||
+      review.reason.startsWith("A Hikari AI não recebeu") ||
+      review.reason.startsWith("A resposta da Hikari AI não estava") ||
+      review.reason.startsWith("Falha na Hikari AI:");
+
+    if (aiReviewFailed) {
+      // Se o provedor de IA estiver indisponível ou atingir limite,
+      // não fazemos a notícia desaparecer do feed. Mantemos a notícia
+      // original até que um provedor consiga revisá-la.
+      hikariAIReviewCache.set(cacheKey, {
+        at: Date.now(),
+        item,
+      });
+      return item;
+    }
+
     if (!review.approved || !review.isAnime || review.isGameNews) {
       hikariAIReviewCache.set(cacheKey, {
         at: Date.now(),
