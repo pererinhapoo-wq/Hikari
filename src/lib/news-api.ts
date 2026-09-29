@@ -1217,6 +1217,34 @@ const aniListSearchCache = new Map<string, string>();
 
 const aniListAnimeNameCache = new Map<string, string>();
 
+function extractAnimeNameFallback(newsTitle: string): string {
+  let value = newsTitle
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Remove common article suffixes while preserving the franchise name.
+  value = value
+    .replace(/\s+(?:anime|manga)\s+(?:reveals?|announces?|announced|gets|receives?|confirms?|confirmed)\b[\s\S]*$/i, "")
+    .replace(/\s+(?:gets|receives?|announces?|announced|reveals?|revealed|confirms?|confirmed)\s+(?:an|a)\s+anime\b[\s\S]*$/i, "")
+    .replace(/\s+first\s+theatrical\s+anime\s+film\s+project\s+announced[\s\S]*$/i, "")
+    .replace(/\s+first\s+theatrical\s+anime\s+film\s+project\b[\s\S]*$/i, "")
+    .replace(/\s+(?:season|cour)\s+[0-9ivx]+\b[\s\S]*$/i, "")
+    .replace(/\s+(?:reveals?|revealed|announces?|announced|gets|receives?|confirms?|confirmed)\b[\s\S]*$/i, "")
+    .trim();
+
+  // Strip a trailing article descriptor if the previous rules left one.
+  value = value
+    .replace(/\s+(?:anime|manga)\s*$/i, "")
+    .trim();
+
+  // Avoid returning a generic fragment.
+  if (value.length < 3 || /^(anime|manga|season|cour)$/i.test(value)) {
+    return "";
+  }
+
+  return value;
+}
+
 async function findAniListAnimeName(
   newsTitle: string,
 ): Promise<string> {
@@ -1337,7 +1365,9 @@ async function findAniListAnimeName(
     }
   }
 
-  return "";
+  // If AniList is unavailable or does not match the title, keep a likely
+  // franchise name instead of translating the anime name into Portuguese.
+  return extractAnimeNameFallback(original);
 }
 
 async function findAniListAnimeId(
