@@ -1153,9 +1153,10 @@ function NewsPage() {
                   items-center
                   justify-center
                   gap-1.5
-                  bg-card
+                  bg-black/35
                   px-4
-                  py-3
+                  py-2.5
+                  backdrop-blur-sm
                 "
               >
                 {featuredNews.map((item, index) => (
