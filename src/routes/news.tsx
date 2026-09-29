@@ -60,230 +60,6 @@ export const Route = createFileRoute(
 
 const NEWS_PER_PAGE = 8;
 
-type AnimeCalendarItem = {
-  id: number;
-  episode: number;
-  airingAt: number;
-  title: string;
-  image: string;
-  coverImage: string;
-};
-
-type AnimeRecommendationItem = {
-  id: number;
-  title: string;
-  image: string;
-};
-
-async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
-  const now = Math.floor(Date.now() / 1000);
-  const sevenDays = now + 7 * 24 * 60 * 60;
-
-  const query = `
-    query ($airingAtGreater: Int, $airingAtLesser: Int) {
-      Page(perPage: 20) {
-        airingSchedules(
-          airingAt_greater: $airingAtGreater
-          airingAt_lesser: $airingAtLesser
-          sort: TIME
-        ) {
-          airingAt
-          episode
-          media {
-            id
-            title {
-              english
-              romaji
-            }
-            bannerImage
-            coverImage {
-              extraLarge
-              large
-            }
-          }
-        }
-      }
-    }
-  `;
-
-  try {
-    const response = await fetch("https://graphql.anilist.co", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        variables: {
-          airingAtGreater: now,
-          airingAtLesser: sevenDays,
-        },
-      }),
-    });
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const schedules = data?.data?.Page?.airingSchedules;
-
-    if (!Array.isArray(schedules)) return [];
-
-    return schedules
-      .filter(
-        (item: any) =>
-          item?.media &&
-          (item.media.title?.english || item.media.title?.romaji) &&
-          item?.airingAt &&
-          item?.episode,
-      )
-      .map((item: any) => ({
-        id: Number(item.media.id),
-        episode: Number(item.episode),
-        airingAt: Number(item.airingAt),
-        title:
-          item.media.title?.english?.trim() ||
-          item.media.title?.romaji?.trim() ||
-          "Anime",
-        image:
-          item.media.bannerImage ||
-          item.media.coverImage?.extraLarge ||
-          item.media.coverImage?.large ||
-          "",
-        coverImage:
-          item.media.coverImage?.extraLarge ||
-          item.media.coverImage?.large ||
-          item.media.bannerImage ||
-          "",
-      }))
-      .filter((item: AnimeCalendarItem) => item.image)
-      .slice(0, 12);
-  } catch {
-    return [];
-  }
-}
-
-async function fetchAnimeRecommendations(
-  animeIds: number[],
-): Promise<AnimeRecommendationItem[]> {
-  const ids = Array.from(new Set(animeIds))
-    .filter((id) => Number.isFinite(id) && id > 0)
-    .slice(0, 6);
-
-  if (!ids.length) return [];
-
-  const fields = `
-    id
-    title {
-      english
-      romaji
-    }
-    coverImage {
-      extraLarge
-      large
-    }
-    isAdult
-  `;
-
-  const mediaQueries = ids
-    .map((id, index) => `
-      media${index}: Media(id: ${id}) {
-        recommendations(perPage: 6) {
-          nodes {
-            rating
-            mediaRecommendation {
-              ${fields}
-            }
-          }
-        }
-      }
-    `)
-    .join("\n");
-
-  const query = `
-    query {
-      ${mediaQueries}
-    }
-  `;
-
-  try {
-    const response = await fetch("https://graphql.anilist.co", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ query }),
-    });
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const result: AnimeRecommendationItem[] = [];
-    const seen = new Set<number>();
-
-    for (let index = 0; index < ids.length; index += 1) {
-      const nodes = data?.data?.[`media${index}`]?.recommendations?.nodes;
-
-      if (!Array.isArray(nodes)) continue;
-
-      for (const node of nodes) {
-        const media = node?.mediaRecommendation;
-        const id = Number(media?.id);
-        const title =
-          media?.title?.english?.trim() ||
-          media?.title?.romaji?.trim() ||
-          "Anime";
-        const image =
-          media?.coverImage?.extraLarge ||
-          media?.coverImage?.large ||
-          "";
-
-        if (
-          !id ||
-          seen.has(id) ||
-          media?.isAdult ||
-          !image ||
-          !title
-        ) {
-          continue;
-        }
-
-        seen.add(id);
-        result.push({
-          id,
-          title,
-          image,
-        });
-
-        if (result.length >= 8) break;
-      }
-
-      if (result.length >= 8) break;
-    }
-
-    return result;
-  } catch {
-    return [];
-  }
-}
-
-function formatCalendarDay(timestamp: number) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-  })
-    .format(new Date(timestamp * 1000))
-    .replace(".", "")
-    .replace(/\b\w/, (letter) => letter.toUpperCase());
-}
-
-function formatCalendarTime(timestamp: number) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(timestamp * 1000));
-}
-
 function parseNewsDate(
   date: string,
 ) {
@@ -369,6 +145,7 @@ function parseNewsDate(
 
 function formatRelativeNewsTime(
   dateValue: string,
+  publishedAtValue?: string,
   timeValue?: string,
 ) {
   if (!dateValue) return "";
@@ -376,11 +153,18 @@ function formatRelativeNewsTime(
   const normalized = dateValue.trim();
   let date: Date | null = null;
 
+  if (publishedAtValue?.trim()) {
+    const publishedAt = Date.parse(publishedAtValue.trim());
+    if (!Number.isNaN(publishedAt)) {
+      date = new Date(publishedAt);
+    }
+  }
+
   const numericMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (numericMatch) {
+  if (!date && numericMatch) {
     const [, day, month, year] = numericMatch;
     date = new Date(Number(year), Number(month) - 1, Number(day));
-  } else {
+  } else if (!date) {
     const parsed = Date.parse(normalized);
     if (!Number.isNaN(parsed)) date = new Date(parsed);
   }
@@ -466,17 +250,6 @@ function NewsPage() {
 
   /*
    * =========================================================
-   * BANNER DE DESTAQUE
-   * =========================================================
-   * Banner exclusivo da /news.
-   * Não altera os botões Voltar/Buscar nem a paginação.
-   */
-  const [featuredIndex, setFeaturedIndex] = useState(0);
-  const [calendarEpisodes, setCalendarEpisodes] = useState<AnimeCalendarItem[]>([]);
-  const [recommendations, setRecommendations] = useState<AnimeRecommendationItem[]>([]);
-
-  /*
-   * =========================================================
    * NOTÍCIAS
    * =========================================================
    */
@@ -494,77 +267,6 @@ function NewsPage() {
         ),
     );
   }, [loaderNews]);
-
-  const featuredNews = useMemo(() => {
-    return news.slice(0, 5);
-  }, [news]);
-
-  useEffect(() => {
-    if (featuredNews.length <= 1) {
-      setFeaturedIndex(0);
-      return;
-    }
-
-    if (featuredIndex >= featuredNews.length) {
-      setFeaturedIndex(0);
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setFeaturedIndex((current) =>
-        (current + 1) % featuredNews.length,
-      );
-    }, 6000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [featuredNews.length, featuredIndex]);
-
-  const featuredItem =
-    featuredNews[featuredIndex] ?? featuredNews[0];
-
-  useEffect(() => {
-    let active = true;
-
-    void fetchAnimeCalendar().then((items) => {
-      if (active) setCalendarEpisodes(items);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!calendarEpisodes.length) {
-      setRecommendations([]);
-      return;
-    }
-
-    let active = true;
-
-    void fetchAnimeRecommendations(
-      calendarEpisodes.map((item) => item.id),
-    ).then((items) => {
-      if (active) setRecommendations(items);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [calendarEpisodes]);
-
-  /*
-   * =========================================================
-   * EM ALTA
-   * =========================================================
-   * Seção automática baseada nas notícias mais recentes
-   * disponíveis no catálogo.
-   */
-  const hotNews = useMemo(() => {
-    return news.slice(0, 6);
-  }, [news]);
 
   /*
    * =========================================================
@@ -1178,7 +880,7 @@ function NewsPage() {
 
                               {" · "}
 
-                              {item.date} · {formatRelativeNewsTime(item.date, "time" in item && typeof item.time === "string" ? item.time : undefined)}
+                              {item.date} · {formatRelativeNewsTime(item.date, "publishedAt" in item && typeof item.publishedAt === "string" ? item.publishedAt : undefined, "time" in item && typeof item.time === "string" ? item.time : undefined)}
                             </p>
                           </div>
                         </Link>
@@ -1289,163 +991,6 @@ function NewsPage() {
             </div>
           </div>
         </section>
-
-        {/* =====================================================
-            BANNER DE DESTAQUE DA /NEWS
-        ====================================================== */}
-
-        {!isSearchMode && featuredItem && (
-          <section className="mb-7">
-            <Link
-              to="/news/$id"
-              params={{
-                id: featuredItem.id,
-              }}
-              search={{
-                page: currentPage,
-              }}
-              className="
-                group
-                relative
-                block
-                overflow-hidden
-                rounded-3xl
-                border
-                border-border
-                bg-card
-                shadow-sm
-              "
-            >
-              <div
-                className="
-                  relative
-                  aspect-[16/8]
-                  min-h-[220px]
-                  w-full
-                  overflow-hidden
-                  bg-black
-                  sm:aspect-[16/7]
-                  lg:aspect-[16/6]
-                "
-              >
-                <img
-                  src={featuredItem.bannerImage || featuredItem.image}
-                  alt={featuredItem.title}
-                  className="
-                    absolute
-                    inset-0
-                    h-full
-                    w-full
-                    object-cover
-                    transition-transform
-                    duration-700
-                    group-hover:scale-[1.02]
-                  "
-                  loading="eager"
-                />
-
-                <div
-                  className="
-                    absolute
-                    inset-0
-                    bg-gradient-to-t
-                    from-black
-                    via-black/55
-                    to-black/5
-                  "
-                />
-
-                <div
-                  className="
-                    absolute
-                    inset-x-0
-                    bottom-0
-                    p-5
-                    sm:p-7
-                    lg:p-8
-                  "
-                >
-                  <span
-                    className="
-                      inline-flex
-                      rounded-md
-                      bg-black/70
-                      px-2
-                      py-1
-                      text-[10px]
-                      font-semibold
-                      uppercase
-                      tracking-wide
-                      text-white
-                    "
-                  >
-                    {featuredItem.type}
-                  </span>
-
-                  <h2
-                    className="
-                      mt-3
-                      max-w-4xl
-                      line-clamp-2
-                      text-xl
-                      font-bold
-                      leading-tight
-                      text-white
-                      sm:text-2xl
-                      lg:text-3xl
-                    "
-                  >
-                    {featuredItem.title}
-                  </h2>
-
-                  <p
-                    className="
-                      mt-2
-                      hidden
-                      max-w-3xl
-                      line-clamp-2
-                      text-sm
-                      leading-relaxed
-                      text-white/75
-                      sm:block
-                    "
-                  >
-                    {featuredItem.description}
-                  </p>
-                </div>
-              </div>
-
-              <div
-                className="
-                  flex
-                  items-center
-                  justify-center
-                  gap-1.5
-                  bg-black/35
-                  px-4
-                  py-2.5
-                  backdrop-blur-sm
-                "
-              >
-                {featuredNews.map((item, index) => (
-                  <span
-                    key={item.id}
-                    className={`
-                      h-1.5
-                      rounded-full
-                      transition-all
-                      ${
-                        index === featuredIndex
-                          ? "w-6 bg-accent"
-                          : "w-1.5 bg-muted/50"
-                      }
-                    `}
-                  />
-                ))}
-              </div>
-            </Link>
-          </section>
-        )}
 
         {/* =====================================================
             CONTADOR
@@ -1615,7 +1160,7 @@ function NewsPage() {
                         <CalendarDays className="size-3.5" />
 
                         <span>
-                          {item.date} · {formatRelativeNewsTime(item.date, "time" in item && typeof item.time === "string" ? item.time : undefined)}
+                          {item.date} · {formatRelativeNewsTime(item.date, "publishedAt" in item && typeof item.publishedAt === "string" ? item.publishedAt : undefined, "time" in item && typeof item.time === "string" ? item.time : undefined)}
                         </span>
                       </div>
                     </div>
@@ -1769,112 +1314,6 @@ function NewsPage() {
                 </p>
               </nav>
             )}
-
-            {/* =================================================
-                EM ALTA
-            ================================================== */}
-
-            {!isSearchMode && hotNews.length > 0 && (
-              <section className="mt-10">
-                <div className="mb-4">
-                  <h2 className="text-xl font-semibold tracking-tight">
-                    Em alta
-                  </h2>
-                </div>
-
-                <div
-                  className="
-                    flex
-                    gap-4
-                    overflow-x-auto
-                    pb-2
-                    snap-x
-                    snap-mandatory
-                    [scrollbar-width:none]
-                    [&::-webkit-scrollbar]:hidden
-                  "
-                >
-                  {hotNews.map((item) => (
-                    <Link
-                      key={item.id}
-                      to="/news/$id"
-                      params={{
-                        id: item.id,
-                      }}
-                      search={{
-                        page: currentPage,
-                      }}
-                      className="
-                        group
-                        w-[78vw]
-                        max-w-[340px]
-                        shrink-0
-                        snap-start
-                        overflow-hidden
-                        rounded-3xl
-                        border
-                        border-border
-                        bg-card
-                        transition
-                        hover:bg-elevated
-                        sm:w-[300px]
-                      "
-                    >
-                      <div className="relative aspect-[16/9] w-full overflow-hidden bg-black">
-                        <img
-                          src={item.image}
-                          alt={item.title}
-                          className="
-                            h-full
-                            w-full
-                            object-cover
-                            transition-transform
-                            duration-500
-                            group-hover:scale-[1.03]
-                          "
-                          loading="lazy"
-                        />
-                        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent" />
-                        <span
-                          className="
-                            absolute
-                            bottom-3
-                            left-3
-                            rounded-md
-                            bg-black/70
-                            px-2
-                            py-1
-                            text-[10px]
-                            font-semibold
-                            uppercase
-                            tracking-wide
-                            text-white
-                          "
-                        >
-                          {item.type}
-                        </span>
-                      </div>
-
-                      <div className="p-4">
-                        <h3
-                          className="
-                            line-clamp-2
-                            text-sm
-                            font-semibold
-                            leading-snug
-                          "
-                        >
-                          {item.title}
-                        </h3>
-                        <p className="mt-2 text-xs text-muted">
-                          {item.date} · {formatRelativeNewsTime(item.date, "time" in item && typeof item.time === "string" ? item.time : undefined)}
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            )}
           </>
         ) : (
           <section
@@ -1913,147 +1352,6 @@ function NewsPage() {
                 .
               </p>
             )}
-          </section>
-        )}
-
-        {/* =================================================
-            RECOMENDAÇÕES
-        ================================================== */}
-
-        {!isSearchMode && recommendations.length > 0 && (
-          <section className="mt-10">
-            <div className="mb-4">
-              <h2 className="text-xl font-semibold tracking-tight">
-                Recomendações
-              </h2>
-            </div>
-
-            <div
-              className="
-                grid
-                grid-cols-2
-                gap-3
-                sm:grid-cols-3
-                sm:gap-4
-                lg:grid-cols-4
-              "
-            >
-              {recommendations.map((item) => (
-                <Link
-                  key={item.id}
-                  to="/anime/$id"
-                  params={{ id: String(item.id) }}
-                  className="block min-w-0"
-                >
-                  <article
-                    className="
-                      min-w-0
-                      overflow-hidden
-                      rounded-3xl
-                      border
-                      border-border
-                      bg-card
-                    "
-                  >
-                    <div className="relative aspect-[3/4] w-full overflow-hidden bg-black">
-                      <img
-                        src={item.image}
-                        alt={item.title}
-                        className="h-full w-full object-cover object-center"
-                        loading="lazy"
-                      />
-                    </div>
-
-                    <div className="p-3 sm:p-4">
-                      <h3 className="line-clamp-2 text-sm font-semibold leading-snug sm:text-base">
-                        {item.title}
-                      </h3>
-                    </div>
-                  </article>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* =================================================
-            CALENDÁRIO DE ANIME
-        ================================================== */}
-
-        {!isSearchMode && calendarEpisodes.length > 0 && (
-          <section className="mt-10">
-            <div className="mb-4">
-              <h2 className="text-xl font-semibold tracking-tight">
-                Calendário de Anime
-              </h2>
-            </div>
-
-            <div
-              className="
-                grid
-                grid-cols-2
-                gap-3
-                sm:grid-cols-2
-                sm:gap-4
-                lg:grid-cols-4
-              "
-            >
-              {calendarEpisodes.map((item) => (
-                <Link
-                  key={`${item.id}-${item.airingAt}-${item.episode}`}
-                  to="/anime/$id"
-                  params={{ id: String(item.id) }}
-                  className="block min-w-0"
-                >
-                  <article
-                    className="
-                      min-w-0
-                      overflow-hidden
-                      rounded-3xl
-                      border
-                      border-border
-                      bg-card
-                    "
-                  >
-                    <div className="relative w-full overflow-hidden bg-black">
-                      <div className="sm:hidden">
-                        <div className="relative aspect-[3/4] w-full overflow-hidden">
-                          <img
-                            src={item.coverImage}
-                            alt={item.title}
-                            className="h-full w-full object-cover object-center"
-                            loading="lazy"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="hidden sm:block">
-                        <div className="relative aspect-[16/7] w-full overflow-hidden bg-black">
-                          <img
-                            src={item.image}
-                            alt={item.title}
-                            className="h-full w-full object-cover object-center"
-                            loading="lazy"
-                          />
-                        </div>
-                      </div>
-                  </div>
-
-                  <div className="p-3 sm:p-4">
-                    <p className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-accent sm:text-xs">
-                      {formatCalendarDay(item.airingAt)} · {formatCalendarTime(item.airingAt)}
-                    </p>
-                    <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-snug sm:text-base">
-                      {item.title}
-                    </h3>
-                    <p className="mt-2 text-xs text-muted">
-                      Episódio {item.episode}
-                    </p>
-                    </div>
-                  </article>
-                </Link>
-              ))}
-            </div>
           </section>
         )}
       </div>
