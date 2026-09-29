@@ -853,14 +853,6 @@ const EXTERNAL_NEWS_FEEDS = [
     name: "Anime Corner",
     url: "https://animecorner.me/category/anime-news/feed/",
   },
-  {
-    name: "Anime Trending",
-    url: "https://www.anitrendz.com/news/feed",
-  },
-  {
-    name: "Anime Herald",
-    url: "https://www.animeherald.com/feed",
-  },
 ] as const;
 
 function xmlDecode(value: string): string {
@@ -868,7 +860,7 @@ function xmlDecode(value: string): string {
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1")
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#039;|&#39;|&apos;/gi, "'")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">");
 }
@@ -1243,10 +1235,10 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
     sorted.map(async (item) => ({
       id: item.id,
       type: item.type,
-      title: await translateToPortuguese(item.title),
+      title: item.title,
       description:
         (await translateToPortuguese(item.description)) ||
-        "Nova notícia de anime.",
+        "Descrição indisponível.",
       date: formatExternalDate(item.publishedAt),
       image: item.image,
       animeId: item.animeId,
