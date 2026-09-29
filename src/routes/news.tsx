@@ -2017,11 +2017,11 @@ function NewsPage() {
                     </div>
 
                     <div className="hidden sm:block">
-                      <div className="relative aspect-[16/7] w-full overflow-hidden">
+                      <div className="relative aspect-[16/7] w-full overflow-hidden bg-black">
                         <img
                           src={item.image}
                           alt={item.title}
-                          className="h-full w-full object-cover object-center"
+                          className="h-full w-full object-contain object-center"
                           loading="lazy"
                         />
                       </div>
