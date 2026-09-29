@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { reviewHikariAINews } from "./api-hikari-ai-review";
+import { reviewHikariAINews } from "../routes/api-hikari-ai-review";
 
 import {
   currentAnimeSeason,
