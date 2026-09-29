@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
 
 const reviewSchema = z.object({
   title: z.string().trim().min(1).max(1000),
@@ -171,36 +171,37 @@ REGRAS:
 
 3. O nome do anime deve permanecer em inglês oficial ou romaji.
    Nunca transforme o nome do anime em português.
-   Nunca use o título japonês em caracteres nativos quando
-   existir um nome em inglês ou romaji.
 
-4. O restante do título deve ficar em português.
+4. Nunca use o título japonês em caracteres nativos quando
+   existir um nome oficial em inglês ou romaji.
 
-5. A descrição deve ficar em português.
+5. O restante do título deve ficar em português.
 
-6. Classifique a notícia em apenas uma categoria:
+6. A descrição deve ficar em português.
+
+7. Classifique a notícia em apenas uma categoria:
    - Confirmado
    - Rumor
    - Trailer/PV
    - Nova temporada
    - Anúncio
 
-7. Se a fonte for claramente um vazamento, leak ou conta de
-   rumores, trate como "Rumor", salvo quando a própria notícia
-   apresentar confirmação oficial verificável.
+8. Se a fonte for claramente um vazamento, leak ou conta de
+   rumores, trate como "Rumor", salvo quando houver confirmação
+   oficial verificável.
 
-8. Não invente informações que não estejam presentes na notícia.
+9. Não invente informações.
 
-9. Se não for possível identificar um anime, não invente um nome.
+10. Se não for possível identificar corretamente um anime,
+    não invente um nome.
 
-10. A decisão "approved" deve ser false se:
-    - não for notícia de anime/mangá;
-    - for notícia de jogo;
-    - houver informação insuficiente para identificar
-      corretamente o conteúdo;
+11. A decisão "approved" deve ser false se:
+    - não for notícia de anime ou mangá;
+    - for notícia exclusivamente sobre jogo;
+    - houver informação insuficiente;
     - houver forte indício de conteúdo duplicado.
 
-11. "isDuplicate" nesta primeira versão deve ser false quando
+12. "isDuplicate" deve ser false nesta primeira versão quando
     não houver evidência de duplicação no conteúdo recebido.
     A comparação com o banco de notícias será adicionada
     posteriormente.
@@ -222,7 +223,7 @@ ${data.source || "(desconhecida)"}
 URL da fonte:
 ${data.sourceUrl || "(não informada)"}
 
-JSON OBRIGATÓRIO:
+DEVOLVA EXATAMENTE ESTE FORMATO JSON:
 
 {
   "approved": true,
@@ -239,11 +240,12 @@ JSON OBRIGATÓRIO:
 
     try {
       const response = await fetch(
-        `${GEMINI_API_URL}?key=${encodeURIComponent(apiKey)}`,
+        GEMINI_API_URL,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
           },
           body: JSON.stringify({
             contents: [
