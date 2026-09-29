@@ -92,7 +92,6 @@ function WatchPage() {
   const { remote } = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
-  const hydrated = useHikariStore((s) => s.hydrated);
 
   const markContinue = useHikariStore(
     (s) => s.markContinue,
@@ -446,10 +445,6 @@ function WatchPage() {
     if (video) video.playbackRate = rate;
   };
 
-  if (!anime && !hydrated) {
-    return null;
-  }
-
   if (!anime) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-bg text-fg">
@@ -589,7 +584,7 @@ function WatchPage() {
                       setPlayerIndex(index)
                     }
                   >
-                    Player {index + 1}
+                    Player {playerUrls.slice(0, index + 1).filter(Boolean).length}
                   </Button>
                 ) : null,
             )}
