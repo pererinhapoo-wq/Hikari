@@ -1329,7 +1329,7 @@ function NewsPage() {
                 "
               >
                 <img
-                  src={featuredItem.image}
+                  src={featuredItem.bannerImage || featuredItem.image}
                   alt={featuredItem.title}
                   className="
                     absolute
