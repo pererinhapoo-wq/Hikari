@@ -137,6 +137,7 @@ async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
           item.media.title?.romaji?.trim() ||
           "Anime",
         image:
+          item.media.bannerImage ||
           item.media.coverImage?.extraLarge ||
           item.media.coverImage?.large ||
           "",
