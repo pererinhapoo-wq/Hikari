@@ -1939,32 +1939,38 @@ function NewsPage() {
               "
             >
               {recommendations.map((item) => (
-                <article
+                <Link
                   key={item.id}
-                  className="
-                    min-w-0
-                    overflow-hidden
-                    rounded-3xl
-                    border
-                    border-border
-                    bg-card
-                  "
+                  to="/anime/$id"
+                  params={{ id: String(item.id) }}
+                  className="block min-w-0"
                 >
-                  <div className="relative aspect-[3/4] w-full overflow-hidden bg-black">
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      className="h-full w-full object-cover object-center"
-                      loading="lazy"
-                    />
-                  </div>
+                  <article
+                    className="
+                      min-w-0
+                      overflow-hidden
+                      rounded-3xl
+                      border
+                      border-border
+                      bg-card
+                    "
+                  >
+                    <div className="relative aspect-[3/4] w-full overflow-hidden bg-black">
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        className="h-full w-full object-cover object-center"
+                        loading="lazy"
+                      />
+                    </div>
 
-                  <div className="p-3 sm:p-4">
-                    <h3 className="line-clamp-2 text-sm font-semibold leading-snug sm:text-base">
-                      {item.title}
-                    </h3>
-                  </div>
-                </article>
+                    <div className="p-3 sm:p-4">
+                      <h3 className="line-clamp-2 text-sm font-semibold leading-snug sm:text-base">
+                        {item.title}
+                      </h3>
+                    </div>
+                  </article>
+                </Link>
               ))}
             </div>
           </section>
@@ -1993,39 +1999,44 @@ function NewsPage() {
               "
             >
               {calendarEpisodes.map((item) => (
-                <article
+                <Link
                   key={`${item.id}-${item.airingAt}-${item.episode}`}
-                  className="
-                    min-w-0
-                    overflow-hidden
-                    rounded-3xl
-                    border
-                    border-border
-                    bg-card
-                  "
+                  to="/anime/$id"
+                  params={{ id: String(item.id) }}
+                  className="block min-w-0"
                 >
-                  <div className="relative w-full overflow-hidden bg-black">
-                    <div className="sm:hidden">
-                      <div className="relative aspect-[3/4] w-full overflow-hidden">
-                        <img
-                          src={item.coverImage}
-                          alt={item.title}
-                          className="h-full w-full object-cover object-center"
-                          loading="lazy"
-                        />
+                  <article
+                    className="
+                      min-w-0
+                      overflow-hidden
+                      rounded-3xl
+                      border
+                      border-border
+                      bg-card
+                    "
+                  >
+                    <div className="relative w-full overflow-hidden bg-black">
+                      <div className="sm:hidden">
+                        <div className="relative aspect-[3/4] w-full overflow-hidden">
+                          <img
+                            src={item.coverImage}
+                            alt={item.title}
+                            className="h-full w-full object-cover object-center"
+                            loading="lazy"
+                          />
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="hidden sm:block">
-                      <div className="w-full overflow-hidden">
-                        <img
-                          src={item.image}
-                          alt={item.title}
-                          className="block h-auto w-full"
-                          loading="lazy"
-                        />
+                      <div className="hidden sm:block">
+                        <div className="relative aspect-[16/7] w-full overflow-hidden bg-black">
+                          <img
+                            src={item.image}
+                            alt={item.title}
+                            className="h-full w-full object-cover object-center"
+                            loading="lazy"
+                          />
+                        </div>
                       </div>
-                    </div>
                   </div>
 
                   <div className="p-3 sm:p-4">
@@ -2038,8 +2049,9 @@ function NewsPage() {
                     <p className="mt-2 text-xs text-muted">
                       Episódio {item.episode}
                     </p>
-                  </div>
-                </article>
+                    </div>
+                  </article>
+                </Link>
               ))}
             </div>
           </section>
