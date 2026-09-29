@@ -1393,14 +1393,26 @@ async function reviewExternalNewsWithHikariAI(
         ? await findAniListAnimeId(review.animeName)
         : "");
 
+    const reviewedTitle = finalizeExternalNewsTitle(
+      review.title || item.title,
+    )
+      .replace(
+        /\bShoujo\s+Romcom\s+Anime\s+de\s+TV\s+/gi,
+        "",
+      )
+      .replace(
+        /\bShoujo\s+Romcom\s+TV\s+Anime\s+/gi,
+        "",
+      );
+
+    const reviewedDescription = review.description?.trim()
+      ? await translateNewsFragment(review.description.trim())
+      : item.description;
+
     const reviewedItem: ExternalNewsItem = {
       ...item,
-      title: finalizeExternalNewsTitle(
-        review.title || item.title,
-      ),
-      description:
-        review.description?.trim() ||
-        item.description,
+      title: reviewedTitle,
+      description: reviewedDescription,
       type: classified.type,
       isRumor: classified.isRumor,
       animeId,
