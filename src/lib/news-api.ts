@@ -24,6 +24,7 @@ export type AutomaticNewsItem = {
   description: string;
   date: string;
   image: string;
+  bannerImage?: string;
   animeId: string;
   trailerUrl?: string;
   isAdult?: boolean;
@@ -844,6 +845,7 @@ type ExternalNewsItem = {
   publishedAt: string;
   url: string;
   image: string;
+  bannerImage?: string;
   articleImages: string[];
   source: string;
   type: AutomaticNewsItem["type"];
@@ -1278,6 +1280,8 @@ async function fetchExternalFeed(
 
       const animeId = await findAniListAnimeId(item.title);
       item.animeId = animeId;
+      const animeMeta = await fetchAniListMeta(animeId);
+      item.bannerImage = animeMeta.bannerImage || item.bannerImage;
       item.title = await translateExternalTitle(
         item.title,
         animeId,
@@ -1298,13 +1302,14 @@ const aniListSearchCache = new Map<string, string>();
 const aniListMetaCache = new Map<string, {
   title: string;
   image: string;
+  bannerImage: string;
 }>();
 
 async function fetchAniListMeta(
   animeId: string,
-): Promise<{ title: string; image: string }> {
+): Promise<{ title: string; image: string; bannerImage: string }> {
   if (!animeId) {
-    return { title: "", image: "" };
+    return { title: "", image: "", bannerImage: "" };
   }
 
   const cached = aniListMetaCache.get(animeId);
@@ -1333,6 +1338,7 @@ async function fetchAniListMeta(
                 extraLarge
                 large
               }
+              bannerImage
             }
           }
         `,
@@ -1342,7 +1348,7 @@ async function fetchAniListMeta(
     });
 
     if (!response.ok) {
-      return { title: "", image: "" };
+      return { title: "", image: "", bannerImage: "" };
     }
 
     const json = (await response.json()) as {
@@ -1357,13 +1363,14 @@ async function fetchAniListMeta(
             extraLarge?: string | null;
             large?: string | null;
           } | null;
+          bannerImage?: string | null;
         } | null;
       };
     };
 
     const media = json.data?.Media;
     if (!media || media.isAdult === true) {
-      return { title: "", image: "" };
+      return { title: "", image: "", bannerImage: "" };
     }
 
     const meta = {
@@ -1375,12 +1382,13 @@ async function fetchAniListMeta(
         media.coverImage?.extraLarge ||
         media.coverImage?.large ||
         "",
+      bannerImage: media.bannerImage || "",
     };
 
     aniListMetaCache.set(animeId, meta);
     return meta;
   } catch {
-    return { title: "", image: "" };
+    return { title: "", image: "", bannerImage: "" };
   }
 }
 
@@ -1567,6 +1575,26 @@ function htmlText(value: string): string {
   );
 }
 
+function telegramPostBlock(html: string, matchIndex: number): string {
+  const marker = '<div class="tgme_widget_message_wrap';
+  const start = html.lastIndexOf(marker, matchIndex);
+  if (start < 0) return html.slice(Math.max(0, matchIndex - 4000), Math.min(html.length, matchIndex + 5000));
+  const next = html.indexOf(marker, matchIndex + 1);
+  return html.slice(start, next >= 0 ? next : Math.min(html.length, start + 30000));
+}
+
+function telegramPostImage(html: string, baseUrl: string): string {
+  const photo = html.match(
+    /tgme_widget_message_photo_wrap[^>]*style=["'][^"']*background-image\s*:\s*url\((?:["']?)([^\)"']+)(?:["']?)\)[^"']*["']/i,
+  )?.[1];
+  if (photo) return absoluteUrl(photo, baseUrl);
+
+  const background = html.match(
+    /style=["'][^"']*background-image\s*:\s*url\((?:["']?)([^\)"']+)(?:["']?)\)[^"']*["']/i,
+  )?.[1];
+  return background ? absoluteUrl(background, baseUrl) : "";
+}
+
 async function fetchSugoiProfile(
   source: Extract<ExternalNewsFeed, { kind: "x-mirror" }>,
 ): Promise<ExternalNewsItem[]> {
@@ -1602,9 +1630,7 @@ async function fetchSugoiProfile(
     if (seen.has(statusId)) continue;
     seen.add(statusId);
 
-    const contextStart = Math.max(0, match.index - 3500);
-    const contextEnd = Math.min(html.length, match.index + match[0].length + 3500);
-    const context = html.slice(contextStart, contextEnd);
+    const context = telegramPostBlock(html, match.index);
 
     const text = stripMarkup(anchorHtml)
       .replace(/\s+/g, " ")
@@ -1619,8 +1645,8 @@ async function fetchSugoiProfile(
       context.match(/datetime=["']([^"']+)["']/i)?.[1] ??
       "";
 
-    const image = imageFromHtml(context, telegramUrl);
-    const articleImages = imagesFromHtml(context, telegramUrl);
+    const image = telegramPostImage(context, telegramUrl);
+    const articleImages = image ? [image] : [];
     const xUrl = `https://x.com/${handle}/status/${statusId}`;
 
     const rawTitle = cleanExternalTitle(text);
@@ -1641,6 +1667,10 @@ async function fetchSugoiProfile(
       image ||
       articleImages[0] ||
       "";
+    const bannerImage =
+      meta.bannerImage ||
+      image ||
+      "";
 
     results.push({
       id: `sugoi-${handle.toLowerCase()}-${statusId}`,
@@ -1652,6 +1682,7 @@ async function fetchSugoiProfile(
           : new Date().toISOString(),
       url: xUrl,
       image: bestImage,
+      bannerImage,
       articleImages,
       source: handle,
       type: "RUMOR",
@@ -1715,6 +1746,7 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
         "Descrição indisponível.",
       date: formatExternalDate(item.publishedAt),
       image: item.image,
+      bannerImage: item.bannerImage,
       animeId: item.animeId,
       trailerUrl: item.trailerUrl,
       source: item.source,
