@@ -34,9 +34,10 @@ function HikariAIPage() {
     title: string;
     description: string;
     reason: string;
+    provider: "Gemini" | "Groq" | "Fallback";
   } | null>(null);
 
-  async function handleTestAI() {
+  async function handleTestAI(provider: "auto" | "gemini" | "groq") {
     setTesting(true);
     setTestResult(null);
 
@@ -61,6 +62,7 @@ function HikariAIPage() {
           description: "",
           reason:
             "Nenhuma notícia externa disponível no momento para testar a Hikari AI.",
+          provider: "Fallback",
         });
         return;
       }
@@ -72,6 +74,7 @@ function HikariAIPage() {
           source: realNews.source ?? "",
           sourceUrl: realNews.sourceUrl ?? "",
           animeName: "",
+          provider,
         },
       });
 
@@ -90,6 +93,7 @@ function HikariAIPage() {
           error instanceof Error
             ? error.message
             : "Não foi possível executar o teste.",
+        provider: "Fallback",
       });
     } finally {
       setTesting(false);
@@ -159,6 +163,51 @@ function HikariAIPage() {
         </div>
       </section>
 
+      {/* Provedores */}
+      <section className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)] sm:p-6">
+        <div>
+          <h2 className="font-display text-xl">
+            Provedores da Hikari AI
+          </h2>
+
+          <p className="mt-1 text-sm leading-6 text-muted">
+            O Hikari usa estes provedores na análise automática das notícias.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg bg-elevated p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted">Provedor principal</p>
+                <p className="mt-1 font-display text-lg">Gemini</p>
+              </div>
+              <span className="rounded-full bg-surface px-2.5 py-1 text-[10px] text-muted">
+                Principal
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              Gemini 3.5 Flash Lite
+            </p>
+          </div>
+
+          <div className="rounded-lg bg-elevated p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted">Provedor de reserva</p>
+                <p className="mt-1 font-display text-lg">Groq</p>
+              </div>
+              <span className="rounded-full bg-surface px-2.5 py-1 text-[10px] text-muted">
+                Fallback
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              GPT-OSS 120B
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Teste */}
       <section className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)] sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -173,32 +222,32 @@ function HikariAIPage() {
             </p>
           </div>
 
-          <Button
-            type="button"
-            onClick={handleTestAI}
-            disabled={testing}
-          >
-            {testing ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Testando...
-              </>
-            ) : (
-              <>
-                <Bot className="size-4" />
-                Testar Hikari AI
-              </>
-            )}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => handleTestAI("gemini")} disabled={testing}>
+              {testing ? <Loader2 className="size-4 animate-spin" /> : <Bot className="size-4" />}
+              Testar Gemini
+            </Button>
+            <Button type="button" variant="outline" onClick={() => handleTestAI("groq")} disabled={testing}>
+              {testing ? <Loader2 className="size-4 animate-spin" /> : <Bot className="size-4" />}
+              Testar Groq
+            </Button>
+          </div>
         </div>
 
         {testResult && (
           <div className="mt-5 rounded-lg bg-elevated p-4">
             <div className="flex items-center gap-2 text-sm">
               {testResult.approved ? (
-                <CheckCircle2 className="size-4" />
-              ) : (
-                <XCircle className="size-4" />
+                <span
+                  className={
+                    testResult.approved
+                      ? "font-bold text-green-500"
+                      : "font-bold text-red-500"
+                  }
+                  aria-hidden="true"
+                >
+                  {testResult.approved ? "✓" : "✕"}
+                </span>
               )}
 
               <span>
@@ -206,6 +255,13 @@ function HikariAIPage() {
                   ? "Hikari AI aprovou a notícia"
                   : "Hikari AI não aprovou a notícia"}
               </span>
+            </div>
+
+            <div className="mb-4 flex items-center gap-2 text-sm">
+              <span className={testResult.provider === "Fallback" ? "font-bold text-red-500" : "font-bold text-green-500"}>
+                {testResult.provider === "Fallback" ? "✕" : "✓"}
+              </span>
+              <span>IA utilizada: {testResult.provider === "Fallback" ? "Nenhuma (falha)" : testResult.provider}</span>
             </div>
 
             <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
@@ -457,9 +513,20 @@ function HikariAIPage() {
           </div>
 
           <p className="mt-1 text-xs leading-5 text-muted">
-            A chave da OpenAI permanece protegida nas variáveis de ambiente
-            e não é enviada para o navegador.
+            As chaves do Gemini e do Groq permanecem protegidas nas variáveis
+            de ambiente e não são enviadas para o navegador.
           </p>
+
+          <div className="mt-3 flex flex-wrap gap-4 text-xs">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="font-bold text-green-500" aria-hidden="true">✓</span>
+              Funcionando / aprovado
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="font-bold text-red-500" aria-hidden="true">✕</span>
+              Falha / não aprovado
+            </span>
+          </div>
         </div>
       </section>
 
