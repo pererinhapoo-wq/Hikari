@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { reviewHikariAINews } from "../routes/api-hikari-ai-review";
+import { reviewHikariAINews } from "./api-hikari-ai-review";
 
 import {
   currentAnimeSeason,
@@ -1419,10 +1419,13 @@ async function reviewExternalNewsWithHikariAI(
 
     return reviewedItem;
   } catch {
-    // Se a IA estiver temporariamente indisponível, mantém a notícia
-    // original para não derrubar o feed inteiro. O filtro de jogos
-    // continua sendo aplicado antes desta etapa.
-    return item;
+    // A revisão da Hikari AI é obrigatória antes da publicação.
+    // Se a IA estiver indisponível, a notícia não entra no /news.
+    hikariAIReviewCache.set(cacheKey, {
+      at: Date.now(),
+      item: null,
+    });
+    return null;
   }
 }
 
