@@ -937,81 +937,19 @@ function imageFromHtml(
 function imagesFromHtml(
   html: string,
   baseUrl: string,
-  title = "",
 ): string[] {
   const images = new Set<string>();
-  const normalizedTitle = stripMarkup(title).toLowerCase();
+  const pattern = /<img\b[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  let match: RegExpExecArray | null;
 
-  const isNoiseImage = (url: string, alt = "") => {
-    const normalized = `${url} ${alt}`.toLowerCase();
-
-    if (
-      /\b(logo|icon|avatar|favicon|sprite|tracking|pixel|share|social|facebook|twitter|instagram|youtube|shorturl|short-url|qr[-_ ]?code|rss|banner[-_ ]?(top|header|footer)|advert|ads?)\b/i.test(normalized)
-    ) {
-      return true;
-    }
-
-    const words = normalizedTitle
-      .split(/\s+/)
-      .filter((word) => word.length >= 4)
-      .slice(0, 8);
-
-    if (words.length >= 2) {
-      const matches = words.filter((word) => normalized.includes(word)).length;
-      if (matches === 0 && /\b(related|recommended|more[-_ ]?news|latest[-_ ]?news)\b/i.test(normalized)) {
-        return true;
-      }
-    }
-
-    return false;
-  };
-
-  const add = (rawUrl: string, alt = "") => {
-    const url = absoluteUrl(rawUrl, baseUrl);
-    if (url && !url.startsWith("data:") && !isNoiseImage(url, alt)) {
+  while ((match = pattern.exec(html)) && images.size < 8) {
+    const url = absoluteUrl(match[1], baseUrl);
+    if (url && !url.startsWith("data:")) {
       images.add(url);
     }
-  };
-
-  let match: RegExpExecArray | null;
-  const figurePattern = /<figure\b[^>]*>[\s\S]*?<img\b[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>[\s\S]*?<\/figure>/gi;
-  while ((match = figurePattern.exec(html)) && images.size < 8) {
-    const figure = match[0];
-    const alt = figure.match(/\balt=["']([^"']*)["']/i)?.[1] ?? "";
-    add(match[1], alt);
-  }
-
-  const pattern = /<img\b[^>]*?(?:src|data-src)=["']([^"']+)["'][^>]*>/gi;
-  while ((match = pattern.exec(html)) && images.size < 8) {
-    const alt = match[0].match(/\balt=["']([^"']*)["']/i)?.[1] ?? "";
-    add(match[1], alt);
   }
 
   return Array.from(images);
-}
-
-function articleContentFromHtml(html: string): string {
-  const article = html.match(/<article\b[^>]*>[\s\S]*?<\/article>/i);
-  if (article?.[0]) {
-    return article[0];
-  }
-
-  const main = html.match(/<main\b[^>]*>[\s\S]*?<\/main>/i);
-  return main?.[0] ?? html;
-}
-
-function isGameNews(
-  title: string,
-  content: string,
-  url: string,
-): boolean {
-  const titleAndUrl = `${title} ${url}`.toLowerCase();
-  const body = stripMarkup(content).toLowerCase();
-  const gameTerms = /\b(steam|playstation|ps4|ps5|xbox|nintendo switch|nintendo|gameplay|video game|videogame|gaming|pc game|mobile game|gacha game|game trailer|game release)\b/i;
-
-  if (gameTerms.test(titleAndUrl)) return true;
-
-  return gameTerms.test(body) && /\b(announced|announcement|release|released|launch|launches|launching|trailer|gameplay|demo|platform|console)\b/i.test(body);
 }
 
 function typeFromExternalNews(
@@ -1120,11 +1058,7 @@ async function fetchExternalFeed(
       xmlAttribute(block, "enclosure", "url") ||
       imageFromHtml(content, url);
 
-    if (isGameNews(title, content, url)) {
-      return null;
-    }
-
-    const articleImages = imagesFromHtml(content, url, title);
+    const articleImages = imagesFromHtml(content, url);
     const classified = typeFromExternalNews(title);
 
     return {
@@ -1155,29 +1089,14 @@ async function fetchExternalFeed(
 
         if (response.ok) {
           const html = await response.text();
-
-          if (isGameNews(item.title, html, item.url)) {
-            return null;
-          }
-
           item.image =
             imageFromHtml(html, item.url) || item.image;
-
-          const articleHtml = articleContentFromHtml(html);
-          const pageArticleImages = imagesFromHtml(
-            articleHtml,
-            item.url,
-            item.title,
-          );
-
-          if (pageArticleImages.length > 0) {
-            item.articleImages = Array.from(
-              new Set([
-                item.image,
-                ...pageArticleImages,
-              ].filter(Boolean)),
-            ).slice(0, 8);
-          }
+          item.articleImages = Array.from(
+            new Set([
+              ...item.articleImages,
+              ...imagesFromHtml(html, item.url),
+            ]),
+          ).slice(0, 8);
 
           const pageDescription =
             html.match(
@@ -1203,9 +1122,7 @@ async function fetchExternalFeed(
     }),
   );
 
-  return enriched.filter(
-    (item): item is ExternalNewsItem => item !== null,
-  );
+  return enriched;
 }
 
 const aniListSearchCache = new Map<string, string>();
