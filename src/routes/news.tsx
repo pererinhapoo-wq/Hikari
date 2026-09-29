@@ -1814,18 +1814,11 @@ function NewsPage() {
                     bg-card
                   "
                 >
-                  <div className="relative aspect-[16/9] w-full overflow-hidden bg-black">
-                    <img
-                      src={item.image}
-                      alt=""
-                      aria-hidden="true"
-                      className="absolute inset-0 h-full w-full scale-110 object-cover object-center opacity-60 blur-xl"
-                      loading="lazy"
-                    />
+                  <div className="relative aspect-[16/7] w-full overflow-hidden bg-black">
                     <img
                       src={item.image}
                       alt={item.title}
-                      className="relative z-10 h-full w-full object-contain object-center"
+                      className="h-full w-full object-cover object-center"
                       loading="lazy"
                     />
                   </div>
