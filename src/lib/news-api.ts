@@ -1361,14 +1361,120 @@ async function findAniListAnimeId(
   }
 }
 
-async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
-  const results = await Promise.allSettled(
-    EXTERNAL_NEWS_FEEDS.map((feed) => fetchExternalFeed(feed)),
+function htmlText(value: string): string {
+  return stripMarkup(
+    value
+      .replace(/<br\s*\/?>(?=.)/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  );
+}
+
+async function fetchSugoiProfile(
+  source: Extract<ExternalNewsFeed, { kind: "x-mirror" }>,
+): Promise<ExternalNewsItem[]> {
+  const response = await fetch(source.url, {
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "User-Agent": "Hikari/1.0 (anime news)",
+    },
+    signal: AbortSignal.timeout(12000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`${source.name} indisponível (${response.status})`);
+  }
+
+  const html = await response.text();
+  const posts = new Map<string, string>();
+  const statusPattern = new RegExp(
+    `/${source.handle}/status/(\\d+)`,
+    "gi",
   );
 
-  const merged = results.flatMap((result) =>
-    result.status === "fulfilled" ? result.value : [],
-  );
+  let match: RegExpExecArray | null;
+  while ((match = statusPattern.exec(html))) {
+    const id = match[1];
+    if (posts.has(id)) continue;
+
+    const start = Math.max(0, match.index - 4500);
+    const end = Math.min(html.length, match.index + 4500);
+    const context = html.slice(start, end);
+    const cleaned = htmlText(context);
+
+    const handleIndex = cleaned.toLowerCase().indexOf(`@${source.handle.toLowerCase()}`);
+    const candidate =
+      handleIndex >= 0
+        ? cleaned.slice(handleIndex + source.handle.length + 1)
+        : cleaned;
+
+    const text = candidate
+      .replace(/View Details.*$/i, "")
+      .replace(/Previous.*$/i, "")
+      .replace(/Next.*$/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (text.length >= 30) {
+      posts.set(id, text.slice(0, 900));
+    }
+  }
+
+  const results: ExternalNewsItem[] = [];
+  for (const [statusId, text] of posts) {
+    const xUrl = `https://x.com/${source.handle}/status/${statusId}`;
+    const title = text
+      .replace(/https?:\/\/t\.co\/\S+/gi, "")
+      .replace(/https?:\/\/x\.com\/\S+/gi, "")
+      .trim();
+
+    if (!title || isGameNews(title, "", xUrl)) continue;
+
+    const animeId = await findAniListAnimeId(title);
+    results.push({
+      id: `sugoi-${source.handle}-${statusId}`,
+      title,
+      description: text,
+      publishedAt: new Date().toISOString(),
+      url: xUrl,
+      image: "",
+      articleImages: [],
+      source: source.name,
+      type: "RUMOR",
+      isRumor: true,
+      animeId,
+      xPosts: [xUrl],
+    });
+  }
+
+  return results.slice(0, 20);
+}
+
+async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
+  const [rssResults, sugoiResults] = await Promise.all([
+    Promise.allSettled(
+      EXTERNAL_NEWS_FEEDS
+        .filter((feed): feed is Extract<ExternalNewsFeed, { kind: "rss" }> =>
+          feed.kind === "rss",
+        )
+        .map((feed) => fetchExternalFeed(feed)),
+    ),
+    Promise.allSettled(
+      EXTERNAL_NEWS_FEEDS
+        .filter((feed): feed is Extract<ExternalNewsFeed, { kind: "x-mirror" }> =>
+          feed.kind === "x-mirror",
+        )
+        .map((source) => fetchSugoiProfile(source)),
+    ),
+  ]);
+
+  const merged = [
+    ...rssResults.flatMap((result) =>
+      result.status === "fulfilled" ? result.value : [],
+    ),
+    ...sugoiResults.flatMap((result) =>
+      result.status === "fulfilled" ? result.value : [],
+    ),
+  ];
 
   const unique = new Map<string, ExternalNewsItem>();
   for (const item of merged) {
