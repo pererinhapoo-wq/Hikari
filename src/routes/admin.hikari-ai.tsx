@@ -5,20 +5,74 @@ import {
   CheckCircle2,
   FileText,
   History,
+  Loader2,
   MessageSquareWarning,
   Settings,
   ShieldCheck,
   Sparkles,
   XCircle,
 } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { reviewHikariAINews } from "./api-hikari-ai-review";
 
 export const Route = createFileRoute("/admin/hikari-ai")({
   component: HikariAIPage,
 });
 
 function HikariAIPage() {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    approved: boolean;
+    isAnime: boolean;
+    isGameNews: boolean;
+    isDuplicate: boolean;
+    label: string;
+    animeName: string;
+    title: string;
+    description: string;
+    reason: string;
+  } | null>(null);
+
+  async function handleTestAI() {
+    setTesting(true);
+    setTestResult(null);
+
+    try {
+      const result = await reviewHikariAINews({
+        data: {
+          title:
+            "One Piece anuncia novidades para o próximo arco do anime",
+          description:
+            "O anime de One Piece recebeu novas informações sobre seus próximos episódios e produção.",
+          source: "Hikari AI Teste",
+          sourceUrl: "https://example.com",
+          animeName: "One Piece",
+        },
+      });
+
+      setTestResult(result);
+    } catch (error) {
+      setTestResult({
+        approved: false,
+        isAnime: false,
+        isGameNews: false,
+        isDuplicate: false,
+        label: "Erro",
+        animeName: "",
+        title: "",
+        description: "",
+        reason:
+          error instanceof Error
+            ? error.message
+            : "Não foi possível executar o teste.",
+      });
+    } finally {
+      setTesting(false);
+    }
+  }
+
   return (
     <div className="space-y-6 pt-6">
       {/* Cabeçalho */}
@@ -69,17 +123,139 @@ function HikariAIPage() {
               </h2>
 
               <p className="mt-1 text-sm text-muted">
-                A estrutura do sistema está pronta. O provedor de IA ainda
-                não está configurado.
+                A estrutura do sistema está pronta e a conexão com o
+                provedor pode ser testada abaixo.
               </p>
             </div>
           </div>
 
           <div className="inline-flex w-fit items-center gap-2 rounded-full bg-elevated px-3 py-1.5 text-xs text-muted">
-            <XCircle className="size-3.5" />
-            Não configurada
+            <CheckCircle2 className="size-3.5" />
+            Configurada
           </div>
         </div>
+      </section>
+
+      {/* Teste */}
+      <section className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)] sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-display text-xl">
+              Testar Hikari AI
+            </h2>
+
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+              Executa uma notícia de teste através da API da Hikari AI.
+              Nenhuma notícia real será publicada ou alterada.
+            </p>
+          </div>
+
+          <Button
+            type="button"
+            onClick={handleTestAI}
+            disabled={testing}
+          >
+            {testing ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Testando...
+              </>
+            ) : (
+              <>
+                <Bot className="size-4" />
+                Testar Hikari AI
+              </>
+            )}
+          </Button>
+        </div>
+
+        {testResult && (
+          <div className="mt-5 rounded-lg bg-elevated p-4">
+            <div className="flex items-center gap-2 text-sm">
+              {testResult.approved ? (
+                <CheckCircle2 className="size-4" />
+              ) : (
+                <XCircle className="size-4" />
+              )}
+
+              <span>
+                {testResult.approved
+                  ? "Hikari AI aprovou a notícia de teste"
+                  : "Hikari AI não aprovou a notícia de teste"}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <span className="text-xs text-muted">
+                  Anime identificado
+                </span>
+                <p className="mt-1">
+                  {testResult.animeName || "Nenhum"}
+                </p>
+              </div>
+
+              <div>
+                <span className="text-xs text-muted">
+                  Classificação
+                </span>
+                <p className="mt-1">{testResult.label}</p>
+              </div>
+
+              <div>
+                <span className="text-xs text-muted">
+                  É notícia de anime?
+                </span>
+                <p className="mt-1">
+                  {testResult.isAnime ? "Sim" : "Não"}
+                </p>
+              </div>
+
+              <div>
+                <span className="text-xs text-muted">
+                  É notícia de jogo?
+                </span>
+                <p className="mt-1">
+                  {testResult.isGameNews ? "Sim" : "Não"}
+                </p>
+              </div>
+            </div>
+
+            {testResult.title && (
+              <div className="mt-4">
+                <span className="text-xs text-muted">
+                  Título revisado
+                </span>
+
+                <p className="mt-1 text-sm leading-6">
+                  {testResult.title}
+                </p>
+              </div>
+            )}
+
+            {testResult.description && (
+              <div className="mt-4">
+                <span className="text-xs text-muted">
+                  Descrição revisada
+                </span>
+
+                <p className="mt-1 text-sm leading-6 text-muted">
+                  {testResult.description}
+                </p>
+              </div>
+            )}
+
+            <div className="mt-4 rounded-lg bg-surface p-3">
+              <span className="text-xs text-muted">
+                Motivo
+              </span>
+
+              <p className="mt-1 text-sm leading-6">
+                {testResult.reason}
+              </p>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Recursos */}
@@ -240,8 +416,8 @@ function HikariAIPage() {
               </h2>
 
               <p className="mt-1 text-sm text-muted">
-                O provedor de inteligência artificial será configurado
-                posteriormente através das variáveis de ambiente do servidor.
+                O provedor de inteligência artificial é configurado através
+                das variáveis de ambiente do servidor.
               </p>
             </div>
           </div>
@@ -253,13 +429,13 @@ function HikariAIPage() {
 
         <div className="mt-5 rounded-lg bg-elevated p-4">
           <div className="flex items-center gap-2 text-sm">
-            <XCircle className="size-4" />
-            <span>Provedor de IA não configurado</span>
+            <CheckCircle2 className="size-4" />
+            <span>Provedor de IA configurado no servidor</span>
           </div>
 
           <p className="mt-1 text-xs leading-5 text-muted">
-            Nenhuma chave de API é armazenada nesta página. A integração será
-            feita exclusivamente no servidor.
+            A chave da OpenAI permanece protegida nas variáveis de ambiente
+            e não é enviada para o navegador.
           </p>
         </div>
       </section>
@@ -275,4 +451,4 @@ function HikariAIPage() {
       </div>
     </div>
   );
-                }
+            }
