@@ -37,7 +37,7 @@ function HikariAIPage() {
     provider: "Gemini" | "Groq" | "Fallback";
   } | null>(null);
 
-  async function handleTestAI(provider: "auto" | "gemini" | "groq") {
+  async function handleTestAI(provider: "gemini" | "groq") {
     setTesting(true);
     setTestResult(null);
 
@@ -230,10 +230,6 @@ function HikariAIPage() {
             <Button type="button" variant="outline" onClick={() => handleTestAI("groq")} disabled={testing}>
               {testing ? <Loader2 className="size-4 animate-spin" /> : <Bot className="size-4" />}
               Testar Groq
-            </Button>
-            <Button type="button" variant="outline" onClick={() => handleTestAI("auto")} disabled={testing}>
-              {testing ? <Loader2 className="size-4 animate-spin" /> : <Bot className="size-4" />}
-              Testar Fallback
             </Button>
           </div>
         </div>
