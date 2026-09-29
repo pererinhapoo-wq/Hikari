@@ -330,8 +330,15 @@ async function jikanFetch<T>(
     },
   );
 
+  const retryable =
+    res.status === 429 ||
+    res.status === 500 ||
+    res.status === 502 ||
+    res.status === 503 ||
+    res.status === 504;
+
   if (
-    res.status === 429 &&
+    retryable &&
     attempt < 2
   ) {
     await new Promise(
@@ -3268,56 +3275,12 @@ export const fetchAnimeDetail =
             ),
           );
         } catch {
-          try {
-            const json =
-              await jikanFetch<{
-                data: JikanAnime;
-              }>(
-                `/anime/${anilistId}/full`,
-              );
-
-            const slim =
-              mapJikanSlim(
-                json.data,
-              );
-
-            let seasons: Season[] =
-              [];
-
-            try {
-              seasons =
-                await jikanEpisodes(
-                  anilistId,
-                );
-            } catch {
-              seasons = [];
-            }
-
-            return toCache(
-              key,
-              {
-                ...slim,
-
-                studios: (
-                  json.data
-                    .studios ?? []
-                ).map(
-                  (studio) =>
-                    studio.name,
-                ),
-
-                streamingEpisodes:
-                  [],
-
-                seasons,
-
-                recommendations:
-                  [],
-              },
-            );
-          } catch {
-            return null;
-          }
+          // O ID desta rota é um ID do AniList.
+          // Não podemos reutilizá-lo como ID do MyAnimeList/Jikan,
+          // porque são identificadores diferentes.
+          // Se o AniList estiver indisponível, retornamos null
+          // em vez de carregar um anime incorreto pelo mesmo número.
+          return null;
         }
       },
     );
