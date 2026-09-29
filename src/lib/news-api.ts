@@ -1372,7 +1372,11 @@ function htmlText(value: string): string {
 async function fetchSugoiProfile(
   source: Extract<ExternalNewsFeed, { kind: "x-mirror" }>,
 ): Promise<ExternalNewsItem[]> {
-  const response = await fetch(source.url, {
+  // O canal público de anúncios do SugoiLITE espelha os posts do X via
+  // FixupX. Isso é mais estável no servidor do Hikari do que abrir cada
+  // página do TwStalker individualmente.
+  const telegramUrl = "https://t.me/s/sugoileaks";
+  const response = await fetch(telegramUrl, {
     headers: {
       Accept: "text/html,application/xhtml+xml",
       "User-Agent": "Hikari/1.0 (anime news)",
@@ -1385,60 +1389,64 @@ async function fetchSugoiProfile(
   }
 
   const html = await response.text();
-  const posts = new Map<string, string>();
-  const statusPattern = new RegExp(
-    `/${source.handle}/status/(\\d+)`,
-    "gi",
-  );
+  const results: ExternalNewsItem[] = [];
+  const seen = new Set<string>();
 
+  const linkPattern = /<a\b[^>]*href=["'](?:https?:\/\/)?fixupx\.com\/(SugoiLITE|SugoiBingus)\/status\/(\d+)[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi;
   let match: RegExpExecArray | null;
-  while ((match = statusPattern.exec(html))) {
-    const id = match[1];
-    if (posts.has(id)) continue;
 
-    const start = Math.max(0, match.index - 4500);
-    const end = Math.min(html.length, match.index + 4500);
-    const context = html.slice(start, end);
-    const cleaned = htmlText(context);
+  while ((match = linkPattern.exec(html)) && results.length < 24) {
+    const handle = match[1];
+    const statusId = match[2];
+    const anchorHtml = match[3];
 
-    const handleIndex = cleaned.toLowerCase().indexOf(`@${source.handle.toLowerCase()}`);
-    const candidate =
-      handleIndex >= 0
-        ? cleaned.slice(handleIndex + source.handle.length + 1)
-        : cleaned;
+    if (handle.toLowerCase() !== source.handle.toLowerCase()) continue;
+    if (seen.has(statusId)) continue;
+    seen.add(statusId);
 
-    const text = candidate
-      .replace(/View Details.*$/i, "")
-      .replace(/Previous.*$/i, "")
-      .replace(/Next.*$/i, "")
+    const contextStart = Math.max(0, match.index - 3500);
+    const contextEnd = Math.min(html.length, match.index + match[0].length + 3500);
+    const context = html.slice(contextStart, contextEnd);
+
+    const text = stripMarkup(anchorHtml)
       .replace(/\s+/g, " ")
       .trim();
 
-    if (text.length >= 30) {
-      posts.set(id, text.slice(0, 900));
+    if (text.length < 30 || isGameNews(text, "", `https://x.com/${handle}/status/${statusId}`)) {
+      continue;
     }
-  }
 
-  const results: ExternalNewsItem[] = [];
-  for (const [statusId, text] of posts) {
-    const xUrl = `https://x.com/${source.handle}/status/${statusId}`;
+    const publishedAt =
+      context.match(/<time\b[^>]*datetime=["']([^"']+)["'][^>]*>/i)?.[1] ??
+      context.match(/datetime=["']([^"']+)["']/i)?.[1] ??
+      "";
+
+    const image = imageFromHtml(context, telegramUrl);
+    const articleImages = imagesFromHtml(context, telegramUrl);
+    const xUrl = `https://x.com/${handle}/status/${statusId}`;
+
     const title = text
-      .replace(/https?:\/\/t\.co\/\S+/gi, "")
-      .replace(/https?:\/\/x\.com\/\S+/gi, "")
+      .replace(/^FixupX\s+(?:SUGOI\s+)?(?:LITE|BINGUS)\s*\([^)]*\)\s*/i, "")
+      .replace(/^SUGOI\s+(?:LITE|BINGUS)\s*\([^)]*\)\s*/i, "")
+      .replace(/\s+/g, " ")
       .trim();
 
-    if (!title || isGameNews(title, "", xUrl)) continue;
+    if (!title) continue;
 
     const animeId = await findAniListAnimeId(title);
+
     results.push({
-      id: `sugoi-${source.handle}-${statusId}`,
+      id: `sugoi-${handle.toLowerCase()}-${statusId}`,
       title,
-      description: text,
-      publishedAt: new Date().toISOString(),
+      description: title,
+      publishedAt:
+        publishedAt && !Number.isNaN(Date.parse(publishedAt))
+          ? new Date(publishedAt).toISOString()
+          : new Date().toISOString(),
       url: xUrl,
-      image: "",
-      articleImages: [],
-      source: source.name,
+      image: image || articleImages[0] || "",
+      articleImages,
+      source: handle,
       type: "RUMOR",
       isRumor: true,
       animeId,
@@ -1446,7 +1454,7 @@ async function fetchSugoiProfile(
     });
   }
 
-  return results.slice(0, 20);
+  return results;
 }
 
 async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
