@@ -219,70 +219,40 @@ function cleanDescription(
 
 async function translateToPortuguese(
   text: string,
-  sourceLanguage = "auto",
 ): Promise<string> {
-  const cleaned =
-    text.trim();
+  const cleaned = text.trim();
 
   if (!cleaned) {
     return "";
   }
 
-  const cacheKey =
-    `${sourceLanguage}:${cleaned}`;
-
-  const cached =
-    translationCache.get(
-      cacheKey,
-    );
+  const cached = translationCache.get(cleaned);
 
   if (cached) {
     return cached;
   }
 
-  const translate = async (
-    language: string,
-  ): Promise<string> => {
+  const googleTranslate = async (): Promise<string> => {
     try {
       const url =
         "https://translate.googleapis.com/translate_a/single" +
         "?client=gtx" +
-        `&sl=${encodeURIComponent(
-          language,
-        )}` +
+        "&sl=auto" +
         "&tl=pt" +
         "&dt=t" +
-        `&q=${encodeURIComponent(
-          cleaned.slice(0, 5000),
-        )}`;
+        `&q=${encodeURIComponent(cleaned.slice(0, 5000))}`;
 
-      const response =
-        await fetch(
-          url,
-          {
-            headers: {
-              Accept: "application/json",
-              "Cache-Control":
-                "no-cache",
-            },
-            signal:
-              AbortSignal.timeout(
-                10000,
-              ),
-          },
-        );
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(8000),
+      });
 
       if (!response.ok) {
         return "";
       }
 
-      const json =
-        (await response.json()) as unknown;
+      const json = (await response.json()) as unknown;
 
-      if (
-        !Array.isArray(json) ||
-        !Array.isArray(json[0])
-      ) {
+      if (!Array.isArray(json) || !Array.isArray(json[0])) {
         return "";
       }
 
@@ -290,13 +260,9 @@ async function translateToPortuguese(
         .filter(
           (part) =>
             Array.isArray(part) &&
-            typeof part[0] ===
-              "string",
+            typeof part[0] === "string",
         )
-        .map(
-          (part) =>
-            part[0] as string,
-        )
+        .map((part) => part[0] as string)
         .join("")
         .trim();
     } catch {
@@ -304,26 +270,48 @@ async function translateToPortuguese(
     }
   };
 
-  const translated =
-    (await translate(
-      sourceLanguage,
-    )) ||
-    (sourceLanguage !== "auto"
-      ? await translate("auto")
-      : "");
+  const myMemoryTranslate = async (): Promise<string> => {
+    try {
+      const url =
+        "https://api.mymemory.translated.net/get" +
+        `?q=${encodeURIComponent(cleaned.slice(0, 500))}` +
+        "&langpair=en|pt-BR";
 
-  if (!translated) {
-    return cleaned;
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!response.ok) {
+        return "";
+      }
+
+      const json = (await response.json()) as {
+        responseData?: { translatedText?: string };
+      };
+
+      return json.responseData?.translatedText?.trim() ?? "";
+    } catch {
+      return "";
+    }
+  };
+
+  const google = await googleTranslate();
+  if (google && google.toLowerCase() !== cleaned.toLowerCase()) {
+    translationCache.set(cleaned, google);
+    return google;
   }
 
-  translationCache.set(
-    cacheKey,
-    translated,
-  );
+  const fallback = await myMemoryTranslate();
+  if (fallback && fallback.toLowerCase() !== cleaned.toLowerCase()) {
+    translationCache.set(cleaned, fallback);
+    return fallback;
+  }
 
-  return translated;
+  return cleaned;
 }
-
 async function descriptionOf(
   media: AniMedia,
 ): Promise<string> {
@@ -875,6 +863,10 @@ const EXTERNAL_NEWS_FEEDS = [
     name: "Anime Corner",
     url: "https://animecorner.me/category/anime-news/feed/",
   },
+  {
+    name: "AnimeHunch",
+    url: "https://animehunch.com/feed/",
+  },
 ] as const;
 
 function xmlDecode(value: string): string {
@@ -1047,18 +1039,10 @@ function formatExternalDate(
 async function fetchExternalFeed(
   feed: (typeof EXTERNAL_NEWS_FEEDS)[number],
 ): Promise<ExternalNewsItem[]> {
-  const feedUrl = new URL(feed.url);
-  feedUrl.searchParams.set(
-    "_hikari",
-    String(Date.now()),
-  );
-
-  const response = await fetch(feedUrl.toString(), {
+  const response = await fetch(feed.url, {
     headers: {
       Accept: "application/rss+xml, application/xml, text/xml",
       "User-Agent": "Hikari/1.0 (anime news)",
-      "Cache-Control": "no-cache, no-store",
-      Pragma: "no-cache",
     },
     signal: AbortSignal.timeout(12000),
   });
@@ -1070,7 +1054,7 @@ async function fetchExternalFeed(
   const xml = await response.text();
   const blocks = xml.match(/<item\b[\s\S]*?<\/item>/gi) ?? [];
 
-  const parsed = blocks.slice(0, 50).map((block): ExternalNewsItem | null => {
+  const parsed = blocks.slice(0, 30).map((block): ExternalNewsItem | null => {
     const url =
       xmlTag(block, "link") ||
       xmlAttribute(block, "guid", "isPermaLink");
@@ -1267,10 +1251,7 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
       type: item.type,
       title: item.title,
       description:
-        (await translateToPortuguese(
-          item.description,
-          "en",
-        )) ||
+        (await translateToPortuguese(item.description)) ||
         "Descrição indisponível.",
       date: formatExternalDate(item.publishedAt),
       image: item.image,
@@ -1637,7 +1618,7 @@ export const fetchAutomaticNews =
     const current = currentAnimeSeason();
     const season = String(current.season).toUpperCase();
     const year = Number(current.year);
-    const key = `automatic-news:v3:${season}:${year}`;
+    const key = `automatic-news:v2:${season}:${year}`;
 
     const cached = fromCache(key);
     if (cached) {
