@@ -2037,8 +2037,23 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
     await reviewExternalNewsInBatches(candidates, 3)
   ).filter((item): item is ExternalNewsItem => Boolean(item));
 
+  // Se a revisão automática não conseguir aprovar nenhuma notícia externa,
+  // mantém um pequeno conjunto de notícias já identificadas como anime.
+  // Isso evita que uma falha/instabilidade da revisão faça a área de notícias
+  // externas desaparecer completamente. Notícias de jogos continuam bloqueadas.
+  const fallbackExternal =
+    reviewed.length > 0
+      ? reviewed
+      : candidates
+          .filter(
+            (item) =>
+              Boolean(item.animeId) &&
+              !isGameNews(item.title, item.description, item.url),
+          )
+          .slice(0, 12);
+
   return Promise.all(
-    reviewed.map(async (item) => ({
+    fallbackExternal.map(async (item) => ({
       id: item.id,
       type: item.type,
       title: item.title,
@@ -2412,7 +2427,7 @@ export const fetchAutomaticNews =
     const current = currentAnimeSeason();
     const season = String(current.season).toUpperCase();
     const year = Number(current.year);
-    const key = `automatic-news:v2:${season}:${year}`;
+    const key = `automatic-news:v3:${season}:${year}`;
 
     const cached = fromCache(key);
     if (cached) {
