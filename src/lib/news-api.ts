@@ -219,6 +219,7 @@ function cleanDescription(
 
 async function translateToPortuguese(
   text: string,
+  sourceLanguage = "auto",
 ): Promise<string> {
   const cleaned =
     text.trim();
@@ -227,53 +228,65 @@ async function translateToPortuguese(
     return "";
   }
 
+  const cacheKey =
+    `${sourceLanguage}:${cleaned}`;
+
   const cached =
     translationCache.get(
-      cleaned,
+      cacheKey,
     );
 
   if (cached) {
     return cached;
   }
 
-  try {
-    const url =
-      "https://translate.googleapis.com/translate_a/single" +
-      "?client=gtx" +
-      "&sl=auto" +
-      "&tl=pt" +
-      "&dt=t" +
-      `&q=${encodeURIComponent(
-        cleaned.slice(0, 5000),
-      )}`;
+  const translate = async (
+    language: string,
+  ): Promise<string> => {
+    try {
+      const url =
+        "https://translate.googleapis.com/translate_a/single" +
+        "?client=gtx" +
+        `&sl=${encodeURIComponent(
+          language,
+        )}` +
+        "&tl=pt" +
+        "&dt=t" +
+        `&q=${encodeURIComponent(
+          cleaned.slice(0, 5000),
+        )}`;
 
-    const response =
-      await fetch(
-        url,
-        {
-          signal:
-            AbortSignal.timeout(
-              8000,
-            ),
-        },
-      );
+      const response =
+        await fetch(
+          url,
+          {
+            headers: {
+              Accept: "application/json",
+              "Cache-Control":
+                "no-cache",
+            },
+            signal:
+              AbortSignal.timeout(
+                10000,
+              ),
+          },
+        );
 
-    if (!response.ok) {
-      return cleaned;
-    }
+      if (!response.ok) {
+        return "";
+      }
 
-    const json =
-      (await response.json()) as unknown;
+      const json =
+        (await response.json()) as unknown;
 
-    if (
-      !Array.isArray(json) ||
-      !Array.isArray(json[0])
-    ) {
-      return cleaned;
-    }
+      if (
+        !Array.isArray(json) ||
+        !Array.isArray(json[0])
+      ) {
+        return "";
+      }
 
-    const translated =
-      json[0]
+      return json[0]
         .filter(
           (part) =>
             Array.isArray(part) &&
@@ -286,20 +299,29 @@ async function translateToPortuguese(
         )
         .join("")
         .trim();
-
-    if (!translated) {
-      return cleaned;
+    } catch {
+      return "";
     }
+  };
 
-    translationCache.set(
-      cleaned,
-      translated,
-    );
+  const translated =
+    (await translate(
+      sourceLanguage,
+    )) ||
+    (sourceLanguage !== "auto"
+      ? await translate("auto")
+      : "");
 
-    return translated;
-  } catch {
+  if (!translated) {
     return cleaned;
   }
+
+  translationCache.set(
+    cacheKey,
+    translated,
+  );
+
+  return translated;
 }
 
 async function descriptionOf(
@@ -1025,10 +1047,18 @@ function formatExternalDate(
 async function fetchExternalFeed(
   feed: (typeof EXTERNAL_NEWS_FEEDS)[number],
 ): Promise<ExternalNewsItem[]> {
-  const response = await fetch(feed.url, {
+  const feedUrl = new URL(feed.url);
+  feedUrl.searchParams.set(
+    "_hikari",
+    String(Date.now()),
+  );
+
+  const response = await fetch(feedUrl.toString(), {
     headers: {
       Accept: "application/rss+xml, application/xml, text/xml",
       "User-Agent": "Hikari/1.0 (anime news)",
+      "Cache-Control": "no-cache, no-store",
+      Pragma: "no-cache",
     },
     signal: AbortSignal.timeout(12000),
   });
@@ -1040,7 +1070,7 @@ async function fetchExternalFeed(
   const xml = await response.text();
   const blocks = xml.match(/<item\b[\s\S]*?<\/item>/gi) ?? [];
 
-  const parsed = blocks.slice(0, 30).map((block): ExternalNewsItem | null => {
+  const parsed = blocks.slice(0, 50).map((block): ExternalNewsItem | null => {
     const url =
       xmlTag(block, "link") ||
       xmlAttribute(block, "guid", "isPermaLink");
@@ -1237,7 +1267,10 @@ async function fetchExternalNews(): Promise<AutomaticNewsItem[]> {
       type: item.type,
       title: item.title,
       description:
-        (await translateToPortuguese(item.description)) ||
+        (await translateToPortuguese(
+          item.description,
+          "en",
+        )) ||
         "Descrição indisponível.",
       date: formatExternalDate(item.publishedAt),
       image: item.image,
@@ -1604,7 +1637,7 @@ export const fetchAutomaticNews =
     const current = currentAnimeSeason();
     const season = String(current.season).toUpperCase();
     const year = Number(current.year);
-    const key = `automatic-news:v2:${season}:${year}`;
+    const key = `automatic-news:v3:${season}:${year}`;
 
     const cached = fromCache(key);
     if (cached) {
