@@ -66,6 +66,7 @@ type AnimeCalendarItem = {
   airingAt: number;
   title: string;
   image: string;
+  coverImage: string;
 };
 
 async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
@@ -141,6 +142,11 @@ async function fetchAnimeCalendar(): Promise<AnimeCalendarItem[]> {
           item.media.bannerImage ||
           item.media.coverImage?.extraLarge ||
           item.media.coverImage?.large ||
+          "",
+        coverImage:
+          item.media.coverImage?.extraLarge ||
+          item.media.coverImage?.large ||
+          item.media.bannerImage ||
           "",
       }))
       .filter((item: AnimeCalendarItem) => item.image)
@@ -1814,13 +1820,28 @@ function NewsPage() {
                     bg-card
                   "
                 >
-                  <div className="relative aspect-[16/7] w-full overflow-hidden bg-black">
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      className="h-full w-full object-cover object-center"
-                      loading="lazy"
-                    />
+                  <div className="relative w-full overflow-hidden bg-black">
+                    <div className="sm:hidden">
+                      <div className="relative aspect-[3/4] w-full overflow-hidden">
+                        <img
+                          src={item.coverImage}
+                          alt={item.title}
+                          className="h-full w-full object-cover object-center"
+                          loading="lazy"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="hidden sm:block">
+                      <div className="relative aspect-[16/7] w-full overflow-hidden">
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          className="h-full w-full object-cover object-center"
+                          loading="lazy"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div className="p-3 sm:p-4">
