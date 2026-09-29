@@ -1484,111 +1484,78 @@ async function translateExternalTitle(
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!cleaned) {
-    return "";
-  }
+  if (!cleaned) return "";
 
   const meta = await fetchAniListMeta(animeId);
+  const official = (meta.english || meta.romaji || meta.title || "").trim();
 
-  const titleCandidates = [
-    meta.english,
-    meta.romaji,
-    meta.title,
-  ]
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .filter((value, index, list) =>
-      list.findIndex(
-        (item) => item.toLocaleLowerCase() === value.toLocaleLowerCase(),
-      ) === index,
-    )
-    .sort((a, b) => b.length - a.length);
-
-  const lowerCleaned = cleaned.toLocaleLowerCase();
-  const animeName =
-    titleCandidates.find((candidate) =>
-      lowerCleaned.includes(candidate.toLocaleLowerCase()),
-    ) || meta.title;
-
-  if (!animeName) {
-    return translateNewsFragment(cleaned);
-  }
-
-  const lowerAnimeName = animeName.toLocaleLowerCase();
-  const exactIndex = lowerCleaned.indexOf(lowerAnimeName);
-
-  // Algumas fontes colocam um nome curto e, entre parênteses, o nome oficial.
-  // Ex.: "SUIKODEN" (Gensou Suikoden). Nesse caso, substituímos todo o bloco
-  // pelo nome oficial do AniList, em vez de deixar o alias em inglês.
+  // Primeiro, preserve o nome que a própria fonte marcou como título.
+  // Isso evita depender exclusivamente do resultado de busca do AniList.
+  // Ex.: "SUIKODEN" (Gensou Suikoden) -> Gensou Suikoden.
   const quotedWithParenthetical = cleaned.match(
-    /["“”']([^"“”']{2,120})["“”']\s*\(([^()]{2,120})\)/,
+    /["“”']([^"“”']{2,120})["“”']\s*\(([^()]{2,160})\)/,
   );
 
-  if (quotedWithParenthetical && meta.title) {
+  if (quotedWithParenthetical) {
     const quotedName = quotedWithParenthetical[1].trim();
     const parentheticalName = quotedWithParenthetical[2].trim();
-    const parentheticalMatches = titleCandidates.some(
-      (candidate) =>
-        candidate.toLocaleLowerCase() ===
-        parentheticalName.toLocaleLowerCase(),
-    );
-    const quotedMatches = titleCandidates.some(
-      (candidate) =>
-        candidate.toLocaleLowerCase() === quotedName.toLocaleLowerCase(),
-    );
+    const titleName =
+      parentheticalName.length >= quotedName.length
+        ? parentheticalName
+        : quotedName;
 
-    if (parentheticalMatches || quotedMatches) {
-      const blockStart = quotedWithParenthetical.index ?? -1;
-      if (blockStart >= 0) {
-        const blockEnd =
-          blockStart + quotedWithParenthetical[0].length;
-        const before = cleaned.slice(0, blockStart);
-        const after = cleaned.slice(blockEnd);
-        const [beforePt, afterPt] = await Promise.all([
-          translateNewsFragment(before),
-          translateNewsFragment(after),
-        ]);
-
-        return `${beforePt}${meta.title}${afterPt}`
-          .replace(/\s+/g, " ")
-          .trim();
-      }
-    }
-  }
-
-  if (exactIndex >= 0) {
-    // Se o nome oficial aparece entre aspas e vem seguido de um alias entre
-    // parênteses, remove o alias para não duplicar o nome do anime.
-    const afterOfficial = cleaned.slice(exactIndex + animeName.length);
-    const aliasMatch = afterOfficial.match(/^\s*\(([^()]{2,120})\)/);
-    const endIndex = aliasMatch
-      ? exactIndex + animeName.length + aliasMatch[0].length
-      : exactIndex + animeName.length;
-
-    const before = cleaned.slice(0, exactIndex);
-    const after = cleaned.slice(endIndex);
-    const [beforePt, afterPt] = await Promise.all([
-      translateNewsFragment(before),
-      translateNewsFragment(after),
-    ]);
-
-    return `${beforePt}${animeName}${afterPt}`
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  const quoted = cleaned.match(/["“”']([^"“”']{2,120})["“”']/);
-  if (quoted?.[1]) {
-    const quotedName = quoted[1].trim();
-    const quotedIndex = cleaned.indexOf(quotedName);
-    if (quotedIndex >= 0) {
-      const before = cleaned.slice(0, quotedIndex);
-      const after = cleaned.slice(quotedIndex + quotedName.length);
+    const blockStart = quotedWithParenthetical.index ?? -1;
+    if (blockStart >= 0) {
+      const blockEnd = blockStart + quotedWithParenthetical[0].length;
+      const before = cleaned.slice(0, blockStart);
+      const after = cleaned.slice(blockEnd);
       const [beforePt, afterPt] = await Promise.all([
         translateNewsFragment(before),
         translateNewsFragment(after),
       ]);
-      return `${beforePt}${meta.title || quotedName}${afterPt}`
+
+      return `${beforePt}${titleName}${afterPt}`
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+  }
+
+  // Títulos entre aspas são preservados; somente o texto ao redor é traduzido.
+  // Isso cobre HIRAYASUMI e títulos de light novel como
+  // 'Sekai Saikyou no Majo, Hajimemashita'.
+  const quoted = cleaned.match(/["“”']([^"“”']{2,160})["“”']/);
+  if (quoted?.[1]) {
+    const quotedName = quoted[1].trim();
+    const quotedIndex = quoted.index ?? cleaned.indexOf(quoted[0]);
+    if (quotedIndex >= 0) {
+      const before = cleaned.slice(0, quotedIndex);
+      const after = cleaned.slice(quotedIndex + quoted[0].length);
+      const [beforePt, afterPt] = await Promise.all([
+        translateNewsFragment(before),
+        translateNewsFragment(after),
+      ]);
+
+      return `${beforePt}${quotedName}${afterPt}`
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+  }
+
+  // Quando não há título destacado pela fonte, usa o nome oficial do AniList
+  // como trecho protegido e traduz somente o restante.
+  if (official) {
+    const lower = cleaned.toLocaleLowerCase();
+    const index = lower.indexOf(official.toLocaleLowerCase());
+
+    if (index >= 0) {
+      const before = cleaned.slice(0, index);
+      const after = cleaned.slice(index + official.length);
+      const [beforePt, afterPt] = await Promise.all([
+        translateNewsFragment(before),
+        translateNewsFragment(after),
+      ]);
+
+      return `${beforePt}${official}${afterPt}`
         .replace(/\s+/g, " ")
         .trim();
     }
