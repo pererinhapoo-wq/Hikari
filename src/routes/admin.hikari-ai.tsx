@@ -16,6 +16,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { reviewHikariAINews } from "./api-hikari-ai-review";
+import { fetchAutomaticNews } from "@/lib/news-api";
 
 export const Route = createFileRoute("/admin/hikari-ai")({
   component: HikariAIPage,
@@ -40,15 +41,37 @@ function HikariAIPage() {
     setTestResult(null);
 
     try {
+      const news = await fetchAutomaticNews();
+
+      const realNews = news.find(
+        (item) =>
+          typeof item.sourceUrl === "string" &&
+          item.sourceUrl.trim().length > 0,
+      );
+
+      if (!realNews) {
+        setTestResult({
+          approved: false,
+          isAnime: false,
+          isGameNews: false,
+          isDuplicate: false,
+          label: "Erro",
+          animeName: "",
+          title: "",
+          description: "",
+          reason:
+            "Nenhuma notícia externa disponível no momento para testar a Hikari AI.",
+        });
+        return;
+      }
+
       const result = await reviewHikariAINews({
         data: {
-          title:
-            "One Piece anuncia novidades para o próximo arco do anime",
-          description:
-            "O anime de One Piece recebeu novas informações sobre seus próximos episódios e produção.",
-          source: "Hikari AI Teste",
-          sourceUrl: "https://example.com",
-          animeName: "One Piece",
+          title: realNews.title,
+          description: realNews.description,
+          source: realNews.source ?? "",
+          sourceUrl: realNews.sourceUrl ?? "",
+          animeName: "",
         },
       });
 
@@ -145,8 +168,8 @@ function HikariAIPage() {
             </h2>
 
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-              Executa uma notícia de teste através da API da Hikari AI.
-              Nenhuma notícia real será publicada ou alterada.
+              Pega uma notícia externa real do Hikari e envia para a
+              Hikari AI analisar. Nenhuma notícia será publicada ou alterada.
             </p>
           </div>
 
@@ -180,8 +203,8 @@ function HikariAIPage() {
 
               <span>
                 {testResult.approved
-                  ? "Hikari AI aprovou a notícia de teste"
-                  : "Hikari AI não aprovou a notícia de teste"}
+                  ? "Hikari AI aprovou a notícia"
+                  : "Hikari AI não aprovou a notícia"}
               </span>
             </div>
 
