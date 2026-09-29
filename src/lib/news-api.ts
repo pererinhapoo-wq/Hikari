@@ -879,7 +879,7 @@ const EXTERNAL_NEWS_FEEDS: ExternalNewsFeed[] = [
   {
     kind: "rss",
     name: "Anime Corner",
-    url: "https://animecorner.me/category/anime-news/feed/",
+    url: "https://animecorner.me/feed/",
   },
   {
     kind: "x-mirror",
