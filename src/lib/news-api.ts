@@ -1175,7 +1175,7 @@ async function fetchExternalFeed(
   feed: ExternalNewsFeed,
 ): Promise<ExternalNewsItem[]> {
   if (feed.kind === "x-mirror") {
-    return fetchSugoiMirrorFeed(feed);
+    return [];
   }
 
   const response = await fetch(feed.url, {
@@ -1278,6 +1278,10 @@ async function fetchExternalFeed(
 
       const animeId = await findAniListAnimeId(item.title);
       item.animeId = animeId;
+      item.title = await translateExternalTitle(
+        item.title,
+        animeId,
+      );
 
       if (item.type === "TRAILER" && item.url.includes("youtube.com")) {
         item.trailerUrl = item.url;
@@ -1291,24 +1295,19 @@ async function fetchExternalFeed(
 }
 
 const aniListSearchCache = new Map<string, string>();
+const aniListMetaCache = new Map<string, {
+  title: string;
+  image: string;
+}>();
 
-async function findAniListAnimeId(
-  newsTitle: string,
-): Promise<string> {
-  const cleaned = newsTitle
-    .replace(/\[[^\]]*\]/g, " ")
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/\b(new trailer|trailer|teaser|pv|visual|key visual|announced|revealed|season [0-9ivx]+|premiere date|release date)\b/gi, " ")
-    .replace(/[:|—–-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!cleaned || cleaned.length < 3) {
-    return "";
+async function fetchAniListMeta(
+  animeId: string,
+): Promise<{ title: string; image: string }> {
+  if (!animeId) {
+    return { title: "", image: "" };
   }
 
-  const key = cleaned.toLowerCase();
-  const cached = aniListSearchCache.get(key);
+  const cached = aniListMetaCache.get(animeId);
   if (cached) {
     return cached;
   }
@@ -1322,43 +1321,242 @@ async function findAniListAnimeId(
       },
       body: JSON.stringify({
         query: `
-          query FindAnime($search: String) {
-            Page(page: 1, perPage: 3) {
-              media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
-                id
-                isAdult
+          query AnimeMeta($id: Int) {
+            Media(id: $id, type: ANIME) {
+              id
+              isAdult
+              title {
+                english
+                romaji
+              }
+              coverImage {
+                extraLarge
+                large
               }
             }
           }
         `,
-        variables: { search: cleaned.slice(0, 100) },
+        variables: { id: Number(animeId) },
       }),
       signal: AbortSignal.timeout(8000),
     });
 
     if (!response.ok) {
-      return "";
+      return { title: "", image: "" };
     }
 
     const json = (await response.json()) as {
-      data?: { Page?: { media?: { id: number; isAdult?: boolean | null }[] } };
+      data?: {
+        Media?: {
+          isAdult?: boolean | null;
+          title?: {
+            english?: string | null;
+            romaji?: string | null;
+          } | null;
+          coverImage?: {
+            extraLarge?: string | null;
+            large?: string | null;
+          } | null;
+        } | null;
+      };
     };
 
-    const match =
-      json.data?.Page?.media?.find(
-        (media) => media.isAdult !== true,
-      ) ?? json.data?.Page?.media?.[0];
-
-    if (!match?.id) {
-      return "";
+    const media = json.data?.Media;
+    if (!media || media.isAdult === true) {
+      return { title: "", image: "" };
     }
 
-    const id = String(match.id);
-    aniListSearchCache.set(key, id);
-    return id;
+    const meta = {
+      title:
+        media.title?.english?.trim() ||
+        media.title?.romaji?.trim() ||
+        "",
+      image:
+        media.coverImage?.extraLarge ||
+        media.coverImage?.large ||
+        "",
+    };
+
+    aniListMetaCache.set(animeId, meta);
+    return meta;
   } catch {
+    return { title: "", image: "" };
+  }
+}
+
+function cleanExternalTitle(value: string): string {
+  return xmlDecode(
+    value
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/\s+/g, " "),
+  )
+    .replace(/^FixupX\s*[-:–—]?\s*/i, "")
+    .replace(/^Media\s+\d+\s*\/\s*\d+\s*[:|-]?\s*/i, "")
+    .replace(/^\d{1,2}:\d{2}\s*/i, "")
+    .replace(/^[✅☑️✔️✓\s]+/u, "")
+    .replace(/^(?:SUGOI\s+)?(?:LITE|BINGUS)\s*\([^)]*\)\s*/i, "")
+    .replace(/^(?:SUGOI\s+)?(?:LITE|BINGUS)\s*[-:–—]?\s*/i, "")
+    .replace(/\b(?:@SugoiLITE|@SugoiBingus)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function translateExternalTitle(
+  rawTitle: string,
+  animeId: string,
+): Promise<string> {
+  const cleaned = cleanExternalTitle(rawTitle);
+  if (!cleaned) {
     return "";
   }
+
+  const meta = await fetchAniListMeta(animeId);
+  const animeName = meta.title;
+
+  if (!animeName) {
+    return translateToPortuguese(cleaned);
+  }
+
+  const index = cleaned.toLocaleLowerCase().indexOf(
+    animeName.toLocaleLowerCase(),
+  );
+
+  if (index < 0) {
+    // Tenta proteger o nome entre aspas quando o texto da fonte não
+    // coincide exatamente com o título do AniList.
+    const quoted = cleaned.match(/["“”']([^"“”']{2,120})["“”']/);
+    if (quoted?.[1]) {
+      const quotedName = quoted[1].trim();
+      const quotedIndex = cleaned.indexOf(quotedName);
+      if (quotedIndex >= 0) {
+        const before = cleaned.slice(0, quotedIndex);
+        const after = cleaned.slice(quotedIndex + quotedName.length);
+        const [beforePt, afterPt] = await Promise.all([
+          translateToPortuguese(before),
+          translateToPortuguese(after),
+        ]);
+        return `${beforePt}${quotedName}${afterPt}`
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+    }
+
+    return translateToPortuguese(cleaned);
+  }
+
+  const before = cleaned.slice(0, index);
+  const after = cleaned.slice(index + animeName.length);
+  const [beforePt, afterPt] = await Promise.all([
+    translateToPortuguese(before),
+    translateToPortuguese(after),
+  ]);
+
+  return `${beforePt}${animeName}${afterPt}`
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function findAniListAnimeId(
+  newsTitle: string,
+): Promise<string> {
+  const raw = xmlDecode(newsTitle)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const candidates = [
+    ...Array.from(
+      raw.matchAll(/["“”']([^"“”']{2,120})["“”']/g),
+    ).map((match) => match[1].trim()),
+    ...Array.from(
+      raw.matchAll(/\(([^()]{2,120})\)/g),
+    ).map((match) => match[1].trim()),
+    raw
+      .replace(/\[[^\]]*\]/g, " ")
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/\b(tv anime|anime|new trailer|trailer|teaser|pv|visual|key visual|announced|revealed|season [0-9ivx]+|premiere date|release date|listed|episodes?)\b/gi, " ")
+      .replace(/[:|—–-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  ]
+    .filter(Boolean)
+    .map((value) => value.slice(0, 100))
+    .filter((value, index, list) => list.indexOf(value) === index);
+
+  for (const cleaned of candidates) {
+    const key = cleaned.toLowerCase();
+    const cached = aniListSearchCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const response = await fetch(ANILIST, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          query: `
+            query FindAnime($search: String) {
+              Page(page: 1, perPage: 5) {
+                media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
+                  id
+                  isAdult
+                  title {
+                    english
+                    romaji
+                  }
+                }
+              }
+            }
+          `,
+          variables: { search: cleaned },
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const json = (await response.json()) as {
+        data?: {
+          Page?: {
+            media?: {
+              id: number;
+              isAdult?: boolean | null;
+              title?: {
+                english?: string | null;
+                romaji?: string | null;
+              } | null;
+            }[];
+          };
+        };
+      };
+
+      const media =
+        json.data?.Page?.media ?? [];
+
+      const match =
+        media.find((item) => item.isAdult !== true) ??
+        media[0];
+
+      if (!match?.id) {
+        continue;
+      }
+
+      const id = String(match.id);
+      aniListSearchCache.set(key, id);
+      return id;
+    } catch {
+      // Tenta o próximo candidato.
+    }
+  }
+
+  return "";
 }
 
 function htmlText(value: string): string {
@@ -1425,26 +1623,35 @@ async function fetchSugoiProfile(
     const articleImages = imagesFromHtml(context, telegramUrl);
     const xUrl = `https://x.com/${handle}/status/${statusId}`;
 
-    const title = text
-      .replace(/^FixupX\s+(?:SUGOI\s+)?(?:LITE|BINGUS)\s*\([^)]*\)\s*/i, "")
-      .replace(/^SUGOI\s+(?:LITE|BINGUS)\s*\([^)]*\)\s*/i, "")
-      .replace(/\s+/g, " ")
-      .trim();
+    const rawTitle = cleanExternalTitle(text);
+    if (!rawTitle) continue;
 
-    if (!title) continue;
+    const animeId = await findAniListAnimeId(rawTitle);
+    const meta = await fetchAniListMeta(animeId);
+    const translatedTitle = await translateExternalTitle(
+      rawTitle,
+      animeId,
+    );
 
-    const animeId = await findAniListAnimeId(title);
+    // Para o banner, usa a capa extraLarge do AniList quando houver
+    // correspondência. Isso evita esticar miniaturas comprimidas do
+    // espelho do Sugoi e preserva a qualidade visual do banner.
+    const bestImage =
+      meta.image ||
+      image ||
+      articleImages[0] ||
+      "";
 
     results.push({
       id: `sugoi-${handle.toLowerCase()}-${statusId}`,
-      title,
-      description: title,
+      title: translatedTitle || rawTitle,
+      description: translatedTitle || rawTitle,
       publishedAt:
         publishedAt && !Number.isNaN(Date.parse(publishedAt))
           ? new Date(publishedAt).toISOString()
           : new Date().toISOString(),
       url: xUrl,
-      image: image || articleImages[0] || "",
+      image: bestImage,
       articleImages,
       source: handle,
       type: "RUMOR",
