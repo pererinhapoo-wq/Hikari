@@ -307,6 +307,45 @@ async function translateToPortuguese(
   }
 }
 
+async function translateNewsTitle(
+  title: string,
+  animeName: string,
+): Promise<string> {
+  const cleanedTitle = title.trim();
+  const cleanAnimeName = animeName.trim();
+
+  if (!cleanedTitle) {
+    return "";
+  }
+
+  if (!cleanAnimeName) {
+    return translateToPortuguese(cleanedTitle);
+  }
+
+  // Protege o nome oficial do anime para que somente o restante
+  // do título seja traduzido para português.
+  const token = "__HIKARI_ANIME_NAME__";
+  const escaped = cleanAnimeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const protectedTitle = cleanedTitle.replace(
+    new RegExp(escaped, "ig"),
+    token,
+  );
+
+  const translated = await translateToPortuguese(protectedTitle);
+
+  if (
+    !translated ||
+    translated === "Descrição em português indisponível."
+  ) {
+    return cleanedTitle;
+  }
+
+  return translated
+    .replace(new RegExp(token, "g"), cleanAnimeName)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function descriptionOf(
   media: AniMedia,
 ): Promise<string> {
@@ -1125,7 +1164,20 @@ async function fetchExternalFeed(
         // Mantém o item do RSS mesmo se a página original falhar.
       }
 
+      const animeName = await findAniListAnimeName(item.title);
       const animeId = await findAniListAnimeId(item.title);
+
+      if (animeName) {
+        item.title = await translateNewsTitle(
+          item.title,
+          animeName,
+        );
+      } else {
+        item.title =
+          (await translateToPortuguese(item.title)) ||
+          item.title;
+      }
+
       item.animeId = animeId;
 
       if (item.type === "TRAILER" && item.url.includes("youtube.com")) {
@@ -1140,6 +1192,96 @@ async function fetchExternalFeed(
 }
 
 const aniListSearchCache = new Map<string, string>();
+
+const aniListAnimeNameCache = new Map<string, string>();
+
+async function findAniListAnimeName(
+  newsTitle: string,
+): Promise<string> {
+  const cleaned = newsTitle
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(new trailer|trailer|teaser|pv|visual|key visual|announced|revealed|season [0-9ivx]+|premiere date|release date)\b/gi, " ")
+    .replace(/[:|—–-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned || cleaned.length < 3) {
+    return "";
+  }
+
+  const key = cleaned.toLowerCase();
+  const cached = aniListAnimeNameCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const response = await fetch(ANILIST, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        query: `
+          query FindAnimeName($search: String) {
+            Page(page: 1, perPage: 3) {
+              media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
+                id
+                isAdult
+                title {
+                  english
+                  romaji
+                }
+              }
+            }
+          }
+        `,
+        variables: { search: cleaned.slice(0, 100) },
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!response.ok) {
+      return "";
+    }
+
+    const json = (await response.json()) as {
+      data?: {
+        Page?: {
+          media?: {
+            id: number;
+            isAdult?: boolean | null;
+            title?: {
+              english?: string | null;
+              romaji?: string | null;
+            } | null;
+          }[];
+        };
+      };
+    };
+
+    const match =
+      json.data?.Page?.media?.find(
+        (media) => media.isAdult !== true,
+      ) ?? json.data?.Page?.media?.[0];
+
+    const animeName =
+      match?.title?.english?.trim() ||
+      match?.title?.romaji?.trim() ||
+      "";
+
+    if (!animeName) {
+      return "";
+    }
+
+    aniListAnimeNameCache.set(key, animeName);
+    return animeName;
+  } catch {
+    return "";
+  }
+}
 
 async function findAniListAnimeId(
   newsTitle: string,
