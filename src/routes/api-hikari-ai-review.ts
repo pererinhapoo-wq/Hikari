@@ -1,540 +1,379 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  Bot,
-  CheckCircle2,
-  FileText,
-  History,
-  Loader2,
-  MessageSquareWarning,
-  Settings,
-  ShieldCheck,
-  Sparkles,
-  XCircle,
-} from "lucide-react";
-import { useState } from "react";
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 
-import { Button } from "@/components/ui/button";
-import { reviewHikariAINews } from "./api-hikari-ai-review";
-import { fetchAutomaticNews } from "@/lib/news-api";
+const GEMINI_API_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
 
-export const Route = createFileRoute("/admin/hikari-ai")({
-  component: HikariAIPage,
+const GROQ_API_URL =
+  "https://api.groq.com/openai/v1/chat/completions";
+
+const GROQ_MODEL = "openai/gpt-oss-120b";
+
+const reviewSchema = z.object({
+  title: z.string().trim().min(1).max(1000),
+  description: z.string().trim().max(10000).default(""),
+  source: z.string().trim().max(500).default(""),
+  sourceUrl: z.string().trim().max(2000).default(""),
+  animeName: z.string().trim().max(500).default(""),
 });
 
-function HikariAIPage() {
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    approved: boolean;
-    isAnime: boolean;
-    isGameNews: boolean;
-    isDuplicate: boolean;
-    label: string;
-    animeName: string;
-    title: string;
-    description: string;
-    reason: string;
-  } | null>(null);
+type HikariAIReviewResult = {
+  approved: boolean;
+  isAnime: boolean;
+  isGameNews: boolean;
+  isDuplicate: boolean;
+  label:
+    | "Confirmado"
+    | "Rumor"
+    | "Trailer/PV"
+    | "Nova temporada"
+    | "Anúncio";
+  animeName: string;
+  title: string;
+  description: string;
+  reason: string;
+};
 
-  async function handleTestAI() {
-    setTesting(true);
-    setTestResult(null);
+function fallbackResult(
+  title: string,
+  description: string,
+  reason: string,
+): HikariAIReviewResult {
+  return {
+    approved: false,
+    isAnime: false,
+    isGameNews: false,
+    isDuplicate: false,
+    label: "Anúncio",
+    animeName: "",
+    title,
+    description,
+    reason,
+  };
+}
 
-    try {
-      const news = await fetchAutomaticNews();
-
-      const realNews = news.find(
-        (item) =>
-          typeof item.sourceUrl === "string" &&
-          item.sourceUrl.trim().length > 0,
-      );
-
-      if (!realNews) {
-        setTestResult({
-          approved: false,
-          isAnime: false,
-          isGameNews: false,
-          isDuplicate: false,
-          label: "Erro",
-          animeName: "",
-          title: "",
-          description: "",
-          reason:
-            "Nenhuma notícia externa disponível no momento para testar a Hikari AI.",
-        });
-        return;
+function extractGeminiResponseText(json: unknown): string {
+  if (!json || typeof json !== "object") return "";
+  const value = json as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+    }>;
+  };
+  if (!Array.isArray(value.candidates)) return "";
+  for (const candidate of value.candidates) {
+    const parts = candidate.content?.parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      if (typeof part.text === "string" && part.text.trim()) {
+        return part.text.trim();
       }
-
-      const result = await reviewHikariAINews({
-        data: {
-          title: realNews.title,
-          description: realNews.description,
-          source: realNews.source ?? "",
-          sourceUrl: realNews.sourceUrl ?? "",
-          animeName: "",
-        },
-      });
-
-      setTestResult(result);
-    } catch (error) {
-      setTestResult({
-        approved: false,
-        isAnime: false,
-        isGameNews: false,
-        isDuplicate: false,
-        label: "Erro",
-        animeName: "",
-        title: "",
-        description: "",
-        reason:
-          error instanceof Error
-            ? error.message
-            : "Não foi possível executar o teste.",
-      });
-    } finally {
-      setTesting(false);
     }
   }
+  return "";
+}
 
-  return (
-    <div className="space-y-6 pt-6">
-      {/* Cabeçalho */}
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <Link
-            to="/admin"
-            className="mb-2 inline-flex items-center gap-1 text-xs text-muted transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" />
-            Voltar ao painel
-          </Link>
+function extractGroqResponseText(json: unknown): string {
+  if (!json || typeof json !== "object") return "";
+  const value = json as {
+    choices?: Array<{ message?: { content?: unknown } }>;
+  };
+  if (!Array.isArray(value.choices)) return "";
+  for (const choice of value.choices) {
+    const content = choice.message?.content;
+    if (typeof content === "string" && content.trim()) {
+      return content.trim();
+    }
+  }
+  return "";
+}
 
-          <div className="flex items-center gap-3">
-            <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-elevated shadow-[var(--shadow-border)]">
-              <Bot className="size-5" />
-            </div>
+function parseJsonResult(text: string): HikariAIReviewResult | null {
+  try {
+    const cleaned = text
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+    const parsed = JSON.parse(cleaned) as Partial<HikariAIReviewResult>;
+    if (
+      typeof parsed.approved !== "boolean" ||
+      typeof parsed.isAnime !== "boolean" ||
+      typeof parsed.isGameNews !== "boolean" ||
+      typeof parsed.isDuplicate !== "boolean" ||
+      typeof parsed.animeName !== "string" ||
+      typeof parsed.title !== "string" ||
+      typeof parsed.description !== "string" ||
+      typeof parsed.reason !== "string"
+    ) return null;
 
-            <div>
-              <p className="text-[11px] tracking-[0.28em] text-muted uppercase">
-                Inteligência artificial
-              </p>
+    const labels = [
+      "Confirmado",
+      "Rumor",
+      "Trailer/PV",
+      "Nova temporada",
+      "Anúncio",
+    ] as const;
+    const label = labels.includes(
+      parsed.label as (typeof labels)[number],
+    )
+      ? (parsed.label as (typeof labels)[number])
+      : "Anúncio";
 
-              <h1 className="font-display text-3xl tracking-tight">
-                Hikari AI
-              </h1>
-            </div>
-          </div>
+    return {
+      approved: parsed.approved,
+      isAnime: parsed.isAnime,
+      isGameNews: parsed.isGameNews,
+      isDuplicate: parsed.isDuplicate,
+      label,
+      animeName: parsed.animeName,
+      title: parsed.title,
+      description: parsed.description,
+      reason: parsed.reason,
+    };
+  } catch {
+    return null;
+  }
+}
 
-          <p className="mt-2 max-w-2xl text-sm text-muted">
-            Central de inteligência artificial para revisão de notícias,
-            moderação e tarefas administrativas do Hikari.
-          </p>
-        </div>
-      </header>
+function buildReviewPrompt(data: {
+  title: string;
+  description: string;
+  source: string;
+  sourceUrl: string;
+  animeName: string;
+}) {
+  return `
+Você é a Hikari AI, responsável pela revisão automática
+de notícias do site Hikari.
 
-      {/* Status */}
-      <section className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-lg bg-elevated">
-              <Sparkles className="size-5" />
-            </div>
+Analise a notícia abaixo e devolva SOMENTE um JSON válido.
 
-            <div>
-              <h2 className="font-display text-lg">
-                Status da Hikari AI
-              </h2>
+REGRAS:
 
-              <p className="mt-1 text-sm text-muted">
-                A estrutura do sistema está pronta e a conexão com o
-                provedor pode ser testada abaixo.
-              </p>
-            </div>
-          </div>
+1. A notícia deve ser sobre anime, mangá ou uma franquia
+   diretamente relacionada a anime.
 
-          <div className="inline-flex w-fit items-center gap-2 rounded-full bg-elevated px-3 py-1.5 text-xs text-muted">
-            <CheckCircle2 className="size-3.5" />
-            Configurada
-          </div>
-        </div>
-      </section>
+2. Notícias exclusivamente sobre jogos devem ser rejeitadas.
 
-      {/* Provedores */}
-      <section className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)] sm:p-6">
-        <div>
-          <h2 className="font-display text-xl">
-            Provedores da Hikari AI
-          </h2>
+3. O nome do anime deve permanecer em inglês oficial ou romaji.
+   Nunca transforme o nome do anime em português.
 
-          <p className="mt-1 text-sm leading-6 text-muted">
-            O Hikari usa estes provedores na análise automática das notícias.
-          </p>
-        </div>
+4. Nunca use o título japonês em caracteres nativos quando
+   existir um nome oficial em inglês ou romaji.
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg bg-elevated p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs text-muted">Provedor principal</p>
-                <p className="mt-1 font-display text-lg">Gemini</p>
-              </div>
-              <span className="rounded-full bg-surface px-2.5 py-1 text-[10px] text-muted">
-                Principal
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-muted">
-              Gemini 3.5 Flash Lite
-            </p>
-          </div>
+5. O restante do título deve ficar em português.
 
-          <div className="rounded-lg bg-elevated p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs text-muted">Provedor de reserva</p>
-                <p className="mt-1 font-display text-lg">Groq</p>
-              </div>
-              <span className="rounded-full bg-surface px-2.5 py-1 text-[10px] text-muted">
-                Fallback
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-muted">
-              GPT-OSS 120B
-            </p>
-          </div>
-        </div>
-      </section>
+6. A descrição deve ficar em português.
 
-      {/* Teste */}
-      <section className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)] sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="font-display text-xl">
-              Testar Hikari AI
-            </h2>
+7. Classifique a notícia em apenas uma categoria:
+   - Confirmado
+   - Rumor
+   - Trailer/PV
+   - Nova temporada
+   - Anúncio
 
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-              Pega uma notícia externa real do Hikari e envia para a
-              Hikari AI analisar. Nenhuma notícia será publicada ou alterada.
-            </p>
-          </div>
+8. Se a fonte for claramente um vazamento, leak ou conta de
+   rumores, trate como "Rumor", salvo quando houver confirmação
+   oficial verificável.
 
-          <Button
-            type="button"
-            onClick={handleTestAI}
-            disabled={testing}
-          >
-            {testing ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Testando...
-              </>
-            ) : (
-              <>
-                <Bot className="size-4" />
-                Testar Hikari AI
-              </>
-            )}
-          </Button>
-        </div>
+9. Não invente informações.
 
-        {testResult && (
-          <div className="mt-5 rounded-lg bg-elevated p-4">
-            <div className="flex items-center gap-2 text-sm">
-              {testResult.approved ? (
-                <span
-                  className={
-                    testResult.approved
-                      ? "font-bold text-green-500"
-                      : "font-bold text-red-500"
-                  }
-                  aria-hidden="true"
-                >
-                  {testResult.approved ? "✓" : "✕"}
-                </span>
-              )}
+10. Se não for possível identificar corretamente um anime,
+    não invente um nome.
 
-              <span>
-                {testResult.approved
-                  ? "Hikari AI aprovou a notícia"
-                  : "Hikari AI não aprovou a notícia"}
-              </span>
-            </div>
+11. A decisão "approved" deve ser false se:
+    - não for notícia de anime ou mangá;
+    - for notícia exclusivamente sobre jogo;
+    - houver informação insuficiente;
+    - houver forte indício de conteúdo duplicado.
 
-            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <span className="text-xs text-muted">
-                  Anime identificado
-                </span>
-                <p className="mt-1">
-                  {testResult.animeName || "Nenhum"}
-                </p>
-              </div>
+12. "isDuplicate" deve ser false nesta primeira versão quando
+    não houver evidência de duplicação no conteúdo recebido.
+    A comparação com o banco de notícias será adicionada
+    posteriormente.
 
-              <div>
-                <span className="text-xs text-muted">
-                  Classificação
-                </span>
-                <p className="mt-1">{testResult.label}</p>
-              </div>
+DADOS DA NOTÍCIA:
 
-              <div>
-                <span className="text-xs text-muted">
-                  É notícia de anime?
-                </span>
-                <p className="mt-1">
-                  {testResult.isAnime ? "Sim" : "Não"}
-                </p>
-              </div>
+Título:
+${data.title}
 
-              <div>
-                <span className="text-xs text-muted">
-                  É notícia de jogo?
-                </span>
-                <p className="mt-1">
-                  {testResult.isGameNews ? "Sim" : "Não"}
-                </p>
-              </div>
-            </div>
+Descrição:
+${data.description || "(sem descrição)"}
 
-            {testResult.title && (
-              <div className="mt-4">
-                <span className="text-xs text-muted">
-                  Título revisado
-                </span>
+Anime identificado anteriormente:
+${data.animeName || "(nenhum)"}
 
-                <p className="mt-1 text-sm leading-6">
-                  {testResult.title}
-                </p>
-              </div>
-            )}
+Fonte:
+${data.source || "(desconhecida)"}
 
-            {testResult.description && (
-              <div className="mt-4">
-                <span className="text-xs text-muted">
-                  Descrição revisada
-                </span>
+URL da fonte:
+${data.sourceUrl || "(não informada)"}
 
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  {testResult.description}
-                </p>
-              </div>
-            )}
+DEVOLVA EXATAMENTE ESTE FORMATO JSON:
 
-            <div className="mt-4 rounded-lg bg-surface p-3">
-              <span className="text-xs text-muted">
-                Motivo
-              </span>
+{
+  "approved": true,
+  "isAnime": true,
+  "isGameNews": false,
+  "isDuplicate": false,
+  "label": "Confirmado",
+  "animeName": "Nome oficial em inglês ou romaji",
+  "title": "Título revisado em português",
+  "description": "Descrição revisada em português",
+  "reason": "Motivo curto da decisão"
+}
+`;
+}
 
-              <p className="mt-1 text-sm leading-6">
-                {testResult.reason}
-              </p>
-            </div>
-          </div>
-        )}
-      </section>
+async function requestGemini(apiKey: string, prompt: string) {
+  try {
+    const response = await fetch(GEMINI_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.1,
+        },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
 
-      {/* Recursos */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="font-display text-xl">
-            Recursos da Hikari AI
-          </h2>
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        result: null,
+        reason: `Gemini retornou HTTP ${response.status}: ${errorText.slice(0, 300)}`,
+      };
+    }
 
-          <p className="mt-1 text-sm text-muted">
-            Estrutura preparada para os recursos de inteligência artificial
-            do painel administrativo.
-          </p>
-        </div>
+    const json = (await response.json()) as unknown;
+    const text = extractGeminiResponseText(json);
+    if (!text) {
+      return {
+        result: null,
+        reason: "A Hikari AI não recebeu uma resposta válida do Gemini.",
+      };
+    }
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Notícias */}
-          <div className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)]">
-            <div className="flex items-start justify-between gap-4">
-              <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-elevated">
-                <FileText className="size-5" />
-              </div>
+    const result = parseJsonResult(text);
+    if (!result) {
+      return {
+        result: null,
+        reason: "A resposta do Gemini não estava no formato esperado.",
+      };
+    }
 
-              <span className="rounded-full bg-elevated px-2.5 py-1 text-[10px] text-muted">
-                Em breve
-              </span>
-            </div>
+    return { result, reason: "Gemini" };
+  } catch (error) {
+    const reason =
+      error instanceof Error
+        ? error.message
+        : "Erro desconhecido ao consultar o Gemini.";
+    return { result: null, reason: `Falha na Hikari AI: ${reason}` };
+  }
+}
 
-            <h3 className="mt-4 font-display text-lg">
-              Revisão de notícias
-            </h3>
+async function requestGroq(apiKey: string, prompt: string) {
+  try {
+    const response = await fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Você é a Hikari AI. Responda somente com JSON válido seguindo exatamente o formato solicitado.",
+          },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 1200,
+        response_format: { type: "json_object" },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
 
-            <p className="mt-1 text-sm leading-6 text-muted">
-              A IA poderá analisar automaticamente as notícias antes da
-              publicação, verificar o conteúdo e identificar informações
-              relacionadas a animes.
-            </p>
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        result: null,
+        reason: `Groq retornou HTTP ${response.status}: ${errorText.slice(0, 300)}`,
+      };
+    }
 
-            <ul className="mt-4 space-y-2 text-xs text-muted">
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5" />
-                Identificação do anime
-              </li>
+    const json = (await response.json()) as unknown;
+    const text = extractGroqResponseText(json);
+    if (!text) {
+      return {
+        result: null,
+        reason: "A Hikari AI não recebeu uma resposta válida do Groq.",
+      };
+    }
 
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5" />
-                Revisão do título
-              </li>
+    const result = parseJsonResult(text);
+    if (!result) {
+      return {
+        result: null,
+        reason: "A resposta do Groq não estava no formato esperado.",
+      };
+    }
 
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5" />
-                Revisão da descrição
-              </li>
+    return { result, reason: "Groq" };
+  } catch (error) {
+    const reason =
+      error instanceof Error
+        ? error.message
+        : "Erro desconhecido ao consultar o Groq.";
+    return {
+      result: null,
+      reason: `Falha na Hikari AI com Groq: ${reason}`,
+    };
+  }
+}
 
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5" />
-                Detecção de conteúdo de jogos
-              </li>
-            </ul>
-          </div>
+export const reviewHikariAINews = createServerFn({
+  method: "POST",
+})
+  .inputValidator(reviewSchema)
+  .handler(async ({ data }) => {
+    const prompt = buildReviewPrompt(data);
+    const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
+    const groqApiKey = process.env.GROQ_API_KEY?.trim();
 
-          {/* Moderação */}
-          <div className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)]">
-            <div className="flex items-start justify-between gap-4">
-              <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-elevated">
-                <ShieldCheck className="size-5" />
-              </div>
+    let geminiReason = "";
 
-              <span className="rounded-full bg-elevated px-2.5 py-1 text-[10px] text-muted">
-                Em breve
-              </span>
-            </div>
+    if (geminiApiKey) {
+      const gemini = await requestGemini(geminiApiKey, prompt);
+      if (gemini.result) return gemini.result;
+      geminiReason = gemini.reason;
+    } else {
+      geminiReason =
+        "GEMINI_API_KEY ainda não está configurada no servidor.";
+    }
 
-            <h3 className="mt-4 font-display text-lg">
-              Moderação inteligente
-            </h3>
+    if (groqApiKey) {
+      const groq = await requestGroq(groqApiKey, prompt);
+      if (groq.result) return groq.result;
+      return fallbackResult(
+        data.title,
+        data.description,
+        `${geminiReason} | ${groq.reason}`,
+      );
+    }
 
-            <p className="mt-1 text-sm leading-6 text-muted">
-              A IA poderá auxiliar na análise de comentários, denúncias e
-              conteúdos enviados pelos usuários.
-            </p>
-
-            <ul className="mt-4 space-y-2 text-xs text-muted">
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5" />
-                Análise de denúncias
-              </li>
-
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5" />
-                Detecção de conteúdo inadequado
-              </li>
-
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="size-3.5" />
-                Auxílio aos moderadores
-              </li>
-            </ul>
-          </div>
-
-          {/* Duplicatas */}
-          <div className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)]">
-            <div className="flex items-start justify-between gap-4">
-              <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-elevated">
-                <MessageSquareWarning className="size-5" />
-              </div>
-
-              <span className="rounded-full bg-elevated px-2.5 py-1 text-[10px] text-muted">
-                Em breve
-              </span>
-            </div>
-
-            <h3 className="mt-4 font-display text-lg">
-              Detecção de duplicatas
-            </h3>
-
-            <p className="mt-1 text-sm leading-6 text-muted">
-              A IA poderá comparar novas notícias com conteúdos existentes
-              para evitar publicações repetidas.
-            </p>
-          </div>
-
-          {/* Histórico */}
-          <div className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)]">
-            <div className="flex items-start justify-between gap-4">
-              <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-elevated">
-                <History className="size-5" />
-              </div>
-
-              <span className="rounded-full bg-elevated px-2.5 py-1 text-[10px] text-muted">
-                Em breve
-              </span>
-            </div>
-
-            <h3 className="mt-4 font-display text-lg">
-              Histórico da IA
-            </h3>
-
-            <p className="mt-1 text-sm leading-6 text-muted">
-              Registro das análises realizadas pela Hikari AI e das decisões
-              tomadas pelo administrador.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Configuração */}
-      <section className="rounded-xl bg-surface p-5 shadow-[var(--shadow-border)] sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-elevated">
-              <Settings className="size-5" />
-            </div>
-
-            <div>
-              <h2 className="font-display text-lg">
-                Configuração da IA
-              </h2>
-
-              <p className="mt-1 text-sm text-muted">
-                O provedor de inteligência artificial é configurado através
-                das variáveis de ambiente do servidor.
-              </p>
-            </div>
-          </div>
-
-          <Button type="button" variant="outline" disabled>
-            Configurar
-          </Button>
-        </div>
-
-        <div className="mt-5 rounded-lg bg-elevated p-4">
-          <div className="flex items-center gap-2 text-sm">
-            <CheckCircle2 className="size-4" />
-            <span>Provedor de IA configurado no servidor</span>
-          </div>
-
-          <p className="mt-1 text-xs leading-5 text-muted">
-            As chaves do Gemini e do Groq permanecem protegidas nas variáveis
-            de ambiente e não são enviadas para o navegador.
-          </p>
-
-          <div className="mt-3 flex flex-wrap gap-4 text-xs">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="font-bold text-green-500" aria-hidden="true">✓</span>
-              Funcionando / aprovado
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="font-bold text-red-500" aria-hidden="true">✕</span>
-              Falha / não aprovado
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* Voltar */}
-      <div className="flex justify-start pb-4">
-        <Button asChild variant="outline">
-          <Link to="/admin">
-            <ArrowLeft className="size-4" />
-            Voltar ao Admin
-          </Link>
-        </Button>
-      </div>
-    </div>
-  );
-            }
+    return fallbackResult(
+      data.title,
+      data.description,
+      `${geminiReason} | GROQ_API_KEY ainda não está configurada no servidor.`,
+    );
+  });
