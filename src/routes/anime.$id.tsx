@@ -368,7 +368,9 @@ function AnimePage() {
   };
 
   const handleBack = () => {
-    void navigate({ to: "/" });
+    if (window.history.length > 1) {
+      window.history.back();
+    }
   };
 
   const bannerIsReady =
