@@ -1792,17 +1792,11 @@ function NewsPage() {
 
             <div
               className="
-                flex
-                gap-4
-                overflow-x-auto
-                pb-2
-                snap-x
-                snap-mandatory
-                [scrollbar-width:none]
-                [&::-webkit-scrollbar]:hidden
-                sm:grid
+                grid
+                grid-cols-3
+                gap-2
                 sm:grid-cols-2
-                sm:overflow-visible
+                sm:gap-4
                 lg:grid-cols-4
               "
             >
@@ -1810,17 +1804,12 @@ function NewsPage() {
                 <article
                   key={`${item.id}-${item.airingAt}-${item.episode}`}
                   className="
-                    w-[78vw]
-                    max-w-[300px]
-                    shrink-0
-                    snap-start
+                    min-w-0
                     overflow-hidden
                     rounded-3xl
                     border
                     border-border
                     bg-card
-                    sm:w-auto
-                    sm:max-w-none
                   "
                 >
                   <div className="relative aspect-[16/9] w-full overflow-hidden bg-black">
