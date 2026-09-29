@@ -952,6 +952,18 @@ function imagesFromHtml(
   return Array.from(images);
 }
 
+function isGameNews(
+  title: string,
+  content: string,
+  url: string,
+): boolean {
+  const normalized = `${title} ${content} ${url}`.toLowerCase();
+
+  return /\\b(video game|video games|gaming|gameplay|game trailer|game pv|game announcement|game release|mobile game|gacha game|console game|pc game|playstation|xbox|nintendo|steam|switch|ps4|ps5|xbox series|xbox one|rpg game|action game|fighting game|visual novel game|smartphone game)\\b/i.test(
+    normalized,
+  ) || /(?:^|[\\s:/_-])game(?:$|[\\s:/_-])/i.test(normalized);
+}
+
 function typeFromExternalNews(
   title: string,
 ): {
@@ -1057,6 +1069,10 @@ async function fetchExternalFeed(
       xmlAttribute(block, "media:thumbnail", "url") ||
       xmlAttribute(block, "enclosure", "url") ||
       imageFromHtml(content, url);
+
+    if (isGameNews(title, content, url)) {
+      return null;
+    }
 
     const articleImages = imagesFromHtml(content, url);
     const classified = typeFromExternalNews(title);
