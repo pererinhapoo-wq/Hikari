@@ -373,8 +373,6 @@ export function HikariPlayer({
             height: 38px !important;
             background: rgba(0,0,0,.28) !important;
             box-shadow: 0 5px 20px rgba(0,0,0,.3) !important;
-            backdrop-filter: blur(8px) !important;
-            -webkit-backdrop-filter: blur(8px) !important;
           }
         }
       `}</style>
@@ -415,9 +413,8 @@ export function HikariPlayer({
                 }
               />
 
-              <div className={`pointer-events-none absolute inset-0 z-10 flex -translate-y-1/2 items-center justify-center sm:inset-x-0 sm:inset-y-auto sm:top-[40%] ${
-                controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
-              }`}>
+              {controlsVisible && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex -translate-y-1/2 items-center justify-center sm:inset-x-0 sm:inset-y-auto sm:top-[40%]">
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
@@ -425,7 +422,7 @@ export function HikariPlayer({
                     <button
                       type="button"
                       onClick={() => seekBy(-10)}
-                      className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
                       aria-label="Voltar 10 segundos"
                     >
                       -10s
@@ -434,7 +431,7 @@ export function HikariPlayer({
                     <button
                       type="button"
                       onClick={togglePlay}
-                      className="flex size-12 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:border-white/45 hover:bg-white/20 active:scale-95 sm:size-14"
+                      className="flex size-12 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] transition hover:border-white/45 hover:bg-white/20 active:scale-95 sm:size-14"
                       aria-label={isPlaying ? "Pausar" : "Reproduzir"}
                     >
                       {isPlaying ? (
@@ -447,19 +444,19 @@ export function HikariPlayer({
                     <button
                       type="button"
                       onClick={() => seekBy(10)}
-                      className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
+                      className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
                       aria-label="Avançar 10 segundos"
                     >
                       +10s
                     </button>
                   </div>
                 </div>
+              )}
 
-              <div
-                onPointerDown={showControls}
-                className={`hikari-mobile-controls absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4 ${
-                  controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
-                }`}
+              {controlsVisible && (
+                <div
+                  onPointerDown={showControls}
+                  className="hikari-mobile-controls absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
                 >
                   <div className="hikari-progress-shell relative h-5 rounded-full border-0 bg-transparent px-2 shadow-none sm:h-7 sm:px-3">
                     <div className="hikari-progress-track pointer-events-none absolute inset-x-2 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20 sm:inset-x-3 sm:h-1.5">
@@ -505,7 +502,7 @@ export function HikariPlayer({
                       <button
                         type="button"
                         onClick={toggleMute}
-                        className="hikari-volume flex size-8 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                        className="hikari-volume flex size-8 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
                         aria-label={isMuted ? "Ativar som" : "Silenciar"}
                       >
                         {isMuted ? (
@@ -519,7 +516,7 @@ export function HikariPlayer({
                         <button
                           type="button"
                           onClick={() => setSettingsOpen((open) => !open)}
-                          className={`hikari-settings flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10 ${
+                          className={`hikari-settings flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10 ${
                             settingsOpen ? "bg-white/15" : ""
                           }`}
                           aria-label="Configurações do player"
@@ -529,7 +526,7 @@ export function HikariPlayer({
                         </button>
 
                         {settingsOpen && (
-                          <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl backdrop-blur-xl">
+                          <div className="absolute bottom-11 right-0 z-20 w-56 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl">
                             <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
                               Configurações
                             </div>
@@ -556,7 +553,7 @@ export function HikariPlayer({
                       <button
                         type="button"
                         onClick={handleFullscreen}
-                        className="hikari-mobile-fullscreen flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                        className="hikari-mobile-fullscreen flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
                         aria-label="Tela cheia"
                       >
                         <Maximize className="size-4 sm:size-4" />
@@ -564,6 +561,9 @@ export function HikariPlayer({
                     </div>
                   </div>
                 </div>
-            </>
+              )}
+            
+
+    </>
   );
 }
