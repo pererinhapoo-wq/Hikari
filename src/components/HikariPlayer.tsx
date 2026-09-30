@@ -276,7 +276,7 @@ export function HikariPlayer({
             position: absolute !important;
             left: 12px !important;
             right: 12px !important;
-            bottom: 0 !important;
+            bottom: 1px !important;
             top: auto !important;
             width: auto !important;
             height: 3px !important;
@@ -310,7 +310,7 @@ export function HikariPlayer({
             width: 6px !important;
             height: 6px !important;
             background: #a855f7 !important;
-            box-shadow: 0 0 6px rgba(168,85,247,.75) !important;
+            box-shadow: none !important;
           }
 
           .hikari-player .hikari-mobile-time-row {
@@ -469,7 +469,7 @@ export function HikariPlayer({
                     </div>
 
                     <div
-                      className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-[#a855f7] shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
+                      className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-[#a855f7] sm:size-2"
                       style={{
                         left: `${duration > 0 ? Math.min(99.5, Math.max(0.5, (currentTime / duration) * 100)) : 0.5}%`,
                       }}
