@@ -691,7 +691,10 @@ function AnimePage() {
 
       {/* EPISÓDIOS */}
       {currentSeason && (
-        <section className="mt-12">
+        <section
+          id="episodes"
+          className="mt-12"
+        >
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
@@ -907,4 +910,4 @@ function EpisodeGrid({
       </ol>
     </div>
   );
-      }
+                                     }
