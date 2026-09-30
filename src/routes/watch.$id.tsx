@@ -168,12 +168,18 @@ function WatchPage() {
     ? displayTitle(anime)
     : "";
 
-  const playerUrls = useMemo(
-    () => [
-      current?.videoUrl,
-      current?.videoUrl2,
-      current?.videoUrl3,
-    ],
+  // Fontes de vídeo: a numeração dos botões é dinâmica e segue
+  // somente a ordem em que as fontes estão cadastradas no episódio.
+  const playerSources = useMemo(
+    () =>
+      [
+        { url: current?.videoUrl, kind: "vercel" as const },
+        { url: current?.videoUrl2, kind: "bunny" as const },
+        { url: current?.videoUrl3, kind: "mux" as const },
+      ].filter(
+        (source): source is { url: string; kind: "vercel" | "bunny" | "mux" } =>
+          Boolean(source.url),
+      ),
     [current],
   );
 
@@ -183,16 +189,8 @@ function WatchPage() {
     useState(false);
 
   useEffect(() => {
-    const firstAvailablePlayer = playerUrls.findIndex(
-      (url) => Boolean(url),
-    );
-
-    setPlayerIndex(
-      firstAvailablePlayer >= 0
-        ? firstAvailablePlayer
-        : 0,
-    );
-  }, [current?.id, playerUrls]);
+    setPlayerIndex(0);
+  }, [current?.id, playerSources]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerRef = useRef<HTMLDivElement | null>(null);
@@ -466,10 +464,8 @@ function WatchPage() {
     );
   }
 
-  const playUrl =
-    playerUrls[playerIndex] ??
-    current?.videoUrl ??
-    "";
+  const selectedPlayer = playerSources[playerIndex];
+  const playUrl = selectedPlayer?.url ?? "";
 
   const yt =
     youtubeIdFrom(playUrl) ||
@@ -486,9 +482,9 @@ function WatchPage() {
       : null;
 
   const bunnyEmbedSource =
-    playerIndex === 1 && current?.videoUrl2
+    selectedPlayer?.kind === "bunny" && playUrl
       ? (() => {
-          const value = current.videoUrl2;
+          const value = playUrl;
 
           if (value.includes("player.mediadelivery.net/embed/")) {
             return value;
@@ -505,9 +501,9 @@ function WatchPage() {
       : null;
 
   const muxEmbedSource =
-    playerIndex === 2 && current?.videoUrl3
+    selectedPlayer?.kind === "mux" && playUrl
       ? (() => {
-          const value = current.videoUrl3.trim();
+          const value = playUrl.trim();
 
           if (value.includes("player.mux.com/")) {
             return value;
@@ -577,31 +573,24 @@ function WatchPage() {
         {/* PLAYERS */}
         {/* ================================================== */}
 
-        {playerUrls.length > 0 && (
+        {playerSources.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
-
-            {playerUrls.map(
-              (url, index) =>
-                url ? (
-                  <Button
-                    key={index}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className={
-                      playerIndex === index
-                        ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
-                        : "rounded-xl border-white/10 bg-white/[0.03] px-5 text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
-                    }
-                    onClick={() =>
-                      setPlayerIndex(index)
-                    }
-                  >
-                    Player {playerUrls.slice(0, index + 1).filter(Boolean).length}
-                  </Button>
-                ) : null,
-            )}
-
+            {playerSources.map((source, index) => (
+              <Button
+                key={`${source.kind}-${index}`}
+                type="button"
+                size="sm"
+                variant="outline"
+                className={
+                  playerIndex === index
+                    ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
+                    : "rounded-xl border-white/10 bg-white/[0.03] px-5 text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+                }
+                onClick={() => setPlayerIndex(index)}
+              >
+                Player {index + 1}
+              </Button>
+            ))}
           </div>
         )}
 
