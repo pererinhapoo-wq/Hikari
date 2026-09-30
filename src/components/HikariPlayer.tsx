@@ -396,12 +396,6 @@ export function HikariPlayer({
                 onTouchEnd={handlePlayerTap}
                 style={{
                   touchAction: "pan-x",
-                  opacity: 1,
-                  filter: "none",
-                  mixBlendMode: "normal",
-                  transform: "translateZ(0)",
-                  backfaceVisibility: "hidden",
-                  WebkitBackfaceVisibility: "hidden",
                 }}
                 className="relative z-0 size-full select-none bg-black object-contain"
                  data-player-video="true"
@@ -421,8 +415,9 @@ export function HikariPlayer({
                 }
               />
 
-              {controlsVisible && (
-                <div className="pointer-events-none absolute inset-0 z-10 flex -translate-y-1/2 items-center justify-center sm:inset-x-0 sm:inset-y-auto sm:top-[40%]">
+              <div className={`pointer-events-none absolute inset-0 z-10 flex -translate-y-1/2 items-center justify-center sm:inset-x-0 sm:inset-y-auto sm:top-[40%] ${
+                controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
+              }`}>
                   <div
                     onPointerDown={showControls}
                     className="pointer-events-auto flex items-center gap-2 sm:gap-3"
@@ -459,12 +454,12 @@ export function HikariPlayer({
                     </button>
                   </div>
                 </div>
-              )}
 
-              {controlsVisible && (
-                <div
-                  onPointerDown={showControls}
-                  className="hikari-mobile-controls absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4"
+              <div
+                onPointerDown={showControls}
+                className={`hikari-mobile-controls absolute inset-x-0 bottom-0 z-10 px-2 pb-2 sm:px-5 sm:pb-4 ${
+                  controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
                 >
                   <div className="hikari-progress-shell relative h-5 rounded-full border-0 bg-transparent px-2 shadow-none sm:h-7 sm:px-3">
                     <div className="hikari-progress-track pointer-events-none absolute inset-x-2 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20 sm:inset-x-3 sm:h-1.5">
@@ -569,9 +564,6 @@ export function HikariPlayer({
                     </div>
                   </div>
                 </div>
-              )}
-            
-
-    </>
+            </>
   );
 }
