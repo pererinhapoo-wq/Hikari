@@ -538,10 +538,7 @@ function WatchPage() {
         <button
           type="button"
           onClick={() => {
-            navigate({
-              to: "/anime/$id",
-              params: { id: anime.id },
-            });
+            window.history.back();
           }}
           className="flex size-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/80 transition hover:bg-white/[0.08] hover:text-white active:scale-95"
           aria-label="Voltar"
