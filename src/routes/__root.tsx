@@ -76,6 +76,15 @@ export const Route = createRootRoute({
       suppressHydrationWarning
     >
       <head>
+
+        {<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594"
+     crossorigin="anonymous"></script>/* Google AdSense */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-SEU_ID_AQUI"
+          crossOrigin="anonymous"
+        />
+
         <script
           dangerouslySetInnerHTML={{
             __html: `
