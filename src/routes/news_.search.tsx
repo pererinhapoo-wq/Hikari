@@ -25,7 +25,7 @@ import {
 } from "@/lib/news-api";
 
 export const Route = createFileRoute(
-  "/news/search",
+  "/news_/search",
 )({
   validateSearch: (search) => ({
     q:

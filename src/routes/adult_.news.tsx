@@ -28,7 +28,7 @@ import {
 } from "@/lib/news-api-adulto-separado";
 
 export const Route = createFileRoute(
-  "/adult/news",
+  "/adult_/news",
 )({
   validateSearch: (search) => ({
     q:

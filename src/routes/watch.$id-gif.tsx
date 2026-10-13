@@ -39,7 +39,7 @@ import {
   type Episode,
 } from "@/lib/types";
 
-export const Route = createFileRoute("/watch/$id")({
+export const Route = createFileRoute("/watch/$id-gif")({
   validateSearch: (
     raw: Record<string, unknown>,
   ): {

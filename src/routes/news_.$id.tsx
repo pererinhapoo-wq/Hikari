@@ -547,7 +547,7 @@ async function fetchAnimeInfo(
 }
 
 export const Route = createFileRoute(
-  "/news/$id",
+  "/news_/$id",
 )({
   validateSearch: (search) => ({
     page: Math.max(

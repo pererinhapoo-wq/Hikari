@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute(
-  "/settings-player",
+  "/src/routes/settings-player",
 )({
   component: SettingsPlayer,
 });

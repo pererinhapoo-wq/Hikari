@@ -40,6 +40,7 @@ import { emailAndPasswordEnabled } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
+import { isWorkspacePreview } from "../env.server.ts";
 import {
   GROK_ISSUER_DEFAULT,
   PREVIEW_ALLOWED_HOSTS,
@@ -226,9 +227,12 @@ const grokOAuthPlugin = authConfigured
     })
   : null;
 
+const isDeployed =
+  !isWorkspacePreview() || Boolean(env("VERCEL")) || Boolean(env("DATABASE_URL"));
+
 const betterAuthSecret = env("BETTER_AUTH_SECRET");
 
-if (!authDisabled && !betterAuthSecret) {
+if (isDeployed && !authDisabled && !betterAuthSecret) {
   throw new Error(
     "BETTER_AUTH_SECRET is required when VITE_AUTH_ENABLED is not false.",
   );

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/api/gifs")({
+export const Route = createFileRoute("/api/src/routes/api/gifs")({
   server: {
     handlers: {
       GET: async ({ request }) => {

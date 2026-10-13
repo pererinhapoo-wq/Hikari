@@ -38,7 +38,7 @@ import {
   type Episode,
 } from "@/lib/types";
 
-export const Route = createFileRoute("/watch/$id")({
+export const Route = createFileRoute("/watch/$id-imagem-corrigida")({
   validateSearch: (
     raw: Record<string, unknown>,
   ): {

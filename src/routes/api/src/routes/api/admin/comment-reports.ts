@@ -13,7 +13,7 @@ const REPORT_REASON_LABELS: Record<string, string> = {
 };
 
 export const Route = createFileRoute(
-  "/api/admin/comment-reports",
+  "/api/src/routes/api/admin/comment-reports",
 )({
   server: {
     handlers: {
