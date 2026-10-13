@@ -1,0 +1,1 @@
+import{Ct as e,lt as t}from"./index-KIU_Jf0J.js";var n=t(),r=`/app/applet/src/routes/adult.tsx?tsr-split=component`;function i(){return(0,n.jsxDEV)(e,{},void 0,!1,{fileName:r,lineNumber:3,columnNumber:10},this)}export{i as component};

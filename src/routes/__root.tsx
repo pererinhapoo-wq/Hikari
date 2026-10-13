@@ -77,11 +77,10 @@ export const Route = createRootRoute({
     >
       <head>
 
-        {<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594"
-     crossorigin="anonymous"></script>/* Google AdSense */}
+        {/* Google AdSense */}
         <script
           async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-SEU_ID_AQUI"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594"
           crossOrigin="anonymous"
         />
 

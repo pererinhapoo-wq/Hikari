@@ -1,0 +1,1 @@
+import{t as e}from"./utils-B0DwrSeR.js";import{lt as t}from"./index-KIU_Jf0J.js";var n=t(),r=`/app/applet/src/components/ui/badge.tsx`;function i({className:t,...i}){return(0,n.jsxDEV)(`span`,{className:e(`inline-flex h-7 items-center rounded-full bg-elevated px-2.5 text-xs font-medium text-muted`,t),...i},void 0,!1,{fileName:r,lineNumber:6,columnNumber:5},this)}export{i as t};
