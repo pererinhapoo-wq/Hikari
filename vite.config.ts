@@ -189,7 +189,7 @@ export default defineConfig(({ command, isPreview }) => {
         },
       }),
 
-      netlify(),
+      ...(isNetlify ? [netlify()] : []),
 
       ...(!isNetlify &&
       !isCloudflare &&
