@@ -44,6 +44,7 @@ import { Route as AnimeIdRouteImport } from './routes/anime.$id'
 import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
 import { Route as ApiUploadCommentImageRouteImport } from './routes/api/upload-comment-image'
 import { Route as ApiUploadVideoRouteImport } from './routes/api/upload-video'
+import { Route as ApiUploadVideoPlayer4RouteImport } from './routes/api/upload-video-player4'
 import { Route as BrowseSectionRouteImport } from './routes/browse.$section'
 import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
@@ -60,6 +61,7 @@ import { Route as ApiCommentsModerationRouteImport } from './routes/api/comments
 import { Route as ApiCommentsUploadImageRouteImport } from './routes/api/comments/upload-image'
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile/follow'
 import { Route as ApiUsersSearchRouteImport } from './routes/api/users/search'
+import { Route as ApiVcdnInitRouteImport } from './routes/api/vcdn/init'
 import { Route as SrcRoutesSettingsPlayerRouteImport } from './routes/src/routes/settings-player'
 import { Route as ApiSrcRoutesApiGifsRouteImport } from './routes/api/src/routes/api/gifs'
 import { Route as ApiSrcRoutesApiAdminCommentReportsRouteImport } from './routes/api/src/routes/api/admin/comment-reports'
@@ -239,6 +241,11 @@ const ApiUploadVideoRoute = ApiUploadVideoRouteImport.update({
   path: '/api/upload-video',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiUploadVideoPlayer4Route = ApiUploadVideoPlayer4RouteImport.update({
+  id: '/api/upload-video-player4',
+  path: '/api/upload-video-player4',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrowseSectionRoute = BrowseSectionRouteImport.update({
   id: '/browse/$section',
   path: '/browse/$section',
@@ -319,6 +326,11 @@ const ApiUsersSearchRoute = ApiUsersSearchRouteImport.update({
   path: '/api/users/search',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVcdnInitRoute = ApiVcdnInitRouteImport.update({
+  id: '/api/vcdn/init',
+  path: '/api/vcdn/init',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SrcRoutesSettingsPlayerRoute = SrcRoutesSettingsPlayerRouteImport.update({
   id: '/src/routes/settings-player',
   path: '/src/routes/settings-player',
@@ -370,6 +382,7 @@ export interface FileRoutesByFullPath {
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-video': typeof ApiUploadVideoRoute
+  '/api/upload-video-player4': typeof ApiUploadVideoPlayer4Route
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -387,6 +400,7 @@ export interface FileRoutesByFullPath {
   '/api/comments/upload-image': typeof ApiCommentsUploadImageRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/users/search': typeof ApiUsersSearchRoute
+  '/api/vcdn/init': typeof ApiVcdnInitRoute
   '/src/routes/settings-player': typeof SrcRoutesSettingsPlayerRoute
   '/api/comments/': typeof ApiCommentsIndexRoute
   '/api/src/routes/api/gifs': typeof ApiSrcRoutesApiGifsRoute
@@ -424,6 +438,7 @@ export interface FileRoutesByTo {
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-video': typeof ApiUploadVideoRoute
+  '/api/upload-video-player4': typeof ApiUploadVideoPlayer4Route
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -441,6 +456,7 @@ export interface FileRoutesByTo {
   '/api/comments/upload-image': typeof ApiCommentsUploadImageRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/users/search': typeof ApiUsersSearchRoute
+  '/api/vcdn/init': typeof ApiVcdnInitRoute
   '/src/routes/settings-player': typeof SrcRoutesSettingsPlayerRoute
   '/api/comments': typeof ApiCommentsIndexRoute
   '/api/src/routes/api/gifs': typeof ApiSrcRoutesApiGifsRoute
@@ -481,6 +497,7 @@ export interface FileRoutesById {
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-video': typeof ApiUploadVideoRoute
+  '/api/upload-video-player4': typeof ApiUploadVideoPlayer4Route
   '/browse/$section': typeof BrowseSectionRoute
   '/news_/$id': typeof NewsIdRoute
   '/news_/search': typeof NewsSearchRoute
@@ -498,6 +515,7 @@ export interface FileRoutesById {
   '/api/comments/upload-image': typeof ApiCommentsUploadImageRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/users/search': typeof ApiUsersSearchRoute
+  '/api/vcdn/init': typeof ApiVcdnInitRoute
   '/src/routes/settings-player': typeof SrcRoutesSettingsPlayerRoute
   '/api/comments/': typeof ApiCommentsIndexRoute
   '/api/src/routes/api/gifs': typeof ApiSrcRoutesApiGifsRoute
@@ -539,6 +557,7 @@ export interface FileRouteTypes {
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-video'
+    | '/api/upload-video-player4'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -556,6 +575,7 @@ export interface FileRouteTypes {
     | '/api/comments/upload-image'
     | '/api/profile/follow'
     | '/api/users/search'
+    | '/api/vcdn/init'
     | '/src/routes/settings-player'
     | '/api/comments/'
     | '/api/src/routes/api/gifs'
@@ -593,6 +613,7 @@ export interface FileRouteTypes {
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-video'
+    | '/api/upload-video-player4'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -610,6 +631,7 @@ export interface FileRouteTypes {
     | '/api/comments/upload-image'
     | '/api/profile/follow'
     | '/api/users/search'
+    | '/api/vcdn/init'
     | '/src/routes/settings-player'
     | '/api/comments'
     | '/api/src/routes/api/gifs'
@@ -649,6 +671,7 @@ export interface FileRouteTypes {
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-video'
+    | '/api/upload-video-player4'
     | '/browse/$section'
     | '/news_/$id'
     | '/news_/search'
@@ -666,6 +689,7 @@ export interface FileRouteTypes {
     | '/api/comments/upload-image'
     | '/api/profile/follow'
     | '/api/users/search'
+    | '/api/vcdn/init'
     | '/src/routes/settings-player'
     | '/api/comments/'
     | '/api/src/routes/api/gifs'
@@ -700,6 +724,7 @@ export interface RootRouteChildren {
   ApiNotificationsRoute: typeof ApiNotificationsRoute
   ApiUploadCommentImageRoute: typeof ApiUploadCommentImageRoute
   ApiUploadVideoRoute: typeof ApiUploadVideoRoute
+  ApiUploadVideoPlayer4Route: typeof ApiUploadVideoPlayer4Route
   BrowseSectionRoute: typeof BrowseSectionRoute
   NewsIdRoute: typeof NewsIdRoute
   NewsSearchRoute: typeof NewsSearchRoute
@@ -715,6 +740,7 @@ export interface RootRouteChildren {
   ApiCommentsUploadImageRoute: typeof ApiCommentsUploadImageRoute
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
   ApiUsersSearchRoute: typeof ApiUsersSearchRoute
+  ApiVcdnInitRoute: typeof ApiVcdnInitRoute
   SrcRoutesSettingsPlayerRoute: typeof SrcRoutesSettingsPlayerRoute
   ApiCommentsIndexRoute: typeof ApiCommentsIndexRoute
   ApiSrcRoutesApiGifsRoute: typeof ApiSrcRoutesApiGifsRoute
@@ -968,6 +994,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadVideoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/upload-video-player4': {
+      id: '/api/upload-video-player4'
+      path: '/api/upload-video-player4'
+      fullPath: '/api/upload-video-player4'
+      preLoaderRoute: typeof ApiUploadVideoPlayer4RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/browse/$section': {
       id: '/browse/$section'
       path: '/browse/$section'
@@ -1080,6 +1113,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUsersSearchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/vcdn/init': {
+      id: '/api/vcdn/init'
+      path: '/api/vcdn/init'
+      fullPath: '/api/vcdn/init'
+      preLoaderRoute: typeof ApiVcdnInitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/src/routes/settings-player': {
       id: '/src/routes/settings-player'
       path: '/src/routes/settings-player'
@@ -1164,6 +1204,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiNotificationsRoute: ApiNotificationsRoute,
   ApiUploadCommentImageRoute: ApiUploadCommentImageRoute,
   ApiUploadVideoRoute: ApiUploadVideoRoute,
+  ApiUploadVideoPlayer4Route: ApiUploadVideoPlayer4Route,
   BrowseSectionRoute: BrowseSectionRoute,
   NewsIdRoute: NewsIdRoute,
   NewsSearchRoute: NewsSearchRoute,
@@ -1179,6 +1220,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCommentsUploadImageRoute: ApiCommentsUploadImageRoute,
   ApiProfileFollowRoute: ApiProfileFollowRoute,
   ApiUsersSearchRoute: ApiUsersSearchRoute,
+  ApiVcdnInitRoute: ApiVcdnInitRoute,
   SrcRoutesSettingsPlayerRoute: SrcRoutesSettingsPlayerRoute,
   ApiCommentsIndexRoute: ApiCommentsIndexRoute,
   ApiSrcRoutesApiGifsRoute: ApiSrcRoutesApiGifsRoute,
@@ -1188,12 +1230,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
