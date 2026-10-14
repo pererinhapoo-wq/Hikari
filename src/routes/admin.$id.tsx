@@ -697,6 +697,37 @@ function AdminEditor() {
                     ))}
 
                     <Field
+                      label="Player 4 — URL do vídeo"
+                      className="sm:col-span-4"
+                    >
+                      <div className="flex gap-2">
+                        <Input
+                          value={ep.videoUrl4 ?? ""}
+                          onChange={(e) =>
+                            patchEpisode(
+                              season.id,
+                              ep.id,
+                              {
+                                videoUrl4:
+                                  e.target.value,
+                              },
+                            )
+                          }
+                          placeholder="URL do vídeo"
+                        />
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="shrink-0"
+                          disabled
+                        >
+                          Enviar
+                        </Button>
+                      </div>
+                    </Field>
+
+                    <Field
                       label="Thumb"
                       className="sm:col-span-11"
                     >

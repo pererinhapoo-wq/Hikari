@@ -7,6 +7,7 @@ export type Episode = {
   videoUrl?: string;
   videoUrl2?: string;
   videoUrl3?: string;
+  videoUrl4?: string;
   synopsis?: string;
   aired?: string;
 };
