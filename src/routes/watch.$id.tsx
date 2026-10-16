@@ -32,6 +32,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { HikariPlayer } from "@/components/HikariPlayer";
 import { fetchAnimeDetail } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import {
@@ -754,22 +755,21 @@ function WatchPage() {
           }
         }
       `}</style>
-              <video
+              <HikariPlayer
                 key={file}
                 ref={videoRef}
-                src={file ?? undefined}
+                src={file}
                 preload="metadata"
                 autoPlay={false}
                 playsInline
                 disablePictureInPicture
                 controlsList="nodownload noremoteplayback"
-                onContextMenu={(event) => event.preventDefault()}
                 onTouchEnd={handlePlayerTap}
                 style={{
                   touchAction: "pan-x",
                 }}
                 className="relative z-0 size-full select-none bg-black object-contain"
-                 data-player-video="true"
+                data-player-video="true"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 onLoadedMetadata={(event) => {

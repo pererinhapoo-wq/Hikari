@@ -40,8 +40,13 @@ export function youtubeIdFrom(input: string | null | undefined): string | null {
   return null;
 }
 
+export function isHlsSource(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /\.m3u8(\?|$)/i.test(url) || url.includes(".m3u8");
+}
+
 export function isDirectVideo(url: string): boolean {
-  return /\.(mp4|webm|ogg|mov)(\?|$)/i.test(url);
+  return /\.(mp4|webm|ogg|mov|m3u8)(\?|$)/i.test(url) || url.includes(".m3u8");
 }
 
 export function currentAnimeSeason(now = new Date()): {
