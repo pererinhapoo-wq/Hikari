@@ -263,36 +263,8 @@ function WatchPage() {
     handleNextEpisode();
   }, [progressStorageKey, handleNextEpisode]);
 
-  if (!anime && !hydrated) {
-    return null;
-  }
-
-  if (!anime) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-bg text-fg">
-        <div className="flex flex-col items-center justify-center gap-3">
-          <div
-            className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]"
-            aria-label="Carregando"
-          />
-          <span className="text-sm text-white/50">
-            Carregando...
-          </span>
-        </div>
-      </div>
-    );
-  }
-
   const selectedPlayer = playerSources[playerIndex];
   const playUrl = selectedPlayer?.url ?? "";
-
-  const yt =
-    youtubeIdFrom(playUrl) ||
-    (!playUrl
-      ? youtubeIdFrom(
-          anime.trailerId,
-        )
-      : null);
 
   // Resolução segura de fontes Mux:
   // 1. https://stream.mux.com/PLAYBACK_ID.m3u8: usa a URL HLS direta, preservando query params.
@@ -345,6 +317,34 @@ function WatchPage() {
 
     return { directHls: null, iframeUrl: null };
   }, [playUrl, selectedPlayer?.kind]);
+
+  if (!anime && !hydrated) {
+    return null;
+  }
+
+  if (!anime) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-bg text-fg">
+        <div className="flex flex-col items-center justify-center gap-3">
+          <div
+            className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]"
+            aria-label="Carregando"
+          />
+          <span className="text-sm text-white/50">
+            Carregando...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const yt =
+    youtubeIdFrom(playUrl) ||
+    (!playUrl
+      ? youtubeIdFrom(
+          anime.trailerId,
+        )
+      : null);
 
   const file =
     muxResolved.directHls ||
