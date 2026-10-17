@@ -164,50 +164,58 @@ function WatchPage() {
     ? displayTitle(anime)
     : "";
 
-  function isBunnySource(url: string | null | undefined): boolean {
-    if (!url) return false;
-    return /b-cdn\.net|mediadelivery\.net/i.test(url);
-  }
-
-  function isB2Source(url: string | null | undefined): boolean {
-    if (!url) return false;
-    return /backblazeb2\.com/i.test(url);
-  }
-
-  function isMuxDirectHls(url: string | null | undefined): boolean {
-    if (!url) return false;
-    return /^https?:\/\/stream\.mux\.com\/([a-zA-Z0-9_-]+)\.m3u8(\?.*)?$/i.test(url.trim());
-  }
-
-  function isCompatibleStreamSource(url: string | null | undefined): boolean {
-    if (!url) return false;
+  // Resolve qualquer formato de URL (HLS .m3u8, MP4, WebM, Bunny, Mux, B2, Vercel Blob)
+  // em um stream reproduzível nativamente pelo CustomVideoPlayer da NOVA STREAM
+  function resolvePlayableStream(url: string | null | undefined): string | null {
+    if (!url) return null;
     const trimmed = url.trim();
-    if (isBunnySource(trimmed) || isB2Source(trimmed)) return false;
-    // Se for Mux, aceita apenas HLS direto (.m3u8) ou vídeo direto, nunca embed/iframe
-    if (trimmed.includes("player.mux.com")) return false;
-    if (isMuxDirectHls(trimmed)) return true;
-    return isDirectVideo(trimmed) || isHlsSource(trimmed);
+    if (!trimmed) return null;
+
+    // Se for URL ou ID do Mux
+    if (trimmed.includes("player.mux.com/")) {
+      const muxMatch = trimmed.match(/player\.mux\.com\/([a-zA-Z0-9_-]+)/);
+      if (muxMatch?.[1]) {
+        return `https://stream.mux.com/${muxMatch[1]}.m3u8`;
+      }
+    }
+    if (/^[a-zA-Z0-9_-]{20,50}$/.test(trimmed) && !trimmed.includes("/") && !trimmed.includes(".")) {
+      return `https://stream.mux.com/${trimmed}.m3u8`;
+    }
+
+    // Se for embed do Bunny mediadelivery: https://player.mediadelivery.net/embed/{libraryId}/{videoId}
+    if (trimmed.includes("player.mediadelivery.net/embed/")) {
+      const bunnyMatch = trimmed.match(/mediadelivery\.net\/embed\/(\d+)\/([0-9a-f-]{36})/i);
+      if (bunnyMatch) {
+        const [, libraryId, videoId] = bunnyMatch;
+        return `https://vz-${libraryId}.b-cdn.net/${videoId}/playlist.m3u8`;
+      }
+    }
+
+    // Streams diretos (HLS, MP4, WebM, Cloudinary, Vercel Blob, Bunny CDN, B2, S3)
+    return trimmed;
   }
 
-  // Fontes de vídeo compatíveis com o player da NOVA STREAM:
-  // - Vercel / MP4 / WebM / HLS direto (.m3u8)
-  // - Mux (somente HLS direto stream.mux.com/*.m3u8 ou arquivo direto)
-  // - Bunny e Backblaze B2/S3 são estritamente excluídos da seleção sem apagar dados
+  // Mapeamento integral dos 4 slots de vídeo suportados pelo Hikari para a NOVA STREAM
   const playerSources = useMemo(() => {
     if (!current) return [];
-    const sources: Array<{ url: string; kind: "vercel" | "mux" }> = [];
+    const list: Array<{ url: string; name: string }> = [];
 
-    // Fonte 1: Vercel / Vídeo Direto (preservando parâmetros de assinatura intactos)
-    if (current.videoUrl && isCompatibleStreamSource(current.videoUrl)) {
-      sources.push({ url: current.videoUrl, kind: "vercel" });
-    }
+    const candidates = [
+      { raw: current.videoUrl, defaultName: "Player 1" },
+      { raw: current.videoUrl2, defaultName: "Player 2" },
+      { raw: current.videoUrl3, defaultName: "Player 3" },
+      { raw: current.videoUrl4, defaultName: "Player 4" },
+    ];
 
-    // Fonte 2: Mux (apenas quando fornecer URL HLS direta .m3u8 compatível)
-    if (current.videoUrl3 && isCompatibleStreamSource(current.videoUrl3)) {
-      sources.push({ url: current.videoUrl3, kind: "mux" });
-    }
+    candidates.forEach((c) => {
+      if (!c.raw) return;
+      const resolved = resolvePlayableStream(c.raw);
+      if (resolved) {
+        list.push({ url: resolved, name: c.defaultName });
+      }
+    });
 
-    return sources;
+    return list;
   }, [current]);
 
   const [playerIndex, setPlayerIndex] =
@@ -334,8 +342,8 @@ function WatchPage() {
       ? youtubeIdFrom(anime.trailerId)
       : youtubeIdFrom(playUrl);
 
-  // Todas as fontes em playerSources são compatíveis com o CustomVideoPlayer da NOVA STREAM
-  const file = playUrl && isCompatibleStreamSource(playUrl) ? playUrl : null;
+  // Todas as fontes em playerSources são reproduzidas diretamente pelo CustomVideoPlayer da NOVA STREAM
+  const file = playUrl || null;
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
@@ -390,7 +398,7 @@ function WatchPage() {
           <div className="mb-3 flex flex-wrap gap-2">
             {playerSources.map((source, index) => (
               <Button
-                key={`${source.kind}-${index}`}
+                key={`${source.name}-${index}`}
                 type="button"
                 size="sm"
                 variant="outline"
@@ -401,7 +409,7 @@ function WatchPage() {
                 }
                 onClick={() => setPlayerIndex(index)}
               >
-                Player {index + 1}
+                {source.name}
               </Button>
             ))}
           </div>

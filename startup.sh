@@ -1,10 +1,22 @@
 #!/bin/sh
 set -eu
-ROOT_DIR="/app/applet"
-[ -d "$ROOT_DIR" ] || ROOT_DIR="/workspace"
+
+if [ -f "./package.json" ]; then
+  ROOT_DIR="."
+elif [ -f "/package.json" ]; then
+  ROOT_DIR="/"
+elif [ -d "/workspace" ] && [ -f "/workspace/package.json" ]; then
+  ROOT_DIR="/workspace"
+elif [ -d "/app/applet" ] && [ -f "/app/applet/package.json" ]; then
+  ROOT_DIR="/app/applet"
+else
+  ROOT_DIR="."
+fi
+
 cd "$ROOT_DIR"
-node scripts/preview.mjs stop || true
+
 if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3000/; then
   exit 0
 fi
+
 npm run dev >>/tmp/app-startup.log 2>&1 &
