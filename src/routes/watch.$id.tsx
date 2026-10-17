@@ -267,15 +267,14 @@ function WatchPage() {
   const playUrl = selectedPlayer?.url ?? "";
 
   // Resolução segura de fontes Mux:
-  // 1. https://stream.mux.com/PLAYBACK_ID.m3u8: usa a URL HLS direta, preservando query params.
-  // 2. https://player.mux.com/PLAYBACK_ID: extrai o Playback ID e constrói a URL HLS direta.
-  // 3. Playback ID puro (formato validado ^[a-zA-Z0-9_-]{10,64}$): converte para stream HLS direto.
-  // 4. Formatos desconhecidos, tokens especiais ou casos inseguros: fallback para o iframe do Mux.
+  // 1. https://stream.mux.com/PLAYBACK_ID.m3u8: usa a URL HLS direta válida, preservando parâmetros de autenticação.
+  // 2. https://player.mux.com/...: mantém o iframe oficial do Mux (não converte automaticamente para HLS).
+  // 3. Playback ID puro ou outras fontes Mux: utiliza o iframe oficial do Mux para compatibilidade e integridade da reprodução.
   const muxResolved = useMemo(() => {
     if (!playUrl) return { directHls: null, iframeUrl: null };
     const trimmed = playUrl.trim();
 
-    // 1. Já é URL direta do stream.mux.com (*.m3u8)
+    // 1. Já é URL direta válida do stream.mux.com (*.m3u8), preservando parâmetros de autenticação/token
     const streamMatch = trimmed.match(
       /^https?:\/\/stream\.mux\.com\/([a-zA-Z0-9_-]+)\.m3u8(\?.*)?$/i,
     );
@@ -283,35 +282,15 @@ function WatchPage() {
       return { directHls: trimmed, iframeUrl: null };
     }
 
-    // 2. É URL do player.mux.com/PLAYBACK_ID
-    const playerMatch = trimmed.match(
-      /^https?:\/\/player\.mux\.com\/([a-zA-Z0-9_-]{10,64})(\?.*)?$/i,
-    );
-    if (playerMatch) {
-      const playbackId = playerMatch[1];
-      const query = playerMatch[2] || "";
-      return {
-        directHls: `https://stream.mux.com/${playbackId}.m3u8${query}`,
-        iframeUrl: null,
-      };
+    // 2. É URL oficial do player.mux.com: mantém o iframe oficial do Mux
+    if (trimmed.includes("player.mux.com/")) {
+      return { directHls: null, iframeUrl: trimmed };
     }
 
-    // 3. É um Playback ID puro (válido e esperado quando kind === "mux")
-    if (
-      selectedPlayer?.kind === "mux" &&
-      /^[a-zA-Z0-9_-]{10,64}$/.test(trimmed)
-    ) {
-      return {
-        directHls: `https://stream.mux.com/${trimmed}.m3u8`,
-        iframeUrl: null,
-      };
-    }
-
-    // 4. Fallback de iframe para URLs do Mux não conversíveis com segurança
+    // 3. Playback ID puro ou fonte Mux sem URL HLS direta explícita:
+    // Não assume acesso público HLS desautenticado; direciona com segurança ao iframe oficial do Mux
     if (selectedPlayer?.kind === "mux") {
-      const iframeUrl = trimmed.includes("player.mux.com/")
-        ? trimmed
-        : `https://player.mux.com/${trimmed}`;
+      const iframeUrl = `https://player.mux.com/${trimmed}`;
       return { directHls: null, iframeUrl };
     }
 
