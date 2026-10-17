@@ -341,10 +341,10 @@ function WatchPage() {
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
 
       {/* ================================================== */}
-      {/* CABEÇALHO (VOLTAR) */}
+      {/* CABEÇALHO */}
       {/* ================================================== */}
 
-      <header className="flex items-center justify-between px-3 py-3 sm:px-5">
+      <header className="flex min-h-16 items-center gap-3 px-3 py-2.5 sm:px-5">
         <button
           type="button"
           onClick={() => {
@@ -357,12 +357,27 @@ function WatchPage() {
               });
             }
           }}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-xs font-medium text-white/80 backdrop-blur-md transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white active:scale-95"
-          aria-label="Voltar para detalhes do anime"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/80 transition hover:bg-white/[0.08] hover:text-white active:scale-95"
+          aria-label="Voltar"
         >
-          <ChevronLeft className="size-4" />
-          <span>Voltar</span>
+          <ChevronLeft className="size-5" />
         </button>
+
+        <div className="min-w-0 flex-1">
+          <Link
+            to="/anime/$id"
+            params={{ id: anime.id }}
+            className="block truncate text-[18px] sm:text-[20px] font-semibold leading-tight text-white transition hover:text-[#c084fc]"
+          >
+            {title}
+          </Link>
+
+          <p className="truncate pt-0.5 text-[13px] sm:text-[14px] leading-tight text-white/55">
+            {current
+              ? `Episódio ${current.number} · ${current.title}`
+              : "Trailer"}
+          </p>
+        </div>
       </header>
 
       <div className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 sm:px-5">
@@ -458,35 +473,93 @@ function WatchPage() {
         )}
 
         {/* ================================================== */}
-        {/* MENU DE EPISÓDIOS (HIKARI) */}
+        {/* NAVEGAÇÃO DOS EPISÓDIOS */}
         {/* ================================================== */}
 
-        {episodes.length > 0 && (
-          <div className="mt-4 flex items-center justify-between">
+        <div className="mt-4 flex items-center gap-2">
+          {prev ? (
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="flex-1 sm:flex-none"
+            >
+              <Link
+                to="/watch/$id"
+                replace
+                params={{
+                  id: anime.id,
+                }}
+                search={{
+                  ep: prev.id,
+                }}
+              >
+                <ChevronLeft className="size-4" />
+                Anterior
+              </Link>
+            </Button>
+          ) : (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setEpisodesOpen((open) => !open)}
-              aria-expanded={episodesOpen}
-              className="rounded-xl border-white/10 bg-white/[0.03] text-xs font-medium text-white/90 hover:border-white/20 hover:bg-white/[0.08]"
+              disabled
+              className="flex-1 sm:flex-none"
             >
-              <span>Lista de Episódios ({episodes.length})</span>
-              <ChevronDown
-                className={cn(
-                  "ml-1.5 size-4 transition-transform",
-                  episodesOpen && "rotate-180",
-                )}
-              />
+              <ChevronLeft className="size-4" />
+              Anterior
             </Button>
+          )}
 
-            {current && (
-              <span className="text-xs text-white/50">
-                Episódio {current.number} selecionado
-              </span>
-            )}
-          </div>
-        )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setEpisodesOpen((open) => !open)}
+            aria-expanded={episodesOpen}
+            className="flex-1 sm:flex-none"
+          >
+            Episódios
+            <ChevronDown
+              className={cn(
+                "size-4 transition-transform",
+                episodesOpen && "rotate-180",
+              )}
+            />
+          </Button>
+
+          {next ? (
+            <Button
+              asChild
+              size="sm"
+              className="flex-1 sm:flex-none"
+            >
+              <Link
+                to="/watch/$id"
+                replace
+                params={{
+                  id: anime.id,
+                }}
+                search={{
+                  ep: next.id,
+                }}
+              >
+                Próximo
+                <ChevronRight className="size-4" />
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              disabled
+              className="flex-1 sm:flex-none"
+            >
+              Próximo
+              <ChevronRight className="size-4" />
+            </Button>
+          )}
+        </div>
 
         {/* ================================================== */}
         {/* BARRINHA DE EPISÓDIOS */}
