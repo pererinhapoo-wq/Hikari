@@ -32,6 +32,7 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import {
   cn,
   isDirectVideo,
+  isHlsSource,
   youtubeIdFrom,
 } from "@/lib/utils";
 import { mergeDetail } from "@/lib/overlay";
@@ -163,20 +164,51 @@ function WatchPage() {
     ? displayTitle(anime)
     : "";
 
-  // Fontes de vídeo: a numeração dos botões é dinâmica e segue
-  // somente a ordem em que as fontes estão cadastradas no episódio.
-  const playerSources = useMemo(
-    () =>
-      [
-        { url: current?.videoUrl, kind: "vercel" as const },
-        { url: current?.videoUrl2, kind: "bunny" as const },
-        { url: current?.videoUrl3, kind: "mux" as const },
-      ].filter(
-        (source): source is { url: string; kind: "vercel" | "bunny" | "mux" } =>
-          Boolean(source.url),
-      ),
-    [current],
-  );
+  function isBunnySource(url: string | null | undefined): boolean {
+    if (!url) return false;
+    return /b-cdn\.net|mediadelivery\.net/i.test(url);
+  }
+
+  function isB2Source(url: string | null | undefined): boolean {
+    if (!url) return false;
+    return /backblazeb2\.com/i.test(url);
+  }
+
+  function isMuxDirectHls(url: string | null | undefined): boolean {
+    if (!url) return false;
+    return /^https?:\/\/stream\.mux\.com\/([a-zA-Z0-9_-]+)\.m3u8(\?.*)?$/i.test(url.trim());
+  }
+
+  function isCompatibleStreamSource(url: string | null | undefined): boolean {
+    if (!url) return false;
+    const trimmed = url.trim();
+    if (isBunnySource(trimmed) || isB2Source(trimmed)) return false;
+    // Se for Mux, aceita apenas HLS direto (.m3u8) ou vídeo direto, nunca embed/iframe
+    if (trimmed.includes("player.mux.com")) return false;
+    if (isMuxDirectHls(trimmed)) return true;
+    return isDirectVideo(trimmed) || isHlsSource(trimmed);
+  }
+
+  // Fontes de vídeo compatíveis com o player da NOVA STREAM:
+  // - Vercel / MP4 / WebM / HLS direto (.m3u8)
+  // - Mux (somente HLS direto stream.mux.com/*.m3u8 ou arquivo direto)
+  // - Bunny e Backblaze B2/S3 são estritamente excluídos da seleção sem apagar dados
+  const playerSources = useMemo(() => {
+    if (!current) return [];
+    const sources: Array<{ url: string; kind: "vercel" | "mux" }> = [];
+
+    // Fonte 1: Vercel / Vídeo Direto (preservando parâmetros de assinatura intactos)
+    if (current.videoUrl && isCompatibleStreamSource(current.videoUrl)) {
+      sources.push({ url: current.videoUrl, kind: "vercel" });
+    }
+
+    // Fonte 2: Mux (apenas quando fornecer URL HLS direta .m3u8 compatível)
+    if (current.videoUrl3 && isCompatibleStreamSource(current.videoUrl3)) {
+      sources.push({ url: current.videoUrl3, kind: "mux" });
+    }
+
+    return sources;
+  }, [current]);
 
   const [playerIndex, setPlayerIndex] =
     useState(0);
@@ -233,7 +265,7 @@ function WatchPage() {
   );
 
   const handleNextEpisode = useCallback(() => {
-    if (next) {
+    if (next && anime) {
       void navigate({
         to: "/watch/$id",
         replace: true,
@@ -241,10 +273,10 @@ function WatchPage() {
         search: { ep: next.id },
       });
     }
-  }, [next, navigate, anime?.id]);
+  }, [next, navigate, anime]);
 
   const handlePrevEpisode = useCallback(() => {
-    if (prev) {
+    if (prev && anime) {
       void navigate({
         to: "/watch/$id",
         replace: true,
@@ -252,7 +284,7 @@ function WatchPage() {
         search: { ep: prev.id },
       });
     }
-  }, [prev, navigate, anime?.id]);
+  }, [prev, navigate, anime]);
 
   const handleEnded = useCallback(() => {
     if (progressStorageKey) {
@@ -265,37 +297,6 @@ function WatchPage() {
 
   const selectedPlayer = playerSources[playerIndex];
   const playUrl = selectedPlayer?.url ?? "";
-
-  // Resolução segura de fontes Mux:
-  // 1. https://stream.mux.com/PLAYBACK_ID.m3u8: usa a URL HLS direta válida, preservando parâmetros de autenticação.
-  // 2. https://player.mux.com/...: mantém o iframe oficial do Mux (não converte automaticamente para HLS).
-  // 3. Playback ID puro ou outras fontes Mux: utiliza o iframe oficial do Mux para compatibilidade e integridade da reprodução.
-  const muxResolved = useMemo(() => {
-    if (!playUrl) return { directHls: null, iframeUrl: null };
-    const trimmed = playUrl.trim();
-
-    // 1. Já é URL direta válida do stream.mux.com (*.m3u8), preservando parâmetros de autenticação/token
-    const streamMatch = trimmed.match(
-      /^https?:\/\/stream\.mux\.com\/([a-zA-Z0-9_-]+)\.m3u8(\?.*)?$/i,
-    );
-    if (streamMatch) {
-      return { directHls: trimmed, iframeUrl: null };
-    }
-
-    // 2. É URL oficial do player.mux.com: mantém o iframe oficial do Mux
-    if (trimmed.includes("player.mux.com/")) {
-      return { directHls: null, iframeUrl: trimmed };
-    }
-
-    // 3. Playback ID puro ou fonte Mux sem URL HLS direta explícita:
-    // Não assume acesso público HLS desautenticado; direciona com segurança ao iframe oficial do Mux
-    if (selectedPlayer?.kind === "mux") {
-      const iframeUrl = `https://player.mux.com/${trimmed}`;
-      return { directHls: null, iframeUrl };
-    }
-
-    return { directHls: null, iframeUrl: null };
-  }, [playUrl, selectedPlayer?.kind]);
 
   if (!anime && !hydrated) {
     return null;
@@ -318,46 +319,12 @@ function WatchPage() {
   }
 
   const yt =
-    youtubeIdFrom(playUrl) ||
-    (!playUrl
-      ? youtubeIdFrom(
-          anime.trailerId,
-        )
-      : null);
+    !playUrl && anime.trailerId
+      ? youtubeIdFrom(anime.trailerId)
+      : youtubeIdFrom(playUrl);
 
-  const file =
-    muxResolved.directHls ||
-    (playUrl && isDirectVideo(playUrl) ? playUrl : null);
-
-  const bunnyEmbedSource =
-    selectedPlayer?.kind === "bunny" && playUrl
-      ? (() => {
-          const value = playUrl;
-
-          if (value.includes("player.mediadelivery.net/embed/")) {
-            return value;
-          }
-
-          const match = value.match(
-            /b-cdn\.net\/(?:[^/]+\/)?([0-9a-f-]{36})\/playlist\.m3u8/i,
-          );
-
-          return match
-            ? `https://player.mediadelivery.net/embed/759317/${match[1]}?autoplay=false&loop=false&muted=false&preload=true&responsive=true`
-            : null;
-        })()
-      : null;
-
-  const muxEmbedSource = muxResolved.iframeUrl;
-
-  const external =
-    playUrl &&
-    !yt &&
-    !file &&
-    !bunnyEmbedSource &&
-    !muxEmbedSource
-      ? playUrl
-      : null;
+  // Todas as fontes em playerSources são compatíveis com o CustomVideoPlayer da NOVA STREAM
+  const file = playUrl && isCompatibleStreamSource(playUrl) ? playUrl : null;
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
@@ -428,28 +395,7 @@ function WatchPage() {
         {/* PLAYER */}
         {/* ================================================== */}
 
-        {yt ? (
-          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
-            <iframe
-              title={`${title} — player`}
-              src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&rel=0`}
-              className="size-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        ) : bunnyEmbedSource ? (
-          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
-            <iframe
-              title={`${title} — Bunny Player`}
-              src={bunnyEmbedSource}
-              loading="lazy"
-              className="size-full border-0 bg-black"
-              allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
-              allowFullScreen
-            />
-          </div>
-        ) : file ? (
+        {file ? (
           <CustomVideoPlayer
             key={file}
             src={file}
@@ -466,38 +412,15 @@ function WatchPage() {
             onNextEpisode={handleNextEpisode}
             onPrevEpisode={handlePrevEpisode}
           />
-        ) : muxEmbedSource ? (
+        ) : yt ? (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
             <iframe
-              title={`${title} — Mux Player`}
-              src={muxEmbedSource}
-              loading="lazy"
-              className="size-full border-0 bg-black"
-              allow="accelerometer; autoplay; gyroscope; picture-in-picture; fullscreen"
+              title={`${title} — trailer`}
+              src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&rel=0`}
+              className="size-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
-          </div>
-        ) : external ? (
-          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
-            <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
-              <p className="font-display text-2xl">
-                Este episódio abre no site oficial
-              </p>
-              <p className="max-w-md text-sm text-muted">
-                O catálogo não replica streams protegidos.
-                Use o link da fonte ou adicione uma URL de
-                vídeo no painel admin.
-              </p>
-              <Button asChild>
-                <a
-                  href={external}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Abrir episódio
-                </a>
-              </Button>
-            </div>
           </div>
         ) : (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">

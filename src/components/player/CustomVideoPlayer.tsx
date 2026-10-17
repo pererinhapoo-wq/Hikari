@@ -9,6 +9,7 @@ import {
 } from "react";
 import Hls from "hls.js";
 import {
+  Activity,
   AlertCircle,
   Check,
   ChevronLeft,
@@ -24,6 +25,7 @@ import {
   Volume1,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import { cn, isHlsSource } from "@/lib/utils";
 
@@ -73,6 +75,29 @@ export interface CustomVideoPlayerProps {
 
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
+export function classifyVideoResolution(height?: number): string {
+  if (!height || height <= 0) return "Automática";
+  if (height >= 2160) return "4K Ultra HD";
+  if (height >= 1440) return "2K QHD";
+  if (height >= 1080) return "1080p FHD";
+  if (height >= 720) return "720p HD";
+  if (height >= 480) return "480p SD";
+  return `${height}p`;
+}
+
+export function formatTime(secs: number): string {
+  if (!Number.isFinite(secs) || secs < 0) return "00:00";
+  const total = Math.floor(secs);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 export function CustomVideoPlayer({
   src,
   poster,
@@ -92,7 +117,7 @@ export function CustomVideoPlayer({
   hasPrevEpisode = false,
   className,
 }: CustomVideoPlayerProps) {
-  // Elementos e referências
+  // Referências aos elementos DOM e instâncias
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -100,7 +125,7 @@ export function CustomVideoPlayer({
   const lastTapRef = useRef<{ time: number; side: "left" | "right" } | null>(null);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Controle de retomada e tempo inicial (evita loops e busca prematura)
+  // Retomada estável de tempo inicial
   const initialTimeRef = useRef<number>(initialTime);
   const hasAppliedInitialTimeRef = useRef<boolean>(false);
 
@@ -137,11 +162,22 @@ export function CustomVideoPlayer({
   const [currentQuality, setCurrentQuality] = useState<number>(-1); // -1 = Auto
   const [isHlsStream, setIsHlsStream] = useState<boolean>(false);
 
-  // Feedback visual de double-tap
+  // Diagnóstico Técnico ("Stats for Nerds")
+  const [showDiagnostics, setShowDiagnostics] = useState<boolean>(false);
+  const [diagStats, setDiagStats] = useState({
+    videoWidth: 0,
+    videoHeight: 0,
+    droppedFrames: 0,
+    totalFrames: 0,
+    bufferedAhead: 0,
+    bitrate: 0,
+  });
+
+  // Feedback visual de double-tap (+10s / -10s)
   const [tapFeedback, setTapFeedback] = useState<"forward" | "rewind" | null>(null);
   const tapFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Hover na barra de progresso (tooltip com minutagem)
+  // Hover na barra de progresso
   const [hoverPosition, setHoverPosition] = useState<number | null>(null);
   const [hoverTime, setHoverTime] = useState<number>(0);
 
@@ -162,12 +198,12 @@ export function CustomVideoPlayer({
 
     if (isPlaying) {
       hideControlsTimerRef.current = setTimeout(() => {
-        if (!settingsOpen) {
+        if (!settingsOpen && !showDiagnostics) {
           setControlsVisible(false);
         }
       }, 3500);
     }
-  }, [clearHideTimer, isPlaying, settingsOpen]);
+  }, [clearHideTimer, isPlaying, settingsOpen, showDiagnostics]);
 
   // =========================================================================
   // Inicialização e Gerenciamento do Vídeo e HLS
@@ -195,7 +231,7 @@ export function CustomVideoPlayer({
         video.src = src;
         setQualityLevels([]);
       } else if (typeof window !== "undefined" && Hls.isSupported()) {
-        // 2. Navegadores com suporte a Media Source Extensions (Chrome, Firefox, Android, Edge)
+        // 2. Navegadores com suporte a Media Source Extensions (Chrome, Firefox, Edge, Android)
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
@@ -216,7 +252,9 @@ export function CustomVideoPlayer({
           if (data.levels && data.levels.length > 1) {
             const levels: CustomVideoPlayerQualityLevel[] = data.levels.map((level, idx) => ({
               id: idx,
-              label: level.height ? `${level.height}p` : `Qualidade ${idx + 1}`,
+              label: level.height
+                ? `${level.height}p (${classifyVideoResolution(level.height)})`
+                : `Qualidade ${idx + 1}`,
               height: level.height,
               bitrate: level.bitrate,
             }));
@@ -244,23 +282,21 @@ export function CustomVideoPlayer({
                 hls.recoverMediaError();
                 break;
               default:
-                console.error("[CustomVideoPlayer] Erro fatal irrecuperável no HLS:", data);
+                console.error("[CustomVideoPlayer] Erro fatal no HLS:", data);
                 hls.destroy();
-                setPlaybackError("Não foi possível carregar este stream.");
+                setPlaybackError("Não foi possível carregar este stream de vídeo.");
                 onError?.(new Error(`Falha no stream HLS: ${data.details}`));
                 break;
             }
           }
         });
       } else {
-        // Fallback genérico
         video.src = src;
       }
     } else {
-      // Vídeo direto tradicional (MP4, WebM, etc.)
+      // Arquivo direto convencional (MP4, WebM, etc.)
       setQualityLevels([]);
       video.src = src;
-      // Nota: initialTime para MP4 é aplicado no onLoadedMetadata após readyState >= 1
     }
 
     return () => {
@@ -272,7 +308,52 @@ export function CustomVideoPlayer({
       video.removeAttribute("src");
       video.load();
     };
-  }, [src, onError]); // initialTime removido das dependências para não recriar instância HLS
+  }, [src, onError]);
+
+  // Atualização das métricas de diagnóstico
+  useEffect(() => {
+    if (!showDiagnostics) return;
+
+    const interval = setInterval(() => {
+      const video = videoRef.current;
+      if (!video) return;
+
+      let dropped = 0;
+      let total = 0;
+      if (typeof video.getVideoPlaybackQuality === "function") {
+        const q = video.getVideoPlaybackQuality();
+        dropped = q.droppedVideoFrames;
+        total = q.totalVideoFrames;
+      }
+
+      let bufferedAhead = 0;
+      if (video.buffered.length > 0) {
+        const cur = video.currentTime;
+        for (let i = 0; i < video.buffered.length; i++) {
+          if (video.buffered.start(i) <= cur && cur <= video.buffered.end(i)) {
+            bufferedAhead = Math.max(0, video.buffered.end(i) - cur);
+            break;
+          }
+        }
+      }
+
+      let bitrate = 0;
+      if (hlsRef.current && hlsRef.current.levels && hlsRef.current.currentLevel >= 0) {
+        bitrate = hlsRef.current.levels[hlsRef.current.currentLevel]?.bitrate || 0;
+      }
+
+      setDiagStats({
+        videoWidth: video.videoWidth || 0,
+        videoHeight: video.videoHeight || 0,
+        droppedFrames: dropped,
+        totalFrames: total,
+        bufferedAhead,
+        bitrate,
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [showDiagnostics]);
 
   // =========================================================================
   // Sincronização de Estado de Tela Cheia
@@ -280,8 +361,7 @@ export function CustomVideoPlayer({
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      const isFs = Boolean(document.fullscreenElement);
-      setIsFullscreen(isFs);
+      setIsFullscreen(Boolean(document.fullscreenElement));
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -291,7 +371,7 @@ export function CustomVideoPlayer({
   }, []);
 
   // =========================================================================
-  // Ações de Reprodução e Tempo
+  // Ações de Reprodução e Seek
   // =========================================================================
 
   const togglePlay = useCallback(() => {
@@ -300,7 +380,7 @@ export function CustomVideoPlayer({
 
     if (video.paused) {
       void video.play().catch(() => {
-        // Bloqueio de autoplay do navegador
+        // Bloqueio de autoplay do navegador sem interação
       });
     } else {
       video.pause();
@@ -318,12 +398,8 @@ export function CustomVideoPlayer({
       setCurrentTime(target);
       triggerShowControls();
 
-      // Feedback visual
-      if (seconds > 0) {
-        setTapFeedback("forward");
-      } else {
-        setTapFeedback("rewind");
-      }
+      // Feedback visual central (+10s / -10s)
+      setTapFeedback(seconds > 0 ? "forward" : "rewind");
       if (tapFeedbackTimerRef.current) clearTimeout(tapFeedbackTimerRef.current);
       tapFeedbackTimerRef.current = setTimeout(() => {
         setTapFeedback(null);
@@ -372,7 +448,7 @@ export function CustomVideoPlayer({
   }, []);
 
   // =========================================================================
-  // Tela Cheia e Orientação
+  // Tela Cheia
   // =========================================================================
 
   const toggleFullscreen = useCallback(async () => {
@@ -384,20 +460,25 @@ export function CustomVideoPlayer({
       if (document.fullscreenElement) {
         await document.exitFullscreen();
         try {
-          if (screen.orientation && typeof screen.orientation.unlock === "function") {
-            screen.orientation.unlock();
+          const orient = screen.orientation as unknown as { unlock?: () => void };
+          if (orient && typeof orient.unlock === "function") {
+            orient.unlock();
           }
-        } catch {}
+        } catch (_e) {
+          // Orientação não suportada ou permissão negada
+        }
       } else {
         if (container.requestFullscreen) {
           await container.requestFullscreen();
           try {
-            if (screen.orientation && typeof screen.orientation.lock === "function") {
-              await screen.orientation.lock("landscape");
+            const orient = screen.orientation as unknown as { lock?: (o: string) => Promise<void> };
+            if (orient && typeof orient.lock === "function") {
+              await orient.lock("landscape");
             }
-          } catch {}
+          } catch (_e) {
+            // Orientação opcional
+          }
         } else if (video && (video as any).webkitEnterFullscreen) {
-          // Fallback nativo para iOS Safari
           (video as any).webkitEnterFullscreen();
         }
       }
@@ -407,7 +488,7 @@ export function CustomVideoPlayer({
   }, []);
 
   // =========================================================================
-  // Atalhos de Teclado (Registrados de forma estável, sem reanexar a cada render)
+  // Atalhos de Teclado
   // =========================================================================
 
   const actionsRef = useRef({
@@ -416,6 +497,7 @@ export function CustomVideoPlayer({
     toggleMute,
     toggleFullscreen,
     setVideoVolume,
+    setShowDiagnostics,
   });
 
   useEffect(() => {
@@ -425,12 +507,12 @@ export function CustomVideoPlayer({
       toggleMute,
       toggleFullscreen,
       setVideoVolume,
+      setShowDiagnostics,
     };
   });
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Ignora se o usuário estiver digitando em campos de formulário ou comentários
       const target = event.target as HTMLElement | null;
       if (
         target instanceof HTMLInputElement ||
@@ -472,12 +554,16 @@ export function CustomVideoPlayer({
           event.preventDefault();
           actionsRef.current.setVideoVolume(volumeRef.current - 0.1);
           break;
+        case "d":
+          event.preventDefault();
+          actionsRef.current.setShowDiagnostics((prev) => !prev);
+          break;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []); // Registrado de forma estável na montagem
+  }, []);
 
   // =========================================================================
   // Ações de Velocidade e Qualidade
@@ -515,7 +601,6 @@ export function CustomVideoPlayer({
     const previous = lastTapRef.current;
 
     if (previous && previous.side === side && now - previous.time < 300) {
-      // Double tap confirmado
       if (singleTapTimerRef.current) {
         clearTimeout(singleTapTimerRef.current);
         singleTapTimerRef.current = null;
@@ -529,7 +614,6 @@ export function CustomVideoPlayer({
     if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
 
     singleTapTimerRef.current = setTimeout(() => {
-      // Single tap: exibe ou oculta os controles
       setControlsVisible((prev) => {
         if (!prev) triggerShowControls();
         return !prev;
@@ -540,7 +624,7 @@ export function CustomVideoPlayer({
   };
 
   // =========================================================================
-  // Barra de Progresso: cálculo e Tooltip
+  // Barra de Progresso: Cálculo e Tooltip
   // =========================================================================
 
   const handleProgressBarMouseMove = (event: MouseEvent<HTMLDivElement>) => {
@@ -560,27 +644,6 @@ export function CustomVideoPlayer({
     const target = pos * (duration || 0);
     handleSeekChange(target);
   };
-
-  // =========================================================================
-  // Formatador de Tempo
-  // =========================================================================
-
-  const formatTime = (secs: number) => {
-    if (!Number.isFinite(secs) || secs < 0) return "00:00";
-    const total = Math.floor(secs);
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    const seconds = total % 60;
-
-    if (hours > 0) {
-      return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-    }
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  };
-
-  // =========================================================================
-  // Renderização
-  // =========================================================================
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferedPercent = duration > 0 ? (bufferedTime / duration) * 100 : 0;
@@ -627,7 +690,7 @@ export function CustomVideoPlayer({
           v.playbackRate = playbackRate;
           setIsBuffering(false);
 
-          // Retomada segura de initialTime após metadados carregados (MP4 / WebM / HLS nativo)
+          // Retomada segura de initialTime após metadados carregados
           if (!hasAppliedInitialTimeRef.current && initialTimeRef.current > 0) {
             v.currentTime = initialTimeRef.current;
             hasAppliedInitialTimeRef.current = true;
@@ -639,7 +702,6 @@ export function CustomVideoPlayer({
           const dur = v.duration || 0;
           setCurrentTime(current);
 
-          // Atualiza buffer
           if (v.buffered.length > 0) {
             setBufferedTime(v.buffered.end(v.buffered.length - 1));
           }
@@ -659,7 +721,7 @@ export function CustomVideoPlayer({
         }}
       />
 
-      {/* Overlay de Carregamento (Spinner) */}
+      {/* Overlay de Carregamento / Buffering */}
       {isBuffering && !playbackError && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/35 backdrop-blur-[2px]">
           <Loader2 className="size-11 animate-spin text-[#a855f7]" />
@@ -679,8 +741,8 @@ export function CustomVideoPlayer({
               if (isHlsStream && hlsRef.current && src) {
                 hlsRef.current.loadSource(src);
                 hlsRef.current.startLoad();
-              } else if (videoRef.current) {
-                if (src) videoRef.current.src = src;
+              } else if (videoRef.current && src) {
+                videoRef.current.src = src;
                 videoRef.current.load();
               }
             }}
@@ -710,9 +772,63 @@ export function CustomVideoPlayer({
         </div>
       )}
 
-      {/* ===================================================================== */}
+      {/* Painel Flutuante de Diagnóstico Técnico ("Stats for Nerds") */}
+      {showDiagnostics && (
+        <div className="absolute top-4 left-4 z-40 w-72 rounded-xl border border-white/20 bg-[#09090b]/90 p-3.5 text-xs text-white/90 shadow-2xl backdrop-blur-xl">
+          <div className="flex items-center justify-between pb-2 border-b border-white/10">
+            <div className="flex items-center gap-1.5 font-semibold text-[#a855f7]">
+              <Activity className="size-4" />
+              <span>Diagnóstico Técnico</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowDiagnostics(false)}
+              className="text-white/60 hover:text-white"
+              aria-label="Fechar diagnóstico"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+          <div className="mt-2.5 space-y-1.5 font-mono text-[11px]">
+            <div className="flex justify-between">
+              <span className="text-white/50">Resolução:</span>
+              <span>{diagStats.videoWidth}x{diagStats.videoHeight}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/50">Formato:</span>
+              <span className="text-purple-300">{classifyVideoResolution(diagStats.videoHeight)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/50">Motor:</span>
+              <span>{isHlsStream ? "HLS.js (MSE)" : "HTML5 Video"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/50">Buffer à frente:</span>
+              <span>{diagStats.bufferedAhead.toFixed(1)}s</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/50">Frames Perdidos:</span>
+              <span>
+                {diagStats.totalFrames > 0
+                  ? `${((diagStats.droppedFrames / diagStats.totalFrames) * 100).toFixed(1)}% (${diagStats.droppedFrames}/${diagStats.totalFrames})`
+                  : "0"}
+              </span>
+            </div>
+            {diagStats.bitrate > 0 && (
+              <div className="flex justify-between">
+                <span className="text-white/50">Bitrate:</span>
+                <span>{(diagStats.bitrate / 1000).toFixed(0)} kbps</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-white/50">Velocidade:</span>
+              <span>{playbackRate}x</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* BARRA SUPERIOR (Título, Episódio e Navegação) */}
-      {/* ===================================================================== */}
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 via-black/30 to-transparent p-4 transition-opacity duration-300 sm:p-5",
@@ -733,7 +849,7 @@ export function CustomVideoPlayer({
           )}
         </div>
 
-        {/* Botões Rápidos de Episódio Anterior / Próximo na barra superior */}
+        {/* Botões Rápidos de Episódio Anterior / Próximo */}
         <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
           {hasPrevEpisode && (
             <button
@@ -758,9 +874,7 @@ export function CustomVideoPlayer({
         </div>
       </div>
 
-      {/* ===================================================================== */}
-      {/* BOTÃO CENTRAL DE PLAY / PAUSE (Estilo NOVA STREAM) */}
-      {/* ===================================================================== */}
+      {/* BOTÃO CENTRAL DE PLAY / PAUSE (Estilo Original NOVA STREAM) */}
       <div
         className={cn(
           "pointer-events-none absolute inset-0 z-20 flex items-center justify-center transition-opacity duration-300",
@@ -781,7 +895,7 @@ export function CustomVideoPlayer({
             <RotateCcw className="size-5" />
           </button>
 
-          {/* Botão Principal Central de Play/Pause */}
+          {/* Botão Principal Central de Play/Pause com Glow Roxo */}
           <button
             type="button"
             onClick={(e) => {
@@ -813,9 +927,7 @@ export function CustomVideoPlayer({
         </div>
       </div>
 
-      {/* ===================================================================== */}
       {/* BARRA INFERIOR DE CONTROLES */}
-      {/* ===================================================================== */}
       <div
         className={cn(
           "absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/45 to-transparent px-3 pb-3 pt-6 transition-opacity duration-300 sm:px-5 sm:pb-4",
@@ -859,7 +971,7 @@ export function CustomVideoPlayer({
             />
           </div>
 
-          {/* Marcador / Thumb Roxo com Glow */}
+          {/* Marcador / Thumb Roxo com Glow da NOVA STREAM */}
           <div
             className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/60 bg-[#a855f7] shadow-[0_0_10px_rgba(168,85,247,0.9)] transition-transform group-hover/progress:scale-125"
             style={{ left: `${Math.min(99.5, Math.max(0.5, progressPercent))}%` }}
@@ -879,7 +991,7 @@ export function CustomVideoPlayer({
               {isPlaying ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current ml-0.5" />}
             </button>
 
-            {/* Controle de Volume */}
+            {/* Controle de Volume com Slider Horizontal Expansível */}
             <div className="group/vol flex items-center">
               <button
                 type="button"
@@ -918,7 +1030,7 @@ export function CustomVideoPlayer({
             </div>
           </div>
 
-          {/* Grupo Direito: Configurações (Qualidade e Velocidade) e Tela Cheia */}
+          {/* Grupo Direito: Configurações e Tela Cheia */}
           <div className="relative flex items-center gap-1.5 sm:gap-2">
             {/* Menu Popover de Configurações */}
             <div className="relative">
@@ -939,12 +1051,12 @@ export function CustomVideoPlayer({
               </button>
 
               {settingsOpen && (
-                <div className="absolute bottom-11 right-0 z-30 w-52 overflow-hidden rounded-2xl border border-white/10 bg-[#111116]/95 p-1.5 text-xs text-white/90 shadow-2xl backdrop-blur-2xl">
+                <div className="absolute bottom-11 right-0 z-30 w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#111116]/95 p-1.5 text-xs text-white/90 shadow-2xl backdrop-blur-2xl">
                   {/* Aba Principal do Menu */}
                   {activeMenuTab === "main" && (
                     <div className="flex flex-col gap-0.5">
                       <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-white/45">
-                        Configurações
+                        Configurações do Player
                       </div>
 
                       {/* Item de Velocidade */}
@@ -957,7 +1069,7 @@ export function CustomVideoPlayer({
                         <span className="text-[11px] text-[#a855f7] font-semibold">{playbackRate}x ›</span>
                       </button>
 
-                      {/* Item de Qualidade (Apenas se houver faixas HLS) */}
+                      {/* Item de Qualidade (Apenas se houver faixas HLS detectadas) */}
                       {isHlsStream && qualityLevels.length > 0 && (
                         <button
                           type="button"
@@ -973,7 +1085,23 @@ export function CustomVideoPlayer({
                         </button>
                       )}
 
-                      {/* Item de Legendas (Exibe estado indisponível sem simulações falsas) */}
+                      {/* Item de Diagnóstico Técnico */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowDiagnostics((prev) => !prev);
+                          setSettingsOpen(false);
+                        }}
+                        className="flex items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-white/10 transition"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Activity className="size-3.5 text-[#a855f7]" />
+                          Diagnóstico Técnico
+                        </span>
+                        <span className="text-[10px] text-white/40">Tecla D</span>
+                      </button>
+
+                      {/* Item de Legendas (Exibe estado indisponível sem falsas simulações) */}
                       <div className="flex items-center justify-between rounded-xl px-3 py-2 text-white/40">
                         <span>Legendas</span>
                         <span className="text-[11px] text-white/30 font-medium">Indisponível</span>
