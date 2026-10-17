@@ -674,9 +674,14 @@ export function CustomVideoPlayer({
           <button
             type="button"
             onClick={() => {
-              if (videoRef.current) {
+              setPlaybackError(null);
+              setIsBuffering(true);
+              if (isHlsStream && hlsRef.current && src) {
+                hlsRef.current.loadSource(src);
+                hlsRef.current.startLoad();
+              } else if (videoRef.current) {
+                if (src) videoRef.current.src = src;
                 videoRef.current.load();
-                setPlaybackError(null);
               }
             }}
             className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold hover:bg-white/20 active:scale-95"
@@ -967,6 +972,12 @@ export function CustomVideoPlayer({
                           </span>
                         </button>
                       )}
+
+                      {/* Item de Legendas (Exibe estado indisponível sem simulações falsas) */}
+                      <div className="flex items-center justify-between rounded-xl px-3 py-2 text-white/40">
+                        <span>Legendas</span>
+                        <span className="text-[11px] text-white/30 font-medium">Indisponível</span>
+                      </div>
                     </div>
                   )}
 
