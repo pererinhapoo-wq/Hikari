@@ -294,11 +294,61 @@ function WatchPage() {
         )
       : null);
 
+  // Resolução segura de fontes Mux:
+  // 1. https://stream.mux.com/PLAYBACK_ID.m3u8: usa a URL HLS direta, preservando query params.
+  // 2. https://player.mux.com/PLAYBACK_ID: extrai o Playback ID e constrói a URL HLS direta.
+  // 3. Playback ID puro (formato validado ^[a-zA-Z0-9_-]{10,64}$): converte para stream HLS direto.
+  // 4. Formatos desconhecidos, tokens especiais ou casos inseguros: fallback para o iframe do Mux.
+  const muxResolved = useMemo(() => {
+    if (!playUrl) return { directHls: null, iframeUrl: null };
+    const trimmed = playUrl.trim();
+
+    // 1. Já é URL direta do stream.mux.com (*.m3u8)
+    const streamMatch = trimmed.match(
+      /^https?:\/\/stream\.mux\.com\/([a-zA-Z0-9_-]+)\.m3u8(\?.*)?$/i,
+    );
+    if (streamMatch) {
+      return { directHls: trimmed, iframeUrl: null };
+    }
+
+    // 2. É URL do player.mux.com/PLAYBACK_ID
+    const playerMatch = trimmed.match(
+      /^https?:\/\/player\.mux\.com\/([a-zA-Z0-9_-]{10,64})(\?.*)?$/i,
+    );
+    if (playerMatch) {
+      const playbackId = playerMatch[1];
+      const query = playerMatch[2] || "";
+      return {
+        directHls: `https://stream.mux.com/${playbackId}.m3u8${query}`,
+        iframeUrl: null,
+      };
+    }
+
+    // 3. É um Playback ID puro (válido e esperado quando kind === "mux")
+    if (
+      selectedPlayer?.kind === "mux" &&
+      /^[a-zA-Z0-9_-]{10,64}$/.test(trimmed)
+    ) {
+      return {
+        directHls: `https://stream.mux.com/${trimmed}.m3u8`,
+        iframeUrl: null,
+      };
+    }
+
+    // 4. Fallback de iframe para URLs do Mux não conversíveis com segurança
+    if (selectedPlayer?.kind === "mux") {
+      const iframeUrl = trimmed.includes("player.mux.com/")
+        ? trimmed
+        : `https://player.mux.com/${trimmed}`;
+      return { directHls: null, iframeUrl };
+    }
+
+    return { directHls: null, iframeUrl: null };
+  }, [playUrl, selectedPlayer?.kind]);
+
   const file =
-    playUrl &&
-    isDirectVideo(playUrl)
-      ? playUrl
-      : null;
+    muxResolved.directHls ||
+    (playUrl && isDirectVideo(playUrl) ? playUrl : null);
 
   const bunnyEmbedSource =
     selectedPlayer?.kind === "bunny" && playUrl
@@ -319,22 +369,7 @@ function WatchPage() {
         })()
       : null;
 
-  const muxEmbedSource =
-    selectedPlayer?.kind === "mux" && playUrl
-      ? (() => {
-          const value = playUrl.trim();
-
-          if (value.includes("player.mux.com/")) {
-            return value;
-          }
-
-          if (value) {
-            return `https://player.mux.com/${value}`;
-          }
-
-          return null;
-        })()
-      : null;
+  const muxEmbedSource = muxResolved.iframeUrl;
 
   const external =
     playUrl &&
@@ -435,17 +470,6 @@ function WatchPage() {
               allowFullScreen
             />
           </div>
-        ) : muxEmbedSource ? (
-          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
-            <iframe
-              title={`${title} — Mux Player`}
-              src={muxEmbedSource}
-              loading="lazy"
-              className="size-full border-0 bg-black"
-              allow="accelerometer; autoplay; gyroscope; picture-in-picture; fullscreen"
-              allowFullScreen
-            />
-          </div>
         ) : file ? (
           <CustomVideoPlayer
             key={file}
@@ -463,6 +487,17 @@ function WatchPage() {
             onNextEpisode={handleNextEpisode}
             onPrevEpisode={handlePrevEpisode}
           />
+        ) : muxEmbedSource ? (
+          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
+            <iframe
+              title={`${title} — Mux Player`}
+              src={muxEmbedSource}
+              loading="lazy"
+              className="size-full border-0 bg-black"
+              allow="accelerometer; autoplay; gyroscope; picture-in-picture; fullscreen"
+              allowFullScreen
+            />
+          </div>
         ) : external ? (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
             <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
