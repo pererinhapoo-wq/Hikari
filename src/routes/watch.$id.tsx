@@ -514,13 +514,18 @@ function parseDurationToSeconds(raw?: string | number | null): number {
               initialTime={savedInitialTime}
               onTimeUpdate={handleTimeUpdate}
               onEnded={handleEnded}
-              hasNextEpisode={Boolean(next)}
-              hasPrevEpisode={Boolean(prev)}
-              onNextEpisode={handleNextEpisode}
-              onPrevEpisode={handlePrevEpisode}
               onClose={() => {
                 setIsNovaStreamSelected(false);
               }}
+            />
+          ) : playerIndex === 0 && currentVideoItem ? (
+            <NovaStreamPlayer
+              key={`player1-${file}`}
+              video={currentVideoItem}
+              autoPlay={userAutoplay}
+              initialTime={savedInitialTime}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={handleEnded}
             />
           ) : (
             <CustomVideoPlayer
