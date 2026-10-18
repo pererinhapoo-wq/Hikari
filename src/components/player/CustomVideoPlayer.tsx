@@ -211,6 +211,10 @@ export function CustomVideoPlayer({
   const [tapFeedback, setTapFeedback] = useState<"forward" | "rewind" | null>(null);
   const tapFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Feedback visual discreto de Play / Pause
+  const [playPauseFeedback, setPlayPauseFeedback] = useState<{ action: "play" | "pause"; id: number } | null>(null);
+  const playPauseFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Hover na barra de progresso
   const [hoverPosition, setHoverPosition] = useState<number | null>(null);
   const [hoverTime, setHoverTime] = useState<number>(0);
@@ -418,18 +422,38 @@ export function CustomVideoPlayer({
   // Ações de Reprodução e Seek
   // =========================================================================
 
+  const triggerPlayPauseFeedback = useCallback((action: "play" | "pause") => {
+    setPlayPauseFeedback({ action, id: Date.now() });
+    if (playPauseFeedbackTimerRef.current) {
+      clearTimeout(playPauseFeedbackTimerRef.current);
+    }
+    playPauseFeedbackTimerRef.current = setTimeout(() => {
+      setPlayPauseFeedback(null);
+    }, 650);
+  }, []);
+
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
 
     if (video.paused) {
-      void video.play().catch(() => {
-        // Bloqueio de autoplay do navegador sem interação
-      });
+      void video
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+          triggerPlayPauseFeedback("play");
+          triggerShowControls();
+        })
+        .catch(() => {
+          setIsPlaying(false);
+        });
     } else {
       video.pause();
+      setIsPlaying(false);
+      triggerPlayPauseFeedback("pause");
+      setControlsVisible(true);
     }
-  }, []);
+  }, [triggerPlayPauseFeedback, triggerShowControls]);
 
   const seekBy = useCallback(
     (seconds: number) => {
@@ -658,13 +682,10 @@ export function CustomVideoPlayer({
     if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
 
     singleTapTimerRef.current = setTimeout(() => {
-      setControlsVisible((prev) => {
-        if (!prev) triggerShowControls();
-        return !prev;
-      });
+      togglePlay();
       lastTapRef.current = null;
       singleTapTimerRef.current = null;
-    }, 220);
+    }, 250);
   };
 
   // =========================================================================
@@ -820,6 +841,22 @@ export function CustomVideoPlayer({
               <RotateCw className="size-7" />
             )}
             <span className="text-xs font-bold">{tapFeedback === "rewind" ? "-10s" : "+10s"}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Indicador temporário central de Toque Simples (Play / Pause) */}
+      {playPauseFeedback && (
+        <div
+          key={`pp-${playPauseFeedback.id}`}
+          className="pointer-events-none absolute inset-0 z-25 flex items-center justify-center"
+        >
+          <div className="flex size-16 sm:size-20 items-center justify-center rounded-full bg-black/70 text-white border border-white/20 shadow-2xl backdrop-blur-md transition-all duration-300 animate-in fade-in zoom-in-75">
+            {playPauseFeedback.action === "play" ? (
+              <Play className="size-8 sm:size-10 ml-1 fill-white" />
+            ) : (
+              <Pause className="size-8 sm:size-10 fill-white" />
+            )}
           </div>
         </div>
       )}

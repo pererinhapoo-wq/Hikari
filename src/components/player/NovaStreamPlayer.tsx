@@ -17,7 +17,6 @@ import {
   ChevronLeft,
   Info,
   X,
-  ShieldCheck,
   Check,
   Radio,
 } from 'lucide-react';
@@ -76,6 +75,8 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const initialTimeAppliedRef = useRef(false);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
 
   // Obter URL de vídeo real com suporte a aliases
   const rawUrl = video.videoUrl || video.url || '';
@@ -149,9 +150,26 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
   const [hoverPosition, setHoverPosition] = useState(0);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'main' | 'speed' | 'quality'>('main');
-  const [showTechInfo, setShowTechInfo] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Estados e referências para gestos de toque (YouTube-style)
+  // Duplo toque: avançar / retroceder 10s com animação
+  const [doubleTapFeedback, setDoubleTapFeedback] = useState<{
+    side: 'left' | 'right';
+    id: number;
+  } | null>(null);
+  // Toque simples: animação discreta e centralizada de Play / Pause
+  const [playPauseFeedback, setPlayPauseFeedback] = useState<{
+    action: 'play' | 'pause';
+    id: number;
+  } | null>(null);
+
+  const lastTapRef = useRef<{ time: number; x: number; y: number; side: 'left' | 'right' } | null>(null);
+  const singleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const doubleTapFeedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const playPauseFeedbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isTouchRef = useRef(false);
 
   // Listener para confirmação física de redimensionamento do decodificador no elemento <video>
   const handleVideoResize = useCallback(() => {
@@ -419,19 +437,43 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
       clearTimeout(controlsTimeoutRef.current);
     }
     controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlaying && !showSettingsMenu && !showTechInfo) {
+      if (isPlaying && !showSettingsMenu) {
         setControlsVisible(false);
       }
     }, 3500);
-  }, [isPlaying, showSettingsMenu, showTechInfo]);
+  }, [isPlaying, showSettingsMenu]);
 
-  // Controle de Play/Pause
+  // Limpeza de timers de gestos no desmonte
+  useEffect(() => {
+    return () => {
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+      if (doubleTapFeedbackTimerRef.current) clearTimeout(doubleTapFeedbackTimerRef.current);
+      if (playPauseFeedbackTimerRef.current) clearTimeout(playPauseFeedbackTimerRef.current);
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    };
+  }, []);
+
+  // Disparo da animação temporária e discreta de play / pause
+  const triggerPlayPauseFeedback = useCallback((action: 'play' | 'pause') => {
+    setPlayPauseFeedback({ action, id: Date.now() });
+    if (playPauseFeedbackTimerRef.current) {
+      clearTimeout(playPauseFeedbackTimerRef.current);
+    }
+    playPauseFeedbackTimerRef.current = setTimeout(() => {
+      setPlayPauseFeedback(null);
+    }, 650);
+  }, []);
+
+  // Controle de Play/Pause com animação temporária
   const togglePlay = useCallback(() => {
     const el = videoRef.current;
     if (!el) return;
     if (el.paused) {
       el.play()
-        .then(() => setIsPlaying(true))
+        .then(() => {
+          setIsPlaying(true);
+          triggerPlayPauseFeedback('play');
+        })
         .catch((err) => {
           console.warn('Auto-play restrito pelo navegador:', err);
           setIsPlaying(false);
@@ -439,19 +481,117 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
     } else {
       el.pause();
       setIsPlaying(false);
+      triggerPlayPauseFeedback('pause');
     }
     showControlsTemporarily();
-  }, [showControlsTemporarily]);
+  }, [showControlsTemporarily, triggerPlayPauseFeedback]);
 
-  // Avançar / retroceder 10s
+  // Avançar / retroceder 10s respeitando os limites de início e fim
   const seekRelative = useCallback((deltaSec: number) => {
     const el = videoRef.current;
     if (!el) return;
-    const target = Math.max(0, Math.min(el.duration || duration, el.currentTime + deltaSec));
+    const maxDur = el.duration || duration || 0;
+    const target = Math.max(0, Math.min(maxDur, el.currentTime + deltaSec));
     el.currentTime = target;
     setCurrentTime(target);
     showControlsTemporarily();
   }, [duration, showControlsTemporarily]);
+
+  // Manipulador de gestos na área do vídeo (1 toque: play/pause, 2 toques: ±10s)
+  const handleVideoAreaTap = useCallback(
+    (clientX: number, clientY: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const relativeX = clientX - rect.left;
+      const side: 'left' | 'right' = relativeX < rect.width / 2 ? 'left' : 'right';
+      const now = Date.now();
+      const previous = lastTapRef.current;
+
+      // 1. Detecção de duplo toque (dois toques rápidos dentro de 280ms no mesmo lado da tela)
+      if (
+        previous &&
+        previous.side === side &&
+        now - previous.time < 280 &&
+        Math.hypot(clientX - previous.x, clientY - previous.y) < 60
+      ) {
+        // Cancela o timer de toque simples pendente para NÃO pausar/reproduzir acidentalmente
+        if (singleTapTimerRef.current) {
+          clearTimeout(singleTapTimerRef.current);
+          singleTapTimerRef.current = null;
+        }
+        lastTapRef.current = null;
+
+        // Executa o salto de 10 segundos
+        seekRelative(side === 'left' ? -10 : 10);
+
+        // Ativa animação temporária com ícone de avançar/voltar e o número 10
+        setDoubleTapFeedback({ side, id: now });
+        if (doubleTapFeedbackTimerRef.current) {
+          clearTimeout(doubleTapFeedbackTimerRef.current);
+        }
+        doubleTapFeedbackTimerRef.current = setTimeout(() => {
+          setDoubleTapFeedback(null);
+        }, 700);
+
+        return;
+      }
+
+      // 2. Primeiro toque: registra o toque e agenda o toque simples
+      lastTapRef.current = { time: now, x: clientX, y: clientY, side };
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+      }
+
+      singleTapTimerRef.current = setTimeout(() => {
+        // Toque simples confirmado: alterna Play / Pause e mostra animação central
+        lastTapRef.current = null;
+        singleTapTimerRef.current = null;
+
+        const el = videoRef.current;
+        if (!el) return;
+
+        if (el.paused) {
+          el.play()
+            .then(() => {
+              setIsPlaying(true);
+              triggerPlayPauseFeedback('play');
+              showControlsTemporarily();
+            })
+            .catch(() => {
+              setIsPlaying(false);
+            });
+        } else {
+          el.pause();
+          setIsPlaying(false);
+          setControlsVisible(true);
+          triggerPlayPauseFeedback('pause');
+        }
+      }, 250);
+    },
+    [seekRelative, showControlsTemporarily, triggerPlayPauseFeedback]
+  );
+
+  const handleVideoClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isTouchRef.current) {
+        isTouchRef.current = false;
+        return;
+      }
+      handleVideoAreaTap(e.clientX, e.clientY);
+    },
+    [handleVideoAreaTap]
+  );
+
+  const handleVideoTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      if (e.changedTouches.length === 0) return;
+      const touch = e.changedTouches[0];
+      isTouchRef.current = true;
+      handleVideoAreaTap(touch.clientX, touch.clientY);
+    },
+    [handleVideoAreaTap]
+  );
 
   // Atualização de tempo do vídeo e propagação de progresso para o Hikari
   const handleTimeUpdate = () => {
@@ -687,17 +827,33 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
-  // Fechar menus ao clicar fora
+  // Fechar menus ao clicar fora de forma segura (preservando cliques internos com troca de abas)
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.player-menu-trigger') && !target.closest('.player-menu-content')) {
+    if (!showSettingsMenu) return;
+
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node | null;
+      // Se o elemento não existe ou já foi desmontado do DOM durante a troca de abas, ignorar
+      if (!target || !document.contains(target)) {
+        return;
+      }
+      if (
+        settingsMenuRef.current &&
+        !settingsMenuRef.current.contains(target) &&
+        settingsButtonRef.current &&
+        !settingsButtonRef.current.contains(target)
+      ) {
         setShowSettingsMenu(false);
       }
     };
+
+    document.addEventListener('pointerdown', handleClickOutside);
     document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showSettingsMenu]);
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferedPercent = duration > 0 ? (bufferedTime / duration) * 100 : 0;
@@ -707,7 +863,7 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
       ref={containerRef}
       onMouseMove={showControlsTemporarily}
       onTouchStart={showControlsTemporarily}
-      className={`relative w-full h-full min-h-[340px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group ${className || ''}`}
+      className={`relative w-full ${isFullscreen ? 'h-full flex items-center justify-center' : 'aspect-video'} bg-black select-none overflow-hidden rounded-2xl border border-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.55)] group ${className || ''}`}
     >
       {/* Elemento de Vídeo HTML5 com suporte a HLS.js adaptativo e decodificação nativa */}
       <video
@@ -735,8 +891,15 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
             );
           }
         }}
-        onClick={togglePlay}
-        className="w-full h-full object-contain cursor-pointer max-h-screen"
+        className="w-full h-full object-contain max-h-screen"
+      />
+
+      {/* Camada transparente de captura de gestos (1 toque: play/pause, 2 toques: ±10s) */}
+      <div
+        onClick={handleVideoClick}
+        onTouchEnd={handleVideoTouchEnd}
+        className="absolute inset-0 z-10 cursor-pointer"
+        aria-label="Área de controle do vídeo"
       />
 
       {/* Fallback caso a fonte falhe */}
@@ -780,126 +943,45 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
         </div>
       )}
 
-      {/* Painel Flutuante de Informações Técnicas e Codec */}
-      {showTechInfo && (
-        <div className="absolute top-16 right-4 sm:right-6 w-88 max-w-[calc(100vw-2rem)] bg-[#12131A] border border-slate-800 rounded-xl p-4 text-xs text-slate-300 shadow-2xl z-40 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
-            <span className="font-semibold text-white flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              {isHlsActive
-                ? 'Transmissão HLS Multi-bitrate'
-                : 'Informações Técnicas da Transmissão'}
-            </span>
-            <button
-              onClick={() => setShowTechInfo(false)}
-              className="text-slate-400 hover:text-white cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Modo de Acesso:</span>
-              <span className="text-emerald-400 font-medium">
-                {isHlsActive
-                  ? 'Transmissão HLS Adaptativa (ABR)'
-                  : 'Transmissão Remota Direta'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Origem da Fonte:</span>
-              <span className="text-slate-200">
-                {isHlsActive
-                  ? 'Playlist Master (.m3u8)'
-                  : 'URL Remota Direta (HTTP/HTTPS)'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Resolução Real (Decodificador):</span>
-              <span className="text-indigo-400 font-mono font-medium">
-                {displayResolution !== 'N/D'
-                  ? `${displayResolution}${videoDimensions ? ` (${videoDimensions.width}x${videoDimensions.height})` : ''}`
-                  : 'N/D (em detecção)'}
-              </span>
-            </div>
-            {isHlsActive && (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Resolução Solicitada:</span>
-                  <span className="text-slate-200 font-mono">
-                    {requestedHlsLevel === -1
-                      ? 'Automático (ABR)'
-                      : availableLevels.find((l) => l.levelIndex === requestedHlsLevel)?.label || 'Manual'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Status da Transição:</span>
-                  <span
-                    className={
-                      isLevelSwitchPending
-                        ? 'text-amber-400 font-medium'
-                        : 'text-emerald-400 font-medium'
-                    }
-                  >
-                    {isLevelSwitchPending
-                      ? 'Aguardando decodificador processar novo buffer...'
-                      : 'Nível ativo e confirmado no decodificador'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Bitrate de Vídeo:</span>
-                  <span className="text-emerald-400 font-mono">
-                    {currentBitrate
-                      ? `${(currentBitrate / 1000000).toFixed(2)} Mbps`
-                      : 'Dinâmico (ABR)'}
-                  </span>
-                </div>
-              </>
+      {/* Indicador temporário de Duplo Toque (+10s / -10s) */}
+      {doubleTapFeedback && (
+        <div
+          key={`dt-${doubleTapFeedback.id}`}
+          className={`pointer-events-none absolute top-1/2 -translate-y-1/2 z-25 flex flex-col items-center justify-center size-20 rounded-full bg-black/70 text-white border border-white/20 shadow-2xl backdrop-blur-md transition-all duration-300 animate-in fade-in zoom-in-75 ${
+            doubleTapFeedback.side === 'left' ? 'left-8 sm:left-14' : 'right-8 sm:right-14'
+          }`}
+        >
+          {doubleTapFeedback.side === 'left' ? (
+            <RotateCcw className="w-7 h-7 text-white" />
+          ) : (
+            <RotateCw className="w-7 h-7 text-white" />
+          )}
+          <span className="text-xs font-bold text-white tracking-wide mt-1">
+            {doubleTapFeedback.side === 'left' ? '-10s' : '+10s'}
+          </span>
+        </div>
+      )}
+
+      {/* Indicador temporário discreto e centralizado ao tocar para reproduzir ou pausar */}
+      {playPauseFeedback && (
+        <div
+          key={`pp-${playPauseFeedback.id}`}
+          className="pointer-events-none absolute inset-0 z-25 flex items-center justify-center"
+        >
+          <div className="flex size-16 sm:size-20 items-center justify-center rounded-full bg-black/70 text-white border border-white/20 shadow-2xl backdrop-blur-md transition-all duration-300 animate-in fade-in zoom-in-75">
+            {playPauseFeedback.action === 'play' ? (
+              <Play className="w-8 h-8 sm:w-10 sm:h-10 ml-1 fill-white" />
+            ) : (
+              <Pause className="w-8 h-8 sm:w-10 sm:h-10 fill-white" />
             )}
-            <div className="flex justify-between">
-              <span className="text-slate-400">Decodificação:</span>
-              <span className="text-slate-200">
-                {isHlsActive
-                  ? Hls.isSupported()
-                    ? `Hls.js Engine (v${Hls.version})`
-                    : 'Apple HLS Nativo'
-                  : 'Nativa HTML5 Media Pipeline'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Duração:</span>
-              <span className="text-slate-200 font-mono">{formatTime(duration)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Alternância de Resolução:</span>
-              <span className={isHlsActive ? 'text-emerald-400 font-medium' : 'text-slate-300'}>
-                {isHlsActive
-                  ? 'Ativa (Troca Real de Bitrate em Tempo Real)'
-                  : 'Não disponível (fonte única)'}
-              </span>
-            </div>
-            <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 leading-relaxed">
-              {isHlsActive
-                ? 'Stream HLS com múltiplos bitrates. O decodificador confirma a resolução física através do evento resize após a substituição do buffer.'
-                : 'Vídeo transmitido diretamente da URL de origem em fluxo contínuo com decodificação nativa do navegador.'}
-            </div>
           </div>
         </div>
       )}
 
-      {/* Ícone central animado ao clicar no meio do player */}
-      {!isPlaying && (
-        <button
-          onClick={togglePlay}
-          aria-label="Reproduzir vídeo"
-          className="absolute w-16 h-16 md:w-20 md:h-20 rounded-full bg-indigo-600/90 hover:bg-indigo-600 text-white flex items-center justify-center shadow-xl transition-transform hover:scale-110 active:scale-95 z-20 cursor-pointer"
-        >
-          <Play className="w-8 h-8 md:w-10 md:h-10 ml-1 fill-white" />
-        </button>
-      )}
-
       {/* Overlay inferior de controles */}
       <div
+        onClick={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
         className={`absolute bottom-0 left-0 right-0 p-3 sm:p-5 bg-gradient-to-t from-black/95 via-black/70 to-transparent transition-opacity duration-300 z-30 ${
           controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
@@ -1007,13 +1089,14 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
             {/* Menu Popover de Configurações (Velocidade e Qualidade integradas) */}
             <div className="relative">
               <button
+                ref={settingsButtonRef}
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowSettingsMenu(!showSettingsMenu);
+                  setShowSettingsMenu((prev) => !prev);
                   setSettingsTab('main');
                 }}
-                className="player-menu-trigger w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                className="player-menu-trigger w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer touch-manipulation"
                 title="Configurações do Player"
                 aria-label="Configurações do Player"
                 aria-expanded={showSettingsMenu}
@@ -1022,7 +1105,13 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
               </button>
 
               {showSettingsMenu && (
-                <div className="player-menu-content absolute bottom-12 right-0 w-64 max-w-[calc(100vw-2rem)] bg-[#12131A]/95 border border-slate-800 rounded-2xl p-2 shadow-2xl z-40 backdrop-blur-md">
+                <div
+                  ref={settingsMenuRef}
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  className="player-menu-content absolute bottom-12 right-0 w-64 max-w-[calc(100vw-2rem)] bg-[#12131A]/95 border border-slate-800 rounded-2xl p-2 shadow-2xl z-40 backdrop-blur-md touch-manipulation select-none"
+                >
                   {/* Vista Principal das Configurações */}
                   {settingsTab === 'main' && (
                     <div className="flex flex-col gap-1">
@@ -1033,8 +1122,11 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
                       {/* Opção de Velocidade */}
                       <button
                         type="button"
-                        onClick={() => setSettingsTab('speed')}
-                        className="flex items-center justify-between rounded-xl px-3 py-2.5 text-xs text-slate-200 hover:bg-slate-800/80 hover:text-white transition cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSettingsTab('speed');
+                        }}
+                        className="flex items-center justify-between rounded-xl px-3 py-2.5 min-h-[40px] text-xs text-slate-200 hover:bg-slate-800/80 hover:text-white transition cursor-pointer touch-manipulation"
                       >
                         <div className="flex items-center gap-2">
                           <Gauge className="w-4 h-4 text-indigo-400" />
@@ -1049,19 +1141,24 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
                       {/* Opção de Qualidade */}
                       <button
                         type="button"
-                        onClick={() => setSettingsTab('quality')}
-                        className="flex items-center justify-between rounded-xl px-3 py-2.5 text-xs text-slate-200 hover:bg-slate-800/80 hover:text-white transition cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSettingsTab('quality');
+                        }}
+                        className="flex items-center justify-between rounded-xl px-3 py-2.5 min-h-[40px] text-xs text-slate-200 hover:bg-slate-800/80 hover:text-white transition cursor-pointer touch-manipulation"
                       >
                         <div className="flex items-center gap-2">
                           <Sliders className="w-4 h-4 text-indigo-400" />
                           <span className="font-medium">Qualidade</span>
                         </div>
                         <span className="text-[11px] text-indigo-300 font-semibold flex items-center gap-0.5">
-                          {selectedQuality === 'auto'
-                            ? displayResolution !== 'N/D'
-                              ? `Auto (${displayResolution})`
-                              : 'Automático'
-                            : selectedQuality}
+                          {isHlsActive && requestedHlsLevel !== -1
+                            ? availableLevels.find((lvl) => lvl.levelIndex === requestedHlsLevel)?.label || 'Manual'
+                            : selectedQuality === 'auto'
+                              ? displayResolution !== 'N/D'
+                                ? `Auto (${displayResolution})`
+                                : 'Automático'
+                              : selectedQuality}
                           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                         </span>
                       </button>
@@ -1073,8 +1170,11 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
                     <div className="flex flex-col gap-1 max-h-64 overflow-y-auto custom-scrollbar">
                       <button
                         type="button"
-                        onClick={() => setSettingsTab('main')}
-                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSettingsTab('main');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 min-h-[36px] text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer touch-manipulation"
                       >
                         <ChevronLeft className="w-4 h-4" />
                         <span>Velocidade de Reprodução</span>
@@ -1084,11 +1184,12 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
                         <button
                           key={spd}
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             changeSpeed(spd);
                             setShowSettingsMenu(false);
                           }}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl transition cursor-pointer ${
+                          className={`w-full flex items-center justify-between px-3 py-2 min-h-[38px] text-xs rounded-xl transition cursor-pointer touch-manipulation ${
                             playbackSpeed === spd
                               ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
                               : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -1106,39 +1207,116 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
                     <div className="flex flex-col gap-1 max-h-64 overflow-y-auto custom-scrollbar">
                       <button
                         type="button"
-                        onClick={() => setSettingsTab('main')}
-                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSettingsTab('main');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 min-h-[36px] text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer touch-manipulation"
                       >
                         <ChevronLeft className="w-4 h-4" />
                         <span>Qualidade do Vídeo</span>
                       </button>
                       <div className="border-t border-slate-800/80 my-0.5" />
-                      {(['auto', '1080p', '720p', '480p', '360p'] as QualityLevel[]).map((q) => (
-                        <button
-                          key={q}
-                          type="button"
-                          onClick={() => {
-                            changeQuality(q);
-                            setShowSettingsMenu(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl transition cursor-pointer ${
-                            selectedQuality === q
-                              ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
-                              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="uppercase">{q === 'auto' ? 'Automático' : q}</span>
-                            {q === '1080p' && (
-                              <span className="text-[10px] text-slate-400 font-normal">Full HD</span>
-                            )}
-                            {q === '720p' && (
-                              <span className="text-[10px] text-slate-400 font-normal">HD</span>
-                            )}
-                          </div>
-                          {selectedQuality === q && <Check className="w-4 h-4 text-indigo-400" />}
-                        </button>
-                      ))}
+
+                      {/* Opção Automático */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isHlsActive && hlsRef.current) {
+                            changeHlsQuality(-1, 'auto');
+                          } else {
+                            changeQuality('auto');
+                          }
+                          setShowSettingsMenu(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 min-h-[38px] text-xs rounded-xl transition cursor-pointer touch-manipulation ${
+                          selectedQuality === 'auto' || (isHlsActive && requestedHlsLevel === -1)
+                            ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
+                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>Automático</span>
+                          {displayResolution !== 'N/D' && (
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              ({displayResolution})
+                            </span>
+                          )}
+                        </div>
+                        {(selectedQuality === 'auto' || (isHlsActive && requestedHlsLevel === -1)) && (
+                          <Check className="w-4 h-4 text-indigo-400" />
+                        )}
+                      </button>
+
+                      {/* Variantes HLS reais se disponíveis */}
+                      {isHlsActive && availableLevels.filter((lvl) => lvl.levelIndex >= 0).length > 0 ? (
+                        availableLevels
+                          .filter((lvl) => lvl.levelIndex >= 0)
+                          .map((lvl) => {
+                            const isSelected = requestedHlsLevel === lvl.levelIndex;
+                            return (
+                              <button
+                                key={lvl.levelIndex}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  changeHlsQuality(lvl.levelIndex, lvl.resolution);
+                                  setShowSettingsMenu(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-3 py-2 min-h-[38px] text-xs rounded-xl transition cursor-pointer touch-manipulation ${
+                                  isSelected
+                                    ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
+                                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="uppercase">{lvl.label}</span>
+                                  {lvl.height && lvl.height >= 1080 && (
+                                    <span className="text-[10px] text-slate-400 font-normal">Full HD</span>
+                                  )}
+                                  {lvl.height && lvl.height === 720 && (
+                                    <span className="text-[10px] text-slate-400 font-normal">HD</span>
+                                  )}
+                                </div>
+                                {isSelected && <Check className="w-4 h-4 text-indigo-400" />}
+                              </button>
+                            );
+                          })
+                      ) : (
+                        /* Fallback para fontes diretas (MP4/WebM) */
+                        (['1080p', '720p', '480p', '360p'] as QualityLevel[]).map((q) => {
+                          const isSelected = selectedQuality === q && requestedHlsLevel !== -1;
+                          return (
+                            <button
+                              key={q}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                changeQuality(q);
+                                setShowSettingsMenu(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-2 min-h-[38px] text-xs rounded-xl transition cursor-pointer touch-manipulation ${
+                                isSelected
+                                  ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
+                                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="uppercase">{q}</span>
+                                {q === '1080p' && (
+                                  <span className="text-[10px] text-slate-400 font-normal">Full HD</span>
+                                )}
+                                {q === '720p' && (
+                                  <span className="text-[10px] text-slate-400 font-normal">HD</span>
+                                )}
+                              </div>
+                              {isSelected && <Check className="w-4 h-4 text-indigo-400" />}
+                            </button>
+                          );
+                        })
+                      )}
+
                       <div className="mt-1 pt-2 border-t border-slate-800/80 px-2 text-[10px] text-slate-400 leading-normal">
                         {isHlsActive
                           ? 'Stream HLS adaptativa com seleção dinâmica de variantes.'
