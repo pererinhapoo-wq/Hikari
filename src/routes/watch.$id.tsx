@@ -325,20 +325,68 @@ function WatchPage() {
   const playUrl = selectedPlayer?.url ?? "";
   const file = playUrl || null;
 
+// Conversão segura e não-presuntiva da duração do Hikari para segundos
+function parseDurationToSeconds(raw?: string | number | null): number {
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+  if (!raw || typeof raw !== "string") return 0;
+  const trimmed = raw.trim().toLowerCase();
+
+  // Formato "23:40" ou "01:23:40"
+  if (trimmed.includes(":")) {
+    const parts = trimmed.split(":").map(Number);
+    if (parts.every((p) => !isNaN(p))) {
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+  }
+
+  // Formato "24 min" ou "24m"
+  const minMatch = trimmed.match(/^(\d+)\s*(?:min|m)$/);
+  if (minMatch) return parseInt(minMatch[1], 10) * 60;
+
+  // Formato numérico puro em string "1420"
+  const numOnly = parseInt(trimmed, 10);
+  if (!isNaN(numOnly) && numOnly > 0) return numOnly;
+
+  return 0;
+}
+
   // Criação do objeto VideoItem original da NOVA STREAM com dados reais do Hikari
   const currentVideoItem = useMemo((): VideoItem | undefined => {
     if (!current || !file) return undefined;
+    const initialDuration = parseDurationToSeconds(current.duration);
+    const episodeTitleStr = current.number
+      ? `${title} — Episódio ${current.number}${current.title ? ` · ${current.title}` : ""}`
+      : title;
+
+    const mins = Math.floor(initialDuration / 60).toString().padStart(2, "0");
+    const secs = (initialDuration % 60).toString().padStart(2, "0");
+
     return {
       id: current.id,
-      title: title,
+      title: episodeTitleStr,
+      description: anime?.synopsis || current.title || "Episódio disponível no Hikari",
+      duration: initialDuration,
+      durationFormatted: initialDuration > 0 ? `${mins}:${secs}` : "00:00",
+      category: "Treinamentos & Tutoriais",
+      tags: [title, `Episódio ${current.number}`].filter(Boolean),
+      posterUrl: current.thumbnail || anime?.cover || "",
+      videoUrl: file,
       url: file,
       thumbnailUrl: current.thumbnail || anime?.cover || undefined,
       episodeNumber: current.number,
       episodeTitle: current.title,
-      duration: current.duration,
+      isDemo: false,
       isLocalFile: false,
+      createdAt: new Date().toISOString(),
+      resolution: "N/D",
+      uploadStatus: "pronto",
+      subtitles: [
+        { id: "sub-pt", lang: "pt", label: "Português (Brasil)" },
+        { id: "sub-en", lang: "en", label: "Inglês (Original)" },
+      ],
     };
-  }, [current, file, title, anime?.cover]);
+  }, [current, file, title, anime?.cover, anime?.synopsis]);
 
   if (!anime && !hydrated) {
     return null;
@@ -471,14 +519,7 @@ function WatchPage() {
               onNextEpisode={handleNextEpisode}
               onPrevEpisode={handlePrevEpisode}
               onClose={() => {
-                if (window.history.length > 1) {
-                  window.history.back();
-                } else {
-                  void navigate({
-                    to: "/anime/$id",
-                    params: { id: anime.id },
-                  });
-                }
+                setIsNovaStreamSelected(false);
               }}
             />
           ) : (
