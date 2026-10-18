@@ -9,25 +9,16 @@ import {
 } from "react";
 import Hls from "hls.js";
 import {
-  Activity,
   AlertCircle,
-  Check,
   ChevronLeft,
-  ChevronRight,
-  Gauge,
   Loader2,
   Maximize,
   Minimize,
   Pause,
   Play,
-  RotateCcw,
-  RotateCw,
   Settings,
-  Sliders,
-  Volume1,
   Volume2,
   VolumeX,
-  X,
 } from "lucide-react";
 import { cn, isHlsSource } from "@/lib/utils";
 
@@ -97,8 +88,6 @@ export interface CustomVideoPlayerProps {
   className?: string;
 }
 
-const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
-
 export function classifyVideoResolution(height?: number): string {
   if (!height || height <= 0) return "Automática";
   if (height >= 2160) return "4K Ultra HD";
@@ -138,10 +127,10 @@ export function CustomVideoPlayer({
   onPlay,
   onPause,
   onError,
-  onNextEpisode,
-  onPrevEpisode,
-  hasNextEpisode = false,
-  hasPrevEpisode = false,
+  onNextEpisode: _onNextEpisode,
+  onPrevEpisode: _onPrevEpisode,
+  hasNextEpisode: _hasNextEpisode = false,
+  hasPrevEpisode: _hasPrevEpisode = false,
   className,
 }: CustomVideoPlayerProps) {
   // Normalização unificada entre a interface original NOVA STREAM e a interface Hikari
@@ -167,7 +156,6 @@ export function CustomVideoPlayer({
 
   useEffect(() => {
     initialTimeRef.current = initialTime;
-    // Reseta a trava apenas quando a fonte de vídeo mudar
     hasAppliedInitialTimeRef.current = false;
   }, [activeSrc, initialTime]);
 
@@ -175,7 +163,7 @@ export function CustomVideoPlayer({
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
-  const [bufferedTime, setBufferedTime] = useState<number>(0);
+  const [, setBufferedTime] = useState<number>(0);
   const [isBuffering, setIsBuffering] = useState<boolean>(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
 
@@ -193,7 +181,6 @@ export function CustomVideoPlayer({
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
-  const [activeMenuTab, setActiveMenuTab] = useState<"main" | "speed" | "quality">("main");
 
   // HLS e Qualidade
   const [qualityLevels, setQualityLevels] = useState<CustomVideoPlayerQualityLevel[]>([]);
@@ -215,7 +202,6 @@ export function CustomVideoPlayer({
         return;
       }
       setSettingsOpen(false);
-      setActiveMenuTab("main");
     };
 
     document.addEventListener("pointerdown", handleClickOutside);
@@ -223,29 +209,6 @@ export function CustomVideoPlayer({
       document.removeEventListener("pointerdown", handleClickOutside);
     };
   }, [settingsOpen]);
-
-  // Diagnóstico Técnico ("Stats for Nerds")
-  const [showDiagnostics, setShowDiagnostics] = useState<boolean>(false);
-  const [diagStats, setDiagStats] = useState({
-    videoWidth: 0,
-    videoHeight: 0,
-    droppedFrames: 0,
-    totalFrames: 0,
-    bufferedAhead: 0,
-    bitrate: 0,
-  });
-
-  // Feedback visual de double-tap (+10s / -10s)
-  const [tapFeedback, setTapFeedback] = useState<{ side: "rewind" | "forward"; id: number } | null>(null);
-  const tapFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Feedback visual discreto de Play / Pause
-  const [playPauseFeedback, setPlayPauseFeedback] = useState<{ action: "play" | "pause"; id: number } | null>(null);
-  const playPauseFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Hover na barra de progresso
-  const [hoverPosition, setHoverPosition] = useState<number | null>(null);
-  const [hoverTime, setHoverTime] = useState<number>(0);
 
   // =========================================================================
   // Temporizador de Ocultação dos Controles
@@ -264,12 +227,12 @@ export function CustomVideoPlayer({
 
     if (isPlaying) {
       hideControlsTimerRef.current = setTimeout(() => {
-        if (!settingsOpen && !showDiagnostics) {
+        if (!settingsOpen) {
           setControlsVisible(false);
         }
       }, 3500);
     }
-  }, [clearHideTimer, isPlaying, settingsOpen, showDiagnostics]);
+  }, [clearHideTimer, isPlaying, settingsOpen]);
 
   // =========================================================================
   // Inicialização e Gerenciamento do Vídeo e HLS
@@ -388,51 +351,6 @@ export function CustomVideoPlayer({
     };
   }, [activeSrc, onError, onUpdateMetadata, video?.id, activeEpisodeTitle]);
 
-  // Atualização das métricas de diagnóstico
-  useEffect(() => {
-    if (!showDiagnostics) return;
-
-    const interval = setInterval(() => {
-      const video = videoRef.current;
-      if (!video) return;
-
-      let dropped = 0;
-      let total = 0;
-      if (typeof video.getVideoPlaybackQuality === "function") {
-        const q = video.getVideoPlaybackQuality();
-        dropped = q.droppedVideoFrames;
-        total = q.totalVideoFrames;
-      }
-
-      let bufferedAhead = 0;
-      if (video.buffered.length > 0) {
-        const cur = video.currentTime;
-        for (let i = 0; i < video.buffered.length; i++) {
-          if (video.buffered.start(i) <= cur && cur <= video.buffered.end(i)) {
-            bufferedAhead = Math.max(0, video.buffered.end(i) - cur);
-            break;
-          }
-        }
-      }
-
-      let bitrate = 0;
-      if (hlsRef.current && hlsRef.current.levels && hlsRef.current.currentLevel >= 0) {
-        bitrate = hlsRef.current.levels[hlsRef.current.currentLevel]?.bitrate || 0;
-      }
-
-      setDiagStats({
-        videoWidth: video.videoWidth || 0,
-        videoHeight: video.videoHeight || 0,
-        droppedFrames: dropped,
-        totalFrames: total,
-        bufferedAhead,
-        bitrate,
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [showDiagnostics]);
-
   // =========================================================================
   // Sincronização de Estado de Tela Cheia
   // =========================================================================
@@ -452,16 +370,6 @@ export function CustomVideoPlayer({
   // Ações de Reprodução e Seek
   // =========================================================================
 
-  const triggerPlayPauseFeedback = useCallback((action: "play" | "pause") => {
-    setPlayPauseFeedback({ action, id: Date.now() });
-    if (playPauseFeedbackTimerRef.current) {
-      clearTimeout(playPauseFeedbackTimerRef.current);
-    }
-    playPauseFeedbackTimerRef.current = setTimeout(() => {
-      setPlayPauseFeedback(null);
-    }, 650);
-  }, []);
-
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -471,7 +379,6 @@ export function CustomVideoPlayer({
         .play()
         .then(() => {
           setIsPlaying(true);
-          triggerPlayPauseFeedback("play");
           triggerShowControls();
         })
         .catch(() => {
@@ -480,10 +387,9 @@ export function CustomVideoPlayer({
     } else {
       video.pause();
       setIsPlaying(false);
-      triggerPlayPauseFeedback("pause");
       setControlsVisible(true);
     }
-  }, [triggerPlayPauseFeedback, triggerShowControls]);
+  }, [triggerShowControls]);
 
   const seekBy = useCallback(
     (seconds: number) => {
@@ -495,13 +401,6 @@ export function CustomVideoPlayer({
       video.currentTime = target;
       setCurrentTime(target);
       triggerShowControls();
-
-      // Feedback visual (+10s / -10s)
-      setTapFeedback({ side: seconds > 0 ? "forward" : "rewind", id: Date.now() });
-      if (tapFeedbackTimerRef.current) clearTimeout(tapFeedbackTimerRef.current);
-      tapFeedbackTimerRef.current = setTimeout(() => {
-        setTapFeedback(null);
-      }, 650);
     },
     [duration, triggerShowControls],
   );
@@ -562,7 +461,7 @@ export function CustomVideoPlayer({
           if (orient && typeof orient.unlock === "function") {
             orient.unlock();
           }
-        } catch (_e) {
+        } catch {
           // Orientação não suportada ou permissão negada
         }
       } else {
@@ -573,7 +472,7 @@ export function CustomVideoPlayer({
             if (orient && typeof orient.lock === "function") {
               await orient.lock("landscape");
             }
-          } catch (_e) {
+          } catch {
             // Orientação opcional
           }
         } else if (video && (video as any).webkitEnterFullscreen) {
@@ -595,7 +494,6 @@ export function CustomVideoPlayer({
     toggleMute,
     toggleFullscreen,
     setVideoVolume,
-    setShowDiagnostics,
   });
 
   useEffect(() => {
@@ -605,9 +503,8 @@ export function CustomVideoPlayer({
       toggleMute,
       toggleFullscreen,
       setVideoVolume,
-      setShowDiagnostics,
     };
-  });
+  }, [togglePlay, seekBy, toggleMute, toggleFullscreen, setVideoVolume]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -651,10 +548,6 @@ export function CustomVideoPlayer({
         case "arrowdown":
           event.preventDefault();
           actionsRef.current.setVideoVolume(volumeRef.current - 0.1);
-          break;
-        case "d":
-          event.preventDefault();
-          actionsRef.current.setShowDiagnostics((prev) => !prev);
           break;
       }
     };
@@ -753,41 +646,164 @@ export function CustomVideoPlayer({
     }, 280);
   };
 
-  // =========================================================================
-  // Barra de Progresso: Cálculo e Tooltip
-  // =========================================================================
-
-  const handleProgressBarMouseMove = (event: MouseEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    setHoverPosition(pos * 100);
-    setHoverTime(pos * (duration || 0));
-  };
-
-  const handleProgressBarMouseLeave = () => {
-    setHoverPosition(null);
-  };
-
-  const handleProgressClick = (event: MouseEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const target = pos * (duration || 0);
-    handleSeekChange(target);
-  };
-
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const bufferedPercent = duration > 0 ? (bufferedTime / duration) * 100 : 0;
-
   return (
     <div
       ref={containerRef}
       onMouseMove={triggerShowControls}
+      onPointerMove={(e) => {
+        if (e.pointerType !== "touch") {
+          triggerShowControls();
+        }
+      }}
       style={{ touchAction: "manipulation" }}
       className={cn(
-        "group relative aspect-video w-full select-none overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.55)] touch-manipulation",
+        "hikari-player relative aspect-video w-full select-none overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.55)] touch-manipulation",
+        isFullscreen ? "fixed inset-0 z-50 h-screen w-screen rounded-none border-0" : "",
         className,
       )}
+      tabIndex={0}
+      role="region"
+      aria-label="Reprodutor de vídeo Hikari"
     >
+      <style>{`
+        @media (max-width: 639px) {
+          /* MOBILE ONLY — visual baseado exatamente na referência original do Hikari */
+          .hikari-player:not(:fullscreen) .hikari-mobile-controls {
+            position: absolute !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            height: 72px !important;
+            padding: 0 12px 5px !important;
+            display: block !important;
+            background: linear-gradient(to top, rgba(0,0,0,.62), rgba(0,0,0,0)) !important;
+            z-index: 10 !important;
+            box-sizing: border-box !important;
+          }
+
+          /* A barra fica sempre no limite inferior e não empurra os outros controles */
+          .hikari-player:not(:fullscreen) .hikari-progress-shell {
+            position: absolute !important;
+            left: 12px !important;
+            right: 12px !important;
+            bottom: 0 !important;
+            top: auto !important;
+            width: auto !important;
+            height: 5px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-radius: 999px !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-sizing: border-box !important;
+          }
+
+          .hikari-player:not(:fullscreen) .hikari-progress-track {
+            position: absolute !important;
+            left: 0 !important;
+            right: 0 !important;
+            top: 50% !important;
+            height: 2px !important;
+            transform: translateY(-50%) !important;
+            background: rgba(255,255,255,.42) !important;
+            border-radius: 999px !important;
+          }
+
+          .hikari-player:not(:fullscreen) .hikari-progress-track > div {
+            height: 100% !important;
+            background: rgba(255,255,255,.95) !important;
+          }
+
+          .hikari-player:not(:fullscreen) .hikari-progress-shell > div:nth-child(2) {
+            width: 7px !important;
+            height: 7px !important;
+            background: #fff !important;
+            box-shadow: 0 0 5px rgba(255,255,255,.55) !important;
+          }
+
+          /* Uma única linha: tempo à esquerda e os 3 controles existentes à direita */
+          .hikari-player:not(:fullscreen) .hikari-mobile-time-row {
+            position: absolute !important;
+            left: 12px !important;
+            right: 12px !important;
+            bottom: 12px !important;
+            top: auto !important;
+            width: auto !important;
+            height: 32px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 8px !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-sizing: border-box !important;
+          }
+
+          .hikari-player:not(:fullscreen) .hikari-mobile-time-row > div:first-child {
+            flex: 0 0 auto !important;
+            min-width: 0 !important;
+            font-size: 10px !important;
+            line-height: 32px !important;
+            text-shadow: 0 1px 3px rgba(0,0,0,.95) !important;
+            white-space: nowrap !important;
+          }
+
+          .hikari-player:not(:fullscreen) .hikari-mobile-time-row > div:last-child {
+            flex: 0 0 auto !important;
+            margin-left: auto !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 2px !important;
+            height: 32px !important;
+          }
+
+          /* Somente os botões que o Hikari já possui */
+          .hikari-player:not(:fullscreen) .hikari-volume,
+          .hikari-player:not(:fullscreen) .hikari-settings,
+          .hikari-player:not(:fullscreen) .hikari-mobile-fullscreen {
+            width: 30px !important;
+            height: 30px !important;
+            min-width: 30px !important;
+            min-height: 30px !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-radius: 999px !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex: 0 0 30px !important;
+          }
+
+          .hikari-player:not(:fullscreen) .hikari-volume svg,
+          .hikari-player:not(:fullscreen) .hikari-settings svg,
+          .hikari-player:not(:fullscreen) .hikari-mobile-fullscreen svg {
+            width: 17px !important;
+            height: 17px !important;
+            flex: 0 0 auto !important;
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,.95));
+          }
+
+          /* O menu de configurações sobe a partir do botão, sem sair da área do player */
+          .hikari-player:not(:fullscreen) .hikari-settings + * {
+            bottom: 34px !important;
+            right: 0 !important;
+          }
+        }
+      `}</style>
+
       {/* Elemento de Vídeo HTML5 */}
       <video
         ref={videoRef}
@@ -798,7 +814,7 @@ export function CustomVideoPlayer({
         disablePictureInPicture
         controlsList="nodownload noremoteplayback"
         onContextMenu={(e) => e.preventDefault()}
-        className="size-full object-contain object-top"
+        className="size-full object-contain"
         onPlay={() => {
           setIsPlaying(true);
           onPlay?.();
@@ -823,7 +839,6 @@ export function CustomVideoPlayer({
             setDetectedResolution(classifyVideoResolution(v.videoHeight));
           }
 
-          // Sincronização opcional de metadados para compatibilidade com o padrão original
           if (onUpdateMetadata && (video?.id || activeEpisodeTitle)) {
             onUpdateMetadata(video?.id ?? "current", {
               duration: v.duration,
@@ -831,7 +846,6 @@ export function CustomVideoPlayer({
             });
           }
 
-          // Retomada segura de initialTime após metadados carregados
           if (!hasAppliedInitialTimeRef.current && initialTimeRef.current > 0) {
             v.currentTime = initialTimeRef.current;
             hasAppliedInitialTimeRef.current = true;
@@ -902,490 +916,230 @@ export function CustomVideoPlayer({
         </div>
       )}
 
-      {/* Indicador Temporário de Duplo Toque (+10s / -10s) */}
-      {tapFeedback && (
-        <div
-          key={`dt-${tapFeedback.id}`}
-          className={cn(
-            "pointer-events-none absolute top-1/2 z-25 flex size-20 -translate-y-1/2 flex-col items-center justify-center rounded-full bg-black/75 text-white border border-white/20 shadow-2xl backdrop-blur-md transition-all duration-300 animate-in fade-in zoom-in-75",
-            tapFeedback.side === "rewind" ? "left-8 sm:left-14" : "right-8 sm:right-14",
-          )}
-        >
-          {tapFeedback.side === "rewind" ? (
-            <RotateCcw className="size-7 text-white" />
-          ) : (
-            <RotateCw className="size-7 text-white" />
-          )}
-          <span className="mt-1 text-xs font-bold text-white tracking-wide">
-            10
-          </span>
+      {/* Botão de Fechar / Voltar opcional */}
+      {onClose && controlsVisible && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between p-3 sm:p-4">
+          <button
+            type="button"
+            onClick={onClose}
+            title="Voltar"
+            aria-label="Voltar"
+            className="pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:bg-white/20 hover:text-white active:scale-95 sm:size-9"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
         </div>
       )}
 
-      {/* Indicador temporário discreto centralizado ao reproduzir ou pausar */}
-      {playPauseFeedback && (
-        <div
-          key={`pp-${playPauseFeedback.id}`}
-          className="pointer-events-none absolute inset-0 z-25 flex items-center justify-center"
-        >
-          <div className="flex size-16 sm:size-20 items-center justify-center rounded-full bg-black/75 text-white border border-white/20 shadow-2xl backdrop-blur-md transition-all duration-300 animate-in fade-in zoom-in-75">
-            {playPauseFeedback.action === "play" ? (
-              <Play className="size-8 sm:size-10 ml-1 fill-white text-white" />
-            ) : (
-              <Pause className="size-8 sm:size-10 fill-white text-white" />
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Painel Flutuante de Diagnóstico Técnico ("Stats for Nerds") */}
-      {showDiagnostics && (
-        <div className="absolute top-4 left-4 z-40 w-72 rounded-xl border border-white/20 bg-[#09090b]/90 p-3.5 text-xs text-white/90 shadow-2xl backdrop-blur-xl">
-          <div className="flex items-center justify-between pb-2 border-b border-white/10">
-            <div className="flex items-center gap-1.5 font-semibold text-[#a855f7]">
-              <Activity className="size-4" />
-              <span>Diagnóstico Técnico</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowDiagnostics(false)}
-              className="text-white/60 hover:text-white"
-              aria-label="Fechar diagnóstico"
-            >
-              <X className="size-3.5" />
-            </button>
-          </div>
-          <div className="mt-2.5 space-y-1.5 font-mono text-[11px]">
-            <div className="flex justify-between">
-              <span className="text-white/50">Resolução:</span>
-              <span>{diagStats.videoWidth}x{diagStats.videoHeight}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/50">Formato:</span>
-              <span className="text-purple-300">{classifyVideoResolution(diagStats.videoHeight)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/50">Motor:</span>
-              <span>{isHlsStream ? "HLS.js (MSE)" : "HTML5 Video"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/50">Buffer à frente:</span>
-              <span>{diagStats.bufferedAhead.toFixed(1)}s</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-white/50">Frames Perdidos:</span>
-              <span>
-                {diagStats.totalFrames > 0
-                  ? `${((diagStats.droppedFrames / diagStats.totalFrames) * 100).toFixed(1)}% (${diagStats.droppedFrames}/${diagStats.totalFrames})`
-                  : "0"}
-              </span>
-            </div>
-            {diagStats.bitrate > 0 && (
-              <div className="flex justify-between">
-                <span className="text-white/50">Bitrate:</span>
-                <span>{(diagStats.bitrate / 1000).toFixed(0)} kbps</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-white/50">Velocidade:</span>
-              <span>{playbackRate}x</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Navegação Superior Opcional (Fechar / Anterior / Próximo) */}
-      {(onClose || hasPrevEpisode || hasNextEpisode) && (
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between p-3 transition-opacity duration-300 sm:p-4",
-            controlsVisible ? "opacity-100" : "opacity-0",
-          )}
-        >
-          <div className="flex items-center">
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                title="Voltar"
-                aria-label="Voltar"
-                className="pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:bg-white/20 hover:text-white active:scale-95 sm:size-9 cursor-pointer touch-manipulation"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-            )}
-          </div>
-
-          <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2">
-            {hasPrevEpisode && (
-              <button
-                type="button"
-                onClick={onPrevEpisode}
-                title="Episódio anterior"
-                className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:bg-white/20 hover:text-white active:scale-95 sm:size-9 cursor-pointer touch-manipulation"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-            )}
-            {hasNextEpisode && (
-              <button
-                type="button"
-                onClick={onNextEpisode}
-                title="Próximo episódio"
-                className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:bg-white/20 hover:text-white active:scale-95 sm:size-9 cursor-pointer touch-manipulation"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* BARRA INFERIOR DE CONTROLES */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        onTouchEnd={(e) => e.stopPropagation()}
-        className={cn(
-          "absolute inset-x-0 bottom-0 z-20 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/60 to-transparent px-3 pb-3 pt-6 transition-opacity duration-300 sm:px-5 sm:pb-4",
-          controlsVisible ? "opacity-100" : "pointer-events-none opacity-0",
-        )}
-      >
-        {/* BARRA DE PROGRESSO COM BUFFER E HOVER */}
-        <div
-          role="slider"
-          aria-label="Progresso do vídeo"
-          aria-valuemin={0}
-          aria-valuemax={duration || 0}
-          aria-valuenow={currentTime}
-          tabIndex={0}
-          onClick={handleProgressClick}
-          onMouseMove={handleProgressBarMouseMove}
-          onMouseLeave={handleProgressBarMouseLeave}
-          className="group/progress relative mb-3 flex h-3 w-full cursor-pointer items-center"
-        >
-          {hoverPosition !== null && (
-            <div
-              className="pointer-events-none absolute -top-8 -translate-x-1/2 rounded-md bg-[#131316] px-2 py-1 text-[11px] font-medium text-white shadow-xl border border-white/10"
-              style={{ left: `${hoverPosition}%` }}
-            >
-              {formatTime(hoverTime)}
-            </div>
-          )}
-
-          <div className="relative h-1 w-full rounded-full bg-white/20 transition-all group-hover/progress:h-1.5">
-            <div
-              className="absolute inset-y-0 left-0 rounded-full bg-white/35"
-              style={{ width: `${Math.min(100, Math.max(0, bufferedPercent))}%` }}
-            />
-            <div
-              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-purple-500 to-[#a855f7]"
-              style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }}
-            />
-          </div>
-
+      {/* CONTROLES CENTRAIS CIRCULARES COM EFEITO DE VIDRO FOSCO */}
+      {controlsVisible && (
+        <div className="pointer-events-none absolute inset-x-0 top-[32%] z-20 flex -translate-y-1/2 items-center justify-center sm:top-[40%]">
           <div
-            className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/60 bg-[#a855f7] shadow-[0_0_10px_rgba(168,85,247,0.9)] transition-transform group-hover/progress:scale-125"
-            style={{ left: `${Math.min(99.5, Math.max(0.5, progressPercent))}%` }}
-          />
-        </div>
-
-        {/* LINHA DE BOTÕES E FUNÇÕES */}
-        <div className="flex items-center justify-between text-white">
-          {/* Lado Esquerdo: Play, Voltar 10s, Avançar 10s, Volume, Tempo */}
-          <div className="flex items-center gap-1 sm:gap-2">
-            <button
-              type="button"
-              onClick={togglePlay}
-              className="flex size-9 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15 hover:text-white active:scale-95 cursor-pointer touch-manipulation"
-              aria-label={isPlaying ? "Pausar" : "Reproduzir"}
-            >
-              {isPlaying ? <Pause className="size-5 fill-current" /> : <Play className="size-5 fill-current ml-0.5" />}
-            </button>
-
+            onPointerDown={triggerShowControls}
+            className="pointer-events-auto flex items-center gap-2 sm:gap-3"
+          >
+            {/* Retrocesso 10 segundos */}
             <button
               type="button"
               onClick={() => seekBy(-10)}
+              className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
               aria-label="Voltar 10 segundos"
-              title="Voltar 10s"
-              className="flex size-9 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15 hover:text-white active:scale-95 cursor-pointer touch-manipulation"
             >
-              <RotateCcw className="size-4" />
+              -10s
             </button>
 
+            {/* Play / Pause Central */}
+            <button
+              type="button"
+              onClick={togglePlay}
+              className="flex size-12 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:border-white/45 hover:bg-white/20 active:scale-95 sm:size-14"
+              aria-label={isPlaying ? "Pausar" : "Reproduzir"}
+            >
+              {isPlaying ? (
+                <Pause className="size-5 fill-current" />
+              ) : (
+                <Play className="ml-0.5 size-5 fill-current" />
+              )}
+            </button>
+
+            {/* Avanço 10 segundos */}
             <button
               type="button"
               onClick={() => seekBy(10)}
+              className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
               aria-label="Avançar 10 segundos"
-              title="Avançar 10s"
-              className="flex size-9 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15 hover:text-white active:scale-95 cursor-pointer touch-manipulation"
             >
-              <RotateCw className="size-4" />
-            </button>
-
-            {/* Controle de Volume */}
-            <div className="group/vol flex items-center">
-              <button
-                type="button"
-                onClick={toggleMute}
-                className="flex size-9 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15 hover:text-white cursor-pointer touch-manipulation"
-                aria-label={isMuted ? "Ativar som" : "Silenciar"}
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="size-4 text-red-400" />
-                ) : volume < 0.5 ? (
-                  <Volume1 className="size-4" />
-                ) : (
-                  <Volume2 className="size-4" />
-                )}
-              </button>
-
-              <div className="hidden w-0 overflow-hidden transition-all duration-200 group-hover/vol:w-16 group-hover/vol:ml-1 sm:block">
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={isMuted ? 0 : volume}
-                  onChange={(e) => setVideoVolume(Number(e.target.value))}
-                  aria-label="Volume"
-                  className="h-1 w-16 cursor-pointer accent-[#a855f7]"
-                />
-              </div>
-            </div>
-
-            {/* Minutagem (Atual / Total) */}
-            <div className="ml-1 flex items-center gap-1 text-[11px] font-mono tabular-nums text-white/85 sm:text-xs">
-              <span>{formatTime(currentTime)}</span>
-              <span className="text-white/40">/</span>
-              <span className="text-white/60">{formatTime(duration)}</span>
-            </div>
-          </div>
-
-          {/* Lado Direito: Configurações e Fullscreen */}
-          <div className="relative flex items-center gap-1 sm:gap-2">
-            {/* Menu Popover de Configurações */}
-            <div className="relative">
-              <button
-                ref={settingsButtonRef}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSettingsOpen((prev) => !prev);
-                  setActiveMenuTab("main");
-                }}
-                aria-label="Configurações do player"
-                aria-expanded={settingsOpen}
-                className={cn(
-                  "flex size-9 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15 hover:text-white cursor-pointer touch-manipulation",
-                  settingsOpen && "bg-white/20 text-white",
-                )}
-              >
-                <Settings className="size-4.5" />
-              </button>
-
-              {settingsOpen && (
-                <div
-                  ref={settingsMenuRef}
-                  onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
-                  className="absolute bottom-12 right-0 z-40 w-64 max-w-[calc(100vw-2rem)] max-h-[calc(100%-3.5rem)] overflow-y-auto rounded-2xl border border-white/15 bg-[#12131a]/95 p-2 text-xs text-white/90 shadow-2xl backdrop-blur-2xl select-none touch-manipulation custom-scrollbar"
-                >
-                  {/* Vista Principal das Configurações */}
-                  {activeMenuTab === "main" && (
-                    <div className="flex flex-col gap-1.5 p-1">
-                      <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/45 border-b border-white/10">
-                        Configurações do Player
-                      </div>
-
-                      {/* Opção de Velocidade */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuTab("speed");
-                        }}
-                        className="flex w-full items-center justify-between rounded-xl px-3 py-3 min-h-[44px] text-xs text-white/90 hover:bg-white/10 active:bg-white/15 transition cursor-pointer touch-manipulation"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Gauge className="size-4 text-[#a855f7]" />
-                          <span className="font-medium text-sm">Velocidade</span>
-                        </div>
-                        <span className="text-xs text-[#c084fc] font-semibold flex items-center gap-1">
-                          {playbackRate === 1 ? "1x (Normal)" : `${playbackRate}x`}
-                          <ChevronRight className="size-4 text-white/50" />
-                        </span>
-                      </button>
-
-                      {/* Opção de Qualidade */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuTab("quality");
-                        }}
-                        className="flex w-full items-center justify-between rounded-xl px-3 py-3 min-h-[44px] text-xs text-white/90 hover:bg-white/10 active:bg-white/15 transition cursor-pointer touch-manipulation"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Sliders className="size-4 text-[#a855f7]" />
-                          <span className="font-medium text-sm">Qualidade</span>
-                        </div>
-                        <span className="text-xs text-[#c084fc] font-semibold flex items-center gap-1">
-                          {currentQuality === -1
-                            ? qualityLevels.length > 0
-                              ? "Automática"
-                              : detectedResolution !== "N/D"
-                                ? `Auto (${detectedResolution})`
-                                : "Automática"
-                            : qualityLevels[currentQuality]?.label || "Padrão"}
-                          <ChevronRight className="size-4 text-white/50" />
-                        </span>
-                      </button>
-
-                      {/* Diagnóstico Técnico */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowDiagnostics((prev) => !prev);
-                          setSettingsOpen(false);
-                        }}
-                        className="flex w-full items-center justify-between rounded-xl px-3 py-2 min-h-[38px] text-xs text-white/70 hover:bg-white/10 hover:text-white transition cursor-pointer touch-manipulation"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Activity className="size-3.5 text-[#a855f7]" />
-                          <span>Diagnóstico Técnico</span>
-                        </span>
-                        <span className="text-[10px] text-white/40">Tecla D</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Submenu de Velocidade de Reprodução */}
-                  {activeMenuTab === "speed" && (
-                    <div className="flex flex-col gap-1 p-1 max-h-60 overflow-y-auto custom-scrollbar">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuTab("main");
-                        }}
-                        className="flex items-center gap-2 px-3 py-2.5 min-h-[40px] text-xs font-semibold text-white/70 hover:text-white transition cursor-pointer touch-manipulation"
-                      >
-                        <ChevronLeft className="size-4 text-[#a855f7]" />
-                        <span>Voltar às Configurações</span>
-                      </button>
-                      <div className="border-t border-white/10 my-1" />
-                      {PLAYBACK_RATES.map((rate) => (
-                        <button
-                          key={rate}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSelectPlaybackRate(rate);
-                          }}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-xl px-3 py-3 min-h-[44px] text-xs transition cursor-pointer touch-manipulation",
-                            playbackRate === rate
-                              ? "bg-[#a855f7]/25 text-[#c084fc] font-semibold"
-                              : "text-white/80 hover:bg-white/10 hover:text-white",
-                          )}
-                        >
-                          <span className="text-sm">{rate === 1 ? "1x (Normal)" : `${rate}x`}</span>
-                          {playbackRate === rate && <Check className="size-4 text-[#a855f7]" />}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Submenu de Qualidade do Vídeo */}
-                  {activeMenuTab === "quality" && (
-                    <div className="flex flex-col gap-1 p-1 max-h-60 overflow-y-auto custom-scrollbar">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuTab("main");
-                        }}
-                        className="flex items-center gap-2 px-3 py-2.5 min-h-[40px] text-xs font-semibold text-white/70 hover:text-white transition cursor-pointer touch-manipulation"
-                      >
-                        <ChevronLeft className="size-4 text-[#a855f7]" />
-                        <span>Voltar às Configurações</span>
-                      </button>
-                      <div className="border-t border-white/10 my-1" />
-
-                      {/* Opção Automática */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectQuality(-1);
-                        }}
-                        className={cn(
-                          "flex w-full items-center justify-between rounded-xl px-3 py-3 min-h-[44px] text-xs transition cursor-pointer touch-manipulation",
-                          currentQuality === -1
-                            ? "bg-[#a855f7]/25 text-[#c084fc] font-semibold"
-                            : "text-white/80 hover:bg-white/10 hover:text-white",
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm">Automática</span>
-                          {detectedResolution !== "N/D" && (
-                            <span className="text-[11px] text-white/50">({detectedResolution})</span>
-                          )}
-                        </div>
-                        {currentQuality === -1 && <Check className="size-4 text-[#a855f7]" />}
-                      </button>
-
-                      {/* Níveis HLS Reais se Disponíveis */}
-                      {qualityLevels.length > 0 ? (
-                        qualityLevels.map((lvl) => {
-                          const isSelected = currentQuality === lvl.id;
-                          return (
-                            <button
-                              key={lvl.id}
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSelectQuality(lvl.id);
-                              }}
-                              className={cn(
-                                "flex w-full items-center justify-between rounded-xl px-3 py-3 min-h-[44px] text-xs transition cursor-pointer touch-manipulation",
-                                isSelected
-                                  ? "bg-[#a855f7]/25 text-[#c084fc] font-semibold"
-                                  : "text-white/80 hover:bg-white/10 hover:text-white",
-                              )}
-                            >
-                              <span className="text-sm">{lvl.label}</span>
-                              {isSelected && <Check className="size-4 text-[#a855f7]" />}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="px-3 py-2.5 text-xs text-white/50 leading-relaxed">
-                          {detectedResolution !== "N/D"
-                            ? `Reprodução em resolução ${detectedResolution}.`
-                            : "Qualidade ajustada automaticamente conforme a conexão."}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Botão de Tela Cheia */}
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              aria-label={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
-              className="flex size-9 items-center justify-center rounded-lg text-white/90 transition hover:bg-white/15 hover:text-white cursor-pointer touch-manipulation"
-            >
-              {isFullscreen ? <Minimize className="size-4.5" /> : <Maximize className="size-4.5" />}
+              +10s
             </button>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* BARRA INFERIOR DE CONTROLES DO HIKARI */}
+      {controlsVisible && (
+        <div
+          onPointerDown={triggerShowControls}
+          className="hikari-mobile-controls absolute inset-x-0 bottom-0 z-20 px-2 pb-2 sm:px-5 sm:pb-4"
+        >
+          {/* Barra de Progresso Arredondada com Marcador Roxo */}
+          <div className="hikari-progress-shell relative h-5 rounded-full border border-white/10 bg-black/30 px-2 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)] sm:h-7 sm:px-3">
+            <div className="hikari-progress-track pointer-events-none absolute inset-x-2 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20 sm:inset-x-3 sm:h-1.5">
+              <div
+                className="h-full rounded-full bg-white/90"
+                style={{
+                  width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                }}
+              />
+            </div>
+
+            {/* Ponto Roxo Característico com Brilho Neon */}
+            <div
+              className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
+              style={{
+                left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+              }}
+            />
+
+            <input
+              aria-label="Progresso do episódio"
+              type="range"
+              min={0}
+              max={duration || 0}
+              step={0.1}
+              value={Math.min(currentTime, duration || 0)}
+              onChange={(event) => handleSeekChange(Number(event.target.value))}
+              className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+            />
+          </div>
+
+          {/* Linha Inferior de Tempo e Ações */}
+          <div className="hikari-mobile-time-row mt-1 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2 py-1 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
+            {/* Indicador de Tempo */}
+            <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
+              <span>{formatTime(currentTime)}</span>
+              <span className="text-white/35">/</span>
+              <span className="text-white/65">{formatTime(duration)}</span>
+            </div>
+
+            {/* Botões de Ação à Direita: Volume, Configurações, Tela Cheia */}
+            <div className="pointer-events-auto ml-auto flex items-center gap-1.5 sm:gap-2">
+              {/* Botão de Volume / Mudo */}
+              <button
+                type="button"
+                onClick={toggleMute}
+                className="hikari-volume flex size-8 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                aria-label={isMuted ? "Ativar som" : "Silenciar"}
+              >
+                {isMuted ? (
+                  <VolumeX className="size-3.5 sm:size-4" />
+                ) : (
+                  <Volume2 className="size-3.5 sm:size-4" />
+                )}
+              </button>
+
+              {/* Botão e Menu Popover de Configurações */}
+              <div className="relative">
+                <button
+                  ref={settingsButtonRef}
+                  type="button"
+                  onClick={() => setSettingsOpen((open) => !open)}
+                  className={`hikari-settings flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10 ${
+                    settingsOpen ? "bg-white/15 border-white/30" : ""
+                  }`}
+                  aria-label="Configurações do player"
+                  aria-expanded={settingsOpen}
+                >
+                  <Settings className="size-3.5 sm:size-4" />
+                </button>
+
+                {settingsOpen && (
+                  <div
+                    ref={settingsMenuRef}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="absolute bottom-11 right-0 z-30 w-56 sm:w-60 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl backdrop-blur-xl select-none"
+                  >
+                    <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                      Configurações
+                    </div>
+
+                    {/* Velocidade de Reprodução */}
+                    <div className="mt-1 rounded-xl px-3 py-2">
+                      <div className="mb-2 text-xs text-white/75">Velocidade</div>
+                      <div className="grid grid-cols-5 gap-1">
+                        {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                          <button
+                            key={rate}
+                            type="button"
+                            onClick={() => handleSelectPlaybackRate(rate)}
+                            className={`rounded-lg px-1 py-1.5 text-[11px] font-medium transition ${
+                              playbackRate === rate
+                                ? "bg-[#a855f7] text-white"
+                                : "bg-white/5 text-white/65 hover:bg-white/10"
+                            }`}
+                          >
+                            {rate}x
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Qualidade do Vídeo (se disponível em HLS ou detectada) */}
+                    {(qualityLevels.length > 0 || detectedResolution !== "N/D") && (
+                      <div className="mt-1 border-t border-white/10 px-3 pt-2 pb-1.5">
+                        <div className="mb-2 text-xs text-white/75">Qualidade</div>
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleSelectQuality(-1)}
+                            className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                              currentQuality === -1
+                                ? "bg-[#a855f7] text-white"
+                                : "bg-white/5 text-white/65 hover:bg-white/10"
+                            }`}
+                          >
+                            {detectedResolution !== "N/D" && qualityLevels.length === 0
+                              ? `Auto (${detectedResolution})`
+                              : "Auto"}
+                          </button>
+                          {qualityLevels.map((lvl) => (
+                            <button
+                              key={lvl.id}
+                              type="button"
+                              onClick={() => handleSelectQuality(lvl.id)}
+                              className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                                currentQuality === lvl.id
+                                  ? "bg-[#a855f7] text-white"
+                                  : "bg-white/5 text-white/65 hover:bg-white/10"
+                              }`}
+                            >
+                              {lvl.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Botão de Tela Cheia */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="hikari-mobile-fullscreen flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
+                aria-label={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+              >
+                {isFullscreen ? (
+                  <Minimize className="size-4 sm:size-4" />
+                ) : (
+                  <Maximize className="size-4 sm:size-4" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

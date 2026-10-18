@@ -168,7 +168,7 @@ function WatchPage() {
     : "";
 
   // Resolve qualquer formato de URL (HLS .m3u8, MP4, WebM, Bunny, Mux, B2, Vercel Blob)
-  // em um stream reproduzível nativamente pelo CustomVideoPlayer da NOVA STREAM
+  // em um stream reproduzível nativamente pelo reprodutor do Hikari
   function resolvePlayableStream(url: string | null | undefined): string | null {
     if (!url) return null;
     const trimmed = url.trim();

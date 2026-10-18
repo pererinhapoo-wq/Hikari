@@ -1,6 +1,6 @@
 /**
- * HikariPlayer - Re-exporta integralmente a implementação funcional do CustomVideoPlayer da NOVA STREAM.
- * Garante que qualquer referência legado ao player principal utilize exclusivamente o motor e controles da NOVA STREAM.
+ * HikariPlayer - Componente oficial do player Hikari com identidade visual recuperada
+ * e motor avançado de streaming HLS e reprodução direta.
  */
 export { CustomVideoPlayer as HikariPlayer } from "@/components/player/CustomVideoPlayer";
 export type {
