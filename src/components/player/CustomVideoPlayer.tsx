@@ -29,6 +29,21 @@ import {
 } from "lucide-react";
 import { cn, isHlsSource } from "@/lib/utils";
 
+export interface VideoItem {
+  id: string;
+  title: string;
+  url: string;
+  thumbnailUrl?: string;
+  duration?: number | string;
+  resolution?: string;
+  isLocalFile?: boolean;
+  size?: number;
+  type?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  episodeTitle?: string;
+}
+
 export interface CustomVideoPlayerQualityLevel {
   id: number;
   label: string;
@@ -37,6 +52,13 @@ export interface CustomVideoPlayerQualityLevel {
 }
 
 export interface CustomVideoPlayerProps {
+  /** Objeto de vídeo original NOVA STREAM */
+  video?: VideoItem;
+  /** Ação de fechamento / retorno da tela */
+  onClose?: () => void;
+  /** Callback para sincronização de metadados do vídeo */
+  onUpdateMetadata?: (id: string, metadata: Partial<VideoItem>) => void;
+
   /** URL do vídeo (MP4, WebM ou Manifesto HLS .m3u8) */
   src?: string | null;
   /** Imagem de capa antes do início da reprodução */
@@ -99,6 +121,9 @@ export function formatTime(secs: number): string {
 }
 
 export function CustomVideoPlayer({
+  video,
+  onClose,
+  onUpdateMetadata,
   src,
   poster,
   title,
@@ -117,6 +142,13 @@ export function CustomVideoPlayer({
   hasPrevEpisode = false,
   className,
 }: CustomVideoPlayerProps) {
+  // Normalização unificada entre a interface original NOVA STREAM e a interface Hikari
+  const activeSrc = src ?? video?.url ?? null;
+  const activePoster = poster ?? video?.thumbnailUrl;
+  const activeTitle = title ?? video?.title;
+  const activeEpisodeNumber = episodeNumber ?? video?.episodeNumber;
+  const activeEpisodeTitle = episodeTitle ?? video?.episodeTitle;
+
   // Referências aos elementos DOM e instâncias
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -125,13 +157,15 @@ export function CustomVideoPlayer({
   const lastTapRef = useRef<{ time: number; side: "left" | "right" } | null>(null);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Retomada estável de tempo inicial
+  // Retomada estável de tempo inicial: aplica apenas uma vez quando o vídeo estiver pronto
   const initialTimeRef = useRef<number>(initialTime);
   const hasAppliedInitialTimeRef = useRef<boolean>(false);
 
   useEffect(() => {
     initialTimeRef.current = initialTime;
-  }, [initialTime]);
+    // Reseta a trava apenas quando a fonte de vídeo mudar
+    hasAppliedInitialTimeRef.current = false;
+  }, [activeSrc, initialTime]);
 
   // Estados de reprodução e tempo
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -211,7 +245,7 @@ export function CustomVideoPlayer({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !src) {
+    if (!video || !activeSrc) {
       setQualityLevels([]);
       setIsHlsStream(false);
       return;
@@ -222,13 +256,13 @@ export function CustomVideoPlayer({
     hasAppliedInitialTimeRef.current = false;
 
     let hlsInstance: Hls | null = null;
-    const isHls = isHlsSource(src);
+    const isHls = isHlsSource(activeSrc);
     setIsHlsStream(isHls);
 
     if (isHls) {
       // 1. Suporte HLS Nativo (Safari / iOS)
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        video.src = src;
+        video.src = activeSrc;
         setQualityLevels([]);
       } else if (typeof window !== "undefined" && Hls.isSupported()) {
         // 2. Navegadores com suporte a Media Source Extensions (Chrome, Firefox, Edge, Android)
@@ -244,7 +278,7 @@ export function CustomVideoPlayer({
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-          hls.loadSource(src);
+          hls.loadSource(activeSrc);
         });
 
         hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
@@ -261,6 +295,16 @@ export function CustomVideoPlayer({
             setQualityLevels(levels);
           } else {
             setQualityLevels([]);
+          }
+
+          // Notificação de metadados se disponível
+          if (onUpdateMetadata && (video?.id || activeEpisodeTitle)) {
+            const bestHeight = data.levels?.[0]?.height;
+            if (bestHeight) {
+              onUpdateMetadata(video?.id ?? "current", {
+                resolution: classifyVideoResolution(bestHeight),
+              });
+            }
           }
 
           // Aplicação segura do initialTime após análise do manifesto
@@ -291,12 +335,12 @@ export function CustomVideoPlayer({
           }
         });
       } else {
-        video.src = src;
+        video.src = activeSrc;
       }
     } else {
       // Arquivo direto convencional (MP4, WebM, etc.)
       setQualityLevels([]);
-      video.src = src;
+      video.src = activeSrc;
     }
 
     return () => {
@@ -308,7 +352,7 @@ export function CustomVideoPlayer({
       video.removeAttribute("src");
       video.load();
     };
-  }, [src, onError]);
+  }, [activeSrc, onError, onUpdateMetadata, video?.id, activeEpisodeTitle]);
 
   // Atualização das métricas de diagnóstico
   useEffect(() => {
@@ -662,7 +706,7 @@ export function CustomVideoPlayer({
       {/* Elemento de Vídeo HTML5 */}
       <video
         ref={videoRef}
-        poster={poster}
+        poster={activePoster}
         autoPlay={autoPlay}
         playsInline
         preload="metadata"
@@ -689,6 +733,14 @@ export function CustomVideoPlayer({
           v.muted = isMuted;
           v.playbackRate = playbackRate;
           setIsBuffering(false);
+
+          // Sincronização opcional de metadados para compatibilidade com o padrão original
+          if (onUpdateMetadata && (video?.id || activeEpisodeTitle)) {
+            onUpdateMetadata(video?.id ?? "current", {
+              duration: v.duration,
+              resolution: classifyVideoResolution(v.videoHeight),
+            });
+          }
 
           // Retomada segura de initialTime após metadados carregados
           if (!hasAppliedInitialTimeRef.current && initialTimeRef.current > 0) {
@@ -738,11 +790,11 @@ export function CustomVideoPlayer({
             onClick={() => {
               setPlaybackError(null);
               setIsBuffering(true);
-              if (isHlsStream && hlsRef.current && src) {
-                hlsRef.current.loadSource(src);
+              if (isHlsStream && hlsRef.current && activeSrc) {
+                hlsRef.current.loadSource(activeSrc);
                 hlsRef.current.startLoad();
-              } else if (videoRef.current && src) {
-                videoRef.current.src = src;
+              } else if (videoRef.current && activeSrc) {
+                videoRef.current.src = activeSrc;
                 videoRef.current.load();
               }
             }}
@@ -828,25 +880,38 @@ export function CustomVideoPlayer({
         </div>
       )}
 
-      {/* BARRA SUPERIOR (Título, Episódio e Navegação) */}
+      {/* BARRA SUPERIOR (Voltar/Fechar, Título, Episódio e Navegação) */}
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 via-black/30 to-transparent p-4 transition-opacity duration-300 sm:p-5",
           controlsVisible ? "opacity-100" : "opacity-0",
         )}
       >
-        <div className="min-w-0 pr-4">
-          {title && (
-            <h3 className="truncate text-sm font-semibold tracking-wide text-white/95 sm:text-base">
-              {title}
-            </h3>
+        <div className="flex min-w-0 items-center pr-4">
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              title="Voltar"
+              aria-label="Voltar"
+              className="pointer-events-auto mr-3 flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:bg-white/20 hover:text-white active:scale-95 sm:size-9"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
           )}
-          {episodeTitle && (
-            <p className="truncate text-xs text-white/65">
-              {episodeNumber !== undefined ? `Episódio ${episodeNumber} · ` : ""}
-              {episodeTitle}
-            </p>
-          )}
+          <div className="min-w-0">
+            {activeTitle && (
+              <h3 className="truncate text-sm font-semibold tracking-wide text-white/95 sm:text-base">
+                {activeTitle}
+              </h3>
+            )}
+            {activeEpisodeTitle && (
+              <p className="truncate text-xs text-white/65">
+                {activeEpisodeNumber !== undefined ? `Episódio ${activeEpisodeNumber} · ` : ""}
+                {activeEpisodeTitle}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Botões Rápidos de Episódio Anterior / Próximo */}
@@ -1111,7 +1176,7 @@ export function CustomVideoPlayer({
 
                   {/* Submenu: Velocidade */}
                   {activeMenuTab === "speed" && (
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-0.5 max-h-56 overflow-y-auto custom-scrollbar">
                       <button
                         type="button"
                         onClick={() => setActiveMenuTab("main")}
@@ -1136,7 +1201,7 @@ export function CustomVideoPlayer({
 
                   {/* Submenu: Qualidade HLS */}
                   {activeMenuTab === "quality" && (
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-0.5 max-h-56 overflow-y-auto custom-scrollbar">
                       <button
                         type="button"
                         onClick={() => setActiveMenuTab("main")}

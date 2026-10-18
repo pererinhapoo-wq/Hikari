@@ -62,7 +62,6 @@ import { Route as ApiCommentsUploadImageRouteImport } from './routes/api/comment
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile/follow'
 import { Route as ApiUsersSearchRouteImport } from './routes/api/users/search'
 import { Route as ApiVcdnInitRouteImport } from './routes/api/vcdn/init'
-import { Route as SrcRoutesSettingsPlayerRouteImport } from './routes/src/routes/settings-player'
 import { Route as ApiSrcRoutesApiGifsRouteImport } from './routes/api/src/routes/api/gifs'
 import { Route as ApiSrcRoutesApiAdminCommentReportsRouteImport } from './routes/api/src/routes/api/admin/comment-reports'
 
@@ -331,11 +330,6 @@ const ApiVcdnInitRoute = ApiVcdnInitRouteImport.update({
   path: '/api/vcdn/init',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SrcRoutesSettingsPlayerRoute = SrcRoutesSettingsPlayerRouteImport.update({
-  id: '/src/routes/settings-player',
-  path: '/src/routes/settings-player',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiSrcRoutesApiGifsRoute = ApiSrcRoutesApiGifsRouteImport.update({
   id: '/api/src/routes/api/gifs',
   path: '/api/src/routes/api/gifs',
@@ -401,7 +395,6 @@ export interface FileRoutesByFullPath {
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/users/search': typeof ApiUsersSearchRoute
   '/api/vcdn/init': typeof ApiVcdnInitRoute
-  '/src/routes/settings-player': typeof SrcRoutesSettingsPlayerRoute
   '/api/comments/': typeof ApiCommentsIndexRoute
   '/api/src/routes/api/gifs': typeof ApiSrcRoutesApiGifsRoute
   '/api/src/routes/api/admin/comment-reports': typeof ApiSrcRoutesApiAdminCommentReportsRoute
@@ -457,7 +450,6 @@ export interface FileRoutesByTo {
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/users/search': typeof ApiUsersSearchRoute
   '/api/vcdn/init': typeof ApiVcdnInitRoute
-  '/src/routes/settings-player': typeof SrcRoutesSettingsPlayerRoute
   '/api/comments': typeof ApiCommentsIndexRoute
   '/api/src/routes/api/gifs': typeof ApiSrcRoutesApiGifsRoute
   '/api/src/routes/api/admin/comment-reports': typeof ApiSrcRoutesApiAdminCommentReportsRoute
@@ -516,7 +508,6 @@ export interface FileRoutesById {
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/users/search': typeof ApiUsersSearchRoute
   '/api/vcdn/init': typeof ApiVcdnInitRoute
-  '/src/routes/settings-player': typeof SrcRoutesSettingsPlayerRoute
   '/api/comments/': typeof ApiCommentsIndexRoute
   '/api/src/routes/api/gifs': typeof ApiSrcRoutesApiGifsRoute
   '/api/src/routes/api/admin/comment-reports': typeof ApiSrcRoutesApiAdminCommentReportsRoute
@@ -576,7 +567,6 @@ export interface FileRouteTypes {
     | '/api/profile/follow'
     | '/api/users/search'
     | '/api/vcdn/init'
-    | '/src/routes/settings-player'
     | '/api/comments/'
     | '/api/src/routes/api/gifs'
     | '/api/src/routes/api/admin/comment-reports'
@@ -632,7 +622,6 @@ export interface FileRouteTypes {
     | '/api/profile/follow'
     | '/api/users/search'
     | '/api/vcdn/init'
-    | '/src/routes/settings-player'
     | '/api/comments'
     | '/api/src/routes/api/gifs'
     | '/api/src/routes/api/admin/comment-reports'
@@ -690,7 +679,6 @@ export interface FileRouteTypes {
     | '/api/profile/follow'
     | '/api/users/search'
     | '/api/vcdn/init'
-    | '/src/routes/settings-player'
     | '/api/comments/'
     | '/api/src/routes/api/gifs'
     | '/api/src/routes/api/admin/comment-reports'
@@ -741,7 +729,6 @@ export interface RootRouteChildren {
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
   ApiUsersSearchRoute: typeof ApiUsersSearchRoute
   ApiVcdnInitRoute: typeof ApiVcdnInitRoute
-  SrcRoutesSettingsPlayerRoute: typeof SrcRoutesSettingsPlayerRoute
   ApiCommentsIndexRoute: typeof ApiCommentsIndexRoute
   ApiSrcRoutesApiGifsRoute: typeof ApiSrcRoutesApiGifsRoute
   ApiSrcRoutesApiAdminCommentReportsRoute: typeof ApiSrcRoutesApiAdminCommentReportsRoute
@@ -1120,13 +1107,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiVcdnInitRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/src/routes/settings-player': {
-      id: '/src/routes/settings-player'
-      path: '/src/routes/settings-player'
-      fullPath: '/src/routes/settings-player'
-      preLoaderRoute: typeof SrcRoutesSettingsPlayerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/src/routes/api/gifs': {
       id: '/api/src/routes/api/gifs'
       path: '/api/src/routes/api/gifs'
@@ -1221,7 +1201,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiProfileFollowRoute: ApiProfileFollowRoute,
   ApiUsersSearchRoute: ApiUsersSearchRoute,
   ApiVcdnInitRoute: ApiVcdnInitRoute,
-  SrcRoutesSettingsPlayerRoute: SrcRoutesSettingsPlayerRoute,
   ApiCommentsIndexRoute: ApiCommentsIndexRoute,
   ApiSrcRoutesApiGifsRoute: ApiSrcRoutesApiGifsRoute,
   ApiSrcRoutesApiAdminCommentReportsRoute:

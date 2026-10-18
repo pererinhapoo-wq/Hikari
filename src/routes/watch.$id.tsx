@@ -27,6 +27,10 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { CustomVideoPlayer } from "@/components/player/CustomVideoPlayer";
+import {
+  NovaStreamPlayer,
+  type VideoItem,
+} from "@/components/player/NovaStreamPlayer";
 import { fetchAnimeDetail } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import {
@@ -220,11 +224,14 @@ function WatchPage() {
 
   const [playerIndex, setPlayerIndex] =
     useState(0);
+  const [isNovaStreamSelected, setIsNovaStreamSelected] =
+    useState(false);
   const [episodesOpen, setEpisodesOpen] =
     useState(false);
 
   useEffect(() => {
     setPlayerIndex(0);
+    setIsNovaStreamSelected(false);
   }, [current?.id, playerSources]);
 
   // Preferência de reprodução automática configurada pelo usuário no Hikari
@@ -316,6 +323,22 @@ function WatchPage() {
 
   const selectedPlayer = playerSources[playerIndex];
   const playUrl = selectedPlayer?.url ?? "";
+  const file = playUrl || null;
+
+  // Criação do objeto VideoItem original da NOVA STREAM com dados reais do Hikari
+  const currentVideoItem = useMemo((): VideoItem | undefined => {
+    if (!current || !file) return undefined;
+    return {
+      id: current.id,
+      title: title,
+      url: file,
+      thumbnailUrl: current.thumbnail || anime?.cover || undefined,
+      episodeNumber: current.number,
+      episodeTitle: current.title,
+      duration: current.duration,
+      isLocalFile: false,
+    };
+  }, [current, file, title, anime?.cover]);
 
   if (!anime && !hydrated) {
     return null;
@@ -341,9 +364,6 @@ function WatchPage() {
     !playUrl && anime.trailerId
       ? youtubeIdFrom(anime.trailerId)
       : youtubeIdFrom(playUrl);
-
-  // Todas as fontes em playerSources são reproduzidas diretamente pelo CustomVideoPlayer da NOVA STREAM
-  const file = playUrl || null;
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
@@ -403,15 +423,33 @@ function WatchPage() {
                 size="sm"
                 variant="outline"
                 className={
-                  playerIndex === index
+                  !isNovaStreamSelected && playerIndex === index
                     ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
                     : "rounded-xl border-white/10 bg-white/[0.03] px-5 text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
                 }
-                onClick={() => setPlayerIndex(index)}
+                onClick={() => {
+                  setIsNovaStreamSelected(false);
+                  setPlayerIndex(index);
+                }}
               >
                 {source.name}
               </Button>
             ))}
+
+            {/* Opção experimental: Player 5 — NOVA STREAM */}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={
+                isNovaStreamSelected
+                  ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
+                  : "rounded-xl border-purple-500/30 bg-purple-500/10 px-5 text-purple-300 hover:border-purple-500/50 hover:bg-purple-500/20 hover:text-white"
+              }
+              onClick={() => setIsNovaStreamSelected(true)}
+            >
+              Player 5 — NOVA STREAM
+            </Button>
           </div>
         )}
 
@@ -420,22 +458,47 @@ function WatchPage() {
         {/* ================================================== */}
 
         {file ? (
-          <CustomVideoPlayer
-            key={file}
-            src={file}
-            poster={current?.thumbnail || anime.cover || undefined}
-            title={title}
-            episodeNumber={current?.number}
-            episodeTitle={current?.title}
-            autoPlay={userAutoplay}
-            initialTime={savedInitialTime}
-            onTimeUpdate={handleTimeUpdate}
-            onEnded={handleEnded}
-            hasNextEpisode={Boolean(next)}
-            hasPrevEpisode={Boolean(prev)}
-            onNextEpisode={handleNextEpisode}
-            onPrevEpisode={handlePrevEpisode}
-          />
+          isNovaStreamSelected && currentVideoItem ? (
+            <NovaStreamPlayer
+              key={`novastream-${file}`}
+              video={currentVideoItem}
+              autoPlay={userAutoplay}
+              initialTime={savedInitialTime}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={handleEnded}
+              hasNextEpisode={Boolean(next)}
+              hasPrevEpisode={Boolean(prev)}
+              onNextEpisode={handleNextEpisode}
+              onPrevEpisode={handlePrevEpisode}
+              onClose={() => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  void navigate({
+                    to: "/anime/$id",
+                    params: { id: anime.id },
+                  });
+                }
+              }}
+            />
+          ) : (
+            <CustomVideoPlayer
+              key={file}
+              src={file}
+              poster={current?.thumbnail || anime.cover || undefined}
+              title={title}
+              episodeNumber={current?.number}
+              episodeTitle={current?.title}
+              autoPlay={userAutoplay}
+              initialTime={savedInitialTime}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={handleEnded}
+              hasNextEpisode={Boolean(next)}
+              hasPrevEpisode={Boolean(prev)}
+              onNextEpisode={handleNextEpisode}
+              onPrevEpisode={handlePrevEpisode}
+            />
+          )
         ) : yt ? (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
             <iframe
