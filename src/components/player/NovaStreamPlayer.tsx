@@ -117,7 +117,7 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
     return cleanUrl.endsWith('.m3u8') || url.includes('.m3u8') || url.includes('/hls/');
   }, []);
 
-  // Sincronizar resolução inicial e limpar dimensões ao alternar de vídeo
+  // Sincronizar resolução inicial e limpar erros/dimensões ao alternar de vídeo ou URL
   useEffect(() => {
     setDetectedResolution(video.resolution || 'N/D');
     setVideoDimensions(null);
@@ -126,11 +126,12 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
     setEffectiveHlsLevel(-1);
     setIsLevelSwitchPending(false);
     initialTimeAppliedRef.current = false;
+    setVideoError(null);
     if (switchTimeoutRef.current) {
       clearTimeout(switchTimeoutRef.current);
       switchTimeoutRef.current = null;
     }
-  }, [video.id, video.resolution]);
+  }, [video.id, video.resolution, effectiveVideoUrl]);
 
   // Resolução efetiva para exibição honesta
   const displayResolution: VideoResolution =
@@ -171,9 +172,33 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
   // Inicialização do pipeline de decodificação: Hls.js ou HTML5 Direto
   useEffect(() => {
     const videoEl = videoRef.current;
-    if (!videoEl || !effectiveVideoUrl) return;
+    if (!videoEl) return;
 
-    // Destrói instância Hls anterior se houver
+    // Se a URL estiver vazia, reseta e aguarda
+    if (!effectiveVideoUrl) {
+      setVideoError(null);
+      return;
+    }
+
+    // Se for URL de catálogo / streaming externa que não seja arquivo de vídeo direto
+    const trimmedUrl = effectiveVideoUrl.trim().toLowerCase();
+    if (
+      trimmedUrl.includes('crunchyroll.com') ||
+      trimmedUrl.includes('netflix.com') ||
+      trimmedUrl.includes('youtube.com/watch') ||
+      trimmedUrl.includes('youtu.be/') ||
+      trimmedUrl.includes('funimation.com') ||
+      trimmedUrl.includes('hidive.com') ||
+      trimmedUrl.includes('animesonline') ||
+      trimmedUrl.includes('betteranime')
+    ) {
+      setVideoError(
+        'Esta URL é uma página externa de streaming e não pode ser reproduzida diretamente no player. Forneça uma URL direta de vídeo ou playlist HLS.'
+      );
+      return;
+    }
+
+    // Destrói instância Hls anterior se houver e reseta erros
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
@@ -187,6 +212,11 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
     videoEl.addEventListener('resize', handleVideoResize);
 
     if (isHls && Hls.isSupported()) {
+      // Remove qualquer src direto do elemento <video> para impedir
+      // que o decodificador nativo tente processar a playlist HLS (.m3u8)
+      videoEl.removeAttribute('src');
+      videoEl.load();
+
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
@@ -194,10 +224,14 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
         capLevelToPlayerSize: false,
       });
       hlsRef.current = hls;
-      hls.loadSource(effectiveVideoUrl);
+
       hls.attachMedia(videoEl);
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+        hls.loadSource(effectiveVideoUrl);
+      });
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        setVideoError(null);
         const parsedLevels: StreamQualityOption[] = [
           {
             levelIndex: -1,
@@ -240,6 +274,12 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
         setRequestedHlsLevel(-1);
         setEffectiveHlsLevel(-1);
         setIsLevelSwitchPending(false);
+
+        if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
+          initialTimeAppliedRef.current = true;
+          videoEl.currentTime = initialTime;
+          setCurrentTime(initialTime);
+        }
 
         if (autoPlay) {
           videoEl.play().catch((err) => {
@@ -319,31 +359,31 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
           }
         }
       });
-
-      return () => {
-        videoEl.removeEventListener('resize', handleVideoResize);
-        if (switchTimeoutRef.current) {
-          clearTimeout(switchTimeoutRef.current);
-          switchTimeoutRef.current = null;
-        }
-        if (hlsRef.current) {
-          hlsRef.current.destroy();
-          hlsRef.current = null;
-        }
-      };
     } else if (isHls && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari / iOS suporte nativo a HLS
       videoEl.src = effectiveVideoUrl;
+      videoEl.load();
       setIsHlsActive(true);
       setAvailableLevels([{ levelIndex: -1, label: 'Automático (Nativo)', resolution: 'Auto' }]);
+      if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
+        initialTimeAppliedRef.current = true;
+        videoEl.currentTime = initialTime;
+        setCurrentTime(initialTime);
+      }
       if (autoPlay) {
         videoEl.play().catch(() => setIsPlaying(false));
       }
     } else {
-      // Fonte direta MP4, WebM ou Blob local
+      // Fonte direta MP4, WebM ou Blob local (Vercel Blob, etc.)
       videoEl.src = effectiveVideoUrl;
+      videoEl.load();
       setIsHlsActive(false);
       setAvailableLevels([]);
+      if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
+        initialTimeAppliedRef.current = true;
+        videoEl.currentTime = initialTime;
+        setCurrentTime(initialTime);
+      }
       if (autoPlay) {
         videoEl.play().catch((err) => {
           console.warn('Auto-play restrito pelo navegador:', err);
@@ -354,12 +394,16 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
 
     return () => {
       videoEl.removeEventListener('resize', handleVideoResize);
+      if (switchTimeoutRef.current) {
+        clearTimeout(switchTimeoutRef.current);
+        switchTimeoutRef.current = null;
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
     };
-  }, [effectiveVideoUrl, autoPlay, isHlsUrl, handleVideoResize]);
+  }, [effectiveVideoUrl, autoPlay, isHlsUrl, handleVideoResize, initialTime]);
 
   const formatTime = (secs: number) => {
     if (isNaN(secs) || secs < 0) return '00:00';
@@ -671,10 +715,8 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
       {/* Elemento de Vídeo HTML5 com suporte a HLS.js adaptativo e decodificação nativa */}
       <video
         ref={videoRef}
-        src={isHlsActive && Hls.isSupported() ? undefined : effectiveVideoUrl}
         poster={effectivePoster}
         playsInline
-        autoPlay={autoPlay}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onResize={handleVideoResize}
@@ -682,13 +724,17 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
         onPause={() => setIsPlaying(false)}
         onEnded={onEnded}
         onError={() => {
+          // Erros de stream HLS são gerenciados com resiliência pelo Hls.js
+          if (isHlsUrl(effectiveVideoUrl) || hlsRef.current) {
+            return;
+          }
           if (video.isLocalFile) {
             setVideoError(
               'O navegador não conseguiu decodificar o arquivo de vídeo selecionado. Verifique se o formato (MP4, WebM) e codec (H.264/AAC) são suportados nativamente pelo seu navegador.'
             );
           } else {
             setVideoError(
-              'Não foi possível carregar a fonte de vídeo remota de teste. A arquitetura de reprodução permanece ativa.'
+              'Não foi possível carregar a fonte de vídeo remota. Verifique a URL do vídeo ou selecione outro player.'
             );
           }
         }}
@@ -749,7 +795,7 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
           )}
           <div className="truncate">
             <div className="flex items-center gap-2 text-xs text-indigo-400 font-medium">
-              <span>{video.isLocalFile ? 'Arquivo Local' : 'Player 5 · NOVA STREAM'}</span>
+              <span>{video.playerLabel || (video.isLocalFile ? 'Arquivo Local' : 'Player')}</span>
               <span aria-hidden="true">·</span>
               <span className="text-slate-400">{displayResolution !== 'N/D' ? displayResolution : video.resolution}</span>
               {isHlsActive && (

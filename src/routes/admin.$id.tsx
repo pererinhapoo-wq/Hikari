@@ -728,6 +728,28 @@ function AdminEditor() {
                     </Field>
 
                     <Field
+                      label="Player 5 — URL do vídeo"
+                      className="sm:col-span-4"
+                    >
+                      <div className="flex gap-2">
+                        <Input
+                          value={ep.videoUrl5 ?? ""}
+                          onChange={(e) =>
+                            patchEpisode(
+                              season.id,
+                              ep.id,
+                              {
+                                videoUrl5:
+                                  e.target.value,
+                              },
+                            )
+                          }
+                          placeholder="URL do vídeo (HLS / MP4)"
+                        />
+                      </div>
+                    </Field>
+
+                    <Field
                       label="Thumb"
                       className="sm:col-span-11"
                     >

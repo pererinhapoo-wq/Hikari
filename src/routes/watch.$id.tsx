@@ -199,40 +199,105 @@ function WatchPage() {
     return trimmed;
   }
 
-  // Mapeamento integral dos 4 slots de vídeo suportados pelo Hikari para a NOVA STREAM
+  // Verifica se uma URL é um arquivo/stream de mídia reproduzível e descarta páginas web externas
+  function isPlayableMediaUrl(url: string | null | undefined): boolean {
+    if (!url) return false;
+    const trimmed = url.trim().toLowerCase();
+    if (!trimmed) return false;
+
+    // Páginas externas de streaming / catálogo que não são arquivos de vídeo diretos
+    if (
+      trimmed.includes("crunchyroll.com") ||
+      trimmed.includes("funimation.com") ||
+      trimmed.includes("vrv.co") ||
+      trimmed.includes("netflix.com") ||
+      trimmed.includes("hidive.com") ||
+      trimmed.includes("youtube.com/watch") ||
+      trimmed.includes("youtu.be/") ||
+      trimmed.includes("vimeo.com/")
+    ) {
+      return false;
+    }
+
+    // Embeds / IDs suportados pelo resolver (Mux e Bunny)
+    if (trimmed.includes("player.mux.com/") || (/^[a-zA-Z0-9_-]{20,50}$/.test(url.trim()) && !trimmed.includes("/") && !trimmed.includes("."))) {
+      return true;
+    }
+    if (trimmed.includes("player.mediadelivery.net/embed/")) {
+      return true;
+    }
+
+    // Extensões de vídeo e playlists HLS/DASH
+    const cleanPath = trimmed.split("?")[0].split("#")[0];
+    if (
+      cleanPath.endsWith(".m3u8") ||
+      cleanPath.endsWith(".mp4") ||
+      cleanPath.endsWith(".webm") ||
+      cleanPath.endsWith(".mkv") ||
+      cleanPath.endsWith(".mov") ||
+      cleanPath.endsWith(".ogg") ||
+      cleanPath.endsWith(".mpd")
+    ) {
+      return true;
+    }
+
+    // Storages e CDNs de mídia reconhecidos (Vercel Blob, Bunny, Mux, B2, S3, Cloudinary, etc.)
+    if (
+      trimmed.startsWith("blob:") ||
+      trimmed.includes("vercel-storage.com") ||
+      trimmed.includes("b-cdn.net") ||
+      trimmed.includes("stream.mux.com") ||
+      trimmed.includes("backblazeb2.com") ||
+      trimmed.includes("cloudinary.com") ||
+      trimmed.includes("amazonaws.com") ||
+      trimmed.includes("r2.cloudflarestorage.com") ||
+      trimmed.includes("storage.googleapis.com") ||
+      trimmed.includes("/hls/") ||
+      trimmed.includes("/m3u8/")
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  type PlayerSourceEntry = {
+    id: "player-1" | "player-2" | "player-3" | "player-4" | "player-5";
+    url: string;
+    name: string;
+  };
+
+  // Mapeamento dinâmico: exibe exclusivamente os players com URLs válidas e configuradas
   const playerSources = useMemo(() => {
     if (!current) return [];
-    const list: Array<{ url: string; name: string }> = [];
+    const list: PlayerSourceEntry[] = [];
 
     const candidates = [
-      { raw: current.videoUrl, defaultName: "Player 1" },
-      { raw: current.videoUrl2, defaultName: "Player 2" },
-      { raw: current.videoUrl3, defaultName: "Player 3" },
-      { raw: current.videoUrl4, defaultName: "Player 4" },
+      { id: "player-1" as const, raw: current.videoUrl, defaultName: "Player 1" },
+      { id: "player-2" as const, raw: current.videoUrl2, defaultName: "Player 2" },
+      { id: "player-3" as const, raw: current.videoUrl3, defaultName: "Player 3" },
+      { id: "player-4" as const, raw: current.videoUrl4, defaultName: "Player 4" },
+      { id: "player-5" as const, raw: current.videoUrl5, defaultName: "Player 5" },
     ];
 
     candidates.forEach((c) => {
       if (!c.raw) return;
+      if (!isPlayableMediaUrl(c.raw)) return; // Ignora páginas externas e links inválidos
       const resolved = resolvePlayableStream(c.raw);
       if (resolved) {
-        list.push({ url: resolved, name: c.defaultName });
+        list.push({ id: c.id, url: resolved, name: c.defaultName });
       }
     });
 
     return list;
   }, [current]);
 
-  const [playerIndex, setPlayerIndex] =
-    useState(0);
-  const [isNovaStreamSelected, setIsNovaStreamSelected] =
-    useState(false);
-  const [episodesOpen, setEpisodesOpen] =
-    useState(false);
+  const [playerIndex, setPlayerIndex] = useState(0);
+  const [episodesOpen, setEpisodesOpen] = useState(false);
 
   useEffect(() => {
     setPlayerIndex(0);
-    setIsNovaStreamSelected(false);
-  }, [current?.id, playerSources]);
+  }, [current?.id, playerSources.length]);
 
   // Preferência de reprodução automática configurada pelo usuário no Hikari
   const userAutoplay = useMemo(() => {
@@ -272,7 +337,9 @@ function WatchPage() {
       if (time / totalDuration > 0.95) {
         try {
           localStorage.removeItem(progressStorageKey);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
         return;
       }
 
@@ -284,7 +351,9 @@ function WatchPage() {
             progressStorageKey,
             String(Math.floor(time)),
           );
-        } catch {}
+        } catch (err) {
+          void err;
+        }
       }
     },
     [progressStorageKey],
@@ -316,7 +385,9 @@ function WatchPage() {
     if (progressStorageKey) {
       try {
         localStorage.removeItem(progressStorageKey);
-      } catch {}
+      } catch (err) {
+        void err;
+      }
     }
     handleNextEpisode();
   }, [progressStorageKey, handleNextEpisode]);
@@ -376,6 +447,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
       thumbnailUrl: current.thumbnail || anime?.cover || undefined,
       episodeNumber: current.number,
       episodeTitle: current.title,
+      playerLabel: selectedPlayer?.name || "Player 1",
       isDemo: false,
       isLocalFile: false,
       createdAt: new Date().toISOString(),
@@ -386,7 +458,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         { id: "sub-en", lang: "en", label: "Inglês (Original)" },
       ],
     };
-  }, [current, file, title, anime?.cover, anime?.synopsis]);
+  }, [current, file, title, anime?.cover, anime?.synopsis, selectedPlayer?.name]);
 
   if (!anime && !hydrated) {
     return null;
@@ -466,38 +538,22 @@ function parseDurationToSeconds(raw?: string | number | null): number {
           <div className="mb-3 flex flex-wrap gap-2">
             {playerSources.map((source, index) => (
               <Button
-                key={`${source.name}-${index}`}
+                key={`${source.id}-${index}`}
                 type="button"
                 size="sm"
                 variant="outline"
                 className={
-                  !isNovaStreamSelected && playerIndex === index
+                  playerIndex === index
                     ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
                     : "rounded-xl border-white/10 bg-white/[0.03] px-5 text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
                 }
                 onClick={() => {
-                  setIsNovaStreamSelected(false);
                   setPlayerIndex(index);
                 }}
               >
                 {source.name}
               </Button>
             ))}
-
-            {/* Opção experimental: Player 5 — NOVA STREAM */}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className={
-                isNovaStreamSelected
-                  ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
-                  : "rounded-xl border-purple-500/30 bg-purple-500/10 px-5 text-purple-300 hover:border-purple-500/50 hover:bg-purple-500/20 hover:text-white"
-              }
-              onClick={() => setIsNovaStreamSelected(true)}
-            >
-              Player 5 — NOVA STREAM
-            </Button>
           </div>
         )}
 
@@ -505,22 +561,10 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* PLAYER */}
         {/* ================================================== */}
 
-        {file ? (
-          isNovaStreamSelected && currentVideoItem ? (
+        {file && selectedPlayer ? (
+          (selectedPlayer.id === "player-1" || selectedPlayer.id === "player-5") && currentVideoItem ? (
             <NovaStreamPlayer
-              key={`novastream-${file}`}
-              video={currentVideoItem}
-              autoPlay={userAutoplay}
-              initialTime={savedInitialTime}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={handleEnded}
-              onClose={() => {
-                setIsNovaStreamSelected(false);
-              }}
-            />
-          ) : playerIndex === 0 && currentVideoItem ? (
-            <NovaStreamPlayer
-              key={`player1-${file}`}
+              key={`${selectedPlayer.id}-${file}`}
               video={currentVideoItem}
               autoPlay={userAutoplay}
               initialTime={savedInitialTime}

@@ -51,7 +51,9 @@ function SettingsPlayer() {
       try {
         localStorage.setItem("hikari-player-autoplay", String(next));
         localStorage.setItem("nova_player_autoplay", String(next));
-      } catch {}
+      } catch (err) {
+        void err;
+      }
       return next;
     });
   }
@@ -60,7 +62,9 @@ function SettingsPlayer() {
     setPlaybackRate(speed);
     try {
       localStorage.setItem("nova_player_playback_rate", String(speed));
-    } catch {}
+    } catch (err) {
+      void err;
+    }
     setSpeedOpen(false);
   }
 
@@ -68,7 +72,9 @@ function SettingsPlayer() {
     setQualityPref(pref);
     try {
       localStorage.setItem("nova_player_quality_preference", pref);
-    } catch {}
+    } catch (err) {
+      void err;
+    }
     setQualityOpen(false);
   }
 
