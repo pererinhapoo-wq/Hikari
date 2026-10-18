@@ -26,11 +26,10 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
-import { CustomVideoPlayer } from "@/components/player/CustomVideoPlayer";
 import {
-  NovaStreamPlayer,
+  CustomVideoPlayer,
   type VideoItem,
-} from "@/components/player/NovaStreamPlayer";
+} from "@/components/player/CustomVideoPlayer";
 import { fetchAnimeDetail } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import {
@@ -422,8 +421,8 @@ function parseDurationToSeconds(raw?: string | number | null): number {
   return 0;
 }
 
-  // Criação do objeto VideoItem original da NOVA STREAM com dados reais do Hikari
-  const currentVideoItem = useMemo((): VideoItem | undefined => {
+  // Criação do objeto VideoItem compatível com o Hikari
+  const _currentVideoItem = useMemo((): VideoItem | undefined => {
     if (!current || !file) return undefined;
     const initialDuration = parseDurationToSeconds(current.duration);
     const episodeTitleStr = current.number
@@ -562,33 +561,22 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* ================================================== */}
 
         {file && selectedPlayer ? (
-          (selectedPlayer.id === "player-1" || selectedPlayer.id === "player-5") && currentVideoItem ? (
-            <NovaStreamPlayer
-              key={`${selectedPlayer.id}-${file}`}
-              video={currentVideoItem}
-              autoPlay={userAutoplay}
-              initialTime={savedInitialTime}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={handleEnded}
-            />
-          ) : (
-            <CustomVideoPlayer
-              key={file}
-              src={file}
-              poster={current?.thumbnail || anime.cover || undefined}
-              title={title}
-              episodeNumber={current?.number}
-              episodeTitle={current?.title}
-              autoPlay={userAutoplay}
-              initialTime={savedInitialTime}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={handleEnded}
-              hasNextEpisode={Boolean(next)}
-              hasPrevEpisode={Boolean(prev)}
-              onNextEpisode={handleNextEpisode}
-              onPrevEpisode={handlePrevEpisode}
-            />
-          )
+          <CustomVideoPlayer
+            key={`${selectedPlayer.id}-${file}`}
+            src={file}
+            poster={current?.thumbnail || anime.cover || undefined}
+            title={title}
+            episodeNumber={current?.number}
+            episodeTitle={current?.title}
+            autoPlay={userAutoplay}
+            initialTime={savedInitialTime}
+            onTimeUpdate={handleTimeUpdate}
+            onEnded={handleEnded}
+            hasNextEpisode={Boolean(next)}
+            hasPrevEpisode={Boolean(prev)}
+            onNextEpisode={handleNextEpisode}
+            onPrevEpisode={handlePrevEpisode}
+          />
         ) : yt ? (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
             <iframe
