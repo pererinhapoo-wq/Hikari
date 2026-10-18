@@ -11,8 +11,10 @@ import {
   RotateCcw,
   RotateCw,
   Settings,
-  Subtitles,
   Gauge,
+  Sliders,
+  ChevronRight,
+  ChevronLeft,
   Info,
   X,
   ShieldCheck,
@@ -93,7 +95,6 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
   const [selectedQuality, setSelectedQuality] = useState<QualityLevel>('auto');
-  const [activeSubtitle, setActiveSubtitle] = useState<string>('pt');
 
   // Resolução e dimensões detectadas em tempo de execução
   const [detectedResolution, setDetectedResolution] = useState<VideoResolution>(
@@ -147,8 +148,7 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
   const [hoverTime, setHoverTime] = useState(0);
   const [hoverPosition, setHoverPosition] = useState(0);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'main' | 'speed' | 'quality'>('main');
   const [showTechInfo, setShowTechInfo] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -419,11 +419,11 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
       clearTimeout(controlsTimeoutRef.current);
     }
     controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlaying && !showSettingsMenu && !showSpeedMenu && !showSubtitleMenu && !showTechInfo) {
+      if (isPlaying && !showSettingsMenu && !showTechInfo) {
         setControlsVisible(false);
       }
     }, 3500);
-  }, [isPlaying, showSettingsMenu, showSpeedMenu, showSubtitleMenu, showTechInfo]);
+  }, [isPlaying, showSettingsMenu, showTechInfo]);
 
   // Controle de Play/Pause
   const togglePlay = useCallback(() => {
@@ -586,7 +586,6 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
     if (videoRef.current) {
       videoRef.current.playbackRate = speed;
     }
-    setShowSpeedMenu(false);
   };
 
   // Alterar seleção visual de qualidade (e sincronizar com HLS se a stream for adaptativa)
@@ -694,8 +693,6 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
       const target = e.target as HTMLElement;
       if (!target.closest('.player-menu-trigger') && !target.closest('.player-menu-content')) {
         setShowSettingsMenu(false);
-        setShowSpeedMenu(false);
-        setShowSubtitleMenu(false);
       }
     };
     document.addEventListener('click', handleClickOutside);
@@ -765,73 +762,23 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
         </div>
       )}
 
-      {/* Exibição simulada de Legenda na tela */}
-      {activeSubtitle !== 'none' && isPlaying && currentTime > 2 && currentTime < duration - 2 && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none px-4 py-1.5 bg-black/75 rounded text-center max-w-lg z-20">
-          <p className="text-sm md:text-base font-medium text-white drop-shadow">
-            {activeSubtitle === 'pt'
-              ? 'Áudio Original · Legendas em Português (Brasil)'
-              : 'Original Audio · Subtitles in English'}
-          </p>
-        </div>
-      )}
-
-      {/* Barra superior de informações e fechar */}
-      <div
-        className={`absolute top-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-b from-black/80 via-black/40 to-transparent transition-opacity duration-300 z-30 flex items-center justify-between ${
-          controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        <div className="flex items-center gap-3 max-w-[70%]">
-          {onClose && (
-            <button
-              onClick={onClose}
-              aria-label="Voltar para o player padrão"
-              title="Voltar para o player padrão"
-              className="w-9 h-9 rounded-full bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white flex items-center justify-center transition-colors border border-slate-700/50 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-          <div className="truncate">
-            <div className="flex items-center gap-2 text-xs text-indigo-400 font-medium">
-              <span>{video.playerLabel || (video.isLocalFile ? 'Arquivo Local' : 'Player')}</span>
-              <span aria-hidden="true">·</span>
-              <span className="text-slate-400">{displayResolution !== 'N/D' ? displayResolution : video.resolution}</span>
-              {isHlsActive && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono border border-indigo-500/30">
-                    <Radio className="w-3 h-3 text-indigo-400 animate-pulse" />
-                    HLS ABR
-                  </span>
-                </>
-              )}
-            </div>
-            <h2 className="text-sm md:text-base font-bold text-white truncate">{video.title}</h2>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Botão de Informações Técnicas */}
+      {/* Barra superior (botão fechar se fornecido) */}
+      {onClose && (
+        <div
+          className={`absolute top-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-b from-black/80 via-black/40 to-transparent transition-opacity duration-300 z-30 flex items-center justify-between ${
+            controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
           <button
-            onClick={() => setShowTechInfo(!showTechInfo)}
-            aria-label="Informações técnicas de reprodução"
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border cursor-pointer ${
-              showTechInfo
-                ? 'bg-indigo-600 text-white border-indigo-500'
-                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-700/50'
-            }`}
+            onClick={onClose}
+            aria-label="Voltar para o player padrão"
+            title="Voltar para o player padrão"
+            className="w-9 h-9 rounded-full bg-slate-900/80 hover:bg-slate-800 text-slate-200 hover:text-white flex items-center justify-center transition-colors border border-slate-700/50 cursor-pointer"
           >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span className="hidden sm:inline">
-              {isHlsActive
-                ? 'Informações HLS & ABR'
-                : 'Informações Técnicas'}
-            </span>
+            <X className="w-5 h-5" />
           </button>
         </div>
-      </div>
+      )}
 
       {/* Painel Flutuante de Informações Técnicas e Codec */}
       {showTechInfo && (
@@ -1055,172 +1002,157 @@ export const NovaStreamPlayer: React.FC<NovaStreamPlayerProps> = ({
             </div>
           </div>
 
-          {/* Lado Direito: Velocidade, Legendas, Resolução, Fullscreen */}
+          {/* Lado Direito: Configurações e Fullscreen */}
           <div className="flex items-center gap-1 sm:gap-2">
-            {/* Menu de Velocidade */}
+            {/* Menu Popover de Configurações (Velocidade e Qualidade integradas) */}
             <div className="relative">
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowSpeedMenu(!showSpeedMenu);
-                  setShowSettingsMenu(false);
-                  setShowSubtitleMenu(false);
-                }}
-                className="player-menu-trigger h-9 px-2 sm:px-2.5 flex items-center gap-1 text-xs font-medium hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-                title="Velocidade de reprodução"
-              >
-                <Gauge className="w-4 h-4 text-slate-400" />
-                <span>{playbackSpeed}x</span>
-              </button>
-              {showSpeedMenu && (
-                <div className="player-menu-content absolute bottom-12 right-0 w-36 bg-[#12131A] border border-slate-800 rounded-xl p-1.5 shadow-2xl z-40">
-                  <div className="px-2.5 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Velocidade
-                  </div>
-                  {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((spd) => (
-                    <button
-                      key={spd}
-                      onClick={() => changeSpeed(spd)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-md transition-colors cursor-pointer ${
-                        playbackSpeed === spd
-                          ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
-                          : 'text-slate-300 hover:bg-slate-800'
-                      }`}
-                    >
-                      <span>{spd === 1 ? '1x (Normal)' : `${spd}x`}</span>
-                      {playbackSpeed === spd && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Menu de Legendas */}
-            <div className="relative">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowSubtitleMenu(!showSubtitleMenu);
-                  setShowSpeedMenu(false);
-                  setShowSettingsMenu(false);
-                }}
-                className={`player-menu-trigger w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors cursor-pointer ${
-                  activeSubtitle !== 'none' ? 'text-indigo-400' : 'text-slate-300 hover:text-white'
-                }`}
-                title="Legendas"
-              >
-                <Subtitles className="w-4 h-4" />
-              </button>
-              {showSubtitleMenu && (
-                <div className="player-menu-content absolute bottom-12 right-0 w-44 bg-[#12131A] border border-slate-800 rounded-xl p-1.5 shadow-2xl z-40">
-                  <div className="px-2.5 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Legendas
-                  </div>
-                  <button
-                    onClick={() => {
-                      setActiveSubtitle('none');
-                      setShowSubtitleMenu(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-md transition-colors cursor-pointer ${
-                      activeSubtitle === 'none'
-                        ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
-                        : 'text-slate-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span>Desativadas</span>
-                    {activeSubtitle === 'none' && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveSubtitle('pt');
-                      setShowSubtitleMenu(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-md transition-colors cursor-pointer ${
-                      activeSubtitle === 'pt'
-                        ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
-                        : 'text-slate-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span>Português (Brasil)</span>
-                    {activeSubtitle === 'pt' && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveSubtitle('en');
-                      setShowSubtitleMenu(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-md transition-colors cursor-pointer ${
-                      activeSubtitle === 'en'
-                        ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
-                        : 'text-slate-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span>Inglês (Original)</span>
-                    {activeSubtitle === 'en' && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Menu de Qualidade */}
-            <div className="relative">
-              <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowSettingsMenu(!showSettingsMenu);
-                  setShowSpeedMenu(false);
-                  setShowSubtitleMenu(false);
+                  setSettingsTab('main');
                 }}
-                className="player-menu-trigger h-9 px-2 sm:px-2.5 flex items-center gap-1 text-xs font-medium hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-                title="Qualidade do Vídeo"
-                aria-label="Qualidade do Vídeo"
+                className="player-menu-trigger w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                title="Configurações do Player"
+                aria-label="Configurações do Player"
+                aria-expanded={showSettingsMenu}
               >
-                <Settings className="w-4 h-4 text-slate-400" />
-                <span className="uppercase text-[11px] font-mono">
-                  {selectedQuality === 'auto' ? 'Auto' : selectedQuality}
-                </span>
+                <Settings className="w-5 h-5" />
               </button>
+
               {showSettingsMenu && (
-                <div className="player-menu-content absolute bottom-12 right-0 w-56 bg-[#12131A] border border-slate-800 rounded-xl p-2 shadow-2xl z-40 max-h-72 overflow-y-auto custom-scrollbar">
-                  <div className="px-2 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                    <span>Qualidade</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Resoluções</span>
-                  </div>
-                  {(['auto', '1080p', '720p', '480p', '360p'] as QualityLevel[]).map((q) => (
-                    <button
-                      key={q}
-                      onClick={() => changeQuality(q)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-md transition-colors cursor-pointer ${
-                        selectedQuality === q
-                          ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
-                          : 'text-slate-300 hover:bg-slate-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="uppercase">{q === 'auto' ? 'Automático' : q}</span>
-                        {q === '1080p' && (
-                          <span className="text-[10px] text-slate-400 font-normal">Full HD</span>
-                        )}
-                        {q === '720p' && (
-                          <span className="text-[10px] text-slate-400 font-normal">HD</span>
-                        )}
+                <div className="player-menu-content absolute bottom-12 right-0 w-64 max-w-[calc(100vw-2rem)] bg-[#12131A]/95 border border-slate-800 rounded-2xl p-2 shadow-2xl z-40 backdrop-blur-md">
+                  {/* Vista Principal das Configurações */}
+                  {settingsTab === 'main' && (
+                    <div className="flex flex-col gap-1">
+                      <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800/80">
+                        Configurações
                       </div>
-                      {selectedQuality === q && (
-                        <Check className="w-3.5 h-3.5 text-indigo-400" />
-                      )}
-                    </button>
-                  ))}
-                  <div className="mt-2 pt-2 border-t border-slate-800 px-2 text-[10px] text-slate-400 leading-normal">
-                    {isHlsActive
-                      ? 'Stream HLS adaptativa com seleção de variantes.'
-                      : 'A troca de resolução dinâmica está disponível para esta fonte.'}
-                  </div>
+
+                      {/* Opção de Velocidade */}
+                      <button
+                        type="button"
+                        onClick={() => setSettingsTab('speed')}
+                        className="flex items-center justify-between rounded-xl px-3 py-2.5 text-xs text-slate-200 hover:bg-slate-800/80 hover:text-white transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Gauge className="w-4 h-4 text-indigo-400" />
+                          <span className="font-medium">Velocidade</span>
+                        </div>
+                        <span className="text-[11px] text-indigo-300 font-semibold flex items-center gap-0.5">
+                          {playbackSpeed === 1 ? '1x (Normal)' : `${playbackSpeed}x`}
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                        </span>
+                      </button>
+
+                      {/* Opção de Qualidade */}
+                      <button
+                        type="button"
+                        onClick={() => setSettingsTab('quality')}
+                        className="flex items-center justify-between rounded-xl px-3 py-2.5 text-xs text-slate-200 hover:bg-slate-800/80 hover:text-white transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Sliders className="w-4 h-4 text-indigo-400" />
+                          <span className="font-medium">Qualidade</span>
+                        </div>
+                        <span className="text-[11px] text-indigo-300 font-semibold flex items-center gap-0.5">
+                          {selectedQuality === 'auto'
+                            ? displayResolution !== 'N/D'
+                              ? `Auto (${displayResolution})`
+                              : 'Automático'
+                            : selectedQuality}
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Submenu de Velocidade de Reprodução */}
+                  {settingsTab === 'speed' && (
+                    <div className="flex flex-col gap-1 max-h-64 overflow-y-auto custom-scrollbar">
+                      <button
+                        type="button"
+                        onClick={() => setSettingsTab('main')}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        <span>Velocidade de Reprodução</span>
+                      </button>
+                      <div className="border-t border-slate-800/80 my-0.5" />
+                      {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((spd) => (
+                        <button
+                          key={spd}
+                          type="button"
+                          onClick={() => {
+                            changeSpeed(spd);
+                            setShowSettingsMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl transition cursor-pointer ${
+                            playbackSpeed === spd
+                              ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
+                              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          <span>{spd === 1 ? '1x (Normal)' : `${spd}x`}</span>
+                          {playbackSpeed === spd && <Check className="w-4 h-4 text-indigo-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Submenu de Qualidade do Vídeo */}
+                  {settingsTab === 'quality' && (
+                    <div className="flex flex-col gap-1 max-h-64 overflow-y-auto custom-scrollbar">
+                      <button
+                        type="button"
+                        onClick={() => setSettingsTab('main')}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        <span>Qualidade do Vídeo</span>
+                      </button>
+                      <div className="border-t border-slate-800/80 my-0.5" />
+                      {(['auto', '1080p', '720p', '480p', '360p'] as QualityLevel[]).map((q) => (
+                        <button
+                          key={q}
+                          type="button"
+                          onClick={() => {
+                            changeQuality(q);
+                            setShowSettingsMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl transition cursor-pointer ${
+                            selectedQuality === q
+                              ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
+                              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="uppercase">{q === 'auto' ? 'Automático' : q}</span>
+                            {q === '1080p' && (
+                              <span className="text-[10px] text-slate-400 font-normal">Full HD</span>
+                            )}
+                            {q === '720p' && (
+                              <span className="text-[10px] text-slate-400 font-normal">HD</span>
+                            )}
+                          </div>
+                          {selectedQuality === q && <Check className="w-4 h-4 text-indigo-400" />}
+                        </button>
+                      ))}
+                      <div className="mt-1 pt-2 border-t border-slate-800/80 px-2 text-[10px] text-slate-400 leading-normal">
+                        {isHlsActive
+                          ? 'Stream HLS adaptativa com seleção dinâmica de variantes.'
+                          : 'Ajuste de preferência de qualidade para reprodução.'}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             {/* Tela Cheia */}
             <button
+              type="button"
               onClick={toggleFullscreen}
               aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
               className="w-10 h-10 flex items-center justify-center hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
