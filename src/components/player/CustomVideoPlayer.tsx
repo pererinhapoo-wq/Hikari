@@ -905,7 +905,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             );
           } else {
             setVideoError(
-              'Não foi possível carregar a fonte de vídeo remota de teste. A arquitetura de reprodução permanece ativa.'
+              'Não foi possível reproduzir este vídeo. Tente alternar para outro Player.'
             );
           }
           onError?.(new Error('Erro ao carregar vídeo'));
@@ -922,32 +922,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
           <h4 className="text-base font-semibold text-white mb-1">
             {activeVideo.isLocalFile
               ? 'Erro na Decodificação do Vídeo Local'
-              : 'Fonte de Demonstração em Manutenção'}
+              : 'Não foi possível reproduzir este vídeo. Tente alternar para outro Player.'}
           </h4>
-          <p className="text-xs text-slate-300 max-w-md mb-5 leading-relaxed">{videoError}</p>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-            >
-              Voltar para a Biblioteca
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Exibição simulada de Legenda na tela */}
-      {activeSubtitle !== 'none' && isPlaying && currentTime > 2 && currentTime < duration - 2 && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none px-4 py-1.5 bg-black/75 rounded text-center max-w-lg z-20">
-          <p className="text-sm md:text-base font-medium text-white drop-shadow">
-            {activeVideo.isLocalFile
-              ? (activeSubtitle === 'pt'
-                  ? 'Reprodução de arquivo local — Decodificação direta no navegador.'
-                  : 'Local file playback — Direct in-browser decoding.')
-              : (activeSubtitle === 'pt'
-                  ? 'Transmissão autorizada — Reprodução contínua de fonte direta.'
-                  : 'Authorized transmission — Direct source continuous playback.')}
-          </p>
+          <p className="text-xs text-slate-300 max-w-md leading-relaxed">{videoError}</p>
         </div>
       )}
 
