@@ -134,6 +134,7 @@ export const NovaStreamVideoPlayer: React.FC<NovaStreamVideoPlayerProps> = ({
   const [hoverTime, setHoverTime] = useState(0);
   const [hoverPosition, setHoverPosition] = useState(0);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const settingsAreaRef = useRef<HTMLDivElement>(null);
   type SettingsView = 'main' | 'quality' | 'speed';
   const [settingsView, setSettingsView] = useState<SettingsView>('main');
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -756,16 +757,19 @@ export const NovaStreamVideoPlayer: React.FC<NovaStreamVideoPlayerProps> = ({
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
-  // Fechar menu de configurações ao clicar fora
+  // Fechar o menu somente quando a interação começar fora da área de configurações.
+  // A referência evita depender de classes CSS e não interfere no clique que abre o menu.
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.player-menu-trigger') && !target.closest('.player-menu-content')) {
+    const handlePointerDownOutside = (e: PointerEvent) => {
+      const settingsArea = settingsAreaRef.current;
+      const target = e.target;
+      if (settingsArea && target instanceof Node && !settingsArea.contains(target)) {
         setShowSettingsMenu(false);
       }
     };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+
+    document.addEventListener('pointerdown', handlePointerDownOutside, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDownOutside, true);
   }, []);
 
   // Limpeza de timers ao desmontar o componente
@@ -1031,16 +1035,20 @@ export const NovaStreamVideoPlayer: React.FC<NovaStreamVideoPlayerProps> = ({
           {/* Lado Direito: Menu Unificado de Configurações e Fullscreen */}
           <div className="flex items-center gap-1 sm:gap-2">
             {/* Menu Integrado de Configurações (Qualidade + Velocidade) */}
-            <div className="relative">
+            <div ref={settingsAreaRef} className="relative">
               <button
+                type="button"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
-                  setShowSettingsMenu(!showSettingsMenu);
+                  setShowSettingsMenu((open) => !open);
                   setSettingsView('main');
                 }}
                 className="player-menu-trigger h-10 px-2 sm:px-2.5 flex items-center gap-1.5 text-xs font-medium hover:text-white rounded-lg hover:bg-white/10 transition-colors"
                 title="Configurações (Qualidade e Velocidade)"
                 aria-label="Configurações"
+                aria-haspopup="menu"
+                aria-expanded={showSettingsMenu}
               >
                 <Settings className="w-4 h-4 text-slate-300" />
                 <span className="hidden xs:inline uppercase text-[11px] font-mono text-slate-300">
