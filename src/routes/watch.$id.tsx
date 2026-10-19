@@ -30,6 +30,7 @@ import {
   CustomVideoPlayer,
   type VideoItem,
 } from "@/components/player/CustomVideoPlayer";
+import { NovaStreamVideoPlayer } from "@/components/player/NovaStreamVideoPlayer";
 import { fetchAnimeDetail } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import {
@@ -631,18 +632,29 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* ================================================== */}
 
         {file && selectedPlayer ? (
-          <CustomVideoPlayer
-            key={`${selectedPlayer.id}-${file}`}
-            video={_currentVideoItem}
-            autoPlay={userAutoplay}
-            initialTime={effectiveInitialTime}
-            onTimeUpdate={handleTimeUpdate}
-            onEnded={handleEnded}
-            hasNextEpisode={Boolean(next)}
-            hasPrevEpisode={Boolean(prev)}
-            onNextEpisode={handleNextEpisode}
-            onPrevEpisode={handlePrevEpisode}
-          />
+          selectedPlayer.id === "player-1" ? (
+            <NovaStreamVideoPlayer
+              key={`${selectedPlayer.id}-${file}`}
+              video={_currentVideoItem!}
+              autoPlay={userAutoplay}
+              initialTime={effectiveInitialTime}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={handleEnded}
+            />
+          ) : (
+            <CustomVideoPlayer
+              key={`${selectedPlayer.id}-${file}`}
+              video={_currentVideoItem}
+              autoPlay={userAutoplay}
+              initialTime={effectiveInitialTime}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={handleEnded}
+              hasNextEpisode={Boolean(next)}
+              hasPrevEpisode={Boolean(prev)}
+              onNextEpisode={handleNextEpisode}
+              onPrevEpisode={handlePrevEpisode}
+            />
+          )
         ) : yt ? (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
             <iframe
