@@ -291,12 +291,28 @@ function WatchPage() {
     return list;
   }, [current]);
 
-  const [playerIndex, setPlayerIndex] = useState(0);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string>("player-1");
   const [episodesOpen, setEpisodesOpen] = useState(false);
+  const lastEpisodeIdRef = useRef<string | undefined>(current?.id);
+  const livePlaybackRef = useRef<{ episodeId: string; time: number }>({
+    episodeId: current?.id ?? "",
+    time: 0,
+  });
+  const [sessionTime, setSessionTime] = useState<{
+    episodeId: string;
+    time: number;
+  } | null>(null);
 
+  // Redefine a seleção de player para Player 1 somente quando o episódio mudar efetivamente.
+  // A seleção por ID ("player-1", "player-5") é preservada mesmo se a lista de fontes for recalculada.
   useEffect(() => {
-    setPlayerIndex(0);
-  }, [current?.id, playerSources.length]);
+    if (current?.id !== lastEpisodeIdRef.current) {
+      lastEpisodeIdRef.current = current?.id;
+      setSelectedPlayerId("player-1");
+      livePlaybackRef.current = { episodeId: current?.id ?? "", time: 0 };
+      setSessionTime(null);
+    }
+  }, [current?.id]);
 
   // Preferência de reprodução automática configurada pelo usuário no Hikari
   const userAutoplay = useMemo(() => {
@@ -326,10 +342,22 @@ function WatchPage() {
     }
   }, [progressStorageKey]);
 
+  // O tempo inicial efetivo prioriza o progresso em tempo real da sessão do episódio atual,
+  // validando imediatamente se o ID gravado na sessão corresponde ao episódio ativo no render.
+  const effectiveInitialTime =
+    sessionTime && sessionTime.episodeId === current?.id && sessionTime.time > 0
+      ? sessionTime.time
+      : savedInitialTime;
+
   const lastSavedTimeRef = useRef<number>(0);
 
   const handleTimeUpdate = useCallback(
     (time: number, totalDuration: number) => {
+      // Registra o tempo mais recente em tempo real associado estritamente ao episódio atual
+      if (time > 0 && current?.id) {
+        livePlaybackRef.current = { episodeId: current.id, time };
+      }
+
       if (!progressStorageKey || totalDuration <= 0) return;
 
       // Se passou de 95% do episódio, remove do storage para reiniciar do início
@@ -355,7 +383,41 @@ function WatchPage() {
         }
       }
     },
-    [progressStorageKey],
+    [progressStorageKey, current?.id],
+  );
+
+  // Troca de player preservando o currentTime mais recente da sessão do episódio atual
+  const handleSelectPlayer = useCallback(
+    (targetId: string) => {
+      if (targetId === selectedPlayerId) return;
+
+      const hasValidLiveTime =
+        current?.id &&
+        livePlaybackRef.current.episodeId === current.id &&
+        livePlaybackRef.current.time > 0;
+
+      const currentTimeToCarry = hasValidLiveTime
+        ? livePlaybackRef.current.time
+        : savedInitialTime;
+
+      if (currentTimeToCarry > 0 && current?.id) {
+        setSessionTime({ episodeId: current.id, time: currentTimeToCarry });
+        if (progressStorageKey) {
+          try {
+            localStorage.setItem(
+              progressStorageKey,
+              String(Math.floor(currentTimeToCarry)),
+            );
+            lastSavedTimeRef.current = currentTimeToCarry;
+          } catch {
+            // ignora falha de storage
+          }
+        }
+      }
+
+      setSelectedPlayerId(targetId);
+    },
+    [selectedPlayerId, savedInitialTime, progressStorageKey, current?.id],
   );
 
   const handleNextEpisode = useCallback(() => {
@@ -388,10 +450,15 @@ function WatchPage() {
         void err;
       }
     }
+    livePlaybackRef.current = { episodeId: "", time: 0 };
+    setSessionTime(null);
     handleNextEpisode();
   }, [progressStorageKey, handleNextEpisode]);
 
-  const selectedPlayer = playerSources[playerIndex];
+  const selectedPlayer =
+    playerSources.find((s) => s.id === selectedPlayerId) ??
+    playerSources[0] ??
+    undefined;
   const playUrl = selectedPlayer?.url ?? "";
   const file = playUrl || null;
 
@@ -535,24 +602,27 @@ function parseDurationToSeconds(raw?: string | number | null): number {
 
         {playerSources.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
-            {playerSources.map((source, index) => (
-              <Button
-                key={`${source.id}-${index}`}
-                type="button"
-                size="sm"
-                variant="outline"
-                className={
-                  playerIndex === index
-                    ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
-                    : "rounded-xl border-white/10 bg-white/[0.03] px-5 text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
-                }
-                onClick={() => {
-                  setPlayerIndex(index);
-                }}
-              >
-                {source.name}
-              </Button>
-            ))}
+            {playerSources.map((source, index) => {
+              const isSelected = selectedPlayer?.id === source.id;
+              return (
+                <Button
+                  key={`${source.id}-${index}`}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className={
+                    isSelected
+                      ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-5 text-white shadow-[0_0_20px_rgba(168,85,247,0.18)] hover:bg-[#a855f7]/90 hover:text-white"
+                      : "rounded-xl border-white/10 bg-white/[0.03] px-5 text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+                  }
+                  onClick={() => {
+                    handleSelectPlayer(source.id);
+                  }}
+                >
+                  {source.name}
+                </Button>
+              );
+            })}
           </div>
         )}
 
@@ -569,7 +639,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
             episodeNumber={current?.number}
             episodeTitle={current?.title}
             autoPlay={userAutoplay}
-            initialTime={savedInitialTime}
+            initialTime={effectiveInitialTime}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}
             hasNextEpisode={Boolean(next)}
