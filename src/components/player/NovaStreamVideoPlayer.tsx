@@ -787,7 +787,7 @@ export const NovaStreamVideoPlayer: React.FC<NovaStreamVideoPlayerProps> = ({
       onClick={handleVideoAreaTap}
       onMouseMove={showControlsTemporarily}
       onTouchStart={showControlsTemporarily}
-      className="relative w-full h-full min-h-[340px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden group touch-manipulation"
+      className="relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden group touch-manipulation"
       style={{ touchAction: 'manipulation' }}
     >
       {/* Elemento de Vídeo HTML5 com suporte a HLS.js adaptativo e decodificação nativa */}
@@ -814,7 +814,7 @@ export const NovaStreamVideoPlayer: React.FC<NovaStreamVideoPlayerProps> = ({
             onError?.(message);
           }
         }}
-        className="w-full h-full object-contain cursor-pointer max-h-screen"
+        className="absolute inset-0 w-full h-full object-contain cursor-pointer"
       />
 
       {/* Fallback caso a fonte falhe */}
@@ -1051,7 +1051,7 @@ export const NovaStreamVideoPlayer: React.FC<NovaStreamVideoPlayerProps> = ({
               {showSettingsMenu && (
                 <div
                   onClick={(e) => e.stopPropagation()}
-                  className="player-menu-content absolute bottom-12 right-0 w-48 sm:w-52 max-w-[calc(100vw-1.5rem)] max-h-[60vh] bg-[#12131A]/95 border border-slate-800/90 rounded-xl p-1.5 shadow-2xl z-50 backdrop-blur-md overflow-y-auto custom-scrollbar"
+                  className="player-menu-content absolute bottom-12 right-0 w-48 sm:w-52 max-w-[calc(100vw-1.5rem)] max-h-[60vh] bg-[#12131A]/95 border border-slate-800/90 rounded-xl p-1.5 shadow-2xl z-[60] pointer-events-auto backdrop-blur-md overflow-y-auto custom-scrollbar"
                 >
                   {/* Visão Principal das Configurações */}
                   {settingsView === 'main' && (
