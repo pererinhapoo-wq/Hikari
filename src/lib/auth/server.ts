@@ -90,17 +90,23 @@ function previewAuthSecret(): string {
   return globalAuthRef.__grokAuthPreviewSecret__;
 }
 
+// Direct Google OAuth credentials for HIKARI.
+// In production (Vercel), these are provided as environment variables.
+const googleClientId = env("GOOGLE_CLIENT_ID");
+const googleClientSecret = env("GOOGLE_CLIENT_SECRET");
+const hasGoogleOAuth = Boolean(googleClientId && googleClientSecret);
+
 // Broker federation creds: the deployer injects a per-app client when deployed;
 // otherwise fall back to the shared live-preview client, which the broker accepts
 // for any `*.grok-sandbox.com` callback (see `./preview`).
 const grokIssuer = env("GROK_AUTH_ISSUER") ?? GROK_ISSUER_DEFAULT;
-const grokClientId = env("GROK_AUTH_CLIENT_ID") ?? PREVIEW_CLIENT_ID;
-const grokClientSecret =
-  env("GROK_AUTH_CLIENT_SECRET") ?? PREVIEW_CLIENT_SECRET;
+const grokClientId = env("GROK_AUTH_CLIENT_ID");
+const grokClientSecret = env("GROK_AUTH_CLIENT_SECRET");
+const hasGrokBroker = Boolean(grokClientId && grokClientSecret);
 
-/** True when federated sign-in is active (real auth is enforced). */
+/** True when real authentication is configured (real auth is enforced). */
 export const authConfigured =
-  !authDisabled && Boolean(grokClientId && grokClientSecret);
+  !authDisabled && (hasGoogleOAuth || hasGrokBroker);
 
 // This app's own Better Auth origin. When deployed the deployer injects the
 // public URL. In the sandbox live preview there's no fixed URL (each preview gets
@@ -211,9 +217,7 @@ const database = databaseUrl
 /** Session token cookie name — also read by the live-preview popup completion page. */
 export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
-// Built separately so the `betterAuth({...})` call stays easy to edit without
-// breaking brackets (models often trip on the conditional plugin spread).
-const grokOAuthPlugin = authConfigured
+const grokOAuthPlugin = hasGrokBroker
   ? genericOAuth({
       config: GROK_PROVIDERS.map(({ providerId, idp }) => ({
         providerId,
@@ -253,13 +257,17 @@ export const auth = betterAuth({
   // local loopback variants, or clients get "Invalid origin".
   trustedOrigins,
 
-  socialProviders: {
-    google: {
-      clientId: env("GOOGLE_CLIENT_ID") as string,
-      clientSecret: env("GOOGLE_CLIENT_SECRET") as string,
-      prompt: "select_account",
-    },
-  },
+  ...(hasGoogleOAuth
+    ? {
+        socialProviders: {
+          google: {
+            clientId: googleClientId as string,
+            clientSecret: googleClientSecret as string,
+            prompt: "select_account",
+          },
+        },
+      }
+    : {}),
 
   // Encrypt broker-issued OAuth tokens at rest, and treat the broker's upstreams
   // as trusted first-party identities. The broker owns identity and X emails are
@@ -272,6 +280,7 @@ export const auth = betterAuth({
     accountLinking: {
       enabled: true,
       trustedProviders: [
+        "google",
         ...GROK_PROVIDERS.map((p) => p.providerId),
         GATE_PROVIDER_ID,
       ],
