@@ -1,47 +1,45 @@
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import Hls from 'hls.js';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type MouseEvent,
-  type SyntheticEvent,
-  type TouchEvent,
-} from "react";
-import Hls from "hls.js";
-import {
-  AlertCircle,
-  ChevronLeft,
-  Loader2,
-  Maximize,
-  Minimize,
-  Pause,
   Play,
-  Settings,
+  Pause,
   Volume2,
   VolumeX,
-} from "lucide-react";
-import { cn, isHlsSource } from "@/lib/utils";
+  Volume1,
+  Maximize,
+  Minimize,
+  RotateCcw,
+  RotateCw,
+  Settings,
+  Gauge,
+  Info,
+  X,
+  Check,
+  Sparkles,
+  ChevronRight,
+  ChevronLeft,
+} from 'lucide-react';
+import {
+  VideoItem,
+  QualityLevel,
+  PlaybackSpeed,
+  VideoResolution,
+  StreamQualityOption,
+  VideoSubtitles,
+} from '../../types/video';
+import {
+  getLocalVideoUrl,
+  classifyVideoResolution,
+  formatDuration,
+  formatQualityLabel,
+} from '../../services/videoData';
 
-export interface VideoItem {
-  id: string;
-  title: string;
-  url: string;
-  thumbnailUrl?: string;
-  duration?: number | string;
-  resolution?: string;
-  isLocalFile?: boolean;
-  size?: number;
-  type?: string;
-  seasonNumber?: number;
-  episodeNumber?: number;
-  episodeTitle?: string;
-}
+export type { VideoItem, QualityLevel, PlaybackSpeed, VideoResolution, StreamQualityOption };
 
-export interface CustomVideoPlayerQualityLevel {
-  id: number;
-  label: string;
-  height?: number;
-  bitrate?: number;
+export interface VideoMetadataUpdates {
+  duration?: number;
+  durationFormatted?: string;
+  resolution?: VideoResolution;
 }
 
 export interface CustomVideoPlayerProps {
@@ -50,13 +48,13 @@ export interface CustomVideoPlayerProps {
   /** Ação de fechamento / retorno da tela */
   onClose?: () => void;
   /** Callback para sincronização de metadados do vídeo */
-  onUpdateMetadata?: (id: string, metadata: Partial<VideoItem>) => void;
+  onUpdateMetadata?: (videoId: string, metadata: VideoMetadataUpdates) => void;
 
   /** URL do vídeo (MP4, WebM ou Manifesto HLS .m3u8) */
   src?: string | null;
   /** Imagem de capa antes do início da reprodução */
   poster?: string;
-  /** Título principal (ex.: Nome do anime) */
+  /** Título principal (ex.: Nome do anime ou obra) */
   title?: string;
   /** Número do episódio atual */
   episodeNumber?: number;
@@ -84,34 +82,15 @@ export interface CustomVideoPlayerProps {
   hasNextEpisode?: boolean;
   /** Se há episódio anterior */
   hasPrevEpisode?: boolean;
+  /** Legendas disponíveis para o player */
+  subtitles?: VideoSubtitles[];
+  /** Rótulo do player ativo (ex.: 'Player 1', 'Player 5') */
+  playerLabel?: string;
   /** Classe CSS customizada para o container principal */
   className?: string;
 }
 
-export function classifyVideoResolution(height?: number): string {
-  if (!height || height <= 0) return "Automática";
-  if (height >= 2160) return "4K Ultra HD";
-  if (height >= 1440) return "2K QHD";
-  if (height >= 1080) return "1080p FHD";
-  if (height >= 720) return "720p HD";
-  if (height >= 480) return "480p SD";
-  return `${height}p`;
-}
-
-export function formatTime(secs: number): string {
-  if (!Number.isFinite(secs) || secs < 0) return "00:00";
-  const total = Math.floor(secs);
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
-export function CustomVideoPlayer({
+export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   video,
   onClose,
   onUpdateMetadata,
@@ -120,7 +99,7 @@ export function CustomVideoPlayer({
   title,
   episodeNumber,
   episodeTitle,
-  autoPlay = false,
+  autoPlay = true,
   initialTime = 0,
   onTimeUpdate,
   onEnded,
@@ -129,1017 +108,1242 @@ export function CustomVideoPlayer({
   onError,
   onNextEpisode: _onNextEpisode,
   onPrevEpisode: _onPrevEpisode,
-  hasNextEpisode: _hasNextEpisode = false,
-  hasPrevEpisode: _hasPrevEpisode = false,
+  hasNextEpisode: _hasNextEpisode,
+  hasPrevEpisode: _hasPrevEpisode,
+  subtitles: propSubtitles,
+  playerLabel,
   className,
-}: CustomVideoPlayerProps) {
-  // Normalização unificada entre a interface original NOVA STREAM e a interface Hikari
-  const activeSrc = src ?? video?.url ?? null;
-  const activePoster = poster ?? video?.thumbnailUrl;
-  const _activeTitle = title ?? video?.title;
-  const _activeEpisodeNumber = episodeNumber ?? video?.episodeNumber;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  const initialTimeAppliedRef = useRef(false);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Normalização unificada entre NOVA STREAM e Hikari
+  const activeVideoId = video?.id || 'current-video';
+  const rawUrl = src ?? video?.videoUrl ?? video?.url ?? '';
+  const effectiveVideoUrl = video?.isLocalFile
+    ? getLocalVideoUrl(video.id) || rawUrl
+    : rawUrl;
+
+  const effectivePoster = poster ?? video?.posterUrl ?? video?.thumbnailUrl ?? '';
+  const effectiveTitle = title ?? video?.title ?? '';
+  const activeEpisodeNumber = episodeNumber ?? video?.episodeNumber;
   const activeEpisodeTitle = episodeTitle ?? video?.episodeTitle;
+  const effectiveSubtitles = propSubtitles ?? video?.subtitles ?? [];
 
-  // Referências aos elementos DOM e instâncias
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
-  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  // Estados de reprodução
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(video?.duration || 0);
+  const [bufferedTime, setBufferedTime] = useState(0);
+  const [volume, setVolume] = useState(0.85);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
+  const [selectedQuality, setSelectedQuality] = useState<QualityLevel>('1080p');
+  const [activeSubtitle, setActiveSubtitle] = useState<string>('pt');
+
+  // Resolução e dimensões detectadas em tempo de execução
+  const [detectedResolution, setDetectedResolution] = useState<VideoResolution>(
+    video?.resolution || 'N/D'
+  );
+  const [, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
+
+  // Estados de streaming HLS adaptativo
+  const [isHlsActive, setIsHlsActive] = useState(false);
+  const [availableLevels, setAvailableLevels] = useState<StreamQualityOption[]>([]);
+  const [requestedHlsLevel, setRequestedHlsLevel] = useState<number>(-1); // -1 = Automático (ABR)
+  const [, setEffectiveHlsLevel] = useState<number>(-1); // Nível ativo confirmado no hls.js
+  const [, setIsLevelSwitchPending] = useState<boolean>(false);
+  const [, setCurrentBitrate] = useState<number | null>(null);
   const hlsRef = useRef<Hls | null>(null);
-  const hideControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastTapRef = useRef<{ time: number; x: number; y: number; side: "left" | "right" } | null>(null);
-  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const switchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Retomada estável de tempo inicial: aplica apenas uma vez quando o vídeo estiver pronto
-  const initialTimeRef = useRef<number>(initialTime);
-  const hasAppliedInitialTimeRef = useRef<boolean>(false);
+  const isHlsUrl = useCallback((url: string): boolean => {
+    if (!url) return false;
+    const cleanUrl = url.split('?')[0].toLowerCase();
+    return cleanUrl.endsWith('.m3u8') || url.includes('.m3u8') || url.includes('/hls/');
+  }, []);
 
+  // Sincronizar resolução inicial e limpar erros/dimensões ao alternar de vídeo ou URL
   useEffect(() => {
-    initialTimeRef.current = initialTime;
-    hasAppliedInitialTimeRef.current = false;
-  }, [activeSrc, initialTime]);
+    setDetectedResolution(video?.resolution || 'N/D');
+    setVideoDimensions(null);
+    setCurrentBitrate(null);
+    setRequestedHlsLevel(-1);
+    setEffectiveHlsLevel(-1);
+    setIsLevelSwitchPending(false);
+    initialTimeAppliedRef.current = false;
+    setVideoError(null);
+    if (switchTimeoutRef.current) {
+      clearTimeout(switchTimeoutRef.current);
+      switchTimeoutRef.current = null;
+    }
+  }, [activeVideoId, video?.resolution, effectiveVideoUrl]);
 
-  // Estados de reprodução e tempo
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(0);
-  const [, setBufferedTime] = useState<number>(0);
-  const [isBuffering, setIsBuffering] = useState<boolean>(false);
-  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  // Resolução efetiva para exibição honesta
+  const displayResolution: VideoResolution =
+    detectedResolution !== 'N/D'
+      ? detectedResolution
+      : !isHlsActive && video?.resolution && video.resolution !== 'N/D'
+        ? video.resolution
+        : 'N/D';
 
-  // Estados de áudio
-  const [volume, setVolume] = useState<number>(1);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
-  const volumeRef = useRef<number>(volume);
+  const _resolutionFormattedLabel = formatQualityLabel(displayResolution);
 
-  useEffect(() => {
-    volumeRef.current = volume;
-  }, [volume]);
+  // Controles de visibilidade da interface
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [isHoveringProgress, setIsHoveringProgress] = useState(false);
+  const [hoverTime, setHoverTime] = useState(0);
+  const [hoverPosition, setHoverPosition] = useState(0);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
-  // Estados de controle e menus
-  const [controlsVisible, setControlsVisible] = useState<boolean>(true);
-  const [playbackRate, setPlaybackRate] = useState<number>(1);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  type SettingsView = 'main' | 'quality' | 'speed';
+  const [settingsView, setSettingsView] = useState<SettingsView>('main');
+  const [videoError, setVideoError] = useState<string | null>(null);
 
-  // HLS e Qualidade
-  const [qualityLevels, setQualityLevels] = useState<CustomVideoPlayerQualityLevel[]>([]);
-  const [currentQuality, setCurrentQuality] = useState<number>(-1); // -1 = Auto
-  const [isHlsStream, setIsHlsStream] = useState<boolean>(false);
-  const [detectedResolution, setDetectedResolution] = useState<string>("N/D");
+  // Estados de feedback visual (Play/Pause central e Double-Tap Seek estilo YouTube)
+  const [playPauseFeedback, setPlayPauseFeedback] = useState<'play' | 'pause' | null>(null);
+  const [seekFeedback, setSeekFeedback] = useState<{ side: 'left' | 'right'; id: number } | null>(null);
 
-  // Fechar menu de configurações ao clicar/tocar fora
-  useEffect(() => {
-    if (!settingsOpen) return;
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const playPauseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const seekFeedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const singleTapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number; isLeft: boolean } | null>(null);
 
-    const handleClickOutside = (e: Event) => {
-      const target = e.target as Node | null;
-      if (!target || !document.contains(target)) return;
-      if (
-        settingsMenuRef.current?.contains(target) ||
-        settingsButtonRef.current?.contains(target)
-      ) {
-        return;
+  // Listener para confirmação física de redimensionamento do decodificador no elemento <video>
+  const handleVideoResize = useCallback(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const rawHeight = el.videoHeight;
+    const rawWidth = el.videoWidth;
+    if (rawWidth > 0 && rawHeight > 0) {
+      setVideoDimensions({ width: rawWidth, height: rawHeight });
+      const detected = classifyVideoResolution(rawHeight);
+      if (detected !== 'N/D') {
+        setDetectedResolution(detected);
       }
-      setSettingsOpen(false);
-    };
-
-    document.addEventListener("pointerdown", handleClickOutside);
-    return () => {
-      document.removeEventListener("pointerdown", handleClickOutside);
-    };
-  }, [settingsOpen]);
-
-  // =========================================================================
-  // Temporizador de Ocultação dos Controles
-  // =========================================================================
-
-  const clearHideTimer = useCallback(() => {
-    if (hideControlsTimerRef.current) {
-      clearTimeout(hideControlsTimerRef.current);
-      hideControlsTimerRef.current = null;
+      setIsLevelSwitchPending(false);
     }
   }, []);
 
-  const triggerShowControls = useCallback(() => {
-    clearHideTimer();
-    setControlsVisible(true);
-
-    if (isPlaying) {
-      hideControlsTimerRef.current = setTimeout(() => {
-        if (!settingsOpen) {
-          setControlsVisible(false);
-        }
-      }, 3500);
-    }
-  }, [clearHideTimer, isPlaying, settingsOpen]);
-
-  // =========================================================================
-  // Inicialização e Gerenciamento do Vídeo e HLS
-  // =========================================================================
-
+  // Inicialização do pipeline de decodificação: Hls.js ou HTML5 Direto
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !activeSrc) {
-      setQualityLevels([]);
-      setIsHlsStream(false);
-      setDetectedResolution("N/D");
-      return;
+    const videoEl = videoRef.current;
+    if (!videoEl || !effectiveVideoUrl) return;
+
+    // Destrói instância Hls anterior se houver
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
     }
 
-    setPlaybackError(null);
-    setIsBuffering(true);
-    hasAppliedInitialTimeRef.current = false;
-    setDetectedResolution("N/D");
+    const isHls = isHlsUrl(effectiveVideoUrl);
+    setIsHlsActive(isHls);
+    setVideoError(null);
 
-    let hlsInstance: Hls | null = null;
-    const isHls = isHlsSource(activeSrc);
-    setIsHlsStream(isHls);
+    // Registra listener nativo de resize para acompanhar mudanças físicas de resolução do decodificador
+    videoEl.addEventListener('resize', handleVideoResize);
 
-    if (isHls) {
-      // 1. Suporte HLS Nativo (Safari / iOS)
-      if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        video.src = activeSrc;
-        setQualityLevels([]);
-      } else if (typeof window !== "undefined" && Hls.isSupported()) {
-        // 2. Navegadores com suporte a Media Source Extensions (Chrome, Firefox, Edge, Android)
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          backBufferLength: 90,
-          capLevelToPlayerSize: true,
+    if (isHls && Hls.isSupported()) {
+      videoEl.removeAttribute('src');
+      videoEl.load();
+
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 60,
+        capLevelToPlayerSize: false,
+      });
+      hlsRef.current = hls;
+
+      hls.attachMedia(videoEl);
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+        hls.loadSource(effectiveVideoUrl);
+      });
+
+      hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        const parsedLevels: StreamQualityOption[] = [
+          {
+            levelIndex: -1,
+            label: 'Automático',
+            resolution: 'Auto',
+          },
+        ];
+
+        // Ordena visualmente por resolução decrescente preservando o índice real em data.levels
+        const sortedVariants = data.levels
+          .map((lvl, origIdx) => ({ lvl, origIdx }))
+          .sort((a, b) => (b.lvl.height || 0) - (a.lvl.height || 0));
+
+        sortedVariants.forEach(({ lvl, origIdx }) => {
+          const height = lvl.height || 0;
+          const resLabel =
+            height >= 2160
+              ? '4K'
+              : height >= 1080
+              ? '1080p'
+              : height >= 720
+              ? '720p'
+              : height >= 480
+              ? '480p'
+              : height > 0
+              ? `${height}p`
+              : `Nível ${origIdx + 1}`;
+
+          parsedLevels.push({
+            levelIndex: origIdx,
+            label: resLabel,
+            resolution: resLabel,
+            height: lvl.height,
+            width: lvl.width,
+            bitrate: lvl.bitrate,
+          });
         });
-        hlsInstance = hls;
-        hlsRef.current = hls;
 
-        hls.attachMedia(video);
+        setAvailableLevels(parsedLevels);
+        setRequestedHlsLevel(-1);
+        setEffectiveHlsLevel(-1);
+        setIsLevelSwitchPending(false);
 
-        hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-          hls.loadSource(activeSrc);
-        });
+        if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
+          initialTimeAppliedRef.current = true;
+          videoEl.currentTime = initialTime;
+          setCurrentTime(initialTime);
+        }
 
-        hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-          setIsBuffering(false);
-          if (data.levels && data.levels.length > 1) {
-            const levels: CustomVideoPlayerQualityLevel[] = data.levels.map((level, idx) => ({
-              id: idx,
-              label: level.height
-                ? `${level.height}p (${classifyVideoResolution(level.height)})`
-                : `Qualidade ${idx + 1}`,
-              height: level.height,
-              bitrate: level.bitrate,
-            }));
-            setQualityLevels(levels);
-          } else {
-            setQualityLevels([]);
+        if (autoPlay) {
+          videoEl.play().catch((err) => {
+            console.warn('Auto-play HLS restrito pelo navegador:', err);
+            setIsPlaying(false);
+          });
+        }
+      });
+
+      hls.on(Hls.Events.LEVEL_SWITCHING, (_event, _data) => {
+        setIsLevelSwitchPending(true);
+      });
+
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+        setEffectiveHlsLevel(data.level);
+        const lvl = hls.levels[data.level];
+        if (lvl && lvl.bitrate) {
+          setCurrentBitrate(lvl.bitrate);
+        }
+        if (videoEl.videoHeight > 0 && lvl && (!lvl.height || videoEl.videoHeight === lvl.height)) {
+          setIsLevelSwitchPending(false);
+          const detected = classifyVideoResolution(videoEl.videoHeight);
+          if (detected !== 'N/D') {
+            setDetectedResolution(detected);
           }
+        }
+      });
 
-          // Notificação de metadados se disponível
-          if (onUpdateMetadata && (video?.id || activeEpisodeTitle)) {
-            const bestHeight = data.levels?.[0]?.height;
-            if (bestHeight) {
-              onUpdateMetadata(video?.id ?? "current", {
-                resolution: classifyVideoResolution(bestHeight),
-              });
+      hls.on(Hls.Events.FRAG_CHANGED, (_event, data) => {
+        if (data.frag && typeof data.frag.level === 'number') {
+          const fragLevel = data.frag.level;
+          setEffectiveHlsLevel(fragLevel);
+          const lvl = hls.levels[fragLevel];
+          if (lvl && lvl.bitrate) {
+            setCurrentBitrate(lvl.bitrate);
+          }
+          if (videoEl.videoHeight > 0 && lvl && (!lvl.height || videoEl.videoHeight === lvl.height)) {
+            setIsLevelSwitchPending(false);
+            const detected = classifyVideoResolution(videoEl.videoHeight);
+            if (detected !== 'N/D') {
+              setDetectedResolution(detected);
             }
           }
+        }
+      });
 
-          // Aplicação segura do initialTime após análise do manifesto
-          if (!hasAppliedInitialTimeRef.current && initialTimeRef.current > 0) {
-            video.currentTime = initialTimeRef.current;
-            hasAppliedInitialTimeRef.current = true;
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        console.warn('HLS Event:', data.type, data.details);
+        if (
+          data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR ||
+          data.details === Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT
+        ) {
+          console.warn('Falha no carregamento do nível HLS selecionado:', data.details);
+          setIsLevelSwitchPending(false);
+          if (hls.currentLevel !== -1) {
+            hls.currentLevel = -1;
+            setRequestedHlsLevel(-1);
           }
-        });
+        }
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.warn('Erro de rede fatal no HLS, tentando recuperar...');
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.warn('Erro de mídia fatal no HLS, tentando recuperar...');
+              hls.recoverMediaError();
+              break;
+            default:
+              console.error('Erro HLS fatal:', data.details);
+              hls.destroy();
+              setVideoError(
+                'Não foi possível estabelecer transmissão contínua com a stream HLS adaptativa.'
+              );
+              onError?.(new Error(`Falha fatal HLS: ${data.details}`));
+              break;
+          }
+        }
+      });
 
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) {
-            switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
-                console.warn("[CustomVideoPlayer] Erro de rede no HLS. Tentando recuperar...", data);
-                hls.startLoad();
-                break;
-              case Hls.ErrorTypes.MEDIA_ERROR:
-                console.warn("[CustomVideoPlayer] Erro de mídia no HLS. Tentando recuperar...", data);
-                hls.recoverMediaError();
-                break;
-              default:
-                console.error("[CustomVideoPlayer] Erro fatal no HLS:", data);
-                hls.destroy();
-                setPlaybackError("Não foi possível carregar este stream de vídeo.");
-                onError?.(new Error(`Falha no stream HLS: ${data.details}`));
-                break;
-            }
-          }
-        });
-      } else {
-        video.src = activeSrc;
+      return () => {
+        videoEl.removeEventListener('resize', handleVideoResize);
+        if (switchTimeoutRef.current) {
+          clearTimeout(switchTimeoutRef.current);
+          switchTimeoutRef.current = null;
+        }
+        if (hlsRef.current) {
+          hlsRef.current.destroy();
+          hlsRef.current = null;
+        }
+      };
+    } else if (isHls && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari / iOS suporte nativo a HLS
+      videoEl.src = effectiveVideoUrl;
+      videoEl.load();
+      setIsHlsActive(true);
+      setAvailableLevels([{ levelIndex: -1, label: 'Automático (Nativo)', resolution: 'Auto' }]);
+      if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
+        initialTimeAppliedRef.current = true;
+        videoEl.currentTime = initialTime;
+        setCurrentTime(initialTime);
+      }
+      if (autoPlay) {
+        videoEl.play().catch(() => setIsPlaying(false));
       }
     } else {
-      // Arquivo direto convencional (MP4, WebM, etc.)
-      setQualityLevels([]);
-      video.src = activeSrc;
+      // Fonte direta MP4, WebM ou Blob local
+      videoEl.src = effectiveVideoUrl;
+      videoEl.load();
+      setIsHlsActive(false);
+      setAvailableLevels([]);
+      if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
+        initialTimeAppliedRef.current = true;
+        videoEl.currentTime = initialTime;
+        setCurrentTime(initialTime);
+      }
+      if (autoPlay) {
+        videoEl.play().catch((err) => {
+          console.warn('Auto-play restrito pelo navegador:', err);
+          setIsPlaying(false);
+        });
+      }
     }
 
     return () => {
-      if (hlsInstance) {
-        hlsInstance.destroy();
-        hlsInstance = null;
+      videoEl.removeEventListener('resize', handleVideoResize);
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      video.removeAttribute("src");
-      video.load();
     };
-  }, [activeSrc, onError, onUpdateMetadata, video?.id, activeEpisodeTitle]);
+  }, [effectiveVideoUrl, autoPlay, isHlsUrl, handleVideoResize, initialTime, onError]);
 
-  // =========================================================================
-  // Sincronização de Estado de Tela Cheia
-  // =========================================================================
+  const formatTime = (secs: number) => {
+    if (isNaN(secs) || secs < 0) return '00:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
+  // Resetar timer para ocultar controles
+  const showControlsTemporarily = useCallback(() => {
+    setControlsVisible(true);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    controlsTimeoutRef.current = setTimeout(() => {
+      if (isPlaying && !showSettingsMenu) {
+        setControlsVisible(false);
+      }
+    }, 3500);
+  }, [isPlaying, showSettingsMenu]);
 
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
+  // Disparar animação suave e discreta de Play / Pause no centro
+  const triggerPlayPauseFeedback = useCallback((type: 'play' | 'pause') => {
+    if (playPauseTimeoutRef.current) {
+      clearTimeout(playPauseTimeoutRef.current);
+    }
+    setPlayPauseFeedback(type);
+    playPauseTimeoutRef.current = setTimeout(() => {
+      setPlayPauseFeedback(null);
+    }, 700);
   }, []);
 
-  // =========================================================================
-  // Ações de Reprodução e Seek
-  // =========================================================================
-
+  // Controle de Play/Pause com feedback visual
   const togglePlay = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (video.paused) {
-      void video
-        .play()
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.paused) {
+      el.play()
         .then(() => {
           setIsPlaying(true);
-          triggerShowControls();
+          onPlay?.();
+          triggerPlayPauseFeedback('play');
         })
-        .catch(() => {
+        .catch((err) => {
+          console.warn('Auto-play restrito pelo navegador:', err);
           setIsPlaying(false);
         });
     } else {
-      video.pause();
+      el.pause();
       setIsPlaying(false);
-      setControlsVisible(true);
+      onPause?.();
+      triggerPlayPauseFeedback('pause');
     }
-  }, [triggerShowControls]);
+    showControlsTemporarily();
+  }, [showControlsTemporarily, triggerPlayPauseFeedback, onPlay, onPause]);
 
-  const seekBy = useCallback(
-    (seconds: number) => {
-      const video = videoRef.current;
-      if (!video) return;
+  // Avançar / retroceder 10s respeitando os limites do vídeo
+  const seekRelative = useCallback((deltaSec: number) => {
+    const el = videoRef.current;
+    if (!el) return;
+    const target = Math.max(0, Math.min(el.duration || duration, el.currentTime + deltaSec));
+    el.currentTime = target;
+    setCurrentTime(target);
+    showControlsTemporarily();
+  }, [duration, showControlsTemporarily]);
 
-      const maxDuration = Number.isFinite(video.duration) ? video.duration : duration;
-      const target = Math.min(Math.max(video.currentTime + seconds, 0), maxDuration || 0);
-      video.currentTime = target;
-      setCurrentTime(target);
-      triggerShowControls();
+  // Avançar / retroceder 10s via gesto com animação discreta estilo YouTube
+  const triggerDoubleTapSeek = useCallback(
+    (isLeft: boolean) => {
+      seekRelative(isLeft ? -10 : 10);
+      if (seekFeedbackTimeoutRef.current) {
+        clearTimeout(seekFeedbackTimeoutRef.current);
+      }
+      setSeekFeedback({ side: isLeft ? 'left' : 'right', id: Date.now() });
+      seekFeedbackTimeoutRef.current = setTimeout(() => {
+        setSeekFeedback(null);
+      }, 650);
     },
-    [duration, triggerShowControls],
+    [seekRelative]
   );
 
-  const handleSeekChange = (time: number) => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.currentTime = time;
-    setCurrentTime(time);
-  };
-
-  // =========================================================================
-  // Ações de Áudio e Volume
-  // =========================================================================
-
-  const setVideoVolume = useCallback((nextVolume: number) => {
-    const video = videoRef.current;
-    const clamped = Math.min(1, Math.max(0, nextVolume));
-    setVolume(clamped);
-    setIsMuted(clamped === 0);
-
-    if (video) {
-      video.volume = clamped;
-      video.muted = clamped === 0;
-    }
-  }, []);
-
-  const toggleMute = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (video.muted || volumeRef.current === 0) {
-      const restored = volumeRef.current > 0 ? volumeRef.current : 1;
-      video.muted = false;
-      video.volume = restored;
-      setVolume(restored);
-      setIsMuted(false);
-    } else {
-      video.muted = true;
-      setIsMuted(true);
-    }
-  }, []);
-
-  // =========================================================================
-  // Tela Cheia
-  // =========================================================================
-
-  const toggleFullscreen = useCallback(async () => {
-    const container = containerRef.current;
-    const video = videoRef.current;
-    if (!container) return;
-
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-        try {
-          const orient = screen.orientation as unknown as { unlock?: () => void };
-          if (orient && typeof orient.unlock === "function") {
-            orient.unlock();
-          }
-        } catch {
-          // Orientação não suportada ou permissão negada
-        }
-      } else {
-        if (container.requestFullscreen) {
-          await container.requestFullscreen();
-          try {
-            const orient = screen.orientation as unknown as { lock?: (o: string) => Promise<void> };
-            if (orient && typeof orient.lock === "function") {
-              await orient.lock("landscape");
-            }
-          } catch {
-            // Orientação opcional
-          }
-        } else if (video && (video as any).webkitEnterFullscreen) {
-          (video as any).webkitEnterFullscreen();
-        }
-      }
-    } catch (err) {
-      console.warn("[CustomVideoPlayer] Falha ao alternar tela cheia:", err);
-    }
-  }, []);
-
-  // =========================================================================
-  // Atalhos de Teclado
-  // =========================================================================
-
-  const actionsRef = useRef({
-    togglePlay,
-    seekBy,
-    toggleMute,
-    toggleFullscreen,
-    setVideoVolume,
-  });
-
-  useEffect(() => {
-    actionsRef.current = {
-      togglePlay,
-      seekBy,
-      toggleMute,
-      toggleFullscreen,
-      setVideoVolume,
-    };
-  }, [togglePlay, seekBy, toggleMute, toggleFullscreen, setVideoVolume]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
+  // Tratamento refinado de toques simples vs duplo toque na área do vídeo
+  const handleVideoAreaTap = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      // Prevenir acionamento se o clique atingir botões, barra de progresso, menus ou inputs
       if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target?.isContentEditable
+        target.closest('button') ||
+        target.closest('.player-menu-content') ||
+        target.closest('.player-menu-trigger') ||
+        target.closest('.group\\/progress') ||
+        target.closest('input')
       ) {
         return;
       }
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const isLeft = clickX < rect.width / 2;
+      const now = Date.now();
+      const lastTap = lastTapRef.current;
+      const DOUBLE_TAP_WINDOW = 280; // Janela para diferenciar toque simples de duplo toque
 
-      switch (event.key.toLowerCase()) {
-        case " ":
-        case "k":
-          event.preventDefault();
-          actionsRef.current.togglePlay();
-          break;
-        case "arrowleft":
-        case "j":
-          event.preventDefault();
-          actionsRef.current.seekBy(-10);
-          break;
-        case "arrowright":
-        case "l":
-          event.preventDefault();
-          actionsRef.current.seekBy(10);
-          break;
-        case "m":
-          event.preventDefault();
-          actionsRef.current.toggleMute();
-          break;
-        case "f":
-          event.preventDefault();
-          void actionsRef.current.toggleFullscreen();
-          break;
-        case "arrowup":
-          event.preventDefault();
-          actionsRef.current.setVideoVolume(volumeRef.current + 0.1);
-          break;
-        case "arrowdown":
-          event.preventDefault();
-          actionsRef.current.setVideoVolume(volumeRef.current - 0.1);
-          break;
+      if (
+        lastTap &&
+        now - lastTap.time < DOUBLE_TAP_WINDOW &&
+        Math.abs(e.clientX - lastTap.x) < 140
+      ) {
+        // Double tap detectado: cancela o toque simples para evitar pausar/reproduzir acidentalmente
+        if (singleTapTimeoutRef.current) {
+          clearTimeout(singleTapTimeoutRef.current);
+          singleTapTimeoutRef.current = null;
+        }
+        lastTapRef.current = null;
+        triggerDoubleTapSeek(lastTap.isLeft);
+      } else {
+        // Primeiro toque registrado
+        lastTapRef.current = { time: now, x: e.clientX, y: e.clientY, isLeft };
+        if (singleTapTimeoutRef.current) {
+          clearTimeout(singleTapTimeoutRef.current);
+        }
+        singleTapTimeoutRef.current = setTimeout(() => {
+          singleTapTimeoutRef.current = null;
+          lastTapRef.current = null;
+          // Ação de toque simples: alternar reproduzir/pausar com feedback suave
+          const el = videoRef.current;
+          if (!el) return;
+          if (el.paused) {
+            el.play()
+              .then(() => {
+                setIsPlaying(true);
+                onPlay?.();
+                triggerPlayPauseFeedback('play');
+              })
+              .catch((err) => {
+                console.warn('Reprodução restrita:', err);
+                setIsPlaying(false);
+              });
+          } else {
+            el.pause();
+            setIsPlaying(false);
+            onPause?.();
+            triggerPlayPauseFeedback('pause');
+          }
+          showControlsTemporarily();
+        }, DOUBLE_TAP_WINDOW);
+      }
+    },
+    [triggerDoubleTapSeek, triggerPlayPauseFeedback, showControlsTemporarily, onPlay, onPause]
+  );
+
+  // Atualização de tempo do vídeo
+  const handleTimeUpdate = () => {
+    const el = videoRef.current;
+    if (!el) return;
+    setCurrentTime(el.currentTime);
+    if (el.buffered.length > 0) {
+      setBufferedTime(el.buffered.end(el.buffered.length - 1));
+    }
+    if (onTimeUpdate && el.duration > 0) {
+      onTimeUpdate(el.currentTime, el.duration);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.duration && !isNaN(el.duration)) {
+      setDuration(el.duration);
+    }
+    setVideoError(null);
+    const rawDur = el.duration;
+    const rawHeight = el.videoHeight;
+    const rawWidth = el.videoWidth;
+    if (rawWidth > 0 && rawHeight > 0) {
+      setVideoDimensions({ width: rawWidth, height: rawHeight });
+    }
+    const detected = classifyVideoResolution(rawHeight);
+    if (detected !== 'N/D') {
+      setDetectedResolution(detected);
+    }
+
+    // Aplicação segura do initialTime após loadedmetadata se não aplicado anteriormente
+    if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
+      initialTimeAppliedRef.current = true;
+      if (rawDur && initialTime < rawDur - 2) {
+        el.currentTime = initialTime;
+        setCurrentTime(initialTime);
+      }
+    }
+
+    // Propagação de metadados reais confirmados pelo player
+    if (onUpdateMetadata) {
+      const hasValidDuration =
+        typeof rawDur === 'number' && !isNaN(rawDur) && rawDur > 0 && isFinite(rawDur);
+      const updates: VideoMetadataUpdates = {};
+      if (hasValidDuration) {
+        updates.duration = Math.round(rawDur);
+        updates.durationFormatted = formatDuration(rawDur);
+      }
+      if (detected !== 'N/D') {
+        updates.resolution = detected;
+      }
+      if (updates.duration !== undefined || updates.resolution !== undefined) {
+        onUpdateMetadata(activeVideoId, updates);
+      }
+    }
+  };
+
+  // Clique na barra de progresso
+  const handleProgressSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const bar = progressBarRef.current;
+    const el = videoRef.current;
+    if (!bar || !el) return;
+    const rect = bar.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+    const newTime = ratio * (duration || 1);
+    el.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const handleProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const bar = progressBarRef.current;
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    const mouseX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const ratio = mouseX / rect.width;
+    setHoverPosition(mouseX);
+    setHoverTime(ratio * (duration || 0));
+  };
+
+  // Volume
+  const handleVolumeChange = (newVol: number) => {
+    const el = videoRef.current;
+    const clamped = Math.max(0, Math.min(1, newVol));
+    setVolume(clamped);
+    if (el) {
+      el.volume = clamped;
+      el.muted = clamped === 0;
+    }
+    setIsMuted(clamped === 0);
+  };
+
+  const toggleMute = () => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (isMuted) {
+      el.muted = false;
+      el.volume = volume > 0 ? volume : 0.5;
+      setIsMuted(false);
+    } else {
+      el.muted = true;
+      setIsMuted(true);
+    }
+  };
+
+  // Fullscreen
+  const toggleFullscreen = () => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container
+        .requestFullscreen()
+        .then(() => setIsFullscreen(true))
+        .catch(() => {
+          // fallback se fullscreen api for restrita
+        });
+    } else {
+      document
+        .exitFullscreen()
+        .then(() => setIsFullscreen(false))
+        .catch(() => {
+          // fallback
+        });
+    }
+  };
+
+  // Alterar velocidade
+  const changeSpeed = (speed: PlaybackSpeed) => {
+    setPlaybackSpeed(speed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+    }
+  };
+
+  // Alterar seleção visual de qualidade (e sincronizar com HLS se a stream for adaptativa)
+  const changeQuality = (q: QualityLevel) => {
+    setSelectedQuality(q);
+    if (isHlsActive && hlsRef.current) {
+      if (q === 'auto') {
+        changeHlsQuality(-1, 'auto');
+      } else {
+        const targetLvl = availableLevels.find(
+          (lvl) => lvl.label.toLowerCase() === q.toLowerCase()
+        );
+        if (targetLvl && targetLvl.levelIndex >= 0) {
+          changeHlsQuality(targetLvl.levelIndex, targetLvl.resolution);
+        }
+      }
+    }
+  };
+
+  // Alterar nível de qualidade real para transmissões HLS via hls.js
+  const changeHlsQuality = (levelIndex: number, resLabel: string) => {
+    const hls = hlsRef.current;
+    const el = videoRef.current;
+    if (!hls) return;
+    if (switchTimeoutRef.current) {
+      clearTimeout(switchTimeoutRef.current);
+      switchTimeoutRef.current = null;
+    }
+    setRequestedHlsLevel(levelIndex);
+    setSelectedQuality(resLabel.toLowerCase() as QualityLevel);
+    if (levelIndex === -1) {
+      // Reativa o modo Automático (ABR)
+      hls.currentLevel = -1;
+      setIsLevelSwitchPending(false);
+    } else {
+      // Solicita a qualidade manual selecionada no hls.js
+      hls.currentLevel = levelIndex;
+      const targetLvl = hls.levels[levelIndex];
+      const targetHeight = targetLvl?.height;
+      if (el && targetHeight && el.videoHeight > 0 && el.videoHeight === targetHeight) {
+        setIsLevelSwitchPending(false);
+        if (targetLvl.bitrate) {
+          setCurrentBitrate(targetLvl.bitrate);
+        }
+      } else {
+        setIsLevelSwitchPending(true);
+        switchTimeoutRef.current = setTimeout(() => {
+          setIsLevelSwitchPending(false);
+        }, 8000);
+      }
+    }
+  };
+
+  // Teclado
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignorar se o foco estiver em campo de texto
+      if (
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA'
+      ) {
+        return;
+      }
+      if (e.code === 'Space' || e.key === 'k') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        seekRelative(-10);
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        seekRelative(10);
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        toggleMute();
+      } else if (e.code === 'Escape') {
+        if (isFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        } else if (onClose) {
+          onClose();
+        }
       }
     };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [togglePlay, seekRelative, isFullscreen, onClose]);
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+  // Listener para evento fullscreenchange do navegador
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
-  // =========================================================================
-  // Ações de Velocidade e Qualidade
-  // =========================================================================
-
-  const handleSelectPlaybackRate = (rate: number) => {
-    const video = videoRef.current;
-    setPlaybackRate(rate);
-    if (video) video.playbackRate = rate;
-    setSettingsOpen(false);
-    setActiveMenuTab("main");
-  };
-
-  const handleSelectQuality = (levelIndex: number) => {
-    const hls = hlsRef.current;
-    setCurrentQuality(levelIndex);
-    if (hls) {
-      hls.currentLevel = levelIndex; // -1 = Auto
-    }
-    setSettingsOpen(false);
-    setActiveMenuTab("main");
-  };
-
-  // =========================================================================
-  // Interação Touch Mobile e Click (Double-Tap: ±10s e Single-Tap: Play/Pause)
-  // =========================================================================
-
-  const handleVideoTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
-    const touch = event.changedTouches[0];
-    if (!touch) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const side: "left" | "right" = x < rect.width / 2 ? "left" : "right";
-    const now = Date.now();
-    const previous = lastTapRef.current;
-
-    // Detecta duplo toque rápido no mesmo lado (< 300ms)
-    if (previous && previous.side === side && now - previous.time < 300) {
-      if (singleTapTimerRef.current) {
-        clearTimeout(singleTapTimerRef.current);
-        singleTapTimerRef.current = null;
+  // Fechar menu de configurações ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target || !document.contains(target)) return;
+      if (!target.closest('.player-menu-trigger') && !target.closest('.player-menu-content')) {
+        setShowSettingsMenu(false);
       }
-      lastTapRef.current = null;
-      seekBy(side === "left" ? -10 : 10);
-      return;
+    };
+    document.addEventListener('click', handleClickOutside);
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('pointerdown', handleClickOutside);
+    };
+  }, []);
+
+  // Limpeza de timers ao desmontar o componente
+  useEffect(() => {
+    return () => {
+      if (singleTapTimeoutRef.current) clearTimeout(singleTapTimeoutRef.current);
+      if (playPauseTimeoutRef.current) clearTimeout(playPauseTimeoutRef.current);
+      if (seekFeedbackTimeoutRef.current) clearTimeout(seekFeedbackTimeoutRef.current);
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    };
+  }, []);
+
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const bufferedPercent = duration > 0 ? (bufferedTime / duration) * 100 : 0;
+
+  // Informações de cabeçalho
+  const displayEpisodeHeader = useMemo(() => {
+    if (activeEpisodeNumber) {
+      return `EP ${String(activeEpisodeNumber).padStart(2, '0')}${activeEpisodeTitle ? ` · ${activeEpisodeTitle}` : ''}`;
     }
-
-    lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY, side };
-    if (singleTapTimerRef.current) {
-      clearTimeout(singleTapTimerRef.current);
-    }
-
-    singleTapTimerRef.current = setTimeout(() => {
-      togglePlay();
-      lastTapRef.current = null;
-      singleTapTimerRef.current = null;
-    }, 280);
-  };
-
-  const handleVideoClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (typeof window !== "undefined" && "ontouchstart" in window && navigator.maxTouchPoints > 0) {
-      return;
-    }
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const side: "left" | "right" = x < rect.width / 2 ? "left" : "right";
-    const now = Date.now();
-    const previous = lastTapRef.current;
-
-    if (previous && previous.side === side && now - previous.time < 300) {
-      if (singleTapTimerRef.current) {
-        clearTimeout(singleTapTimerRef.current);
-        singleTapTimerRef.current = null;
-      }
-      lastTapRef.current = null;
-      seekBy(side === "left" ? -10 : 10);
-      return;
-    }
-
-    lastTapRef.current = { time: now, x: event.clientX, y: event.clientY, side };
-    if (singleTapTimerRef.current) {
-      clearTimeout(singleTapTimerRef.current);
-    }
-
-    singleTapTimerRef.current = setTimeout(() => {
-      togglePlay();
-      lastTapRef.current = null;
-      singleTapTimerRef.current = null;
-    }, 280);
-  };
+    return activeEpisodeTitle || null;
+  }, [activeEpisodeNumber, activeEpisodeTitle]);
 
   return (
     <div
       ref={containerRef}
-      onMouseMove={triggerShowControls}
-      onPointerMove={(e) => {
-        if (e.pointerType !== "touch") {
-          triggerShowControls();
-        }
-      }}
-      style={{ touchAction: "manipulation" }}
-      className={cn(
-        "hikari-player relative aspect-video w-full select-none overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.55)] touch-manipulation",
-        isFullscreen ? "fixed inset-0 z-50 h-screen w-screen rounded-none border-0" : "",
-        className,
-      )}
-      tabIndex={0}
-      role="region"
-      aria-label="Reprodutor de vídeo Hikari"
+      onClick={handleVideoAreaTap}
+      onMouseMove={showControlsTemporarily}
+      onTouchStart={showControlsTemporarily}
+      className={`relative w-full ${isFullscreen ? 'h-full' : 'aspect-video'} min-h-[300px] md:min-h-[460px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl border border-slate-800/90 group touch-manipulation shadow-2xl ${className || ''}`}
+      style={{ touchAction: 'manipulation' }}
     >
-      <style>{`
-        @media (max-width: 639px) {
-          /* MOBILE ONLY — visual baseado exatamente na referência original do Hikari */
-          .hikari-player:not(:fullscreen) .hikari-mobile-controls {
-            position: absolute !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            height: 72px !important;
-            padding: 0 12px 5px !important;
-            display: block !important;
-            background: linear-gradient(to top, rgba(0,0,0,.62), rgba(0,0,0,0)) !important;
-            z-index: 10 !important;
-            box-sizing: border-box !important;
-          }
-
-          /* A barra fica sempre no limite inferior e não empurra os outros controles */
-          .hikari-player:not(:fullscreen) .hikari-progress-shell {
-            position: absolute !important;
-            left: 12px !important;
-            right: 12px !important;
-            bottom: 0 !important;
-            top: auto !important;
-            width: auto !important;
-            height: 5px !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: 0 !important;
-            border-radius: 999px !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            box-sizing: border-box !important;
-          }
-
-          .hikari-player:not(:fullscreen) .hikari-progress-track {
-            position: absolute !important;
-            left: 0 !important;
-            right: 0 !important;
-            top: 50% !important;
-            height: 2px !important;
-            transform: translateY(-50%) !important;
-            background: rgba(255,255,255,.42) !important;
-            border-radius: 999px !important;
-          }
-
-          .hikari-player:not(:fullscreen) .hikari-progress-track > div {
-            height: 100% !important;
-            background: rgba(255,255,255,.95) !important;
-          }
-
-          .hikari-player:not(:fullscreen) .hikari-progress-shell > div:nth-child(2) {
-            width: 7px !important;
-            height: 7px !important;
-            background: #fff !important;
-            box-shadow: 0 0 5px rgba(255,255,255,.55) !important;
-          }
-
-          /* Uma única linha: tempo à esquerda e os 3 controles existentes à direita */
-          .hikari-player:not(:fullscreen) .hikari-mobile-time-row {
-            position: absolute !important;
-            left: 12px !important;
-            right: 12px !important;
-            bottom: 12px !important;
-            top: auto !important;
-            width: auto !important;
-            height: 32px !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            gap: 8px !important;
-            border: 0 !important;
-            border-radius: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            box-sizing: border-box !important;
-          }
-
-          .hikari-player:not(:fullscreen) .hikari-mobile-time-row > div:first-child {
-            flex: 0 0 auto !important;
-            min-width: 0 !important;
-            font-size: 10px !important;
-            line-height: 32px !important;
-            text-shadow: 0 1px 3px rgba(0,0,0,.95) !important;
-            white-space: nowrap !important;
-          }
-
-          .hikari-player:not(:fullscreen) .hikari-mobile-time-row > div:last-child {
-            flex: 0 0 auto !important;
-            margin-left: auto !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 2px !important;
-            height: 32px !important;
-          }
-
-          /* Somente os botões que o Hikari já possui */
-          .hikari-player:not(:fullscreen) .hikari-volume,
-          .hikari-player:not(:fullscreen) .hikari-settings,
-          .hikari-player:not(:fullscreen) .hikari-mobile-fullscreen {
-            width: 30px !important;
-            height: 30px !important;
-            min-width: 30px !important;
-            min-height: 30px !important;
-            padding: 0 !important;
-            border: 0 !important;
-            border-radius: 999px !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            flex: 0 0 30px !important;
-          }
-
-          .hikari-player:not(:fullscreen) .hikari-volume svg,
-          .hikari-player:not(:fullscreen) .hikari-settings svg,
-          .hikari-player:not(:fullscreen) .hikari-mobile-fullscreen svg {
-            width: 17px !important;
-            height: 17px !important;
-            flex: 0 0 auto !important;
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,.95));
-          }
-
-          /* O menu de configurações sobe a partir do botão, sem sair da área do player */
-          .hikari-player:not(:fullscreen) .hikari-settings + * {
-            bottom: 34px !important;
-            right: 0 !important;
-          }
-        }
-      `}</style>
-
-      {/* Elemento de Vídeo HTML5 */}
+      {/* Elemento de Vídeo HTML5 com suporte a HLS.js adaptativo e decodificação nativa */}
       <video
         ref={videoRef}
-        poster={activePoster}
-        autoPlay={autoPlay}
+        src={isHlsActive && Hls.isSupported() ? undefined : effectiveVideoUrl}
+        poster={effectivePoster}
         playsInline
-        preload="metadata"
-        disablePictureInPicture
-        controlsList="nodownload noremoteplayback"
-        onContextMenu={(e) => e.preventDefault()}
-        className="size-full object-contain"
+        autoPlay={autoPlay}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onResize={handleVideoResize}
         onPlay={() => {
           setIsPlaying(true);
           onPlay?.();
-          triggerShowControls();
         }}
         onPause={() => {
           setIsPlaying(false);
           onPause?.();
-          setControlsVisible(true);
-        }}
-        onWaiting={() => setIsBuffering(true)}
-        onPlaying={() => setIsBuffering(false)}
-        onLoadedMetadata={(e: SyntheticEvent<HTMLVideoElement>) => {
-          const v = e.currentTarget;
-          setDuration(v.duration || 0);
-          v.volume = volume;
-          v.muted = isMuted;
-          v.playbackRate = playbackRate;
-          setIsBuffering(false);
-
-          if (v.videoHeight > 0) {
-            setDetectedResolution(classifyVideoResolution(v.videoHeight));
-          }
-
-          if (onUpdateMetadata && (video?.id || activeEpisodeTitle)) {
-            onUpdateMetadata(video?.id ?? "current", {
-              duration: v.duration,
-              resolution: classifyVideoResolution(v.videoHeight),
-            });
-          }
-
-          if (!hasAppliedInitialTimeRef.current && initialTimeRef.current > 0) {
-            v.currentTime = initialTimeRef.current;
-            hasAppliedInitialTimeRef.current = true;
-          }
-        }}
-        onTimeUpdate={(e: SyntheticEvent<HTMLVideoElement>) => {
-          const v = e.currentTarget;
-          const current = v.currentTime || 0;
-          const dur = v.duration || 0;
-          setCurrentTime(current);
-
-          if (v.buffered.length > 0) {
-            setBufferedTime(v.buffered.end(v.buffered.length - 1));
-          }
-
-          onTimeUpdate?.(current, dur);
         }}
         onEnded={() => {
           setIsPlaying(false);
-          setControlsVisible(true);
           onEnded?.();
         }}
         onError={() => {
-          setIsBuffering(false);
-          const errorMsg = "Erro ao carregar o vídeo.";
-          setPlaybackError(errorMsg);
-          onError?.(new Error(errorMsg));
+          if (video?.isLocalFile) {
+            setVideoError(
+              'O navegador não conseguiu decodificar o arquivo de vídeo selecionado. Verifique se o formato (MP4, WebM) e codec (H.264/AAC) são suportados nativamente pelo seu navegador.'
+            );
+          } else {
+            setVideoError(
+              'Não foi possível carregar a fonte de vídeo remota de teste. A arquitetura de reprodução permanece ativa.'
+            );
+          }
+          onError?.(new Error('Erro de decodificação de vídeo'));
         }}
+        className="w-full h-full object-contain cursor-pointer max-h-screen"
       />
 
-      {/* Camada transparente de captura de gestos no vídeo (1 toque: play/pause, 2 toques: ±10s) */}
+      {/* Fallback caso a fonte falhe */}
+      {videoError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0C10]/95 p-6 text-center z-20">
+          <div className="w-12 h-12 rounded-full bg-indigo-950/80 border border-indigo-700/50 flex items-center justify-center text-indigo-400 mb-4">
+            <Info className="w-6 h-6" />
+          </div>
+          <h4 className="text-base font-semibold text-white mb-1">
+            {video?.isLocalFile
+              ? 'Erro na Decodificação do Vídeo Local'
+              : 'Fonte de Reprodução Indisponível'}
+          </h4>
+          <p className="text-xs text-slate-300 max-w-md mb-5 leading-relaxed">{videoError}</p>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+            >
+              Voltar
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Exibição de Legenda na tela quando ativa */}
+      {activeSubtitle !== 'none' && isPlaying && currentTime > 2 && currentTime < duration - 2 && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none px-4 py-1.5 bg-black/75 rounded text-center max-w-lg z-20">
+          <p className="text-sm md:text-base font-medium text-white drop-shadow">
+            {video?.isLocalFile
+              ? (activeSubtitle === 'pt'
+                  ? 'Reprodução de arquivo local — Decodificação direta no navegador.'
+                  : 'Local file playback — Direct in-browser decoding.')
+              : (activeSubtitle === 'pt'
+                  ? `${effectiveTitle ? `${effectiveTitle} — ` : ''}Transmissão contínua autorizada.`
+                  : `${effectiveTitle ? `${effectiveTitle} — ` : ''}Authorized continuous stream.`)}
+          </p>
+        </div>
+      )}
+
+      {/* Barra superior com título do episódio / player ativo e botão Fechar */}
       <div
-        onClick={handleVideoClick}
-        onTouchEnd={handleVideoTouchEnd}
-        className="absolute inset-0 z-10 cursor-pointer"
-        aria-label="Área de controle do vídeo"
-      />
-
-      {/* Overlay de Carregamento / Buffering */}
-      {isBuffering && !playbackError && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/35 backdrop-blur-[2px]">
-          <Loader2 className="size-11 animate-spin text-[#a855f7]" />
-        </div>
-      )}
-
-      {/* Feedback de Erro */}
-      {playbackError && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-black/85 p-6 text-center text-white">
-          <AlertCircle className="size-10 text-red-500" />
-          <p className="text-base font-medium">{playbackError}</p>
-          <button
-            type="button"
-            onClick={() => {
-              setPlaybackError(null);
-              setIsBuffering(true);
-              if (isHlsStream && hlsRef.current && activeSrc) {
-                hlsRef.current.loadSource(activeSrc);
-                hlsRef.current.startLoad();
-              } else if (videoRef.current && activeSrc) {
-                videoRef.current.src = activeSrc;
-                videoRef.current.load();
-              }
-            }}
-            className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold hover:bg-white/20 active:scale-95"
-          >
-            Tentar novamente
-          </button>
-        </div>
-      )}
-
-      {/* Botão de Fechar / Voltar opcional */}
-      {onClose && controlsVisible && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between p-3 sm:p-4">
-          <button
-            type="button"
-            onClick={onClose}
-            title="Voltar"
-            aria-label="Voltar"
-            className="pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 transition hover:bg-white/20 hover:text-white active:scale-95 sm:size-9"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-        </div>
-      )}
-
-      {/* CONTROLES CENTRAIS CIRCULARES COM EFEITO DE VIDRO FOSCO */}
-      {controlsVisible && (
-        <div className="pointer-events-none absolute inset-x-0 top-[32%] z-20 flex -translate-y-1/2 items-center justify-center sm:top-[40%]">
-          <div
-            onPointerDown={triggerShowControls}
-            className="pointer-events-auto flex items-center gap-2 sm:gap-3"
-          >
-            {/* Retrocesso 10 segundos */}
+        className={`absolute top-0 left-0 right-0 p-3 sm:p-5 bg-gradient-to-b from-black/85 via-black/40 to-transparent transition-opacity duration-300 z-30 flex items-center justify-between pointer-events-none ${
+          controlsVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {onClose && (
             <button
-              type="button"
-              onClick={() => seekBy(-10)}
-              className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
-              aria-label="Voltar 10 segundos"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              aria-label="Voltar para a biblioteca"
+              title="Voltar"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-900/80 hover:bg-slate-800 active:scale-95 text-slate-200 hover:text-white flex items-center justify-center transition-all border border-slate-700/60 shadow-lg backdrop-blur-sm cursor-pointer"
             >
-              -10s
+              <X className="w-5 h-5" />
             </button>
+          )}
+          {displayEpisodeHeader && (
+            <div className="hidden sm:flex flex-col ml-1">
+              <span className="text-xs font-semibold text-white drop-shadow truncate max-w-sm sm:max-w-md">
+                {effectiveTitle}
+              </span>
+              <span className="text-[11px] text-indigo-300 font-medium">
+                {displayEpisodeHeader}
+              </span>
+            </div>
+          )}
+        </div>
 
-            {/* Play / Pause Central */}
-            <button
-              type="button"
-              onClick={togglePlay}
-              className="flex size-12 items-center justify-center rounded-full border border-white/30 bg-white/[0.14] text-white shadow-[0_10px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-2xl transition hover:border-white/45 hover:bg-white/20 active:scale-95 sm:size-14"
-              aria-label={isPlaying ? "Pausar" : "Reproduzir"}
-            >
-              {isPlaying ? (
-                <Pause className="size-5 fill-current" />
-              ) : (
-                <Play className="ml-0.5 size-5 fill-current" />
-              )}
-            </button>
+        {playerLabel && (
+          <div className="px-2.5 py-1 rounded-full bg-black/60 border border-white/10 backdrop-blur-md text-[11px] font-mono text-slate-300 pointer-events-auto">
+            {playerLabel}
+          </div>
+        )}
+      </div>
 
-            {/* Avanço 10 segundos */}
-            <button
-              type="button"
-              onClick={() => seekBy(10)}
-              className="hikari-skip flex size-10 items-center justify-center rounded-full border-0 bg-black/35 text-[10px] font-semibold text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/15 active:scale-95 sm:size-11 sm:text-[11px]"
-              aria-label="Avançar 10 segundos"
-            >
-              +10s
-            </button>
+      {/* Feedback central discreto e suave de Play / Pause */}
+      {playPauseFeedback && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-black/65 backdrop-blur-md border border-white/20 text-white flex items-center justify-center shadow-2xl animate-player-pop">
+            {playPauseFeedback === 'play' ? (
+              <Play className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white ml-0.5" />
+            ) : (
+              <Pause className="w-7 h-7 sm:w-8 sm:h-8 fill-white text-white" />
+            )}
           </div>
         </div>
       )}
 
-      {/* BARRA INFERIOR DE CONTROLES DO HIKARI */}
-      {controlsVisible && (
+      {/* Botão inicial de Play caso o vídeo ainda não tenha iniciado */}
+      {!isPlaying && currentTime === 0 && !playPauseFeedback && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-indigo-600/90 text-white flex items-center justify-center shadow-xl transition-transform">
+            <Play className="w-8 h-8 sm:w-9 sm:h-9 ml-1 fill-white" />
+          </div>
+        </div>
+      )}
+
+      {/* Feedback elegante e discreto de Voltar 10s (estilo YouTube) */}
+      {seekFeedback && seekFeedback.side === 'left' && (
+        <div className="absolute left-0 top-0 bottom-0 w-1/3 flex items-center justify-center pointer-events-none z-20 overflow-hidden">
+          <div className="absolute inset-y-0 left-0 w-full bg-white/[0.08] rounded-r-full animate-seek-feedback pointer-events-none" />
+          <div className="relative flex items-center gap-1.5 bg-black/70 backdrop-blur-md px-3.5 py-2 rounded-full border border-white/20 text-white shadow-xl animate-seek-feedback">
+            <RotateCcw className="w-4 h-4 text-white" />
+            <span className="text-xs font-bold tracking-wide font-mono">10</span>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback elegante e discreto de Avançar 10s (estilo YouTube) */}
+      {seekFeedback && seekFeedback.side === 'right' && (
+        <div className="absolute right-0 top-0 bottom-0 w-1/3 flex items-center justify-center pointer-events-none z-20 overflow-hidden">
+          <div className="absolute inset-y-0 right-0 w-full bg-white/[0.08] rounded-l-full animate-seek-feedback pointer-events-none" />
+          <div className="relative flex items-center gap-1.5 bg-black/70 backdrop-blur-md px-3.5 py-2 rounded-full border border-white/20 text-white shadow-xl animate-seek-feedback">
+            <span className="text-xs font-bold tracking-wide font-mono">10</span>
+            <RotateCw className="w-4 h-4 text-white" />
+          </div>
+        </div>
+      )}
+
+      {/* Overlay inferior de controles */}
+      <div
+        className={`absolute bottom-0 left-0 right-0 p-3 sm:p-5 bg-gradient-to-t from-black/95 via-black/70 to-transparent transition-opacity duration-300 z-30 ${
+          controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        {/* Barra de Progresso Interativa */}
         <div
-          onPointerDown={triggerShowControls}
-          className="hikari-mobile-controls absolute inset-x-0 bottom-0 z-20 px-2 pb-2 sm:px-5 sm:pb-4"
+          ref={progressBarRef}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleProgressSeek(e);
+          }}
+          onMouseMove={handleProgressMouseMove}
+          onMouseEnter={() => setIsHoveringProgress(true)}
+          onMouseLeave={() => setIsHoveringProgress(false)}
+          className="relative h-2 hover:h-3.5 bg-slate-800/80 hover:bg-slate-800 rounded-full cursor-pointer transition-all mb-3 group/progress"
         >
-          {/* Barra de Progresso Arredondada com Marcador Roxo */}
-          <div className="hikari-progress-shell relative h-5 rounded-full border border-white/10 bg-black/30 px-2 backdrop-blur-xl shadow-[0_8px_28px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.06)] sm:h-7 sm:px-3">
-            <div className="hikari-progress-track pointer-events-none absolute inset-x-2 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/20 sm:inset-x-3 sm:h-1.5">
-              <div
-                className="h-full rounded-full bg-white/90"
-                style={{
-                  width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+          {/* Barra de buffer carregado */}
+          <div
+            className="absolute top-0 left-0 bottom-0 bg-slate-700/60 rounded-full pointer-events-none transition-all"
+            style={{ width: `${bufferedPercent}%` }}
+          />
+          {/* Barra de progresso atual */}
+          <div
+            className="absolute top-0 left-0 bottom-0 bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full pointer-events-none"
+            style={{ width: `${progressPercent}%` }}
+          />
+          {/* Marcador deslizante */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 -ml-2 w-4 h-4 bg-white rounded-full shadow-md pointer-events-none transition-transform scale-0 group-hover/progress:scale-100"
+            style={{ left: `${progressPercent}%` }}
+          />
+          {/* Tooltip de tempo no hover */}
+          {isHoveringProgress && (
+            <div
+              className="absolute -top-8 -translate-x-1/2 bg-slate-900 border border-slate-700 text-slate-100 text-[11px] font-mono px-2 py-0.5 rounded shadow pointer-events-none"
+              style={{ left: `${hoverPosition}px` }}
+            >
+              {formatTime(hoverTime)}
+            </div>
+          )}
+        </div>
+
+        {/* Linha de Botões de Controle */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center justify-between gap-2 text-slate-200"
+        >
+          {/* Lado Esquerdo: Play, Voltar 10s, Avançar 10s, Volume, Tempo */}
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePlay();
+              }}
+              aria-label={isPlaying ? 'Pausar' : 'Reproduzir'}
+              className="w-10 h-10 flex items-center justify-center hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 fill-current" />}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                seekRelative(-10);
+              }}
+              aria-label="Voltar 10 segundos"
+              className="w-10 h-10 flex items-center justify-center hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              title="Voltar 10s"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                seekRelative(10);
+              }}
+              aria-label="Avançar 10 segundos"
+              className="w-10 h-10 flex items-center justify-center hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              title="Avançar 10s"
+            >
+              <RotateCw className="w-4 h-4" />
+            </button>
+            {/* Controle de Volume */}
+            <div className="flex items-center group/vol">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleMute();
                 }}
+                aria-label={isMuted ? 'Ativar som' : 'Desativar som'}
+                className="w-10 h-10 flex items-center justify-center hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="w-5 h-5 text-red-400" />
+                ) : volume < 0.5 ? (
+                  <Volume1 className="w-5 h-5" />
+                ) : (
+                  <Volume2 className="w-5 h-5" />
+                )}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                aria-label="Ajustar volume"
+                className="w-0 group-hover/vol:w-16 md:group-hover/vol:w-20 transition-all duration-200 accent-indigo-500 h-1 cursor-pointer bg-slate-700 rounded-lg hidden sm:block"
               />
             </div>
-
-            {/* Ponto Roxo Característico com Brilho Neon */}
-            <div
-              className="pointer-events-none absolute top-1/2 size-1.5 -translate-y-1/2 -translate-x-1/2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.75)] sm:size-2"
-              style={{
-                left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-              }}
-            />
-
-            <input
-              aria-label="Progresso do episódio"
-              type="range"
-              min={0}
-              max={duration || 0}
-              step={0.1}
-              value={Math.min(currentTime, duration || 0)}
-              onChange={(event) => handleSeekChange(Number(event.target.value))}
-              className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
-            />
+            {/* Marcação de Tempo */}
+            <div className="text-xs font-mono text-slate-300 ml-1 sm:ml-2 tabular-nums">
+              <span>{formatTime(currentTime)}</span>
+              <span className="text-slate-500 mx-1">/</span>
+              <span>{formatTime(duration)}</span>
+            </div>
           </div>
 
-          {/* Linha Inferior de Tempo e Ações */}
-          <div className="hikari-mobile-time-row mt-1 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2 py-1 backdrop-blur-xl shadow-[0_10px_35px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] sm:gap-2 sm:px-3 sm:py-1.5">
-            {/* Indicador de Tempo */}
-            <div className="flex shrink-0 items-center gap-1.5 text-[10px] font-medium tabular-nums tracking-wide text-white/90 sm:text-[11px]">
-              <span>{formatTime(currentTime)}</span>
-              <span className="text-white/35">/</span>
-              <span className="text-white/65">{formatTime(duration)}</span>
-            </div>
-
-            {/* Botões de Ação à Direita: Volume, Configurações, Tela Cheia */}
-            <div className="pointer-events-auto ml-auto flex items-center gap-1.5 sm:gap-2">
-              {/* Botão de Volume / Mudo */}
+          {/* Lado Direito: Menu Unificado de Configurações e Fullscreen */}
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* Menu Integrado de Configurações (Qualidade + Velocidade) */}
+            <div className="relative">
               <button
-                type="button"
-                onClick={toggleMute}
-                className="hikari-volume flex size-8 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
-                aria-label={isMuted ? "Ativar som" : "Silenciar"}
+                ref={settingsButtonRef}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowSettingsMenu(!showSettingsMenu);
+                  setSettingsView('main');
+                }}
+                className="player-menu-trigger h-10 px-2 sm:px-2.5 flex items-center gap-1.5 text-xs font-medium hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                title="Configurações (Qualidade e Velocidade)"
+                aria-label="Configurações"
               >
-                {isMuted ? (
-                  <VolumeX className="size-3.5 sm:size-4" />
-                ) : (
-                  <Volume2 className="size-3.5 sm:size-4" />
-                )}
+                <Settings className="w-4 h-4 text-slate-300" />
+                <span className="hidden xs:inline uppercase text-[11px] font-mono text-slate-300">
+                  {selectedQuality}
+                </span>
               </button>
-
-              {/* Botão e Menu Popover de Configurações */}
-              <div className="relative">
-                <button
-                  ref={settingsButtonRef}
-                  type="button"
-                  onClick={() => setSettingsOpen((open) => !open)}
-                  className={`hikari-settings flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-10 ${
-                    settingsOpen ? "bg-white/15 border-white/30" : ""
-                  }`}
-                  aria-label="Configurações do player"
-                  aria-expanded={settingsOpen}
+              {showSettingsMenu && (
+                <div
+                  ref={settingsMenuRef}
+                  onClick={(e) => e.stopPropagation()}
+                  className="player-menu-content absolute bottom-12 right-0 w-48 sm:w-52 max-w-[calc(100vw-1.5rem)] max-h-[60vh] bg-[#12131A]/95 border border-slate-800/90 rounded-xl p-1.5 shadow-2xl z-50 backdrop-blur-md overflow-y-auto custom-scrollbar"
                 >
-                  <Settings className="size-3.5 sm:size-4" />
-                </button>
-
-                {settingsOpen && (
-                  <div
-                    ref={settingsMenuRef}
-                    onClick={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    className="absolute bottom-11 right-0 z-30 w-56 sm:w-60 rounded-2xl border border-white/10 bg-[#111116]/95 p-2 text-sm shadow-2xl backdrop-blur-xl select-none"
-                  >
-                    <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
-                      Configurações
-                    </div>
-
-                    {/* Velocidade de Reprodução */}
-                    <div className="mt-1 rounded-xl px-3 py-2">
-                      <div className="mb-2 text-xs text-white/75">Velocidade</div>
-                      <div className="grid grid-cols-5 gap-1">
-                        {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
-                          <button
-                            key={rate}
-                            type="button"
-                            onClick={() => handleSelectPlaybackRate(rate)}
-                            className={`rounded-lg px-1 py-1.5 text-[11px] font-medium transition ${
-                              playbackRate === rate
-                                ? "bg-[#a855f7] text-white"
-                                : "bg-white/5 text-white/65 hover:bg-white/10"
-                            }`}
-                          >
-                            {rate}x
-                          </button>
-                        ))}
+                  {/* Visão Principal das Configurações */}
+                  {settingsView === 'main' && (
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between px-2 py-1 border-b border-slate-800/80 mb-1">
+                        <span className="text-xs font-semibold text-slate-200">Configurações</span>
+                        <button
+                          onClick={() => setShowSettingsMenu(false)}
+                          className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+                          aria-label="Fechar configurações"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    </div>
-
-                    {/* Qualidade do Vídeo (se disponível em HLS ou detectada) */}
-                    {(qualityLevels.length > 0 || detectedResolution !== "N/D") && (
-                      <div className="mt-1 border-t border-white/10 px-3 pt-2 pb-1.5">
-                        <div className="mb-2 text-xs text-white/75">Qualidade</div>
-                        <div className="flex flex-wrap gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleSelectQuality(-1)}
-                            className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
-                              currentQuality === -1
-                                ? "bg-[#a855f7] text-white"
-                                : "bg-white/5 text-white/65 hover:bg-white/10"
-                            }`}
-                          >
-                            {detectedResolution !== "N/D" && qualityLevels.length === 0
-                              ? `Auto (${detectedResolution})`
-                              : "Auto"}
-                          </button>
-                          {qualityLevels.map((lvl) => (
-                            <button
-                              key={lvl.id}
-                              type="button"
-                              onClick={() => handleSelectQuality(lvl.id)}
-                              className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
-                                currentQuality === lvl.id
-                                  ? "bg-[#a855f7] text-white"
-                                  : "bg-white/5 text-white/65 hover:bg-white/10"
-                              }`}
-                            >
-                              {lvl.label}
-                            </button>
-                          ))}
+                      {/* Opção Qualidade */}
+                      <button
+                        onClick={() => setSettingsView('quality')}
+                        className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-slate-200 hover:bg-slate-800/70 rounded-md transition-colors group cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          <span className="truncate">Qualidade</span>
                         </div>
+                        <div className="flex items-center gap-1 text-slate-400 group-hover:text-slate-200 shrink-0 ml-2">
+                          <span className="text-xs uppercase whitespace-nowrap">
+                            {selectedQuality}
+                          </span>
+                          <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                        </div>
+                      </button>
+                      {/* Opção Velocidade */}
+                      <button
+                        onClick={() => setSettingsView('speed')}
+                        className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-slate-200 hover:bg-slate-800/70 rounded-md transition-colors group text-left cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Gauge className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          <span className="truncate">Velocidade</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-slate-400 group-hover:text-slate-200 shrink-0 ml-2">
+                          <span className="text-xs whitespace-nowrap">
+                            {playbackSpeed === 1 ? 'Normal (1x)' : `${playbackSpeed}x`}
+                          </span>
+                          <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                  {/* Submenu de Qualidade */}
+                  {settingsView === 'quality' && (
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between px-2 py-1 border-b border-slate-800/80 mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSettingsView('main')}
+                            className="text-indigo-400 hover:text-white p-0.5 -ml-1 rounded hover:bg-slate-800/70 active:bg-slate-800 transition-colors flex items-center justify-center shrink-0 cursor-pointer"
+                            title="Voltar"
+                            aria-label="Voltar"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <span className="text-xs font-semibold text-slate-200">Qualidade</span>
+                        </div>
+                        <button
+                          onClick={() => setShowSettingsMenu(false)}
+                          className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+                          aria-label="Fechar menu"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Botão de Tela Cheia */}
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                className="hikari-mobile-fullscreen flex size-9 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] text-white/90 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-white/15 hover:border-white/25 active:scale-95 sm:size-9"
-                aria-label={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
-              >
-                {isFullscreen ? (
-                  <Minimize className="size-4 sm:size-4" />
-                ) : (
-                  <Maximize className="size-4 sm:size-4" />
-                )}
-              </button>
+                      {/* Lista de Resoluções */}
+                      {(isHlsActive && availableLevels.filter((lvl) => lvl.levelIndex >= 0).length > 0
+                        ? availableLevels.filter((lvl) => lvl.levelIndex >= 0).map((lvl) => lvl.label.toLowerCase() as QualityLevel)
+                        : (['1080p', '720p', '480p', '360p'] as QualityLevel[])
+                      ).map((q) => (
+                        <button
+                          key={q}
+                          onClick={() => changeQuality(q)}
+                          className={`w-full flex items-center justify-between px-2 py-1.5 text-xs rounded-md transition-colors cursor-pointer ${
+                            selectedQuality === q
+                              ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
+                              : 'text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="uppercase">{q}</span>
+                            {q === '1080p' && (
+                              <span className="text-[10px] text-slate-400 font-normal">Full HD</span>
+                            )}
+                            {q === '720p' && (
+                              <span className="text-[10px] text-slate-400 font-normal">HD</span>
+                            )}
+                          </div>
+                          {selectedQuality === q && (
+                            <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* Submenu de Velocidade */}
+                  {settingsView === 'speed' && (
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between px-2 py-1 border-b border-slate-800/80 mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSettingsView('main')}
+                            className="text-indigo-400 hover:text-white p-0.5 -ml-1 rounded hover:bg-slate-800/70 active:bg-slate-800 transition-colors flex items-center justify-center shrink-0 cursor-pointer"
+                            title="Voltar"
+                            aria-label="Voltar"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <span className="text-xs font-semibold text-slate-200">Velocidade</span>
+                        </div>
+                        <button
+                          onClick={() => setShowSettingsMenu(false)}
+                          className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+                          aria-label="Fechar menu"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {/* Lista de Velocidades */}
+                      {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((spd) => (
+                        <button
+                          key={spd}
+                          onClick={() => changeSpeed(spd)}
+                          className={`w-full flex items-center justify-between px-2 py-1.5 text-xs rounded-md transition-colors cursor-pointer ${
+                            playbackSpeed === spd
+                              ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
+                              : 'text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          <span className="text-xs whitespace-nowrap">{spd === 1 ? '1x' : `${spd}x`}</span>
+                          {playbackSpeed === spd && (
+                            <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+            {/* Tela Cheia */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFullscreen();
+              }}
+              aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+              className="w-10 h-10 flex items-center justify-center hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+            </button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
-}
+};
+
+export default CustomVideoPlayer;

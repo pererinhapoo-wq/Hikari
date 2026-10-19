@@ -576,6 +576,8 @@ function parseDurationToSeconds(raw?: string | number | null): number {
             hasPrevEpisode={Boolean(prev)}
             onNextEpisode={handleNextEpisode}
             onPrevEpisode={handlePrevEpisode}
+            playerLabel={selectedPlayer.name}
+            subtitles={_currentVideoItem?.subtitles}
           />
         ) : yt ? (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">

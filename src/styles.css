@@ -173,4 +173,55 @@ html[data-theme="light"] {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-    }
+}
+
+/* =========================================================
+   ANIMAÇÕES E CONTROLES DO PLAYER NOVA STREAM
+========================================================= */
+
+@keyframes playerPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes seekRipple {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+
+.animate-player-pop {
+  animation: playerPop 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-seek-feedback {
+  animation: seekRipple 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
