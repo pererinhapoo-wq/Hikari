@@ -11,10 +11,13 @@ import {
   RotateCcw,
   RotateCw,
   Settings,
+  Subtitles,
   Gauge,
   Info,
   X,
+  ShieldCheck,
   Check,
+  Radio,
   Sparkles,
   ChevronRight,
   ChevronLeft,
@@ -25,7 +28,6 @@ import {
   PlaybackSpeed,
   VideoResolution,
   StreamQualityOption,
-  VideoSubtitles,
 } from '../../types/video';
 import {
   getLocalVideoUrl,
@@ -47,97 +49,109 @@ export interface CustomVideoPlayerProps {
   video?: VideoItem;
   /** Ação de fechamento / retorno da tela */
   onClose?: () => void;
+  /** Iniciar reprodução automaticamente quando o vídeo estiver pronto */
+  autoPlay?: boolean;
   /** Callback para sincronização de metadados do vídeo */
   onUpdateMetadata?: (videoId: string, metadata: VideoMetadataUpdates) => void;
 
-  /** URL do vídeo (MP4, WebM ou Manifesto HLS .m3u8) */
+  /** URL do vídeo direta ou stream */
   src?: string | null;
   /** Imagem de capa antes do início da reprodução */
   poster?: string;
-  /** Título principal (ex.: Nome do anime ou obra) */
+  /** Título principal do anime ou vídeo */
   title?: string;
   /** Número do episódio atual */
   episodeNumber?: number;
   /** Título do episódio atual */
   episodeTitle?: string;
-  /** Iniciar reprodução automaticamente quando o vídeo estiver pronto */
-  autoPlay?: boolean;
-  /** Tempo inicial em segundos para retomar a reprodução */
+  /** Tempo inicial em segundos para retomar reprodução */
   initialTime?: number;
-  /** Callback acionado periodicamente com o progresso atual */
+  /** Callback periódico de tempo e duração */
   onTimeUpdate?: (currentTime: number, duration: number) => void;
-  /** Callback acionado ao término do vídeo */
+  /** Callback ao finalizar reprodução */
   onEnded?: () => void;
   /** Callback ao iniciar reprodução */
   onPlay?: () => void;
   /** Callback ao pausar */
   onPause?: () => void;
-  /** Callback em caso de erro */
+  /** Callback em erro de reprodução */
   onError?: (error: Error | string) => void;
-  /** Ação ao clicar no botão de próximo episódio */
+  /** Próximo episódio */
   onNextEpisode?: () => void;
-  /** Ação ao clicar no botão de episódio anterior */
+  /** Episódio anterior */
   onPrevEpisode?: () => void;
-  /** Se há episódio posterior */
+  /** Se há próximo episódio */
   hasNextEpisode?: boolean;
   /** Se há episódio anterior */
   hasPrevEpisode?: boolean;
-  /** Legendas disponíveis para o player */
-  subtitles?: VideoSubtitles[];
-  /** Rótulo do player ativo (ex.: 'Player 1', 'Player 5') */
+  /** Rótulo do player (Player 1, Player 5) */
   playerLabel?: string;
-  /** Classe CSS customizada para o container principal */
+  /** Classe CSS customizada para o contêiner */
   className?: string;
 }
 
 export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   video,
   onClose,
+  autoPlay = true,
   onUpdateMetadata,
   src,
   poster,
   title,
   episodeNumber,
   episodeTitle,
-  autoPlay = true,
   initialTime = 0,
   onTimeUpdate,
   onEnded,
   onPlay,
   onPause,
   onError,
-  onNextEpisode: _onNextEpisode,
-  onPrevEpisode: _onPrevEpisode,
-  hasNextEpisode: _hasNextEpisode,
-  hasPrevEpisode: _hasPrevEpisode,
-  subtitles: propSubtitles,
-  playerLabel,
   className,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
-  const initialTimeAppliedRef = useRef(false);
-  const settingsMenuRef = useRef<HTMLDivElement>(null);
-  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const initialTimeAppliedRef = useRef<boolean>(false);
 
-  // Normalização unificada entre NOVA STREAM e Hikari
-  const activeVideoId = video?.id || 'current-video';
-  const rawUrl = src ?? video?.videoUrl ?? video?.url ?? '';
-  const effectiveVideoUrl = video?.isLocalFile
-    ? getLocalVideoUrl(video.id) || rawUrl
-    : rawUrl;
+  // Normalização unificada entre objeto video e props diretas do Hikari
+  const activeVideo: VideoItem = useMemo(() => {
+    if (video) {
+      return {
+        ...video,
+        videoUrl: src ?? video.videoUrl ?? video.url ?? '',
+        posterUrl: poster ?? video.posterUrl ?? video.thumbnailUrl ?? '',
+        title: title ?? video.title ?? '',
+        episodeNumber: episodeNumber ?? video.episodeNumber,
+        episodeTitle: episodeTitle ?? video.episodeTitle,
+      };
+    }
+    return {
+      id: 'hikari-video',
+      title: title || episodeTitle || 'Vídeo',
+      description: episodeTitle || '',
+      duration: 0,
+      durationFormatted: '00:00',
+      category: 'Treinamentos & Tutoriais',
+      tags: [],
+      posterUrl: poster || '',
+      videoUrl: src || '',
+      isDemo: false,
+      isLocalFile: false,
+      createdAt: new Date().toISOString(),
+      resolution: 'N/D',
+      uploadStatus: 'pronto',
+    };
+  }, [video, src, poster, title, episodeNumber, episodeTitle]);
 
-  const effectivePoster = poster ?? video?.posterUrl ?? video?.thumbnailUrl ?? '';
-  const effectiveTitle = title ?? video?.title ?? '';
-  const activeEpisodeNumber = episodeNumber ?? video?.episodeNumber;
-  const activeEpisodeTitle = episodeTitle ?? video?.episodeTitle;
-  const effectiveSubtitles = propSubtitles ?? video?.subtitles ?? [];
+  // Obter URL de vídeo real para arquivos locais da sessão ou fonte remota de demonstração
+  const effectiveVideoUrl = activeVideo.isLocalFile
+    ? getLocalVideoUrl(activeVideo.id) || activeVideo.videoUrl
+    : activeVideo.videoUrl;
 
   // Estados de reprodução
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(video?.duration || 0);
+  const [duration, setDuration] = useState(activeVideo.duration || 0);
   const [bufferedTime, setBufferedTime] = useState(0);
   const [volume, setVolume] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
@@ -148,7 +162,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   // Resolução e dimensões detectadas em tempo de execução
   const [detectedResolution, setDetectedResolution] = useState<VideoResolution>(
-    video?.resolution || 'N/D'
+    activeVideo.resolution || 'N/D'
   );
   const [, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
 
@@ -168,28 +182,27 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return cleanUrl.endsWith('.m3u8') || url.includes('.m3u8') || url.includes('/hls/');
   }, []);
 
-  // Sincronizar resolução inicial e limpar erros/dimensões ao alternar de vídeo ou URL
+  // Sincronizar resolução inicial e limpar dimensões ao alternar de vídeo
   useEffect(() => {
-    setDetectedResolution(video?.resolution || 'N/D');
+    setDetectedResolution(activeVideo.resolution || 'N/D');
     setVideoDimensions(null);
     setCurrentBitrate(null);
     setRequestedHlsLevel(-1);
     setEffectiveHlsLevel(-1);
     setIsLevelSwitchPending(false);
     initialTimeAppliedRef.current = false;
-    setVideoError(null);
     if (switchTimeoutRef.current) {
       clearTimeout(switchTimeoutRef.current);
       switchTimeoutRef.current = null;
     }
-  }, [activeVideoId, video?.resolution, effectiveVideoUrl]);
+  }, [activeVideo.id, activeVideo.resolution, effectiveVideoUrl]);
 
   // Resolução efetiva para exibição honesta
   const displayResolution: VideoResolution =
     detectedResolution !== 'N/D'
       ? detectedResolution
-      : !isHlsActive && video?.resolution && video.resolution !== 'N/D'
-        ? video.resolution
+      : !isHlsActive && activeVideo.resolution && activeVideo.resolution !== 'N/D'
+        ? activeVideo.resolution
         : 'N/D';
 
   const _resolutionFormattedLabel = formatQualityLabel(displayResolution);
@@ -250,9 +263,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     videoEl.addEventListener('resize', handleVideoResize);
 
     if (isHls && Hls.isSupported()) {
-      videoEl.removeAttribute('src');
-      videoEl.load();
-
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
@@ -261,10 +271,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       });
       hlsRef.current = hls;
 
+      hls.loadSource(effectiveVideoUrl);
       hls.attachMedia(videoEl);
-      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-        hls.loadSource(effectiveVideoUrl);
-      });
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
         const parsedLevels: StreamQualityOption[] = [
@@ -310,6 +318,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         setEffectiveHlsLevel(-1);
         setIsLevelSwitchPending(false);
 
+        // Aplicação segura do initialTime
         if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
           initialTimeAppliedRef.current = true;
           videoEl.currentTime = initialTime;
@@ -334,6 +343,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         if (lvl && lvl.bitrate) {
           setCurrentBitrate(lvl.bitrate);
         }
+        // Se a resolução física decodificada pelo elemento de vídeo já corresponder ou se a variante não declarar height
         if (videoEl.videoHeight > 0 && lvl && (!lvl.height || videoEl.videoHeight === lvl.height)) {
           setIsLevelSwitchPending(false);
           const detected = classifyVideoResolution(videoEl.videoHeight);
@@ -390,7 +400,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               setVideoError(
                 'Não foi possível estabelecer transmissão contínua com a stream HLS adaptativa.'
               );
-              onError?.(new Error(`Falha fatal HLS: ${data.details}`));
+              onError?.(new Error(`Falha HLS: ${data.details}`));
               break;
           }
         }
@@ -410,7 +420,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     } else if (isHls && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari / iOS suporte nativo a HLS
       videoEl.src = effectiveVideoUrl;
-      videoEl.load();
       setIsHlsActive(true);
       setAvailableLevels([{ levelIndex: -1, label: 'Automático (Nativo)', resolution: 'Auto' }]);
       if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
@@ -424,7 +433,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     } else {
       // Fonte direta MP4, WebM ou Blob local
       videoEl.src = effectiveVideoUrl;
-      videoEl.load();
       setIsHlsActive(false);
       setAvailableLevels([]);
       if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
@@ -653,7 +661,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         updates.resolution = detected;
       }
       if (updates.duration !== undefined || updates.resolution !== undefined) {
-        onUpdateMetadata(activeVideoId, updates);
+        onUpdateMetadata(activeVideo.id, updates);
       }
     }
   };
@@ -772,6 +780,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       hls.currentLevel = levelIndex;
       const targetLvl = hls.levels[levelIndex];
       const targetHeight = targetLvl?.height;
+      // Trata o caso em que a dimensão não muda (ex.: decodificador já está na resolução física do nível selecionado)
       if (el && targetHeight && el.videoHeight > 0 && el.videoHeight === targetHeight) {
         setIsLevelSwitchPending(false);
         if (targetLvl.bitrate) {
@@ -779,6 +788,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         }
       } else {
         setIsLevelSwitchPending(true);
+        // Timeout de segurança para evitar interface travada em "trocando..." se o decodificador não emitir resize
         switchTimeoutRef.current = setTimeout(() => {
           setIsLevelSwitchPending(false);
         }, 8000);
@@ -834,19 +844,14 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   // Fechar menu de configurações ao clicar fora
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target || !document.contains(target)) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
       if (!target.closest('.player-menu-trigger') && !target.closest('.player-menu-content')) {
         setShowSettingsMenu(false);
       }
     };
     document.addEventListener('click', handleClickOutside);
-    document.addEventListener('pointerdown', handleClickOutside);
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
-      document.removeEventListener('pointerdown', handleClickOutside);
-    };
+    return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
   // Limpeza de timers ao desmontar o componente
@@ -862,28 +867,20 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferedPercent = duration > 0 ? (bufferedTime / duration) * 100 : 0;
 
-  // Informações de cabeçalho
-  const displayEpisodeHeader = useMemo(() => {
-    if (activeEpisodeNumber) {
-      return `EP ${String(activeEpisodeNumber).padStart(2, '0')}${activeEpisodeTitle ? ` · ${activeEpisodeTitle}` : ''}`;
-    }
-    return activeEpisodeTitle || null;
-  }, [activeEpisodeNumber, activeEpisodeTitle]);
-
   return (
     <div
       ref={containerRef}
       onClick={handleVideoAreaTap}
       onMouseMove={showControlsTemporarily}
       onTouchStart={showControlsTemporarily}
-      className={`relative w-full ${isFullscreen ? 'h-full' : 'aspect-video'} min-h-[300px] md:min-h-[460px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl border border-slate-800/90 group touch-manipulation shadow-2xl ${className || ''}`}
+      className={`relative w-full h-full min-h-[300px] md:min-h-[460px] bg-black flex items-center justify-center select-none overflow-hidden group touch-manipulation ${className || ''}`}
       style={{ touchAction: 'manipulation' }}
     >
       {/* Elemento de Vídeo HTML5 com suporte a HLS.js adaptativo e decodificação nativa */}
       <video
         ref={videoRef}
         src={isHlsActive && Hls.isSupported() ? undefined : effectiveVideoUrl}
-        poster={effectivePoster}
+        poster={activeVideo.posterUrl}
         playsInline
         autoPlay={autoPlay}
         onTimeUpdate={handleTimeUpdate}
@@ -902,7 +899,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
           onEnded?.();
         }}
         onError={() => {
-          if (video?.isLocalFile) {
+          if (activeVideo.isLocalFile) {
             setVideoError(
               'O navegador não conseguiu decodificar o arquivo de vídeo selecionado. Verifique se o formato (MP4, WebM) e codec (H.264/AAC) são suportados nativamente pelo seu navegador.'
             );
@@ -911,7 +908,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               'Não foi possível carregar a fonte de vídeo remota de teste. A arquitetura de reprodução permanece ativa.'
             );
           }
-          onError?.(new Error('Erro de decodificação de vídeo'));
+          onError?.(new Error('Erro ao carregar vídeo'));
         }}
         className="w-full h-full object-contain cursor-pointer max-h-screen"
       />
@@ -923,9 +920,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             <Info className="w-6 h-6" />
           </div>
           <h4 className="text-base font-semibold text-white mb-1">
-            {video?.isLocalFile
+            {activeVideo.isLocalFile
               ? 'Erro na Decodificação do Vídeo Local'
-              : 'Fonte de Reprodução Indisponível'}
+              : 'Fonte de Demonstração em Manutenção'}
           </h4>
           <p className="text-xs text-slate-300 max-w-md mb-5 leading-relaxed">{videoError}</p>
           {onClose && (
@@ -933,65 +930,46 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               onClick={onClose}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
             >
-              Voltar
+              Voltar para a Biblioteca
             </button>
           )}
         </div>
       )}
 
-      {/* Exibição de Legenda na tela quando ativa */}
+      {/* Exibição simulada de Legenda na tela */}
       {activeSubtitle !== 'none' && isPlaying && currentTime > 2 && currentTime < duration - 2 && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none px-4 py-1.5 bg-black/75 rounded text-center max-w-lg z-20">
           <p className="text-sm md:text-base font-medium text-white drop-shadow">
-            {video?.isLocalFile
+            {activeVideo.isLocalFile
               ? (activeSubtitle === 'pt'
                   ? 'Reprodução de arquivo local — Decodificação direta no navegador.'
                   : 'Local file playback — Direct in-browser decoding.')
               : (activeSubtitle === 'pt'
-                  ? `${effectiveTitle ? `${effectiveTitle} — ` : ''}Transmissão contínua autorizada.`
-                  : `${effectiveTitle ? `${effectiveTitle} — ` : ''}Authorized continuous stream.`)}
+                  ? 'Transmissão autorizada — Reprodução contínua de fonte direta.'
+                  : 'Authorized transmission — Direct source continuous playback.')}
           </p>
         </div>
       )}
 
-      {/* Barra superior com título do episódio / player ativo e botão Fechar */}
-      <div
-        className={`absolute top-0 left-0 right-0 p-3 sm:p-5 bg-gradient-to-b from-black/85 via-black/40 to-transparent transition-opacity duration-300 z-30 flex items-center justify-between pointer-events-none ${
-          controlsVisible ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
-        <div className="flex items-center gap-2 pointer-events-auto">
-          {onClose && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-              }}
-              aria-label="Voltar para a biblioteca"
-              title="Voltar"
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-900/80 hover:bg-slate-800 active:scale-95 text-slate-200 hover:text-white flex items-center justify-center transition-all border border-slate-700/60 shadow-lg backdrop-blur-sm cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-          {displayEpisodeHeader && (
-            <div className="hidden sm:flex flex-col ml-1">
-              <span className="text-xs font-semibold text-white drop-shadow truncate max-w-sm sm:max-w-md">
-                {effectiveTitle}
-              </span>
-              <span className="text-[11px] text-indigo-300 font-medium">
-                {displayEpisodeHeader}
-              </span>
-            </div>
-          )}
+      {/* Barra superior com botão Fechar */}
+      {onClose && (
+        <div
+          className={`absolute top-0 left-0 right-0 p-3 sm:p-5 bg-gradient-to-b from-black/80 via-black/30 to-transparent transition-opacity duration-300 z-30 flex items-center justify-between pointer-events-none ${
+            controlsVisible ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            aria-label="Voltar para a biblioteca"
+            className="pointer-events-auto w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-900/80 hover:bg-slate-800 active:scale-95 text-slate-200 hover:text-white flex items-center justify-center transition-all border border-slate-700/60 shadow-lg backdrop-blur-sm cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
-
-        {playerLabel && (
-          <div className="px-2.5 py-1 rounded-full bg-black/60 border border-white/10 backdrop-blur-md text-[11px] font-mono text-slate-300 pointer-events-auto">
-            {playerLabel}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Feedback central discreto e suave de Play / Pause */}
       {playPauseFeedback && (
@@ -1162,7 +1140,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Menu Integrado de Configurações (Qualidade + Velocidade) */}
             <div className="relative">
               <button
-                ref={settingsButtonRef}
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowSettingsMenu(!showSettingsMenu);
@@ -1179,7 +1156,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               </button>
               {showSettingsMenu && (
                 <div
-                  ref={settingsMenuRef}
                   onClick={(e) => e.stopPropagation()}
                   className="player-menu-content absolute bottom-12 right-0 w-48 sm:w-52 max-w-[calc(100vw-1.5rem)] max-h-[60vh] bg-[#12131A]/95 border border-slate-800/90 rounded-xl p-1.5 shadow-2xl z-50 backdrop-blur-md overflow-y-auto custom-scrollbar"
                 >
@@ -1254,10 +1230,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                         </button>
                       </div>
                       {/* Lista de Resoluções */}
-                      {(isHlsActive && availableLevels.filter((lvl) => lvl.levelIndex >= 0).length > 0
-                        ? availableLevels.filter((lvl) => lvl.levelIndex >= 0).map((lvl) => lvl.label.toLowerCase() as QualityLevel)
-                        : (['1080p', '720p', '480p', '360p'] as QualityLevel[])
-                      ).map((q) => (
+                      {(['1080p', '720p', '480p', '360p'] as QualityLevel[]).map((q) => (
                         <button
                           key={q}
                           onClick={() => changeQuality(q)}
