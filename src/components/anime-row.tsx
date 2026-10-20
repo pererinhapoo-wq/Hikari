@@ -21,7 +21,7 @@ export function AnimeRow({
   if (!loading && items.length === 0) return null;
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-3 [content-visibility:auto] [contain-intrinsic-size:auto_260px]">
       <div className="flex items-center justify-between gap-3 px-1">
         <h2 className="font-display text-lg tracking-tight text-fg sm:text-2xl">
           {title}

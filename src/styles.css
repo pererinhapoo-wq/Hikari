@@ -60,7 +60,6 @@ html[data-theme="light"] {
     -moz-osx-font-smoothing: grayscale;
     background: var(--color-bg);
     color: var(--color-fg);
-    scroll-behavior: smooth;
   }
 
   body {
@@ -89,15 +88,6 @@ html[data-theme="light"] {
     background: var(--color-primary);
     color: var(--color-primary-fg);
   }
-
-  img {
-    outline: 1px solid rgb(255 255 255 / 0.08);
-    outline-offset: -1px;
-  }
-
-  html[data-theme="light"] img {
-    outline-color: rgb(0 0 0 / 0.08);
-  }
 }
 
 @layer utilities {
@@ -118,9 +108,7 @@ html[data-theme="light"] {
     display: flex;
     gap: 0.75rem;
     overflow-x: auto;
-    scroll-behavior: smooth;
-    scroll-snap-type: x mandatory;
-    scroll-snap-stop: normal;
+    scroll-snap-type: x proximity;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 0.25rem;

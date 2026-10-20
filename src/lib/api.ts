@@ -759,15 +759,21 @@ function mapJikanSlim(
 async function jikanEpisodes(
   malId: number,
 ): Promise<Season[]> {
-  const episodes: Episode[] =
-    [];
+  const cacheKey = `jikan-episodes:v2:${malId}`;
+  const cached = fromCache<Season[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const episodes: Episode[] = [];
 
   let page = 1;
   let hasNext = true;
 
+  // Limita a até 2 páginas para não bloquear a resposta em animes longos
   while (
     hasNext &&
-    page <= 8
+    page <= 2
   ) {
     type EpisodePage = {
       pagination?: {
@@ -784,45 +790,49 @@ async function jikanEpisodes(
       }[];
     };
 
-    const json =
-      await jikanFetch<EpisodePage>(
-        `/anime/${malId}/episodes?page=${page}`,
+    try {
+      const json =
+        await jikanFetch<EpisodePage>(
+          `/anime/${malId}/episodes?page=${page}`,
+        );
+
+      for (
+        const episode of
+          json.data ?? []
+      ) {
+        episodes.push({
+          id: `mal-ep-${malId}-${episode.mal_id}`,
+
+          number:
+            episode.mal_id,
+
+          title:
+            episode.title ||
+            episode.title_japanese ||
+            `Episódio ${episode.mal_id}`,
+
+          aired:
+            episode.aired ??
+            undefined,
+        });
+      }
+
+      hasNext = Boolean(
+        json.pagination
+          ?.has_next_page,
       );
 
-    for (
-      const episode of
-        json.data ?? []
-    ) {
-      episodes.push({
-        id: `mal-ep-${malId}-${episode.mal_id}`,
-
-        number:
-          episode.mal_id,
-
-        title:
-          episode.title ||
-          episode.title_japanese ||
-          `Episódio ${episode.mal_id}`,
-
-        aired:
-          episode.aired ??
-          undefined,
-      });
+      page += 1;
+    } catch {
+      break;
     }
-
-    hasNext = Boolean(
-      json.pagination
-        ?.has_next_page,
-    );
-
-    page += 1;
   }
 
   if (!episodes.length) {
     return [];
   }
 
-  return [
+  const result: Season[] = [
     {
       id: `mal-s1-${malId}`,
 
@@ -834,6 +844,8 @@ async function jikanEpisodes(
       episodes,
     },
   ];
+
+  return toCache(cacheKey, result);
 }
 
 function streamingFromAni(
@@ -912,6 +924,12 @@ async function fetchAniMediaByMalId(
 async function buildSeasonNavigation(
   media: AniMedia,
 ): Promise<SeasonNavigation> {
+  const navKey = `season-nav:v2:${media.id}`;
+  const cached = fromCache<SeasonNavigation>(navKey);
+  if (cached) {
+    return cached;
+  }
+
   const current: SeasonNavigationItem = {
     id: String(media.id),
     title:
@@ -930,108 +948,43 @@ async function buildSeasonNavigation(
         Boolean(relation.node?.id),
     )?.node;
 
-  const fetchRelations = async (
-    id: number,
-  ): Promise<AniMedia["relations"]> => {
-    const result =
-      await anilistGraphQL<{
-        Media:
-          | Pick<AniMedia, "relations">
-          | null;
-      }>(
-        `
-        query SeasonRelations($id: Int) {
-          Media(id: $id, type: ANIME) {
-            relations {
-              edges {
-                relationType
-                node {
-                  id
-                  title {
-                    romaji
-                    english
-                  }
-                }
-              }
-            }
-          }
-        }
-        `,
-        { id },
-      );
-
-    return result.Media?.relations;
-  };
+  const directPrequel = findRelation(media, "PREQUEL");
+  const directSequel = findRelation(media, "SEQUEL");
 
   const previous: SeasonNavigationItem[] = [];
   const next: SeasonNavigationItem[] = [];
-  const visited = new Set<string>([current.id]);
 
-  let cursor = findRelation(media, "PREQUEL");
-  let steps = 0;
-
-  while (cursor?.id && steps < 10) {
-    const item: SeasonNavigationItem = {
-      id: String(cursor.id),
+  if (directPrequel?.id) {
+    previous.push({
+      id: String(directPrequel.id),
       title:
-        cursor.title?.english ??
-        cursor.title?.romaji ??
+        directPrequel.title?.english ??
+        directPrequel.title?.romaji ??
         undefined,
-    };
-
-    if (visited.has(item.id)) break;
-    visited.add(item.id);
-    previous.unshift(item);
-    steps++;
-
-    const relations = await fetchRelations(cursor.id);
-    cursor = relations
-      ? (relations.edges ?? []).find(
-          (relation) =>
-            relation.relationType ===
-              "PREQUEL" &&
-            Boolean(relation.node?.id),
-        )?.node
-      : undefined;
+    });
   }
 
-  cursor = findRelation(media, "SEQUEL");
-  steps = 0;
-
-  while (cursor?.id && steps < 10) {
-    const item: SeasonNavigationItem = {
-      id: String(cursor.id),
+  if (directSequel?.id) {
+    next.push({
+      id: String(directSequel.id),
       title:
-        cursor.title?.english ??
-        cursor.title?.romaji ??
+        directSequel.title?.english ??
+        directSequel.title?.romaji ??
         undefined,
-    };
-
-    if (visited.has(item.id)) break;
-    visited.add(item.id);
-    next.push(item);
-    steps++;
-
-    const relations = await fetchRelations(cursor.id);
-    cursor = relations
-      ? (relations.edges ?? []).find(
-          (relation) =>
-            relation.relationType ===
-              "SEQUEL" &&
-            Boolean(relation.node?.id),
-        )?.node
-      : undefined;
+    });
   }
 
-  return {
+  const result: SeasonNavigation = {
     items: [
       ...previous,
       current,
       ...next,
     ],
-    previous: previous.at(-1),
+    previous: previous[0],
     next: next[0],
   };
+
+  return toCache(navKey, result);
 }
 
 function mapAniFull(
@@ -3186,15 +3139,71 @@ export const fetchAnimeDetail =
             return null;
           }
 
-          let seasons: Season[] =
-            [];
+          let seasons: Season[] = [];
 
-          if (media.idMal) {
+          if (
+            media.streamingEpisodes &&
+            media.streamingEpisodes.length > 0
+          ) {
+            const fromStream: Episode[] =
+              media.streamingEpisodes.map(
+                (episode, index) => ({
+                  id: `stream-${media.id}-${index}`,
+                  number: index + 1,
+                  title:
+                    episode.title ??
+                    `Episódio ${index + 1}`,
+                  thumbnail: episode.thumbnail,
+                  videoUrl: episode.url,
+                }),
+              );
+
+            const count =
+              media.episodes ??
+              fromStream.length;
+
+            const episodes =
+              fromStream.length >= count
+                ? fromStream
+                : Array.from(
+                    { length: count },
+                    (_, index) => {
+                      const found =
+                        fromStream[index];
+                      return (
+                        found ?? {
+                          id: `ep-${media.id}-${index + 1}`,
+                          number: index + 1,
+                          title: `Episódio ${index + 1}`,
+                        }
+                      );
+                    },
+                  );
+
+            seasons = [
+              {
+                id: `s1-${media.id}`,
+                number: 1,
+                title: "Temporada 1",
+                episodes,
+              },
+            ];
+          } else if (media.idMal) {
             try {
-              seasons =
-                await jikanEpisodes(
-                  media.idMal,
-                );
+              seasons = await Promise.race([
+                jikanEpisodes(media.idMal),
+                new Promise<Season[]>((_, reject) =>
+                  setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          "Jikan timeout",
+                        ),
+                      ),
+                    1800,
+                  ),
+                ),
+              ]);
             } catch {
               seasons = [];
             }

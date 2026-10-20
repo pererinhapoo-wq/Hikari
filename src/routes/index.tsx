@@ -12,6 +12,8 @@ import { AnimeRow } from "@/components/anime-row";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 
 export const Route = createFileRoute("/")({
+  staleTime: 1000 * 60 * 10,
+  gcTime: 1000 * 60 * 30,
   loader: () => fetchHomeCatalog(),
   pendingComponent: HomePending,
   errorComponent: HomeError,

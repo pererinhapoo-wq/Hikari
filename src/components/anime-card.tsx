@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Bookmark,
@@ -13,7 +14,7 @@ import { scoreLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useHikariStore } from "@/lib/store";
 
-export function AnimeCard({
+export const AnimeCard = memo(function AnimeCard({
   anime,
   size = "md",
 }: {
@@ -52,6 +53,7 @@ export function AnimeCard({
         params={{
           id: anime.id,
         }}
+        preload="intent"
         className="
           block
           overflow-hidden
@@ -79,6 +81,7 @@ export function AnimeCard({
                 group-hover:scale-[1.03]
               "
               loading="lazy"
+              decoding="async"
             />
           ) : (
             <div className="flex size-full items-center justify-center px-2 text-center font-display text-lg text-subtle">
@@ -93,14 +96,15 @@ export function AnimeCard({
                 top-1.5
                 left-1.5
                 rounded-md
-                bg-bg/80
+                bg-bg/90
+                border
+                border-white/10
                 px-1.5
                 py-0.5
                 text-[10px]
                 font-medium
                 tabular-nums
                 text-score
-                backdrop-blur-sm
               "
             >
               {scoreLabel(
@@ -153,10 +157,11 @@ export function AnimeCard({
           items-center
           justify-center
           rounded-md
-          bg-bg/70
+          bg-bg/90
+          border
+          border-white/10
           text-fg
           opacity-100
-          backdrop-blur-sm
           transition-opacity
           sm:opacity-0
           sm:group-hover:opacity-100
@@ -170,7 +175,7 @@ export function AnimeCard({
       </button>
     </article>
   );
-}
+});
 
 export function AnimeCardSkeleton({
   size = "md",

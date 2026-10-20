@@ -31,6 +31,8 @@ import { youtubeIdFrom } from "@/lib/utils";
 const EMPTY_WATCHED_EPISODES: string[] = [];
 
 export const Route = createFileRoute("/anime/$id")({
+  staleTime: 1000 * 60 * 5,
+  gcTime: 1000 * 60 * 15,
   loader: async ({ params }) => {
     if (params.id.startsWith("local-")) {
       return { remote: null };
@@ -90,11 +92,6 @@ function AnimePage() {
 
   const anime = mergeDetail(remote, id, locals);
 
-  const [loadedBanner, setLoadedBanner] = useState<{
-    id: string;
-    src: string;
-  } | null>(null);
-
   const [seasonsOpen, setSeasonsOpen] =
     useState(false);
 
@@ -105,32 +102,6 @@ function AnimePage() {
       setCanGoBack(true);
     }
   }, []);
-
-  useEffect(() => {
-    setLoadedBanner(null);
-
-    if (!anime?.banner) {
-      return;
-    }
-
-    const bannerId = anime.id;
-    const bannerSrc = anime.banner;
-
-    const image = new Image();
-
-    image.onload = () => {
-      setLoadedBanner({
-        id: bannerId,
-        src: bannerSrc,
-      });
-    };
-
-    image.src = bannerSrc;
-
-    return () => {
-      image.onload = null;
-    };
-  }, [id, anime?.id, anime?.banner]);
 
   /*
    * COR DA ABA DO NAVEGADOR
@@ -148,121 +119,82 @@ function AnimePage() {
       document.head.appendChild(meta);
     }
 
+    if (anime?.color) {
+      meta.content = anime.color;
+      return;
+    }
+
     meta.content = defaultColor;
 
     if (!anime?.banner) {
       return;
     }
 
-    const image = new Image();
-    image.crossOrigin = "anonymous";
+    // Executa em segundo plano para não disputar CPU com a navegação/renderização inicial
+    const timer = setTimeout(() => {
+      const image = new Image();
+      image.crossOrigin = "anonymous";
 
-    image.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
+      image.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d", { willReadFrequently: true });
+          if (!context) return;
 
-        const context = canvas.getContext("2d", {
-          willReadFrequently: true,
-        });
+          const width = image.naturalWidth;
+          const height = image.naturalHeight;
+          if (!width || !height) return;
 
-        if (!context) {
-          return;
-        }
+          canvas.width = 40;
+          canvas.height = 20;
 
-        const width = image.naturalWidth;
-        const height = image.naturalHeight;
+          context.drawImage(
+            image,
+            width * 0.25,
+            height * 0.1,
+            width * 0.5,
+            height * 0.35,
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          );
 
-        if (!width || !height) {
-          return;
-        }
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          let red = 0, green = 0, blue = 0, count = 0;
 
-        canvas.width = 80;
-        canvas.height = 40;
-
-        const sourceX = width * 0.25;
-        const sourceY = height * 0.1;
-        const sourceWidth = width * 0.5;
-        const sourceHeight = height * 0.35;
-
-        context.drawImage(
-          image,
-          sourceX,
-          sourceY,
-          sourceWidth,
-          sourceHeight,
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-        );
-
-        const pixels = context.getImageData(
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-        ).data;
-
-        let red = 0;
-        let green = 0;
-        let blue = 0;
-        let count = 0;
-
-        for (
-          let i = 0;
-          i < pixels.length;
-          i += 4
-        ) {
-          const r = pixels[i];
-          const g = pixels[i + 1];
-          const b = pixels[i + 2];
-          const alpha = pixels[i + 3];
-
-          if (alpha < 180) {
-            continue;
+          for (let i = 0; i < pixels.length; i += 4) {
+            if (pixels[i + 3] < 180) continue;
+            red += pixels[i];
+            green += pixels[i + 1];
+            blue += pixels[i + 2];
+            count++;
           }
 
-          red += r;
-          green += g;
-          blue += b;
-          count++;
+          if (!count || !meta) return;
+
+          const factor = 0.72;
+          const finalRed = Math.round((red / count) * factor);
+          const finalGreen = Math.round((green / count) * factor);
+          const finalBlue = Math.round((blue / count) * factor);
+
+          meta.content = `rgb(${finalRed}, ${finalGreen}, ${finalBlue})`;
+        } catch {
+          if (meta) meta.content = defaultColor;
         }
+      };
 
-        if (!count) {
-          return;
-        }
+      image.onerror = () => {
+        if (meta) meta.content = defaultColor;
+      };
 
-        const factor = 0.72;
-
-        const finalRed = Math.round(
-          (red / count) * factor,
-        );
-
-        const finalGreen = Math.round(
-          (green / count) * factor,
-        );
-
-        const finalBlue = Math.round(
-          (blue / count) * factor,
-        );
-
-        meta.content = `rgb(${finalRed}, ${finalGreen}, ${finalBlue})`;
-      } catch {
-        meta.content = defaultColor;
-      }
-    };
-
-    image.onerror = () => {
-      meta.content = defaultColor;
-    };
-
-    image.src = anime.banner;
+      image.src = anime.banner;
+    }, 200);
 
     return () => {
-      image.onload = null;
-      image.onerror = null;
+      clearTimeout(timer);
     };
-  }, [anime?.id, anime?.banner]);
+  }, [anime?.id, anime?.banner, anime?.color]);
 
   /*
    * TEMPORADAS
@@ -280,11 +212,11 @@ function AnimePage() {
     seasons[0] ?? null;
 
   const currentEpisodes =
-    currentSeason?.episodes ?? [];
+    currentSeason?.episodes;
 
   const allEpisodes = useMemo(
     () =>
-      currentEpisodes.map((episode) => ({
+      (currentEpisodes ?? []).map((episode) => ({
         ...episode,
         seasonId:
           currentSeason?.id ?? "",
@@ -381,10 +313,6 @@ function AnimePage() {
     }
   };
 
-  const bannerIsReady =
-    loadedBanner?.id === anime.id &&
-    loadedBanner.id === id;
-
   return (
     <article className="pb-12">
       {/* HERO */}
@@ -393,16 +321,15 @@ function AnimePage() {
           key={`banner-${anime.id}`}
           className="relative h-[14rem] sm:h-[22rem]"
         >
-          {bannerIsReady && (
+          {anime.banner ? (
             <img
-              key={`${loadedBanner.id}-${loadedBanner.src}`}
-              src={loadedBanner.src}
+              src={anime.banner}
               alt=""
               loading="eager"
               decoding="async"
               className="size-full object-cover"
             />
-          )}
+          ) : null}
 
           <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
 

@@ -21,12 +21,6 @@ export function Hero({
     anime.cover || anime.banner || "",
   );
 
-  const [isLandscape, setIsLandscape] = useState(false);
-
-  const [imageRatio, setImageRatio] = useState<number | null>(
-    null,
-  );
-
   const current = animes[index] ?? anime;
   const title = displayTitle(current);
 
@@ -49,38 +43,6 @@ export function Hero({
   const desktopBackdrop =
     current.banner || current.cover || "";
 
-  function loadBackdrop(
-    url: string,
-    onLoaded?: () => void,
-  ) {
-    if (!url) {
-      setImageRatio(null);
-      setIsLandscape(false);
-      onLoaded?.();
-      return;
-    }
-
-    const image = new Image();
-
-    image.onload = () => {
-      const width = image.naturalWidth;
-      const height = image.naturalHeight;
-
-      if (width > 0 && height > 0) {
-        setIsLandscape(width > height);
-        setImageRatio(width / height);
-      }
-
-      onLoaded?.();
-    };
-
-    image.src = url;
-  }
-
-  useEffect(() => {
-    loadBackdrop(visibleBackdrop);
-  }, [visibleBackdrop]);
-
   useEffect(() => {
     if (animes.length < 2) return;
 
@@ -93,27 +55,8 @@ export function Hero({
         nextAnime?.banner ||
         "";
 
-      if (!nextBackdrop) {
-        setIndex(nextIndex);
-        return;
-      }
-
-      const image = new Image();
-
-      image.onload = () => {
-        const width = image.naturalWidth;
-        const height = image.naturalHeight;
-
-        if (width > 0 && height > 0) {
-          setIsLandscape(width > height);
-          setImageRatio(width / height);
-        }
-
-        setVisibleBackdrop(nextBackdrop);
-        setIndex(nextIndex);
-      };
-
-      image.src = nextBackdrop;
+      setVisibleBackdrop(nextBackdrop);
+      setIndex(nextIndex);
     }, 8000);
 
     return () => window.clearInterval(timer);
@@ -141,11 +84,6 @@ export function Hero({
             sm:h-[21rem]
             md:h-[21rem]
           "
-          style={
-            !isLandscape && imageRatio
-              ? undefined
-              : undefined
-          }
         >
           {/* =================================================
               MOBILE
@@ -155,6 +93,8 @@ export function Hero({
             src={mobileBackdrop}
             alt=""
             aria-hidden="true"
+            loading="eager"
+            decoding="async"
             className="
               absolute
               inset-0
@@ -173,6 +113,8 @@ export function Hero({
             src={desktopBackdrop}
             alt=""
             aria-hidden="true"
+            loading="eager"
+            decoding="async"
             className="
               absolute
               inset-0
@@ -382,33 +324,12 @@ export function Hero({
                 aria-label={`Mostrar destaque ${i + 1}`}
                 onClick={() => {
                   if (i === index) return;
-
                   const nextBackdrop =
                     item.cover ||
                     item.banner ||
                     "";
-
-                  if (!nextBackdrop) {
-                    setIndex(i);
-                    return;
-                  }
-
-                  const image = new Image();
-
-                  image.onload = () => {
-                    const width = image.naturalWidth;
-                    const height = image.naturalHeight;
-
-                    if (width > 0 && height > 0) {
-                      setIsLandscape(width > height);
-                      setImageRatio(width / height);
-                    }
-
-                    setVisibleBackdrop(nextBackdrop);
-                    setIndex(i);
-                  };
-
-                  image.src = nextBackdrop;
+                  setVisibleBackdrop(nextBackdrop);
+                  setIndex(i);
                 }}
                 className={`
                   h-1.5
