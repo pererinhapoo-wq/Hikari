@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { fetchAnimeDetail } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -97,6 +97,14 @@ function AnimePage() {
 
   const [seasonsOpen, setSeasonsOpen] =
     useState(false);
+
+  const [canGoBack, setCanGoBack] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      setCanGoBack(true);
+    }
+  }, []);
 
   useEffect(() => {
     setLoadedBanner(null);
@@ -401,7 +409,7 @@ function AnimePage() {
           <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
 
           {/* BOTÃO VOLTAR */}
-          {window.history.length > 1 && (
+          {canGoBack && (
             <button
               type="button"
               onClick={handleBack}
@@ -503,25 +511,46 @@ function AnimePage() {
 
               {/* BOTÕES */}
               <div className="mt-5 flex flex-wrap gap-2">
-                <Button asChild size="lg">
-                  <Link
-                    to="/watch/$id"
-                    params={{
-                      id: anime.id,
-                    }}
-                    search={
-                      continueTarget
-                        ? {
-                            ep: continueTarget.id,
-                          }
-                        : undefined
+                <Link
+                  to="/watch/$id"
+                  params={{
+                    id: anime.id,
+                  }}
+                  search={
+                    continueTarget
+                      ? {
+                          ep: continueTarget.id,
+                        }
+                      : undefined
+                  }
+                  className={buttonVariants({ size: "lg" })}
+                  onClick={(e) => {
+                    if (
+                      !e.metaKey &&
+                      !e.altKey &&
+                      !e.ctrlKey &&
+                      !e.shiftKey &&
+                      e.button === 0
+                    ) {
+                      e.preventDefault();
+                      void navigate({
+                        to: "/watch/$id",
+                        params: {
+                          id: anime.id,
+                        },
+                        search: continueTarget
+                          ? {
+                              ep: continueTarget.id,
+                            }
+                          : undefined,
+                      });
                     }
-                  >
-                    <Play className="size-4 fill-current" />
+                  }}
+                >
+                  <Play className="size-4 fill-current pointer-events-none" />
 
-                    {watchButtonLabel}
-                  </Link>
-                </Button>
+                  {watchButtonLabel}
+                </Link>
 
                 <Button
                   type="button"
