@@ -67,7 +67,7 @@ export interface CustomVideoPlayerProps {
 }
 
 const PLAYBACK_SPEEDS: PlaybackSpeed[] = [0.5, 0.75, 1, 1.25, 1.5, 2];
-const INACTIVITY_DELAY = 4000; // 4 segundos de inatividade antes de ocultar controles durante a reprodução
+const INACTIVITY_DELAY = 5000; // 5 segundos completos de inatividade confortável antes de ocultar controles durante reprodução
 
 export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   video,
@@ -88,7 +88,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   const initialTimeAppliedRef = useRef<boolean>(false);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const playPauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playPauseFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Estados de reprodução
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -114,9 +114,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const [videoError, setVideoError] = useState<string | null>(null);
   const [isHlsActive, setIsHlsActive] = useState<boolean>(false);
 
-  // Refs síncronas para controle seguro de temporizadores sem closures desatualizadas
+  // Refs síncronas para controle seguro de temporizadores sem conflito de renderização ou closures antigas
   const isPlayingRef = useRef<boolean>(false);
   const showSettingsMenuRef = useRef<boolean>(false);
+  const controlsVisibleRef = useRef<boolean>(true);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -125,6 +126,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   useEffect(() => {
     showSettingsMenuRef.current = showSettingsMenu;
   }, [showSettingsMenu]);
+
+  useEffect(() => {
+    controlsVisibleRef.current = controlsVisible;
+  }, [controlsVisible]);
 
   // Obter URL do vídeo
   const effectiveVideoUrl = useMemo(() => {
@@ -158,29 +163,33 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     }
   }, []);
 
-  // Reiniciar temporizador de inatividade com garantia de visibilidade adequada
+  // Reiniciar temporizador de inatividade garantindo estabilidade e persistência
   const resetInactivityTimer = useCallback(() => {
     clearInactivityTimer();
     setControlsVisible(true);
+    controlsVisibleRef.current = true;
 
-    // Se o vídeo estiver pausado ou o menu de velocidade estiver aberto, controles permanecem visíveis sem ocultação
+    // Regra estrita: enquanto o vídeo estiver pausado ou o menu de velocidade estiver aberto,
+    // os controles permanecem visíveis indefinidamente e NUNCA desaparecem sozinhos.
     if (!isPlayingRef.current || showSettingsMenuRef.current) {
       return;
     }
 
+    // Oculta apenas após 5 segundos contínuos de inatividade real durante a reprodução
     controlsTimeoutRef.current = setTimeout(() => {
-      // Oculta apenas se continuar tocando e sem menu aberto
       if (isPlayingRef.current && !showSettingsMenuRef.current) {
         setControlsVisible(false);
+        controlsVisibleRef.current = false;
       }
     }, INACTIVITY_DELAY);
   }, [clearInactivityTimer]);
 
-  // Monitorar mudanças em isPlaying e showSettingsMenu para gerenciar temporizador de ocultação
+  // Monitorar mudanças em isPlaying e showSettingsMenu
   useEffect(() => {
     if (!isPlaying || showSettingsMenu) {
-      setControlsVisible(true);
       clearInactivityTimer();
+      setControlsVisible(true);
+      controlsVisibleRef.current = true;
     } else {
       resetInactivityTimer();
     }
@@ -328,19 +337,20 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   // Feedback central discreto de Play/Pause
   const triggerPlayPauseFeedback = useCallback((type: 'play' | 'pause') => {
-    if (playPauseTimeoutRef.current) {
-      clearTimeout(playPauseTimeoutRef.current);
+    if (playPauseFeedbackTimeoutRef.current) {
+      clearTimeout(playPauseFeedbackTimeoutRef.current);
     }
     setPlayPauseFeedback(type);
-    playPauseTimeoutRef.current = setTimeout(() => {
+    playPauseFeedbackTimeoutRef.current = setTimeout(() => {
       setPlayPauseFeedback(null);
     }, 700);
   }, []);
 
-  // Controle de Play/Pause com preservação da visibilidade dos controles
+  // Controle de Play/Pause garantindo que os controles permaneçam visíveis ao pausar
   const togglePlay = useCallback(() => {
     const el = videoRef.current;
     if (!el) return;
+
     if (el.paused) {
       el.play()
         .then(() => {
@@ -361,6 +371,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       triggerPlayPauseFeedback('pause');
       clearInactivityTimer();
       setControlsVisible(true);
+      controlsVisibleRef.current = true;
     }
   }, [triggerPlayPauseFeedback, resetInactivityTimer, clearInactivityTimer]);
 
@@ -378,10 +389,13 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     [duration, resetInactivityTimer]
   );
 
-  // Clique na área do vídeo: exibe controles com inatividade segura, sem esconder prematuramente
-  const handleVideoAreaClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  // Toque ou clique seguro na superfície do vídeo
+  // Regra essencial: ao tocar na área do vídeo, SEMPRE exibe e mantém os controles visíveis
+  // por pelo menos 4 a 5 segundos (ou indefinidamente se pausado). NUNCA esconde de imediato!
+  const handleVideoSurfaceTap = useCallback(
+    (e: React.SyntheticEvent) => {
       const target = e.target as HTMLElement;
+      // Previne qualquer ação se o toque tiver como alvo botões, menus, slider ou progresso
       if (
         target.closest('button') ||
         target.closest('.player-menu-content') ||
@@ -392,20 +406,20 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         return;
       }
 
-      setControlsVisible((prev) => {
-        if (!prev) {
-          resetInactivityTimer();
-          return true;
-        }
-        // Se já estava visível e está reproduzindo (sem menu aberto), usuário pode ocultar intencionalmente
-        if (isPlayingRef.current && !showSettingsMenuRef.current) {
-          clearInactivityTimer();
-          return false;
-        }
-        return true;
-      });
+      // Reinicia os 5 segundos completos de exibição e mantém visível
+      resetInactivityTimer();
     },
-    [resetInactivityTimer, clearInactivityTimer]
+    [resetInactivityTimer]
+  );
+
+  // Mouse move no desktop para resetar timer de inatividade (ignora eventos de touch simulados)
+  const handlePointerMoveDesktop = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === 'touch') return;
+      if (e.movementX === 0 && e.movementY === 0) return;
+      resetInactivityTimer();
+    },
+    [resetInactivityTimer]
   );
 
   // Barra de progresso: seek e hover com reinício do temporizador
@@ -550,14 +564,14 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       }
     };
 
-    document.addEventListener('pointerdown', handlePointerDownOutside, true);
-    return () => document.removeEventListener('pointerdown', handlePointerDownOutside, true);
+    document.addEventListener('pointerdown', handlePointerDownOutside);
+    return () => document.removeEventListener('pointerdown', handlePointerDownOutside);
   }, []);
 
   // Limpeza de timers ao desmontar o componente
   useEffect(() => {
     return () => {
-      if (playPauseTimeoutRef.current) clearTimeout(playPauseTimeoutRef.current);
+      if (playPauseFeedbackTimeoutRef.current) clearTimeout(playPauseFeedbackTimeoutRef.current);
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, []);
@@ -568,12 +582,12 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      onClick={handleVideoAreaClick}
-      onPointerMove={resetInactivityTimer}
+      onClick={handleVideoSurfaceTap}
+      onPointerMove={handlePointerMoveDesktop}
       className={`relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group touch-manipulation ${className || ''}`}
       style={{ touchAction: 'manipulation' }}
     >
-      {/* Elemento de Vídeo HTML5 com suporte HLS e reprodução direta - NENHUM elemento flutuante cobre a imagem */}
+      {/* Elemento de Vídeo HTML5 com suporte HLS e reprodução direta */}
       <video
         ref={videoRef}
         src={isHlsActive && Hls.isSupported() ? undefined : effectiveVideoUrl}
@@ -592,12 +606,14 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
           isPlayingRef.current = false;
           clearInactivityTimer();
           setControlsVisible(true);
+          controlsVisibleRef.current = true;
         }}
         onEnded={() => {
           setIsPlaying(false);
           isPlayingRef.current = false;
           clearInactivityTimer();
           setControlsVisible(true);
+          controlsVisibleRef.current = true;
           onEnded?.();
         }}
         onError={() => {
@@ -641,6 +657,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         >
           <button
             type="button"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onClose();
@@ -666,22 +683,29 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         </div>
       )}
 
-      {/* Botão central de Play quando pausado para facilidade de toque no celular e computador */}
-      {!isPlaying && !playPauseFeedback && controlsVisible && (
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            togglePlay();
-          }}
-          className="absolute inset-0 flex items-center justify-center z-20 cursor-pointer pointer-events-auto"
-        >
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/20 text-white flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95 cursor-pointer">
-            <Play className="w-8 h-8 sm:w-9 sm:h-9 ml-1 fill-white" />
-          </div>
+      {/* Botão central de Play/Pause destacado quando os controles estão visíveis */}
+      {controlsVisible && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePlay();
+            }}
+            aria-label={isPlaying ? 'Pausar vídeo' : 'Reproduzir vídeo'}
+            className="pointer-events-auto w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md border border-white/20 text-white flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95 cursor-pointer"
+          >
+            {isPlaying ? (
+              <Pause className="w-8 h-8 sm:w-9 sm:h-9 fill-white" />
+            ) : (
+              <Play className="w-8 h-8 sm:w-9 sm:h-9 ml-1 fill-white" />
+            )}
+          </button>
         </div>
       )}
 
-      {/* Overlay inferior de controles da Nova Stream com temporizador inteligente de inatividade */}
+      {/* Overlay inferior de controles com temporizador de inatividade inteligente */}
       <div
         onPointerDown={(e) => {
           e.stopPropagation();
@@ -698,6 +722,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         {/* Barra de Progresso Interativa */}
         <div
           ref={progressBarRef}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            resetInactivityTimer();
+          }}
           onClick={(e) => {
             e.stopPropagation();
             handleProgressSeek(e);
@@ -746,6 +774,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Play/Pause */}
             <button
               type="button"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 togglePlay();
@@ -759,6 +788,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Voltar 10 segundos (⏪) */}
             <button
               type="button"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 seekRelative(-10);
@@ -776,6 +806,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Avançar 10 segundos (⏩) */}
             <button
               type="button"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 seekRelative(10);
@@ -794,6 +825,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             <div className="flex items-center group/vol shrink-0">
               <button
                 type="button"
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   toggleMute();
@@ -836,6 +868,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             <div ref={settingsAreaRef} className="relative">
               <button
                 type="button"
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -875,7 +908,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                     <span>Velocidade</span>
                     <button
                       type="button"
-                      onClick={() => setShowSettingsMenu(false)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowSettingsMenu(false);
+                      }}
                       className="text-slate-500 hover:text-white p-0.5 rounded cursor-pointer"
                       aria-label="Fechar menu"
                     >
@@ -889,6 +926,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                       <button
                         key={spd}
                         type="button"
+                        onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           changeSpeed(spd);
@@ -917,6 +955,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Tela Cheia */}
             <button
               type="button"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 toggleFullscreen();
