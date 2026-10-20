@@ -10,12 +10,8 @@ import {
   Maximize,
   Minimize,
   Settings,
-  ChevronLeft,
-  ChevronRight,
   Info,
   Check,
-  SkipBack,
-  SkipForward,
   X,
 } from 'lucide-react';
 import {
@@ -430,7 +426,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     [resetControlsTimer]
   );
 
-  const handleQualityChange = useCallback(
+  const _handleQualityChange = useCallback(
     (levelIndex: number) => {
       if (hlsRef.current) {
         hlsRef.current.currentLevel = levelIndex;
@@ -559,7 +555,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   // Formatação de rótulos
   const formatSpeedLabel = (spd: PlaybackSpeed) => (spd === 1 ? 'Normal (1x)' : `${spd}x`);
 
-  const qualityDisplayLabel = useMemo(() => {
+  const _qualityDisplayLabel = useMemo(() => {
     if (isHlsActive && hlsLevels.length > 0) {
       if (currentLevelIndex === -1) return 'Automático';
       const lvl = hlsLevels[currentLevelIndex];
@@ -607,7 +603,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               setVideoError(msg);
               onError?.(msg);
             } else {
-              const msg = 'Não foi possível reproduzir este vídeo. Tente alternar de Player.';
+              const msg = 'Não foi possível reproduzir este vídeo no momento.';
               setVideoError(msg);
               onError?.(msg);
             }
@@ -684,36 +680,25 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
           controlsVisible ? 'opacity-100 visible' : 'opacity-0 invisible'
         }`}
       >
-        {/* TOPO: Cabeçalho com título do episódio e botão voltar (quando modal) */}
+        {/* TOPO: Botão voltar (quando modal) ou título em tela cheia */}
         <div className="flex items-center justify-between gap-3 pointer-events-none">
-          <div className="flex items-center gap-2 max-w-[80%]">
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="pointer-events-auto flex size-9 items-center justify-center rounded-full bg-[#14141a]/90 hover:bg-[#202029] border border-white/10 text-white transition active:scale-95 cursor-pointer shadow-lg"
-                aria-label="Voltar"
-              >
-                <X className="size-4" />
-              </button>
-            )}
-            <div className="truncate">
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="pointer-events-auto flex size-9 items-center justify-center rounded-full bg-[#14141a]/90 hover:bg-[#202029] border border-white/10 text-white transition active:scale-95 cursor-pointer shadow-lg"
+              aria-label="Voltar"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+          {isFullscreen && video?.title && (
+            <div className="truncate max-w-[80%] pl-2">
               <h3 className="text-sm font-semibold text-white truncate drop-shadow-md">
-                {video?.title || 'Hikari Player'}
+                {video.title}
               </h3>
-              {video?.episodeNumber && (
-                <p className="text-xs text-white/70 truncate drop-shadow-sm">
-                  Episódio {video.episodeNumber} {video.episodeTitle ? `· ${video.episodeTitle}` : ''}
-                </p>
-              )}
             </div>
-          </div>
-
-          {/* Tag de resolução atual discreta */}
-          <div className="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#14141a]/90 border border-white/10 text-[11px] font-medium text-white/90 shadow-md">
-            <span className="size-1.5 rounded-full bg-[#a855f7]" />
-            {qualityDisplayLabel}
-          </div>
+          )}
         </div>
 
         {/* CENTRO: Controles Centrais Flutuantes (-10s / Play-Pause / +10s) */}
@@ -883,135 +868,32 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                   <Settings className="size-4" />
                 </button>
 
-                {/* Popover de Configurações Autocontido (SEM backdrop-filter) */}
+                {/* Popover de Configurações Autocontido (Velocidade) */}
                 {activeMenu && (
-                  <div className="absolute bottom-11 right-0 z-30 w-64 rounded-2xl bg-[#14141c] border border-white/15 p-2 shadow-2xl text-sm text-white">
-                    {/* Menu Principal de Opções */}
-                    {activeMenu === 'main' && (
-                      <div className="flex flex-col gap-1">
-                        <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white/40">
-                          Configurações
-                        </div>
-
-                        {/* Opção de Velocidade */}
+                  <div className="absolute bottom-11 right-0 z-30 w-52 rounded-2xl bg-[#14141c] border border-white/15 p-2 shadow-2xl text-sm text-white">
+                    <div className="flex flex-col gap-1">
+                      <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white/40 border-b border-white/10 mb-1">
+                        Velocidade
+                      </div>
+                      {PLAYBACK_SPEEDS.map((spd) => (
                         <button
+                          key={spd}
                           type="button"
-                          onClick={() => setActiveMenu('speed')}
-                          className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/10 text-left transition cursor-pointer"
+                          onClick={() => {
+                            handleSpeedChange(spd);
+                            setActiveMenu(null);
+                          }}
+                          className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                            playbackSpeed === spd
+                              ? 'bg-[#a855f7] text-white font-semibold'
+                              : 'text-white/70 hover:bg-white/10 hover:text-white'
+                          }`}
                         >
-                          <span className="text-xs text-white/80">Velocidade</span>
-                          <div className="flex items-center gap-1 text-xs text-[#c084fc] font-medium">
-                            <span>{formatSpeedLabel(playbackSpeed)}</span>
-                            <ChevronRight className="size-3.5" />
-                          </div>
+                          <span>{formatSpeedLabel(spd)}</span>
+                          {playbackSpeed === spd && <Check className="size-3.5" />}
                         </button>
-
-                        {/* Opção de Qualidade */}
-                        <button
-                          type="button"
-                          onClick={() => setActiveMenu('quality')}
-                          className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/10 text-left transition cursor-pointer"
-                        >
-                          <span className="text-xs text-white/80">Qualidade</span>
-                          <div className="flex items-center gap-1 text-xs text-[#c084fc] font-medium">
-                            <span className="truncate max-w-[110px]">{qualityDisplayLabel}</span>
-                            <ChevronRight className="size-3.5" />
-                          </div>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Submenu de Velocidade */}
-                    {activeMenu === 'speed' && (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 px-2 py-1.5 border-b border-white/10 mb-1">
-                          <button
-                            type="button"
-                            onClick={() => setActiveMenu('main')}
-                            className="p-1 rounded-lg hover:bg-white/10 text-white cursor-pointer"
-                            aria-label="Voltar para configurações"
-                          >
-                            <ChevronLeft className="size-4" />
-                          </button>
-                          <span className="text-xs font-bold text-white">Velocidade</span>
-                        </div>
-                        {PLAYBACK_SPEEDS.map((spd) => (
-                          <button
-                            key={spd}
-                            type="button"
-                            onClick={() => handleSpeedChange(spd)}
-                            className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                              playbackSpeed === spd
-                                ? 'bg-[#a855f7] text-white font-semibold'
-                                : 'text-white/70 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            <span>{formatSpeedLabel(spd)}</span>
-                            {playbackSpeed === spd && <Check className="size-3.5" />}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Submenu de Qualidade */}
-                    {activeMenu === 'quality' && (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 px-2 py-1.5 border-b border-white/10 mb-1">
-                          <button
-                            type="button"
-                            onClick={() => setActiveMenu('main')}
-                            className="p-1 rounded-lg hover:bg-white/10 text-white cursor-pointer"
-                            aria-label="Voltar para configurações"
-                          >
-                            <ChevronLeft className="size-4" />
-                          </button>
-                          <span className="text-xs font-bold text-white">Qualidade</span>
-                        </div>
-
-                        {/* Níveis do HLS adaptativo se disponíveis */}
-                        {isHlsActive && hlsLevels.length > 0 ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleQualityChange(-1)}
-                              className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                                currentLevelIndex === -1
-                                  ? 'bg-[#a855f7] text-white font-semibold'
-                                  : 'text-white/70 hover:bg-white/10 hover:text-white'
-                              }`}
-                            >
-                              <span>Automático</span>
-                              {currentLevelIndex === -1 && <Check className="size-3.5" />}
-                            </button>
-                            {hlsLevels.map((lvl) => (
-                              <button
-                                key={lvl.levelIndex}
-                                type="button"
-                                onClick={() => handleQualityChange(lvl.levelIndex)}
-                                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                                  currentLevelIndex === lvl.levelIndex
-                                    ? 'bg-[#a855f7] text-white font-semibold'
-                                    : 'text-white/70 hover:bg-white/10 hover:text-white'
-                                }`}
-                              >
-                                <span>{lvl.label}</span>
-                                {currentLevelIndex === lvl.levelIndex && <Check className="size-3.5" />}
-                              </button>
-                            ))}
-                          </>
-                        ) : (
-                          // Fonte direta MP4 / WebM
-                          <div className="px-3 py-2.5 text-xs text-white/70">
-                            <p className="font-semibold text-white mb-1">
-                              {formatQualityLabel(detectedResolution)}
-                            </p>
-                            <p className="text-[11px] text-white/50 leading-relaxed">
-                              Fonte de vídeo direta reproduzida na qualidade máxima original.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

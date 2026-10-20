@@ -32,12 +32,10 @@ import {
   CustomVideoPlayer,
   type VideoItem,
 } from "@/components/player/CustomVideoPlayer";
-import { NovaStreamVideoPlayer } from "@/components/player/NovaStreamVideoPlayer";
 import { fetchAnimeDetail } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import {
   cn,
-  isDirectVideo,
   youtubeIdFrom,
 } from "@/lib/utils";
 import { mergeDetail } from "@/lib/overlay";
@@ -565,68 +563,28 @@ function parseDurationToSeconds(raw?: string | number | null): number {
 
       <div className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 sm:px-5">
 
-        {/* ================================================== */}
-        {/* PLAYERS */}
-        {/* ================================================== */}
 
-        {playerSources.length > 0 && (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-white/40 mr-1 hidden sm:inline">
-              Opções de Player:
-            </span>
-            {playerSources.map((source, index) => {
-              const isSelected = selectedPlayer?.id === source.id;
-              return (
-                <Button
-                  key={`${source.id}-${index}`}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className={
-                    isSelected
-                      ? "rounded-xl border-[#a855f7] bg-[#a855f7] px-4 py-1.5 text-xs sm:text-sm font-medium text-white shadow-[0_0_20px_rgba(168,85,247,0.25)] hover:bg-[#a855f7]/90 hover:text-white"
-                      : "rounded-xl border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs sm:text-sm font-medium text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
-                  }
-                  onClick={() => {
-                    handleSelectPlayer(source.id);
-                  }}
-                >
-                  <span className={cn("size-1.5 rounded-full mr-2", isSelected ? "bg-white animate-pulse" : "bg-white/40")} />
-                  {source.name}
-                </Button>
-              );
-            })}
-          </div>
-        )}
 
         {/* ================================================== */}
         {/* PLAYER */}
         {/* ================================================== */}
 
         {file && selectedPlayer ? (
-          selectedPlayer.id === "player-1" ? (
-            <NovaStreamVideoPlayer
-              key={`${selectedPlayer.id}-${file}`}
-              video={_currentVideoItem!}
-              autoPlay={userAutoplay}
-              initialTime={effectiveInitialTime}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={handleEnded}
-            />
-          ) : (
-            <CustomVideoPlayer
-              key={`${selectedPlayer.id}-${file}`}
-              video={_currentVideoItem}
-              autoPlay={userAutoplay}
-              initialTime={effectiveInitialTime}
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={handleEnded}
-              hasNextEpisode={Boolean(next)}
-              hasPrevEpisode={Boolean(prev)}
-              onNextEpisode={handleNextEpisode}
-              onPrevEpisode={handlePrevEpisode}
-            />
-          )
+          <CustomVideoPlayer
+            key={`${selectedPlayer.id}-${file}`}
+            video={_currentVideoItem}
+            autoPlay={userAutoplay}
+            initialTime={effectiveInitialTime}
+            onTimeUpdate={handleTimeUpdate}
+            onEnded={handleEnded}
+            onError={() => {
+              // Alterna silenciosamente para outra fonte disponível se houver falha de rede/codec
+              const alt = playerSources.find((s) => s.id !== selectedPlayer.id);
+              if (alt) {
+                handleSelectPlayer(alt.id);
+              }
+            }}
+          />
         ) : yt ? (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
             <iframe
@@ -986,6 +944,12 @@ function CommentsSection({
     useState<string | null>(null);
 
   const [currentUserEmail, setCurrentUserEmail] =
+    useState<string | null>(null);
+
+  const [currentUserName, setCurrentUserName] =
+    useState<string | null>(null);
+
+  const [currentUserImage, setCurrentUserImage] =
     useState<string | null>(null);
 
   const [sessionLoading, setSessionLoading] =
@@ -1422,6 +1386,8 @@ function CommentsSection({
           if (!cancelled) {
             setCurrentUserId(null);
             setCurrentUserEmail(null);
+            setCurrentUserName(null);
+            setCurrentUserImage(null);
           }
 
           return;
@@ -1444,6 +1410,20 @@ function CommentsSection({
               ? data.user.email
               : null,
           );
+
+          setCurrentUserName(
+            typeof data?.user?.name ===
+              "string"
+              ? data.user.name
+              : null,
+          );
+
+          setCurrentUserImage(
+            typeof data?.user?.image ===
+              "string"
+              ? data.user.image
+              : null,
+          );
         }
       } catch (err) {
         console.error(
@@ -1454,6 +1434,8 @@ function CommentsSection({
         if (!cancelled) {
           setCurrentUserId(null);
           setCurrentUserEmail(null);
+          setCurrentUserName(null);
+          setCurrentUserImage(null);
         }
       } finally {
         if (!cancelled) {
@@ -2569,7 +2551,25 @@ function CommentsSection({
 
           <div className="mt-5 rounded-2xl border border-white/10 bg-[#141418] p-4 sm:p-5 shadow-xl focus-within:border-[#a855f7]/50 focus-within:ring-1 focus-within:ring-[#a855f7]/20 transition-all">
 
-            <textarea
+            <div className="flex items-start gap-3">
+              <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated text-sm font-semibold border border-white/10 text-white/80 mt-0.5">
+                {currentUserImage ? (
+                  <img
+                    src={currentUserImage}
+                    alt=""
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[#c084fc] font-bold">
+                    {(currentUserName || currentUserEmail || "U")
+                      .charAt(0)
+                      .toUpperCase()}
+                  </span>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <textarea
               value={text}
               onChange={(
                 event,
@@ -2909,6 +2909,9 @@ function CommentsSection({
                 {error}
               </p>
             )}
+
+              </div>
+            </div>
 
           </div>
 
