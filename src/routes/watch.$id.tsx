@@ -2,9 +2,6 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
   Ban,
-  Bookmark,
-  BookmarkCheck,
-  Calendar,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -12,12 +9,10 @@ import {
   Flag,
   Heart,
   Image as ImageIcon,
-  Info,
   MessageCircle,
   MoreVertical,
   Search,
   Send,
-  Star,
   Trash2,
   Tv,
   X,
@@ -31,8 +26,8 @@ import {
   useState,
 } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/logo";
 import {
   CustomVideoPlayer,
   type VideoItem,
@@ -41,16 +36,8 @@ import { NovaStreamVideoPlayer } from "@/components/player/NovaStreamVideoPlayer
 import { fetchAnimeDetail } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import {
-  genreLabel,
-  formatLabel,
-  statusLabel,
-  seasonLabel,
-  scoreLabel,
-} from "@/lib/labels";
-import {
   cn,
   isDirectVideo,
-  isHlsSource,
   youtubeIdFrom,
 } from "@/lib/utils";
 import { mergeDetail } from "@/lib/overlay";
@@ -117,10 +104,6 @@ function WatchPage() {
     id,
     locals,
   );
-
-  const inList = useHikariStore((s) => (anime ? s.isInList(anime.id) : false));
-  const toggleList = useHikariStore((s) => s.toggleList);
-  const [showFullSynopsis, setShowFullSynopsis] = useState(false);
 
   const episodes = useMemo(() => {
     if (!anime) {
@@ -311,7 +294,6 @@ function WatchPage() {
   }, [current]);
 
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("player-1");
-  const [episodesOpen, setEpisodesOpen] = useState(false);
   const lastEpisodeIdRef = useRef<string | undefined>(current?.id);
   const livePlaybackRef = useRef<{ episodeId: string; time: number }>({
     episodeId: current?.id ?? "",
@@ -577,40 +559,8 @@ function parseDurationToSeconds(raw?: string | number | null): number {
       {/* CABEÇALHO */}
       {/* ================================================== */}
 
-      <header className="flex min-h-16 items-center gap-3 px-3 py-2.5 sm:px-5">
-        <button
-          type="button"
-          onClick={() => {
-            if (window.history.length > 1) {
-              window.history.back();
-            } else {
-              void navigate({
-                to: "/anime/$id",
-                params: { id: anime.id },
-              });
-            }
-          }}
-          className="flex size-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/80 transition hover:bg-white/[0.08] hover:text-white active:scale-95"
-          aria-label="Voltar"
-        >
-          <ChevronLeft className="size-5" />
-        </button>
-
-        <div className="min-w-0 flex-1">
-          <Link
-            to="/anime/$id"
-            params={{ id: anime.id }}
-            className="block truncate text-[18px] sm:text-[20px] font-semibold leading-tight text-white transition hover:text-[#c084fc]"
-          >
-            {title}
-          </Link>
-
-          <p className="truncate pt-0.5 text-[13px] sm:text-[14px] leading-tight text-white/55">
-            {current
-              ? `Episódio ${current.number} · ${current.title}`
-              : "Trailer"}
-          </p>
-        </div>
+      <header className="flex h-14 sm:h-16 items-center px-4 sm:px-6 border-b border-white/[0.06] bg-bg/80 backdrop-blur-md sticky top-0 z-40">
+        <Logo />
       </header>
 
       <div className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 sm:px-5">
@@ -722,16 +672,63 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         )}
 
         {/* ================================================== */}
-        {/* NAVEGAÇÃO DOS EPISÓDIOS */}
+        {/* INFORMAÇÕES DO ANIME (ABAIXO DO PLAYER)           */}
         {/* ================================================== */}
 
-        <div className="mt-4 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl border border-white/10 bg-[#131317]/80 p-2 sm:p-2.5 backdrop-blur-md">
+        <section className="mt-4 flex items-center gap-3.5 sm:gap-4 rounded-2xl border border-white/10 bg-[#121217]/90 p-3 sm:p-4 backdrop-blur-xl shadow-lg">
+          <Link
+            to="/anime/$id"
+            params={{ id: anime.id }}
+            className="group relative block aspect-[2/3] w-14 sm:w-16 shrink-0 overflow-hidden rounded-xl bg-elevated ring-1 ring-white/15 transition-transform hover:scale-[1.02]"
+            aria-label={title}
+          >
+            {anime.cover ? (
+              <img
+                src={anime.cover}
+                alt={title}
+                className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
+                loading="lazy"
+              />
+            ) : (
+              <div className="size-full bg-elevated flex items-center justify-center text-white/30 text-[10px]">
+                Sem Capa
+              </div>
+            )}
+          </Link>
+
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-base sm:text-xl font-bold leading-tight text-white truncate">
+              <Link
+                to="/anime/$id"
+                params={{ id: anime.id }}
+                className="transition hover:text-[#c084fc]"
+              >
+                {title}
+              </Link>
+            </h1>
+
+            <div className="mt-1 flex items-center gap-2 text-xs sm:text-sm text-white/60">
+              <span className="size-1.5 rounded-full bg-[#a855f7] shrink-0" />
+              <span className="truncate">
+                {current
+                  ? `Episódio ${current.number}${current.title ? ` · ${current.title}` : ""}`
+                  : "Trailer"}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* ================================================== */}
+        {/* NAVEGAÇÃO DOS EPISÓDIOS                           */}
+        {/* ================================================== */}
+
+        <div className="mt-3.5 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl border border-white/10 bg-[#131317]/80 p-2 sm:p-2.5 backdrop-blur-md">
           {prev ? (
             <Button
               asChild
               variant="outline"
               size="sm"
-              className="flex-1 sm:flex-initial rounded-xl border-white/10 bg-white/[0.03] px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white/90 hover:bg-white/[0.08] hover:text-white hover:border-[#a855f7]/40 active:scale-95 transition-all"
+              className="flex-1 sm:flex-initial rounded-xl border-white/10 bg-white/[0.03] px-2.5 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white/90 hover:bg-white/[0.08] hover:text-white hover:border-[#a855f7]/40 active:scale-95 transition-all"
             >
               <Link
                 to="/watch/$id"
@@ -739,8 +736,8 @@ function parseDurationToSeconds(raw?: string | number | null): number {
                 params={{ id: anime.id }}
                 search={{ ep: prev.id }}
               >
-                <ChevronLeft className="size-4 mr-1 text-white/70" />
-                <span>Anterior</span>
+                <ChevronLeft className="size-4 mr-1 shrink-0 text-white/70" />
+                <span className="truncate">Episódio anterior</span>
               </Link>
             </Button>
           ) : (
@@ -749,46 +746,30 @@ function parseDurationToSeconds(raw?: string | number | null): number {
               variant="outline"
               size="sm"
               disabled
-              className="flex-1 sm:flex-initial rounded-xl border-white/5 bg-white/[0.01] px-3 sm:px-4 py-2 text-xs sm:text-sm text-white/30 cursor-not-allowed"
+              className="flex-1 sm:flex-initial rounded-xl border-white/5 bg-white/[0.01] px-2.5 sm:px-4 py-2 text-xs sm:text-sm text-white/30 cursor-not-allowed"
             >
-              <ChevronLeft className="size-4 mr-1" />
-              <span>Anterior</span>
+              <ChevronLeft className="size-4 mr-1 shrink-0" />
+              <span className="truncate">Episódio anterior</span>
             </Button>
           )}
 
           <Button
-            type="button"
+            asChild
             variant="outline"
             size="sm"
-            onClick={() => setEpisodesOpen((open) => !open)}
-            aria-expanded={episodesOpen}
-            className={cn(
-              "flex-1 sm:flex-initial min-w-[120px] sm:min-w-[160px] rounded-xl px-3 sm:px-5 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95",
-              episodesOpen
-                ? "border-[#a855f7] bg-[#a855f7]/15 text-[#c084fc] shadow-[0_0_15px_rgba(168,85,247,0.2)]"
-                : "border-white/10 bg-white/[0.04] text-white/90 hover:border-white/20 hover:bg-white/[0.08]"
-            )}
+            className="flex-1 sm:flex-initial min-w-[100px] sm:min-w-[140px] rounded-xl border-[#a855f7]/40 bg-[#a855f7]/15 px-3 sm:px-5 py-2 text-xs sm:text-sm font-medium text-[#c084fc] hover:bg-[#a855f7]/25 hover:border-[#a855f7]/60 active:scale-95 transition-all shadow-[0_0_15px_rgba(168,85,247,0.15)]"
           >
-            <Tv className="size-3.5 sm:size-4 mr-1.5 text-[#a855f7]" />
-            <span className="truncate">
-              {current ? `Episódio ${current.number}` : "Episódios"}
-            </span>
-            <span className="hidden sm:inline text-xs text-white/40 ml-1">
-              ({episodes.length})
-            </span>
-            <ChevronDown
-              className={cn(
-                "size-3.5 sm:size-4 ml-1.5 text-white/60 transition-transform duration-200",
-                episodesOpen && "rotate-180 text-[#c084fc]"
-              )}
-            />
+            <Link to="/anime/$id" params={{ id: anime.id }}>
+              <Tv className="size-3.5 sm:size-4 mr-1.5 shrink-0 text-[#c084fc]" />
+              <span className="truncate">Ver anime</span>
+            </Link>
           </Button>
 
           {next ? (
             <Button
               asChild
               size="sm"
-              className="flex-1 sm:flex-initial rounded-xl border border-transparent bg-white/10 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white hover:bg-[#a855f7] hover:shadow-[0_0_20px_rgba(168,85,247,0.3)] active:scale-95 transition-all"
+              className="flex-1 sm:flex-initial rounded-xl border border-transparent bg-white/10 px-2.5 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white hover:bg-[#a855f7] hover:shadow-[0_0_20px_rgba(168,85,247,0.3)] active:scale-95 transition-all"
             >
               <Link
                 to="/watch/$id"
@@ -796,8 +777,8 @@ function parseDurationToSeconds(raw?: string | number | null): number {
                 params={{ id: anime.id }}
                 search={{ ep: next.id }}
               >
-                <span>Próximo</span>
-                <ChevronRight className="size-4 ml-1 text-white/70" />
+                <span className="truncate">Próximo episódio</span>
+                <ChevronRight className="size-4 ml-1 shrink-0 text-white/70" />
               </Link>
             </Button>
           ) : (
@@ -805,295 +786,13 @@ function parseDurationToSeconds(raw?: string | number | null): number {
               type="button"
               size="sm"
               disabled
-              className="flex-1 sm:flex-initial rounded-xl border-white/5 bg-white/[0.01] px-3 sm:px-4 py-2 text-xs sm:text-sm text-white/30 cursor-not-allowed"
+              className="flex-1 sm:flex-initial rounded-xl border-white/5 bg-white/[0.01] px-2.5 sm:px-4 py-2 text-xs sm:text-sm text-white/30 cursor-not-allowed"
             >
-              <span>Próximo</span>
-              <ChevronRight className="size-4 ml-1" />
+              <span className="truncate">Próximo episódio</span>
+              <ChevronRight className="size-4 ml-1 shrink-0" />
             </Button>
           )}
         </div>
-
-        {/* ================================================== */}
-        {/* BARRINHA DE EPISÓDIOS EXPANSÍVEL */}
-        {/* ================================================== */}
-
-        {episodesOpen && episodes.length > 0 && (
-          <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-[#141418] shadow-2xl backdrop-blur-xl animate-in fade-in-50 duration-200">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 bg-white/[0.02]">
-              <div className="flex items-center gap-2">
-                <span className="size-2 rounded-full bg-[#a855f7] animate-pulse" />
-                <span className="font-semibold text-sm sm:text-base text-white">Todos os Episódios</span>
-              </div>
-              <span className="text-xs text-white/50 bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
-                {episodes.length} episódios
-              </span>
-            </div>
-
-            <ol className="max-h-[50vh] overflow-y-auto p-2 sm:p-3 custom-scrollbar divide-y divide-white/[0.04]">
-              {episodes.map((ep) => {
-                const isCurrentEp = current?.id === ep.id;
-                return (
-                  <li key={ep.id} className="py-1">
-                    <Link
-                      to="/watch/$id"
-                      replace
-                      params={{ id: anime.id }}
-                      search={{ ep: ep.id }}
-                      onClick={() => setEpisodesOpen(false)}
-                      className={cn(
-                        "group flex items-center gap-3 rounded-xl p-2.5 text-sm transition-all",
-                        isCurrentEp
-                          ? "bg-[#a855f7]/15 border border-[#a855f7]/40 text-white shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-                          : "text-white/70 hover:bg-white/[0.06] hover:text-white border border-transparent"
-                      )}
-                    >
-                      {ep.thumbnail ? (
-                        <div className="relative aspect-video w-16 sm:w-20 shrink-0 overflow-hidden rounded-lg bg-black/40 border border-white/10">
-                          <img
-                            src={ep.thumbnail}
-                            alt=""
-                            className="size-full object-cover transition-transform group-hover:scale-105"
-                            loading="lazy"
-                          />
-                          {isCurrentEp && (
-                            <div className="absolute inset-0 bg-[#a855f7]/30 flex items-center justify-center">
-                              <span className="size-2 rounded-full bg-white shadow-sm" />
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span
-                          className={cn(
-                            "flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold tabular-nums border",
-                            isCurrentEp
-                              ? "bg-[#a855f7] border-[#a855f7] text-white"
-                              : "bg-white/[0.05] border-white/10 text-white/60 group-hover:text-white"
-                          )}
-                        >
-                          {ep.number}
-                        </span>
-                      )}
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={cn("text-xs font-medium tabular-nums", isCurrentEp ? "text-[#c084fc]" : "text-white/50")}>
-                            Episódio {ep.number}
-                          </span>
-                          {isCurrentEp && (
-                            <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#a855f7]/25 text-[#c084fc] border border-[#a855f7]/30">
-                              Atual
-                            </span>
-                          )}
-                        </div>
-                        <p className={cn("truncate text-sm font-medium mt-0.5", isCurrentEp ? "text-white" : "text-white/80 group-hover:text-white")}>
-                          {ep.title || `Episódio ${ep.number}`}
-                        </p>
-                      </div>
-
-                      <ChevronRight className={cn("size-4 shrink-0 transition-transform group-hover:translate-x-0.5", isCurrentEp ? "text-[#c084fc]" : "text-white/30")} />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        )}
-
-        {/* ================================================== */}
-        {/* CARD DO ANIME (ABAIXO DO PLAYER DE VÍDEO)         */}
-        {/* ================================================== */}
-
-        <section className="mt-5 relative overflow-hidden rounded-2xl border border-white/10 bg-[#121217]/90 p-4 sm:p-6 backdrop-blur-xl shadow-2xl">
-          <div className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-[#a855f7]/10 blur-3xl" />
-          <div className="pointer-events-none absolute -left-24 -bottom-24 size-80 rounded-full bg-[#7c3aed]/10 blur-3xl" />
-
-          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:gap-6">
-            {/* CAPA DO ANIME */}
-            <div className="flex justify-center sm:justify-start">
-              <Link
-                to="/anime/$id"
-                params={{ id: anime.id }}
-                className="group relative block aspect-[2/3] w-28 sm:w-36 md:w-40 shrink-0 overflow-hidden rounded-xl bg-elevated shadow-2xl ring-1 ring-white/15 transition-transform hover:scale-[1.02] active:scale-95"
-              >
-                {anime.cover ? (
-                  <img
-                    src={anime.cover}
-                    alt={title}
-                    className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="size-full bg-elevated flex items-center justify-center text-white/30 text-xs">
-                    Sem Capa
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-2">
-                  <span className="text-[11px] font-medium text-white/90 bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
-                    Ver detalhes
-                  </span>
-                </div>
-              </Link>
-            </div>
-
-            {/* CONTEÚDO E INFORMAÇÕES */}
-            <div className="min-w-0 flex-1 flex flex-col justify-between">
-              <div>
-                {/* TAG SUPERIOR */}
-                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <span className="text-[11px] font-bold tracking-[0.2em] text-[#c084fc] uppercase">
-                    {formatLabel(anime.format) || "Anime"}
-                  </span>
-                  {anime.year && (
-                    <>
-                      <span className="text-white/20 text-xs">•</span>
-                      <span className="text-[12px] font-medium text-white/50">
-                        {anime.year}
-                      </span>
-                    </>
-                  )}
-                  {statusLabel(anime.status) && (
-                    <>
-                      <span className="text-white/20 text-xs">•</span>
-                      <span className="text-[11px] font-medium text-white/60 bg-white/[0.06] px-2 py-0.5 rounded-full border border-white/5">
-                        {statusLabel(anime.status)}
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                {/* TÍTULO DO ANIME */}
-                <h1 className="font-display text-xl sm:text-2xl md:text-3xl font-bold leading-tight tracking-tight text-white">
-                  <Link
-                    to="/anime/$id"
-                    params={{ id: anime.id }}
-                    className="transition hover:text-[#c084fc]"
-                  >
-                    {title}
-                  </Link>
-                </h1>
-
-                {/* TÍTULO NATIVO / ROMAJI */}
-                {(anime.titles?.native || anime.titles?.romaji) && (
-                  <p className="mt-1 font-display text-xs sm:text-sm text-white/45 truncate">
-                    {anime.titles.native || anime.titles.romaji}
-                  </p>
-                )}
-
-                {/* METADADOS */}
-                <div className="mt-3.5 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
-                  {anime.score != null && (
-                    <span className="inline-flex items-center gap-1 font-semibold tabular-nums text-score bg-white/[0.04] border border-white/10 px-2.5 py-1 rounded-lg">
-                      <Star className="size-3.5 fill-amber-400 text-amber-400" />
-                      <span>{scoreLabel(anime.score)}</span>
-                    </span>
-                  )}
-
-                  {seasonLabel(anime.season, anime.year) && (
-                    <span className="inline-flex items-center gap-1 text-white/60 bg-white/[0.04] border border-white/10 px-2.5 py-1 rounded-lg">
-                      <Calendar className="size-3.5 text-white/40" />
-                      <span>{seasonLabel(anime.season, anime.year)}</span>
-                    </span>
-                  )}
-
-                  {episodes.length > 0 && (
-                    <span className="inline-flex items-center gap-1 text-white/60 bg-white/[0.04] border border-white/10 px-2.5 py-1 rounded-lg">
-                      <Tv className="size-3.5 text-white/40" />
-                      <span>{episodes.length} {episodes.length === 1 ? "episódio" : "episódios"}</span>
-                    </span>
-                  )}
-                </div>
-
-                {/* GÊNEROS */}
-                {anime.genres && anime.genres.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {anime.genres.slice(0, 6).map((g) => (
-                      <Link
-                        key={g}
-                        to="/search"
-                        search={{
-                          q: "",
-                          genre: g,
-                          year: "",
-                          format: "",
-                          status: "",
-                          sort: "TRENDING_DESC",
-                        }}
-                      >
-                        <Badge className="bg-white/[0.04] hover:bg-[#a855f7]/20 hover:text-[#c084fc] hover:border-[#a855f7]/40 border border-white/10 text-white/70 transition-colors">
-                          {genreLabel(g)}
-                        </Badge>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-
-                {/* SINOPSE */}
-                {anime.synopsis && (
-                  <div className="mt-3">
-                    <p className={cn(
-                      "text-xs sm:text-sm leading-relaxed text-white/65 transition-all",
-                      !showFullSynopsis && "line-clamp-2 sm:line-clamp-3"
-                    )}>
-                      {anime.synopsis}
-                    </p>
-                    {anime.synopsis.length > 180 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowFullSynopsis((prev) => !prev)}
-                        className="mt-1 text-xs font-medium text-[#c084fc] hover:text-[#d8b4fe] transition-colors"
-                      >
-                        {showFullSynopsis ? "Mostrar menos" : "Ler sinopse completa"}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* BOTÕES DE AÇÃO */}
-              <div className="mt-4 pt-3.5 border-t border-white/[0.08] flex flex-wrap items-center gap-2.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toggleList(anime)}
-                  className={cn(
-                    "rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95",
-                    inList
-                      ? "border-[#a855f7] bg-[#a855f7]/20 text-[#c084fc] shadow-[0_0_15px_rgba(168,85,247,0.2)] hover:bg-[#a855f7]/30"
-                      : "border-white/10 bg-white/[0.04] text-white/80 hover:bg-white/[0.08] hover:border-white/20 hover:text-white"
-                  )}
-                >
-                  {inList ? (
-                    <BookmarkCheck className="size-4 text-[#c084fc] mr-1.5" />
-                  ) : (
-                    <Bookmark className="size-4 text-white/60 mr-1.5" />
-                  )}
-                  <span>{inList ? "Na Minha Lista" : "Minha Lista"}</span>
-                </Button>
-
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs sm:text-sm font-medium text-white/80 hover:bg-white/[0.08] hover:border-white/20 hover:text-white active:scale-95 transition-all"
-                >
-                  <Link to="/anime/$id" params={{ id: anime.id }}>
-                    <Info className="size-4 text-white/60 mr-1.5" />
-                    <span>Detalhes do Anime</span>
-                  </Link>
-                </Button>
-
-                {current && (
-                  <div className="sm:ml-auto flex items-center gap-2 text-xs text-white/50 bg-white/[0.02] px-3 py-1.5 rounded-xl border border-white/5">
-                    <span className="size-2 rounded-full bg-[#a855f7]" />
-                    <span className="truncate max-w-[200px] sm:max-w-[280px]">
-                      Episódio {current.number}{current.title ? ` · ${current.title}` : ""}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* ================================================== */}
         {/* COMENTÁRIOS */}
@@ -2707,31 +2406,29 @@ function CommentsSection({
           {/* TÍTULO + ORDENAÇÃO                              */}
           {/* =============================================== */}
 
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center justify-between gap-3">
 
-            <div>
+            <div className="min-w-0">
 
-              <div className="flex items-center gap-2.5">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc]">
-                  <MessageCircle className="size-4" />
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <div className="flex size-7 sm:size-8 items-center justify-center rounded-lg bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shrink-0">
+                  <MessageCircle className="size-3.5 sm:size-4" />
                 </div>
-                <h2 className="font-display text-2xl tracking-tight sm:text-3xl text-white font-bold">
+                <h2 className="font-display text-lg sm:text-2xl font-bold tracking-tight text-white truncate">
                   Comentários
                 </h2>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/10 text-white/70">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shrink-0">
                   {comments.length}
                 </span>
               </div>
 
-              <p className="mt-1 text-xs sm:text-sm text-white/50">
-                Discussão sobre o Episódio{" "}
-                {episodeNumber} de{" "}
-                {animeTitle}
+              <p className="mt-1 text-xs text-white/50 truncate">
+                Comentários do episódio {episodeNumber} de {animeTitle}
               </p>
 
             </div>
 
-            <div className="flex items-center justify-between gap-3 sm:justify-end">
+            <div className="flex items-center justify-end gap-3 shrink-0">
 
               <div className="relative">
 
@@ -2746,7 +2443,7 @@ function CommentsSection({
                   aria-expanded={
                     sortOpen
                   }
-                  className="flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#16161b] px-3.5 text-xs sm:text-sm font-medium text-white/80 outline-none transition-all hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
+                  className="flex min-h-9 sm:min-h-10 items-center gap-1.5 sm:gap-2 rounded-xl border border-white/10 bg-[#16161b] px-3 sm:px-3.5 text-xs sm:text-sm font-medium text-white/80 outline-none transition-all hover:border-[#a855f7]/40 hover:bg-white/[0.06] hover:text-white"
                 >
 
                   <span>
@@ -3413,7 +3110,7 @@ function CommentsSection({
 
                       {replies.length >
                         0 && (
-                        <div className="ml-5 space-y-2 border-l border-white/10 pl-3 sm:ml-8 sm:pl-4">
+                        <div className="ml-4 sm:ml-8 space-y-2.5 border-l-2 border-[#a855f7]/30 pl-3 sm:pl-4 pt-1">
 
                           {replies.map(
                             (
@@ -4218,11 +3915,11 @@ function CommentCard({
     <article
       id={`comment-${comment.id}`}
       className={cn(
-        "rounded-xl border border-white/5 bg-surface p-4 transition-all duration-500 sm:p-5",
+        "rounded-xl border border-white/5 bg-surface p-3.5 transition-all duration-300 sm:p-5",
         isReply &&
-          "bg-surface/80",
+          "bg-surface/80 border-white/[0.04] relative before:absolute before:-left-3 sm:before:-left-4 before:top-6 before:w-3 sm:before:w-4 before:h-0.5 before:bg-[#a855f7]/30",
         highlighted &&
-          "border-white/30 bg-elevated shadow-[0_0_0_2px_rgba(255,255,255,0.08)]",
+          "border-[#a855f7]/50 bg-elevated shadow-[0_0_20px_rgba(168,85,247,0.15)]",
       )}
     >
 
