@@ -10,7 +10,6 @@ import {
   Minimize,
   RotateCcw,
   RotateCw,
-  Settings,
   Gauge,
   Info,
   X,
@@ -68,6 +67,7 @@ export interface CustomVideoPlayerProps {
 }
 
 const PLAYBACK_SPEEDS: PlaybackSpeed[] = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const INACTIVITY_DELAY = 4000; // 4 segundos de inatividade antes de ocultar controles durante a reprodução
 
 export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   video,
@@ -114,6 +114,18 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const [videoError, setVideoError] = useState<string | null>(null);
   const [isHlsActive, setIsHlsActive] = useState<boolean>(false);
 
+  // Refs síncronas para controle seguro de temporizadores sem closures desatualizadas
+  const isPlayingRef = useRef<boolean>(false);
+  const showSettingsMenuRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    showSettingsMenuRef.current = showSettingsMenu;
+  }, [showSettingsMenu]);
+
   // Obter URL do vídeo
   const effectiveVideoUrl = useMemo(() => {
     if (!video) return '';
@@ -138,29 +150,41 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Resetar timer para ocultar controles
-  const showControlsTemporarily = useCallback(() => {
-    setControlsVisible(true);
+  // Limpar temporizador de inatividade
+  const clearInactivityTimer = useCallback(() => {
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
+      controlsTimeoutRef.current = null;
     }
+  }, []);
+
+  // Reiniciar temporizador de inatividade com garantia de visibilidade adequada
+  const resetInactivityTimer = useCallback(() => {
+    clearInactivityTimer();
+    setControlsVisible(true);
+
+    // Se o vídeo estiver pausado ou o menu de velocidade estiver aberto, controles permanecem visíveis sem ocultação
+    if (!isPlayingRef.current || showSettingsMenuRef.current) {
+      return;
+    }
+
     controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlaying && !showSettingsMenu) {
+      // Oculta apenas se continuar tocando e sem menu aberto
+      if (isPlayingRef.current && !showSettingsMenuRef.current) {
         setControlsVisible(false);
       }
-    }, 3500);
-  }, [isPlaying, showSettingsMenu]);
+    }, INACTIVITY_DELAY);
+  }, [clearInactivityTimer]);
 
+  // Monitorar mudanças em isPlaying e showSettingsMenu para gerenciar temporizador de ocultação
   useEffect(() => {
     if (!isPlaying || showSettingsMenu) {
       setControlsVisible(true);
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
+      clearInactivityTimer();
     } else {
-      showControlsTemporarily();
+      resetInactivityTimer();
     }
-  }, [isPlaying, showSettingsMenu, showControlsTemporarily]);
+  }, [isPlaying, showSettingsMenu, resetInactivityTimer, clearInactivityTimer]);
 
   const applyInitialTime = useCallback(() => {
     const el = videoRef.current;
@@ -302,7 +326,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     }
   };
 
-  // Feedback central de Play/Pause
+  // Feedback central discreto de Play/Pause
   const triggerPlayPauseFeedback = useCallback((type: 'play' | 'pause') => {
     if (playPauseTimeoutRef.current) {
       clearTimeout(playPauseTimeoutRef.current);
@@ -313,7 +337,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     }, 700);
   }, []);
 
-  // Controle de Play/Pause com feedback visual
+  // Controle de Play/Pause com preservação da visibilidade dos controles
   const togglePlay = useCallback(() => {
     const el = videoRef.current;
     if (!el) return;
@@ -321,19 +345,24 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       el.play()
         .then(() => {
           setIsPlaying(true);
+          isPlayingRef.current = true;
           triggerPlayPauseFeedback('play');
+          resetInactivityTimer();
         })
         .catch((err) => {
           console.warn('Reprodução restrita pelo navegador:', err);
           setIsPlaying(false);
+          isPlayingRef.current = false;
         });
     } else {
       el.pause();
       setIsPlaying(false);
+      isPlayingRef.current = false;
       triggerPlayPauseFeedback('pause');
+      clearInactivityTimer();
+      setControlsVisible(true);
     }
-    showControlsTemporarily();
-  }, [showControlsTemporarily, triggerPlayPauseFeedback]);
+  }, [triggerPlayPauseFeedback, resetInactivityTimer, clearInactivityTimer]);
 
   // Avançar / retroceder 10s respeitando os limites e duração do vídeo
   const seekRelative = useCallback(
@@ -344,13 +373,13 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       const target = Math.max(0, Math.min(dur, el.currentTime + deltaSec));
       el.currentTime = target;
       setCurrentTime(target);
-      showControlsTemporarily();
+      resetInactivityTimer();
     },
-    [duration, showControlsTemporarily]
+    [duration, resetInactivityTimer]
   );
 
-  // Clique na área do vídeo alterna os controles, sem criar nenhum elemento sobreposto ao anime
-  const handleVideoAreaTap = useCallback(
+  // Clique na área do vídeo: exibe controles com inatividade segura, sem esconder prematuramente
+  const handleVideoAreaClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement;
       if (
@@ -363,12 +392,23 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         return;
       }
 
-      setControlsVisible((prev) => !prev);
+      setControlsVisible((prev) => {
+        if (!prev) {
+          resetInactivityTimer();
+          return true;
+        }
+        // Se já estava visível e está reproduzindo (sem menu aberto), usuário pode ocultar intencionalmente
+        if (isPlayingRef.current && !showSettingsMenuRef.current) {
+          clearInactivityTimer();
+          return false;
+        }
+        return true;
+      });
     },
-    []
+    [resetInactivityTimer, clearInactivityTimer]
   );
 
-  // Barra de progresso: seek e hover
+  // Barra de progresso: seek e hover com reinício do temporizador
   const handleProgressSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const bar = progressBarRef.current;
     const el = videoRef.current;
@@ -379,6 +419,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     const newTime = ratio * (duration || 1);
     el.currentTime = newTime;
     setCurrentTime(newTime);
+    resetInactivityTimer();
   };
 
   const handleProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -389,12 +430,14 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     const ratio = mouseX / rect.width;
     setHoverPosition(mouseX);
     setHoverTime(ratio * (duration || 0));
+    resetInactivityTimer();
   };
 
   // Volume
   const handleVolumeChange = (newVol: number) => {
     const el = videoRef.current;
     setVolume(newVol);
+    resetInactivityTimer();
     if (newVol === 0) {
       setIsMuted(true);
       if (el) el.muted = true;
@@ -410,6 +453,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const toggleMute = () => {
     const el = videoRef.current;
     if (!el) return;
+    resetInactivityTimer();
     if (isMuted || volume === 0) {
       const restored = volume > 0 ? volume : 0.85;
       el.muted = false;
@@ -426,6 +470,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const toggleFullscreen = () => {
     const container = containerRef.current;
     if (!container) return;
+    resetInactivityTimer();
     if (!document.fullscreenElement) {
       container.requestFullscreen?.().catch(() => {});
     } else {
@@ -441,15 +486,16 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
-  // Alteração de velocidade
+  // Alteração de velocidade de reprodução real com sincronização
   const changeSpeed = (speed: PlaybackSpeed) => {
     setPlaybackSpeed(speed);
     if (videoRef.current) {
       videoRef.current.playbackRate = speed;
     }
+    resetInactivityTimer();
   };
 
-  // Atalhos de teclado
+  // Atalhos de teclado no desktop
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
@@ -481,6 +527,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         case 'escape':
           if (isFullscreen) {
             document.exitFullscreen?.().catch(() => {});
+          } else if (showSettingsMenu) {
+            setShowSettingsMenu(false);
           } else {
             onClose?.();
           }
@@ -490,9 +538,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, seekRelative, toggleFullscreen, toggleMute, isFullscreen, onClose]);
+  }, [togglePlay, seekRelative, toggleFullscreen, toggleMute, isFullscreen, showSettingsMenu, onClose]);
 
-  // Fechar menu de configurações ao clicar fora
+  // Fechar menu de velocidade ao clicar fora
   useEffect(() => {
     const handlePointerDownOutside = (e: PointerEvent) => {
       const settingsArea = settingsAreaRef.current;
@@ -506,7 +554,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return () => document.removeEventListener('pointerdown', handlePointerDownOutside, true);
   }, []);
 
-  // Limpeza de timers ao desmontar
+  // Limpeza de timers ao desmontar o componente
   useEffect(() => {
     return () => {
       if (playPauseTimeoutRef.current) clearTimeout(playPauseTimeoutRef.current);
@@ -520,13 +568,12 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      onClick={handleVideoAreaTap}
-      onMouseMove={showControlsTemporarily}
-      onTouchStart={showControlsTemporarily}
+      onClick={handleVideoAreaClick}
+      onPointerMove={resetInactivityTimer}
       className={`relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group touch-manipulation ${className || ''}`}
       style={{ touchAction: 'manipulation' }}
     >
-      {/* Elemento de Vídeo HTML5 com suporte HLS e reprodução direta - NENHUM controle sobreposto na imagem do anime */}
+      {/* Elemento de Vídeo HTML5 com suporte HLS e reprodução direta - NENHUM elemento flutuante cobre a imagem */}
       <video
         ref={videoRef}
         src={isHlsActive && Hls.isSupported() ? undefined : effectiveVideoUrl}
@@ -535,10 +582,22 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         autoPlay={autoPlay}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPlay={() => {
+          setIsPlaying(true);
+          isPlayingRef.current = true;
+          resetInactivityTimer();
+        }}
+        onPause={() => {
+          setIsPlaying(false);
+          isPlayingRef.current = false;
+          clearInactivityTimer();
+          setControlsVisible(true);
+        }}
         onEnded={() => {
           setIsPlaying(false);
+          isPlayingRef.current = false;
+          clearInactivityTimer();
+          setControlsVisible(true);
           onEnded?.();
         }}
         onError={() => {
@@ -607,17 +666,31 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         </div>
       )}
 
-      {/* Botão inicial de Play caso o vídeo ainda não tenha iniciado */}
-      {!isPlaying && currentTime === 0 && !playPauseFeedback && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-indigo-600/90 text-white flex items-center justify-center shadow-xl transition-transform">
+      {/* Botão central de Play quando pausado para facilidade de toque no celular e computador */}
+      {!isPlaying && !playPauseFeedback && controlsVisible && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            togglePlay();
+          }}
+          className="absolute inset-0 flex items-center justify-center z-20 cursor-pointer pointer-events-auto"
+        >
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/20 text-white flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95 cursor-pointer">
             <Play className="w-8 h-8 sm:w-9 sm:h-9 ml-1 fill-white" />
           </div>
         </div>
       )}
 
-      {/* Overlay inferior de controles da Nova Stream com botões de pular 10s organizados exclusivamente aqui */}
+      {/* Overlay inferior de controles da Nova Stream com temporizador inteligente de inatividade */}
       <div
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          resetInactivityTimer();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          resetInactivityTimer();
+        }}
         className={`absolute bottom-0 left-0 right-0 p-3 sm:p-5 bg-gradient-to-t from-black/95 via-black/70 to-transparent transition-opacity duration-300 z-30 ${
           controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
@@ -757,8 +830,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             </div>
           </div>
 
-          {/* Lado Direito: Menu de Configurações (Velocidade) e Fullscreen */}
+          {/* Lado Direito: Menu de Velocidade Compacto e Fullscreen */}
           <div className="flex items-center gap-0.5 sm:gap-1.5 shrink-0">
+            {/* Ícone e Menu Compacto de Velocidade na Barra Inferior */}
             <div ref={settingsAreaRef} className="relative">
               <button
                 type="button"
@@ -766,53 +840,65 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                   e.preventDefault();
                   e.stopPropagation();
                   setShowSettingsMenu((open) => !open);
+                  resetInactivityTimer();
                 }}
-                className="player-menu-trigger h-9 sm:h-10 px-2 sm:px-2.5 flex items-center gap-1.5 text-xs font-medium hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer active:scale-95"
-                title="Configurações (Velocidade)"
-                aria-label="Configurações de velocidade"
+                className={`player-menu-trigger h-9 sm:h-10 px-2 sm:px-2.5 flex items-center gap-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer active:scale-95 ${
+                  showSettingsMenu
+                    ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+                title="Velocidade de reprodução"
+                aria-label="Velocidade de reprodução"
                 aria-haspopup="menu"
                 aria-expanded={showSettingsMenu}
               >
-                <Settings className="w-4 h-4 text-slate-300" />
-                <span className="hidden xs:inline text-[11px] font-mono text-slate-300">
+                <Gauge className="w-4 h-4 text-slate-300" />
+                <span className="text-[11px] font-mono text-slate-300 font-medium">
                   {playbackSpeed === 1 ? '1x' : `${playbackSpeed}x`}
                 </span>
               </button>
 
+              {/* Menu de Velocidade Compacto posicionado acima da barra, junto ao canto inferior direito sem cobrir o anime */}
               {showSettingsMenu && (
                 <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="player-menu-content absolute bottom-12 right-0 w-48 sm:w-52 max-w-[calc(100vw-1.5rem)] max-h-[60vh] bg-[#12131A]/95 border border-slate-800/90 rounded-xl p-1.5 shadow-2xl z-[60] pointer-events-auto backdrop-blur-md overflow-y-auto custom-scrollbar"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetInactivityTimer();
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    resetInactivityTimer();
+                  }}
+                  className="player-menu-content absolute bottom-full mb-2 right-0 w-36 bg-[#12131A]/95 border border-slate-700/80 rounded-xl p-1 shadow-2xl z-[60] pointer-events-auto backdrop-blur-md overflow-hidden"
                 >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center justify-between px-2 py-1 border-b border-slate-800/80 mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <Gauge className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                        <span className="text-xs font-semibold text-slate-200">Velocidade</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowSettingsMenu(false)}
-                        className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
-                        aria-label="Fechar menu"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                  <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 mb-0.5">
+                    <span>Velocidade</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowSettingsMenu(false)}
+                      className="text-slate-500 hover:text-white p-0.5 rounded cursor-pointer"
+                      aria-label="Fechar menu"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
 
-                    {/* Lista de Velocidades: 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x */}
+                  <div className="space-y-0.5">
+                    {/* Lista de Velocidades Preservadas: 0.5x, 0.75x, Normal (1x), 1.25x, 1.5x, 2x */}
                     {PLAYBACK_SPEEDS.map((spd) => (
                       <button
                         key={spd}
                         type="button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           changeSpeed(spd);
                           setShowSettingsMenu(false);
+                          resetInactivityTimer();
                         }}
-                        className={`w-full flex items-center justify-between px-2 py-1.5 text-xs rounded-md transition-colors cursor-pointer ${
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg transition-colors cursor-pointer ${
                           playbackSpeed === spd
                             ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
-                            : 'text-slate-300 hover:bg-slate-800'
+                            : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                         }`}
                       >
                         <span className="text-xs whitespace-nowrap">
