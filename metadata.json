@@ -1,0 +1,8 @@
+{
+  "name": "Hikari",
+  "description": "Plataforma de streaming de animes com reprodutor moderno e comunidade ativa.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -2243,28 +2243,27 @@ function CommentsSection({
   /* DATA                                                    */
   /* ====================================================== */
 
-  const formatDate =
-    (value: string) => {
-      const date =
-        new Date(value);
+  const formatDate = (value: string) => {
+    if (!value) return "";
+    const date = new Date(value);
 
-      if (
-        Number.isNaN(
-          date.getTime(),
-        )
-      ) {
-        return "";
-      }
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
 
-      return date.toLocaleDateString(
-        "pt-BR",
-        {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        },
-      );
-    };
+    const datePart = date.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+
+    const timePart = date.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    return `${datePart} às ${timePart}`;
+  };
 
   /* ====================================================== */
   /* COMENTÁRIOS PRINCIPAIS                                 */
@@ -2388,7 +2387,7 @@ function CommentsSection({
           {/* TÍTULO + ORDENAÇÃO                              */}
           {/* =============================================== */}
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
 
             <div className="min-w-0">
 
@@ -2396,7 +2395,7 @@ function CommentsSection({
                 <div className="flex size-7 sm:size-8 items-center justify-center rounded-lg bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shrink-0">
                   <MessageCircle className="size-3.5 sm:size-4" />
                 </div>
-                <h2 className="font-display text-lg sm:text-2xl font-bold tracking-tight text-white truncate">
+                <h2 className="font-display text-lg sm:text-2xl font-bold tracking-tight text-white">
                   Comentários
                 </h2>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shrink-0">
@@ -2410,42 +2409,46 @@ function CommentsSection({
 
             </div>
 
-            <div className="flex items-center justify-end gap-3 shrink-0">
+            {/* Seletor "Mais recentes" alinhado à direita */}
+            <div className="flex items-center justify-end self-end sm:self-auto shrink-0 relative">
 
-              <div className="relative">
+              <button
+                type="button"
+                onClick={() =>
+                  setSortOpen(
+                    (open) => !open,
+                  )
+                }
+                aria-haspopup="menu"
+                aria-expanded={
+                  sortOpen
+                }
+                className="flex min-h-9 sm:min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#16161b] px-3.5 py-2 text-xs sm:text-sm font-medium text-white/80 outline-none transition-all hover:border-[#a855f7]/40 hover:bg-white/[0.06] hover:text-white active:scale-95 shadow-sm"
+              >
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSortOpen(
-                      (open) => !open,
-                    )
-                  }
-                  aria-haspopup="menu"
-                  aria-expanded={
-                    sortOpen
-                  }
-                  className="flex min-h-9 sm:min-h-10 items-center gap-1.5 sm:gap-2 rounded-xl border border-white/10 bg-[#16161b] px-3 sm:px-3.5 text-xs sm:text-sm font-medium text-white/80 outline-none transition-all hover:border-[#a855f7]/40 hover:bg-white/[0.06] hover:text-white"
-                >
+                <span>
+                  {sortLabel}
+                </span>
 
-                  <span>
-                    {sortLabel}
-                  </span>
+                <ChevronDown
+                  className={cn(
+                    "size-3.5 text-white/50 transition-transform duration-200",
+                    sortOpen &&
+                      "rotate-180 text-[#c084fc]",
+                  )}
+                />
 
-                  <ChevronDown
-                    className={cn(
-                      "size-3.5 text-white/50 transition-transform duration-200",
-                      sortOpen &&
-                        "rotate-180 text-[#c084fc]",
-                    )}
+              </button>
+
+              {sortOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setSortOpen(false)}
                   />
-
-                </button>
-
-                {sortOpen && (
                   <div
                     role="menu"
-                    className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[190px] overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
+                    className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[190px] overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1.5 shadow-2xl backdrop-blur-md"
                   >
 
                     <button
@@ -2460,11 +2463,11 @@ function CommentsSection({
                         );
                       }}
                       className={cn(
-                        "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                        "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors",
                         sortBy ===
                           "recent"
-                          ? "bg-elevated text-fg"
-                          : "text-muted hover:bg-elevated hover:text-fg",
+                          ? "bg-[#a855f7]/20 text-white font-medium"
+                          : "text-white/70 hover:bg-white/[0.06] hover:text-white",
                       )}
                     >
                       Mais recentes
@@ -2482,11 +2485,11 @@ function CommentsSection({
                         );
                       }}
                       className={cn(
-                        "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                        "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors",
                         sortBy ===
                           "liked"
-                          ? "bg-elevated text-fg"
-                          : "text-muted hover:bg-elevated hover:text-fg",
+                          ? "bg-[#a855f7]/20 text-white font-medium"
+                          : "text-white/70 hover:bg-white/[0.06] hover:text-white",
                       )}
                     >
                       Mais curtidos
@@ -2504,11 +2507,11 @@ function CommentsSection({
                         );
                       }}
                       className={cn(
-                        "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                        "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors",
                         sortBy ===
                           "replies"
-                          ? "bg-elevated text-fg"
-                          : "text-muted hover:bg-elevated hover:text-fg",
+                          ? "bg-[#a855f7]/20 text-white font-medium"
+                          : "text-white/70 hover:bg-white/[0.06] hover:text-white",
                       )}
                     >
                       Mais respondidos
@@ -2526,20 +2529,19 @@ function CommentsSection({
                         );
                       }}
                       className={cn(
-                        "flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                        "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors",
                         sortBy ===
                           "spoiler"
-                          ? "bg-elevated text-fg"
-                          : "text-muted hover:bg-elevated hover:text-fg",
+                          ? "bg-[#a855f7]/20 text-white font-medium"
+                          : "text-white/70 hover:bg-white/[0.06] hover:text-white",
                       )}
                     >
                       Com spoiler
                     </button>
 
                   </div>
-                )}
-
-              </div>
+                </>
+              )}
 
             </div>
 
@@ -2597,60 +2599,7 @@ function CommentsSection({
               className="w-full resize-none rounded-xl border border-white/10 bg-[#0c0c10] px-4 py-3 text-sm text-fg outline-none placeholder:text-white/35 focus:border-[#a855f7]/40 transition-colors"
             />
 
-            {/* ============================================= */}
-            {/* IMAGEM / GIF                                   */}
-            {/* ============================================= */}
 
-            <div className="mt-3 flex items-center gap-2">
-
-              <input
-                ref={
-                  imageInputRef
-                }
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={
-                  handleSelectImage
-                }
-                className="hidden"
-              />
-
-              <button
-                type="button"
-                onClick={() =>
-                  imageInputRef.current?.click()
-                }
-                disabled={
-                  sending ||
-                  imageUploading
-                }
-                aria-label="Adicionar imagem"
-                title="Imagem"
-                className="flex min-h-10 items-center gap-2 rounded-lg border border-white/5 bg-bg px-3 text-xs font-medium text-muted transition-colors hover:border-white/10 hover:bg-elevated hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <ImageIcon className="size-4" />
-                Imagem
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  openGifPicker();
-                }}
-                disabled={
-                  sending ||
-                  imageUploading
-                }
-                aria-label="Adicionar GIF"
-                title="GIF"
-                className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-white/5 bg-bg px-3 text-xs font-medium text-muted transition-colors hover:border-white/10 hover:bg-elevated hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <span className="text-[10px] font-bold tracking-wide">
-                  GIF
-                </span>
-              </button>
-
-            </div>
 
             {gifOpen && (
               <div
@@ -2850,57 +2799,123 @@ function CommentsSection({
               </div>
             )}
 
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
+            {/* ============================================= */}
+            {/* BARRA DE FERRAMENTAS E CONTROLES DO FORMULÁRIO */}
+            {/* ============================================= */}
 
-              <input
-                type="checkbox"
-                checked={isSpoiler}
-                onChange={(
-                  event,
-                ) => {
-                  setIsSpoiler(
-                    event.target
-                      .checked,
-                  );
-                }}
-                className="size-4 accent-current"
-              />
+            <div className="mt-3.5 pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
 
-              <span>
-                Marcar como spoiler
-              </span>
+              {/* Grupo esquerdo: Imagem, GIF e Spoiler com espaçamento adequado */}
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
 
-            </label>
+                <input
+                  ref={
+                    imageInputRef
+                  }
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={
+                    handleSelectImage
+                  }
+                  className="hidden"
+                />
 
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {/* Botão Imagem com espaço e identidade própria */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    imageInputRef.current?.click()
+                  }
+                  disabled={
+                    sending ||
+                    imageUploading
+                  }
+                  aria-label="Adicionar imagem"
+                  title="Adicionar imagem"
+                  className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 sm:gap-2 rounded-lg border border-white/10 bg-[#16161b] px-2.5 sm:px-3 text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ImageIcon className="size-3.5 sm:size-4 text-[#c084fc] shrink-0" />
+                  <span>Imagem</span>
+                </button>
 
-              <p className="text-xs text-subtle">
-                Enter para enviar · Shift + Enter para quebrar linha
-              </p>
+                {/* Botão GIF com espaçamento horizontal suficiente, sem grudar */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    openGifPicker();
+                  }}
+                  disabled={
+                    sending ||
+                    imageUploading
+                  }
+                  aria-label="Adicionar GIF"
+                  title="Adicionar GIF"
+                  className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 sm:gap-2 rounded-lg border border-white/10 bg-[#16161b] px-2.5 sm:px-3 text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="rounded bg-[#a855f7]/20 border border-[#a855f7]/30 px-1 py-0.5 text-[9px] font-black tracking-wider text-[#c084fc] shrink-0">
+                    GIF
+                  </span>
+                  <span>GIF</span>
+                </button>
 
-              <Button
-                type="button"
-                size="sm"
-                onClick={() =>
-                  void handleComment()
-                }
-                disabled={
-                  (!text.trim() &&
-                    !commentImage &&
-                    !selectedGifUrl) ||
-                  sending ||
-                  imageUploading
-                }
-                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_20px_rgba(168,85,247,0.25)] active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-              >
-                <Send className="size-4 mr-1.5" />
+                {/* Separador vertical sutil */}
+                <div className="hidden sm:block h-4 w-px bg-white/10 mx-0.5" />
 
-                {imageUploading
-                  ? "Enviando imagem..."
-                  : sending
-                    ? "Enviando..."
-                    : "Comentar"}
-              </Button>
+                {/* Marcar como spoiler */}
+                <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-white/70 hover:text-white select-none py-1 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={isSpoiler}
+                    onChange={(
+                      event,
+                    ) => {
+                      setIsSpoiler(
+                        event.target
+                          .checked,
+                      );
+                    }}
+                    className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-[#a855f7] accent-[#a855f7] focus:ring-1 focus:ring-[#a855f7]"
+                  />
+                  <span className="truncate">
+                    Marcar como spoiler
+                  </span>
+                </label>
+
+              </div>
+
+              {/* Grupo direito: Instrução discreta e Botão Comentar Compacto */}
+              <div className="flex items-center gap-3 ml-auto">
+
+                <p className="hidden md:inline text-[11px] text-white/40 select-none">
+                  Enter para enviar · Shift + Enter para quebrar linha
+                </p>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    void handleComment()
+                  }
+                  disabled={
+                    (!text.trim() &&
+                      !commentImage &&
+                      !selectedGifUrl) ||
+                    sending ||
+                    imageUploading
+                  }
+                  className="w-auto px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_15px_rgba(168,85,247,0.25)] active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none shrink-0 inline-flex items-center gap-1.5"
+                >
+                  <Send className="size-3.5 shrink-0" />
+                  <span>
+                    {imageUploading
+                      ? "Enviando imagem..."
+                      : sending
+                        ? "Enviando..."
+                        : "Comentar"}
+                  </span>
+                </Button>
+
+              </div>
 
             </div>
 
