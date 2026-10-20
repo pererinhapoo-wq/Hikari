@@ -680,13 +680,13 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* NAVEGAÇÃO DOS EPISÓDIOS                           */}
         {/* ================================================== */}
 
-        <div className="mt-3.5 flex items-center justify-between gap-2 sm:gap-3 rounded-2xl border border-white/10 bg-[#131317]/80 p-2 sm:p-2.5 backdrop-blur-md">
+        <div className="mt-3.5 flex items-center justify-between gap-1.5 sm:gap-3 rounded-2xl border border-white/10 bg-[#131317]/80 p-2 sm:p-2.5 backdrop-blur-md">
           {prev ? (
             <Button
               asChild
               variant="outline"
               size="sm"
-              className="flex-1 sm:flex-initial rounded-xl border-white/10 bg-white/[0.03] px-2.5 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white/90 hover:bg-white/[0.08] hover:text-white hover:border-[#a855f7]/40 active:scale-95 transition-all"
+              className="flex-1 min-w-0 rounded-xl border-white/10 bg-white/[0.03] px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white/90 hover:bg-white/[0.08] hover:text-white hover:border-[#a855f7]/40 active:scale-95 transition-all"
             >
               <Link
                 to="/watch/$id"
@@ -704,7 +704,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
               variant="outline"
               size="sm"
               disabled
-              className="flex-1 sm:flex-initial rounded-xl border-white/5 bg-white/[0.01] px-2.5 sm:px-4 py-2 text-xs sm:text-sm text-white/30 cursor-not-allowed"
+              className="flex-1 min-w-0 rounded-xl border-white/5 bg-white/[0.01] px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/30 cursor-not-allowed"
             >
               <ChevronLeft className="size-4 mr-1 shrink-0" />
               <span className="truncate">Episódio anterior</span>
@@ -715,11 +715,16 @@ function parseDurationToSeconds(raw?: string | number | null): number {
             asChild
             variant="outline"
             size="sm"
-            className="flex-1 sm:flex-initial min-w-[100px] sm:min-w-[140px] rounded-xl border-[#a855f7]/40 bg-[#a855f7]/15 px-3 sm:px-5 py-2 text-xs sm:text-sm font-medium text-[#c084fc] hover:bg-[#a855f7]/25 hover:border-[#a855f7]/60 active:scale-95 transition-all shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+            className="shrink-0 w-10 sm:w-12 h-9 sm:h-10 rounded-xl border-[#a855f7]/40 bg-[#a855f7]/15 p-0 flex items-center justify-center text-lg sm:text-xl font-bold text-[#c084fc] hover:bg-[#a855f7]/25 hover:border-[#a855f7]/60 active:scale-95 transition-all shadow-[0_0_15px_rgba(168,85,247,0.15)]"
           >
-            <Link to="/anime/$id" params={{ id: anime.id }}>
-              <Tv className="size-3.5 sm:size-4 mr-1.5 shrink-0 text-[#c084fc]" />
-              <span className="truncate">Ver anime</span>
+            <Link
+              to="/anime/$id"
+              params={{ id: anime.id }}
+              className="flex size-full items-center justify-center text-center font-bold leading-none select-none"
+              aria-label="Ver detalhes do anime"
+              title="Ver detalhes do anime"
+            >
+              =
             </Link>
           </Button>
 
@@ -727,7 +732,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
             <Button
               asChild
               size="sm"
-              className="flex-1 sm:flex-initial rounded-xl border border-transparent bg-white/10 px-2.5 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white hover:bg-[#a855f7] hover:shadow-[0_0_20px_rgba(168,85,247,0.3)] active:scale-95 transition-all"
+              className="flex-1 min-w-0 rounded-xl border border-transparent bg-white/10 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white hover:bg-[#a855f7] hover:shadow-[0_0_20px_rgba(168,85,247,0.3)] active:scale-95 transition-all"
             >
               <Link
                 to="/watch/$id"
@@ -744,7 +749,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
               type="button"
               size="sm"
               disabled
-              className="flex-1 sm:flex-initial rounded-xl border-white/5 bg-white/[0.01] px-2.5 sm:px-4 py-2 text-xs sm:text-sm text-white/30 cursor-not-allowed"
+              className="flex-1 min-w-0 rounded-xl border-white/5 bg-white/[0.01] px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/30 cursor-not-allowed"
             >
               <span className="truncate">Próximo episódio</span>
               <ChevronRight className="size-4 ml-1 shrink-0" />
