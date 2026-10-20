@@ -111,6 +111,9 @@ const BASE_NAV = [
   },
 ] as const;
 
+// Alternador para visibilidade da área +18 na navegação pública (ocultar sem excluir)
+const SHOW_ADULT_SECTION = false;
+
 const ADULT_NAV = {
   to: "/adult",
   label: "🔞 +18",
@@ -1503,9 +1506,10 @@ export function Shell() {
               </div>
 
               {/* =================================================
-                  OUTROS
+                  OUTROS (ÁREA +18 OCULTADA DA NAVEGAÇÃO PÚBLICA)
               ================================================== */}
-              <div className="mt-6">
+              {SHOW_ADULT_SECTION && (
+                <div className="mt-6">
                 <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
                   Outros
                 </p>
@@ -1593,6 +1597,7 @@ export function Shell() {
 
                 </div>
               </div>
+              )}
 
             </nav>
           </aside>

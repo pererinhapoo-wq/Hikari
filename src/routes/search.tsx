@@ -556,12 +556,13 @@ function SearchPage() {
     });
   }
 
-  const genreOptions =
+  const genreOptions = (
     genres.length
       ? genres
       : Object.keys(
           GENRE_PT,
-        );
+        )
+  ).filter((genre) => genre !== "Hentai");
 
   const hasAnimes =
     items.length > 0;
