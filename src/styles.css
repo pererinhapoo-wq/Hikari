@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "video.js/dist/video-js.css";
+@import "@videojs/react/video/skin.css";
 
 @theme {
   --color-bg: #09090b;
@@ -216,5 +218,36 @@ html[data-theme="light"] {
 
 .animate-seek-feedback {
   animation: seekRipple 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* =========================================================
+   SKIN PERSONALIZADA NOVA STREAM PARA VIDEO.JS 10
+========================================================= */
+
+.video-js-nova-stream {
+  --vjs-theme-color: #a855f7;
+  --vjs-theme-hover: #c084fc;
+  --vjs-bg-color: #0b0c10;
+  position: relative;
+}
+
+/* Oculta controles nativos padrão do Video.js para garantir exibição exclusiva da skin personalizada Nova Stream sem duplicações */
+.video-js-nova-stream .vjs-control-bar,
+.video-js-nova-stream .vjs-big-play-button,
+.video-js-nova-stream .vjs-loading-spinner,
+.video-js-nova-stream .vjs-error-display,
+.video-js-nova-stream .vjs-modal-dialog,
+.video-js-nova-stream media-controls,
+.video-js-nova-stream media-play-button:not([data-custom]),
+.video-js-nova-stream media-volume-slider:not([data-custom]),
+.video-js-nova-stream media-time-slider:not([data-custom]) {
+  display: none !important;
+}
+
+/* Renderização limpa e bordas preservadas */
+.video-js-nova-stream video {
+  outline: none;
+  border: none;
+  background-color: #000000;
 }
 

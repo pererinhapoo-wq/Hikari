@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Hls from 'hls.js';
+import videojs from 'video.js';
+import { VideoPlayer, Video } from '@videojs/react/video';
 import {
   Play,
   Pause,
@@ -300,6 +302,15 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
+      }
+      if (videoEl) {
+        try {
+          videoEl.pause();
+          videoEl.removeAttribute('src');
+          videoEl.load();
+        } catch {
+          // ignora eventuais erros de limpeza ao desmontar ou trocar fonte
+        }
       }
     };
   }, [effectiveVideoUrl, autoPlay, isHlsUrl, applyInitialTime, onError]);
@@ -682,58 +693,62 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const bufferedPercent = duration > 0 ? (bufferedTime / duration) * 100 : 0;
 
   return (
-    <div
-      ref={containerRef}
-      onPointerLeave={handlePointerLeaveContainer}
-      onPointerMove={handlePointerMoveDesktop}
-      className={`relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group touch-manipulation ${className || ''}`}
-      style={{ touchAction: 'manipulation' }}
+    <VideoPlayer
+      title={video?.title || null}
+      poster={effectivePosterUrl || null}
     >
-      {/* Elemento de Vídeo HTML5 com suporte HLS e reprodução direta */}
-      <video
-        ref={videoRef}
-        src={isHlsActive && Hls.isSupported() ? undefined : effectiveVideoUrl}
-        poster={effectivePosterUrl}
-        playsInline
-        autoPlay={autoPlay}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onPlay={() => {
-          setIsPlaying(true);
-          isPlayingRef.current = true;
-          resetInactivityTimer();
-        }}
-        onPlaying={() => {
-          setIsPlaying(true);
-          isPlayingRef.current = true;
-          if (controlsVisibleRef.current) {
-            scheduleControlsHide();
-          }
-        }}
-        onPause={() => {
-          setIsPlaying(false);
-          isPlayingRef.current = false;
-          clearInactivityTimer();
-          setControlsVisible(true);
-          controlsVisibleRef.current = true;
-        }}
-        onEnded={() => {
-          setIsPlaying(false);
-          isPlayingRef.current = false;
-          clearInactivityTimer();
-          setControlsVisible(true);
-          controlsVisibleRef.current = true;
-          onEnded?.();
-        }}
-        onError={() => {
-          const message = video?.isLocalFile
-            ? 'O navegador não conseguiu decodificar o arquivo local.'
-            : 'Não foi possível reproduzir este vídeo no momento.';
-          setVideoError(message);
-          onError?.(message);
-        }}
-        className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-      />
+      <div
+        ref={containerRef}
+        onPointerLeave={handlePointerLeaveContainer}
+        onPointerMove={handlePointerMoveDesktop}
+        className={`video-js-nova-stream relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group touch-manipulation ${className || ''}`}
+        style={{ touchAction: 'manipulation' }}
+      >
+        {/* Elemento de Vídeo com engine Video.js 10 e suporte HLS/reprodução direta */}
+        <Video
+          ref={videoRef}
+          src={isHlsActive && Hls.isSupported() ? undefined : effectiveVideoUrl}
+          poster={effectivePosterUrl}
+          playsInline
+          autoPlay={autoPlay}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onPlay={() => {
+            setIsPlaying(true);
+            isPlayingRef.current = true;
+            resetInactivityTimer();
+          }}
+          onPlaying={() => {
+            setIsPlaying(true);
+            isPlayingRef.current = true;
+            if (controlsVisibleRef.current) {
+              scheduleControlsHide();
+            }
+          }}
+          onPause={() => {
+            setIsPlaying(false);
+            isPlayingRef.current = false;
+            clearInactivityTimer();
+            setControlsVisible(true);
+            controlsVisibleRef.current = true;
+          }}
+          onEnded={() => {
+            setIsPlaying(false);
+            isPlayingRef.current = false;
+            clearInactivityTimer();
+            setControlsVisible(true);
+            controlsVisibleRef.current = true;
+            onEnded?.();
+          }}
+          onError={() => {
+            const message = video?.isLocalFile
+              ? 'O navegador não conseguiu decodificar o arquivo local.'
+              : 'Não foi possível reproduzir este vídeo no momento.';
+            setVideoError(message);
+            onError?.(message);
+          }}
+          className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+        />
 
       {/* Camada interativa transparente de superfície para recepção instantânea de toques e cliques */}
       <div
@@ -940,6 +955,13 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               }}
               onClick={(e) => {
                 e.stopPropagation();
+                if (
+                  gestureStartedWhileHiddenRef.current ||
+                  Date.now() - controlsRevealedAtRef.current < 700
+                ) {
+                  gestureStartedWhileHiddenRef.current = false;
+                  return;
+                }
                 seekRelative(-10);
               }}
               aria-label="Voltar 10 segundos"
@@ -961,6 +983,13 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               }}
               onClick={(e) => {
                 e.stopPropagation();
+                if (
+                  gestureStartedWhileHiddenRef.current ||
+                  Date.now() - controlsRevealedAtRef.current < 700
+                ) {
+                  gestureStartedWhileHiddenRef.current = false;
+                  return;
+                }
                 seekRelative(10);
               }}
               aria-label="Avançar 10 segundos"
@@ -1099,7 +1128,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         </div>
       </div>
     </div>
+    </VideoPlayer>
   );
 };
 
+export { videojs };
 export default CustomVideoPlayer;
