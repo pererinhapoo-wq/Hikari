@@ -171,83 +171,48 @@ html[data-theme="light"] {
 }
 
 /* =========================================================
-   ANIMAÇÕES E CONTROLES DO PLAYER NOVA STREAM
+   ESTILOS DO REPRODUTOR HIKARI - VIDEO.JS 10
 ========================================================= */
 
-@keyframes playerPop {
-  0% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  25% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  75% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.08);
-  }
-}
-
-@keyframes seekRipple {
-  0% {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  25% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  75% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.05);
-  }
-}
-
-.animate-player-pop {
-  animation: playerPop 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.animate-seek-feedback {
-  animation: seekRipple 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* =========================================================
-   SKIN PERSONALIZADA NOVA STREAM PARA VIDEO.JS 10
-========================================================= */
-
-.video-js-nova-stream {
-  --vjs-theme-color: #a855f7;
-  --vjs-theme-hover: #c084fc;
-  --vjs-bg-color: #0b0c10;
+.hikari-video-player {
+  --media-accent-color: #a855f7;
+  --media-accent-text-color: #ffffff;
+  --media-border-color: rgb(255 255 255 / 0.1);
+  --media-border-radius: 1rem;
+  --media-scale-unit: 1rem;
+  --media-font-family: var(--font-sans);
+  background-color: #000000;
   position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  width: 100%;
+  height: 100%;
 }
 
-/* Oculta controles nativos padrão do Video.js para garantir exibição exclusiva da skin personalizada Nova Stream sem duplicações */
-.video-js-nova-stream .vjs-control-bar,
-.video-js-nova-stream .vjs-big-play-button,
-.video-js-nova-stream .vjs-loading-spinner,
-.video-js-nova-stream .vjs-error-display,
-.video-js-nova-stream .vjs-modal-dialog,
-.video-js-nova-stream media-controls,
-.video-js-nova-stream media-play-button:not([data-custom]),
-.video-js-nova-stream media-volume-slider:not([data-custom]),
-.video-js-nova-stream media-time-slider:not([data-custom]) {
-  display: none !important;
-}
-
-/* Renderização limpa e bordas preservadas */
-.video-js-nova-stream video {
+.hikari-video-player video {
   outline: none;
   border: none;
   background-color: #000000;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Transições suaves e responsividade dos controles nativos */
+.hikari-video-player [data-visible] {
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Botão voltar/fechar integrado ao visual do Hikari */
+.hikari-player-close-btn {
+  transition: opacity 0.25s, transform 0.2s;
+}
+
+.hikari-player-close-btn:hover {
+  transform: scale(1.05);
+}
+
+.hikari-player-close-btn:active {
+  transform: scale(0.95);
 }
 

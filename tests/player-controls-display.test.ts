@@ -1,5 +1,5 @@
-// Teste de validação rigoroso do comportamento de exibição e interação dos controles do player do Hikari
-import { PlaybackSpeed } from '../src/types/video.ts';
+// Teste de validação rigoroso do comportamento de exibição e interação dos controles nativos do Video.js 10 no Hikari
+import type { PlaybackSpeed } from '../src/types/video.ts';
 
 let passed = 0;
 let failed = 0;

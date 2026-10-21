@@ -1,4 +1,4 @@
-import { PlaybackSpeed, QualityLevel } from '../src/types/video.ts';
+import type { PlaybackSpeed, QualityLevel } from '../src/types/video.ts';
 
 let passed = 0;
 let failed = 0;

@@ -1,4 +1,4 @@
-import { VideoItem, VideoResolution } from '../src/types/video.ts';
+import type { VideoItem, VideoResolution } from '../src/types/video.ts';
 import {
   classifyVideoResolution,
   formatQualityLabel,
