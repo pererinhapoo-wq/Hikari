@@ -198,6 +198,82 @@ html[data-theme="light"] {
   object-fit: contain;
 }
 
+/* 1. Remove título/nome do anime e episódio no canto superior esquerdo */
+.hikari-video-player .media-title {
+  display: none !important;
+}
+
+/* 2. Remove os ícones de transmissão (Cast, AirPlay) e modo janela / PiP no canto superior direito */
+.hikari-video-player .media-cast-button,
+.hikari-video-player .media-airplay-button,
+.hikari-video-player .media-pip-button {
+  display: none !important;
+}
+
+/* 3. Mantém a opção de tela cheia sempre na barra inferior de controles junto aos outros controles (incluindo Android/mobile) */
+.hikari-video-player .video-controls-secondary::after {
+  display: none !important;
+}
+
+@container media-root (width < 32rem) {
+  .hikari-video-player .video-controls-content {
+    display: flex !important;
+    position: absolute !important;
+    inset-inline: calc(var(--media-spacing) * 2) !important;
+    bottom: calc(var(--media-spacing) * 2) !important;
+    z-index: 30 !important;
+    border-radius: var(--media-controls-radius) !important;
+    background-color: var(--media-popover) !important;
+    color: var(--media-popover-foreground) !important;
+    box-shadow: 0 0 0 1px var(--media-surface-border, var(--media-border)), var(--media-shadow-surface) !important;
+    -webkit-backdrop-filter: var(--media-backdrop-filter-surface) !important;
+    backdrop-filter: var(--media-backdrop-filter-surface) !important;
+    align-items: center !important;
+    padding: calc(var(--media-spacing) * 0.5) !important;
+  }
+
+  .hikari-video-player .video-controls-content:not([data-visible]) {
+    pointer-events: none !important;
+    translate: 0 var(--media-hidden-offset) !important;
+    scale: var(--media-hidden-scale) var(--media-hidden-scale) !important;
+    opacity: 0 !important;
+    transition-duration: var(--media-duration-controls) !important;
+  }
+
+  .hikari-video-player .video-controls-primary {
+    position: static !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    inset-inline: auto !important;
+    bottom: auto !important;
+  }
+
+  .hikari-video-player .video-controls-primary::after {
+    display: none !important;
+  }
+
+  .hikari-video-player .video-controls-secondary {
+    position: static !important;
+    display: flex !important;
+    flex: 0 0 auto !important;
+    top: auto !important;
+    right: auto !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    align-items: center !important;
+  }
+}
+
 /* Transições suaves e responsividade dos controles nativos */
 .hikari-video-player [data-visible] {
   transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);

@@ -258,7 +258,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   return (
     <VideoPlayer
-      title={video?.title || null}
+      title={null}
       poster={effectivePosterUrl || null}
     >
       <div
