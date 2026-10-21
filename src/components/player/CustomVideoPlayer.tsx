@@ -115,21 +115,13 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const [isHlsActive, setIsHlsActive] = useState<boolean>(false);
 
   // Refs síncronas para controle seguro de temporizadores sem conflito de renderização ou closures antigas
-  const isPlayingRef = useRef<boolean>(false);
-  const showSettingsMenuRef = useRef<boolean>(false);
-  const controlsVisibleRef = useRef<boolean>(true);
+  const isPlayingRef = useRef<boolean>(isPlaying);
+  const showSettingsMenuRef = useRef<boolean>(showSettingsMenu);
+  const controlsVisibleRef = useRef<boolean>(controlsVisible);
 
-  useEffect(() => {
-    isPlayingRef.current = isPlaying;
-  }, [isPlaying]);
-
-  useEffect(() => {
-    showSettingsMenuRef.current = showSettingsMenu;
-  }, [showSettingsMenu]);
-
-  useEffect(() => {
-    controlsVisibleRef.current = controlsVisible;
-  }, [controlsVisible]);
+  isPlayingRef.current = isPlaying;
+  showSettingsMenuRef.current = showSettingsMenu;
+  controlsVisibleRef.current = controlsVisible;
 
   // Obter URL do vídeo
   const effectiveVideoUrl = useMemo(() => {
@@ -163,36 +155,37 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     }
   }, []);
 
-  // Reiniciar temporizador de inatividade garantindo estabilidade e persistência
-  const resetInactivityTimer = useCallback(() => {
+  // Agenda a ocultação automática dos controles após o tempo de inatividade durante reprodução (~4.5 segundos)
+  const scheduleControlsHide = useCallback((delay = INACTIVITY_DELAY) => {
     clearInactivityTimer();
-    setControlsVisible(true);
-    controlsVisibleRef.current = true;
 
-    // Regra estrita: se o vídeo estiver pausado ou o menu de velocidade estiver aberto,
-    // os controles permanecem visíveis indefinidamente e NUNCA desaparecem sozinhos.
-    const isPaused = videoRef.current ? videoRef.current.paused : !isPlayingRef.current;
-    if (isPaused || !isPlayingRef.current || showSettingsMenuRef.current) {
+    // Regra: se estiver pausado ou com o menu de velocidade aberto, não oculta os controles
+    const isPaused = videoRef.current ? (videoRef.current.paused && !isPlayingRef.current) : !isPlayingRef.current;
+    if (isPaused || showSettingsMenuRef.current) {
       return;
     }
 
-    // Oculta apenas após 5 segundos contínuos de inatividade real durante a reprodução
     controlsTimeoutRef.current = setTimeout(() => {
-      const stillPlaying = videoRef.current
-        ? !videoRef.current.paused && !videoRef.current.ended
-        : isPlayingRef.current;
+      const el = videoRef.current;
+      const isStillPlaying = el ? (!el.paused && !el.ended) : isPlayingRef.current;
 
-      if (stillPlaying && !showSettingsMenuRef.current) {
+      if (isStillPlaying && !showSettingsMenuRef.current) {
         setControlsVisible(false);
         controlsVisibleRef.current = false;
       }
-    }, INACTIVITY_DELAY);
+    }, delay);
   }, [clearInactivityTimer]);
+
+  // Reiniciar temporizador de inatividade: exibe controles e, se reproduzindo, inicia contagem
+  const resetInactivityTimer = useCallback(() => {
+    setControlsVisible(true);
+    controlsVisibleRef.current = true;
+    scheduleControlsHide();
+  }, [scheduleControlsHide]);
 
   // Monitorar mudanças em isPlaying e showSettingsMenu
   useEffect(() => {
-    const isPaused = videoRef.current ? videoRef.current.paused : !isPlaying;
-    if (isPaused || !isPlaying || showSettingsMenu) {
+    if (!isPlaying || showSettingsMenu) {
       clearInactivityTimer();
       setControlsVisible(true);
       controlsVisibleRef.current = true;
@@ -412,7 +405,13 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         return;
       }
 
-      // Reinicia os 5 segundos completos de exibição e mantém visível
+      // Se o menu de velocidade estiver aberto, fecha o menu
+      if (showSettingsMenuRef.current) {
+        setShowSettingsMenu(false);
+        showSettingsMenuRef.current = false;
+      }
+
+      // Reinicia os controles e o temporizador de 4 a 5 segundos
       resetInactivityTimer();
     },
     [resetInactivityTimer]
@@ -560,19 +559,21 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [togglePlay, seekRelative, toggleFullscreen, toggleMute, isFullscreen, showSettingsMenu, onClose]);
 
-  // Fechar menu de velocidade ao clicar fora
+  // Fechar menu de velocidade ao clicar fora (com capture para não ser bloqueado por propagação)
   useEffect(() => {
     const handlePointerDownOutside = (e: PointerEvent) => {
       const settingsArea = settingsAreaRef.current;
       const target = e.target;
       if (settingsArea && target instanceof Node && !settingsArea.contains(target)) {
         setShowSettingsMenu(false);
+        showSettingsMenuRef.current = false;
+        resetInactivityTimer();
       }
     };
 
-    document.addEventListener('pointerdown', handlePointerDownOutside);
-    return () => document.removeEventListener('pointerdown', handlePointerDownOutside);
-  }, []);
+    document.addEventListener('pointerdown', handlePointerDownOutside, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDownOutside, true);
+  }, [resetInactivityTimer]);
 
   // Limpeza de timers ao desmontar o componente
   useEffect(() => {
@@ -589,7 +590,23 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     <div
       ref={containerRef}
       onClick={handleVideoSurfaceTap}
-      onPointerDown={handleVideoSurfaceTap}
+      onPointerDown={(e) => {
+        const target = e.target as HTMLElement;
+        if (
+          target.closest('button') ||
+          target.closest('.player-menu-content') ||
+          target.closest('.player-menu-trigger') ||
+          target.closest('input') ||
+          target.closest('.group\\/progress')
+        ) {
+          return;
+        }
+        // Ao encostar o dedo na área do vídeo, exibe os controles imediatamente se estiverem ocultos
+        if (!controlsVisibleRef.current) {
+          setControlsVisible(true);
+          controlsVisibleRef.current = true;
+        }
+      }}
       onPointerMove={handlePointerMoveDesktop}
       className={`relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group touch-manipulation ${className || ''}`}
       style={{ touchAction: 'manipulation' }}
@@ -907,7 +924,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setShowSettingsMenu((open) => !open);
+                  setShowSettingsMenu((open) => {
+                    const next = !open;
+                    showSettingsMenuRef.current = next;
+                    return next;
+                  });
                   resetInactivityTimer();
                 }}
                 className={`player-menu-trigger h-9 sm:h-10 px-2 sm:px-2.5 flex items-center gap-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer active:scale-95 ${
@@ -950,6 +971,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                       onClick={(e) => {
                         e.stopPropagation();
                         setShowSettingsMenu(false);
+                        showSettingsMenuRef.current = false;
+                        resetInactivityTimer();
                       }}
                       className="text-slate-500 hover:text-white p-0.5 rounded cursor-pointer transition-colors"
                       aria-label="Fechar menu"
@@ -972,6 +995,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                           e.stopPropagation();
                           changeSpeed(spd);
                           setShowSettingsMenu(false);
+                          showSettingsMenuRef.current = false;
                           resetInactivityTimer();
                         }}
                         className={`w-full flex items-center justify-between px-2 py-1 text-[11px] rounded-lg transition-colors cursor-pointer ${
