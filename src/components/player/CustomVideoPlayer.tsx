@@ -38,6 +38,10 @@ export interface CustomVideoPlayerProps {
   initialTime?: number;
   /** Callback periódico de tempo e duração para persistência do progresso */
   onTimeUpdate?: (currentTime: number, duration: number) => void;
+  /** Callback disparado na pausa para salvar o progresso imediatamente */
+  onPause?: (currentTime: number, duration: number) => void;
+  /** Callback disparado quando a retomada do tempo inicial é confirmada */
+  onRestored?: (currentTime: number) => void;
   /** Callback ao finalizar reprodução */
   onEnded?: () => void;
   /** Callback em erro de reprodução */
@@ -65,6 +69,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   onUpdateMetadata,
   initialTime = 0,
   onTimeUpdate,
+  onPause,
+  onRestored,
   onEnded,
   onError,
   className,
@@ -93,19 +99,32 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return cleanUrl.endsWith('.m3u8') || url.includes('.m3u8') || url.includes('/hls/');
   }, []);
 
-  // Aplicação segura do tempo inicial (retomada de progresso)
+  // Aplicação segura do tempo inicial (retomada de progresso) somente quando o elemento de mídia está pronto
   const applyInitialTime = useCallback(() => {
     const el = videoRef.current;
     if (!el || initialTimeAppliedRef.current) return;
-    if (initialTime && initialTime > 0) {
+    if (!initialTime || initialTime <= 0) {
+      initialTimeAppliedRef.current = true;
+      return;
+    }
+
+    // Só aplica quando a mídia tiver metadados carregados e estiver apta a receber posição de reprodução
+    if (el.readyState >= 1) {
       try {
-        el.currentTime = initialTime;
+        const dur = el.duration;
+        const targetTime =
+          dur && Number.isFinite(dur) && dur > 0
+            ? Math.min(initialTime, Math.max(0, dur - 2))
+            : initialTime;
+
+        el.currentTime = targetTime;
         initialTimeAppliedRef.current = true;
+        onRestored?.(targetTime);
       } catch {
-        // Tenta novamente quando loadedmetadata disparar
+        // Tenta novamente quando canplay disparar
       }
     }
-  }, [initialTime]);
+  }, [initialTime, onRestored]);
 
   // Estratégia de reprodução explícita: hls.js único para HLS, direto para MP4/WebM
   useEffect(() => {
@@ -130,6 +149,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         lowLatencyMode: false,
         backBufferLength: 60,
         capLevelToPlayerSize: false,
+        ...(initialTime && initialTime > 0 ? { startPosition: initialTime } : {}),
       });
       hlsRef.current = hls;
       hls.loadSource(effectiveVideoUrl);
@@ -174,7 +194,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       // Suporte nativo ao HLS (ex: Safari iOS / macOS)
       videoEl.src = effectiveVideoUrl;
       setIsHlsActive(true);
-      applyInitialTime();
       if (autoPlay) {
         videoEl.play().catch(() => {});
       }
@@ -182,7 +201,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       // Vídeo direto (MP4, WebM, etc.)
       videoEl.src = effectiveVideoUrl;
       setIsHlsActive(false);
-      applyInitialTime();
       if (autoPlay) {
         videoEl.play().catch((err) => {
           console.warn('Reprodução automática restrita pelo navegador:', err);
@@ -205,7 +223,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         }
       }
     };
-  }, [effectiveVideoUrl, autoPlay, isHlsUrl, applyInitialTime, onError]);
+  }, [effectiveVideoUrl, autoPlay, isHlsUrl, applyInitialTime, onError, initialTime]);
 
   // Manipulador de carregamento de metadados
   const handleLoadedMetadata = useCallback(() => {
@@ -233,14 +251,40 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     }
   }, [applyInitialTime, onUpdateMetadata, video?.id]);
 
+  // Confirmação adicional de prontidão para reprodução
+  const handleCanPlay = useCallback(() => {
+    applyInitialTime();
+  }, [applyInitialTime]);
+
   // Atualização periódica de tempo para persistência do progresso
   const handleTimeUpdate = useCallback(() => {
     const el = videoRef.current;
     if (!el) return;
     const time = el.currentTime;
     const dur = el.duration || video?.duration || 0;
+
+    // Se temos tempo inicial pendente para aplicar e o elemento já tem metadados, tenta aplicar
+    if (initialTime && initialTime > 0 && !initialTimeAppliedRef.current) {
+      if (el.readyState >= 1) {
+        applyInitialTime();
+      }
+      // Evita disparar timeupdate inicial próximo a 0 que possa sobrescrever o tempo salvo
+      if (time < 1) {
+        return;
+      }
+    }
+
     onTimeUpdate?.(time, dur);
-  }, [onTimeUpdate, video?.duration]);
+  }, [onTimeUpdate, video?.duration, initialTime, applyInitialTime]);
+
+  // Manipulador de pausa para salvamento imediato do progresso
+  const handlePause = useCallback(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const time = el.currentTime;
+    const dur = el.duration || video?.duration || 0;
+    onPause?.(time, dur);
+  }, [onPause, video?.duration]);
 
   // Fim de reprodução do vídeo (avanço automático de episódio)
   const handleEnded = useCallback(() => {
@@ -282,6 +326,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             autoPlay={autoPlay}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
+            onCanPlay={handleCanPlay}
+            onPause={handlePause}
             onEnded={handleEnded}
             onError={handleMediaError}
             className="w-full h-full object-contain"

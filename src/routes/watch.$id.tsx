@@ -302,28 +302,6 @@ function WatchPage() {
     time: number;
   } | null>(null);
 
-  // Redefine a seleção de player para Player 1 somente quando o episódio mudar efetivamente.
-  // A seleção por ID ("player-1", "player-5") é preservada mesmo se a lista de fontes for recalculada.
-  useEffect(() => {
-    if (current?.id !== lastEpisodeIdRef.current) {
-      lastEpisodeIdRef.current = current?.id;
-      setSelectedPlayerId("player-1");
-      livePlaybackRef.current = { episodeId: current?.id ?? "", time: 0 };
-      setSessionTime(null);
-    }
-  }, [current?.id]);
-
-  // Preferência de reprodução automática configurada pelo usuário no Hikari
-  const userAutoplay = useMemo(() => {
-    if (typeof window === "undefined") return true;
-    try {
-      const saved = localStorage.getItem("hikari-player-autoplay");
-      return saved === null ? true : saved !== "false";
-    } catch {
-      return true;
-    }
-  }, []);
-
   // Chave de armazenamento para salvar progresso e retomar a reprodução
   const progressStorageKey =
     anime && current
@@ -348,18 +326,105 @@ function WatchPage() {
       ? sessionTime.time
       : savedInitialTime;
 
-  const lastSavedTimeRef = useRef<number>(0);
+  // Estado que impede sobrescrever o progresso salvo antes de a restauração ser concluída
+  const hasRestoredRef = useRef<boolean>(savedInitialTime <= 0);
+  const lastSavedTimeRef = useRef<number>(savedInitialTime);
+
+  // Redefine a seleção de player e sincroniza estado na mudança de episódio
+  useEffect(() => {
+    if (current?.id !== lastEpisodeIdRef.current) {
+      if (
+        lastEpisodeIdRef.current &&
+        anime &&
+        livePlaybackRef.current.episodeId === lastEpisodeIdRef.current &&
+        livePlaybackRef.current.time > 0
+      ) {
+        try {
+          localStorage.setItem(
+            `hikari_progress_${anime.id}_${lastEpisodeIdRef.current}`,
+            String(Math.floor(livePlaybackRef.current.time)),
+          );
+        } catch {}
+      }
+
+      lastEpisodeIdRef.current = current?.id;
+      setSelectedPlayerId("player-1");
+      livePlaybackRef.current = { episodeId: current?.id ?? "", time: 0 };
+      setSessionTime(null);
+      hasRestoredRef.current = savedInitialTime <= 0;
+      lastSavedTimeRef.current = savedInitialTime;
+    }
+  }, [current?.id, anime, savedInitialTime]);
+
+  // Salva o progresso ao sair da página, fechar ou recarregar a aba
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!current?.id || !progressStorageKey) return;
+      const live = livePlaybackRef.current;
+      if (live.episodeId === current.id && live.time > 0) {
+        try {
+          localStorage.setItem(
+            progressStorageKey,
+            String(Math.floor(live.time)),
+          );
+        } catch {}
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handleBeforeUnload);
+    };
+  }, [current?.id, progressStorageKey]);
+
+  // Preferência de reprodução automática configurada pelo usuário no Hikari
+  const userAutoplay = useMemo(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const saved = localStorage.getItem("hikari-player-autoplay");
+      return saved === null ? true : saved !== "false";
+    } catch {
+      return true;
+    }
+  }, []);
+
+  const handleRestored = useCallback(
+    (time: number) => {
+      hasRestoredRef.current = true;
+      lastSavedTimeRef.current = time;
+      if (current?.id) {
+        livePlaybackRef.current = { episodeId: current.id, time };
+      }
+    },
+    [current?.id],
+  );
 
   const handleTimeUpdate = useCallback(
     (time: number, totalDuration: number) => {
-      // Registra o tempo mais recente em tempo real associado estritamente ao episódio atual
-      if (time > 0 && current?.id) {
+      if (!current?.id || !progressStorageKey || totalDuration <= 0) return;
+
+      // Se temos tempo inicial pendente de restauração, verifica se alcançou a posição retomada
+      if (!hasRestoredRef.current && effectiveInitialTime > 0) {
+        if (
+          Math.abs(time - effectiveInitialTime) <= 4 ||
+          time >= effectiveInitialTime
+        ) {
+          hasRestoredRef.current = true;
+          lastSavedTimeRef.current = time;
+        } else {
+          // Previne que eventos iniciais de timeupdate (ex: 0s) sobrescrevam o progresso salvo
+          return;
+        }
+      }
+
+      // Registra o tempo em tempo real associado ao episódio atual
+      if (time > 0) {
         livePlaybackRef.current = { episodeId: current.id, time };
       }
 
-      if (!progressStorageKey || totalDuration <= 0) return;
-
-      // Se passou de 95% do episódio, remove do storage para reiniciar do início
+      // Se passou de 95% do episódio, remove do storage para reiniciar do início na próxima reprodução
       if (time / totalDuration > 0.95) {
         try {
           localStorage.removeItem(progressStorageKey);
@@ -369,8 +434,8 @@ function WatchPage() {
         return;
       }
 
-      // Evita gravações excessivas (salva a cada intervalo de pelo menos 5 segundos)
-      if (Math.abs(time - lastSavedTimeRef.current) >= 5) {
+      // Evita gravações excessivas: salva periodicamente a cada 4 segundos de reprodução
+      if (Math.abs(time - lastSavedTimeRef.current) >= 4) {
         lastSavedTimeRef.current = time;
         try {
           localStorage.setItem(
@@ -382,7 +447,39 @@ function WatchPage() {
         }
       }
     },
-    [progressStorageKey, current?.id],
+    [progressStorageKey, current?.id, effectiveInitialTime],
+  );
+
+  const handlePause = useCallback(
+    (time: number, totalDuration: number) => {
+      if (!current?.id || !progressStorageKey || totalDuration <= 0) return;
+
+      if (time > 0) {
+        livePlaybackRef.current = { episodeId: current.id, time };
+      }
+
+      if (time / totalDuration > 0.95) {
+        try {
+          localStorage.removeItem(progressStorageKey);
+        } catch {}
+        return;
+      }
+
+      if (
+        hasRestoredRef.current ||
+        effectiveInitialTime <= 0 ||
+        Math.abs(time - effectiveInitialTime) <= 2
+      ) {
+        lastSavedTimeRef.current = time;
+        try {
+          localStorage.setItem(
+            progressStorageKey,
+            String(Math.floor(time)),
+          );
+        } catch {}
+      }
+    },
+    [current?.id, progressStorageKey, effectiveInitialTime],
   );
 
   // Troca de player preservando o currentTime mais recente da sessão do episódio atual
@@ -571,11 +668,13 @@ function parseDurationToSeconds(raw?: string | number | null): number {
 
         {file && selectedPlayer ? (
           <CustomVideoPlayer
-            key={`${selectedPlayer.id}-${file}`}
+            key={`${anime.id}-${current.id}-${selectedPlayer.id}-${file}`}
             video={_currentVideoItem}
             autoPlay={userAutoplay}
             initialTime={effectiveInitialTime}
             onTimeUpdate={handleTimeUpdate}
+            onPause={handlePause}
+            onRestored={handleRestored}
             onEnded={handleEnded}
             onError={() => {
               // Alterna silenciosamente para outra fonte disponível se houver falha de rede/codec
