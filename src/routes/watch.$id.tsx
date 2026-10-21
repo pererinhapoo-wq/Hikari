@@ -1072,7 +1072,25 @@ function CommentsSection({
     useState(false);
 
   const [showMedia, setShowMedia] =
-    useState(true);
+    useState<boolean>(() => {
+      if (typeof window === "undefined") return true;
+      try {
+        const saved = localStorage.getItem("hikari_show_comment_media");
+        return saved === null ? true : saved !== "false";
+      } catch {
+        return true;
+      }
+    });
+
+  const handleToggleShowMedia = useCallback(() => {
+    setShowMedia((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("hikari_show_comment_media", String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
 
   const [currentUserId, setCurrentUserId] =
     useState<string | null>(null);
@@ -2010,6 +2028,52 @@ function CommentsSection({
         return;
       }
 
+      // Snapshot para restauração em caso de erro
+      const previousComments = [...comments];
+
+      // Atualização otimista imediata para resposta tátil instantânea
+      setComments((current) =>
+        current.map((c) => {
+          if (c.id !== commentId) return c;
+
+          const isCancelling =
+            (reaction === "like" && c.liked) ||
+            (reaction === "dislike" && c.disliked);
+
+          if (isCancelling) {
+            return {
+              ...c,
+              liked: false,
+              disliked: false,
+              userReaction: null,
+              likes: reaction === "like" ? Math.max(0, c.likes - 1) : c.likes,
+              dislikes: reaction === "dislike" ? Math.max(0, c.dislikes - 1) : c.dislikes,
+            };
+          } else {
+            const wasLiked = c.liked;
+            const wasDisliked = c.disliked;
+            return {
+              ...c,
+              liked: reaction === "like",
+              disliked: reaction === "dislike",
+              userReaction: reaction,
+              likes:
+                reaction === "like"
+                  ? c.likes + 1
+                  : wasLiked
+                    ? Math.max(0, c.likes - 1)
+                    : c.likes,
+              dislikes:
+                reaction === "dislike"
+                  ? c.dislikes + 1
+                  : wasDisliked
+                    ? Math.max(0, c.dislikes - 1)
+                    : c.dislikes,
+            };
+          }
+        }),
+      );
+
       try {
         setLikingId(
           commentId,
@@ -2039,6 +2103,8 @@ function CommentsSection({
           await response.json();
 
         if (!response.ok) {
+          // Reverte o estado otimista
+          setComments(previousComments);
           if (response.status === 401) {
             setLoginOpen(true);
           }
@@ -2048,6 +2114,7 @@ function CommentsSection({
           );
         }
 
+        // Reconcilia com os números exatos persistidos no banco
         setComments(
           (current) =>
             current.map(
@@ -2081,6 +2148,7 @@ function CommentsSection({
         );
       } catch (err) {
         console.error(err);
+        setComments(previousComments);
 
         setError(
           err instanceof Error
@@ -2565,7 +2633,7 @@ function CommentsSection({
           {/* CABEÇALHO DOS COMENTÁRIOS ESTILO DISQUS/HIKARI  */}
           {/* =============================================== */}
 
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 border-b border-white/[0.08] pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-2 border-b border-white/[0.08] pb-3">
 
             {/* Lado esquerdo: Título com contagem e as 3 abas de ordenação */}
             <div className="flex flex-wrap items-center gap-3 sm:gap-6 min-w-0">
@@ -2588,9 +2656,9 @@ function CommentsSection({
                   type="button"
                   onClick={() => setSortBy("highlight")}
                   className={cn(
-                    "px-2.5 py-1 font-medium transition-all relative border-b-2",
+                    "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2 -mb-[13px] sm:-mb-[13px]",
                     sortBy === "highlight"
-                      ? "border-[#a855f7] text-white font-semibold"
+                      ? "border-[#a855f7] text-[#c084fc] font-semibold"
                       : "border-transparent text-white/50 hover:text-white/80"
                   )}
                 >
@@ -2601,9 +2669,9 @@ function CommentsSection({
                   type="button"
                   onClick={() => setSortBy("recent")}
                   className={cn(
-                    "px-2.5 py-1 font-medium transition-all relative border-b-2",
+                    "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2 -mb-[13px] sm:-mb-[13px]",
                     sortBy === "recent"
-                      ? "border-[#a855f7] text-white font-semibold"
+                      ? "border-[#a855f7] text-[#c084fc] font-semibold"
                       : "border-transparent text-white/50 hover:text-white/80"
                   )}
                 >
@@ -2614,9 +2682,9 @@ function CommentsSection({
                   type="button"
                   onClick={() => setSortBy("oldest")}
                   className={cn(
-                    "px-2.5 py-1 font-medium transition-all relative border-b-2",
+                    "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2 -mb-[13px] sm:-mb-[13px]",
                     sortBy === "oldest"
-                      ? "border-[#a855f7] text-white font-semibold"
+                      ? "border-[#a855f7] text-[#c084fc] font-semibold"
                       : "border-transparent text-white/50 hover:text-white/80"
                   )}
                 >
@@ -2627,7 +2695,7 @@ function CommentsSection({
             </div>
 
             {/* Lado direito: Login OU Menu da pessoa autenticada */}
-            <div className="flex items-center self-end sm:self-auto shrink-0 relative">
+            <div className="flex items-center shrink-0 relative ml-auto">
 
               {!effectiveUserId ? (
                 /* Visitante: Opção ENTRAR com popover dos 3 provedores */
@@ -2677,7 +2745,7 @@ function CommentsSection({
                   <button
                     type="button"
                     onClick={() => setUserMenuOpen((prev) => !prev)}
-                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-2 rounded-xl border border-white/10 bg-[#16161b] px-2.5 py-1 text-xs sm:text-sm font-medium text-white/90 hover:border-[#a855f7]/40 hover:bg-white/[0.06] active:scale-95 transition-all shadow-sm max-w-[200px] sm:max-w-[240px]"
+                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-2 rounded-xl border border-white/10 bg-[#16161b] px-2.5 py-1 text-xs sm:text-sm font-medium text-white/90 hover:border-[#a855f7]/40 hover:bg-white/[0.06] active:scale-95 transition-all shadow-sm max-w-[180px] sm:max-w-[240px]"
                     aria-expanded={userMenuOpen}
                     aria-haspopup="menu"
                   >
@@ -2714,7 +2782,7 @@ function CommentsSection({
                       />
                       <div
                         role="menu"
-                        className="absolute right-0 top-[calc(100%+8px)] z-50 w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#141419]/95 backdrop-blur-xl p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                        className="absolute right-0 top-[calc(100%+8px)] z-50 w-56 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/10 bg-[#141419]/95 backdrop-blur-xl p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
                       >
                         {/* Header do Menu com Nome e Email */}
                         <div className="px-3 py-2 border-b border-white/[0.08] mb-1">
@@ -2752,7 +2820,9 @@ function CommentsSection({
                         {/* 3. Exibir mídia */}
                         <button
                           type="button"
-                          onClick={() => setShowMedia((prev) => !prev)}
+                          onClick={() => {
+                            handleToggleShowMedia();
+                          }}
                           className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
                         >
                           <div className="flex items-center gap-2.5">
@@ -3144,20 +3214,8 @@ function CommentsSection({
 
               </div>
 
-              {/* Grupo direito: Entrar (se não logado) + Enviar */}
+              {/* Grupo direito: Enviar */}
               <div className="flex items-center gap-2.5 ml-auto">
-
-                {!currentUserId && (
-                  <button
-                    type="button"
-                    onClick={() => setLoginOpen(true)}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-[#c084fc] hover:text-[#d8b4fe] transition-colors py-1 px-2 rounded-lg hover:bg-[#a855f7]/10"
-                  >
-                    <LogIn className="size-3.5" />
-                    <span>Entrar</span>
-                  </button>
-                )}
-
                 <Button
                   type="button"
                   size="sm"
@@ -3182,7 +3240,6 @@ function CommentsSection({
                         : "Comentar"}
                   </span>
                 </Button>
-
               </div>
 
             </div>
@@ -3316,231 +3373,111 @@ function CommentsSection({
                           setReplyIsSpoiler
                         }
                         onStartReply={() => {
-                          setReplyingId(
-                            comment.id,
-                          );
-                          setReplyText(
-                            "",
-                          );
-                          setReplyIsSpoiler(
-                            false,
-                          );
+                          if (!effectiveUserId) {
+                            setLoginOpen(true);
+                            return;
+                          }
+                          setReplyingId(comment.id);
+                          setReplyText("");
+                          setReplyIsSpoiler(false);
                         }}
                         onCancelReply={() => {
-                          setReplyingId(
-                            null,
-                          );
-                          setReplyText(
-                            "",
-                          );
-                          setReplyIsSpoiler(
-                            false,
-                          );
+                          setReplyingId(null);
+                          setReplyText("");
+                          setReplyIsSpoiler(false);
                         }}
                         onSendReply={() => {
-                          void handleReply(
-                            comment.id,
-                          );
+                          void handleReply(comment.id);
                         }}
-                        menuOpen={
-                          menuOpenId ===
-                          comment.id
-                        }
+                        menuOpen={menuOpenId === comment.id}
                         onToggleMenu={() => {
-                          setMenuOpenId(
-                            (current) =>
-                              current ===
-                              comment.id
-                                ? null
-                                : comment.id,
+                          setMenuOpenId((current) =>
+                            current === comment.id ? null : comment.id,
                           );
                         }}
-                        onEdit={() =>
-                          openEdit(
-                            comment,
-                          )
-                        }
-                        onDelete={() =>
-                          openDelete(
-                            comment,
-                          )
-                        }
+                        onEdit={() => openEdit(comment)}
+                        onDelete={() => openDelete(comment)}
                         onMarkSpoiler={() => {
-                          void handleModeration(
-                            comment.id,
-                            "spoiler",
-                          );
+                          void handleModeration(comment.id, "spoiler");
                         }}
-                        onReport={() =>
-                          openReport(
-                            comment,
-                          )
-                        }
-                        onSpam={() =>
-                          setSpamComment(
-                            comment,
-                          )
-                        }
-                        moderating={
-                          moderatingId ===
-                          comment.id
-                        }
-                        canEdit={
-                          canEdit
-                        }
-                        highlighted={
-                          highlightedCommentId ===
-                          comment.id
-                        }
+                        onReport={() => openReport(comment)}
+                        onSpam={() => setSpamComment(comment)}
+                        moderating={moderatingId === comment.id}
+                        canEdit={canEdit}
+                        highlighted={highlightedCommentId === comment.id}
                         onRequireLogin={() => setLoginOpen(true)}
+                        showMedia={showMedia}
                       />
 
                       {/* Respostas com recuo progressivo e linha vertical discreta */}
-                      {replies.length >
-                        0 && (
-                        <div className="mt-2.5 ml-3 sm:ml-7 border-l-2 border-[#a855f7]/30 pl-3 sm:pl-4 space-y-2">
-
-                          {replies.map(
-                            (
-                              reply,
-                            ) => {
-                              const canEditReply =
-                                !sessionLoading &&
-                                Boolean(
-                                  currentUserId &&
-                                  (
-                                    currentUserId ===
-                                      reply.userId ||
-                                    isAdmin
-                                  ),
-                                );
-
-                              return (
-                                <CommentCard
-                                  key={
-                                    reply.id
-                                  }
-                                  comment={
-                                    reply
-                                  }
-                                  replyCount={
-                                    0
-                                  }
-                                  replyToName={
-                                    comment.userName ||
-                                    "Usuário"
-                                  }
-                                  likingId={
-                                    likingId
-                                  }
-                                  replyingId={
-                                    replyingId
-                                  }
-                                  replyText={
-                                    replyText
-                                  }
-                                  replyIsSpoiler={
-                                    replyIsSpoiler
-                                  }
-                                  replySending={
-                                    replySending
-                                  }
-                                  formatDate={
-                                    formatDate
-                                  }
-                                  onReaction={
-                                    handleReaction
-                                  }
-                                  onReplyChange={
-                                    setReplyText
-                                  }
-                                  onReplySpoilerChange={
-                                    setReplyIsSpoiler
-                                  }
-                                  onStartReply={() => {
-                                    setReplyingId(
-                                      reply.id,
-                                    );
-                                    setReplyText(
-                                      `@${reply.userName || "Usuário"} `,
-                                    );
-                                    setReplyIsSpoiler(
-                                      false,
-                                    );
-                                  }}
-                                  onCancelReply={() => {
-                                    setReplyingId(
-                                      null,
-                                    );
-                                    setReplyText(
-                                      "",
-                                    );
-                                    setReplyIsSpoiler(
-                                      false,
-                                    );
-                                  }}
-                                  onSendReply={() => {
-                                    void handleReply(
-                                      comment.id,
-                                    );
-                                  }}
-                                  isReply
-                                  menuOpen={
-                                    menuOpenId ===
-                                    reply.id
-                                  }
-                                  onToggleMenu={() => {
-                                    setMenuOpenId(
-                                      (current) =>
-                                        current ===
-                                        reply.id
-                                          ? null
-                                          : reply.id,
-                                    );
-                                  }}
-                                  onEdit={() =>
-                                    openEdit(
-                                      reply,
-                                    )
-                                  }
-                                  onDelete={() =>
-                                    openDelete(
-                                      reply,
-                                    )
-                                  }
-                                  onMarkSpoiler={() => {
-                                    void handleModeration(
-                                      reply.id,
-                                      "spoiler",
-                                    );
-                                  }}
-                                  onReport={() =>
-                                    openReport(
-                                      reply,
-                                    )
-                                  }
-                                  onSpam={() =>
-                                    setSpamComment(
-                                      reply,
-                                    )
-                                  }
-                                  moderating={
-                                    moderatingId ===
-                                    reply.id
-                                  }
-                                  canEdit={
-                                    canEditReply
-                                  }
-                                  highlighted={
-                                    highlightedCommentId ===
-                                    reply.id
-                                  }
-                                  onRequireLogin={() => setLoginOpen(true)}
-                                />
+                      {replies.length > 0 && (
+                        <div className="mt-2.5 ml-3 sm:ml-7 border-l-2 border-white/10 hover:border-[#a855f7]/40 pl-3 sm:pl-4 space-y-2 transition-colors">
+                          {replies.map((reply) => {
+                            const canEditReply =
+                              !sessionLoading &&
+                              Boolean(
+                                currentUserId &&
+                                  (currentUserId === reply.userId || isAdmin),
                               );
-                            },
-                          )}
+                            const mentionMatch = reply.content.match(/^@([^\s:,]+)/);
+                            const replyRecipient = mentionMatch
+                              ? mentionMatch[1]
+                              : (comment.userName || "Usuário");
 
+                            return (
+                              <CommentCard
+                                key={reply.id}
+                                comment={reply}
+                                replyCount={0}
+                                replyToName={replyRecipient}
+                                likingId={likingId}
+                                replyingId={replyingId}
+                                replyText={replyText}
+                                replyIsSpoiler={replyIsSpoiler}
+                                replySending={replySending}
+                                formatDate={formatDate}
+                                onReaction={handleReaction}
+                                onReplyChange={setReplyText}
+                                onReplySpoilerChange={setReplyIsSpoiler}
+                                onStartReply={() => {
+                                  if (!effectiveUserId) {
+                                    setLoginOpen(true);
+                                    return;
+                                  }
+                                  setReplyingId(reply.id);
+                                  setReplyText(`@${reply.userName || "Usuário"} `);
+                                  setReplyIsSpoiler(false);
+                                }}
+                                onCancelReply={() => {
+                                  setReplyingId(null);
+                                  setReplyText("");
+                                  setReplyIsSpoiler(false);
+                                }}
+                                onSendReply={() => {
+                                  void handleReply(comment.id);
+                                }}
+                                isReply
+                                menuOpen={menuOpenId === reply.id}
+                                onToggleMenu={() => {
+                                  setMenuOpenId((current) =>
+                                    current === reply.id ? null : reply.id,
+                                  );
+                                }}
+                                onEdit={() => openEdit(reply)}
+                                onDelete={() => openDelete(reply)}
+                                onMarkSpoiler={() => {
+                                  void handleModeration(reply.id, "spoiler");
+                                }}
+                                onReport={() => openReport(reply)}
+                                onSpam={() => setSpamComment(reply)}
+                                moderating={moderatingId === reply.id}
+                                canEdit={canEditReply}
+                                highlighted={highlightedCommentId === reply.id}
+                                onRequireLogin={() => setLoginOpen(true)}
+                                showMedia={showMedia}
+                              />
+                            );
+                          })}
                         </div>
                       )}
 
@@ -4205,6 +4142,7 @@ function CommentCard({
   canEdit,
   highlighted = false,
   onRequireLogin: _onRequireLogin,
+  showMedia = true,
 }: {
   comment: Comment;
   replyCount: number;
@@ -4233,8 +4171,10 @@ function CommentCard({
   canEdit: boolean;
   highlighted?: boolean;
   onRequireLogin?: () => void;
+  showMedia?: boolean;
 }) {
   const isReplying = replyingId === comment.id;
+  const [localMediaRevealed, setLocalMediaRevealed] = useState(false);
 
   return (
     <article
@@ -4307,7 +4247,7 @@ function CommentCard({
               />
               <div
                 role="menu"
-                className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
               >
                 {canEdit ? (
                   <>
@@ -4397,23 +4337,51 @@ function CommentCard({
           </p>
         )}
 
-        {/* Anexo de Imagem ou GIF */}
+        {/* Anexo de Imagem ou GIF com suporte a exibição/ocultação */}
         {comment.imageUrl && (
-          <div className="mt-2.5 w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0e]">
-            <a
-              href={comment.imageUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="block w-fit max-w-full cursor-zoom-in"
-              aria-label="Abrir imagem em tamanho maior"
-            >
-              <img
-                src={comment.imageUrl}
-                alt="Imagem anexada"
-                loading="lazy"
-                className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg"
-              />
-            </a>
+          <div className="mt-2.5">
+            {!showMedia && !localMediaRevealed ? (
+              <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#0e0e14] px-3 py-2 text-xs text-white/60">
+                <ImageIcon className="size-3.5 text-[#c084fc] shrink-0" />
+                <span>Mídia oculta</span>
+                <span className="text-white/30">·</span>
+                <button
+                  type="button"
+                  onClick={() => setLocalMediaRevealed(true)}
+                  className="font-medium text-[#c084fc] hover:text-white hover:underline transition-colors"
+                >
+                  Exibir
+                </button>
+              </div>
+            ) : (
+              <div className="w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0e]">
+                <a
+                  href={comment.imageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block w-fit max-w-full cursor-zoom-in"
+                  aria-label="Abrir imagem em tamanho maior"
+                >
+                  <img
+                    src={comment.imageUrl}
+                    alt="Imagem anexada"
+                    loading="lazy"
+                    className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg"
+                  />
+                </a>
+                {!showMedia && localMediaRevealed && (
+                  <div className="border-t border-white/10 bg-[#0e0e14] px-2.5 py-1 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setLocalMediaRevealed(false)}
+                      className="text-[11px] text-white/50 hover:text-white transition-colors"
+                    >
+                      Ocultar mídia
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

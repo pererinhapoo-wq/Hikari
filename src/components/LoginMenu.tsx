@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, X } from "lucide-react";
+import { AlertCircle, LogIn, X } from "lucide-react";
 import { authEnabled, signIn } from "@/lib/auth/client";
 import { Logo } from "@/components/logo";
 
@@ -49,7 +49,7 @@ export function LoginMenu({
     if (provider === "facebook") {
       setInfoMessage({
         type: "info",
-        text: "O login com Facebook requer a configuração de FACEBOOK_CLIENT_ID e FACEBOOK_CLIENT_SECRET no servidor.",
+        text: "O login com Facebook requer a configuração de FACEBOOK_CLIENT_ID e FACEBOOK_CLIENT_SECRET no servidor. No momento, este provedor não está configurado.",
       });
       return;
     }
@@ -57,13 +57,12 @@ export function LoginMenu({
     if (provider === "x") {
       try {
         setLoadingProvider("x");
-        // Tenta usar o provedor grok-x configurado no Better Auth
         await signIn("grok-x", { callbackURL });
       } catch (err) {
         console.warn("Erro ao iniciar login com X:", err);
         setInfoMessage({
           type: "info",
-          text: "O login com X (Twitter) requer a configuração das credenciais no servidor (GROK_AUTH_CLIENT_ID / X_CLIENT_ID).",
+          text: "O login com X (Twitter) requer a configuração de credenciais no servidor (GROK_AUTH_CLIENT_ID / X_CLIENT_ID).",
         });
       } finally {
         setLoadingProvider(null);
@@ -76,15 +75,14 @@ export function LoginMenu({
         setLoadingProvider("google");
         await signIn("google", { callbackURL });
       } catch (err) {
-        console.warn("Erro ao iniciar login com Google:", err);
-        // Fallback para grok-google se direto falhar
+        console.warn("Tentando fallback do Google via broker:", err);
         try {
           await signIn("grok-google", { callbackURL });
         } catch (brokerErr) {
-          console.error("Erro no fallback do Google:", brokerErr);
+          console.warn("Erro no broker do Google:", brokerErr);
           setInfoMessage({
             type: "error",
-            text: "Não foi possível conectar com o Google no momento. Verifique as credenciais no servidor.",
+            text: "O login com Google requer a configuração de GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no servidor.",
           });
         }
       } finally {
@@ -98,15 +96,15 @@ export function LoginMenu({
       role="dialog"
       aria-modal={isModal}
       aria-labelledby="login-menu-title"
-      className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#121217] p-5 sm:p-6 shadow-2xl backdrop-blur-xl"
+      className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#141419]/95 p-4 sm:p-5 shadow-2xl backdrop-blur-xl"
     >
-      {/* Botão fechar se for modal */}
-      {isModal && onClose && (
+      {/* Botão fechar */}
+      {onClose && (
         <button
           type="button"
           onClick={onClose}
           aria-label="Fechar janela de login"
-          className="absolute right-3.5 top-3.5 flex size-8 items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white transition-colors"
+          className="absolute right-3 top-3 flex size-7 items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white transition-colors"
         >
           <X className="size-4" />
         </button>
@@ -114,19 +112,20 @@ export function LoginMenu({
 
       {/* Cabeçalho */}
       <div className="flex flex-col items-center text-center">
-        <div className="mb-3.5 flex justify-center scale-90">
+        <div className="mb-2.5 flex justify-center scale-90">
           <Logo />
         </div>
 
         <h2
           id="login-menu-title"
-          className="font-display text-lg sm:text-xl font-bold tracking-tight text-white"
+          className="font-display text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-1.5"
         >
-          Entrar na Conta
+          <LogIn className="size-4 text-[#c084fc]" />
+          <span>Entrar no Hikari</span>
         </h2>
 
         <p className="mt-1 text-xs text-white/60">
-          Escolha uma das opções abaixo para acessar o Hikari:
+          Escolha uma das opções para conectar sua conta:
         </p>
       </div>
 
@@ -134,7 +133,7 @@ export function LoginMenu({
       {infoMessage && (
         <div
           role="alert"
-          className={`mt-4 flex items-start gap-2.5 rounded-xl border p-3 text-xs leading-relaxed transition-all ${
+          className={`mt-3.5 flex items-start gap-2 rounded-xl border p-2.5 text-xs leading-relaxed transition-all ${
             infoMessage.type === "error"
               ? "border-red-500/30 bg-red-500/10 text-red-300"
               : infoMessage.type === "warning"
@@ -142,19 +141,19 @@ export function LoginMenu({
                 : "border-[#a855f7]/30 bg-[#a855f7]/10 text-purple-200"
           }`}
         >
-          <AlertCircle className="size-4 shrink-0 mt-0.5 text-[#c084fc]" />
+          <AlertCircle className="size-3.5 shrink-0 mt-0.5 text-[#c084fc]" />
           <span className="flex-1">{infoMessage.text}</span>
         </div>
       )}
 
       {/* Os 3 provedores solicitados */}
-      <div className="mt-5 flex flex-col gap-2.5">
+      <div className="mt-4 flex flex-col gap-2">
         {/* 1. Google */}
         <button
           type="button"
           onClick={() => void handleProviderClick("google")}
           disabled={Boolean(loadingProvider)}
-          className="group relative flex min-h-11 w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#191922] px-4 py-2.5 text-xs sm:text-sm font-semibold text-white/90 shadow-sm transition-all hover:border-[#a855f7]/50 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7] disabled:opacity-50"
+          className="group relative flex min-h-10 w-full items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-[#1b1b22] px-3.5 py-2 text-xs sm:text-sm font-semibold text-white/90 shadow-sm transition-all hover:border-[#a855f7]/50 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7] disabled:opacity-50"
         >
           <svg className="size-4 shrink-0" viewBox="0 0 24 24">
             <path
@@ -186,7 +185,7 @@ export function LoginMenu({
           type="button"
           onClick={() => void handleProviderClick("x")}
           disabled={Boolean(loadingProvider)}
-          className="group relative flex min-h-11 w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#191922] px-4 py-2.5 text-xs sm:text-sm font-semibold text-white/90 shadow-sm transition-all hover:border-[#a855f7]/50 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7] disabled:opacity-50"
+          className="group relative flex min-h-10 w-full items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-[#1b1b22] px-3.5 py-2 text-xs sm:text-sm font-semibold text-white/90 shadow-sm transition-all hover:border-[#a855f7]/50 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7] disabled:opacity-50"
         >
           <svg
             className="size-4 shrink-0 fill-current text-white"
@@ -204,7 +203,7 @@ export function LoginMenu({
           type="button"
           onClick={() => void handleProviderClick("facebook")}
           disabled={Boolean(loadingProvider)}
-          className="group relative flex min-h-11 w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#191922] px-4 py-2.5 text-xs sm:text-sm font-semibold text-white/90 shadow-sm transition-all hover:border-[#a855f7]/50 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7] disabled:opacity-50"
+          className="group relative flex min-h-10 w-full items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-[#1b1b22] px-3.5 py-2 text-xs sm:text-sm font-semibold text-white/90 shadow-sm transition-all hover:border-[#a855f7]/50 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7] disabled:opacity-50"
         >
           <svg
             className="size-4 shrink-0 fill-[#1877F2]"
@@ -216,8 +215,8 @@ export function LoginMenu({
         </button>
       </div>
 
-      <p className="mt-4 text-center text-[10px] text-white/40">
-        Ao continuar, você concorda com os termos de uso do Hikari.
+      <p className="mt-3.5 text-center text-[10px] text-white/40">
+        Ambiente protegido e autenticado pelo Hikari.
       </p>
     </div>
   );
