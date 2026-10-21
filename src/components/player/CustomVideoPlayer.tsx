@@ -90,7 +90,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playPauseFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justOpenedMenuTimeRef = useRef<number>(0);
-  const lastTouchTimeRef = useRef<number>(0);
+  const lastTapTimeRef = useRef<number>(0);
 
   // Estados de reprodução
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -407,103 +407,33 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     [duration, resetInactivityTimer]
   );
 
-  // Toque ou clique seguro na superfície do vídeo
-  // Regra essencial: ao tocar na área do vídeo, SEMPRE exibe os controles da Nova Stream imediatamente
-  // e inicia/reinicia a contagem de 5 segundos (ou mantém visível se pausado).
-  const handleTouchSurfaceStart = useCallback(
-    () => {
-      lastTouchTimeRef.current = Date.now();
-      if (!controlsVisibleRef.current) {
-        setControlsVisible(true);
-        controlsVisibleRef.current = true;
-      }
-      resetInactivityTimer();
-    },
-    [resetInactivityTimer]
-  );
-
-  const handleTouchSurfaceEnd = useCallback(
-    () => {
-      if (showSettingsMenuRef.current) {
-        setShowSettingsMenu(false);
-        showSettingsMenuRef.current = false;
-      }
-      resetInactivityTimer();
-    },
-    [resetInactivityTimer]
-  );
-
-  const handleVideoSurfacePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType === 'touch' && Date.now() - lastTouchTimeRef.current < 400) {
+  // Manipulador unificado e instantâneo de toque e clique na superfície do vídeo (Android, iOS e Desktop)
+  // Regras obrigatórias do Nova Stream:
+  // 1. Ao tocar na tela do vídeo: os controles devem aparecer imediatamente, mesmo que estejam ocultos.
+  // 2. Depois de aparecerem: se o usuário não tocar nem interagir novamente, os controles devem desaparecer automaticamente após ~5 segundos durante a reprodução.
+  // 3. Ao tocar novamente: os controles devem reaparecer imediatamente, e o temporizador de ocultação deve ser reiniciado.
+  // 4. Durante a reprodução: qualquer interação com os controles deve reiniciar o temporizador de inatividade.
+  // 5. Quando o vídeo estiver pausado: os controles devem permanecer visíveis.
+  // 6. Ao retomar a reprodução: o temporizador deve voltar a funcionar normalmente, ocultando os controles após ~5 segundos sem interação.
+  const handleVideoSurfaceTap = useCallback(
+    (e: React.SyntheticEvent) => {
+      e.stopPropagation();
+      const now = Date.now();
+      // Debounce refinado (250ms) para evitar duplicidade entre pointerdown, touchstart e click no mesmo gesto
+      if (now - lastTapTimeRef.current < 250) {
         return;
       }
-      const target = e.target as HTMLElement;
-      if (
-        target.closest('button') ||
-        target.closest('.player-menu-content') ||
-        target.closest('.player-menu-trigger') ||
-        target.closest('input') ||
-        target.closest('.group\\/progress')
-      ) {
-        return;
-      }
+      lastTapTimeRef.current = now;
 
-      // 1. Ao tocar no vídeo, os controles da Nova Stream devem aparecer imediatamente
-      if (!controlsVisibleRef.current) {
-        setControlsVisible(true);
-        controlsVisibleRef.current = true;
-      }
-      resetInactivityTimer();
-    },
-    [resetInactivityTimer]
-  );
-
-  const handleVideoSurfacePointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.closest('button') ||
-        target.closest('.player-menu-content') ||
-        target.closest('.player-menu-trigger') ||
-        target.closest('input') ||
-        target.closest('.group\\/progress')
-      ) {
-        return;
-      }
-      // 2. Ao soltar o dedo ou parar de interagir, garante que o temporizador de 5s continue ativo
-      scheduleControlsHide();
-    },
-    [scheduleControlsHide]
-  );
-
-  const handleVideoSurfaceClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (Date.now() - lastTouchTimeRef.current < 400) {
-        return;
-      }
-      const target = e.target as HTMLElement;
-      if (
-        target.closest('button') ||
-        target.closest('.player-menu-content') ||
-        target.closest('.player-menu-trigger') ||
-        target.closest('input') ||
-        target.closest('.group\\/progress')
-      ) {
-        return;
-      }
-
-      // Se o menu de velocidade estiver aberto, fecha o menu
+      // Se o menu de velocidade estiver aberto, fecha o menu ao tocar fora na tela
       if (showSettingsMenuRef.current) {
         setShowSettingsMenu(false);
         showSettingsMenuRef.current = false;
       }
 
-      // 3 & 4. Ao tocar novamente no vídeo, exibe novamente e reinicia o temporizador de 5 segundos
-      if (!controlsVisibleRef.current) {
-        setControlsVisible(true);
-        controlsVisibleRef.current = true;
-      }
+      // Regras 1 e 3: exibe imediatamente os controles e inicia/reinicia a contagem de ~5 segundos
+      setControlsVisible(true);
+      controlsVisibleRef.current = true;
       resetInactivityTimer();
     },
     [resetInactivityTimer]
@@ -518,16 +448,14 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     [scheduleControlsHide]
   );
 
-  // Mouse move no desktop para resetar timer de inatividade (ignora eventos de touch simulados)
+  // Movimento de cursor no desktop: reinicia a contagem de 5 segundos somente se os controles já estiverem visíveis
   const handlePointerMoveDesktop = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.pointerType === 'touch') return;
       if (e.movementX === 0 && e.movementY === 0) return;
-      if (!controlsVisibleRef.current) {
-        setControlsVisible(true);
-        controlsVisibleRef.current = true;
+      if (controlsVisibleRef.current) {
+        scheduleControlsHide();
       }
-      scheduleControlsHide();
     },
     [scheduleControlsHide]
   );
@@ -730,12 +658,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      onPointerDown={handleVideoSurfacePointerDown}
-      onPointerUp={handleVideoSurfacePointerUp}
-      onPointerCancel={handleVideoSurfacePointerUp}
       onPointerLeave={handlePointerLeaveContainer}
       onPointerMove={handlePointerMoveDesktop}
-      onClick={handleVideoSurfaceClick}
       className={`relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group touch-manipulation ${className || ''}`}
       style={{ touchAction: 'manipulation' }}
     >
@@ -788,11 +712,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       {/* Camada interativa transparente de superfície para recepção instantânea de toques e cliques */}
       <div
         data-testid="player-surface-tap-area"
-        onPointerDown={handleVideoSurfacePointerDown}
-        onPointerUp={handleVideoSurfacePointerUp}
-        onTouchStart={handleTouchSurfaceStart}
-        onTouchEnd={handleTouchSurfaceEnd}
-        onClick={handleVideoSurfaceClick}
+        onPointerDown={handleVideoSurfaceTap}
+        onClick={handleVideoSurfaceTap}
         className="absolute inset-0 z-10 cursor-pointer"
         aria-label="Área de controle do vídeo"
       />
@@ -824,11 +745,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         <div
           onPointerDown={(e) => {
             e.stopPropagation();
-            clearInactivityTimer();
-          }}
-          onPointerUp={(e) => {
-            e.stopPropagation();
-            scheduleControlsHide();
+            resetInactivityTimer();
           }}
           onClick={(e) => {
             e.stopPropagation();
@@ -894,11 +811,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       <div
         onPointerDown={(e) => {
           e.stopPropagation();
-          clearInactivityTimer();
-        }}
-        onPointerUp={(e) => {
-          e.stopPropagation();
-          scheduleControlsHide();
+          resetInactivityTimer();
         }}
         onClick={(e) => {
           e.stopPropagation();
