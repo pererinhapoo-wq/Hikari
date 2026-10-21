@@ -215,12 +215,54 @@ html[data-theme="light"] {
   display: none !important;
 }
 
+/* =========================================================
+   EXIBIÇÃO E RESPONSIVIDADE DOS TEMPOS E CONTROLES (VIDEO.JS 10)
+   Anula a supressão de "@container media-time (width < 16rem)"
+   assegurando que o tempo atual e o tempo restante permaneçam visíveis
+   a 100% de zoom em todas as larguras mobile (320px, 360px, 390px, 430px)
+   e desktop, mantendo a sequência exata dos controles e sem sobreposição.
+========================================================= */
+
+/* Impede o ocultamento dos tempos e formata dígitos tabulares */
+.hikari-video-player .video-time-value {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  user-select: none !important;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+/* Grupo do controle de tempo e barra de progresso */
+.hikari-video-player .video-time-slider-group {
+  display: flex !important;
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  padding-inline: 0.375rem !important;
+}
+
+/* Barra de progresso flexível ocupando o espaço restante */
+.hikari-video-player .media-time-slider {
+  flex: 1 1 36px !important;
+  min-width: 32px !important;
+}
+
+/* Adaptação para telas mobile (< 32rem / 512px) */
 @container media-root (width < 32rem) {
+  .hikari-video-player {
+    --media-control-size: 2rem !important;
+  }
+
   .hikari-video-player .video-controls-content {
     display: flex !important;
     position: absolute !important;
-    inset-inline: calc(var(--media-spacing) * 2) !important;
-    bottom: calc(var(--media-spacing) * 2) !important;
+    inset-inline: 0.375rem !important;
+    bottom: 0.375rem !important;
     z-index: 30 !important;
     border-radius: var(--media-controls-radius) !important;
     background-color: var(--media-popover) !important;
@@ -229,7 +271,8 @@ html[data-theme="light"] {
     -webkit-backdrop-filter: var(--media-backdrop-filter-surface) !important;
     backdrop-filter: var(--media-backdrop-filter-surface) !important;
     align-items: center !important;
-    padding: calc(var(--media-spacing) * 0.5) !important;
+    padding: 0.25rem 0.375rem !important;
+    gap: 0.125rem !important;
   }
 
   .hikari-video-player .video-controls-content:not([data-visible]) {
@@ -252,6 +295,8 @@ html[data-theme="light"] {
     padding: 0 !important;
     inset-inline: auto !important;
     bottom: auto !important;
+    align-items: center !important;
+    gap: 0.125rem !important;
   }
 
   .hikari-video-player .video-controls-primary::after {
@@ -271,6 +316,42 @@ html[data-theme="light"] {
     padding: 0 !important;
     margin: 0 !important;
     align-items: center !important;
+  }
+
+  .hikari-video-player .video-time-value {
+    font-size: 0.75rem !important;
+  }
+
+  .hikari-video-player .video-time-slider-group {
+    gap: 0.375rem !important;
+    padding-inline: 0.25rem !important;
+  }
+}
+
+/* Ajustes finos para telas ultra-estreitas (< 24rem / 384px até 320px) */
+@container media-root (width < 24rem) {
+  .hikari-video-player {
+    --media-control-size: 1.875rem !important;
+  }
+
+  .hikari-video-player .video-controls-content {
+    inset-inline: 0.25rem !important;
+    bottom: 0.25rem !important;
+    padding: 0.1875rem 0.25rem !important;
+    gap: 0 !important;
+  }
+
+  .hikari-video-player .video-time-value {
+    font-size: 0.6875rem !important;
+  }
+
+  .hikari-video-player .video-time-slider-group {
+    gap: 0.25rem !important;
+    padding-inline: 0.125rem !important;
+  }
+
+  .hikari-video-player .media-time-slider {
+    min-width: 28px !important;
   }
 }
 
