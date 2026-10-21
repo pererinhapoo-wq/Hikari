@@ -53,20 +53,34 @@ class PlayerControlsSimulator {
     this.scheduleHide();
   }
 
+  gestureStartedWhileHidden: boolean = false;
+
   // Ações do usuário
   onTouchVideoSurfaceStart() {
     // Ao encostar o dedo na tela, exibe os controles imediatamente se estavam ocultos
     if (!this.controlsVisible) {
+      this.gestureStartedWhileHidden = true;
       this.controlsVisible = true;
+    } else {
+      this.gestureStartedWhileHidden = false;
     }
   }
 
   onTouchVideoSurfaceEnd() {
-    // Ao soltar o dedo, reinicia a exibição e conta os ~4.5s durante a reprodução
+    // Ao soltar o dedo, reinicia a exibição e conta os ~5s durante a reprodução
     if (this.showSettingsMenu) {
       this.showSettingsMenu = false;
     }
     this.resetInactivityTimer();
+  }
+
+  onCentralPlayPauseClick() {
+    // Se o clique decorreu do gesto que apenas revelou os controles, ignora
+    if (this.gestureStartedWhileHidden) {
+      this.gestureStartedWhileHidden = false;
+      return;
+    }
+    this.onTogglePlay();
   }
 
   onTogglePlay() {
@@ -204,7 +218,40 @@ async function runControlsDisplaySuite() {
   assert(sim.showSettingsMenu === false, 'Menu de velocidade fecha ao clicar fora');
   assert(sim.timerId !== null, 'Temporizador de auto-hide rearmado após fechar menu');
 
+  // TESTE 7: Prevenção de conflito - Tocar para exibir não pausa acidentalmente o vídeo
+  console.log('\n--- 7. PREVENÇÃO DE CONFLITO: TOCAR PARA EXIBIR NÃO PAUSA O VÍDEO ---');
+  const conflictSim = new PlayerControlsSimulator();
+  conflictSim.isPlaying = true;
+  conflictSim.controlsVisible = false;
+
+  // 1. Toca na tela para exibir os controles
+  conflictSim.onTouchVideoSurfaceStart();
+  assert(conflictSim.controlsVisible === true, 'Controles exibidos imediatamente no toque');
+  assert(conflictSim.gestureStartedWhileHidden === true, 'Gesto marcado como originado com controles ocultos');
+
+  // 2. Disparo de clique subsequente na região central (onde o botão Play/Pause apareceu)
+  conflictSim.onCentralPlayPauseClick();
+  assert(conflictSim.isPlaying === true, 'Vídeo CONTINUA reproduzindo (toque de exibição não pausou acidentalmente)');
+  assert(conflictSim.controlsVisible === true, 'Controles permanecem visíveis');
+
+  // 3. Usuário solta o dedo
+  conflictSim.onTouchVideoSurfaceEnd();
+  assert(conflictSim.timerId !== null, 'Temporizador de 5s ativado normalmente após a revelação');
+
+  // 4. Agora, com os controles já visíveis, um clique deliberado no botão central Play/Pause DEVE pausar
+  conflictSim.onCentralPlayPauseClick();
+  assert(conflictSim.isPlaying === false, 'Com controles já visíveis, clique intencional pausa o vídeo');
+  assert(conflictSim.controlsVisible === true, 'Vídeo pausado mantém controles visíveis indefinidamente');
+  assert(conflictSim.timerId === null, 'Temporizador de auto-hide inativo enquanto pausado');
+
+  // 5. Novo clique intencional retoma a reprodução
+  conflictSim.onCentralPlayPauseClick();
+  assert(conflictSim.isPlaying === true, 'Vídeo retomou a reprodução com sucesso');
+  assert(conflictSim.controlsVisible === true, 'Controles visíveis na retomada');
+  assert(conflictSim.timerId !== null, 'Temporizador de auto-hide de 5s rearmado');
+
   // Limpa o timer
+  conflictSim.clearTimer();
   sim.clearTimer();
 
   console.log('\n===============================================================');

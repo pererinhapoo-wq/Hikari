@@ -91,6 +91,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const playPauseFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justOpenedMenuTimeRef = useRef<number>(0);
   const lastTapTimeRef = useRef<number>(0);
+  const controlsRevealedAtRef = useRef<number>(0);
+  const gestureStartedWhileHiddenRef = useRef<boolean>(false);
 
   // Estados de reprodução
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -414,16 +416,18 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   // 3. Ao tocar novamente: os controles devem reaparecer imediatamente, e o temporizador de ocultação deve ser reiniciado.
   // 4. Durante a reprodução: qualquer interação com os controles deve reiniciar o temporizador de inatividade.
   // 5. Quando o vídeo estiver pausado: os controles devem permanecer visíveis.
-  // 6. Ao retomar a reprodução: o temporizador deve voltar a funcionar normalmente, ocultando os controles após ~5 segundos sem interação.
-  const handleVideoSurfaceTap = useCallback(
-    (e: React.SyntheticEvent) => {
+  // 7. Tocar para exibir os controles NÃO pode pausar acidentalmente o vídeo.
+  const handleVideoSurfacePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
       e.stopPropagation();
-      const now = Date.now();
-      // Debounce refinado (250ms) para evitar duplicidade entre pointerdown, touchstart e click no mesmo gesto
-      if (now - lastTapTimeRef.current < 250) {
-        return;
+      const wasHidden = !controlsVisibleRef.current;
+      if (wasHidden) {
+        // Marca que o gesto começou com controles ocultos para prevenir pausa acidental no botão central
+        gestureStartedWhileHiddenRef.current = true;
+        controlsRevealedAtRef.current = Date.now();
+      } else {
+        gestureStartedWhileHiddenRef.current = false;
       }
-      lastTapTimeRef.current = now;
 
       // Se o menu de velocidade estiver aberto, fecha o menu ao tocar fora na tela
       if (showSettingsMenuRef.current) {
@@ -432,6 +436,28 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       }
 
       // Regras 1 e 3: exibe imediatamente os controles e inicia/reinicia a contagem de ~5 segundos
+      setControlsVisible(true);
+      controlsVisibleRef.current = true;
+      resetInactivityTimer();
+    },
+    [resetInactivityTimer]
+  );
+
+  const handleVideoSurfaceClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.stopPropagation();
+      // Se este clique resultou do mesmo gesto que acabou de revelar os controles no pointerdown,
+      // consome a flag sem reiniciar o timer novamente nem disparar ações redundantes
+      if (gestureStartedWhileHiddenRef.current) {
+        gestureStartedWhileHiddenRef.current = false;
+        return;
+      }
+
+      if (showSettingsMenuRef.current) {
+        setShowSettingsMenu(false);
+        showSettingsMenuRef.current = false;
+      }
+
       setControlsVisible(true);
       controlsVisibleRef.current = true;
       resetInactivityTimer();
@@ -712,8 +738,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       {/* Camada interativa transparente de superfície para recepção instantânea de toques e cliques */}
       <div
         data-testid="player-surface-tap-area"
-        onPointerDown={handleVideoSurfaceTap}
-        onClick={handleVideoSurfaceTap}
+        onPointerDown={handleVideoSurfacePointerDown}
+        onClick={handleVideoSurfaceClick}
         className="absolute inset-0 z-10 cursor-pointer"
         aria-label="Área de controle do vídeo"
       />
@@ -790,8 +816,20 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       >
         <button
           type="button"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            resetInactivityTimer();
+          }}
           onClick={(e) => {
             e.stopPropagation();
+            // Previne que o mesmo toque que acabou de exibir os controles pause acidentalmente o vídeo
+            if (
+              gestureStartedWhileHiddenRef.current ||
+              Date.now() - controlsRevealedAtRef.current < 700
+            ) {
+              gestureStartedWhileHiddenRef.current = false;
+              return;
+            }
             togglePlay();
           }}
           aria-label={isPlaying ? 'Pausar vídeo' : 'Reproduzir vídeo'}
@@ -871,8 +909,20 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Play/Pause */}
             <button
               type="button"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                resetInactivityTimer();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
+                // Previne pausa acidental se o toque de exibição dos controles ocorreu próximo à barra inferior
+                if (
+                  gestureStartedWhileHiddenRef.current ||
+                  Date.now() - controlsRevealedAtRef.current < 700
+                ) {
+                  gestureStartedWhileHiddenRef.current = false;
+                  return;
+                }
                 togglePlay();
               }}
               aria-label={isPlaying ? 'Pausar' : 'Reproduzir'}
@@ -884,6 +934,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Voltar 10 segundos (⏪) */}
             <button
               type="button"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                resetInactivityTimer();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 seekRelative(-10);
@@ -901,6 +955,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Avançar 10 segundos (⏩) */}
             <button
               type="button"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                resetInactivityTimer();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 seekRelative(10);
