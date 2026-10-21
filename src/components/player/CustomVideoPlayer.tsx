@@ -891,7 +891,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                 </span>
               </button>
 
-              {/* Menu de Velocidade Compacto posicionado acima da barra, junto ao canto inferior direito sem cobrir o anime */}
+              {/* Menu de Velocidade Compacto posicionado acima da barra, junto ao botão de velocidade */}
               {showSettingsMenu && (
                 <div
                   onClick={(e) => {
@@ -902,9 +902,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                     e.stopPropagation();
                     resetInactivityTimer();
                   }}
-                  className="player-menu-content absolute bottom-full mb-2 right-0 w-36 bg-[#12131A]/95 border border-slate-700/80 rounded-xl p-1 shadow-2xl z-[60] pointer-events-auto backdrop-blur-md overflow-hidden"
+                  className="player-menu-content absolute bottom-full mb-1.5 right-0 w-[122px] max-h-[min(220px,calc(100%-50px))] bg-[#12131A]/95 border border-slate-700/80 rounded-xl p-1 shadow-2xl z-[60] pointer-events-auto backdrop-blur-md overflow-y-auto custom-scrollbar"
                 >
-                  <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 mb-0.5">
+                  <div className="flex items-center justify-between px-2 py-0.5 text-[9px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 mb-0.5">
                     <span>Velocidade</span>
                     <button
                       type="button"
@@ -913,14 +913,14 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                         e.stopPropagation();
                         setShowSettingsMenu(false);
                       }}
-                      className="text-slate-500 hover:text-white p-0.5 rounded cursor-pointer"
+                      className="text-slate-500 hover:text-white p-0.5 rounded cursor-pointer transition-colors"
                       aria-label="Fechar menu"
                     >
                       <X className="w-3 h-3" />
                     </button>
                   </div>
 
-                  <div className="space-y-0.5">
+                  <div className="space-y-[1px]">
                     {/* Lista de Velocidades Preservadas: 0.5x, 0.75x, Normal (1x), 1.25x, 1.5x, 2x */}
                     {PLAYBACK_SPEEDS.map((spd) => (
                       <button
@@ -933,17 +933,17 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                           setShowSettingsMenu(false);
                           resetInactivityTimer();
                         }}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg transition-colors cursor-pointer ${
+                        className={`w-full flex items-center justify-between px-2 py-1 text-[11px] rounded-lg transition-colors cursor-pointer ${
                           playbackSpeed === spd
-                            ? 'bg-indigo-600/30 text-indigo-300 font-semibold'
+                            ? 'bg-[#a855f7]/25 text-[#d8b4fe] font-semibold border border-[#a855f7]/30'
                             : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                         }`}
                       >
-                        <span className="text-xs whitespace-nowrap">
+                        <span className="whitespace-nowrap">
                           {spd === 1 ? 'Normal (1x)' : `${spd}x`}
                         </span>
                         {playbackSpeed === spd && (
-                          <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          <Check className="w-3 h-3 text-[#c084fc] shrink-0" />
                         )}
                       </button>
                     ))}
