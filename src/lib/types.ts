@@ -108,6 +108,7 @@ export type SearchResult = {
   items: SlimAnime[];
   page: number;
   hasNext: boolean;
+  total?: number;
   source: "anilist" | "jikan" | "kitsu";
 };
 

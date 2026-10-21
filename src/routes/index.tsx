@@ -127,7 +127,11 @@ function Home() {
         Fonte:{" "}
         {data.source === "anilist"
           ? "AniList"
-          : "MyAnimeList / Jikan"}
+          : data.source === "kitsu"
+            ? "Kitsu"
+            : data.source === "jikan"
+              ? "MyAnimeList / Jikan"
+              : "Catálogo seguro"}
       </p>
     </div>
   );

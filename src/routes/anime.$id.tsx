@@ -256,7 +256,7 @@ function AnimePage() {
   );
 
   const episodeCount =
-    currentEpisodes.length ||
+    currentEpisodes?.length ||
     anime.episodesCount ||
     0;
 

@@ -4,6 +4,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-7442",
     kitsuId: 7442,
+    anilistId: 16498,
+    malId: 16498,
     titles: {
       romaji: "Shingeki no Kyojin",
       english: "Attack on Titan",
@@ -26,6 +28,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-41370",
     kitsuId: 41370,
+    anilistId: 101922,
+    malId: 38000,
     titles: {
       romaji: "Kimetsu no Yaiba",
       english: "Demon Slayer: Kimetsu no Yaiba",
@@ -48,6 +52,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-42765",
     kitsuId: 42765,
+    anilistId: 113415,
+    malId: 40748,
     titles: {
       romaji: "Jujutsu Kaisen",
       english: "Jujutsu Kaisen",
@@ -70,6 +76,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-46474",
     kitsuId: 46474,
+    anilistId: 154587,
+    malId: 52991,
     titles: {
       romaji: "Sousou no Frieren",
       english: "Frieren: Beyond Journey's End",
@@ -92,6 +100,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-12",
     kitsuId: 12,
+    anilistId: 21,
+    malId: 21,
     titles: {
       romaji: "One Piece",
       english: "One Piece",
@@ -114,6 +124,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-3936",
     kitsuId: 3936,
+    anilistId: 5114,
+    malId: 5114,
     titles: {
       romaji: "Fullmetal Alchemist: Brotherhood",
       english: "Fullmetal Alchemist: Brotherhood",
@@ -136,6 +148,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-1376",
     kitsuId: 1376,
+    anilistId: 1535,
+    malId: 1535,
     titles: {
       romaji: "Death Note",
       english: "Death Note",
@@ -158,6 +172,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-6448",
     kitsuId: 6448,
+    anilistId: 11061,
+    malId: 11061,
     titles: {
       romaji: "Hunter x Hunter (2011)",
       english: "Hunter x Hunter",
@@ -180,6 +196,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-45322",
     kitsuId: 45322,
+    anilistId: 140960,
+    malId: 50265,
     titles: {
       romaji: "Spy x Family",
       english: "Spy x Family",
@@ -202,6 +220,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-43806",
     kitsuId: 43806,
+    anilistId: 127230,
+    malId: 44511,
     titles: {
       romaji: "Chainsaw Man",
       english: "Chainsaw Man",
@@ -224,6 +244,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-46038",
     kitsuId: 46038,
+    anilistId: 151807,
+    malId: 52299,
     titles: {
       romaji: "Solo Leveling",
       english: "Solo Leveling",
@@ -246,6 +268,8 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
   {
     id: "kitsu-43354",
     kitsuId: 43354,
+    anilistId: 120377,
+    malId: 42310,
     titles: {
       romaji: "Cyberpunk: Edgerunners",
       english: "Cyberpunk: Edgerunners",

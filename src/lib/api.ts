@@ -232,6 +232,8 @@ async function anilistGraphQL<T>(
               "application/json",
             Accept:
               "application/json",
+            "User-Agent":
+              "Hikari/1.0 (anime streaming platform; +https://hikari.app)",
           },
           body: JSON.stringify({
             query,
@@ -1431,7 +1433,7 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
     );
 
   const releases =
-    await fetchRecentReleasesFromAni();
+    await fetchRecentReleasesFromAni().catch(() => []);
 
   const trending =
     (
@@ -1497,7 +1499,10 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
         mapAniSlim,
       ),
 
-    releases,
+    releases:
+      releases.length > 0
+        ? releases
+        : seasonItems.map(mapAniSlim).slice(0, 18),
 
     seasonName:
       seasonLabel(season),
@@ -1799,8 +1804,12 @@ async function fetchBrowseFromKitsu(
   section: "popular" | "season" | "top" | "trending",
   page: number,
   genre?: string,
+  seasonParam?: string,
+  yearParam?: number,
 ): Promise<SearchResult> {
   const current = currentAnimeSeason();
+  const targetSeason = (seasonParam || current.season).toLowerCase();
+  const targetYear = yearParam || current.year;
   const limit = 20;
   const offset = Math.max(0, (page - 1) * limit);
 
@@ -1813,7 +1822,7 @@ async function fetchBrowseFromKitsu(
         ? `/trending/anime?limit=${limit}`
         : `/anime?sort=-userCount&page[limit]=${limit}&page[offset]=${offset}`;
   } else if (section === "season") {
-    path = `/anime?filter[season]=${current.season.toLowerCase()}&filter[seasonYear]=${current.year}&sort=-userCount&page[limit]=${limit}&page[offset]=${offset}`;
+    path = `/anime?filter[season]=${targetSeason}&filter[seasonYear]=${targetYear}&sort=-userCount&page[limit]=${limit}&page[offset]=${offset}`;
   }
 
   if (genre) {
@@ -2905,7 +2914,8 @@ export const fetchAdultTags =
         return cached;
       }
 
-      const allMedia =
+      try {
+        const allMedia =
         new Map<number, AniMedia>();
 
       const addMedia = (
@@ -3248,8 +3258,19 @@ export const fetchAdultTags =
           tags,
         },
       );
-    },
-  );
+    } catch (err) {
+      console.warn("[Hikari] Tags adultas indisponíveis:", err);
+      return toCache(key, {
+        items: [],
+        tags: MAIN_ADULT_TAGS.map((t) => ({
+          name: t.name,
+          count: 0,
+          animeIds: [],
+        })),
+      });
+    }
+  },
+);
 
 const idSchema =
   z.object({
@@ -3797,10 +3818,43 @@ export const fetchAnimeDetail =
           );
         } catch {
           // O ID desta rota é um ID do AniList.
-          // Não podemos reutilizá-lo como ID do MyAnimeList/Jikan,
-          // porque são identificadores diferentes.
-          // Se o AniList estiver indisponível, retornamos null
-          // em vez de carregar um anime incorreto pelo mesmo número.
+          // Se o AniList estiver indisponível, verificamos se o anime está no catálogo seguro
+          const fallback = FALLBACK_ANIMES.find(
+            (a) => a.anilistId === anilistId || a.id === id,
+          );
+
+          if (fallback) {
+            return toCache(key, {
+              ...fallback,
+              studios: [],
+              streamingEpisodes: [],
+              seasons: [
+                {
+                  id: `s1-${fallback.id}`,
+                  number: 1,
+                  title: "Temporada 1",
+                  episodes: Array.from(
+                    { length: fallback.episodesCount ?? 12 },
+                    (_, i) => ({
+                      id: `ep-${fallback.id}-${i + 1}`,
+                      number: i + 1,
+                      title: `Episódio ${i + 1}`,
+                    }),
+                  ),
+                },
+              ],
+              recommendations: [],
+              seasonNavigation: {
+                items: [
+                  {
+                    id: String(fallback.anilistId ?? fallback.id),
+                    title: displayTitle(fallback),
+                  },
+                ],
+              },
+            });
+          }
+
           return null;
         }
       },
@@ -4110,7 +4164,7 @@ export const fetchBrowse =
           } catch {
             return toCache(
               key,
-              await fetchBrowseFromKitsu(data.section, page, genre),
+              await fetchBrowseFromKitsu(data.section, page, genre, season, year),
             );
           }
         }

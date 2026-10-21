@@ -108,8 +108,8 @@ function WatchPage() {
       return [] as Episode[];
     }
 
-    return anime.seasons.flatMap(
-      (s) => s.episodes,
+    return (anime.seasons ?? []).flatMap(
+      (s) => s.episodes ?? [],
     );
   }, [anime]);
 
