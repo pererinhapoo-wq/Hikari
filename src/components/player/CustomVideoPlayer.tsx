@@ -90,6 +90,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playPauseFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPointerDownRef = useRef<boolean>(false);
+  const justOpenedMenuTimeRef = useRef<number>(0);
 
   // Estados de reprodução
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -557,13 +558,46 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   }, []);
 
   // Alteração de velocidade de reprodução real com sincronização
-  const changeSpeed = (speed: PlaybackSpeed) => {
+  const changeSpeed = useCallback((speed: PlaybackSpeed) => {
     setPlaybackSpeed(speed);
     if (videoRef.current) {
       videoRef.current.playbackRate = speed;
     }
     resetInactivityTimer();
-  };
+  }, [resetInactivityTimer]);
+
+  const handleToggleSpeedMenu = useCallback((e: React.SyntheticEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowSettingsMenu((prev) => {
+      const next = !prev;
+      showSettingsMenuRef.current = next;
+      if (next) {
+        justOpenedMenuTimeRef.current = Date.now();
+        clearInactivityTimer();
+      } else {
+        scheduleControlsHide();
+      }
+      return next;
+    });
+  }, [clearInactivityTimer, scheduleControlsHide]);
+
+  const handleCloseSpeedMenu = useCallback((e: React.SyntheticEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowSettingsMenu(false);
+    showSettingsMenuRef.current = false;
+    scheduleControlsHide();
+  }, [scheduleControlsHide]);
+
+  const handleSelectSpeed = useCallback((spd: PlaybackSpeed, e: React.SyntheticEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    changeSpeed(spd);
+    setShowSettingsMenu(false);
+    showSettingsMenuRef.current = false;
+    scheduleControlsHide();
+  }, [changeSpeed, scheduleControlsHide]);
 
   // Atalhos de teclado no desktop
   useEffect(() => {
@@ -614,18 +648,20 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   useEffect(() => {
     const handlePointerDownOutside = (e: PointerEvent) => {
       if (!showSettingsMenuRef.current) return;
+      if (Date.now() - justOpenedMenuTimeRef.current < 250) return;
+
       const settingsArea = settingsAreaRef.current;
       const target = e.target;
       if (settingsArea && target instanceof Node && !settingsArea.contains(target)) {
         setShowSettingsMenu(false);
         showSettingsMenuRef.current = false;
-        resetInactivityTimer();
+        scheduleControlsHide();
       }
     };
 
     document.addEventListener('pointerdown', handlePointerDownOutside);
     return () => document.removeEventListener('pointerdown', handlePointerDownOutside);
-  }, [resetInactivityTimer]);
+  }, [scheduleControlsHide]);
 
   // Limpeza de timers ao desmontar o componente
   useEffect(() => {
@@ -926,16 +962,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             <div ref={settingsAreaRef} className="relative">
               <button
                 type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShowSettingsMenu((open) => {
-                    const next = !open;
-                    showSettingsMenuRef.current = next;
-                    return next;
-                  });
-                  resetInactivityTimer();
-                }}
+                onClick={handleToggleSpeedMenu}
                 className={`player-menu-trigger h-9 sm:h-10 px-2 sm:px-2.5 flex items-center gap-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer active:scale-95 ${
                   showSettingsMenu
                     ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
@@ -946,8 +973,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                 aria-haspopup="menu"
                 aria-expanded={showSettingsMenu}
               >
-                <Gauge className="w-4 h-4 text-slate-300" />
-                <span className="text-[11px] font-mono text-slate-300 font-medium">
+                <Gauge className="w-4 h-4 text-slate-300 pointer-events-none" />
+                <span className="text-[11px] font-mono text-slate-300 font-medium pointer-events-none">
                   {playbackSpeed === 1 ? '1x' : `${playbackSpeed}x`}
                 </span>
               </button>
@@ -957,20 +984,15 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                 <div
                   onClick={(e) => {
                     e.stopPropagation();
-                    resetInactivityTimer();
+                    clearInactivityTimer();
                   }}
-                  className="player-menu-content absolute bottom-full mb-1.5 right-0 w-[122px] max-h-[min(220px,calc(100%-50px))] bg-[#12131A]/95 border border-slate-700/80 rounded-xl p-1 shadow-2xl z-[60] pointer-events-auto backdrop-blur-md overflow-y-auto custom-scrollbar"
+                  className="player-menu-content absolute bottom-full mb-1.5 right-0 w-[122px] max-h-[220px] bg-[#12131A]/95 border border-slate-700/80 rounded-xl p-1 shadow-2xl z-[60] pointer-events-auto backdrop-blur-md overflow-y-auto custom-scrollbar"
                 >
                   <div className="flex items-center justify-between px-2 py-0.5 text-[9px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 mb-0.5">
                     <span>Velocidade</span>
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowSettingsMenu(false);
-                        showSettingsMenuRef.current = false;
-                        resetInactivityTimer();
-                      }}
+                      onClick={handleCloseSpeedMenu}
                       className="text-slate-500 hover:text-white p-0.5 rounded cursor-pointer transition-colors"
                       aria-label="Fechar menu"
                     >
@@ -984,13 +1006,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                       <button
                         key={spd}
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          changeSpeed(spd);
-                          setShowSettingsMenu(false);
-                          showSettingsMenuRef.current = false;
-                          resetInactivityTimer();
-                        }}
+                        onClick={(e) => handleSelectSpeed(spd, e)}
                         className={`w-full flex items-center justify-between px-2 py-1 text-[11px] rounded-lg transition-colors cursor-pointer ${
                           playbackSpeed === spd
                             ? 'bg-[#a855f7]/25 text-[#d8b4fe] font-semibold border border-[#a855f7]/30'
