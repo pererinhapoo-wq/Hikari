@@ -169,15 +169,20 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     setControlsVisible(true);
     controlsVisibleRef.current = true;
 
-    // Regra estrita: enquanto o vídeo estiver pausado ou o menu de velocidade estiver aberto,
+    // Regra estrita: se o vídeo estiver pausado ou o menu de velocidade estiver aberto,
     // os controles permanecem visíveis indefinidamente e NUNCA desaparecem sozinhos.
-    if (!isPlayingRef.current || showSettingsMenuRef.current) {
+    const isPaused = videoRef.current ? videoRef.current.paused : !isPlayingRef.current;
+    if (isPaused || !isPlayingRef.current || showSettingsMenuRef.current) {
       return;
     }
 
     // Oculta apenas após 5 segundos contínuos de inatividade real durante a reprodução
     controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlayingRef.current && !showSettingsMenuRef.current) {
+      const stillPlaying = videoRef.current
+        ? !videoRef.current.paused && !videoRef.current.ended
+        : isPlayingRef.current;
+
+      if (stillPlaying && !showSettingsMenuRef.current) {
         setControlsVisible(false);
         controlsVisibleRef.current = false;
       }
@@ -186,7 +191,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   // Monitorar mudanças em isPlaying e showSettingsMenu
   useEffect(() => {
-    if (!isPlaying || showSettingsMenu) {
+    const isPaused = videoRef.current ? videoRef.current.paused : !isPlaying;
+    if (isPaused || !isPlaying || showSettingsMenu) {
       clearInactivityTimer();
       setControlsVisible(true);
       controlsVisibleRef.current = true;
@@ -583,6 +589,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     <div
       ref={containerRef}
       onClick={handleVideoSurfaceTap}
+      onPointerDown={handleVideoSurfaceTap}
       onPointerMove={handlePointerMoveDesktop}
       className={`relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group touch-manipulation ${className || ''}`}
       style={{ touchAction: 'manipulation' }}
@@ -657,7 +664,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         >
           <button
             type="button"
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              resetInactivityTimer();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               onClose();
@@ -688,7 +698,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
           <button
             type="button"
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              resetInactivityTimer();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               togglePlay();
@@ -766,7 +779,14 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
         {/* Linha de Botões de Controle Inferiores Organizados Sem Sobreposição */}
         <div
-          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            resetInactivityTimer();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            resetInactivityTimer();
+          }}
           className="flex items-center justify-between gap-1 sm:gap-2 text-slate-200"
         >
           {/* Lado Esquerdo: Play/Pause, Voltar 10s, Avançar 10s, Volume, Marcação de Tempo */}
@@ -774,7 +794,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Play/Pause */}
             <button
               type="button"
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                resetInactivityTimer();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 togglePlay();
@@ -788,7 +811,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Voltar 10 segundos (⏪) */}
             <button
               type="button"
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                resetInactivityTimer();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 seekRelative(-10);
@@ -806,7 +832,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Avançar 10 segundos (⏩) */}
             <button
               type="button"
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                resetInactivityTimer();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 seekRelative(10);
@@ -825,7 +854,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             <div className="flex items-center group/vol shrink-0">
               <button
                 type="button"
-                onPointerDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  resetInactivityTimer();
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   toggleMute();
@@ -868,7 +900,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             <div ref={settingsAreaRef} className="relative">
               <button
                 type="button"
-                onPointerDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  resetInactivityTimer();
+                }}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -908,7 +943,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                     <span>Velocidade</span>
                     <button
                       type="button"
-                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        resetInactivityTimer();
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
                         setShowSettingsMenu(false);
@@ -926,7 +964,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                       <button
                         key={spd}
                         type="button"
-                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          resetInactivityTimer();
+                        }}
                         onClick={(e) => {
                           e.stopPropagation();
                           changeSpeed(spd);
@@ -955,7 +996,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             {/* Tela Cheia */}
             <button
               type="button"
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                resetInactivityTimer();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 toggleFullscreen();
