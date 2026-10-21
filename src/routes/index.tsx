@@ -10,6 +10,7 @@ import { overlayList } from "@/lib/overlay";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { AnimeCardSkeleton } from "@/components/anime-card";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/")({
   staleTime: 1000 * 60 * 10,
@@ -51,6 +52,19 @@ function HomeError({ error }: ErrorComponentProps) {
       <p className="mt-2 text-sm text-muted">
         {message}
       </p>
+
+      <div className="mt-5 flex justify-center">
+        <Button
+          variant="outline"
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              window.location.reload();
+            }
+          }}
+        >
+          Tentar novamente
+        </Button>
+      </div>
     </div>
   );
 }

@@ -20,8 +20,14 @@ import type {
   StreamingLink,
 } from "@/lib/types";
 
+import {
+  getEmergencyFallbackCatalog,
+  FALLBACK_ANIMES,
+} from "@/lib/fallback-catalog";
+
 const ANILIST = "https://graphql.anilist.co";
 const JIKAN = "https://api.jikan.moe/v4";
+const KITSU = "https://kitsu.io/api/edge";
 
 const CARD_FIELDS = `
   id
@@ -233,12 +239,25 @@ async function anilistGraphQL<T>(
           }),
           signal:
             AbortSignal.timeout(
-              12000,
+              6000,
             ),
         },
       );
 
       if (!res.ok) {
+        if (
+          res.status === 403 ||
+          res.status === 401 ||
+          res.status === 400 ||
+          res.status === 404
+        ) {
+          const nonRetryErr = new Error(
+            `AniList indisponível (${res.status})`,
+          );
+          (nonRetryErr as unknown as { nonRetryable?: boolean }).nonRetryable = true;
+          throw nonRetryErr;
+        }
+
         const retryable =
           res.status === 429 ||
           res.status === 500 ||
@@ -263,9 +282,9 @@ async function anilistGraphQL<T>(
             retryAfter > 0
               ? Math.min(
                   retryAfter * 1000,
-                  10000,
+                  6000,
                 )
-              : 1200 *
+              : 800 *
                 (attempt + 1);
 
           await new Promise(
@@ -311,12 +330,16 @@ async function anilistGraphQL<T>(
     } catch (error) {
       lastError = error;
 
-      if (attempt < 2) {
+      if ((error as unknown as { nonRetryable?: boolean })?.nonRetryable) {
+        throw error;
+      }
+
+      if (attempt < 1) {
         await new Promise(
           (resolve) =>
             setTimeout(
               resolve,
-              1200 *
+              800 *
                 (attempt + 1),
             ),
         );
@@ -340,55 +363,61 @@ async function jikanFetch<T>(
   path: string,
   attempt = 0,
 ): Promise<T> {
-  const res = await fetch(
-    `${JIKAN}${path}`,
-    {
-      headers: {
-        Accept:
-          "application/json",
-        "User-Agent":
-          "Hikari/1.0 (anime catalog)",
+  try {
+    const res = await fetch(
+      `${JIKAN}${path}`,
+      {
+        headers: {
+          Accept:
+            "application/json",
+          "User-Agent":
+            "Hikari/1.0 (anime catalog)",
+        },
+        signal:
+          AbortSignal.timeout(
+            3500,
+          ),
       },
-      signal:
-        AbortSignal.timeout(
-          12000,
-        ),
-    },
-  );
-
-  const retryable =
-    res.status === 429 ||
-    res.status === 500 ||
-    res.status === 502 ||
-    res.status === 503 ||
-    res.status === 504;
-
-  if (
-    retryable &&
-    attempt < 2
-  ) {
-    await new Promise(
-      (resolve) =>
-        setTimeout(
-          resolve,
-          900 *
-            (attempt + 1),
-        ),
     );
 
-    return jikanFetch<T>(
-      path,
-      attempt + 1,
-    );
+    const retryable =
+      res.status === 429 ||
+      res.status === 500 ||
+      res.status === 502 ||
+      res.status === 503 ||
+      res.status === 504;
+
+    if (
+      retryable &&
+      attempt < 1
+    ) {
+      await new Promise(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            600 *
+              (attempt + 1),
+          ),
+      );
+
+      return jikanFetch<T>(
+        path,
+        attempt + 1,
+      );
+    }
+
+    if (!res.ok) {
+      throw new Error(
+        `MyAnimeList indisponível (${res.status})`,
+      );
+    }
+
+    return (await res.json()) as T;
+  } catch (error) {
+    throw error instanceof Error
+      ? error
+      : new Error("MyAnimeList indisponível");
   }
-
-  if (!res.ok) {
-    throw new Error(
-      `MyAnimeList indisponível (${res.status})`,
-    );
-  }
-
-  return (await res.json()) as T;
 }
 
 function isAdultAnime(
@@ -1585,13 +1614,241 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
   };
 }
 
+async function kitsuFetch<T>(path: string): Promise<T> {
+  const url = path.startsWith("http") ? path : `${KITSU}${path}`;
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/vnd.api+json",
+      "Content-Type": "application/vnd.api+json",
+      "User-Agent": "Hikari/1.0 (anime catalog)",
+    },
+    signal: AbortSignal.timeout(5000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Kitsu indisponível (${res.status})`);
+  }
+
+  return (await res.json()) as T;
+}
+
+type KitsuAnimeItem = {
+  id: string;
+  type: string;
+  attributes?: {
+    slug?: string;
+    synopsis?: string;
+    description?: string;
+    titles?: {
+      en?: string;
+      en_jp?: string;
+      en_us?: string;
+      ja_jp?: string;
+    };
+    canonicalTitle?: string;
+    averageRating?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    subtype?: string | null;
+    status?: string | null;
+    posterImage?: {
+      tiny?: string;
+      large?: string;
+      small?: string;
+      medium?: string;
+      original?: string;
+    } | null;
+    coverImage?: {
+      tiny?: string;
+      large?: string;
+      small?: string;
+      original?: string;
+    } | null;
+    episodeCount?: number | null;
+    youtubeVideoId?: string | null;
+    nsfw?: boolean | null;
+  };
+};
+
+function mapKitsuSlim(item: KitsuAnimeItem): SlimAnime {
+  const attr = item.attributes ?? {};
+  const rating = attr.averageRating
+    ? Math.round(Number(attr.averageRating))
+    : null;
+  const year = attr.startDate
+    ? new Date(attr.startDate).getFullYear()
+    : null;
+
+  let season: string | null = null;
+  if (attr.startDate) {
+    const month = new Date(attr.startDate).getMonth();
+    if (month >= 0 && month <= 2) season = "WINTER";
+    else if (month >= 3 && month <= 5) season = "SPRING";
+    else if (month >= 6 && month <= 8) season = "SUMMER";
+    else season = "FALL";
+  }
+
+  let status = "FINISHED";
+  if (attr.status === "current") status = "RELEASING";
+  else if (attr.status === "unreleased" || attr.status === "tba")
+    status = "NOT_YET_RELEASED";
+
+  const cover =
+    attr.posterImage?.large ||
+    attr.posterImage?.medium ||
+    attr.posterImage?.original ||
+    attr.posterImage?.small ||
+    "";
+
+  const banner =
+    attr.coverImage?.large ||
+    attr.coverImage?.original ||
+    attr.coverImage?.small ||
+    "";
+
+  const romaji = attr.titles?.en_jp || attr.canonicalTitle || "";
+  const english =
+    attr.titles?.en || attr.titles?.en_us || attr.canonicalTitle || romaji;
+  const native = attr.titles?.ja_jp || "";
+
+  return {
+    id: `kitsu-${item.id}`,
+    kitsuId: Number(item.id),
+    titles: {
+      romaji,
+      english,
+      native,
+    },
+    cover,
+    banner,
+    synopsis: stripHtml(attr.synopsis || attr.description || ""),
+    score: rating,
+    genres: [],
+    format: (attr.subtype || "TV").toUpperCase(),
+    status,
+    episodesCount: attr.episodeCount ?? null,
+    season,
+    year: Number.isFinite(year) ? year : null,
+    trailerId: attr.youtubeVideoId || null,
+    source: "kitsu",
+  };
+}
+
+async function fetchHomeFromKitsu(): Promise<HomeCatalog> {
+  const { season, year } = currentAnimeSeason();
+
+  type KitsuList = {
+    data?: KitsuAnimeItem[];
+  };
+
+  const [trending, popular, top, seasonData] = await Promise.all([
+    kitsuFetch<KitsuList>("/trending/anime?limit=18").catch(() => ({
+      data: [],
+    })),
+    kitsuFetch<KitsuList>("/anime?sort=-userCount&page[limit]=18").catch(
+      () => ({ data: [] }),
+    ),
+    kitsuFetch<KitsuList>("/anime?sort=-averageRating&page[limit]=18").catch(
+      () => ({ data: [] }),
+    ),
+    kitsuFetch<KitsuList>(
+      `/anime?filter[season]=${season.toLowerCase()}&filter[seasonYear]=${year}&sort=-userCount&page[limit]=18`,
+    ).catch(() => ({ data: [] })),
+  ]);
+
+  const trendingItems = (trending.data ?? []).map(mapKitsuSlim);
+  const popularItems = (popular.data ?? []).map(mapKitsuSlim);
+  const topItems = (top.data ?? []).map(mapKitsuSlim);
+  let seasonItems = (seasonData.data ?? []).map(mapKitsuSlim);
+
+  if (seasonItems.length === 0) {
+    seasonItems = trendingItems.length > 0 ? trendingItems : popularItems;
+  }
+
+  const catalog: HomeCatalog = {
+    trending: trendingItems.length > 0 ? trendingItems : popularItems,
+    popular: popularItems,
+    top: topItems,
+    season: seasonItems,
+    releases: seasonItems.slice(0, 18),
+    seasonName: seasonLabel(season),
+    seasonYear: year,
+    source: "kitsu",
+    genres: [
+      "Ação",
+      "Aventura",
+      "Comédia",
+      "Drama",
+      "Fantasia",
+      "Ficção Científica",
+      "Mistério",
+      "Romance",
+      "Sobrenatural",
+      "Suspense",
+    ],
+  };
+
+  if (catalog.trending.length === 0 && catalog.popular.length === 0) {
+    throw new Error("Kitsu sem dados");
+  }
+
+  return catalog;
+}
+
+async function fetchBrowseFromKitsu(
+  section: "popular" | "season" | "top" | "trending",
+  page: number,
+  genre?: string,
+): Promise<SearchResult> {
+  const current = currentAnimeSeason();
+  const limit = 20;
+  const offset = Math.max(0, (page - 1) * limit);
+
+  let path = `/anime?sort=-userCount&page[limit]=${limit}&page[offset]=${offset}`;
+  if (section === "top") {
+    path = `/anime?sort=-averageRating&page[limit]=${limit}&page[offset]=${offset}`;
+  } else if (section === "trending") {
+    path =
+      page === 1
+        ? `/trending/anime?limit=${limit}`
+        : `/anime?sort=-userCount&page[limit]=${limit}&page[offset]=${offset}`;
+  } else if (section === "season") {
+    path = `/anime?filter[season]=${current.season.toLowerCase()}&filter[seasonYear]=${current.year}&sort=-userCount&page[limit]=${limit}&page[offset]=${offset}`;
+  }
+
+  if (genre) {
+    path += `&filter[categories]=${encodeURIComponent(genre)}`;
+  }
+
+  try {
+    const json = await kitsuFetch<{
+      data?: KitsuAnimeItem[];
+    }>(path);
+
+    const items = (json.data ?? []).map(mapKitsuSlim);
+
+    return {
+      items,
+      page,
+      hasNext: items.length >= limit,
+      source: "kitsu",
+    };
+  } catch {
+    return {
+      items: FALLBACK_ANIMES,
+      page,
+      hasNext: false,
+      source: "kitsu",
+    };
+  }
+}
+
 export const fetchHomeCatalog =
   createServerFn({
     method: "GET",
   }).handler(
     async () => {
-      const key =
-        "home";
+      const key = "home";
 
       const cached =
         fromCache<HomeCatalog>(
@@ -1602,17 +1859,47 @@ export const fetchHomeCatalog =
         return cached;
       }
 
+      // 1. Tenta AniList (fonte primária do Hikari)
       try {
-        return toCache(
-          key,
-          await fetchHomeFromAni(),
-        );
-      } catch {
-        return toCache(
-          key,
-          await fetchHomeFromJikan(),
+        const aniData = await fetchHomeFromAni();
+        if (aniData?.trending?.length > 0) {
+          return toCache(key, aniData);
+        }
+      } catch (aniErr) {
+        console.warn(
+          "[Hikari] AniList indisponível, tentando reserva MyAnimeList / Jikan...",
+          aniErr instanceof Error ? aniErr.message : aniErr,
         );
       }
+
+      // 2. Tenta MyAnimeList / Jikan (reserva secundária)
+      try {
+        const jikanData = await fetchHomeFromJikan();
+        if (jikanData?.trending?.length > 0) {
+          return toCache(key, jikanData);
+        }
+      } catch (jikanErr) {
+        console.warn(
+          "[Hikari] Jikan indisponível, tentando reserva Kitsu...",
+          jikanErr instanceof Error ? jikanErr.message : jikanErr,
+        );
+      }
+
+      // 3. Tenta Kitsu (reserva resiliente contra quedas de AniList e Jikan)
+      try {
+        const kitsuData = await fetchHomeFromKitsu();
+        if (kitsuData?.trending?.length > 0) {
+          return toCache(key, kitsuData);
+        }
+      } catch (kitsuErr) {
+        console.warn(
+          "[Hikari] Kitsu indisponível, usando catálogo seguro de contingência...",
+          kitsuErr instanceof Error ? kitsuErr.message : kitsuErr,
+        );
+      }
+
+      // 4. Catálogo de segurança local garantido
+      return toCache(key, getEmergencyFallbackCatalog());
     },
   );
 
@@ -2099,6 +2386,48 @@ async function searchJikan(
   };
 }
 
+async function searchKitsu(
+  params: SearchRequestParams,
+): Promise<SearchResult> {
+  const page = params.page ?? 1;
+  const limit = 20;
+  const offset = Math.max(0, (page - 1) * limit);
+
+  if (!params.q) {
+    return fetchBrowseFromKitsu("popular", page, params.genre);
+  }
+
+  let path = `/anime?filter[text]=${encodeURIComponent(params.q)}&page[limit]=${limit}&page[offset]=${offset}`;
+  if (params.genre) {
+    path += `&filter[categories]=${encodeURIComponent(params.genre)}`;
+  }
+
+  try {
+    const json = await kitsuFetch<{
+      data?: KitsuAnimeItem[];
+    }>(path);
+
+    const items = rankSearchResults(
+      (json.data ?? []).map(mapKitsuSlim),
+      params.q,
+    );
+
+    return {
+      items,
+      page,
+      hasNext: (json.data?.length ?? 0) >= limit,
+      source: "kitsu",
+    };
+  } catch {
+    return {
+      items: [],
+      page,
+      hasNext: false,
+      source: "kitsu",
+    };
+  }
+}
+
 async function searchRelaxed(
   params: SearchRequestParams,
 ): Promise<SlimAnime[]> {
@@ -2143,6 +2472,7 @@ async function searchRelaxed(
     const results = await Promise.allSettled([
       searchAni(searchParams),
       searchJikan(searchParams),
+      searchKitsu(searchParams),
     ]);
 
     const ani =
@@ -2155,8 +2485,13 @@ async function searchRelaxed(
         ? results[1].value.items
         : [];
 
+    const kitsu =
+      results[2].status === "fulfilled"
+        ? results[2].value.items
+        : [];
+
     const items = rankSearchResults(
-      mergeSearchItems(ani, jikan),
+      mergeSearchItems(mergeSearchItems(ani, jikan), kitsu),
       original,
     );
 
@@ -2216,11 +2551,12 @@ async function searchDirectFast(
 ): Promise<{
   items: SlimAnime[];
   hasNext: boolean;
-  source: "anilist" | "jikan";
+  source: "anilist" | "jikan" | "kitsu";
 }> {
   const attempts = [
     searchAni(params).catch(() => null),
     searchJikan(params).catch(() => null),
+    searchKitsu(params).catch(() => null),
   ];
 
   const pending = new Set(attempts);
@@ -2311,10 +2647,8 @@ export const searchCatalog =
 
         if (q) {
           /*
-           * Pesquisa direta nas duas fontes ao mesmo tempo.
-           * Antes o Hikari esperava o AniList terminar para só então
-           * consultar o Jikan. Se o AniList demorasse, a busca inteira
-           * ficava lenta ou podia terminar sem resultado.
+           * Pesquisa direta nas fontes ao mesmo tempo.
+           * Se o AniList estiver fora do ar, Kitsu responde rapidamente.
            */
           const direct = await searchDirectFast(data);
 
@@ -2322,9 +2656,7 @@ export const searchCatalog =
 
           /*
            * Se as fontes diretas não encontrarem uma correspondência forte e
-           * direta (não apenas uma aproximação por erro de digitação),
-           * aí sim fazemos a busca flexível para erros e abreviações.
-           * Ex.: "naru", "narut", "jujut".
+           * direta, fazemos a busca flexível para erros e abreviações.
            */
           const hasStrongMatch = items.some(
             (anime) =>
@@ -2369,12 +2701,21 @@ export const searchCatalog =
             ),
           );
         } catch {
-          return toCache(
-            key,
-            await searchJikan(
-              data,
-            ),
-          );
+          try {
+            return toCache(
+              key,
+              await searchJikan(
+                data,
+              ),
+            );
+          } catch {
+            return toCache(
+              key,
+              await searchKitsu(
+                data,
+              ),
+            );
+          }
         }
       },
     );
@@ -2403,76 +2744,87 @@ export const fetchAdultCatalog =
         return cached;
       }
 
-      const data =
-        await anilistGraphQL<{
-          Page: {
-            pageInfo: {
-              hasNextPage: boolean;
+      try {
+        const data =
+          await anilistGraphQL<{
+            Page: {
+              pageInfo: {
+                hasNextPage: boolean;
+              };
+
+              media: AniMedia[];
             };
-
-            media: AniMedia[];
-          };
-        }>(
-          `
-          query AdultCatalog {
-            Page(
-              page: 1,
-              perPage: 30
-            ) {
-              pageInfo {
-                hasNextPage
-              }
-
-              media(
-                type: ANIME,
-                isAdult: true,
-                genre: "Hentai",
-                sort: TRENDING_DESC
+          }>(
+            `
+            query AdultCatalog {
+              Page(
+                page: 1,
+                perPage: 30
               ) {
-                ${CARD_FIELDS}
+                pageInfo {
+                  hasNextPage
+                }
+
+                media(
+                  type: ANIME,
+                  isAdult: true,
+                  genre: "Hentai",
+                  sort: TRENDING_DESC
+                ) {
+                  ${CARD_FIELDS}
+                }
               }
             }
-          }
-          `,
-        );
-
-      const items =
-        (
-          data.Page.media ??
-          []
-        )
-          .filter(
-            (anime) =>
-              isHentaiAnime(
-                anime,
-              ),
-          )
-          .map(
-            mapAniSlim,
+            `,
           );
 
-      const recentItems =
-        await fetchRecentAdultReleasesFromAni();
+        const items =
+          (
+            data.Page.media ??
+            []
+          )
+            .filter(
+              (anime) =>
+                isHentaiAnime(
+                  anime,
+                ),
+            )
+            .map(
+              mapAniSlim,
+            );
 
-      return toCache(
-        key,
-        {
-          items,
-          recentItems,
+        const recentItems =
+          await fetchRecentAdultReleasesFromAni().catch(() => []);
 
+        return toCache(
+          key,
+          {
+            items,
+            recentItems,
+
+            page: 1,
+
+            hasNext:
+              Boolean(
+                data.Page
+                  .pageInfo
+                  ?.hasNextPage,
+              ),
+
+            source:
+              "anilist" as const,
+          },
+        );
+      } catch (err) {
+        console.warn("[Hikari] Catálogo adulto temporariamente indisponível:", err);
+        return toCache(key, {
+          items: [],
+          recentItems: [],
           page: 1,
-
-          hasNext:
-            Boolean(
-              data.Page
-                .pageInfo
-                ?.hasNextPage,
-            ),
-
-          source:
-            "anilist" as const,
-        },
-      );
+          hasNext: false,
+          source: "anilist" as const,
+        });
+      }
     },
   );
 
@@ -2690,8 +3042,19 @@ export const fetchAdultTags =
             )
             .join("\n");
 
-        const data =
-          await anilistGraphQL<
+        let data: Record<
+          string,
+          {
+            pageInfo: {
+              hasNextPage: boolean;
+            };
+
+            media: AniMedia[];
+          }
+        > | null = null;
+
+        try {
+          data = await anilistGraphQL<
             Record<
               string,
               {
@@ -2709,6 +3072,15 @@ export const fetchAdultTags =
             }
             `,
           );
+        } catch {
+          hasNextPage = false;
+          break;
+        }
+
+        if (!data) {
+          hasNextPage = false;
+          break;
+        }
 
         hasNextPage = false;
 
@@ -2884,6 +3256,86 @@ const idSchema =
     id: z.string(),
   });
 
+async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
+  const animeJson = await kitsuFetch<{ data: KitsuAnimeItem }>(`/anime/${kitsuId}`);
+  const item = animeJson.data;
+  if (!item?.id) {
+    throw new Error("Anime não encontrado no Kitsu");
+  }
+  const slim = mapKitsuSlim(item);
+
+  let episodes: Episode[] = [];
+  try {
+    const epJson = await kitsuFetch<{
+      data?: {
+        id: string;
+        attributes?: {
+          number?: number;
+          canonicalTitle?: string;
+          titles?: { en_jp?: string; en_us?: string; ja_jp?: string };
+          synopsis?: string;
+          thumbnail?: { original?: string };
+          airdate?: string;
+          length?: number;
+        };
+      }[];
+    }>(`/anime/${kitsuId}/episodes?page[limit]=20`);
+
+    episodes = (epJson.data ?? []).map((ep, idx) => {
+      const epNum = ep.attributes?.number ?? idx + 1;
+      return {
+        id: `kitsu-ep-${kitsuId}-${epNum}`,
+        number: epNum,
+        title:
+          ep.attributes?.canonicalTitle ||
+          ep.attributes?.titles?.en_us ||
+          `Episódio ${epNum}`,
+        thumbnail: ep.attributes?.thumbnail?.original,
+        synopsis: ep.attributes?.synopsis,
+        aired: ep.attributes?.airdate,
+      };
+    });
+  } catch {
+    episodes = [];
+  }
+
+  if (episodes.length === 0 && slim.episodesCount) {
+    episodes = Array.from(
+      { length: Math.min(slim.episodesCount, 24) },
+      (_, idx) => ({
+        id: `kitsu-ep-${kitsuId}-${idx + 1}`,
+        number: idx + 1,
+        title: `Episódio ${idx + 1}`,
+      }),
+    );
+  }
+
+  const seasons: Season[] = [
+    {
+      id: `kitsu-s1-${kitsuId}`,
+      number: 1,
+      title: "Temporada 1",
+      episodes,
+    },
+  ];
+
+  return {
+    ...slim,
+    studios: [],
+    streamingEpisodes: [],
+    seasons,
+    recommendations: [],
+    seasonNavigation: {
+      items: [
+        {
+          id: `kitsu-${kitsuId}`,
+          title: displayTitle(slim),
+        },
+      ],
+    },
+  };
+}
+
 export const fetchAnimeDetail =
   createServerFn({
     method: "GET",
@@ -2914,6 +3366,40 @@ export const fetchAnimeDetail =
 
         if (cached) {
           return cached;
+        }
+
+        if (id.startsWith("kitsu-")) {
+          const kitsuId = Number(id.replace("kitsu-", ""));
+          try {
+            const detail = await fetchKitsuDetail(kitsuId);
+            return toCache(key, detail);
+          } catch {
+            const fallback = FALLBACK_ANIMES.find((a) => a.id === id);
+            if (fallback) {
+              return {
+                ...fallback,
+                studios: [],
+                streamingEpisodes: [],
+                seasons: [
+                  {
+                    id: `s1-${fallback.id}`,
+                    number: 1,
+                    title: "Temporada 1",
+                    episodes: Array.from(
+                      { length: fallback.episodesCount ?? 12 },
+                      (_, i) => ({
+                        id: `ep-${fallback.id}-${i + 1}`,
+                        number: i + 1,
+                        title: `Episódio ${i + 1}`,
+                      }),
+                    ),
+                  },
+                ],
+                recommendations: [],
+              };
+            }
+            return null;
+          }
         }
 
         if (
@@ -3360,7 +3846,21 @@ export const fetchGenres = createServerFn({
       genres,
     );
   } catch {
-    return [];
+    return [
+      "Action",
+      "Adventure",
+      "Comedy",
+      "Drama",
+      "Fantasy",
+      "Horror",
+      "Mystery",
+      "Romance",
+      "Sci-Fi",
+      "Slice of Life",
+      "Sports",
+      "Supernatural",
+      "Thriller",
+    ];
   }
 });
 
@@ -3566,46 +4066,53 @@ export const fetchBrowse =
             },
           );
         } catch {
-          const path =
-            data.section ===
-            "top"
-              ? `/top/anime?page=${page}&limit=24`
-              : data.section ===
-                  "popular"
-                ? `/top/anime?filter=bypopularity&page=${page}&limit=24`
-                : `/seasons/now?page=${page}&limit=24`;
+          try {
+            const path =
+              data.section ===
+              "top"
+                ? `/top/anime?page=${page}&limit=24`
+                : data.section ===
+                    "popular"
+                  ? `/top/anime?filter=bypopularity&page=${page}&limit=24`
+                  : `/seasons/now?page=${page}&limit=24`;
 
-          const json =
-            await jikanFetch<{
-              pagination?: {
-                has_next_page?: boolean;
-              };
+            const json =
+              await jikanFetch<{
+                pagination?: {
+                  has_next_page?: boolean;
+                };
 
-              data?: JikanAnime[];
-            }>(path);
+                data?: JikanAnime[];
+              }>(path);
 
-          return toCache(
-            key,
-            {
-              items: (
-                json.data ??
-                []
-              ).map(
-                mapJikanSlim,
-              ),
-
-              page,
-
-              hasNext:
-                Boolean(
-                  json.pagination
-                    ?.has_next_page,
+            return toCache(
+              key,
+              {
+                items: (
+                  json.data ??
+                  []
+                ).map(
+                  mapJikanSlim,
                 ),
 
-              source:
-                "jikan" as const,
-            },
-          );
+                page,
+
+                hasNext:
+                  Boolean(
+                    json.pagination
+                      ?.has_next_page,
+                  ),
+
+                source:
+                  "jikan" as const,
+              },
+            );
+          } catch {
+            return toCache(
+              key,
+              await fetchBrowseFromKitsu(data.section, page, genre),
+            );
+          }
         }
       },
     );

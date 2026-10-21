@@ -31,6 +31,7 @@ export type SlimAnime = {
   id: string;
   anilistId?: number;
   malId?: number;
+  kitsuId?: number;
   titles: { romaji: string; english: string; native: string };
   cover: string;
   banner: string;
@@ -44,7 +45,7 @@ export type SlimAnime = {
   year: number | null;
   trailerId: string | null;
   color?: string;
-  source: "anilist" | "jikan" | "local";
+  source: "anilist" | "jikan" | "kitsu" | "local" | "cache";
 };
 
 export type Anime = SlimAnime & {
@@ -60,6 +61,7 @@ export type LocalAnime = {
   id: string;
   anilistId?: number;
   malId?: number;
+  kitsuId?: number;
   titleRomaji: string;
   titleEnglish: string;
   titleNative: string;
@@ -88,7 +90,7 @@ export type HomeCatalog = {
   releases: SlimAnime[];
   seasonName: string;
   seasonYear: number;
-  source: "anilist" | "jikan";
+  source: "anilist" | "jikan" | "kitsu" | "cache";
   genres: string[];
 };
 
@@ -106,7 +108,7 @@ export type SearchResult = {
   items: SlimAnime[];
   page: number;
   hasNext: boolean;
-  source: "anilist" | "jikan";
+  source: "anilist" | "jikan" | "kitsu";
 };
 
 export function displayTitle(
