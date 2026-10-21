@@ -67,7 +67,7 @@ export interface CustomVideoPlayerProps {
 }
 
 const PLAYBACK_SPEEDS: PlaybackSpeed[] = [0.5, 0.75, 1, 1.25, 1.5, 2];
-const INACTIVITY_DELAY = 4500; // ~4.5 segundos (entre 4 e 5 segundos para ocultação automática durante reprodução)
+const INACTIVITY_DELAY = 5000; // ~5 segundos exatos de inatividade confortável antes de ocultar controles durante reprodução
 
 export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   video,
@@ -89,7 +89,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const initialTimeAppliedRef = useRef<boolean>(false);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playPauseFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isPointerDownRef = useRef<boolean>(false);
   const justOpenedMenuTimeRef = useRef<number>(0);
 
   // Estados de reprodução
@@ -157,15 +156,17 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     }
   }, []);
 
-  // Agenda a ocultação automática dos controles após o tempo de inatividade durante reprodução (~4.5 segundos)
+  // Agenda a ocultação automática dos controles após o tempo de inatividade durante reprodução (~5 segundos)
   const scheduleControlsHide = useCallback((delay = INACTIVITY_DELAY) => {
     clearInactivityTimer();
 
     const el = videoRef.current;
+    // O vídeo está em reprodução se o elemento de mídia estiver despausado e não finalizado,
+    // ou se a ref síncrona isPlayingRef indicar reprodução ativa
     const isVideoPlaying = el ? (!el.paused && !el.ended) : isPlayingRef.current;
 
-    // Regra: se estiver pausado, com o menu de velocidade aberto ou se o usuário estiver tocando na tela, não oculta
-    if (!isVideoPlaying || showSettingsMenuRef.current || isPointerDownRef.current) {
+    // Regra: se estiver pausado ou com o menu de velocidade aberto, não oculta
+    if (!isVideoPlaying || showSettingsMenuRef.current) {
       return;
     }
 
@@ -173,10 +174,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       const currentEl = videoRef.current;
       const isStillPlaying = currentEl ? (!currentEl.paused && !currentEl.ended) : isPlayingRef.current;
 
-      if (isStillPlaying && !showSettingsMenuRef.current && !isPointerDownRef.current) {
+      if (isStillPlaying && !showSettingsMenuRef.current) {
         setControlsVisible(false);
         controlsVisibleRef.current = false;
       }
+      controlsTimeoutRef.current = null;
     }, delay);
   }, [clearInactivityTimer]);
 
@@ -336,6 +338,18 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     if (el.buffered.length > 0) {
       setBufferedTime(el.buffered.end(el.buffered.length - 1));
     }
+
+    // Auto-recuperação: se estiver reproduzindo ativamente, com controles visíveis,
+    // sem menu aberto e sem temporizador ativo no momento, agenda a ocultação para ~5 segundos
+    if (
+      controlsVisibleRef.current &&
+      !showSettingsMenuRef.current &&
+      !controlsTimeoutRef.current &&
+      !el.paused &&
+      !el.ended
+    ) {
+      scheduleControlsHide();
+    }
   };
 
   // Feedback central discreto de Play/Pause
@@ -393,8 +407,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   );
 
   // Toque ou clique seguro na superfície do vídeo
-  // Regra essencial: ao tocar na área do vídeo, SEMPRE exibe e mantém os controles visíveis
-  // por aproximadamente 4 a 5 segundos após soltar o dedo (ou indefinidamente se pausado).
+  // Regra essencial: ao tocar na área do vídeo, SEMPRE exibe os controles da Nova Stream
+  // e inicia/reinicia a contagem de 5 segundos (ou mantém visível se pausado).
   const handleVideoSurfacePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement;
@@ -408,23 +422,19 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         return;
       }
 
-      isPointerDownRef.current = true;
-      clearInactivityTimer();
-
       // 1. Ao tocar no vídeo, os controles da Nova Stream devem aparecer imediatamente
       if (!controlsVisibleRef.current) {
         setControlsVisible(true);
         controlsVisibleRef.current = true;
       }
+      resetInactivityTimer();
     },
-    [clearInactivityTimer]
+    [resetInactivityTimer]
   );
 
   const handleVideoSurfacePointerUp = useCallback(
     () => {
-      isPointerDownRef.current = false;
-      // 2. Depois que o usuário soltar o dedo e parar de interagir,
-      // os controles devem desaparecer automaticamente após aproximadamente 4 a 5 segundos durante a reprodução
+      // 2. Ao soltar o dedo ou parar de interagir, garante que o temporizador de 5s continue ativo
       scheduleControlsHide();
     },
     [scheduleControlsHide]
@@ -449,7 +459,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         showSettingsMenuRef.current = false;
       }
 
-      // 3. Ao tocar novamente no vídeo ou em um controle, reinicie o temporizador
+      // 3 & 4. Ao tocar novamente no vídeo ou em um controle, reinicia o temporizador de 5 segundos
       resetInactivityTimer();
     },
     [resetInactivityTimer]
@@ -457,7 +467,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   const handlePointerLeaveContainer = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      isPointerDownRef.current = false;
       if (e.pointerType === 'mouse') {
         scheduleControlsHide();
       }
@@ -700,6 +709,13 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
           isPlayingRef.current = true;
           resetInactivityTimer();
         }}
+        onPlaying={() => {
+          setIsPlaying(true);
+          isPlayingRef.current = true;
+          if (controlsVisibleRef.current) {
+            scheduleControlsHide();
+          }
+        }}
         onPause={() => {
           setIsPlaying(false);
           isPlayingRef.current = false;
@@ -806,12 +822,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       <div
         onPointerDown={(e) => {
           e.stopPropagation();
-          isPointerDownRef.current = true;
           clearInactivityTimer();
         }}
         onPointerUp={(e) => {
           e.stopPropagation();
-          isPointerDownRef.current = false;
           scheduleControlsHide();
         }}
         onClick={(e) => {

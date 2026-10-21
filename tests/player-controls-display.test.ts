@@ -19,7 +19,7 @@ class PlayerControlsSimulator {
   controlsVisible: boolean = true;
   isPlaying: boolean = false;
   showSettingsMenu: boolean = false;
-  inactivityDelay: number = 4500;
+  inactivityDelay: number = 5000;
   timerId: any = null;
   currentTime: number = 0;
   duration: number = 1420;
