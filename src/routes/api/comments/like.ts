@@ -22,7 +22,7 @@ export const Route = createFileRoute(
             return Response.json(
               {
                 error:
-                  "Você precisa estar logado para curtir.",
+                  "Você precisa estar logado para reagir ao comentário.",
               },
               { status: 401 },
             );
@@ -68,6 +68,17 @@ export const Route = createFileRoute(
               { status: 400 },
             );
           }
+
+          // Identificar tipo de reação: "like" ou "dislike"
+          const rawReaction =
+            typeof body.reaction === "string"
+              ? body.reaction.trim().toLowerCase()
+              : typeof body.type === "string"
+                ? body.type.trim().toLowerCase()
+                : "like";
+
+          const targetReaction: "like" | "dislike" =
+            rawReaction === "dislike" ? "dislike" : "like";
 
           const sql =
             await getSql();
@@ -128,14 +139,15 @@ export const Route = createFileRoute(
             null;
 
           // =====================================================
-          // 4. VERIFICAR SE JÁ CURTIU
+          // 4. VERIFICAR REAÇÃO ATUAL DO USUÁRIO
           // =====================================================
 
-          const existingLikeResult =
+          const existingReactionResult =
             await sql.query(
               `
                 select
-                  "id"
+                  "id",
+                  coalesce("type", 'like') as "type"
                 from "comment_like"
                 where
                   "commentId" = $1
@@ -149,111 +161,87 @@ export const Route = createFileRoute(
               ],
             );
 
-          const existingLikeRows =
+          const existingRows =
             Array.isArray(
-              existingLikeResult,
+              existingReactionResult,
             )
-              ? existingLikeResult
-              : existingLikeResult?.rows ??
+              ? existingReactionResult
+              : existingReactionResult?.rows ??
                 [];
 
-          // =====================================================
-          // 5. SE JÁ CURTIU → REMOVER
-          // =====================================================
+          let finalReaction: "like" | "dislike" | null = null;
 
-          if (
-            existingLikeRows.length >
-            0
-          ) {
-            await sql.query(
-              `
-                delete from "comment_like"
-                where
-                  "commentId" = $1
-                  and
-                  "userId" = $2
-              `,
-              [
-                commentId,
-                userId,
-              ],
-            );
+          if (existingRows.length > 0) {
+            const currentReaction = existingRows[0]?.type;
 
-            const countResult =
+            if (currentReaction === targetReaction) {
+              // Se o usuário clicou na mesma reação ativa → remove (retira a própria reação)
               await sql.query(
                 `
-                  select
-                    count(*)::int as "count"
-                  from "comment_like"
+                  delete from "comment_like"
                   where
                     "commentId" = $1
+                    and
+                    "userId" = $2
                 `,
-                [commentId],
+                [commentId, userId],
               );
-
-            const countRows =
-              Array.isArray(
-                countResult,
-              )
-                ? countResult
-                : countResult?.rows ??
-                  [];
-
-            const likes =
-              Number(
-                countRows[0]
-                  ?.count ?? 0,
+              finalReaction = null;
+            } else {
+              // Se o usuário trocou de like para dislike (ou vice-versa) → atualiza a reação
+              await sql.query(
+                `
+                  update "comment_like"
+                  set
+                    "type" = $1,
+                    "createdAt" = CURRENT_TIMESTAMP
+                  where
+                    "commentId" = $2
+                    and
+                    "userId" = $3
+                `,
+                [targetReaction, commentId, userId],
               );
+              finalReaction = targetReaction;
+            }
+          } else {
+            // Nova reação adicionada
+            const reactionId = crypto.randomUUID();
 
-            return Response.json({
-              liked: false,
-              likes,
-            });
+            await sql.query(
+              `
+                insert into "comment_like" (
+                  "id",
+                  "commentId",
+                  "userId",
+                  "type"
+                )
+                values (
+                  $1,
+                  $2,
+                  $3,
+                  $4
+                )
+              `,
+              [
+                reactionId,
+                commentId,
+                userId,
+                targetReaction,
+              ],
+            );
+            finalReaction = targetReaction;
           }
 
-          // =====================================================
-          // 6. ADICIONAR CURTIDA
-          // =====================================================
-
-          const likeId =
-            crypto.randomUUID();
-
-          await sql.query(
-            `
-              insert into "comment_like" (
-                "id",
-                "commentId",
-                "userId"
-              )
-              values (
-                $1,
-                $2,
-                $3
-              )
-            `,
-            [
-              likeId,
-              commentId,
-              userId,
-            ],
-          );
-
-          // =====================================================
-          // 7. CRIAR NOTIFICAÇÃO
-          // =====================================================
-
+          // Notificação apenas quando a reação final for "like" e o dono não for o autor
           if (
+            finalReaction === "like" &&
             commentOwnerId &&
-            commentOwnerId !==
-              userId
+            commentOwnerId !== userId
           ) {
             try {
-              const notificationId =
-                crypto.randomUUID();
-
-              const actorName =
-                session.user.name ??
-                "Alguém";
+              const notificationId = crypto.randomUUID();
+              const actorName = session.user.name ?? "Alguém";
 
               await sql.query(
                 `
@@ -289,38 +277,24 @@ export const Route = createFileRoute(
                   episodeId,
                 ],
               );
-
-              console.log(
-                "NOTIFICAÇÃO DE CURTIDA CRIADA:",
-                {
-                  notificationId,
-                  commentId,
-                  animeId,
-                  episodeId,
-                },
-              );
-            } catch (
-              notificationError
-            ) {
+            } catch (notificationError) {
               console.error(
                 "ERRO AO CRIAR NOTIFICAÇÃO DE CURTIDA:",
                 notificationError,
               );
-
-              // A curtida continua válida
-              // mesmo se a notificação falhar.
             }
           }
 
           // =====================================================
-          // 8. CONTAR CURTIDAS
+          // 5. CONTAR LIKES E DISLIKES ATUALIZADOS
           // =====================================================
 
           const countResult =
             await sql.query(
               `
                 select
-                  count(*)::int as "count"
+                  count(*) filter (where coalesce("type", 'like') = 'like')::int as "likes",
+                  count(*) filter (where "type" = 'dislike')::int as "dislikes"
                 from "comment_like"
                 where
                   "commentId" = $1
@@ -329,30 +303,27 @@ export const Route = createFileRoute(
             );
 
           const countRows =
-            Array.isArray(
-              countResult,
-            )
+            Array.isArray(countResult)
               ? countResult
-              : countResult?.rows ??
-                [];
+              : countResult?.rows ?? [];
 
           const likes =
-            Number(
-              countRows[0]
-                ?.count ?? 0,
-            );
+            Number(countRows[0]?.likes ?? 0);
 
-          // =====================================================
-          // 9. RESPONDER
-          // =====================================================
+          const dislikes =
+            Number(countRows[0]?.dislikes ?? 0);
 
           return Response.json({
-            liked: true,
+            success: true,
+            userReaction: finalReaction,
+            liked: finalReaction === "like",
+            disliked: finalReaction === "dislike",
             likes,
+            dislikes,
           });
         } catch (error) {
           console.error(
-            "ERRO REAL AO CURTIR COMENTÁRIO:",
+            "ERRO AO PROCESSAR REAÇÃO NO COMENTÁRIO:",
             error,
           );
 
@@ -364,7 +335,7 @@ export const Route = createFileRoute(
           return Response.json(
             {
               error:
-                "Não foi possível alterar a curtida.",
+                "Não foi possível processar a reação.",
               details: message,
             },
             { status: 500 },

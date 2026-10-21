@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
   Ban,
@@ -7,14 +8,19 @@ import {
   ChevronRight,
   Edit3,
   Flag,
-  Heart,
   Image as ImageIcon,
+  LogIn,
+  LogOut,
   MessageCircle,
   MoreVertical,
   Search,
   Send,
+  Settings2,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
-  Tv,
+  UserCircle,
+  Users,
   X,
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
@@ -27,7 +33,11 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { LoginMenu } from "@/components/LoginMenu";
 import { Logo } from "@/components/logo";
+import { signOut } from "@/lib/auth/client";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { getProfile } from "@/lib/profile.functions";
 import {
   CustomVideoPlayer,
   type VideoItem,
@@ -897,7 +907,10 @@ type Comment = {
   userName: string | null;
   userImage: string | null;
   likes: number;
+  dislikes: number;
   liked: boolean;
+  disliked: boolean;
+  userReaction?: "like" | "dislike" | null;
 };
 
 /* ========================================================= */
@@ -905,10 +918,9 @@ type Comment = {
 /* ========================================================= */
 
 type SortBy =
+  | "highlight"
   | "recent"
-  | "liked"
-  | "replies"
-  | "spoiler";
+  | "oldest";
 
 /* ========================================================= */
 /* TIPO DA DENÚNCIA                                          */
@@ -971,6 +983,9 @@ function CommentsSection({
 
   const [error, setError] =
     useState("");
+
+  const [loginOpen, setLoginOpen] =
+    useState(false);
 
   /* ====================================================== */
   /* IMAGEM DO COMENTÁRIO                                   */
@@ -1041,8 +1056,23 @@ function CommentsSection({
     useRef<HTMLInputElement | null>(null);
 
   /* ====================================================== */
-  /* USUÁRIO ATUAL                                          */
+  /* USUÁRIO ATUAL & SESSÃO                                  */
   /* ====================================================== */
+
+  const { user: authUser, isPending: authUserPending } =
+    useCurrentUserState();
+
+  const getProfileFn =
+    useServerFn(getProfile);
+
+  const [userNick, setUserNick] =
+    useState<string | null>(null);
+
+  const [userMenuOpen, setUserMenuOpen] =
+    useState(false);
+
+  const [showMedia, setShowMedia] =
+    useState(true);
 
   const [currentUserId, setCurrentUserId] =
     useState<string | null>(null);
@@ -1056,12 +1086,64 @@ function CommentsSection({
   const [currentUserImage, setCurrentUserImage] =
     useState<string | null>(null);
 
-  const [sessionLoading, setSessionLoading] =
-    useState(true);
+  // Busca o nick real do perfil caso disponível
+  useEffect(() => {
+    if (!authUser?.id) {
+      setUserNick(null);
+      return;
+    }
+    let active = true;
+    getProfileFn()
+      .then((p) => {
+        if (active && p?.nick) {
+          setUserNick(p.nick);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [authUser?.id, getProfileFn]);
+
+  // Tecla Escape para fechar os menus de login e de usuário
+  useEffect(() => {
+    if (!userMenuOpen && !loginOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setUserMenuOpen(false);
+        setLoginOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () =>
+      window.removeEventListener("keydown", handleKeyDown);
+  }, [userMenuOpen, loginOpen]);
+
+  const effectiveUserId =
+    authUser?.id ?? currentUserId;
+
+  const effectiveUserEmail =
+    authUser?.primaryEmail ?? currentUserEmail;
+
+  const effectiveUserName =
+    authUser?.displayName ||
+    userNick ||
+    currentUserName ||
+    (effectiveUserEmail
+      ? effectiveUserEmail.split("@")[0]
+      : "Usuário");
+
+  const effectiveUserImage =
+    authUser?.profileImageUrl ?? currentUserImage;
+
+  const sessionLoading =
+    authUserPending && !effectiveUserId;
 
   const isAdmin =
     isHikariAdmin(
-      currentUserEmail,
+      effectiveUserEmail,
     );
 
   /* ====================================================== */
@@ -1080,10 +1162,7 @@ function CommentsSection({
   /* ====================================================== */
 
   const [sortBy, setSortBy] =
-    useState<SortBy>("recent");
-
-  const [sortOpen, setSortOpen] =
-    useState(false);
+    useState<SortBy>("highlight");
 
   /* ====================================================== */
   /* MODERAÇÃO                                               */
@@ -1731,6 +1810,11 @@ function CommentsSection({
       const value =
         text.trim();
 
+      if (!effectiveUserId) {
+        setLoginOpen(true);
+        return;
+      }
+
       if (
         (!value &&
           !commentImage &&
@@ -1833,6 +1917,11 @@ function CommentsSection({
       const value =
         replyText.trim();
 
+      if (!effectiveUserId) {
+        setLoginOpen(true);
+        return;
+      }
+
       if (
         !value ||
         !animeId ||
@@ -1904,13 +1993,19 @@ function CommentsSection({
     };
 
   /* ====================================================== */
-  /* CURTIR / DESCURTIR                                     */
+  /* CURTIR / NÃO CURTIR (LIKE / DISLIKE)                  */
   /* ====================================================== */
 
-  const handleLike =
+  const handleReaction =
     async (
       commentId: string,
+      reaction: "like" | "dislike",
     ) => {
+      if (!effectiveUserId) {
+        setLoginOpen(true);
+        return;
+      }
+
       if (likingId) {
         return;
       }
@@ -1935,6 +2030,7 @@ function CommentsSection({
               },
               body: JSON.stringify({
                 commentId,
+                reaction,
               }),
             },
           );
@@ -1943,9 +2039,12 @@ function CommentsSection({
           await response.json();
 
         if (!response.ok) {
+          if (response.status === 401) {
+            setLoginOpen(true);
+          }
           throw new Error(
             data?.error ||
-              "Não foi possível alterar a curtida.",
+              "Não foi possível registrar a reação.",
           );
         }
 
@@ -1961,10 +2060,21 @@ function CommentsSection({
                         Number(
                           data.likes,
                         ) || 0,
+                      dislikes:
+                        Number(
+                          data.dislikes,
+                        ) || 0,
                       liked:
                         Boolean(
                           data.liked,
                         ),
+                      disliked:
+                        Boolean(
+                          data.disliked,
+                        ),
+                      userReaction:
+                        data.userReaction ??
+                        null,
                     }
                   : comment,
             ),
@@ -1975,7 +2085,7 @@ function CommentsSection({
         setError(
           err instanceof Error
             ? err.message
-            : "Não foi possível alterar a curtida.",
+            : "Não foi possível registrar a reação.",
         );
       } finally {
         setLikingId(
@@ -2401,55 +2511,35 @@ function CommentsSection({
         ...rootComments,
       ];
 
-      if (
-        sortBy ===
-        "spoiler"
-      ) {
-        result =
-          result.filter(
-            (comment) =>
-              comment.isSpoiler,
+      if (sortBy === "highlight") {
+        result.sort((a, b) => {
+          const scoreA =
+            (a.likes ?? 0) * 2 +
+            repliesFor(a.id).length -
+            (a.dislikes ?? 0);
+          const scoreB =
+            (b.likes ?? 0) * 2 +
+            repliesFor(b.id).length -
+            (b.dislikes ?? 0);
+          if (scoreB !== scoreA) {
+            return scoreB - scoreA;
+          }
+          return (
+            new Date(b.createdAt).getTime() -
+            new Date(a.createdAt).getTime()
           );
-      }
-
-      if (
-        sortBy ===
-        "liked"
-      ) {
+        });
+      } else if (sortBy === "recent") {
         result.sort(
           (a, b) =>
-            (b.likes ?? 0) -
-            (a.likes ?? 0),
+            new Date(b.createdAt).getTime() -
+            new Date(a.createdAt).getTime(),
         );
-      }
-
-      if (
-        sortBy ===
-        "replies"
-      ) {
+      } else if (sortBy === "oldest") {
         result.sort(
           (a, b) =>
-            repliesFor(
-              b.id,
-            ).length -
-            repliesFor(
-              a.id,
-            ).length,
-        );
-      }
-
-      if (
-        sortBy ===
-        "recent"
-      ) {
-        result.sort(
-          (a, b) =>
-            new Date(
-              b.createdAt,
-            ).getTime() -
-            new Date(
-              a.createdAt,
-            ).getTime(),
+            new Date(a.createdAt).getTime() -
+            new Date(b.createdAt).getTime(),
         );
       }
 
@@ -2459,22 +2549,6 @@ function CommentsSection({
       sortBy,
       comments,
     ]);
-
-  /* ====================================================== */
-  /* TEXTO DO FILTRO ATUAL                                  */
-  /* ====================================================== */
-
-  const sortLabel =
-    sortBy ===
-    "recent"
-      ? "Mais recentes"
-      : sortBy ===
-          "liked"
-        ? "Mais curtidos"
-        : sortBy ===
-            "replies"
-          ? "Mais respondidos"
-          : "Com spoiler";
 
   /* ====================================================== */
   /* RENDER                                                   */
@@ -2488,18 +2562,19 @@ function CommentsSection({
         <div className="min-w-0">
 
           {/* =============================================== */}
-          {/* TÍTULO + ORDENAÇÃO                              */}
+          {/* CABEÇALHO DOS COMENTÁRIOS ESTILO DISQUS/HIKARI  */}
           {/* =============================================== */}
 
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 border-b border-white/[0.08] pb-3">
 
-            <div className="min-w-0">
+            {/* Lado esquerdo: Título com contagem e as 3 abas de ordenação */}
+            <div className="flex flex-wrap items-center gap-3 sm:gap-6 min-w-0">
 
-              <div className="flex items-center gap-2 sm:gap-2.5">
+              <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
                 <div className="flex size-7 sm:size-8 items-center justify-center rounded-lg bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shrink-0">
                   <MessageCircle className="size-3.5 sm:size-4" />
                 </div>
-                <h2 className="font-display text-lg sm:text-2xl font-bold tracking-tight text-white">
+                <h2 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
                   Comentários
                 </h2>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shrink-0">
@@ -2507,144 +2582,228 @@ function CommentsSection({
                 </span>
               </div>
 
-              <p className="mt-1 text-xs text-white/50 truncate">
-                Comentários do episódio {episodeNumber} de {animeTitle}
-              </p>
+              {/* Três opções compactas alinhadas horizontalmente: Destaque, Recentes, Antigos */}
+              <div className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm">
+                <button
+                  type="button"
+                  onClick={() => setSortBy("highlight")}
+                  className={cn(
+                    "px-2.5 py-1 font-medium transition-all relative border-b-2",
+                    sortBy === "highlight"
+                      ? "border-[#a855f7] text-white font-semibold"
+                      : "border-transparent text-white/50 hover:text-white/80"
+                  )}
+                >
+                  Destaque
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSortBy("recent")}
+                  className={cn(
+                    "px-2.5 py-1 font-medium transition-all relative border-b-2",
+                    sortBy === "recent"
+                      ? "border-[#a855f7] text-white font-semibold"
+                      : "border-transparent text-white/50 hover:text-white/80"
+                  )}
+                >
+                  Recentes
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSortBy("oldest")}
+                  className={cn(
+                    "px-2.5 py-1 font-medium transition-all relative border-b-2",
+                    sortBy === "oldest"
+                      ? "border-[#a855f7] text-white font-semibold"
+                      : "border-transparent text-white/50 hover:text-white/80"
+                  )}
+                >
+                  Antigos
+                </button>
+              </div>
 
             </div>
 
-            {/* Seletor "Mais recentes" alinhado à direita */}
-            <div className="flex items-center justify-end self-end sm:self-auto shrink-0 relative">
+            {/* Lado direito: Login OU Menu da pessoa autenticada */}
+            <div className="flex items-center self-end sm:self-auto shrink-0 relative">
 
-              <button
-                type="button"
-                onClick={() =>
-                  setSortOpen(
-                    (open) => !open,
-                  )
-                }
-                aria-haspopup="menu"
-                aria-expanded={
-                  sortOpen
-                }
-                className="flex min-h-9 sm:min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#16161b] px-3.5 py-2 text-xs sm:text-sm font-medium text-white/80 outline-none transition-all hover:border-[#a855f7]/40 hover:bg-white/[0.06] hover:text-white active:scale-95 shadow-sm"
-              >
-
-                <span>
-                  {sortLabel}
-                </span>
-
-                <ChevronDown
-                  className={cn(
-                    "size-3.5 text-white/50 transition-transform duration-200",
-                    sortOpen &&
-                      "rotate-180 text-[#c084fc]",
-                  )}
-                />
-
-              </button>
-
-              {sortOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setSortOpen(false)}
-                  />
-                  <div
-                    role="menu"
-                    className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[190px] overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1.5 shadow-2xl backdrop-blur-md"
+              {!effectiveUserId ? (
+                /* Visitante: Opção ENTRAR com popover dos 3 provedores */
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setLoginOpen((prev) => !prev)}
+                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-xl border border-[#a855f7]/35 bg-[#a855f7]/10 px-3 py-1 text-xs sm:text-sm font-semibold text-[#c084fc] hover:bg-[#a855f7]/20 hover:text-white hover:border-[#a855f7]/55 active:scale-95 transition-all shadow-sm"
+                    aria-expanded={loginOpen}
+                    aria-haspopup="menu"
                   >
-
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setSortBy(
-                          "recent",
-                        );
-                        setSortOpen(
-                          false,
-                        );
-                      }}
+                    <LogIn className="size-3.5" />
+                    <span>Entrar</span>
+                    <ChevronDown
                       className={cn(
-                        "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                        sortBy ===
-                          "recent"
-                          ? "bg-[#a855f7]/20 text-white font-medium"
-                          : "text-white/70 hover:bg-white/[0.06] hover:text-white",
+                        "size-3 text-[#c084fc]/70 transition-transform duration-200",
+                        loginOpen && "rotate-180 text-white"
                       )}
-                    >
-                      Mais recentes
-                    </button>
+                    />
+                  </button>
 
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setSortBy(
-                          "liked",
-                        );
-                        setSortOpen(
-                          false,
-                        );
-                      }}
+                  {/* Menu compacto de login: Google, X, Facebook */}
+                  {loginOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setLoginOpen(false)}
+                      />
+                      <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 sm:w-80 max-w-[calc(100vw-2rem)]">
+                        <LoginMenu
+                          isOpen={loginOpen}
+                          onClose={() => setLoginOpen(false)}
+                          isModal={false}
+                          callbackURL={
+                            typeof window !== "undefined"
+                              ? window.location.pathname + window.location.search
+                              : "/"
+                          }
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                /* Usuário autenticado: Avatar real + Nome + Menu com 5 opções */
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setUserMenuOpen((prev) => !prev)}
+                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-2 rounded-xl border border-white/10 bg-[#16161b] px-2.5 py-1 text-xs sm:text-sm font-medium text-white/90 hover:border-[#a855f7]/40 hover:bg-white/[0.06] active:scale-95 transition-all shadow-sm max-w-[200px] sm:max-w-[240px]"
+                    aria-expanded={userMenuOpen}
+                    aria-haspopup="menu"
+                  >
+                    <div className="flex size-6 sm:size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-[#a855f7]/40 text-xs font-semibold text-white">
+                      {effectiveUserImage ? (
+                        <img
+                          src={effectiveUserImage}
+                          alt=""
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-[#c084fc] font-bold text-[11px]">
+                          {effectiveUserName.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <span className="truncate text-xs sm:text-sm text-white/95 font-medium">
+                      {effectiveUserName}
+                    </span>
+                    <ChevronDown
                       className={cn(
-                        "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                        sortBy ===
-                          "liked"
-                          ? "bg-[#a855f7]/20 text-white font-medium"
-                          : "text-white/70 hover:bg-white/[0.06] hover:text-white",
+                        "size-3 text-white/50 shrink-0 transition-transform duration-200",
+                        userMenuOpen && "rotate-180 text-[#c084fc]"
                       )}
-                    >
-                      Mais curtidos
-                    </button>
+                    />
+                  </button>
 
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setSortBy(
-                          "replies",
-                        );
-                        setSortOpen(
-                          false,
-                        );
-                      }}
-                      className={cn(
-                        "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                        sortBy ===
-                          "replies"
-                          ? "bg-[#a855f7]/20 text-white font-medium"
-                          : "text-white/70 hover:bg-white/[0.06] hover:text-white",
-                      )}
-                    >
-                      Mais respondidos
-                    </button>
+                  {/* Menu da pessoa autenticada */}
+                  {userMenuOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setUserMenuOpen(false)}
+                      />
+                      <div
+                        role="menu"
+                        className="absolute right-0 top-[calc(100%+8px)] z-50 w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#141419]/95 backdrop-blur-xl p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                      >
+                        {/* Header do Menu com Nome e Email */}
+                        <div className="px-3 py-2 border-b border-white/[0.08] mb-1">
+                          <p className="text-xs font-semibold text-white truncate">
+                            {effectiveUserName}
+                          </p>
+                          {effectiveUserEmail && (
+                            <p className="text-[11px] text-white/40 truncate">
+                              {effectiveUserEmail}
+                            </p>
+                          )}
+                        </div>
 
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setSortBy(
-                          "spoiler",
-                        );
-                        setSortOpen(
-                          false,
-                        );
-                      }}
-                      className={cn(
-                        "flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                        sortBy ===
-                          "spoiler"
-                          ? "bg-[#a855f7]/20 text-white font-medium"
-                          : "text-white/70 hover:bg-white/[0.06] hover:text-white",
-                      )}
-                    >
-                      Com spoiler
-                    </button>
+                        {/* 1. Seu perfil */}
+                        <Link
+                          to={userNick ? "/profile/$nick" : "/account"}
+                          params={userNick ? { nick: userNick } : undefined}
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
+                        >
+                          <UserCircle className="size-4 text-[#c084fc] shrink-0" />
+                          <span>Seu perfil</span>
+                        </Link>
 
-                  </div>
-                </>
+                        {/* 2. Comunidade */}
+                        <Link
+                          to="/news"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
+                        >
+                          <Users className="size-4 text-[#c084fc] shrink-0" />
+                          <span>Comunidade</span>
+                        </Link>
+
+                        {/* 3. Exibir mídia */}
+                        <button
+                          type="button"
+                          onClick={() => setShowMedia((prev) => !prev)}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <ImageIcon className="size-4 text-[#c084fc] shrink-0" />
+                            <span>Exibir mídia</span>
+                          </div>
+                          <span
+                            className={cn(
+                              "text-[10px] px-1.5 py-0.5 rounded font-semibold",
+                              showMedia
+                                ? "bg-[#a855f7]/25 text-[#c084fc]"
+                                : "bg-white/10 text-white/40"
+                            )}
+                          >
+                            {showMedia ? "Ativo" : "Oculto"}
+                          </span>
+                        </button>
+
+                        {/* 4. Editar configurações */}
+                        <Link
+                          to="/settings-profile"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
+                        >
+                          <Settings2 className="size-4 text-[#c084fc] shrink-0" />
+                          <span>Editar configurações</span>
+                        </Link>
+
+                        {/* Divisor */}
+                        <div className="h-px bg-white/[0.08] my-1" />
+
+                        {/* 5. Sair */}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setUserMenuOpen(false);
+                            try {
+                              await signOut();
+                            } catch (e) {
+                              console.error("Erro ao sair:", e);
+                            }
+                          }}
+                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 transition-colors"
+                        >
+                          <LogOut className="size-4 text-red-400 shrink-0" />
+                          <span>Sair</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
 
             </div>
@@ -2655,21 +2814,19 @@ function CommentsSection({
           {/* CAMPO DE COMENTÁRIO                             */}
           {/* =============================================== */}
 
-          <div className="mt-5 rounded-2xl border border-white/10 bg-[#141418] p-4 sm:p-5 shadow-xl focus-within:border-[#a855f7]/50 focus-within:ring-1 focus-within:ring-[#a855f7]/20 transition-all">
+          <div className="mt-4 rounded-2xl border border-white/10 bg-[#141418] p-3.5 sm:p-4 shadow-xl focus-within:border-[#a855f7]/50 focus-within:ring-1 focus-within:ring-[#a855f7]/20 transition-all">
 
             <div className="flex items-start gap-3">
-              <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated text-sm font-semibold border border-white/10 text-white/80 mt-0.5">
-                {currentUserImage ? (
+              <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] text-xs font-semibold border border-white/10 text-white/80 mt-0.5">
+                {effectiveUserImage ? (
                   <img
-                    src={currentUserImage}
+                    src={effectiveUserImage}
                     alt=""
                     className="size-full object-cover"
                   />
                 ) : (
                   <span className="text-[#c084fc] font-bold">
-                    {(currentUserName || currentUserEmail || "U")
-                      .charAt(0)
-                      .toUpperCase()}
+                    {effectiveUserName.charAt(0).toUpperCase()}
                   </span>
                 )}
               </div>
@@ -2904,13 +3061,14 @@ function CommentsSection({
             )}
 
             {/* ============================================= */}
+            {/* ============================================= */}
             {/* BARRA DE FERRAMENTAS E CONTROLES DO FORMULÁRIO */}
             {/* ============================================= */}
 
-            <div className="mt-3.5 pt-3 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+            <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5">
 
-              {/* Grupo esquerdo: Imagem, GIF e Spoiler com espaçamento adequado */}
-              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+              {/* Grupo esquerdo: Imagem, GIF único e Spoiler */}
+              <div className="flex flex-wrap items-center gap-2">
 
                 <input
                   ref={
@@ -2924,7 +3082,7 @@ function CommentsSection({
                   className="hidden"
                 />
 
-                {/* Botão Imagem com espaço e identidade própria */}
+                {/* Botão Imagem */}
                 <button
                   type="button"
                   onClick={() =>
@@ -2936,13 +3094,13 @@ function CommentsSection({
                   }
                   aria-label="Adicionar imagem"
                   title="Adicionar imagem"
-                  className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 sm:gap-2 rounded-lg border border-white/10 bg-[#16161b] px-2.5 sm:px-3 text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-[#16161b] px-2.5 py-1 text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <ImageIcon className="size-3.5 sm:size-4 text-[#c084fc] shrink-0" />
+                  <ImageIcon className="size-3.5 text-[#c084fc] shrink-0" />
                   <span>Imagem</span>
                 </button>
 
-                {/* Botão GIF com espaçamento horizontal suficiente, sem grudar */}
+                {/* Botão GIF - com identificação única (sem duplicidade) */}
                 <button
                   type="button"
                   onClick={() => {
@@ -2954,19 +3112,18 @@ function CommentsSection({
                   }
                   aria-label="Adicionar GIF"
                   title="Adicionar GIF"
-                  className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 sm:gap-2 rounded-lg border border-white/10 bg-[#16161b] px-2.5 sm:px-3 text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-white/10 bg-[#16161b] px-2.5 py-1 text-xs font-medium text-white/80 transition-all hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <span className="rounded bg-[#a855f7]/20 border border-[#a855f7]/30 px-1 py-0.5 text-[9px] font-black tracking-wider text-[#c084fc] shrink-0">
+                  <span className="rounded bg-[#a855f7]/20 border border-[#a855f7]/35 px-1.5 py-0.5 text-[9px] font-black tracking-wider text-[#c084fc] shrink-0">
                     GIF
                   </span>
-                  <span>GIF</span>
                 </button>
 
                 {/* Separador vertical sutil */}
-                <div className="hidden sm:block h-4 w-px bg-white/10 mx-0.5" />
+                <div className="hidden sm:block h-3.5 w-px bg-white/10 mx-0.5" />
 
                 {/* Marcar como spoiler */}
-                <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-white/70 hover:text-white select-none py-1 transition-colors">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/70 hover:text-white select-none py-1 transition-colors">
                   <input
                     type="checkbox"
                     checked={isSpoiler}
@@ -2981,18 +3138,25 @@ function CommentsSection({
                     className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-[#a855f7] accent-[#a855f7] focus:ring-1 focus:ring-[#a855f7]"
                   />
                   <span className="truncate">
-                    Marcar como spoiler
+                    Spoiler
                   </span>
                 </label>
 
               </div>
 
-              {/* Grupo direito: Instrução discreta e Botão Comentar Compacto */}
-              <div className="flex items-center gap-3 ml-auto">
+              {/* Grupo direito: Entrar (se não logado) + Enviar */}
+              <div className="flex items-center gap-2.5 ml-auto">
 
-                <p className="hidden md:inline text-[11px] text-white/40 select-none">
-                  Enter para enviar · Shift + Enter para quebrar linha
-                </p>
+                {!currentUserId && (
+                  <button
+                    type="button"
+                    onClick={() => setLoginOpen(true)}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-[#c084fc] hover:text-[#d8b4fe] transition-colors py-1 px-2 rounded-lg hover:bg-[#a855f7]/10"
+                  >
+                    <LogIn className="size-3.5" />
+                    <span>Entrar</span>
+                  </button>
+                )}
 
                 <Button
                   type="button"
@@ -3007,12 +3171,12 @@ function CommentsSection({
                     sending ||
                     imageUploading
                   }
-                  className="w-auto px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_15px_rgba(168,85,247,0.25)] active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none shrink-0 inline-flex items-center gap-1.5"
+                  className="w-auto px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-xl bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_12px_rgba(168,85,247,0.25)] active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none shrink-0 inline-flex items-center gap-1.5"
                 >
                   <Send className="size-3.5 shrink-0" />
                   <span>
                     {imageUploading
-                      ? "Enviando imagem..."
+                      ? "Enviando..."
                       : sending
                         ? "Enviando..."
                         : "Comentar"}
@@ -3024,7 +3188,7 @@ function CommentsSection({
             </div>
 
             {error && (
-              <p className="mt-3 text-sm text-red-400">
+              <p className="mt-3 text-xs sm:text-sm text-red-400">
                 {error}
               </p>
             )}
@@ -3039,7 +3203,7 @@ function CommentsSection({
           {/* =============================================== */}
 
           {moderationSuccess && (
-            <div className="mt-4 rounded-lg border border-white/5 bg-surface px-4 py-3 text-sm text-muted">
+            <div className="mt-4 rounded-xl border border-white/10 bg-[#141418] px-4 py-3 text-sm text-[#c084fc]">
               {moderationSuccess}
             </div>
           )}
@@ -3050,24 +3214,24 @@ function CommentsSection({
 
           {sortBy ===
             "spoiler" && (
-            <div className="mt-4 rounded-lg border border-white/5 bg-surface px-4 py-3 text-sm text-muted">
+            <div className="mt-4 rounded-xl border border-white/10 bg-[#141418] px-4 py-2.5 text-xs text-white/60">
               Mostrando apenas comentários marcados como spoiler.
             </div>
           )}
 
           {/* =============================================== */}
-          {/* LISTA DE COMENTÁRIOS                            */}
+          {/* LISTA DE COMENTÁRIOS REDESENHADA (SEM CARTÕES PESADOS) */}
           {/* =============================================== */}
 
-          <div className="mt-5 space-y-3">
+          <div className="mt-6 divide-y divide-white/[0.06] border-y border-white/[0.06]">
 
             {loading ? (
-              <div className="rounded-xl border border-white/5 bg-surface p-5 text-sm text-muted">
+              <div className="py-8 text-center text-sm text-white/40">
                 Carregando comentários...
               </div>
             ) : displayedRootComments.length ===
               0 ? (
-              <div className="rounded-xl border border-white/5 bg-surface p-5 text-center text-sm text-muted">
+              <div className="py-10 text-center text-sm text-white/40">
 
                 {sortBy ===
                 "spoiler"
@@ -3082,7 +3246,7 @@ function CommentsSection({
                     <>
                       Ainda não há comentários neste episódio.
                       <br />
-                      Seja o primeiro a comentar.
+                      Seja o primeiro a comentar!
                     </>
                   )}
 
@@ -3111,7 +3275,7 @@ function CommentsSection({
                       key={
                         comment.id
                       }
-                      className="space-y-2"
+                      className="py-3 sm:py-4 transition-colors"
                     >
 
                       <CommentCard
@@ -3142,8 +3306,8 @@ function CommentsSection({
                         formatDate={
                           formatDate
                         }
-                        onLike={
-                          handleLike
+                        onReaction={
+                          handleReaction
                         }
                         onReplyChange={
                           setReplyText
@@ -3228,11 +3392,13 @@ function CommentsSection({
                           highlightedCommentId ===
                           comment.id
                         }
+                        onRequireLogin={() => setLoginOpen(true)}
                       />
 
+                      {/* Respostas com recuo progressivo e linha vertical discreta */}
                       {replies.length >
                         0 && (
-                        <div className="ml-4 sm:ml-8 space-y-2.5 border-l-2 border-[#a855f7]/30 pl-3 sm:pl-4 pt-1">
+                        <div className="mt-2.5 ml-3 sm:ml-7 border-l-2 border-[#a855f7]/30 pl-3 sm:pl-4 space-y-2">
 
                           {replies.map(
                             (
@@ -3268,26 +3434,56 @@ function CommentsSection({
                                     likingId
                                   }
                                   replyingId={
-                                    null
+                                    replyingId
                                   }
-                                  replyText=""
+                                  replyText={
+                                    replyText
+                                  }
                                   replyIsSpoiler={
-                                    false
+                                    replyIsSpoiler
                                   }
                                   replySending={
-                                    false
+                                    replySending
                                   }
                                   formatDate={
                                     formatDate
                                   }
-                                  onLike={
-                                    handleLike
+                                  onReaction={
+                                    handleReaction
                                   }
-                                  onReplyChange={() => {}}
-                                  onReplySpoilerChange={() => {}}
-                                  onStartReply={() => {}}
-                                  onCancelReply={() => {}}
-                                  onSendReply={() => {}}
+                                  onReplyChange={
+                                    setReplyText
+                                  }
+                                  onReplySpoilerChange={
+                                    setReplyIsSpoiler
+                                  }
+                                  onStartReply={() => {
+                                    setReplyingId(
+                                      reply.id,
+                                    );
+                                    setReplyText(
+                                      `@${reply.userName || "Usuário"} `,
+                                    );
+                                    setReplyIsSpoiler(
+                                      false,
+                                    );
+                                  }}
+                                  onCancelReply={() => {
+                                    setReplyingId(
+                                      null,
+                                    );
+                                    setReplyText(
+                                      "",
+                                    );
+                                    setReplyIsSpoiler(
+                                      false,
+                                    );
+                                  }}
+                                  onSendReply={() => {
+                                    void handleReply(
+                                      comment.id,
+                                    );
+                                  }}
                                   isReply
                                   menuOpen={
                                     menuOpenId ===
@@ -3339,6 +3535,7 @@ function CommentsSection({
                                     highlightedCommentId ===
                                     reply.id
                                   }
+                                  onRequireLogin={() => setLoginOpen(true)}
                                 />
                               );
                             },
@@ -3958,12 +4155,26 @@ function CommentsSection({
         </div>
       )}
 
+      {/* ================================================== */}
+      {/* MENU DE LOGIN COMPACTO                             */}
+      {/* ================================================== */}
+
+      <LoginMenu
+        isOpen={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        callbackURL={
+          typeof window !== "undefined"
+            ? window.location.pathname + window.location.search
+            : "/"
+        }
+      />
+
     </section>
   );
 }
 
 /* ========================================================= */
-/* CARD DO COMENTÁRIO                                        */
+/* CARD DO COMENTÁRIO REDESENHADO (LEVE E MODERNO)          */
 /* ========================================================= */
 
 function CommentCard({
@@ -3976,7 +4187,7 @@ function CommentCard({
   replyIsSpoiler,
   replySending,
   formatDate,
-  onLike,
+  onReaction,
   onReplyChange,
   onReplySpoilerChange,
   onStartReply,
@@ -3993,6 +4204,7 @@ function CommentCard({
   moderating,
   canEdit,
   highlighted = false,
+  onRequireLogin: _onRequireLogin,
 }: {
   comment: Comment;
   replyCount: number;
@@ -4002,18 +4214,10 @@ function CommentCard({
   replyText: string;
   replyIsSpoiler: boolean;
   replySending: boolean;
-  formatDate: (
-    value: string,
-  ) => string;
-  onLike: (
-    id: string,
-  ) => void;
-  onReplyChange: (
-    value: string,
-  ) => void;
-  onReplySpoilerChange: (
-    value: boolean,
-  ) => void;
+  formatDate: (value: string) => string;
+  onReaction: (id: string, reaction: "like" | "dislike") => void;
+  onReplyChange: (value: string) => void;
+  onReplySpoilerChange: (value: boolean) => void;
   onStartReply: () => void;
   onCancelReply: () => void;
   onSendReply: () => void;
@@ -4028,456 +4232,323 @@ function CommentCard({
   moderating: boolean;
   canEdit: boolean;
   highlighted?: boolean;
+  onRequireLogin?: () => void;
 }) {
-  const isReplying =
-    replyingId ===
-    comment.id;
+  const isReplying = replyingId === comment.id;
 
   return (
     <article
       id={`comment-${comment.id}`}
       className={cn(
-        "rounded-xl border border-white/5 bg-surface p-3.5 transition-all duration-300 sm:p-5",
-        isReply &&
-          "bg-surface/80 border-white/[0.04] relative before:absolute before:-left-3 sm:before:-left-4 before:top-6 before:w-3 sm:before:w-4 before:h-0.5 before:bg-[#a855f7]/30",
+        "group/comment relative py-2.5 transition-colors",
         highlighted &&
-          "border-[#a855f7]/50 bg-elevated shadow-[0_0_20px_rgba(168,85,247,0.15)]",
+          "rounded-xl bg-[#a855f7]/10 p-3 border border-[#a855f7]/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]",
       )}
     >
+      {/* =================================================== */}
+      {/* TOPO: AVATAR, NOME, DATA E MENU DE OPÇÕES           */}
+      {/* =================================================== */}
 
-      <div className="flex gap-3">
-
-        {/* ================================================= */}
-        {/* AVATAR                                            */}
-        {/* ================================================= */}
-
-        <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-elevated text-sm font-semibold">
-
-          {comment.userImage ? (
-            <img
-              src={
-                comment.userImage
-              }
-              alt=""
-              className="size-full object-cover"
-            />
-          ) : (
-            (
-              comment.userName ||
-              "U"
-            )
-              .charAt(0)
-              .toUpperCase()
-          )}
-
-        </div>
-
-        {/* ================================================= */}
-        {/* CONTEÚDO                                          */}
-        {/* ================================================= */}
-
-        <div className="min-w-0 flex-1">
-
-          {/* =============================================== */}
-          {/* USUÁRIO + DATA + MENU                           */}
-          {/* =============================================== */}
-
-          <div className="relative flex items-start gap-2">
-
-            <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-
-              <span className="text-sm font-semibold">
-                {comment.userName ||
-                  "Usuário"}
+      <div className="flex items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* Avatar compacto */}
+          <div className="relative flex size-7 sm:size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90">
+            {comment.userImage ? (
+              <img
+                src={comment.userImage}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <span className="text-[#c084fc] font-bold">
+                {(comment.userName || "U").charAt(0).toUpperCase()}
               </span>
-
-              {isReply &&
-                replyToName && (
-                  <>
-                    <span className="text-sm text-subtle">
-                      →
-                    </span>
-
-                    <span className="text-sm font-semibold text-muted">
-                      {replyToName}
-                    </span>
-                  </>
-                )}
-
-              <span className="text-xs text-subtle">
-                ·{" "}
-                {formatDate(
-                  comment.createdAt,
-                )}
-              </span>
-
-            </div>
-
-            {/* ============================================= */}
-            {/* MENU                                           */}
-            {/* ============================================= */}
-
-            <div className="relative shrink-0">
-
-              <button
-                type="button"
-                onClick={
-                  onToggleMenu
-                }
-                disabled={
-                  moderating
-                }
-                aria-label="Opções do comentário"
-                aria-haspopup="menu"
-                aria-expanded={
-                  menuOpen
-                }
-                className="flex size-9 items-center justify-center rounded-lg text-subtle transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
-              >
-
-                <MoreVertical className="size-5" />
-
-              </button>
-
-              {menuOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-[calc(100%+6px)] z-50 w-56 overflow-hidden rounded-xl border border-white/10 bg-[#17171a] p-1 shadow-2xl"
-                >
-
-                  {canEdit ? (
-                    <>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={
-                          onEdit
-                        }
-                        disabled={
-                          moderating
-                        }
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
-                      >
-
-                        <Edit3 className="size-4 shrink-0" />
-
-                        <span>
-                          Editar comentário
-                        </span>
-
-                      </button>
-
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={
-                          onDelete
-                        }
-                        disabled={
-                          moderating
-                        }
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
-                      >
-
-                        <Trash2 className="size-4 shrink-0" />
-
-                        <span>
-                          Excluir comentário
-                        </span>
-
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={
-                          onMarkSpoiler
-                        }
-                        disabled={
-                          moderating
-                        }
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
-                      >
-
-                        <AlertTriangle className="size-4 shrink-0" />
-
-                        <span>
-                          {moderating
-                            ? "Enviando..."
-                            : "Marcar como spoiler"}
-                        </span>
-
-                      </button>
-
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={
-                          onReport
-                        }
-                        disabled={
-                          moderating
-                        }
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
-                      >
-
-                        <Flag className="size-4 shrink-0" />
-
-                        <span>
-                          Denunciar comentário
-                        </span>
-
-                      </button>
-
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={
-                          onSpam
-                        }
-                        disabled={
-                          moderating
-                        }
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-50"
-                      >
-
-                        <Ban className="size-4 shrink-0" />
-
-                        <span>
-                          Marcar como spam
-                        </span>
-
-                      </button>
-                    </>
-                  )}
-
-                </div>
-              )}
-
-            </div>
-
+            )}
           </div>
 
-          {/* =============================================== */}
-          {/* SPOILER                                          */}
-          {/* =============================================== */}
+          {/* Nome, indicador Usuário -> Usuário e Data */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+            <span className="text-xs sm:text-sm font-semibold text-white/95 truncate">
+              {comment.userName || "Usuário"}
+            </span>
 
-          {comment.isSpoiler ? (
-            <details className="mt-2 rounded-lg border border-white/5 bg-bg/50 px-3 py-2">
-
-              <summary className="cursor-pointer text-sm font-medium text-fg">
-                ⚠️ Mostrar spoiler
-              </summary>
-
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
-                {comment.content}
-              </p>
-
-            </details>
-          ) : (
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
-              {comment.content}
-            </p>
-          )}
-
-          {/* =============================================== */}
-          {/* IMAGEM DO COMENTÁRIO                            */}
-          {/* =============================================== */}
-
-          {comment.imageUrl && (
-            <div className="mt-3 w-fit max-w-full overflow-hidden rounded-xl border border-white/5 bg-bg">
-
-              <a
-                href={comment.imageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block w-fit max-w-full cursor-zoom-in"
-                aria-label="Abrir imagem em tamanho maior"
-              >
-                <img
-                  src={
-                    comment.imageUrl
-                  }
-                  alt="Imagem anexada ao comentário"
-                  loading="lazy"
-                  className="block max-h-[520px] w-auto max-w-full object-contain"
-                />
-              </a>
-
-            </div>
-          )}
-
-          {/* =============================================== */}
-          {/* AÇÕES                                            */}
-          {/* =============================================== */}
-
-          <div className="mt-3 flex flex-wrap items-center gap-4">
-
-            <button
-              type="button"
-              onClick={() =>
-                void onLike(
-                  comment.id,
-                )
-              }
-              disabled={
-                likingId ===
-                comment.id
-              }
-              className={cn(
-                "flex items-center gap-1.5 text-xs transition-colors",
-                comment.liked
-                  ? "text-fg"
-                  : "text-subtle hover:text-fg",
-              )}
-              aria-label={
-                comment.liked
-                  ? "Remover curtida"
-                  : "Curtir comentário"
-              }
-            >
-
-              <Heart
-                className={cn(
-                  "size-4",
-                  comment.liked &&
-                    "fill-current",
-                )}
-              />
-
-              {comment.likes}
-
-            </button>
-
-            {!isReply && (
-              <button
-                type="button"
-                onClick={
-                  onStartReply
-                }
-                className="flex items-center gap-1.5 text-xs text-subtle transition-colors hover:text-fg"
-              >
-
-                <MessageCircle className="size-4" />
-
-                Responder
-
-              </button>
+            {isReply && replyToName && (
+              <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-medium text-[#c084fc]/90">
+                <span className="text-white/40">→</span>
+                <span>@{replyToName}</span>
+              </span>
             )}
 
-            {!isReply &&
-              replyCount > 0 && (
-                <span className="flex items-center gap-1.5 text-xs text-subtle">
-
-                  <MessageCircle className="size-4" />
-
-                  {replyCount}{" "}
-                  {replyCount ===
-                  1
-                    ? "Resposta"
-                    : "Respostas"}
-
-                </span>
-              )}
-
+            <span className="text-[11px] text-white/40">
+              · {formatDate(comment.createdAt)}
+            </span>
           </div>
-
-          {/* =============================================== */}
-          {/* CAIXA DE RESPOSTA                                */}
-          {/* =============================================== */}
-
-          {isReplying && (
-            <div className="mt-4 rounded-lg border border-white/5 bg-bg p-3">
-
-              <textarea
-                value={
-                  replyText
-                }
-                onChange={(
-                  event,
-                ) => {
-                  onReplyChange(
-                    event.target
-                      .value,
-                  );
-                }}
-                rows={3}
-                maxLength={
-                  2000
-                }
-                placeholder="Escreva uma resposta..."
-                className="w-full resize-none rounded-lg border border-white/5 bg-surface px-3 py-2 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15"
-              />
-
-              <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-muted select-none">
-
-                <input
-                  type="checkbox"
-                  checked={
-                    replyIsSpoiler
-                  }
-                  onChange={(
-                    event,
-                  ) => {
-                    onReplySpoilerChange(
-                      event.target
-                        .checked,
-                    );
-                  }}
-                  className="size-4 accent-current"
-                />
-
-                <span>
-                  Marcar como spoiler
-                </span>
-
-              </label>
-
-              <div className="mt-3 flex items-center justify-end gap-2">
-
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={
-                    onCancelReply
-                  }
-                  disabled={
-                    replySending
-                  }
-                >
-                  Cancelar
-                </Button>
-
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={
-                    onSendReply
-                  }
-                  disabled={
-                    !replyText.trim() ||
-                    replySending
-                  }
-                >
-                  <Send className="size-4" />
-
-                  {replySending
-                    ? "Enviando..."
-                    : "Responder"}
-                </Button>
-
-              </div>
-
-            </div>
-          )}
-
         </div>
 
+        {/* Menu de opções no topo direito */}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={onToggleMenu}
+            disabled={moderating}
+            aria-label="Opções do comentário"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className="flex size-7 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:scale-95 transition-all disabled:opacity-50"
+          >
+            <MoreVertical className="size-4" />
+          </button>
+
+          {menuOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={onToggleMenu}
+              />
+              <div
+                role="menu"
+                className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+              >
+                {canEdit ? (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={onEdit}
+                      disabled={moderating}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      <Edit3 className="size-3.5 shrink-0 text-[#c084fc]" />
+                      <span>Editar comentário</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={onDelete}
+                      disabled={moderating}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 className="size-3.5 shrink-0 text-red-400" />
+                      <span>Excluir comentário</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={onMarkSpoiler}
+                      disabled={moderating}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      <AlertTriangle className="size-3.5 shrink-0 text-amber-400" />
+                      <span>
+                        {moderating ? "Enviando..." : "Marcar como spoiler"}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={onReport}
+                      disabled={moderating}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      <Flag className="size-3.5 shrink-0 text-purple-400" />
+                      <span>Denunciar comentário</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={onSpam}
+                      disabled={moderating}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      <Ban className="size-3.5 shrink-0 text-red-400" />
+                      <span>Marcar como spam</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
+      {/* =================================================== */}
+      {/* CONTEÚDO (LOGO ABAIXO DO CABEÇALHO)                 */}
+      {/* =================================================== */}
+
+      <div className="mt-2 text-xs sm:text-sm text-white/85 leading-relaxed break-words">
+        {comment.isSpoiler ? (
+          <details className="rounded-xl border border-white/10 bg-[#0e0e13] px-3.5 py-2.5 text-xs text-white/90">
+            <summary className="cursor-pointer font-medium text-amber-400/90 flex items-center gap-1.5 select-none hover:text-amber-300">
+              ⚠️ <span>Conteúdo com spoiler (clique para ver)</span>
+            </summary>
+            <p className="mt-2 whitespace-pre-wrap text-white/80">
+              {comment.content}
+            </p>
+          </details>
+        ) : (
+          <p className="whitespace-pre-wrap text-white/85">
+            {comment.content}
+          </p>
+        )}
+
+        {/* Anexo de Imagem ou GIF */}
+        {comment.imageUrl && (
+          <div className="mt-2.5 w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0e]">
+            <a
+              href={comment.imageUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block w-fit max-w-full cursor-zoom-in"
+              aria-label="Abrir imagem em tamanho maior"
+            >
+              <img
+                src={comment.imageUrl}
+                alt="Imagem anexada"
+                loading="lazy"
+                className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg"
+              />
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* =================================================== */}
+      {/* AÇÕES (LIKE, DISLIKE, RESPONDER)                   */}
+      {/* =================================================== */}
+
+      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
+        {/* Botão CURTIR (ThumbsUp) */}
+        <button
+          type="button"
+          onClick={() => onReaction(comment.id, "like")}
+          disabled={likingId === comment.id}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
+            comment.liked
+              ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/40 shadow-[0_0_10px_rgba(168,85,247,0.2)]"
+              : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent",
+          )}
+          aria-label={comment.liked ? "Remover curtida" : "Curtir comentário"}
+        >
+          <ThumbsUp
+            className={cn("size-3.5 shrink-0", comment.liked && "fill-current")}
+          />
+          <span className="font-semibold">{comment.likes}</span>
+        </button>
+
+        {/* Botão NÃO CURTIR (ThumbsDown) */}
+        <button
+          type="button"
+          onClick={() => onReaction(comment.id, "dislike")}
+          disabled={likingId === comment.id}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
+            comment.disliked
+              ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/40 shadow-[0_0_10px_rgba(168,85,247,0.2)]"
+              : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent",
+          )}
+          aria-label={
+            comment.disliked ? "Remover descurtida" : "Não curtir comentário"
+          }
+        >
+          <ThumbsDown
+            className={cn(
+              "size-3.5 shrink-0",
+              comment.disliked && "fill-current",
+            )}
+          />
+          <span className="font-semibold">{comment.dislikes}</span>
+        </button>
+
+        {/* Botão RESPONDER */}
+        <button
+          type="button"
+          onClick={onStartReply}
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-white/50 hover:text-white hover:bg-white/[0.06] active:scale-95 transition-all"
+        >
+          <MessageCircle className="size-3.5 shrink-0" />
+          <span>Responder</span>
+        </button>
+
+        {/* Contador de respostas para comentário raiz */}
+        {!isReply && replyCount > 0 && (
+          <span className="text-[11px] text-white/40 ml-0.5">
+            · {replyCount} {replyCount === 1 ? "resposta" : "respostas"}
+          </span>
+        )}
+      </div>
+
+      {/* =================================================== */}
+      {/* FORMULÁRIO DE RESPOSTA INLINE                       */}
+      {/* =================================================== */}
+
+      {isReplying && (
+        <div className="mt-3 rounded-xl border border-white/10 bg-[#121217] p-3 shadow-lg focus-within:border-[#a855f7]/50 focus-within:ring-1 focus-within:ring-[#a855f7]/20 transition-all">
+          <textarea
+            value={replyText}
+            onChange={(event) => onReplyChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                onSendReply();
+              }
+            }}
+            rows={2}
+            maxLength={2000}
+            placeholder={
+              replyToName
+                ? `Responder para @${replyToName}...`
+                : "Escreva sua resposta..."
+            }
+            className="w-full resize-none rounded-lg border border-white/10 bg-[#0c0c10] px-3 py-2 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-[#a855f7]/40 transition-colors"
+          />
+
+          <div className="mt-2.5 flex items-center justify-between gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">
+              <input
+                type="checkbox"
+                checked={replyIsSpoiler}
+                onChange={(event) =>
+                  onReplySpoilerChange(event.target.checked)
+                }
+                className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-[#a855f7] accent-[#a855f7]"
+              />
+              <span>Spoiler</span>
+            </label>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={onCancelReply}
+                disabled={replySending}
+                className="h-7 px-2.5 text-xs rounded-lg border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                onClick={onSendReply}
+                disabled={!replyText.trim() || replySending}
+                className="h-7 px-3 text-xs font-semibold rounded-lg bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_10px_rgba(168,85,247,0.25)] active:scale-95 transition-all inline-flex items-center gap-1"
+              >
+                <Send className="size-3 shrink-0" />
+                <span>{replySending ? "Enviando..." : "Responder"}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
-    }
+}
+

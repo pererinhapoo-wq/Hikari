@@ -70,20 +70,29 @@ export const Route = createFileRoute(
                   select count(*)::int
                   from "comment_like" cl
                   where cl."commentId" = c."id"
+                    and coalesce(cl."type", 'like') = 'like'
                 ) as "likes",
+
+                (
+                  select count(*)::int
+                  from "comment_like" cl
+                  where cl."commentId" = c."id"
+                    and cl."type" = 'dislike'
+                ) as "dislikes",
 
                 ${
                   currentUserId
                     ? `
-                      exists (
-                        select 1
+                      (
+                        select cl2."type"
                         from "comment_like" cl2
                         where cl2."commentId" = c."id"
                           and cl2."userId" = $3
-                      ) as "liked"
+                        limit 1
+                      ) as "userReaction"
                     `
                     : `
-                      false as "liked"
+                      null as "userReaction"
                     `
                 }
 
@@ -115,25 +124,42 @@ export const Route = createFileRoute(
               : result?.rows ?? [];
 
           const normalizedComments =
-            comments.map((comment) => ({
-              ...comment,
+            comments.map((comment) => {
+              const reaction =
+                comment.userReaction === "like" ||
+                comment.userReaction === "dislike"
+                  ? comment.userReaction
+                  : null;
 
-              likes:
-                Number(
-                  comment.likes ?? 0,
-                ) || 0,
+              return {
+                ...comment,
 
-              liked:
-                Boolean(
-                  comment.liked,
-                ),
+                likes:
+                  Number(
+                    comment.likes ?? 0,
+                  ) || 0,
 
-              imageUrl:
-                typeof comment.imageUrl ===
-                "string"
-                  ? comment.imageUrl
-                  : null,
-            }));
+                dislikes:
+                  Number(
+                    comment.dislikes ?? 0,
+                  ) || 0,
+
+                liked:
+                  reaction === "like",
+
+                disliked:
+                  reaction === "dislike",
+
+                userReaction:
+                  reaction,
+
+                imageUrl:
+                  typeof comment.imageUrl ===
+                  "string"
+                    ? comment.imageUrl
+                    : null,
+              };
+            });
 
           console.log(
             "COMENTÁRIOS ENCONTRADOS:",
@@ -468,7 +494,13 @@ export const Route = createFileRoute(
 
             likes: 0,
 
+            dislikes: 0,
+
             liked: false,
+
+            disliked: false,
+
+            userReaction: null,
           };
 
           console.log(
