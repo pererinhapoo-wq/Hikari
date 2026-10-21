@@ -90,6 +90,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playPauseFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justOpenedMenuTimeRef = useRef<number>(0);
+  const lastTouchTimeRef = useRef<number>(0);
 
   // Estados de reprodução
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -407,10 +408,36 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   );
 
   // Toque ou clique seguro na superfície do vídeo
-  // Regra essencial: ao tocar na área do vídeo, SEMPRE exibe os controles da Nova Stream
+  // Regra essencial: ao tocar na área do vídeo, SEMPRE exibe os controles da Nova Stream imediatamente
   // e inicia/reinicia a contagem de 5 segundos (ou mantém visível se pausado).
+  const handleTouchSurfaceStart = useCallback(
+    () => {
+      lastTouchTimeRef.current = Date.now();
+      if (!controlsVisibleRef.current) {
+        setControlsVisible(true);
+        controlsVisibleRef.current = true;
+      }
+      resetInactivityTimer();
+    },
+    [resetInactivityTimer]
+  );
+
+  const handleTouchSurfaceEnd = useCallback(
+    () => {
+      if (showSettingsMenuRef.current) {
+        setShowSettingsMenu(false);
+        showSettingsMenuRef.current = false;
+      }
+      resetInactivityTimer();
+    },
+    [resetInactivityTimer]
+  );
+
   const handleVideoSurfacePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === 'touch' && Date.now() - lastTouchTimeRef.current < 400) {
+        return;
+      }
       const target = e.target as HTMLElement;
       if (
         target.closest('button') ||
@@ -433,7 +460,17 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   );
 
   const handleVideoSurfacePointerUp = useCallback(
-    () => {
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.closest('button') ||
+        target.closest('.player-menu-content') ||
+        target.closest('.player-menu-trigger') ||
+        target.closest('input') ||
+        target.closest('.group\\/progress')
+      ) {
+        return;
+      }
       // 2. Ao soltar o dedo ou parar de interagir, garante que o temporizador de 5s continue ativo
       scheduleControlsHide();
     },
@@ -442,6 +479,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   const handleVideoSurfaceClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      if (Date.now() - lastTouchTimeRef.current < 400) {
+        return;
+      }
       const target = e.target as HTMLElement;
       if (
         target.closest('button') ||
@@ -459,7 +499,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         showSettingsMenuRef.current = false;
       }
 
-      // 3 & 4. Ao tocar novamente no vídeo ou em um controle, reinicia o temporizador de 5 segundos
+      // 3 & 4. Ao tocar novamente no vídeo, exibe novamente e reinicia o temporizador de 5 segundos
+      if (!controlsVisibleRef.current) {
+        setControlsVisible(true);
+        controlsVisibleRef.current = true;
+      }
       resetInactivityTimer();
     },
     [resetInactivityTimer]
@@ -738,7 +782,19 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
           setVideoError(message);
           onError?.(message);
         }}
-        className="absolute inset-0 w-full h-full object-contain cursor-pointer"
+        className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+      />
+
+      {/* Camada interativa transparente de superfície para recepção instantânea de toques e cliques */}
+      <div
+        data-testid="player-surface-tap-area"
+        onPointerDown={handleVideoSurfacePointerDown}
+        onPointerUp={handleVideoSurfacePointerUp}
+        onTouchStart={handleTouchSurfaceStart}
+        onTouchEnd={handleTouchSurfaceEnd}
+        onClick={handleVideoSurfaceClick}
+        className="absolute inset-0 z-10 cursor-pointer"
+        aria-label="Área de controle do vídeo"
       />
 
       {/* Fallback de erro amigável */}
@@ -766,6 +822,18 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       {/* Barra superior com botão fechar */}
       {onClose && (
         <div
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            clearInactivityTimer();
+          }}
+          onPointerUp={(e) => {
+            e.stopPropagation();
+            scheduleControlsHide();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            resetInactivityTimer();
+          }}
           className={`absolute top-0 left-0 right-0 p-3 sm:p-5 bg-gradient-to-b from-black/80 via-black/30 to-transparent transition-opacity duration-300 z-30 flex items-center justify-between ${
             controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           }`}
@@ -798,25 +866,29 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       )}
 
       {/* Botão central de Play/Pause destacado quando os controles estão visíveis */}
-      {controlsVisible && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              togglePlay();
-            }}
-            aria-label={isPlaying ? 'Pausar vídeo' : 'Reproduzir vídeo'}
-            className="pointer-events-auto w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md border border-white/20 text-white flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95 cursor-pointer"
-          >
-            {isPlaying ? (
-              <Pause className="w-8 h-8 sm:w-9 sm:h-9 fill-white" />
-            ) : (
-              <Play className="w-8 h-8 sm:w-9 sm:h-9 ml-1 fill-white" />
-            )}
-          </button>
-        </div>
-      )}
+      <div
+        className={`absolute inset-0 flex items-center justify-center pointer-events-none z-20 transition-opacity duration-300 ${
+          controlsVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            togglePlay();
+          }}
+          aria-label={isPlaying ? 'Pausar vídeo' : 'Reproduzir vídeo'}
+          className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md border border-white/20 text-white flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95 cursor-pointer ${
+            controlsVisible ? 'pointer-events-auto' : 'pointer-events-none'
+          }`}
+        >
+          {isPlaying ? (
+            <Pause className="w-8 h-8 sm:w-9 sm:h-9 fill-white" />
+          ) : (
+            <Play className="w-8 h-8 sm:w-9 sm:h-9 ml-1 fill-white" />
+          )}
+        </button>
+      </div>
 
       {/* Overlay inferior de controles com temporizador de inatividade inteligente */}
       <div
