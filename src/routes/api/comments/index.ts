@@ -65,6 +65,7 @@ export const Route = createFileRoute(
                 ) as "userName",
 
                 u."image" as "userImage",
+                p."nick" as "userNick",
 
                 (
                   select count(*)::int
@@ -100,6 +101,9 @@ export const Route = createFileRoute(
 
               left join "user" u
                 on u."id" = c."userId"
+
+              left join "profile" p
+                on p."userId" = c."userId"
 
               where c."animeId" = $1
                 and c."episodeId" = $2
@@ -459,6 +463,18 @@ export const Route = createFileRoute(
             }
           }
 
+          let userNick: string | null = null;
+          try {
+            const profileRes = await sql.query(
+              `select "nick" from "profile" where "userId" = $1 limit 1`,
+              [session.user.id],
+            );
+            const pRows = Array.isArray(profileRes)
+              ? profileRes
+              : profileRes?.rows ?? [];
+            userNick = pRows[0]?.nick ?? null;
+          } catch {}
+
           const now =
             new Date().toISOString();
 
@@ -491,6 +507,8 @@ export const Route = createFileRoute(
             userImage:
               session.user.image ||
               null,
+
+            userNick,
 
             likes: 0,
 

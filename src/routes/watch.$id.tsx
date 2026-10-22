@@ -7,8 +7,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
+  Eye,
+  EyeOff,
   Flag,
   Image as ImageIcon,
+  Loader2,
   LogIn,
   LogOut,
   MessageCircle,
@@ -906,6 +909,7 @@ type Comment = {
   userId: string;
   userName: string | null;
   userImage: string | null;
+  userNick?: string | null;
   likes: number;
   dislikes: number;
   liked: boolean;
@@ -986,6 +990,9 @@ function CommentsSection({
 
   const [loginOpen, setLoginOpen] =
     useState(false);
+
+  const [newCommentId, setNewCommentId] =
+    useState<string | null>(null);
 
   /* ====================================================== */
   /* IMAGEM DO COMENTÁRIO                                   */
@@ -1759,11 +1766,14 @@ function CommentsSection({
   /* IR PARA O COMENTÁRIO DA NOTIFICAÇÃO                    */
   /* ====================================================== */
 
+  const hasScrolledTargetRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (
       loading ||
       !targetCommentId ||
-      comments.length === 0
+      comments.length === 0 ||
+      hasScrolledTargetRef.current === targetCommentId
     ) {
       return;
     }
@@ -1783,6 +1793,8 @@ function CommentsSection({
       if (!element) {
         return;
       }
+
+      hasScrolledTargetRef.current = targetCommentId;
 
       setHighlightedCommentId(
         targetCommentId,
@@ -4143,6 +4155,7 @@ function CommentCard({
   highlighted = false,
   onRequireLogin: _onRequireLogin,
   showMedia = true,
+  isNew = false,
 }: {
   comment: Comment;
   replyCount: number;
@@ -4172,9 +4185,11 @@ function CommentCard({
   highlighted?: boolean;
   onRequireLogin?: () => void;
   showMedia?: boolean;
+  isNew?: boolean;
 }) {
   const isReplying = replyingId === comment.id;
   const [localMediaRevealed, setLocalMediaRevealed] = useState(false);
+  const [spoilerRevealed, setSpoilerRevealed] = useState(false);
 
   return (
     <article
@@ -4183,6 +4198,8 @@ function CommentCard({
         "group/comment relative py-2.5 transition-colors",
         highlighted &&
           "rounded-xl bg-[#a855f7]/10 p-3 border border-[#a855f7]/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]",
+        isNew &&
+          "motion-safe:animate-in motion-safe:fade-in-50 motion-safe:slide-in-from-top-2 duration-300",
       )}
     >
       {/* =================================================== */}
@@ -4191,31 +4208,62 @@ function CommentCard({
 
       <div className="flex items-center justify-between gap-2.5">
         <div className="flex items-center gap-2.5 min-w-0">
-          {/* Avatar compacto */}
-          <div className="relative flex size-7 sm:size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90">
-            {comment.userImage ? (
-              <img
-                src={comment.userImage}
-                alt=""
-                className="size-full object-cover"
-              />
-            ) : (
-              <span className="text-[#c084fc] font-bold">
-                {(comment.userName || "U").charAt(0).toUpperCase()}
+          {comment.userNick ? (
+            <Link
+              to="/profile/$nick"
+              params={{ nick: comment.userNick }}
+              className="flex items-center gap-2.5 min-w-0 group/author hover:opacity-90 transition-opacity"
+            >
+              {/* Avatar compacto com borda interativa */}
+              <div className="relative flex size-7 sm:size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90 group-hover/author:ring-[#a855f7]/50 transition-all">
+                {comment.userImage ? (
+                  <img
+                    src={comment.userImage}
+                    alt=""
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[#c084fc] font-bold">
+                    {(comment.userName || "U").charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </div>
+
+              {/* Nome do autor com hover sutil */}
+              <span className="text-xs sm:text-sm font-semibold text-white/95 group-hover/author:text-[#c084fc] truncate transition-colors">
+                {comment.userName || "Usuário"}
               </span>
-            )}
-          </div>
+            </Link>
+          ) : (
+            <div className="flex items-center gap-2.5 min-w-0">
+              {/* Avatar compacto */}
+              <div className="relative flex size-7 sm:size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90">
+                {comment.userImage ? (
+                  <img
+                    src={comment.userImage}
+                    alt=""
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[#c084fc] font-bold">
+                    {(comment.userName || "U").charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </div>
 
-          {/* Nome, indicador Usuário -> Usuário e Data */}
+              {/* Nome do autor estático */}
+              <span className="text-xs sm:text-sm font-semibold text-white/95 truncate">
+                {comment.userName || "Usuário"}
+              </span>
+            </div>
+          )}
+
+          {/* Indicador de resposta "respondendo a @usuário" e Data */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-            <span className="text-xs sm:text-sm font-semibold text-white/95 truncate">
-              {comment.userName || "Usuário"}
-            </span>
-
             {isReply && replyToName && (
               <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-medium text-[#c084fc]/90">
-                <span className="text-white/40">→</span>
-                <span>@{replyToName}</span>
+                <span className="text-white/40">respondendo a</span>
+                <span className="text-[#c084fc] font-semibold">@{replyToName}</span>
               </span>
             )}
 
@@ -4229,12 +4277,15 @@ function CommentCard({
         <div className="relative shrink-0">
           <button
             type="button"
-            onClick={onToggleMenu}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleMenu();
+            }}
             disabled={moderating}
             aria-label="Opções do comentário"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            className="flex size-7 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:scale-95 transition-all disabled:opacity-50"
+            className="flex size-7 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
           >
             <MoreVertical className="size-4" />
           </button>
@@ -4243,7 +4294,10 @@ function CommentCard({
             <>
               <div
                 className="fixed inset-0 z-40"
-                onClick={onToggleMenu}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleMenu();
+                }}
               />
               <div
                 role="menu"
@@ -4254,9 +4308,12 @@ function CommentCard({
                     <button
                       type="button"
                       role="menuitem"
-                      onClick={onEdit}
+                      onClick={() => {
+                        onToggleMenu();
+                        onEdit();
+                      }}
                       disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors disabled:opacity-50"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <Edit3 className="size-3.5 shrink-0 text-[#c084fc]" />
                       <span>Editar comentário</span>
@@ -4265,9 +4322,12 @@ function CommentCard({
                     <button
                       type="button"
                       role="menuitem"
-                      onClick={onDelete}
+                      onClick={() => {
+                        onToggleMenu();
+                        onDelete();
+                      }}
                       disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 transition-colors disabled:opacity-50"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <Trash2 className="size-3.5 shrink-0 text-red-400" />
                       <span>Excluir comentário</span>
@@ -4278,9 +4338,12 @@ function CommentCard({
                     <button
                       type="button"
                       role="menuitem"
-                      onClick={onMarkSpoiler}
+                      onClick={() => {
+                        onToggleMenu();
+                        onMarkSpoiler();
+                      }}
                       disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <AlertTriangle className="size-3.5 shrink-0 text-amber-400" />
                       <span>
@@ -4291,9 +4354,12 @@ function CommentCard({
                     <button
                       type="button"
                       role="menuitem"
-                      onClick={onReport}
+                      onClick={() => {
+                        onToggleMenu();
+                        onReport();
+                      }}
                       disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <Flag className="size-3.5 shrink-0 text-purple-400" />
                       <span>Denunciar comentário</span>
@@ -4302,9 +4368,12 @@ function CommentCard({
                     <button
                       type="button"
                       role="menuitem"
-                      onClick={onSpam}
+                      onClick={() => {
+                        onToggleMenu();
+                        onSpam();
+                      }}
                       disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <Ban className="size-3.5 shrink-0 text-red-400" />
                       <span>Marcar como spam</span>
@@ -4318,71 +4387,164 @@ function CommentCard({
       </div>
 
       {/* =================================================== */}
-      {/* CONTEÚDO (LOGO ABAIXO DO CABEÇALHO)                 */}
+      {/* CONTEÚDO (LOGO ABAIXO DO CABEÇALHO) COM SPOILER     */}
       {/* =================================================== */}
 
       <div className="mt-2 text-xs sm:text-sm text-white/85 leading-relaxed break-words">
         {comment.isSpoiler ? (
-          <details className="rounded-xl border border-white/10 bg-[#0e0e13] px-3.5 py-2.5 text-xs text-white/90">
-            <summary className="cursor-pointer font-medium text-amber-400/90 flex items-center gap-1.5 select-none hover:text-amber-300">
-              ⚠️ <span>Conteúdo com spoiler (clique para ver)</span>
-            </summary>
-            <p className="mt-2 whitespace-pre-wrap text-white/80">
-              {comment.content}
-            </p>
-          </details>
-        ) : (
-          <p className="whitespace-pre-wrap text-white/85">
-            {comment.content}
-          </p>
-        )}
+          !spoilerRevealed ? (
+            /* Aviso elegante de spoiler antes de revelar */
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3 transition-all">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                    <EyeOff className="size-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-amber-300/90 tracking-tight">
+                      Spoiler deste episódio
+                    </p>
+                    <p className="text-[11px] text-white/50 leading-tight">
+                      Este comentário pode conter revelações sobre o enredo.
+                    </p>
+                  </div>
+                </div>
 
-        {/* Anexo de Imagem ou GIF com suporte a exibição/ocultação */}
-        {comment.imageUrl && (
-          <div className="mt-2.5">
-            {!showMedia && !localMediaRevealed ? (
-              <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#0e0e14] px-3 py-2 text-xs text-white/60">
-                <ImageIcon className="size-3.5 text-[#c084fc] shrink-0" />
-                <span>Mídia oculta</span>
-                <span className="text-white/30">·</span>
                 <button
                   type="button"
-                  onClick={() => setLocalMediaRevealed(true)}
-                  className="font-medium text-[#c084fc] hover:text-white hover:underline transition-colors"
+                  onClick={() => setSpoilerRevealed(true)}
+                  className="inline-flex self-start sm:self-center items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/20 px-2.5 py-1 text-xs font-medium text-amber-200 hover:bg-amber-500/30 active:scale-95 transition-all cursor-pointer shrink-0"
                 >
-                  Exibir
+                  <Eye className="size-3" />
+                  <span>Revelar spoiler</span>
                 </button>
               </div>
-            ) : (
-              <div className="w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0e]">
-                <a
-                  href={comment.imageUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block w-fit max-w-full cursor-zoom-in"
-                  aria-label="Abrir imagem em tamanho maior"
+            </div>
+          ) : (
+            /* Conteúdo revelado com botão de ocultar novamente */
+            <div className="rounded-xl border border-white/10 bg-[#0c0c11] p-3 transition-all motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+              <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-white/[0.06]">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-400/90">
+                  <Eye className="size-3 text-amber-400" />
+                  <span>Spoiler deste episódio</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSpoilerRevealed(false)}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-white/50 hover:text-white transition-colors cursor-pointer"
                 >
-                  <img
-                    src={comment.imageUrl}
-                    alt="Imagem anexada"
-                    loading="lazy"
-                    className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg"
-                  />
-                </a>
-                {!showMedia && localMediaRevealed && (
-                  <div className="border-t border-white/10 bg-[#0e0e14] px-2.5 py-1 text-right">
+                  <EyeOff className="size-3" />
+                  <span>Ocultar spoiler</span>
+                </button>
+              </div>
+
+              <p className="whitespace-pre-wrap text-white/90 text-xs sm:text-sm leading-relaxed">
+                {comment.content}
+              </p>
+
+              {/* Mídia dentro do spoiler */}
+              {comment.imageUrl && (
+                <div className="mt-2.5">
+                  {!showMedia && !localMediaRevealed ? (
+                    <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#0e0e14] px-3 py-2 text-xs text-white/60">
+                      <ImageIcon className="size-3.5 text-[#c084fc] shrink-0" />
+                      <span>Mídia oculta</span>
+                      <span className="text-white/30">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setLocalMediaRevealed(true)}
+                        className="font-medium text-[#c084fc] hover:text-white hover:underline transition-colors cursor-pointer"
+                      >
+                        Exibir
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0e]">
+                      <a
+                        href={comment.imageUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block w-fit max-w-full cursor-zoom-in"
+                        aria-label="Abrir imagem em tamanho maior"
+                      >
+                        <img
+                          src={comment.imageUrl}
+                          alt="Imagem anexada"
+                          loading="lazy"
+                          className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg"
+                        />
+                      </a>
+                      {!showMedia && localMediaRevealed && (
+                        <div className="border-t border-white/10 bg-[#0e0e14] px-2.5 py-1 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setLocalMediaRevealed(false)}
+                            className="text-[11px] text-white/50 hover:text-white transition-colors cursor-pointer"
+                          >
+                            Ocultar mídia
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        ) : (
+          <>
+            <p className="whitespace-pre-wrap text-white/85">
+              {comment.content}
+            </p>
+
+            {/* Anexo de Imagem ou GIF com suporte a exibição/ocultação */}
+            {comment.imageUrl && (
+              <div className="mt-2.5">
+                {!showMedia && !localMediaRevealed ? (
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#0e0e14] px-3 py-2 text-xs text-white/60">
+                    <ImageIcon className="size-3.5 text-[#c084fc] shrink-0" />
+                    <span>Mídia oculta</span>
+                    <span className="text-white/30">·</span>
                     <button
                       type="button"
-                      onClick={() => setLocalMediaRevealed(false)}
-                      className="text-[11px] text-white/50 hover:text-white transition-colors"
+                      onClick={() => setLocalMediaRevealed(true)}
+                      className="font-medium text-[#c084fc] hover:text-white hover:underline transition-colors cursor-pointer"
                     >
-                      Ocultar mídia
+                      Exibir
                     </button>
+                  </div>
+                ) : (
+                  <div className="w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0e]">
+                    <a
+                      href={comment.imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block w-fit max-w-full cursor-zoom-in"
+                      aria-label="Abrir imagem em tamanho maior"
+                    >
+                      <img
+                        src={comment.imageUrl}
+                        alt="Imagem anexada"
+                        loading="lazy"
+                        className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg"
+                      />
+                    </a>
+                    {!showMedia && localMediaRevealed && (
+                      <div className="border-t border-white/10 bg-[#0e0e14] px-2.5 py-1 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setLocalMediaRevealed(false)}
+                          className="text-[11px] text-white/50 hover:text-white transition-colors cursor-pointer"
+                        >
+                          Ocultar mídia
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
-          </div>
+          </>
         )}
       </div>
 
@@ -4391,35 +4553,44 @@ function CommentCard({
       {/* =================================================== */}
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
-        {/* Botão CURTIR (ThumbsUp) */}
+        {/* Botão CURTIR (ThumbsUp) com transição fluida */}
         <button
           type="button"
           onClick={() => onReaction(comment.id, "like")}
           disabled={likingId === comment.id}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
+            "group/like inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all select-none cursor-pointer motion-safe:duration-200",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
             comment.liked
-              ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/40 shadow-[0_0_10px_rgba(168,85,247,0.2)]"
-              : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent",
+              ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
+              : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
           )}
           aria-label={comment.liked ? "Remover curtida" : "Curtir comentário"}
         >
           <ThumbsUp
-            className={cn("size-3.5 shrink-0", comment.liked && "fill-current")}
+            className={cn(
+              "size-3.5 shrink-0 transition-transform motion-safe:duration-200 ease-out",
+              comment.liked
+                ? "fill-current scale-110"
+                : "group-hover/like:scale-110 active:scale-90",
+            )}
           />
-          <span className="font-semibold">{comment.likes}</span>
+          <span className="font-semibold tabular-nums transition-colors duration-200">
+            {comment.likes}
+          </span>
         </button>
 
-        {/* Botão NÃO CURTIR (ThumbsDown) */}
+        {/* Botão NÃO CURTIR (ThumbsDown) com transição fluida */}
         <button
           type="button"
           onClick={() => onReaction(comment.id, "dislike")}
           disabled={likingId === comment.id}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
+            "group/dislike inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all select-none cursor-pointer motion-safe:duration-200",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
             comment.disliked
-              ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/40 shadow-[0_0_10px_rgba(168,85,247,0.2)]"
-              : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent",
+              ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
+              : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
           )}
           aria-label={
             comment.disliked ? "Remover descurtida" : "Não curtir comentário"
@@ -4427,18 +4598,22 @@ function CommentCard({
         >
           <ThumbsDown
             className={cn(
-              "size-3.5 shrink-0",
-              comment.disliked && "fill-current",
+              "size-3.5 shrink-0 transition-transform motion-safe:duration-200 ease-out",
+              comment.disliked
+                ? "fill-current scale-110"
+                : "group-hover/dislike:scale-110 active:scale-90",
             )}
           />
-          <span className="font-semibold">{comment.dislikes}</span>
+          <span className="font-semibold tabular-nums transition-colors duration-200">
+            {comment.dislikes}
+          </span>
         </button>
 
         {/* Botão RESPONDER */}
         <button
           type="button"
           onClick={onStartReply}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-white/50 hover:text-white hover:bg-white/[0.06] active:scale-95 transition-all"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-white/50 hover:text-white hover:bg-white/[0.06] active:scale-95 transition-all cursor-pointer"
         >
           <MessageCircle className="size-3.5 shrink-0" />
           <span>Responder</span>

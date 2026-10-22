@@ -112,20 +112,23 @@ export function LoginMenu({
 
       {/* Cabeçalho */}
       <div className="flex flex-col items-center text-center">
-        <div className="mb-2.5 flex justify-center scale-90">
+        <div className="mb-2 flex items-center justify-center gap-2">
           <Logo />
+          <span className="font-display text-sm font-black tracking-widest text-white">
+            HIKARI
+          </span>
         </div>
 
         <h2
           id="login-menu-title"
-          className="font-display text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-1.5"
+          className="font-display text-base sm:text-lg font-bold tracking-tight text-white flex items-center justify-center gap-1.5"
         >
           <LogIn className="size-4 text-[#c084fc]" />
-          <span>Entrar no Hikari</span>
+          <span>Entrar na Conta</span>
         </h2>
 
-        <p className="mt-1 text-xs text-white/60">
-          Escolha uma das opções para conectar sua conta:
+        <p className="mt-1 text-xs text-white/60 max-w-xs leading-relaxed">
+          Acesse sua conta para curtir, responder e interagir com a comunidade.
         </p>
       </div>
 
@@ -215,8 +218,8 @@ export function LoginMenu({
         </button>
       </div>
 
-      <p className="mt-3.5 text-center text-[10px] text-white/40">
-        Ambiente protegido e autenticado pelo Hikari.
+      <p className="mt-4 text-center text-[10px] text-white/40 leading-relaxed">
+        Ao continuar, você concorda com os Termos de Uso e a Política de Privacidade do Hikari.
       </p>
     </div>
   );
