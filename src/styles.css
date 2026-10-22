@@ -116,12 +116,13 @@ html[data-theme="light"] {
     display: flex;
     gap: 0.75rem;
     overflow-x: auto;
-    scroll-snap-type: x proximity;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 0.25rem;
+    padding-bottom: 0.5rem;
+    padding-top: 0.25rem;
     -ms-overflow-style: none;
     scrollbar-width: none;
+    scroll-behavior: auto;
   }
 
   .rail::-webkit-scrollbar {
@@ -129,7 +130,6 @@ html[data-theme="light"] {
   }
 
   .rail > * {
-    scroll-snap-align: start;
     flex-shrink: 0;
   }
 

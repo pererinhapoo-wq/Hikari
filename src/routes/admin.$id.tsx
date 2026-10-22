@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Camera, Loader2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
@@ -7,6 +7,7 @@ import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/
 import { useHikariStore } from "@/lib/store";
 import { youtubeIdFrom } from "@/lib/utils";
 import { uploadVideoToB2 } from "@/lib/b2";
+import { captureVideoFrame } from "@/lib/published-episodes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,6 +77,36 @@ function AdminEditor() {
   const [form, setForm] = useState<LocalAnime | null>(null);
   const [genreText, setGenreText] = useState("");
   const [uploadingEpisode, setUploadingEpisode] = useState<string | null>(null);
+  const [capturingFrame, setCapturingFrame] = useState<string | null>(null);
+
+  async function handleCaptureEpisodeFrame(sid: string, ep: Episode) {
+    const videoUrl =
+      ep.videoUrl ||
+      ep.videoUrl2 ||
+      ep.videoUrl3 ||
+      ep.videoUrl4 ||
+      ep.videoUrl5;
+
+    if (!videoUrl) {
+      toast.error(
+        "Insira ou envie o vídeo de algum player antes de capturar o frame.",
+      );
+      return;
+    }
+
+    setCapturingFrame(ep.id);
+    try {
+      const frame = await captureVideoFrame(videoUrl);
+      patchEpisode(sid, ep.id, { thumbnail: frame });
+      toast.success("Frame do episódio capturado com sucesso!");
+    } catch {
+      toast.info(
+        "A captura automática direta foi limitada pelas políticas de CORS do servidor de vídeo. Você pode inserir a URL da imagem manualmente no campo Thumb.",
+      );
+    } finally {
+      setCapturingFrame(null);
+    }
+  }
 
   useEffect(() => {
     if (!hydrated) return;
@@ -672,6 +703,23 @@ function AdminEditor() {
                                     toast.success(
                                       `${label} enviado com sucesso.`,
                                     );
+
+                                    if (!ep.thumbnail) {
+                                      captureVideoFrame(url)
+                                        .then((frame) => {
+                                          patchEpisode(
+                                            season.id,
+                                            ep.id,
+                                            {
+                                              thumbnail: frame,
+                                            },
+                                          );
+                                          toast.success(
+                                            "Frame capturado automaticamente do vídeo!",
+                                          );
+                                        })
+                                        .catch(() => {});
+                                    }
                                   },
                                 );
                               } catch (error) {
@@ -750,22 +798,59 @@ function AdminEditor() {
                     </Field>
 
                     <Field
-                      label="Thumb"
+                      label="Thumb do Episódio (Frame do Vídeo)"
                       className="sm:col-span-11"
                     >
-                      <Input
-                        value={ep.thumbnail ?? ""}
-                        onChange={(e) =>
-                          patchEpisode(
-                            season.id,
-                            ep.id,
-                            {
-                              thumbnail:
-                                e.target.value,
-                            },
-                          )
-                        }
-                      />
+                      <div className="flex items-center gap-2">
+                        {ep.thumbnail && (
+                          <div className="relative size-10 shrink-0 overflow-hidden rounded-md border border-purple-500/30 bg-black">
+                            <img
+                              src={ep.thumbnail}
+                              alt=""
+                              className="size-full object-cover"
+                            />
+                          </div>
+                        )}
+                        <Input
+                          value={ep.thumbnail ?? ""}
+                          onChange={(e) =>
+                            patchEpisode(
+                              season.id,
+                              ep.id,
+                              {
+                                thumbnail:
+                                  e.target.value,
+                              },
+                            )
+                          }
+                          placeholder="URL ou captura do frame do episódio"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={capturingFrame === ep.id}
+                          onClick={() =>
+                            handleCaptureEpisodeFrame(
+                              season.id,
+                              ep,
+                            )
+                          }
+                          className="shrink-0 gap-1.5 text-xs text-purple-300 hover:text-white"
+                          title="Capturar frame representativo do vídeo"
+                        >
+                          {capturingFrame === ep.id ? (
+                            <>
+                              <Loader2 className="size-3.5 animate-spin" />
+                              <span>Capturando…</span>
+                            </>
+                          ) : (
+                            <>
+                              <Camera className="size-3.5" />
+                              <span>Capturar Frame</span>
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </Field>
 
                     <Button

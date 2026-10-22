@@ -18,10 +18,12 @@ export const AnimeCard = memo(function AnimeCard({
   anime,
   size = "md",
   rank,
+  showBookmark = true,
 }: {
   anime: SlimAnime;
   size?: "sm" | "md" | "lg";
   rank?: number;
+  showBookmark?: boolean;
 }) {
   const inList =
     useHikariStore((s) =>
@@ -41,12 +43,12 @@ export const AnimeCard = memo(function AnimeCard({
       ? "w-24 sm:w-28"
       : size === "lg"
         ? "w-full sm:w-full"
-        : "w-[7.25rem] sm:w-[8rem] md:w-[9.25rem] lg:w-[9.75rem]";
+        : "w-[7.5rem] sm:w-[8.25rem] md:w-[9.25rem] lg:w-[9.75rem]";
 
   return (
     <article
       className={cn(
-        "group relative shrink-0 transition-transform duration-300 ease-out hover:-translate-y-1.5",
+        "group relative shrink-0 transition-transform duration-300 ease-out [@media(hover:hover)]:hover:-translate-y-1.5",
         width,
       )}
     >
@@ -66,8 +68,8 @@ export const AnimeCard = memo(function AnimeCard({
           transition-all
           duration-300
           ease-[var(--ease-out)]
-          hover:border-purple-400/50
-          hover:shadow-[0_12px_28px_-6px_rgba(168,85,247,0.35)]
+          [@media(hover:hover)]:hover:border-purple-400/50
+          [@media(hover:hover)]:hover:shadow-[0_12px_28px_-6px_rgba(168,85,247,0.35)]
         "
       >
         <div className="relative aspect-[3/4.4] sm:aspect-[2/3] overflow-hidden bg-[#0d0c16]">
@@ -81,7 +83,7 @@ export const AnimeCard = memo(function AnimeCard({
                 transition-transform
                 duration-500
                 ease-[var(--ease-out)]
-                group-hover:scale-[1.04]
+                [@media(hover:hover)]:group-hover:scale-[1.04]
               "
               loading="lazy"
               decoding="async"
@@ -93,7 +95,7 @@ export const AnimeCard = memo(function AnimeCard({
           )}
 
           {/* Sombra sutil interna com gradiente escuro */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/25 opacity-40 transition-opacity duration-300 group-hover:opacity-60" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/25 opacity-40 transition-opacity duration-300 [@media(hover:hover)]:group-hover:opacity-60" />
 
           {/* Badge de Ranking para listas como Em Alta */}
           {rank != null && (
@@ -149,32 +151,38 @@ export const AnimeCard = memo(function AnimeCard({
           )}
         </div>
 
-        {/* Nomes dos animes menores, elegantes e estritamente limitados a 2 linhas */}
+        {/* Nomes dos animes com altura estável, até 2 linhas, reticências e sem sobreposição */}
         <div className="px-2 py-2 sm:px-2.5 sm:py-2.5">
           <h3
             title={title}
             className="
-              line-clamp-2
-              h-[2rem]
-              sm:h-[2.1rem]
-              text-[10.5px]
-              sm:text-[11.5px]
+              text-[11px]
+              sm:text-xs
               font-semibold
-              leading-[1.25]
+              leading-[1.3]
               tracking-tight
               text-zinc-200
               transition-colors
-              group-hover:text-purple-300
+              [@media(hover:hover)]:group-hover:text-purple-300
+              line-clamp-2
+              h-[2.45rem]
+              overflow-hidden
+              text-ellipsis
             "
+            style={{
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+            }}
           >
             {title}
           </h3>
 
-          {/* Hierarquia refinada com ano, formato e gênero */}
+          {/* Hierarquia refinada com ano, formato e gênero sem sobreposição */}
           <div className="mt-1 flex items-center gap-1.5 text-[9.5px] sm:text-[10px] font-medium text-zinc-400">
-            {anime.year && <span>{anime.year}</span>}
+            {anime.year && <span className="shrink-0">{anime.year}</span>}
             {anime.year && (anime.format || anime.genres?.[0]) && (
-              <span className="size-1 rounded-full bg-purple-500/40" />
+              <span className="size-1 shrink-0 rounded-full bg-purple-500/40" />
             )}
             <span className="truncate text-zinc-400">
               {anime.format === "TV"
@@ -189,32 +197,34 @@ export const AnimeCard = memo(function AnimeCard({
         </div>
       </Link>
 
-      {/* Botão Minha Lista compacto */}
-      <button
-        type="button"
-        aria-label={
-          inList
-            ? "Remover da Minha Lista"
-            : "Adicionar à Minha Lista"
-        }
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          toggleList(anime);
-        }}
-        className={cn(
-          "absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-md bg-black/80 backdrop-blur-md border border-white/10 text-white transition-all duration-200 hover:border-purple-500/60 hover:bg-purple-950/80 hover:text-purple-300 shadow-md",
-          inList
-            ? "opacity-100 text-purple-400 border-purple-500/40"
-            : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100",
-        )}
-      >
-        {inList ? (
-          <BookmarkCheck className="size-3.5 text-purple-400" />
-        ) : (
-          <Bookmark className="size-3.5" />
-        )}
-      </button>
+      {/* Botão Minha Lista compacto (preservado em outras páginas, ocultado se showBookmark for false) */}
+      {showBookmark && (
+        <button
+          type="button"
+          aria-label={
+            inList
+              ? "Remover da Minha Lista"
+              : "Adicionar à Minha Lista"
+          }
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleList(anime);
+          }}
+          className={cn(
+            "absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-md bg-black/80 backdrop-blur-md border border-white/10 text-white transition-all duration-200 hover:border-purple-500/60 hover:bg-purple-950/80 hover:text-purple-300 shadow-md",
+            inList
+              ? "opacity-100 text-purple-400 border-purple-500/40"
+              : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100",
+          )}
+        >
+          {inList ? (
+            <BookmarkCheck className="size-3.5 text-purple-400" />
+          ) : (
+            <Bookmark className="size-3.5" />
+          )}
+        </button>
+      )}
     </article>
   );
 });
@@ -229,7 +239,7 @@ export function AnimeCardSkeleton({
       ? "w-24 sm:w-28"
       : size === "lg"
         ? "w-full sm:w-full"
-        : "w-[7.25rem] sm:w-[8rem] md:w-[9.25rem] lg:w-[9.75rem]";
+        : "w-[7.5rem] sm:w-[8.25rem] md:w-[9.25rem] lg:w-[9.75rem]";
 
   return (
     <div
@@ -240,9 +250,9 @@ export function AnimeCardSkeleton({
     >
       <div className="aspect-[3/4.4] sm:aspect-[2/3] animate-pulse rounded-xl bg-elevated/70 border border-purple-500/10" />
 
-      <div className="mt-2 h-3 w-4/5 animate-pulse rounded bg-elevated/80" />
+      <div className="mt-2 h-3.5 w-4/5 animate-pulse rounded bg-elevated/80" />
 
-      <div className="mt-1 h-2.5 w-1/2 animate-pulse rounded bg-elevated/50" />
+      <div className="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-elevated/50" />
     </div>
   );
 }
