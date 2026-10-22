@@ -357,7 +357,9 @@ function WatchPage() {
             `hikari_progress_${anime.id}_${lastEpisodeIdRef.current}`,
             String(Math.floor(livePlaybackRef.current.time)),
           );
-        } catch {}
+        } catch {
+          /* ignore storage error */
+        }
       }
 
       lastEpisodeIdRef.current = current?.id;
@@ -380,7 +382,9 @@ function WatchPage() {
             progressStorageKey,
             String(Math.floor(live.time)),
           );
-        } catch {}
+        } catch {
+          /* ignore storage error */
+        }
       }
     };
 
@@ -474,7 +478,9 @@ function WatchPage() {
       if (time / totalDuration > 0.95) {
         try {
           localStorage.removeItem(progressStorageKey);
-        } catch {}
+        } catch {
+          /* ignore storage error */
+        }
         return;
       }
 
@@ -489,7 +495,9 @@ function WatchPage() {
             progressStorageKey,
             String(Math.floor(time)),
           );
-        } catch {}
+        } catch {
+          /* ignore storage error */
+        }
       }
     },
     [current?.id, progressStorageKey, effectiveInitialTime],
@@ -970,8 +978,14 @@ function CommentsSection({
   const [sending, setSending] =
     useState(false);
 
-  const [likingId, setLikingId] =
-    useState<string | null>(null);
+  const [pendingReactionIds, setPendingReactionIds] =
+    useState<Record<string, boolean>>({});
+
+  const inFlightReactionsRef =
+    useRef<Set<string>>(new Set());
+
+  const [rootOrder, setRootOrder] =
+    useState<string[]>([]);
 
   const [replyingId, setReplyingId] =
     useState<string | null>(null);
@@ -1094,7 +1108,9 @@ function CommentsSection({
       const next = !prev;
       try {
         localStorage.setItem("hikari_show_comment_media", String(next));
-      } catch {}
+      } catch {
+        /* ignore storage error */
+      }
       return next;
     });
   }, []);
@@ -1702,13 +1718,26 @@ function CommentsSection({
           await response.json();
 
         if (!cancelled) {
-          setComments(
-            Array.isArray(
-              data.comments,
-            )
-              ? data.comments
-              : [],
-          );
+          const loaded = Array.isArray(data.comments) ? data.comments : [];
+          setComments(loaded);
+
+          const roots = loaded.filter((c: Comment) => !c.parentId);
+          const sorted = [...roots];
+          if (sortBy === "highlight") {
+            sorted.sort((a: Comment, b: Comment) => {
+              const repliesA = loaded.filter((c: Comment) => c.parentId === a.id).length;
+              const repliesB = loaded.filter((c: Comment) => c.parentId === b.id).length;
+              const scoreA = (a.likes ?? 0) * 2 + repliesA - (a.dislikes ?? 0);
+              const scoreB = (b.likes ?? 0) * 2 + repliesB - (b.dislikes ?? 0);
+              if (scoreB !== scoreA) return scoreB - scoreA;
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            });
+          } else if (sortBy === "recent") {
+            sorted.sort((a: Comment, b: Comment) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          } else if (sortBy === "oldest") {
+            sorted.sort((a: Comment, b: Comment) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          }
+          setRootOrder(sorted.map((c) => c.id));
 
           if (
             typeof data.currentUserId ===
@@ -2585,50 +2614,60 @@ function CommentsSection({
   /* COMENTÁRIOS FILTRADOS / ORDENADOS                       */
   /* ====================================================== */
 
-  const displayedRootComments =
-    useMemo(() => {
-      let result = [
-        ...rootComments,
-      ];
+  // Reordena os IDs raiz quando o usuário clica nas abas de ordenação
+  useEffect(() => {
+    if (comments.length === 0) return;
+    const roots = comments.filter((c) => !c.parentId);
+    const sorted = [...roots];
+    if (sortBy === "highlight") {
+      sorted.sort((a, b) => {
+        const repliesA = comments.filter((c) => c.parentId === a.id).length;
+        const repliesB = comments.filter((c) => c.parentId === b.id).length;
+        const scoreA = (a.likes ?? 0) * 2 + repliesA - (a.dislikes ?? 0);
+        const scoreB = (b.likes ?? 0) * 2 + repliesB - (b.dislikes ?? 0);
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+    } else if (sortBy === "recent") {
+      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else if (sortBy === "oldest") {
+      sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }
+    setRootOrder(sorted.map((c) => c.id));
+  }, [sortBy]);
 
-      if (sortBy === "highlight") {
-        result.sort((a, b) => {
-          const scoreA =
-            (a.likes ?? 0) * 2 +
-            repliesFor(a.id).length -
-            (a.dislikes ?? 0);
-          const scoreB =
-            (b.likes ?? 0) * 2 +
-            repliesFor(b.id).length -
-            (b.dislikes ?? 0);
-          if (scoreB !== scoreA) {
-            return scoreB - scoreA;
-          }
-          return (
-            new Date(b.createdAt).getTime() -
-            new Date(a.createdAt).getTime()
-          );
-        });
-      } else if (sortBy === "recent") {
-        result.sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() -
-            new Date(a.createdAt).getTime(),
-        );
-      } else if (sortBy === "oldest") {
-        result.sort(
-          (a, b) =>
-            new Date(a.createdAt).getTime() -
-            new Date(b.createdAt).getTime(),
-        );
+  const displayedRootComments = useMemo(() => {
+    const rootMap = new Map<string, Comment>();
+    for (const comment of comments) {
+      if (!comment.parentId) {
+        rootMap.set(comment.id, comment);
       }
+    }
 
-      return result;
-    }, [
-      rootComments,
-      sortBy,
-      comments,
-    ]);
+    const result: Comment[] = [];
+    const seen = new Set<string>();
+
+    for (const id of rootOrder) {
+      const c = rootMap.get(id);
+      if (c) {
+        result.push(c);
+        seen.add(id);
+      }
+    }
+
+    // Se houver algum comentário novo não presente em rootOrder, insere no topo
+    for (const [id, c] of rootMap.entries()) {
+      if (!seen.has(id)) {
+        result.unshift(c);
+      }
+    }
+
+    if (sortBy === "spoiler") {
+      return result.filter((c) => c.isSpoiler);
+    }
+
+    return result;
+  }, [comments, rootOrder, sortBy]);
 
   /* ====================================================== */
   /* RENDER                                                   */
@@ -2710,47 +2749,15 @@ function CommentsSection({
             <div className="flex items-center shrink-0 relative ml-auto">
 
               {!effectiveUserId ? (
-                /* Visitante: Opção ENTRAR com popover dos 3 provedores */
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setLoginOpen((prev) => !prev)}
-                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-xl border border-[#a855f7]/35 bg-[#a855f7]/10 px-3 py-1 text-xs sm:text-sm font-semibold text-[#c084fc] hover:bg-[#a855f7]/20 hover:text-white hover:border-[#a855f7]/55 active:scale-95 transition-all shadow-sm"
-                    aria-expanded={loginOpen}
-                    aria-haspopup="menu"
-                  >
-                    <LogIn className="size-3.5" />
-                    <span>Entrar</span>
-                    <ChevronDown
-                      className={cn(
-                        "size-3 text-[#c084fc]/70 transition-transform duration-200",
-                        loginOpen && "rotate-180 text-white"
-                      )}
-                    />
-                  </button>
-
-                  {/* Menu compacto de login: Google, X, Facebook */}
-                  {loginOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setLoginOpen(false)}
-                      />
-                      <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 sm:w-80 max-w-[calc(100vw-2rem)]">
-                        <LoginMenu
-                          isOpen={loginOpen}
-                          onClose={() => setLoginOpen(false)}
-                          isModal={false}
-                          callbackURL={
-                            typeof window !== "undefined"
-                              ? window.location.pathname + window.location.search
-                              : "/"
-                          }
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
+                /* Visitante: Opção ENTRAR que abre modal centralizado com backdrop blur */
+                <button
+                  type="button"
+                  onClick={() => setLoginOpen(true)}
+                  className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-xl border border-[#a855f7]/35 bg-[#a855f7]/10 px-3 py-1 text-xs sm:text-sm font-semibold text-[#c084fc] hover:bg-[#a855f7]/20 hover:text-white hover:border-[#a855f7]/55 active:scale-95 transition-all shadow-sm cursor-pointer"
+                >
+                  <LogIn className="size-3.5" />
+                  <span>Entrar</span>
+                </button>
               ) : (
                 /* Usuário autenticado: Avatar real + Nome + Menu com 5 opções */
                 <div className="relative">
@@ -3357,8 +3364,8 @@ function CommentsSection({
                         replyToName={
                           undefined
                         }
-                        likingId={
-                          likingId
+                        isPendingReaction={
+                          Boolean(pendingReactionIds[comment.id])
                         }
                         replyingId={
                           replyingId
@@ -3419,6 +3426,7 @@ function CommentsSection({
                         highlighted={highlightedCommentId === comment.id}
                         onRequireLogin={() => setLoginOpen(true)}
                         showMedia={showMedia}
+                        isNew={newCommentId === comment.id}
                       />
 
                       {/* Respostas com recuo progressivo e linha vertical discreta */}
@@ -3442,7 +3450,9 @@ function CommentsSection({
                                 comment={reply}
                                 replyCount={0}
                                 replyToName={replyRecipient}
-                                likingId={likingId}
+                                isPendingReaction={
+                                  Boolean(pendingReactionIds[reply.id])
+                                }
                                 replyingId={replyingId}
                                 replyText={replyText}
                                 replyIsSpoiler={replyIsSpoiler}
@@ -3487,6 +3497,7 @@ function CommentsSection({
                                 highlighted={highlightedCommentId === reply.id}
                                 onRequireLogin={() => setLoginOpen(true)}
                                 showMedia={showMedia}
+                                isNew={newCommentId === reply.id}
                               />
                             );
                           })}

@@ -135,7 +135,7 @@ simulatePause(435, 1440);
 check("Pausa salva imediatamente a posição exata (435s)", mockLocalStorage.getItem(ep1Key) === "435");
 
 // Evento 6: Fechamento/recarregamento da aba (beforeunload)
-let livePlayback = { episodeId: ep1Id, time: 440 };
+const livePlayback = { episodeId: ep1Id, time: 440 };
 function simulateUnload() {
   if (livePlayback.time > 0) {
     mockLocalStorage.setItem(ep1Key, String(Math.floor(livePlayback.time)));

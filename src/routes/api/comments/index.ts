@@ -473,7 +473,9 @@ export const Route = createFileRoute(
               ? profileRes
               : profileRes?.rows ?? [];
             userNick = pRows[0]?.nick ?? null;
-          } catch {}
+          } catch {
+            /* ignore profile lookup error */
+          }
 
           const now =
             new Date().toISOString();

@@ -206,18 +206,17 @@ export const getPublicProfile =
         image: string | null;
       }>`
         select
-          p."userId",
-          p."nick",
+          u."id" as "userId",
+          coalesce(p."nick", u."name", 'usuario') as "nick",
           p."bio",
           u."image"
-        from "profile" p
+        from "user" u
 
-        inner join "user" u
-          on u."id" =
-            p."userId"
+        left join "profile" p
+          on p."userId" = u."id"
 
-        where lower(p."nick") =
-          lower(${nick})
+        where (p."nick" is not null and lower(p."nick") = lower(${nick}))
+           or lower(u."id") = lower(${nick})
         limit 1
       `;
 
