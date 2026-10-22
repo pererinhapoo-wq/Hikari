@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
-import { Play } from "lucide-react";
 import { useHikariStore } from "@/lib/store";
 import { getAllPublishedEpisodes } from "@/lib/published-episodes";
 import { EpisodeCard } from "@/components/episode-card";
@@ -18,20 +17,17 @@ export function RecentEpisodesSection() {
     return null;
   }
 
-  // Exibe no máximo 18 episódios mais recentes (até 6 linhas de 3 colunas)
+  // Exibe no máximo 18 episódios mais recentes (até 6 linhas de 3 cards lado a lado)
   const recentEpisodes = allEpisodes.slice(0, 18);
 
   return (
-    <section className="space-y-3.5 sm:space-y-4 [content-visibility:auto]">
+    <section className="space-y-3 sm:space-y-4 [content-visibility:auto]">
       {/* Cabeçalho da Seção com Botão Ver todos alinhado à direita */}
       <div className="flex items-end justify-between gap-3 px-0.5">
-        <div className="min-w-0 flex-1 space-y-1">
-          {/* Eyebrow */}
-          <div className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold tracking-widest text-purple-400 uppercase">
-            <span className="flex items-center justify-center size-4 rounded-full bg-purple-950/90 border border-purple-500/30 shrink-0">
-              <Play className="size-2.5 text-purple-400 fill-purple-400" />
-            </span>
-            <span className="truncate">LANÇAMENTOS NO HIKARI</span>
+        <div className="min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+          {/* Eyebrow sem ícone ou emoji */}
+          <div className="text-[10px] sm:text-[11px] font-bold tracking-widest text-purple-400 uppercase">
+            LANÇAMENTOS NO HIKARI
           </div>
 
           {/* Título da Seção */}
@@ -73,8 +69,8 @@ export function RecentEpisodesSection() {
         </div>
       </div>
 
-      {/* Grade de 3 Colunas com Imagens Horizontais (até 6 linhas de 3 cards) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 md:gap-5">
+      {/* Grade de 3 Colunas Lado a Lado (3 cards por linha, até 6 linhas de 3 cards) */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3.5 md:gap-4.5">
         {recentEpisodes.map((episode) => (
           <EpisodeCard
             key={`${episode.animeId}-${episode.episodeId}`}

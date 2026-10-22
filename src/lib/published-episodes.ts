@@ -67,6 +67,60 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
 }
 
 /**
+ * Remove repetições redundantes entre número e título do episódio
+ * (ex.: "Episódio 25 – Episode 25" -> "Episódio 25",
+ * ou "Attack on Titan - Episode 25 - The Wall" -> "Episódio 25 — The Wall")
+ */
+export function cleanEpisodeDisplay(
+  episodeNumber: number,
+  rawTitle?: string,
+  animeTitle?: string,
+): string {
+  if (!rawTitle) {
+    return `Episódio ${episodeNumber}`;
+  }
+
+  let title = rawTitle.trim();
+
+  // 1. Se o título for idêntico ao nome do anime ou contiver o nome do anime no início/fim, remove
+  if (animeTitle) {
+    const cleanAnime = animeTitle.trim();
+    if (title.toLowerCase() === cleanAnime.toLowerCase()) {
+      return `Episódio ${episodeNumber}`;
+    }
+    const escaped = cleanAnime.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    title = title.replace(new RegExp(`^${escaped}\\s*[-–—:]*\\s*`, "i"), "").trim();
+    title = title.replace(new RegExp(`\\s*[-–—:]*\\s*${escaped}$`, "i"), "").trim();
+  }
+
+  // 2. Loop para remover tokens repetidos de episódio no início da string
+  // Captura: "Episódio 25", "Episode 25", "Ep. 25", "Capítulo 25", "#25", ou "25 -"
+  const epTokenRegex = /^(?:(?:epis[oó]dio|episode|ep\.?|cap[ií]tulo)\s*\d+|#\s*\d+|\b\d+\b)\s*[-–—:]*\s*/i;
+  let prev = "";
+  while (title && prev !== title && epTokenRegex.test(title)) {
+    prev = title;
+    title = title.replace(epTokenRegex, "").trim();
+  }
+
+  // 3. Remove traços, dois-pontos ou pontuações órfãs no início ou fim
+  title = title.replace(/^[-–—:/|\s]+/, "").replace(/[-–—:/|\s]+$/, "").trim();
+
+  // 4. Se o título resultante for vazio, ou se for apenas o número do episódio ou palavras como "Episode"/"Episódio"
+  if (
+    !title ||
+    title === String(episodeNumber) ||
+    new RegExp(`^(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo)\\s*${episodeNumber}$`, "i").test(title) ||
+    new RegExp(`^(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo)$`, "i").test(title)
+  ) {
+    return `Episódio ${episodeNumber}`;
+  }
+
+  // 5. Retorna o número e o título único sem duplicidades
+  return `Episódio ${episodeNumber} — ${title}`;
+}
+
+
+/**
  * Captura um quadro (frame) representativo de um vídeo via HTML5 Video e Canvas.
  * - Evita os primeiros segundos para não pegar telas pretas de abertura (mira em ~15% ou 15s).
  * - Se a origem bloquear leitura por CORS, a Promise é rejeitada de forma tratável.
