@@ -1,5 +1,5 @@
 {
-  "url": "http://127.0.0.1:8080/",
+  "url": "http://127.0.0.1:3000/",
   "viewports": {
     "desktop": {
       "width": 1280,
@@ -7,9 +7,9 @@
       "status": 200,
       "title": "HIKARI",
       "hasCanvas": false,
-      "bodyTextLen": 5332,
-      "bodyTextHash": "639b63581cf1af175d443df39810f058e2aba897ca0ee2d5cfae21523cf14b09",
-      "bodyTextPrefix": "光 HIKARI Início Buscar Lista Admin EM DESTAQUE ONE PIECE 8.7 199",
+      "bodyTextLen": 4250,
+      "bodyTextHash": "bd310a5460b358f6aad955fdcb2f36d538159cca382b499ac0c680ecba0c3f5c",
+      "bodyTextPrefix": "光 HIKARI EM DESTAQUE Cyberpunk: Edgerunners 2 サイバーパンク: エッジランナーズ2",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
@@ -21,16 +21,18 @@
       "status": 200,
       "title": "HIKARI",
       "hasCanvas": false,
-      "bodyTextLen": 5232,
-      "bodyTextHash": "c80c745ff1c1d0924dac9c73a39d9044df8017a6276284855a0946cccc63883e",
-      "bodyTextPrefix": "光 HIKARI EM DESTAQUE ONE PIECE 8.7 1999 Ação Aventura Comédia Go",
+      "bodyTextLen": 4150,
+      "bodyTextHash": "c1fed53dc15d74525dddcec0b62f381faecef1f675da45a4029cf7e4334347cd",
+      "bodyTextPrefix": "光 HIKARI EM DESTAQUE Cyberpunk: Edgerunners 2 サイバーパンク: エッジランナーズ2",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
       "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
     }
   },
-  "brandWarnings": [],
+  "brandWarnings": [
+    "BRAND NOTE: no custom public/og.jpg — the platform will serve the og.grok.me placeholder. Custom cards are the default for games of every kind (DOM board/word games included), whimsical apps, creative tools, and brand-forward pages — only plain utilities (converters, CRUD trackers, admin dashboards) keep the placeholder. If this app is not a plain utility, finish the brand-asset pass per /workspace/.grok/skills/og/SKILL.md."
+  ],
   "authWarnings": [],
   "verdictFile": "/workspace/screenshots/app-builder-preview.json"
 }

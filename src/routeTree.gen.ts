@@ -50,8 +50,6 @@ import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
 import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
-import { Route as WatchIdGifRouteImport } from './routes/watch.$id-gif'
-import { Route as WatchIdImagemCorrigidaRouteImport } from './routes/watch.$id-imagem-corrigida'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCommentsIndexRouteImport } from './routes/api/comments/index'
@@ -270,16 +268,6 @@ const WatchIdRoute = WatchIdRouteImport.update({
   path: '/watch/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WatchIdGifRoute = WatchIdGifRouteImport.update({
-  id: '/watch/$id-gif',
-  path: '/watch/$id-gif',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const WatchIdImagemCorrigidaRoute = WatchIdImagemCorrigidaRouteImport.update({
-  id: '/watch/$id-imagem-corrigida',
-  path: '/watch/$id-imagem-corrigida',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
   id: '/api/admin/comment-reports',
   path: '/api/admin/comment-reports',
@@ -382,8 +370,6 @@ export interface FileRoutesByFullPath {
   '/news/search': typeof NewsSearchRoute
   '/profile/$nick': typeof ProfileNickRoute
   '/watch/$id': typeof WatchIdRoute
-  '/watch/$id-gif': typeof WatchIdGifRoute
-  '/watch/$id-imagem-corrigida': typeof WatchIdImagemCorrigidaRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
@@ -437,8 +423,6 @@ export interface FileRoutesByTo {
   '/news/search': typeof NewsSearchRoute
   '/profile/$nick': typeof ProfileNickRoute
   '/watch/$id': typeof WatchIdRoute
-  '/watch/$id-gif': typeof WatchIdGifRoute
-  '/watch/$id-imagem-corrigida': typeof WatchIdImagemCorrigidaRoute
   '/admin': typeof AdminIndexRoute
   '/adult': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
@@ -495,8 +479,6 @@ export interface FileRoutesById {
   '/news_/search': typeof NewsSearchRoute
   '/profile/$nick': typeof ProfileNickRoute
   '/watch/$id': typeof WatchIdRoute
-  '/watch/$id-gif': typeof WatchIdGifRoute
-  '/watch/$id-imagem-corrigida': typeof WatchIdImagemCorrigidaRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
@@ -554,8 +536,6 @@ export interface FileRouteTypes {
     | '/news/search'
     | '/profile/$nick'
     | '/watch/$id'
-    | '/watch/$id-gif'
-    | '/watch/$id-imagem-corrigida'
     | '/admin/'
     | '/adult/'
     | '/api/admin/comment-reports'
@@ -609,8 +589,6 @@ export interface FileRouteTypes {
     | '/news/search'
     | '/profile/$nick'
     | '/watch/$id'
-    | '/watch/$id-gif'
-    | '/watch/$id-imagem-corrigida'
     | '/admin'
     | '/adult'
     | '/api/admin/comment-reports'
@@ -666,8 +644,6 @@ export interface FileRouteTypes {
     | '/news_/search'
     | '/profile/$nick'
     | '/watch/$id'
-    | '/watch/$id-gif'
-    | '/watch/$id-imagem-corrigida'
     | '/admin/'
     | '/adult/'
     | '/api/admin/comment-reports'
@@ -718,8 +694,6 @@ export interface RootRouteChildren {
   NewsSearchRoute: typeof NewsSearchRoute
   ProfileNickRoute: typeof ProfileNickRoute
   WatchIdRoute: typeof WatchIdRoute
-  WatchIdGifRoute: typeof WatchIdGifRoute
-  WatchIdImagemCorrigidaRoute: typeof WatchIdImagemCorrigidaRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCommentsEditRoute: typeof ApiCommentsEditRoute
@@ -1023,20 +997,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/watch/$id-gif': {
-      id: '/watch/$id-gif'
-      path: '/watch/$id-gif'
-      fullPath: '/watch/$id-gif'
-      preLoaderRoute: typeof WatchIdGifRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/watch/$id-imagem-corrigida': {
-      id: '/watch/$id-imagem-corrigida'
-      path: '/watch/$id-imagem-corrigida'
-      fullPath: '/watch/$id-imagem-corrigida'
-      preLoaderRoute: typeof WatchIdImagemCorrigidaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/admin/comment-reports': {
       id: '/api/admin/comment-reports'
       path: '/api/admin/comment-reports'
@@ -1190,8 +1150,6 @@ const rootRouteChildren: RootRouteChildren = {
   NewsSearchRoute: NewsSearchRoute,
   ProfileNickRoute: ProfileNickRoute,
   WatchIdRoute: WatchIdRoute,
-  WatchIdGifRoute: WatchIdGifRoute,
-  WatchIdImagemCorrigidaRoute: WatchIdImagemCorrigidaRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCommentsEditRoute: ApiCommentsEditRoute,

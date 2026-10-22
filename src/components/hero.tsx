@@ -93,9 +93,10 @@ export function Hero({
       "
     >
       {/* =========================================================
-          MOBILE: APRESENTAÇÃO CINEMATOGRÁFICA DE CAMADA DUPLA
-          - Camada de fundo: blur suave preenchendo as laterais
-          - Camada principal: imagem 100% visível, sem cortes nem distorções
+          MOBILE: BANNER COM ARTE CENTRALIZADA E FUNDO ESCURO UNIFORME
+          - Sem duplicar nem desfocar a capa do anime
+          - Fundo escuro uniforme com degradês laterais discretos
+          - Imagem original nítida e proporções 100% preservadas
           ========================================================= */}
       {visibleBackdrop ? (
         <div
@@ -105,36 +106,50 @@ export function Hero({
             h-56
             sm:h-72
             overflow-hidden
-            bg-black/60
+            bg-[#0d0b18]
             md:hidden
           "
         >
-          {/* Brilho ambiente roxo no topo */}
-          <div className="pointer-events-none absolute -top-10 -right-10 size-40 rounded-full bg-purple-500/20 blur-3xl z-10" />
+          {/* Brilho ambiente sutil no topo */}
+          <div className="pointer-events-none absolute -top-10 -right-10 size-40 rounded-full bg-purple-500/15 blur-3xl z-10" />
 
-          {/* Camada 1: Projeção de fundo desfocada (atmosfera sem bordas vazias) */}
-          <img
-            key={`mb-bg-${current.id}`}
-            src={mobileBackdrop}
-            alt=""
-            aria-hidden="true"
+          {/* Degradês escuros discretos nas laterais */}
+          <div
             className="
+              pointer-events-none
               absolute
-              inset-0
-              size-full
-              object-cover
-              blur-2xl
-              opacity-40
-              scale-125
+              inset-y-0
+              left-0
+              w-12
+              sm:w-20
+              bg-gradient-to-r
+              from-[#0d0b18]
+              via-[#0d0b18]/80
+              to-transparent
+              z-20
+            "
+          />
+          <div
+            className="
+              pointer-events-none
+              absolute
+              inset-y-0
+              right-0
+              w-12
+              sm:w-20
+              bg-gradient-to-l
+              from-[#0d0b18]
+              via-[#0d0b18]/80
+              to-transparent
+              z-20
             "
           />
 
-          {/* Camada 2: Imagem do anime perfeitamente contida e nítida */}
+          {/* Imagem do anime original, centralizada, nítida e com proporções 100% preservadas */}
           <img
             key={`mb-fg-${current.id}`}
             src={mobileBackdrop}
-            alt=""
-            aria-hidden="true"
+            alt={title}
             loading="eager"
             decoding="async"
             className="
@@ -143,21 +158,23 @@ export function Hero({
               size-full
               object-contain
               object-center
-              py-2
+              py-2.5
+              px-2
+              drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)]
             "
           />
 
-          {/* Camada 3: Gradiente de transição para o texto abaixo */}
+          {/* Gradiente de transição para o texto abaixo */}
           <div
             className="
               pointer-events-none
               absolute
               inset-x-0
               bottom-0
-              h-28
+              h-24
               bg-gradient-to-t
               from-[#0d0b18]
-              via-[#0d0b18]/70
+              via-[#0d0b18]/80
               to-transparent
               z-20
             "
