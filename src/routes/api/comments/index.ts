@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { auth } from "@/lib/auth/server";
+import { resolveApiUser } from "@/lib/auth/api-session";
 import { isHikariAdmin } from "@/lib/auth/admin";
 
 export const Route = createFileRoute(
@@ -32,17 +32,15 @@ export const Route = createFileRoute(
 
           const sql = await getSql();
 
-          const session =
-            await auth.api.getSession({
-              headers: request.headers,
-            });
+          const user =
+            await resolveApiUser(request, sql);
 
           const currentUserId =
-            session?.user?.id ?? null;
+            user?.id ?? null;
 
           const isAdmin =
             isHikariAdmin(
-              session?.user?.email,
+              user?.email,
             );
 
           const result = await sql.query(
@@ -122,10 +120,10 @@ export const Route = createFileRoute(
                 ],
           );
 
-          const comments =
+          const comments: any[] =
             Array.isArray(result)
               ? result
-              : result?.rows ?? [];
+              : (result as any)?.rows ?? [];
 
           const normalizedComments =
             comments.map((comment) => {
@@ -198,12 +196,13 @@ export const Route = createFileRoute(
 
       POST: async ({ request }) => {
         try {
-          const session =
-            await auth.api.getSession({
-              headers: request.headers,
-            });
+          const sql =
+            await getSql();
 
-          if (!session?.user?.id) {
+          const user =
+            await resolveApiUser(request, sql);
+
+          if (!user?.id) {
             return Response.json(
               {
                 error:
@@ -219,10 +218,10 @@ export const Route = createFileRoute(
             "SESSÃO DO COMENTÁRIO:",
             {
               userId:
-                session.user.id,
+                user.id,
 
               userName:
-                session.user.name,
+                user.name,
             },
           );
 
@@ -297,9 +296,6 @@ export const Route = createFileRoute(
             );
           }
 
-          const sql =
-            await getSql();
-
           let parentCommentOwnerId:
             | string
             | null = null;
@@ -327,12 +323,12 @@ export const Route = createFileRoute(
                 ],
               );
 
-            const parentRows =
+            const parentRows: any[] =
               Array.isArray(
                 parentResult,
               )
                 ? parentResult
-                : parentResult?.rows ??
+                : (parentResult as any)?.rows ??
                   [];
 
             if (
@@ -383,7 +379,7 @@ export const Route = createFileRoute(
             `,
             [
               id,
-              session.user.id,
+              user.id,
               animeId,
               episodeId,
               content,
@@ -397,14 +393,14 @@ export const Route = createFileRoute(
             parentId &&
             parentCommentOwnerId &&
             parentCommentOwnerId !==
-              session.user.id
+              user.id
           ) {
             try {
               const notificationId =
                 crypto.randomUUID();
 
               const actorName =
-                session.user.name ??
+                user.name ??
                 "Alguém";
 
               await sql.query(
@@ -434,7 +430,7 @@ export const Route = createFileRoute(
                 [
                   notificationId,
                   parentCommentOwnerId,
-                  session.user.id,
+                  user.id,
                   "comment_reply",
                   `${actorName} respondeu seu comentário.`,
                   parentId,
@@ -467,11 +463,11 @@ export const Route = createFileRoute(
           try {
             const profileRes = await sql.query(
               `select "nick" from "profile" where "userId" = $1 limit 1`,
-              [session.user.id],
+              [user.id],
             );
-            const pRows = Array.isArray(profileRes)
+            const pRows: any[] = Array.isArray(profileRes)
               ? profileRes
-              : profileRes?.rows ?? [];
+              : (profileRes as any)?.rows ?? [];
             userNick = pRows[0]?.nick ?? null;
           } catch {
             /* ignore profile lookup error */
@@ -500,14 +496,14 @@ export const Route = createFileRoute(
             updatedAt: now,
 
             userId:
-              session.user.id,
+              user.id,
 
             userName:
-              session.user.name ||
+              user.name ||
               "Usuário",
 
             userImage:
-              session.user.image ||
+              user.image ||
               null,
 
             userNick,

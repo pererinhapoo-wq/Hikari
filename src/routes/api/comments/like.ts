@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { auth } from "@/lib/auth/server";
+import { resolveApiUser } from "@/lib/auth/api-session";
 
 export const Route = createFileRoute(
   "/api/comments/like",
@@ -9,16 +9,17 @@ export const Route = createFileRoute(
     handlers: {
       POST: async ({ request }) => {
         try {
+          const sql =
+            await getSql();
+
           // =====================================================
           // 1. VERIFICAR USUÁRIO LOGADO
           // =====================================================
 
-          const session =
-            await auth.api.getSession({
-              headers: request.headers,
-            });
+          const user =
+            await resolveApiUser(request, sql);
 
-          if (!session?.user?.id) {
+          if (!user?.id) {
             return Response.json(
               {
                 error:
@@ -29,7 +30,7 @@ export const Route = createFileRoute(
           }
 
           const userId =
-            session.user.id;
+            user.id;
 
           // =====================================================
           // 2. LER JSON
@@ -80,9 +81,6 @@ export const Route = createFileRoute(
           const targetReaction: "like" | "dislike" =
             rawReaction === "dislike" ? "dislike" : "like";
 
-          const sql =
-            await getSql();
-
           // =====================================================
           // 3. PEGAR DADOS DO COMENTÁRIO
           // =====================================================
@@ -102,12 +100,12 @@ export const Route = createFileRoute(
               [commentId],
             );
 
-          const commentRows =
+          const commentRows: any[] =
             Array.isArray(
               commentResult,
             )
               ? commentResult
-              : commentResult?.rows ??
+              : (commentResult as any)?.rows ??
                 [];
 
           if (
@@ -161,12 +159,12 @@ export const Route = createFileRoute(
               ],
             );
 
-          const existingRows =
+          const existingRows: any[] =
             Array.isArray(
               existingReactionResult,
             )
               ? existingReactionResult
-              : existingReactionResult?.rows ??
+              : (existingReactionResult as any)?.rows ??
                 [];
 
           let finalReaction: "like" | "dislike" | null = null;
@@ -241,7 +239,7 @@ export const Route = createFileRoute(
           ) {
             try {
               const notificationId = crypto.randomUUID();
-              const actorName = session.user.name ?? "Alguém";
+              const actorName = user.name ?? "Alguém";
 
               await sql.query(
                 `
@@ -302,10 +300,10 @@ export const Route = createFileRoute(
               [commentId],
             );
 
-          const countRows =
+          const countRows: any[] =
             Array.isArray(countResult)
               ? countResult
-              : countResult?.rows ?? [];
+              : (countResult as any)?.rows ?? [];
 
           const likes =
             Number(countRows[0]?.likes ?? 0);

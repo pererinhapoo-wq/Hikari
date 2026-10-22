@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { auth } from "@/lib/auth/server";
+import { resolveApiUser } from "@/lib/auth/api-session";
 
 type ModerationAction =
   | "spoiler"
@@ -23,16 +23,17 @@ export const Route = createFileRoute(
     handlers: {
       POST: async ({ request }) => {
         try {
+          const sql =
+            await getSql();
+
           /* ============================================ */
           /* AUTENTICAÇÃO                                 */
           /* ============================================ */
 
-          const session =
-            await auth.api.getSession({
-              headers: request.headers,
-            });
+          const user =
+            await resolveApiUser(request, sql);
 
-          if (!session?.user?.id) {
+          if (!user?.id) {
             return Response.json(
               {
                 error:
@@ -108,9 +109,6 @@ export const Route = createFileRoute(
             );
           }
 
-          const sql =
-            await getSql();
-
           /* ============================================ */
           /* VERIFICAR COMENTÁRIO                          */
           /* ============================================ */
@@ -127,12 +125,12 @@ export const Route = createFileRoute(
               [commentId],
             );
 
-          const commentRows =
+          const commentRows: any[] =
             Array.isArray(
               commentResult,
             )
               ? commentResult
-              : commentResult?.rows ??
+              : (commentResult as any)?.rows ??
                 [];
 
           if (
@@ -191,7 +189,7 @@ export const Route = createFileRoute(
                 `,
                 [
                   commentId,
-                  session.user.id,
+                  user.id,
                 ],
               );
 
@@ -225,7 +223,7 @@ export const Route = createFileRoute(
                 [
                   crypto.randomUUID(),
                   commentId,
-                  session.user.id,
+                  user.id,
                   "spam",
                 ],
               );
@@ -279,7 +277,7 @@ export const Route = createFileRoute(
                 `,
                 [
                   commentId,
-                  session.user.id,
+                  user.id,
                 ],
               );
 
@@ -329,7 +327,7 @@ export const Route = createFileRoute(
               [
                 crypto.randomUUID(),
                 commentId,
-                session.user.id,
+                user.id,
                 reason,
               ],
             );

@@ -38,7 +38,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { LoginMenu } from "@/components/LoginMenu";
 import { Logo } from "@/components/logo";
-import { signOut } from "@/lib/auth/client";
+import { signOut, signIn, getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getProfile } from "@/lib/profile.functions";
 import {
@@ -687,7 +687,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* PLAYER */}
         {/* ================================================== */}
 
-        {file && selectedPlayer ? (
+        {file && selectedPlayer && current ? (
           <CustomVideoPlayer
             key={`${anime.id}-${current.id}-${selectedPlayer.id}-${file}`}
             video={_currentVideoItem}
@@ -1005,8 +1005,20 @@ function CommentsSection({
   const [loginOpen, setLoginOpen] =
     useState(false);
 
+  const [commentsLoginOpen, setCommentsLoginOpen] =
+    useState(false);
+
+  const [commentsLoginWarning, setCommentsLoginWarning] =
+    useState<string | null>(null);
+
+  const [sessionLoadingState, setSessionLoadingState] =
+    useState(false);
+
   const [newCommentId, setNewCommentId] =
     useState<string | null>(null);
+
+  const newCommentTimeoutRef =
+    useRef<number | null>(null);
 
   /* ====================================================== */
   /* IMAGEM DO COMENTÁRIO                                   */
@@ -1148,19 +1160,20 @@ function CommentsSection({
 
   // Tecla Escape para fechar os menus de login e de usuário
   useEffect(() => {
-    if (!userMenuOpen && !loginOpen) {
+    if (!userMenuOpen && !loginOpen && !commentsLoginOpen) {
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setUserMenuOpen(false);
         setLoginOpen(false);
+        setCommentsLoginOpen(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () =>
       window.removeEventListener("keydown", handleKeyDown);
-  }, [userMenuOpen, loginOpen]);
+  }, [userMenuOpen, loginOpen, commentsLoginOpen]);
 
   const effectiveUserId =
     authUser?.id ?? currentUserId;
@@ -1180,7 +1193,7 @@ function CommentsSection({
     authUser?.profileImageUrl ?? currentUserImage;
 
   const sessionLoading =
-    authUserPending && !effectiveUserId;
+    (authUserPending || sessionLoadingState) && !effectiveUserId;
 
   const isAdmin =
     isHikariAdmin(
@@ -1595,7 +1608,12 @@ function CommentsSection({
 
     async function loadSession() {
       try {
-        setSessionLoading(true);
+        setSessionLoadingState(true);
+
+        const bearer = getBearerToken();
+        const headers: Record<string, string> = {
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        };
 
         const response =
           await fetch(
@@ -1603,6 +1621,7 @@ function CommentsSection({
             {
               method: "GET",
               credentials: "include",
+              headers,
             },
           );
 
@@ -1663,7 +1682,7 @@ function CommentsSection({
         }
       } finally {
         if (!cancelled) {
-          setSessionLoading(false);
+          setSessionLoadingState(false);
         }
       }
     }
@@ -1694,6 +1713,11 @@ function CommentsSection({
         setLoading(true);
         setError("");
 
+        const bearer = getBearerToken();
+        const headers: Record<string, string> = {
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        };
+
         const response =
           await fetch(
             `/api/comments?animeId=${encodeURIComponent(
@@ -1705,6 +1729,7 @@ function CommentsSection({
               method: "GET",
               credentials:
                 "include",
+              headers,
             },
           );
 
@@ -1906,6 +1931,12 @@ function CommentsSection({
             selectedGifUrl;
         }
 
+        const bearer = getBearerToken();
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        };
+
         const response =
           await fetch(
             "/api/comments",
@@ -1913,10 +1944,7 @@ function CommentsSection({
               method: "POST",
               credentials:
                 "include",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+              headers,
               body: JSON.stringify({
                 animeId,
                 episodeId,
@@ -1945,6 +1973,14 @@ function CommentsSection({
               ...current,
             ],
           );
+          setRootOrder((current) => [data.comment.id, ...current]);
+          setNewCommentId(data.comment.id);
+          if (newCommentTimeoutRef.current) {
+            window.clearTimeout(newCommentTimeoutRef.current);
+          }
+          newCommentTimeoutRef.current = window.setTimeout(() => {
+            setNewCommentId(null);
+          }, 3200);
         }
 
         setText("");
@@ -1994,6 +2030,12 @@ function CommentsSection({
         setReplySending(true);
         setError("");
 
+        const bearer = getBearerToken();
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        };
+
         const response =
           await fetch(
             "/api/comments",
@@ -2001,10 +2043,7 @@ function CommentsSection({
               method: "POST",
               credentials:
                 "include",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+              headers,
               body: JSON.stringify({
                 animeId,
                 episodeId,
@@ -2033,6 +2072,13 @@ function CommentsSection({
               data.comment,
             ],
           );
+          setNewCommentId(data.comment.id);
+          if (newCommentTimeoutRef.current) {
+            window.clearTimeout(newCommentTimeoutRef.current);
+          }
+          newCommentTimeoutRef.current = window.setTimeout(() => {
+            setNewCommentId(null);
+          }, 3200);
         }
 
         setReplyText("");
@@ -2061,13 +2107,16 @@ function CommentsSection({
       reaction: "like" | "dislike",
     ) => {
       if (!effectiveUserId) {
-        setLoginOpen(true);
+        setCommentsLoginOpen(true);
         return;
       }
 
-      if (likingId) {
+      if (inFlightReactionsRef.current.has(commentId)) {
         return;
       }
+
+      inFlightReactionsRef.current.add(commentId);
+      setPendingReactionIds((prev) => ({ ...prev, [commentId]: true }));
 
       // Snapshot para restauração em caso de erro
       const previousComments = [...comments];
@@ -2116,11 +2165,13 @@ function CommentsSection({
       );
 
       try {
-        setLikingId(
-          commentId,
-        );
-
         setError("");
+
+        const bearer = getBearerToken();
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        };
 
         const response =
           await fetch(
@@ -2129,10 +2180,7 @@ function CommentsSection({
               method: "POST",
               credentials:
                 "include",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+              headers,
               body: JSON.stringify({
                 commentId,
                 reaction,
@@ -2147,7 +2195,7 @@ function CommentsSection({
           // Reverte o estado otimista
           setComments(previousComments);
           if (response.status === 401) {
-            setLoginOpen(true);
+            setCommentsLoginOpen(true);
           }
           throw new Error(
             data?.error ||
@@ -2197,9 +2245,12 @@ function CommentsSection({
             : "Não foi possível registrar a reação.",
         );
       } finally {
-        setLikingId(
-          null,
-        );
+        inFlightReactionsRef.current.delete(commentId);
+        setPendingReactionIds((prev) => {
+          const next = { ...prev };
+          delete next[commentId];
+          return next;
+        });
       }
     };
 
@@ -2401,10 +2452,6 @@ function CommentsSection({
         setDeletingComment(
           null,
         );
-
-        setModerationSuccess(
-          "Comentário excluído com sucesso.",
-        );
       } catch (err) {
         console.error(err);
 
@@ -2566,26 +2613,39 @@ function CommentsSection({
   /* DATA                                                    */
   /* ====================================================== */
 
-  const formatDate = (value: string) => {
-    if (!value) return "";
+  const formatCommentDate = (value: string) => {
+    if (!value) return { date: "", time: "" };
     const date = new Date(value);
 
     if (Number.isNaN(date.getTime())) {
-      return "";
+      return { date: "", time: "" };
     }
 
-    const datePart = date.toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
+    const day = date.getDate().toString().padStart(2, "0");
+    const months = [
+      "jan.",
+      "fev.",
+      "mar.",
+      "abr.",
+      "mai.",
+      "jun.",
+      "jul.",
+      "ago.",
+      "set.",
+      "out.",
+      "nov.",
+      "dez.",
+    ];
+    const month = months[date.getMonth()] || "";
+    const year = date.getFullYear();
 
-    const timePart = date.toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
 
-    return `${datePart} às ${timePart}`;
+    return {
+      date: `${day} ${month} ${year}`,
+      time: `às ${hours}:${minutes}`,
+    };
   };
 
   /* ====================================================== */
@@ -2662,12 +2722,8 @@ function CommentsSection({
       }
     }
 
-    if (sortBy === "spoiler") {
-      return result.filter((c) => c.isSpoiler);
-    }
-
     return result;
-  }, [comments, rootOrder, sortBy]);
+  }, [comments, rootOrder]);
 
   /* ====================================================== */
   /* RENDER                                                   */
@@ -2749,15 +2805,143 @@ function CommentsSection({
             <div className="flex items-center shrink-0 relative ml-auto">
 
               {!effectiveUserId ? (
-                /* Visitante: Opção ENTRAR que abre modal centralizado com backdrop blur */
-                <button
-                  type="button"
-                  onClick={() => setLoginOpen(true)}
-                  className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-xl border border-[#a855f7]/35 bg-[#a855f7]/10 px-3 py-1 text-xs sm:text-sm font-semibold text-[#c084fc] hover:bg-[#a855f7]/20 hover:text-white hover:border-[#a855f7]/55 active:scale-95 transition-all shadow-sm cursor-pointer"
-                >
-                  <LogIn className="size-3.5" />
-                  <span>Entrar</span>
-                </button>
+                /* Visitante: Opção ENTRAR com Popover estilo Disqus */
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCommentsLoginOpen((prev) => !prev);
+                      setCommentsLoginWarning(null);
+                    }}
+                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-xl border border-[#a855f7]/35 bg-[#a855f7]/10 px-3 py-1 text-xs sm:text-sm font-semibold text-[#c084fc] hover:bg-[#a855f7]/20 hover:text-white hover:border-[#a855f7]/55 active:scale-95 transition-all shadow-sm cursor-pointer"
+                    aria-expanded={commentsLoginOpen}
+                    aria-haspopup="dialog"
+                  >
+                    <LogIn className="size-3.5" />
+                    <span>Entrar</span>
+                  </button>
+
+                  {commentsLoginOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => {
+                          setCommentsLoginOpen(false);
+                          setCommentsLoginWarning(null);
+                        }}
+                      />
+                      <div
+                        role="dialog"
+                        aria-label="Opções de login"
+                        className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/10 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                      >
+                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
+                          <span className="text-xs font-bold text-white tracking-tight">
+                            Entrar para comentar
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCommentsLoginOpen(false);
+                              setCommentsLoginWarning(null);
+                            }}
+                            className="text-white/40 hover:text-white text-xs transition-colors p-1"
+                            aria-label="Fechar"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+
+                        <p className="text-[11px] text-white/60 mb-3">
+                          Conecte-se com sua rede favorita ou conta Hikari para participar da conversa.
+                        </p>
+
+                        <div className="space-y-1.5">
+                          {/* Google */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await signIn("google", {
+                                  callbackURL: window.location.href,
+                                });
+                              } catch (err) {
+                                console.error(err);
+                                setCommentsLoginWarning("Não foi possível iniciar login com Google.");
+                              }
+                            }}
+                            className="flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-white/90 hover:bg-white/[0.08] hover:text-white transition-all cursor-pointer"
+                          >
+                            <svg className="size-4 shrink-0" viewBox="0 0 24 24">
+                              <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z" />
+                              <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z" />
+                              <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.8s.2-2.1.4-2.8L1.9 6.3C.7 8.7 0 10.3 0 12s.7 3.3 1.9 5.7l3.7-2.9z" />
+                              <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z" />
+                            </svg>
+                            <span>Continuar com Google</span>
+                          </button>
+
+                          {/* X (Twitter) */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await signIn("x", {
+                                  callbackURL: window.location.href,
+                                });
+                              } catch (err) {
+                                console.error(err);
+                                setCommentsLoginWarning("Não foi possível iniciar login com X.");
+                              }
+                            }}
+                            className="flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-white/90 hover:bg-white/[0.08] hover:text-white transition-all cursor-pointer"
+                          >
+                            <svg className="size-4 shrink-0 fill-current" viewBox="0 0 24 24">
+                              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                            </svg>
+                            <span>Continuar com X (Twitter)</span>
+                          </button>
+
+                          {/* Facebook (Com aviso informativo de configuração) */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCommentsLoginWarning("Login com Facebook temporariamente indisponível no ambiente de desenvolvimento.");
+                            }}
+                            className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-white/60 hover:bg-white/[0.06] hover:text-white/80 transition-all cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <svg className="size-4 shrink-0 fill-[#1877F2]" viewBox="0 0 24 24">
+                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                              </svg>
+                              <span>Continuar com Facebook</span>
+                            </div>
+                            <span className="text-[10px] text-amber-400/80 font-normal">Não config.</span>
+                          </button>
+                        </div>
+
+                        {commentsLoginWarning && (
+                          <div className="mt-2.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300">
+                            {commentsLoginWarning}
+                          </div>
+                        )}
+
+                        <div className="h-px bg-white/[0.08] my-2.5" />
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCommentsLoginOpen(false);
+                            setLoginOpen(true);
+                          }}
+                          className="w-full text-center text-xs text-[#c084fc] hover:underline font-medium py-1"
+                        >
+                          Entrar com email ou criar conta Hikari
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               ) : (
                 /* Usuário autenticado: Avatar real + Nome + Menu com 5 opções */
                 <div className="relative">
@@ -3285,17 +3469,6 @@ function CommentsSection({
           )}
 
           {/* =============================================== */}
-          {/* INDICADOR DO FILTRO                             */}
-          {/* =============================================== */}
-
-          {sortBy ===
-            "spoiler" && (
-            <div className="mt-4 rounded-xl border border-white/10 bg-[#141418] px-4 py-2.5 text-xs text-white/60">
-              Mostrando apenas comentários marcados como spoiler.
-            </div>
-          )}
-
-          {/* =============================================== */}
           {/* LISTA DE COMENTÁRIOS REDESENHADA (SEM CARTÕES PESADOS) */}
           {/* =============================================== */}
 
@@ -3308,24 +3481,9 @@ function CommentsSection({
             ) : displayedRootComments.length ===
               0 ? (
               <div className="py-10 text-center text-sm text-white/40">
-
-                {sortBy ===
-                "spoiler"
-                  ? (
-                    <>
-                      Não há comentários com spoiler neste episódio.
-                      <br />
-                      Tente outro filtro.
-                    </>
-                  )
-                  : (
-                    <>
-                      Ainda não há comentários neste episódio.
-                      <br />
-                      Seja o primeiro a comentar!
-                    </>
-                  )}
-
+                Ainda não há comentários neste episódio.
+                <br />
+                Seja o primeiro a comentar!
               </div>
             ) : (
               displayedRootComments.map(
@@ -3380,7 +3538,7 @@ function CommentsSection({
                           replySending
                         }
                         formatDate={
-                          formatDate
+                          formatCommentDate
                         }
                         onReaction={
                           handleReaction
@@ -3457,7 +3615,7 @@ function CommentsSection({
                                 replyText={replyText}
                                 replyIsSpoiler={replyIsSpoiler}
                                 replySending={replySending}
-                                formatDate={formatDate}
+                                formatDate={formatCommentDate}
                                 onReaction={handleReaction}
                                 onReplyChange={setReplyText}
                                 onReplySpoilerChange={setReplyIsSpoiler}
@@ -4141,7 +4299,7 @@ function CommentCard({
   comment,
   replyCount,
   replyToName,
-  likingId,
+  isPendingReaction,
   replyingId,
   replyText,
   replyIsSpoiler,
@@ -4171,12 +4329,12 @@ function CommentCard({
   comment: Comment;
   replyCount: number;
   replyToName?: string;
-  likingId: string | null;
+  isPendingReaction: boolean;
   replyingId: string | null;
   replyText: string;
   replyIsSpoiler: boolean;
   replySending: boolean;
-  formatDate: (value: string) => string;
+  formatDate: (value: string) => { date: string; time: string };
   onReaction: (id: string, reaction: "like" | "dislike") => void;
   onReplyChange: (value: string) => void;
   onReplySpoilerChange: (value: boolean) => void;
@@ -4201,6 +4359,7 @@ function CommentCard({
   const isReplying = replyingId === comment.id;
   const [localMediaRevealed, setLocalMediaRevealed] = useState(false);
   const [spoilerRevealed, setSpoilerRevealed] = useState(false);
+  const formattedDate = formatDate(comment.createdAt);
 
   return (
     <article
@@ -4209,8 +4368,9 @@ function CommentCard({
         "group/comment relative py-2.5 transition-colors",
         highlighted &&
           "rounded-xl bg-[#a855f7]/10 p-3 border border-[#a855f7]/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]",
-        isNew &&
-          "motion-safe:animate-in motion-safe:fade-in-50 motion-safe:slide-in-from-top-2 duration-300",
+        isNew
+          ? "rounded-xl bg-[#a855f7]/15 border border-[#a855f7]/40 p-3 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-colors duration-1000 ease-out motion-safe:animate-in motion-safe:fade-in-50"
+          : "border border-transparent transition-colors duration-500 ease-out",
       )}
     >
       {/* =================================================== */}
@@ -4241,7 +4401,7 @@ function CommentCard({
               </div>
 
               {/* Nome do autor com hover sutil */}
-              <span className="text-xs sm:text-sm font-semibold text-white/95 group-hover/author:text-[#c084fc] truncate transition-colors">
+              <span className="text-xs sm:text-sm font-bold text-white group-hover/author:text-[#c084fc] truncate transition-colors">
                 {comment.userName || "Usuário"}
               </span>
             </Link>
@@ -4263,24 +4423,32 @@ function CommentCard({
               </div>
 
               {/* Nome do autor estático */}
-              <span className="text-xs sm:text-sm font-semibold text-white/95 truncate">
+              <span className="text-xs sm:text-sm font-bold text-white truncate">
                 {comment.userName || "Usuário"}
               </span>
             </div>
           )}
 
-          {/* Indicador de resposta "respondendo a @usuário" e Data */}
+          {/* Em respostas: Usuário que responde → @Usuário mencionado e Data */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
             {isReply && replyToName && (
-              <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-medium text-[#c084fc]/90">
-                <span className="text-white/40">respondendo a</span>
-                <span className="text-[#c084fc] font-semibold">@{replyToName}</span>
+              <span className="inline-flex items-center gap-1.5 text-xs">
+                <span className="text-[#c084fc]/70 font-semibold">→</span>
+                <span className="text-[#c084fc] font-medium">@{replyToName}</span>
               </span>
             )}
 
-            <span className="text-[11px] text-white/40">
-              · {formatDate(comment.createdAt)}
-            </span>
+            {formattedDate.date && (
+              <span className="text-[11px] font-medium text-[#c084fc]/80">
+                · {formattedDate.date}
+              </span>
+            )}
+
+            {formattedDate.time && (
+              <span className="text-[11px] text-white/40">
+                {formattedDate.time}
+              </span>
+            )}
           </div>
         </div>
 
@@ -4568,25 +4736,26 @@ function CommentCard({
         <button
           type="button"
           onClick={() => onReaction(comment.id, "like")}
-          disabled={likingId === comment.id}
+          disabled={isPendingReaction}
           className={cn(
-            "group/like inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all select-none cursor-pointer motion-safe:duration-200",
+            "group/like inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all select-none cursor-pointer duration-200 motion-reduce:transition-none",
             "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
             comment.liked
               ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
               : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
+            isPendingReaction && "opacity-60 pointer-events-none",
           )}
           aria-label={comment.liked ? "Remover curtida" : "Curtir comentário"}
         >
           <ThumbsUp
             className={cn(
-              "size-3.5 shrink-0 transition-transform motion-safe:duration-200 ease-out",
+              "size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none motion-reduce:transform-none ease-out",
               comment.liked
                 ? "fill-current scale-110"
                 : "group-hover/like:scale-110 active:scale-90",
             )}
           />
-          <span className="font-semibold tabular-nums transition-colors duration-200">
+          <span className="font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none">
             {comment.likes}
           </span>
         </button>
@@ -4595,13 +4764,14 @@ function CommentCard({
         <button
           type="button"
           onClick={() => onReaction(comment.id, "dislike")}
-          disabled={likingId === comment.id}
+          disabled={isPendingReaction}
           className={cn(
-            "group/dislike inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all select-none cursor-pointer motion-safe:duration-200",
+            "group/dislike inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all select-none cursor-pointer duration-200 motion-reduce:transition-none",
             "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
             comment.disliked
               ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
               : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
+            isPendingReaction && "opacity-60 pointer-events-none",
           )}
           aria-label={
             comment.disliked ? "Remover descurtida" : "Não curtir comentário"
@@ -4609,13 +4779,13 @@ function CommentCard({
         >
           <ThumbsDown
             className={cn(
-              "size-3.5 shrink-0 transition-transform motion-safe:duration-200 ease-out",
+              "size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none motion-reduce:transform-none ease-out",
               comment.disliked
                 ? "fill-current scale-110"
                 : "group-hover/dislike:scale-110 active:scale-90",
             )}
           />
-          <span className="font-semibold tabular-nums transition-colors duration-200">
+          <span className="font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none">
             {comment.dislikes}
           </span>
         </button>

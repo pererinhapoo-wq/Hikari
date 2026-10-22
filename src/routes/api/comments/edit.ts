@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { auth } from "@/lib/auth/server";
+import { resolveApiUser } from "@/lib/auth/api-session";
 import { isHikariAdmin } from "@/lib/auth/admin";
 
 type CommentAction = "edit" | "delete";
@@ -12,12 +12,13 @@ export const Route = createFileRoute(
     handlers: {
       POST: async ({ request }) => {
         try {
-          const session =
-            await auth.api.getSession({
-              headers: request.headers,
-            });
+          const sql =
+            await getSql();
 
-          if (!session?.user?.id) {
+          const user =
+            await resolveApiUser(request, sql);
+
+          if (!user?.id) {
             return Response.json(
               {
                 error:
@@ -116,9 +117,6 @@ export const Route = createFileRoute(
             );
           }
 
-          const sql =
-            await getSql();
-
           const commentResult =
             await sql.query(
               `
@@ -132,12 +130,12 @@ export const Route = createFileRoute(
               [commentId],
             );
 
-          const commentRows =
+          const commentRows: any[] =
             Array.isArray(
               commentResult,
             )
               ? commentResult
-              : commentResult?.rows ??
+              : (commentResult as any)?.rows ??
                 [];
 
           if (
@@ -158,11 +156,11 @@ export const Route = createFileRoute(
 
           const isOwner =
             comment.userId ===
-            session.user.id;
+            user.id;
 
           const isAdmin =
             isHikariAdmin(
-              session.user.email,
+              user.email,
             );
 
           if (!isOwner && !isAdmin) {
@@ -226,12 +224,12 @@ export const Route = createFileRoute(
                 [commentId],
               );
 
-            const updatedRows =
+            const updatedRows: any[] =
               Array.isArray(
                 updatedResult,
               )
                 ? updatedResult
-                : updatedResult?.rows ??
+                : (updatedResult as any)?.rows ??
                   [];
 
             return Response.json({

@@ -180,6 +180,7 @@ export const getPublicProfile =
   createServerFn({
     method: "GET",
   })
+    .validator((d: { nick: string }) => d)
     .handler(async ({
       data,
     }) => {
@@ -255,7 +256,7 @@ export const getPublicProfile =
           ${row.userId}
       `;
 
-      return {
+      const profileResult: PublicUserProfile = {
         userId: row.userId,
         nick: row.nick ?? "",
         bio: row.bio ?? "",
@@ -270,7 +271,9 @@ export const getPublicProfile =
           followingRows[0]?.count ?? "0",
         ),
         isFollowing: false,
-      } satisfies PublicUserProfile;
+      };
+
+      return profileResult;
     });
 
 /* ============================================================ */
@@ -517,6 +520,7 @@ export const getPublicComments =
   createServerFn({
     method: "GET",
   })
+    .validator((d: { userId: string }) => d)
     .handler(async ({
       data,
     }) => {
@@ -598,6 +602,7 @@ export const updateProfile =
     method: "POST",
   })
     .middleware([authMiddleware])
+    .validator((d: { nick: string; bio: string; favorites: string[] }) => d)
     .handler(async ({
       context,
       data,

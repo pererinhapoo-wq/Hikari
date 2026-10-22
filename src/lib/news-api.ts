@@ -21,7 +21,9 @@ export type AutomaticNewsItem = {
     | "NOVO VISUAL"
     | "DATA DE ESTREIA"
     | "ELENCO"
-    | "NOTÍCIA";
+    | "NOTÍCIA"
+    | "ESTREIA"
+    | "RECOMENDAÇÃO";
   title: string;
   description: string;
   date: string;
