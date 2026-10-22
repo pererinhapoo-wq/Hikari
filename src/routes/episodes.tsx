@@ -143,9 +143,9 @@ function AllEpisodesPage() {
 
       {/* Lista de Episódios */}
       {!hydrated ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3.5 md:gap-4.5">
           {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="aspect-video animate-pulse rounded-xl bg-elevated/70 border border-purple-500/10" />
+            <div key={i} className="aspect-video animate-pulse rounded-lg sm:rounded-xl bg-elevated/70 border border-purple-500/10" />
           ))}
         </div>
       ) : filteredEpisodes.length === 0 ? (
@@ -182,8 +182,8 @@ function AllEpisodesPage() {
         </div>
       ) : (
         <>
-          {/* Grade de 3 Colunas com Imagens Horizontais */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 md:gap-5">
+          {/* Grade de 3 Colunas com Imagens Horizontais (3 cards por linha) */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-3.5 md:gap-4.5">
             {paginatedEpisodes.map((episode) => (
               <EpisodeCard
                 key={`${episode.animeId}-${episode.episodeId}`}

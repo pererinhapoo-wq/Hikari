@@ -4,6 +4,7 @@ import { displayTitle } from "@/lib/types";
 export type PublishedEpisode = {
   animeId: string;
   animeTitle: string;
+  animeAltTitles?: string[];
   animeCover: string;
   seasonId: string;
   seasonNumber: number;
@@ -18,8 +19,106 @@ export type PublishedEpisode = {
 };
 
 /**
- * Extrai todos os episódios cadastrados e publicados nos animes locais,
+ * Resolve o melhor nome legível para um anime, evitando "Sem título" ou valores vazios.
+ */
+function resolveAnimeCanonicalTitle(anime: LocalAnime): string {
+  const english = anime.titleEnglish?.trim();
+  const romaji = anime.titleRomaji?.trim();
+  const native = anime.titleNative?.trim();
+  const rawTitle = (anime as unknown as { title?: string }).title?.trim();
+  const titles = (anime as unknown as { titles?: { english?: string; romaji?: string; native?: string } }).titles;
+
+  return (
+    english ||
+    romaji ||
+    native ||
+    rawTitle ||
+    titles?.english?.trim() ||
+    titles?.romaji?.trim() ||
+    titles?.native?.trim() ||
+    "Anime"
+  );
+}
+
+/**
+ * Verifica se uma URL é um arquivo ou stream de mídia reproduzível no Hikari,
+ * descartando páginas web externas de catálogo de terceiros (Crunchyroll, Funimation, etc.).
+ */
+export function isHikariPlayableUrl(url?: string | null): boolean {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+
+  const lower = trimmed.toLowerCase();
+
+  // Páginas web externas de catálogo e serviços de streaming que não fornecem arquivos diretos
+  if (
+    lower.includes("crunchyroll.com") ||
+    lower.includes("funimation.com") ||
+    lower.includes("vrv.co") ||
+    lower.includes("netflix.com") ||
+    lower.includes("hidive.com") ||
+    lower.includes("youtube.com/watch") ||
+    lower.includes("youtu.be/") ||
+    lower.includes("vimeo.com/")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Determina se um episódio foi efetivamente publicado e cadastrado no sistema
+ * de publicação do Hikari pelo administrador.
+ * 
+ * Regras essenciais:
+ * 1. O episódio deve ter ID e número válidos.
+ * 2. Se `published === false`, é considerado rascunho/despublicado.
+ * 3. O episódio DEVE ter ao menos um player de vídeo configurado (Player 1, 2, 3, 4 ou 5)
+ *    com URL válida, descartando placeholders vazios do catálogo e links de terceiros.
+ */
+export function isEpisodePublished(ep: {
+  id?: string;
+  number?: number;
+  videoUrl?: string;
+  videoUrl2?: string;
+  videoUrl3?: string;
+  videoUrl4?: string;
+  videoUrl5?: string;
+  published?: boolean;
+}): boolean {
+  if (!ep || !ep.id || typeof ep.number !== "number") {
+    return false;
+  }
+
+  // Se explicitamente marcado como não publicado
+  if (ep.published === false) {
+    return false;
+  }
+
+  const sources = [
+    ep.videoUrl,
+    ep.videoUrl2,
+    ep.videoUrl3,
+    ep.videoUrl4,
+    ep.videoUrl5,
+  ];
+
+  // Deve haver pelo menos uma fonte de vídeo real configurada pelo administrador
+  const hasPlayableVideo = sources.some(isHikariPlayableUrl);
+
+  if (!hasPlayableVideo) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Extrai todos os episódios efetivamente publicados no Hikari pelo administrador,
  * ordenados do mais recente para o mais antigo.
+ * Não inclui episódios do catálogo do AniList/MAL que não foram publicados no Hikari.
  */
 export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[] {
   const list: PublishedEpisode[] = [];
@@ -27,25 +126,51 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
   for (const anime of animes) {
     if (anime.hidden) continue;
 
-    const animeTitle = displayTitle({
-      titles: {
-        romaji: anime.titleRomaji,
-        english: anime.titleEnglish,
-        native: anime.titleNative,
-      },
-    });
+    const animeTitle = resolveAnimeCanonicalTitle(anime);
+
+    // Coleta todas as variações conhecidas do nome do anime (Romaji, Inglês, Nativo, etc.)
+    const altTitles = Array.from(
+      new Set(
+        [
+          animeTitle,
+          anime.titleRomaji,
+          anime.titleEnglish,
+          anime.titleNative,
+          (anime as unknown as { title?: string }).title,
+          (anime as unknown as { titles?: { romaji?: string; english?: string; native?: string } }).titles?.romaji,
+          (anime as unknown as { titles?: { romaji?: string; english?: string; native?: string } }).titles?.english,
+          (anime as unknown as { titles?: { romaji?: string; english?: string; native?: string } }).titles?.native,
+        ]
+          .filter((t): t is string => typeof t === "string" && Boolean(t.trim()))
+          .map((t) => t.trim()),
+      ),
+    );
 
     const baseTime = anime.updatedAt || anime.createdAt || 0;
 
     for (const season of anime.seasons || []) {
       for (const ep of season.episodes || []) {
-        // Um episódio é considerado publicado se possui ID e número definidos
+        // Exibe apenas episódios genuinamente publicados e configurados pelo administrador
+        if (!isEpisodePublished(ep)) {
+          continue;
+        }
+
+        // Obtém o primeiro player válido configurado
+        const validVideo = [
+          ep.videoUrl,
+          ep.videoUrl2,
+          ep.videoUrl3,
+          ep.videoUrl4,
+          ep.videoUrl5,
+        ].find(isHikariPlayableUrl);
+
         // O peso de ordenação prioriza a atualização do anime + temporada + número
         const epTime = baseTime + (season.number * 1000) + ep.number;
 
         list.push({
           animeId: anime.id,
           animeTitle,
+          animeAltTitles: altTitles,
           animeCover: anime.cover,
           seasonId: season.id,
           seasonNumber: season.number,
@@ -55,7 +180,7 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
           episodeTitle: ep.title || `Episódio ${ep.number}`,
           thumbnail: ep.thumbnail ? ep.thumbnail.trim() : undefined,
           duration: ep.duration ? ep.duration.trim() : undefined,
-          videoUrl: ep.videoUrl || ep.videoUrl2 || ep.videoUrl3 || ep.videoUrl4 || ep.videoUrl5,
+          videoUrl: validVideo || ep.videoUrl,
           publishedAt: epTime,
         });
       }
@@ -69,12 +194,13 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
 /**
  * Remove repetições redundantes entre número e título do episódio
  * (ex.: "Episódio 25 – Episode 25" -> "Episódio 25",
- * ou "Attack on Titan - Episode 25 - The Wall" -> "Episódio 25 — The Wall")
+ * ou "Attack on Titan - Episode 25 - The Wall" -> "Episódio 25 — The Wall",
+ * ou "Kimetsu no Yaiba - Episode 26 - New Mission" -> "Episódio 26 — New Mission")
  */
 export function cleanEpisodeDisplay(
   episodeNumber: number,
   rawTitle?: string,
-  animeTitle?: string,
+  animeTitleOrTitles?: string | string[],
 ): string {
   if (!rawTitle) {
     return `Episódio ${episodeNumber}`;
@@ -82,40 +208,68 @@ export function cleanEpisodeDisplay(
 
   let title = rawTitle.trim();
 
-  // 1. Se o título for idêntico ao nome do anime ou contiver o nome do anime no início/fim, remove
-  if (animeTitle) {
-    const cleanAnime = animeTitle.trim();
-    if (title.toLowerCase() === cleanAnime.toLowerCase()) {
+  // 1. Coleta todas as variações conhecidas dos nomes do anime
+  const names = new Set<string>();
+  const inputTitles = Array.isArray(animeTitleOrTitles)
+    ? animeTitleOrTitles
+    : animeTitleOrTitles
+      ? [animeTitleOrTitles]
+      : [];
+
+  for (const a of inputTitles) {
+    if (!a || typeof a !== "string") continue;
+    const clean = a.trim();
+    if (clean) {
+      names.add(clean);
+      if (clean.includes(":")) names.add(clean.split(":")[0].trim());
+      if (clean.includes(" - ")) names.add(clean.split(" - ")[0].trim());
+      if (clean.includes(" (")) names.add(clean.split(" (")[0].trim());
+    }
+  }
+
+  // Remove o nome do anime se estiver no início ou final do título do episódio
+  for (const name of Array.from(names).sort((a, b) => b.length - a.length)) {
+    if (!name) continue;
+    if (title.toLowerCase() === name.toLowerCase()) {
       return `Episódio ${episodeNumber}`;
     }
-    const escaped = cleanAnime.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     title = title.replace(new RegExp(`^${escaped}\\s*[-–—:]*\\s*`, "i"), "").trim();
     title = title.replace(new RegExp(`\\s*[-–—:]*\\s*${escaped}$`, "i"), "").trim();
   }
 
-  // 2. Loop para remover tokens repetidos de episódio no início da string
-  // Captura: "Episódio 25", "Episode 25", "Ep. 25", "Capítulo 25", "#25", ou "25 -"
-  const epTokenRegex = /^(?:(?:epis[oó]dio|episode|ep\.?|cap[ií]tulo)\s*\d+|#\s*\d+|\b\d+\b)\s*[-–—:]*\s*/i;
+  // 2. Remove prefixos de Temporada / Season: ex. "Season 1", "Temporada 1", "S1", "T1"
+  title = title.replace(/^(?:season|temporada|s|t)\s*\d+\s*[-–—:xX/|\s]*/i, "").trim();
+
+  // 3. Loop para remover tokens repetidos de episódio no início:
+  // "Episode 25", "Episódio 25", "Ep 25", "EP. 25", "E25", "Capítulo 25", "#25", ou "25 -"
+  const epTokenRegex = new RegExp(
+    `^(?:(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*\\d+|#\\s*\\d+|\\b${episodeNumber}\\b)\\s*[-–—:xX/|\\s]*`,
+    "i",
+  );
   let prev = "";
   while (title && prev !== title && epTokenRegex.test(title)) {
     prev = title;
     title = title.replace(epTokenRegex, "").trim();
   }
 
-  // 3. Remove traços, dois-pontos ou pontuações órfãs no início ou fim
-  title = title.replace(/^[-–—:/|\s]+/, "").replace(/[-–—:/|\s]+$/, "").trim();
+  // 4. Remove duplicações residuais no final da string (ex.: "- Episode 25")
+  title = title.replace(/[-–—:]\s*(?:epis[oó]dio|episode|ep\.?)\s*\d+$/i, "").trim();
 
-  // 4. Se o título resultante for vazio, ou se for apenas o número do episódio ou palavras como "Episode"/"Episódio"
+  // 5. Remove pontuações ou traços soltos nas extremidades
+  title = title.replace(/^[-–—:/|.,\s]+/, "").replace(/[-–—:/|.,\s]+$/, "").trim();
+
+  // 6. Se o título resultante for vazio, for apenas o número ou palavras de episódio
   if (
     !title ||
     title === String(episodeNumber) ||
-    new RegExp(`^(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo)\\s*${episodeNumber}$`, "i").test(title) ||
-    new RegExp(`^(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo)$`, "i").test(title)
+    new RegExp(`^(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*${episodeNumber}$`, "i").test(title) ||
+    new RegExp(`^(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)$`, "i").test(title)
   ) {
     return `Episódio ${episodeNumber}`;
   }
 
-  // 5. Retorna o número e o título único sem duplicidades
+  // 7. Retorna o número e o título correto e único do episódio sem repetições
   return `Episódio ${episodeNumber} — ${title}`;
 }
 

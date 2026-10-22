@@ -7,7 +7,7 @@ import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/
 import { useHikariStore } from "@/lib/store";
 import { youtubeIdFrom } from "@/lib/utils";
 import { uploadVideoToB2 } from "@/lib/b2";
-import { captureVideoFrame } from "@/lib/published-episodes";
+import { captureVideoFrame, isEpisodePublished } from "@/lib/published-episodes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

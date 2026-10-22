@@ -11,6 +11,7 @@ export type Episode = {
   videoUrl5?: string;
   synopsis?: string;
   aired?: string;
+  published?: boolean;
 };
 
 export type Season = {
@@ -153,6 +154,15 @@ export function animeToLocal(
 ): LocalAnime {
   const now = Date.now();
 
+  const defaultSeasons: Season[] = [
+    {
+      id: `s-${crypto.randomUUID()}`,
+      number: 1,
+      title: "Temporada 1",
+      episodes: [],
+    },
+  ];
+
   return {
     id:
       existing?.id ??
@@ -176,8 +186,12 @@ export function animeToLocal(
     year: anime.year,
     trailerId: anime.trailerId,
     hidden: existing?.hidden ?? false,
-    seasons: existing?.seasons ?? ("seasons" in anime ? anime.seasons : []),
+    seasons:
+      existing?.seasons ??
+      (anime.source === "local" && "seasons" in anime
+        ? anime.seasons
+        : defaultSeasons),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  }
+}

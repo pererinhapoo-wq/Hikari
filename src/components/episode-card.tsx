@@ -14,7 +14,9 @@ export const EpisodeCard = memo(function EpisodeCard({
   const formattedSubtitle = cleanEpisodeDisplay(
     episode.episodeNumber,
     episode.episodeTitle,
-    episode.animeTitle,
+    episode.animeAltTitles && episode.animeAltTitles.length > 0
+      ? episode.animeAltTitles
+      : episode.animeTitle,
   );
 
   return (
@@ -72,9 +74,9 @@ export const EpisodeCard = memo(function EpisodeCard({
           </div>
         </div>
 
-        {/* Informações de Texto: Nome do Anime e Número/Título do Episódio sem duplicações */}
+        {/* Informações de Texto: Nome do Anime (Linha 1) e Número/Título do Episódio (Abaixo) sem duplicações */}
         <div className="mt-1.5 sm:mt-2.5 px-0.5">
-          {/* Nome do Anime (Linha 1) */}
+          {/* Nome do Anime exibido uma única vez */}
           <h4
             title={episode.animeTitle}
             className="text-[10.5px] sm:text-xs md:text-[13px] font-bold text-zinc-200 transition-colors group-hover:text-purple-300 truncate"
@@ -82,7 +84,7 @@ export const EpisodeCard = memo(function EpisodeCard({
             {episode.animeTitle}
           </h4>
 
-          {/* Número e Título do Episódio sem duplicar número ou nome (Até 2 linhas com reticências sem sobreposição) */}
+          {/* Número e Título correto do Episódio sem palavras duplicadas ou números repetidos */}
           <p
             title={formattedSubtitle}
             className="mt-0.5 text-[9.5px] sm:text-[11px] md:text-xs font-medium text-zinc-400 line-clamp-2 min-h-[1.75rem] sm:min-h-[2.1rem] overflow-hidden text-ellipsis leading-tight sm:leading-snug"
@@ -94,11 +96,6 @@ export const EpisodeCard = memo(function EpisodeCard({
           >
             {formattedSubtitle}
           </p>
-
-          {/* Temporada */}
-          <div className="mt-0.5 sm:mt-1 flex items-center gap-1.5 text-[8.5px] sm:text-[10px] text-zinc-500 truncate">
-            <span>{episode.seasonTitle}</span>
-          </div>
         </div>
       </Link>
     </article>

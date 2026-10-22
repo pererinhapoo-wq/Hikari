@@ -5,11 +5,35 @@ export function overlayList(remote: SlimAnime[], locals: LocalAnime[]): SlimAnim
   return overlaySlim(remote, locals, (l) => localToAnime(l));
 }
 
+import { isEpisodePublished } from "@/lib/published-episodes";
+
+function filterPublishedSeasons(seasons: Season[]): Season[] {
+  return (seasons || [])
+    .map((s) => ({
+      ...s,
+      episodes: (s.episodes || []).filter(isEpisodePublished),
+    }))
+    .filter((s) => s.episodes.length > 0);
+}
+
 export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime[]): Anime | null {
   const byId = locals.find((a) => a.id === id);
   if (byId) {
     const local = localToAnime(byId);
-    if (!remote) return local;
+    const publishedSeasons = filterPublishedSeasons(local.seasons);
+    const resolvedSeasons = publishedSeasons.length
+      ? publishedSeasons
+      : local.seasons.length
+        ? local.seasons
+        : (remote?.seasons ?? []);
+
+    if (!remote) {
+      return {
+        ...local,
+        seasons: resolvedSeasons,
+      };
+    }
+
     return {
       ...remote,
       ...local,
@@ -17,7 +41,7 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       cover: local.cover || remote.cover,
       banner: local.banner || remote.banner,
       synopsis: local.synopsis || remote.synopsis,
-      seasons: local.seasons.length ? local.seasons : remote.seasons,
+      seasons: resolvedSeasons,
       trailerId: local.trailerId || remote.trailerId,
       genres: local.genres.length ? local.genres : remote.genres,
       recommendations: remote.recommendations,
@@ -26,23 +50,32 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       source: "local",
     };
   }
+
   if (!remote) return null;
+
   const byAni = remote.anilistId
     ? locals.find((a) => a.anilistId === remote.anilistId)
     : undefined;
+
   if (byAni) {
     const local = localToAnime(byAni);
+    const publishedSeasons = filterPublishedSeasons(local.seasons);
+    const resolvedSeasons = publishedSeasons.length
+      ? publishedSeasons
+      : (remote.seasons ?? []);
+
     return {
       ...remote,
       ...local,
       id: remote.id,
-      seasons: local.seasons.length ? local.seasons : remote.seasons,
+      seasons: resolvedSeasons,
       trailerId: local.trailerId || remote.trailerId,
       recommendations: remote.recommendations,
       streamingEpisodes: remote.streamingEpisodes,
       studios: remote.studios,
     };
   }
+
   return remote;
 }
 
