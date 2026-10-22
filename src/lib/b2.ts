@@ -1,5 +1,5 @@
 export async function uploadVideoToB2(
-  onDone: (videoUrl: string) => void,
+  onDone: (videoUrl: string, file?: File) => void,
 ): Promise<void> {
   const input = document.createElement("input");
   input.type = "file";
@@ -71,7 +71,7 @@ export async function uploadVideoToB2(
           );
         }
 
-        onDone(prepareData.videoUrl);
+        onDone(prepareData.videoUrl, file);
         resolve();
       } catch (error) {
         reject(

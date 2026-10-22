@@ -1,11 +1,11 @@
 import type { LocalAnime } from "@/lib/types";
-import { displayTitle } from "@/lib/types";
 
 export type PublishedEpisode = {
   animeId: string;
   animeTitle: string;
   animeAltTitles?: string[];
   animeCover: string;
+  animeBanner?: string;
   seasonId: string;
   seasonNumber: number;
   seasonTitle: string;
@@ -47,7 +47,7 @@ function resolveAnimeCanonicalTitle(anime: LocalAnime): string {
 export function isHikariPlayableUrl(url?: string | null): boolean {
   if (!url || typeof url !== "string") return false;
   const trimmed = url.trim();
-  if (!trimmed) return false;
+  if (!trimmed || trimmed === "#" || trimmed.startsWith("javascript:")) return false;
 
   const lower = trimmed.toLowerCase();
 
@@ -58,14 +58,59 @@ export function isHikariPlayableUrl(url?: string | null): boolean {
     lower.includes("vrv.co") ||
     lower.includes("netflix.com") ||
     lower.includes("hidive.com") ||
+    lower.includes("hulu.com") ||
+    lower.includes("tubitv.com") ||
+    lower.includes("bilibili.tv") ||
+    lower.includes("iq.com") ||
+    lower.includes("iqiyi.com") ||
+    lower.includes("disneyplus.com") ||
+    lower.includes("primevideo.com") ||
+    lower.includes("amazon.com") ||
+    lower.includes("viz.com") ||
+    lower.includes("adultswim.com") ||
+    lower.includes("retrocrush.tv") ||
+    lower.includes("starplus.com") ||
+    lower.includes("max.com") ||
+    lower.includes("hbomax.com") ||
     lower.includes("youtube.com/watch") ||
     lower.includes("youtu.be/") ||
-    lower.includes("vimeo.com/")
+    lower.includes("vimeo.com/") ||
+    lower.includes("dailymotion.com") ||
+    lower.includes("anilist.co") ||
+    lower.includes("myanimelist.net") ||
+    lower.includes("kitsu.io")
   ) {
     return false;
   }
 
   return true;
+}
+
+/**
+ * Deriva uma miniatura gerada automaticamente pelo Cloudinary quando o vídeo está hospedado lá.
+ */
+export function getCloudinaryThumbnail(url?: string | null): string | null {
+  if (!url || typeof url !== "string") return null;
+  if (!url.includes("cloudinary.com") || !url.includes("/upload/")) return null;
+  try {
+    return url
+      .replace(/\/upload\/(?:so_[^,]+,?)?/, "/upload/so_15,w_640,c_scale/")
+      .replace(/\.[a-zA-Z0-9]+$/i, ".jpg");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deriva uma miniatura oficial do YouTube quando o vídeo é um stream do YouTube.
+ */
+export function getYouTubeThumbnail(url?: string | null): string | null {
+  if (!url || typeof url !== "string") return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+  if (match && match[1]) {
+    return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
+  }
+  return null;
 }
 
 /**
@@ -167,18 +212,23 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
         // O peso de ordenação prioriza a atualização do anime + temporada + número
         const epTime = baseTime + (season.number * 1000) + ep.number;
 
+        const cloudinaryThumb = validVideo ? getCloudinaryThumbnail(validVideo) : null;
+        const youtubeThumb = validVideo ? getYouTubeThumbnail(validVideo) : null;
+        const resolvedThumb = ep.thumbnail?.trim() || cloudinaryThumb || youtubeThumb || undefined;
+
         list.push({
           animeId: anime.id,
           animeTitle,
           animeAltTitles: altTitles,
           animeCover: anime.cover,
+          animeBanner: anime.banner || anime.cover,
           seasonId: season.id,
           seasonNumber: season.number,
           seasonTitle: season.title || `Temporada ${season.number}`,
           episodeId: ep.id,
           episodeNumber: ep.number,
           episodeTitle: ep.title || `Episódio ${ep.number}`,
-          thumbnail: ep.thumbnail ? ep.thumbnail.trim() : undefined,
+          thumbnail: resolvedThumb,
           duration: ep.duration ? ep.duration.trim() : undefined,
           videoUrl: validVideo || ep.videoUrl,
           publishedAt: epTime,
@@ -238,13 +288,14 @@ export function cleanEpisodeDisplay(
     title = title.replace(new RegExp(`\\s*[-–—:]*\\s*${escaped}$`, "i"), "").trim();
   }
 
-  // 2. Remove prefixos de Temporada / Season: ex. "Season 1", "Temporada 1", "S1", "T1"
+  // 2. Remove pontuações e prefixos de Temporada / Season: ex. "Season 1", "Temporada 1", "S1", "T1"
+  title = title.replace(/^[-–—:/|.,()[\]{}\s]+/, "").trim();
   title = title.replace(/^(?:season|temporada|s|t)\s*\d+\s*[-–—:xX/|\s]*/i, "").trim();
 
   // 3. Loop para remover tokens repetidos de episódio no início:
-  // "Episode 25", "Episódio 25", "Ep 25", "EP. 25", "E25", "Capítulo 25", "#25", ou "25 -"
+  // "Episode 25", "Episódio 25", "Ep 25", "EP. 25", "E25", "Capítulo 25", "#25", "(Episode 25)", ou "25 -"
   const epTokenRegex = new RegExp(
-    `^(?:(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*\\d+|#\\s*\\d+|\\b${episodeNumber}\\b)\\s*[-–—:xX/|\\s]*`,
+    `^(?:[([{\\s]*(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*\\d+[)}\\]\\s]*|[([{\\s]*#\\s*\\d+[)}\\]\\s]*|[([{\\s]*\\b${episodeNumber}\\b[)}\\]\\s]*)\\s*[-–—:xX/|\\s]*`,
     "i",
   );
   let prev = "";
@@ -253,11 +304,12 @@ export function cleanEpisodeDisplay(
     title = title.replace(epTokenRegex, "").trim();
   }
 
-  // 4. Remove duplicações residuais no final da string (ex.: "- Episode 25")
+  // 4. Remove duplicações residuais no final da string (ex.: "- Episode 25", "(Episode 25)")
   title = title.replace(/[-–—:]\s*(?:epis[oó]dio|episode|ep\.?)\s*\d+$/i, "").trim();
+  title = title.replace(/[([{\s]*(?:epis[oó]dio|episode|ep\.?|cap[ií]tulo)?\s*\d+\s*[)}\]]$/i, "").trim();
 
-  // 5. Remove pontuações ou traços soltos nas extremidades
-  title = title.replace(/^[-–—:/|.,\s]+/, "").replace(/[-–—:/|.,\s]+$/, "").trim();
+  // 5. Remove pontuações, parênteses ou traços soltos nas extremidades
+  title = title.replace(/^[-–—:/|.,()[\]{}\s]+/, "").replace(/[-–—:/|.,()[\]{}\s]+$/, "").trim();
 
   // 6. Se o título resultante for vazio, for apenas o número ou palavras de episódio
   if (

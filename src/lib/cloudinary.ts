@@ -1,7 +1,7 @@
 import { upload } from "@vercel/blob/client";
 
 export async function uploadVideoToCloudinary(
-  onDone: (url: string) => void,
+  onDone: (url: string, file?: File) => void,
 ): Promise<void> {
   if (typeof window === "undefined") {
     throw new Error("Navegador necessário.");
@@ -48,7 +48,7 @@ export async function uploadVideoToCloudinary(
       },
     );
 
-    onDone(blob.url);
+    onDone(blob.url, file);
   } finally {
     input.remove();
   }

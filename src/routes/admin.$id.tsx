@@ -581,7 +581,14 @@ function AdminEditor() {
                 >
                   <div className="grid gap-2 sm:grid-cols-12">
                     <Field
-                      label="#"
+                      label={
+                        <span className="flex items-center gap-1">
+                          <span>#</span>
+                          {isEpisodePublished(ep) && (
+                            <span className="size-1.5 rounded-full bg-emerald-400" title="Publicado no Hikari" />
+                          )}
+                        </span>
+                      }
                       className="sm:col-span-1"
                     >
                       <Input
@@ -691,7 +698,7 @@ function AdminEditor() {
 
                               try {
                                 await uploadVideoToB2(
-                                  (url) => {
+                                  (url, file) => {
                                     patchEpisode(
                                       season.id,
                                       ep.id,
@@ -705,7 +712,11 @@ function AdminEditor() {
                                     );
 
                                     if (!ep.thumbnail) {
-                                      captureVideoFrame(url)
+                                      const frameSource = file
+                                        ? URL.createObjectURL(file)
+                                        : url;
+
+                                      captureVideoFrame(frameSource)
                                         .then((frame) => {
                                           patchEpisode(
                                             season.id,
@@ -718,7 +729,12 @@ function AdminEditor() {
                                             "Frame capturado automaticamente do vídeo!",
                                           );
                                         })
-                                        .catch(() => {});
+                                        .catch(() => {})
+                                        .finally(() => {
+                                          if (file) {
+                                            URL.revokeObjectURL(frameSource);
+                                          }
+                                        });
                                     }
                                   },
                                 );

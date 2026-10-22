@@ -1,4 +1,4 @@
-import { localToAnime, type Anime, type LocalAnime, type SlimAnime } from "@/lib/types";
+import { localToAnime, type Anime, type LocalAnime, type SlimAnime, type Season } from "@/lib/types";
 import { overlaySlim } from "@/lib/store";
 
 export function overlayList(remote: SlimAnime[], locals: LocalAnime[]): SlimAnime[] {
