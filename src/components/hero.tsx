@@ -318,7 +318,7 @@ export function Hero({
         {/* Título nativo */}
         {current.titles.native &&
           current.titles.native !== title && (
-            <p className="mt-0.5 font-display text-xs text-purple-300/60 drop-shadow sm:text-sm">
+            <p className="mt-0.5 text-xs text-purple-300/60 drop-shadow sm:text-sm" style={{ fontFamily: '"Noto Sans JP", "Noto Serif JP", sans-serif' }}>
               {current.titles.native}
             </p>
           )}

@@ -1,5 +1,6 @@
 import {
   createFileRoute,
+  Link,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 
@@ -89,7 +90,7 @@ function Home() {
   ].slice(0, 6);
 
   return (
-    <div className="space-y-8 pb-12 sm:space-y-10 md:space-y-12">
+    <div className="space-y-8 pb-12 sm:space-y-11 md:space-y-14">
       {featured ? (
         <Hero
           anime={featured}
@@ -99,40 +100,100 @@ function Home() {
         <HomePending />
       )}
 
+      {/* Barra de Filtros Rápidos com Design Moderno */}
+      <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 sm:-mx-6 sm:px-6 pt-1 pb-1">
+        <Link
+          to="/browse/trending"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-purple-950/70 border border-purple-500/35 px-3.5 py-1.5 text-xs font-semibold text-purple-200 transition-all hover:bg-purple-900/70 hover:border-purple-400/60 hover:shadow-[0_0_12px_rgba(168,85,247,0.25)]"
+        >
+          <span className="size-1.5 rounded-full bg-purple-400 animate-pulse" />
+          <span>Em Alta</span>
+        </Link>
+        <Link
+          to="/browse/season"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white/5 border border-white/10 px-3.5 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:bg-white/10 hover:border-purple-500/30 hover:text-white"
+        >
+          <span>Temporada Atual</span>
+        </Link>
+        <Link
+          to="/browse/popular"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white/5 border border-white/10 px-3.5 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:bg-white/10 hover:border-purple-500/30 hover:text-white"
+        >
+          <span>Mais Populares</span>
+        </Link>
+        <Link
+          to="/browse/top"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white/5 border border-white/10 px-3.5 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:bg-white/10 hover:border-purple-500/30 hover:text-white"
+        >
+          <span>Melhores Avaliações</span>
+        </Link>
+        <Link
+          to="/my-list"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white/5 border border-white/10 px-3.5 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:bg-white/10 hover:border-purple-500/30 hover:text-white"
+        >
+          <span>Minha Lista</span>
+        </Link>
+      </div>
+
+      {/* Seção 1: Em Alta no Momento (com ranking dinâmico #1, #2, #3...) */}
       <AnimeRow
-        title={`Temporada ${data.seasonName} ${data.seasonYear}`}
+        title="Em Alta no Hikari"
+        eyebrow="TENDÊNCIAS EM TEMPO REAL"
+        tag="Top 10 da Semana"
+        iconType="flame"
+        href="/browse/trending"
+        items={trending.slice(1)}
+        showRank={true}
+      />
+
+      {/* Seção 2: Temporada Atual */}
+      <AnimeRow
+        title={`Estreias da Temporada`}
+        eyebrow="SIMULCAST SEMANAL"
+        tag={`${data.seasonName} ${data.seasonYear}`}
+        iconType="calendar"
         href="/browse/season"
         items={season}
       />
 
+      {/* Seção 3: Populares */}
       <AnimeRow
-        title="Populares"
+        title="Mais Populares"
+        eyebrow="FAVORITOS DA COMUNIDADE"
+        tag="Grandes Sucessos"
+        iconType="sparkles"
         href="/browse/popular"
         items={popular}
       />
 
+      {/* Seção 4: Mais Bem Avaliados */}
       <AnimeRow
-        title="Mais bem avaliados"
+        title="Obras-Primas Aclamadas"
+        eyebrow="CRÍTICA & CLASSIFICAÇÃO"
+        tag="Média Alta ★ 8.0+"
+        iconType="trophy"
         href="/browse/top"
         items={top}
       />
 
-      <AnimeRow
-        title="Em alta"
-        href="/browse/trending"
-        items={trending.slice(1)}
-      />
-
-      <p className="pt-4 text-center text-xs text-subtle">
-        Fonte:{" "}
-        {data.source === "anilist"
-          ? "AniList"
-          : data.source === "kitsu"
-            ? "Kitsu"
-            : data.source === "jikan"
-              ? "MyAnimeList / Jikan"
-              : "Catálogo seguro"}
-      </p>
+      {/* Rodapé Elegante com indicação de catálogo */}
+      <div className="pt-6 pb-2 text-center">
+        <div className="inline-flex items-center gap-2 rounded-full bg-white/5 border border-purple-500/20 px-4 py-1.5 text-xs text-zinc-400 shadow-sm">
+          <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
+          <span>
+            Catálogo atualizado via{" "}
+            <strong className="text-zinc-200 font-semibold">
+              {data.source === "anilist"
+                ? "AniList"
+                : data.source === "kitsu"
+                  ? "Kitsu"
+                  : data.source === "jikan"
+                    ? "MyAnimeList"
+                    : "Servidor Seguro"}
+            </strong>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
