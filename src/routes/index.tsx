@@ -23,10 +23,10 @@ export const Route = createFileRoute("/")({
 
 function HomePending() {
   return (
-    <div className="space-y-6 pt-3">
-      <div className="-mx-4 h-[20rem] animate-pulse bg-elevated sm:-mx-6 sm:h-[27rem]" />
+    <div className="space-y-6 pt-1 sm:space-y-8">
+      <div className="-mx-4 h-56 animate-pulse rounded-2xl border border-purple-500/10 bg-elevated/70 sm:-mx-6 sm:h-72 md:mx-0 md:h-[480px] lg:h-[520px]" />
 
-      <div className="rail">
+      <div className="rail -mx-4 gap-2.5 px-4 sm:-mx-6 sm:gap-3.5 sm:px-6 md:gap-4">
         {Array.from({ length: 8 }, (_, i) => (
           <AnimeCardSkeleton key={i} />
         ))}
@@ -89,7 +89,7 @@ function Home() {
   ].slice(0, 6);
 
   return (
-    <div className="space-y-5 pb-5 sm:space-y-8">
+    <div className="space-y-8 pb-12 sm:space-y-10 md:space-y-12">
       {featured ? (
         <Hero
           anime={featured}
@@ -123,7 +123,7 @@ function Home() {
         items={trending.slice(1)}
       />
 
-      <p className="pt-4 text-center text-[11px] text-subtle">
+      <p className="pt-4 text-center text-xs text-subtle">
         Fonte:{" "}
         {data.source === "anilist"
           ? "AniList"

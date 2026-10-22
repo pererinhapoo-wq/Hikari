@@ -68,209 +68,359 @@ export function Hero({
         relative
         -mx-4
         overflow-hidden
-        bg-bg
+        border-b
+        border-purple-500/20
+        bg-gradient-to-b
+        from-[#141026]
+        via-[#0d0b18]
+        to-[#08070d]
+        shadow-[0_12px_36px_rgba(0,0,0,0.8)]
         sm:-mx-6
+        sm:border-b-0
+        md:mx-0
+        md:rounded-3xl
+        md:border
+        md:border-purple-500/20
+        md:bg-gradient-to-r
+        md:from-[#110d24]
+        md:via-[#0c0a18]
+        md:to-[#08070d]
+        md:shadow-[0_20px_50px_rgba(0,0,0,0.7),0_0_40px_rgba(168,85,247,0.12)]
+        md:h-[480px]
+        lg:h-[520px]
+        md:flex
+        md:items-center
       "
     >
-      {/* IMAGEM PRINCIPAL */}
+      {/* =========================================================
+          MOBILE: APRESENTAÇÃO CINEMATOGRÁFICA DE CAMADA DUPLA
+          - Camada de fundo: blur suave preenchendo as laterais
+          - Camada principal: imagem 100% visível, sem cortes nem distorções
+          ========================================================= */}
       {visibleBackdrop ? (
         <div
           className="
             relative
             w-full
+            h-56
+            sm:h-72
             overflow-hidden
-            bg-bg
-            h-[14rem]
-            sm:h-[21rem]
-            md:h-[21rem]
+            bg-black/60
+            md:hidden
           "
         >
-          {/* =================================================
-              MOBILE
-              Continua usando a capa vertical
-              ================================================= */}
+          {/* Brilho ambiente roxo no topo */}
+          <div className="pointer-events-none absolute -top-10 -right-10 size-40 rounded-full bg-purple-500/20 blur-3xl z-10" />
+
+          {/* Camada 1: Projeção de fundo desfocada (atmosfera sem bordas vazias) */}
           <img
+            key={`mb-bg-${current.id}`}
+            src={mobileBackdrop}
+            alt=""
+            aria-hidden="true"
+            className="
+              absolute
+              inset-0
+              size-full
+              object-cover
+              blur-2xl
+              opacity-40
+              scale-125
+            "
+          />
+
+          {/* Camada 2: Imagem do anime perfeitamente contida e nítida */}
+          <img
+            key={`mb-fg-${current.id}`}
             src={mobileBackdrop}
             alt=""
             aria-hidden="true"
             loading="eager"
             decoding="async"
             className="
-              absolute
-              inset-0
+              relative
+              z-10
               size-full
               object-contain
               object-center
-              md:hidden
+              py-2
             "
           />
 
-          {/* =================================================
-              DESKTOP
-              Usa o banner horizontal
-              ================================================= */}
-          <img
-            src={desktopBackdrop}
-            alt=""
-            aria-hidden="true"
-            loading="eager"
-            decoding="async"
-            className="
-              absolute
-              inset-0
-              hidden
-              size-full
-              object-cover
-              object-center
-              md:block
-            "
-          />
-
-          {/* TRANSIÇÃO SUAVE */}
+          {/* Camada 3: Gradiente de transição para o texto abaixo */}
           <div
             className="
               pointer-events-none
               absolute
               inset-x-0
               bottom-0
-              h-1/2
-              bg-linear-to-t
-              from-bg
-              via-bg/40
+              h-28
+              bg-gradient-to-t
+              from-[#0d0b18]
+              via-[#0d0b18]/70
               to-transparent
-            "
-          />
-
-          {/* ESCURECIMENTO LATERAL NO DESKTOP */}
-          <div
-            className="
-              pointer-events-none
-              absolute
-              inset-0
-              hidden
-              md:block
-              bg-linear-to-r
-              from-bg/80
-              via-bg/20
-              to-transparent
+              z-20
             "
           />
         </div>
       ) : (
         <div
           className="
-            h-[14rem]
-            bg-bg
-            sm:h-[21rem]
-            md:h-[21rem]
+            h-56
+            bg-[#0d0b18]
+            sm:h-72
+            md:hidden
           "
         />
       )}
 
-      {/* CONTEÚDO */}
+      {/* =========================================================
+          DESKTOP: BANNER COM ARTE À DIREITA E FUSÃO SUAVE
+          ========================================================= */}
+      {visibleBackdrop && (
+        <div
+          className="
+            hidden
+            md:block
+            absolute
+            inset-0
+            pointer-events-none
+            overflow-hidden
+          "
+        >
+          {/* Luz ambiente roxa cinematográfica no desktop */}
+          <div className="absolute top-1/4 right-1/4 size-80 rounded-full bg-purple-600/20 blur-[100px]" />
+          <div className="absolute -bottom-10 right-10 size-72 rounded-full bg-purple-900/25 blur-[90px]" />
+
+          {/* Arte do anime posicionada à direita */}
+          <div className="absolute inset-y-0 right-0 w-[64%] lg:w-[58%]">
+            <img
+              key={`d-${current.id}`}
+              src={desktopBackdrop}
+              alt=""
+              aria-hidden="true"
+              loading="eager"
+              decoding="async"
+              className="
+                size-full
+                object-cover
+                object-center
+                md:object-right-top
+                transition-all
+                duration-700
+              "
+            />
+          </div>
+
+          {/* Gradiente da Esquerda para a Direita (legibilidade das informações) */}
+          <div
+            className="
+              absolute
+              inset-0
+              bg-gradient-to-r
+              from-[#110d24]
+              via-[#110d24]/90
+              via-30%
+              md:via-[#0c0a18]/75
+              to-transparent
+            "
+          />
+
+          {/* Gradientes Inferior e Superior */}
+          <div
+            className="
+              absolute
+              inset-x-0
+              bottom-0
+              h-32
+              bg-gradient-to-t
+              from-[#08070d]
+              to-transparent
+            "
+          />
+
+          <div
+            className="
+              absolute
+              inset-x-0
+              top-0
+              h-20
+              bg-gradient-to-b
+              from-[#110d24]/80
+              to-transparent
+            "
+          />
+        </div>
+      )}
+
+      {/* =========================================================
+          INFORMAÇÕES DO ANIME
+          (No mobile: fluxo com espaçamento harmônico abaixo do banner.
+           No desktop: sobreposto elegantemente à esquerda)
+          ========================================================= */}
       <div
         className="
           relative
-          z-10
+          z-20
           px-4
-          pb-3
-          pt-1
+          pt-2
+          pb-5
           sm:px-6
           sm:pb-7
-          sm:pt-2
-          md:-mt-32
+          md:max-w-xl
+          lg:max-w-2xl
           md:px-10
-          md:pb-10
+          lg:px-12
+          md:py-10
         "
       >
-        <p
-          className="
-            text-[8px]
-            font-medium
-            tracking-[0.2em]
-            text-muted
-            uppercase
-            sm:text-[9px]
-            md:text-xs
-          "
-        >
-          Em destaque
-        </p>
+        {/* Eyebrow em formato de chip sutil com ponto pulsante */}
+        <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-purple-950/70 border border-purple-500/30 text-purple-300 text-[10px] sm:text-xs font-semibold tracking-wider uppercase mb-2 w-fit shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+          <span className="size-1.5 rounded-full bg-purple-400 animate-pulse shadow-[0_0_8px_#c084fc]" />
+          <span>Em Destaque</span>
+        </div>
 
+        {/* Título Principal */}
         <h1
           className="
-            mt-0.5
-            max-w-2xl
-            line-clamp-2
             font-display
-            text-[1.65rem]
+            text-2xl
             leading-tight
             tracking-tight
-            text-fg
+            text-white
+            drop-shadow-md
             sm:text-4xl
             md:text-5xl
+            font-bold
+            line-clamp-2
           "
         >
           {title}
         </h1>
 
+        {/* Título nativo */}
         {current.titles.native &&
           current.titles.native !== title && (
-            <p className="mt-0.5 hidden font-display text-sm text-muted sm:block">
+            <p className="mt-0.5 font-display text-xs text-purple-300/60 drop-shadow sm:text-sm">
               {current.titles.native}
             </p>
           )}
 
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {/* Metadados: Nota, Ano, Gêneros */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 sm:mt-3 sm:gap-2">
           {current.score != null && (
-            <span className="text-xs font-medium tabular-nums text-score sm:text-sm">
-              {scoreLabel(current.score)}
+            <span
+              className="
+                inline-flex
+                items-center
+                gap-1
+                rounded-md
+                bg-purple-950/80
+                border
+                border-purple-500/35
+                px-2
+                py-0.5
+                text-xs
+                font-bold
+                tabular-nums
+                text-purple-200
+                shadow-[0_0_10px_rgba(168,85,247,0.15)]
+              "
+            >
+              ★ {scoreLabel(current.score)}
             </span>
           )}
 
           {current.year && (
-            <span className="text-xs text-muted sm:text-sm">
+            <span
+              className="
+                inline-flex
+                items-center
+                rounded-md
+                bg-white/5
+                border
+                border-white/10
+                px-2
+                py-0.5
+                text-xs
+                font-medium
+                text-zinc-300
+              "
+            >
               {current.year}
             </span>
           )}
 
-          {current.genres.slice(0, 2).map((genre) => (
-            <Badge
+          {current.genres.slice(0, 3).map((genre) => (
+            <span
               key={genre}
-              className="text-[9px] sm:text-xs"
+              className="
+                inline-flex
+                items-center
+                rounded-md
+                bg-white/5
+                border
+                border-purple-500/20
+                px-2
+                py-0.5
+                text-[10px]
+                sm:text-xs
+                font-medium
+                text-zinc-300
+                transition-colors
+                hover:border-purple-500/50
+              "
             >
               {genreLabel(genre)}
-            </Badge>
+            </span>
           ))}
         </div>
 
+        {/* Sinopse */}
         {current.synopsis && (
           <p
             className="
-              mt-1.5
+              mt-2.5
               max-w-xl
               line-clamp-2
-              text-[10px]
-              leading-snug
-              text-muted
-              sm:mt-4
               sm:line-clamp-3
+              text-xs
               sm:text-sm
-              md:max-w-2xl
-              md:text-base
+              leading-relaxed
+              text-zinc-300/85
+              drop-shadow
             "
           >
             {current.synopsis}
           </p>
         )}
 
-        <div className="mt-2.5 flex flex-wrap gap-1.5 sm:mt-4 sm:gap-2">
-          <Button asChild size="sm">
+        {/* Botões de Ação */}
+        <div className="mt-4 flex flex-wrap items-center gap-2.5 sm:mt-5 sm:gap-3">
+          <Button
+            asChild
+            size="sm"
+            className="
+              h-9
+              sm:h-10
+              px-4
+              sm:px-5
+              rounded-xl
+              bg-white
+              text-zinc-950
+              font-semibold
+              hover:bg-purple-100
+              hover:shadow-[0_0_20px_rgba(168,85,247,0.4)]
+              transition-all
+              hover:scale-[1.02]
+              active:scale-[0.98]
+            "
+          >
             <Link
               to="/watch/$id"
               params={{ id: current.id }}
             >
-              <Play className="size-3.5 sm:size-4" />
+              <Play className="size-3.5 sm:size-4 fill-current" />
               Assistir
             </Link>
           </Button>
@@ -280,14 +430,30 @@ export function Hero({
             variant="outline"
             size="sm"
             onClick={() => toggleList(current)}
+            className="
+              h-9
+              sm:h-10
+              px-3.5
+              sm:px-4
+              rounded-xl
+              bg-zinc-900/80
+              border-purple-500/30
+              hover:border-purple-500/60
+              hover:bg-zinc-800
+              hover:shadow-[0_0_14px_rgba(168,85,247,0.2)]
+              text-white
+              transition-all
+              hover:scale-[1.02]
+              active:scale-[0.98]
+            "
           >
             {inList ? (
-              <BookmarkCheck className="size-3.5 sm:size-4" />
+              <BookmarkCheck className="size-3.5 sm:size-4 text-purple-400" />
             ) : (
               <Bookmark className="size-3.5 sm:size-4" />
             )}
 
-            <span className="hidden sm:inline">
+            <span>
               {inList ? "Na lista" : "Minha Lista"}
             </span>
           </Button>
@@ -296,6 +462,17 @@ export function Hero({
             asChild
             variant="ghost"
             size="sm"
+            className="
+              h-9
+              sm:h-10
+              px-3.5
+              sm:px-4
+              rounded-xl
+              text-zinc-300
+              hover:text-white
+              hover:bg-white/5
+              transition-all
+            "
           >
             <Link
               to="/anime/$id"
@@ -306,14 +483,14 @@ export function Hero({
           </Button>
         </div>
 
+        {/* Indicadores de slides */}
         {animes.length > 1 && (
           <div
             className="
-              mt-2.5
+              mt-4
               flex
               items-center
-              gap-1.5
-              sm:mt-3
+              gap-2
             "
             aria-label="Destaques"
           >
@@ -325,8 +502,8 @@ export function Hero({
                 onClick={() => {
                   if (i === index) return;
                   const nextBackdrop =
-                    item.cover ||
                     item.banner ||
+                    item.cover ||
                     "";
                   setVisibleBackdrop(nextBackdrop);
                   setIndex(i);
@@ -335,10 +512,11 @@ export function Hero({
                   h-1.5
                   rounded-full
                   transition-all
+                  duration-300
                   ${
                     i === index
-                      ? "w-5 bg-fg"
-                      : "w-1.5 bg-fg/40"
+                      ? "w-6 bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.85)]"
+                      : "w-1.5 bg-zinc-700 hover:bg-zinc-500"
                   }
                 `}
               />
@@ -348,4 +526,4 @@ export function Hero({
       </div>
     </section>
   );
-      }
+}
