@@ -11,14 +11,22 @@ import {
   Pencil,
   Play,
   Share2,
+  Sliders,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
+import { CommentsSection } from "@/components/comments/CommentsSection";
 import { fetchAnimeDetail, fetchAnimePictures } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import {
+  type AdminBannerSettings,
+  getCachedAdminBannerSettings,
+  sanitizeBannerSettings,
+  setCachedAdminBannerSettings,
+} from "@/lib/banner-settings";
 import { getStudioLogo } from "@/lib/studio-logos";
 import {
   formatDateLabel,
@@ -44,6 +52,17 @@ import { cn, youtubeIdFrom } from "@/lib/utils";
 const EMPTY_WATCHED_EPISODES: string[] = [];
 
 export const Route = createFileRoute("/anime/$id")({
+  validateSearch: (
+    raw: Record<string, unknown>,
+  ): {
+    comment?: string;
+  } => ({
+    comment:
+      typeof raw.comment === "string" && raw.comment
+        ? raw.comment
+        : undefined,
+  }),
+
   staleTime: 1000 * 60 * 5,
   gcTime: 1000 * 60 * 15,
   loader: async ({ params }) => {
@@ -74,12 +93,49 @@ export const Route = createFileRoute("/anime/$id")({
 function AnimePage() {
   const { id } = Route.useParams();
   const { remote } = Route.useLoaderData();
+  const { comment: commentQuery } = Route.useSearch();
   const navigate = useNavigate();
 
   const hydrated = useHikariStore((s) => s.hydrated);
 
   const { user } = useCurrentUserState();
   const canEdit = isHikariAdmin(user?.primaryEmail);
+
+  // Preferências privadas de banner do administrador
+  const [bannerSettings, setBannerSettings] = useState<AdminBannerSettings | null>(() => {
+    if (typeof window !== "undefined" && canEdit) {
+      return getCachedAdminBannerSettings();
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (!canEdit) {
+      setBannerSettings(null);
+      return;
+    }
+
+    setBannerSettings(getCachedAdminBannerSettings());
+
+    let active = true;
+    fetch("/api/admin/banner-settings", {
+      method: "GET",
+      credentials: "include",
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { settings?: AdminBannerSettings } | null) => {
+        if (active && data?.settings) {
+          const sanitized = sanitizeBannerSettings(data.settings);
+          setBannerSettings(sanitized);
+          setCachedAdminBannerSettings(sanitized);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [canEdit]);
 
   const locals = useHikariStore((s) => s.animes);
 
@@ -331,43 +387,64 @@ function AnimePage() {
     <article className="pb-12">
       {/* HERO */}
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
+        {/* BANNER DE FUNDO INTEGRADO */}
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[14rem] sm:h-[22rem]"
+          className="absolute inset-0 z-0 overflow-hidden pointer-events-none"
         >
+          {canEdit && bannerSettings && (
+            <style>{`
+              .hikari-custom-admin-banner {
+                object-position: ${bannerSettings.mobile.posX}% ${bannerSettings.mobile.posY}% !important;
+                transform: scale(${bannerSettings.mobile.zoom}) !important;
+                transform-origin: ${bannerSettings.mobile.posX}% ${bannerSettings.mobile.posY}% !important;
+              }
+              @media (min-width: 640px) {
+                .hikari-custom-admin-banner {
+                  object-position: ${bannerSettings.desktop.posX}% ${bannerSettings.desktop.posY}% !important;
+                  transform: scale(${bannerSettings.desktop.zoom}) !important;
+                  transform-origin: ${bannerSettings.desktop.posX}% ${bannerSettings.desktop.posY}% !important;
+                }
+              }
+            `}</style>
+          )}
+
           {anime.banner ? (
             <img
               src={anime.banner}
               alt=""
               loading="eager"
               decoding="async"
-              className="size-full object-cover"
+              className={cn(
+                "size-full object-cover object-top sm:object-center",
+                canEdit && bannerSettings && "hikari-custom-admin-banner",
+              )}
             />
           ) : null}
 
-          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
+          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/75 to-bg/15" />
 
           <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
-
-          {/* BOTÃO VOLTAR */}
-          {canGoBack && (
-            <button
-              type="button"
-              onClick={handleBack}
-              aria-label="Voltar"
-              title="Voltar"
-              className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-xl border border-purple-500/30 bg-black/60 px-3.5 py-2 text-sm font-medium text-white backdrop-blur-md shadow-md transition-all hover:bg-purple-950/50 hover:border-purple-500/60 hover:text-purple-200 sm:left-6 cursor-pointer"
-            >
-              <ArrowLeft className="size-4" />
-              <span>Voltar</span>
-            </button>
-          )}
         </div>
 
-        <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
+        {/* BOTÃO VOLTAR */}
+        {canGoBack && (
+          <button
+            type="button"
+            onClick={handleBack}
+            aria-label="Voltar"
+            title="Voltar"
+            className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-xl border border-purple-500/30 bg-black/60 px-3.5 py-2 text-sm font-medium text-white backdrop-blur-md shadow-md transition-all hover:bg-purple-950/50 hover:border-purple-500/60 hover:text-purple-200 sm:left-6 cursor-pointer"
+          >
+            <ArrowLeft className="size-4" />
+            <span>Voltar</span>
+          </button>
+        )}
+
+        <div className="relative z-10 px-4 pt-16 pb-4 sm:px-6 sm:pt-20 sm:pb-6">
           <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row">
-            {/* CAPA (alinhada à esquerda no teste visual) */}
-            <div className="self-start sm:self-auto w-32 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.8),0_0_24px_rgba(168,85,247,0.15)] ring-1 ring-purple-500/30 sm:w-44">
+            {/* CAPA CENTRALIZADA */}
+            <div className="self-center sm:self-auto w-32 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.8),0_0_24px_rgba(168,85,247,0.15)] ring-1 ring-purple-500/30 sm:w-44">
               {anime.cover ? (
                 <img
                   src={anime.cover}
@@ -527,6 +604,17 @@ function AnimePage() {
                   >
                     <Pencil className="size-4 text-zinc-400" />
                     <span>Editar</span>
+                  </Link>
+                )}
+
+                {canEdit && (
+                  <Link
+                    to="/admin/banner"
+                    title="Personalizar banner dos animes"
+                    className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-950/40 px-3.5 sm:px-4 text-sm font-medium text-purple-300 shadow-sm transition-all duration-200 hover:border-purple-500/60 hover:bg-purple-900/50 hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
+                  >
+                    <Sliders className="size-4 text-purple-400" />
+                    <span className="hidden sm:inline">Banner</span>
                   </Link>
                 )}
               </div>
@@ -745,32 +833,14 @@ function AnimePage() {
         </section>
       )}
 
-      {/* COMENTÁRIOS */}
-      <section className="mt-14 border-t border-purple-500/20 pt-10">
-        <div className="flex items-center gap-2.5">
-          <span className="h-6 w-1 rounded-full bg-purple-500" />
-          <div>
-            <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Comentários
-            </h2>
-            <p className="mt-1 text-sm text-zinc-400">
-              Espaço para a comunidade compartilhar impressões sobre este anime.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#120f22]/60 to-[#0d0b18] p-8 text-center shadow-sm sm:p-10">
-          <div className="flex size-12 items-center justify-center rounded-full border border-purple-500/30 bg-purple-950/60 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.2)]">
-            <MessageSquare className="size-6" />
-          </div>
-          <h3 className="mt-4 font-display text-base font-semibold text-white">
-            Comentários em breve
-          </h3>
-          <p className="mt-1.5 max-w-md text-xs sm:text-sm text-zinc-400 leading-relaxed">
-            O sistema de discussão e avaliação da comunidade do Hikari está sendo preparado e estará disponível aqui em breve.
-          </p>
-        </div>
-      </section>
+      {/* COMENTÁRIOS DO HIKARI (GERAL DO ANIME) */}
+      <CommentsSection
+        animeId={anime.id}
+        episodeId="anime"
+        animeTitle={title}
+        targetCommentId={commentQuery}
+        isAnimeGeneral
+      />
     </article>
   );
 }

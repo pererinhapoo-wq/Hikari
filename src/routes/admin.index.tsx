@@ -5,6 +5,7 @@ import {
   Plus,
   Search,
   ShieldAlert,
+  Sliders,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -198,6 +199,42 @@ function AdminIndex() {
 
       {/* Ferramenta de Atualização Rápida de Players */}
       <QuickPlayerUpdate />
+
+      {/* Personalizar banner dos animes */}
+      <section className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="grid size-11 shrink-0 place-items-center rounded-lg bg-elevated text-purple-400">
+              <Sliders className="size-5" />
+            </div>
+
+            <div>
+              <h2 className="font-display text-lg">
+                Personalizar banner dos animes
+              </h2>
+
+              <p className="mt-1 text-sm text-muted">
+                Ajuste privado de enquadramento (posição horizontal, vertical e zoom) exclusivo para os banners de detalhes dos animes.
+              </p>
+
+              <p className="mt-2 text-xs text-subtle">
+                Ajustes independentes para celular e desktop, salvos na sua conta administrativa.
+              </p>
+            </div>
+          </div>
+
+          <Button
+            asChild
+            variant="outline"
+            className="w-full sm:w-auto hover:border-purple-500/50 hover:text-purple-300"
+          >
+            <Link to="/admin/banner">
+              <Sliders className="size-4 text-purple-400" />
+              Personalizar banner
+            </Link>
+          </Button>
+        </div>
+      </section>
 
       {/* Hikari AI */}
       <section className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">

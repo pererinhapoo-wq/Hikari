@@ -205,8 +205,18 @@ function NotificationsPage() {
                 const hasEpisodeTarget =
                   Boolean(
                     notification.animeId &&
-                    notification.episodeId,
+                    notification.episodeId &&
+                    notification.episodeId !== "anime",
                   );
+
+                const isAnimeTarget =
+                  Boolean(
+                    notification.animeId &&
+                    (!notification.episodeId ||
+                      notification.episodeId === "anime"),
+                  );
+
+                const hasTarget = hasEpisodeTarget || isAnimeTarget;
 
                 const isLikeNotification =
                   notification.type ===
@@ -377,13 +387,15 @@ function NotificationsPage() {
                                 </p>
                               )}
 
-                              {hasEpisodeTarget &&
+                              {hasTarget &&
                                 (isLikeNotification ||
                                   isReplyNotification) && (
                                   <p className="mt-1 text-xs font-medium text-muted">
                                     {notification.commentId
                                       ? "Ver comentário"
-                                      : "Ver episódio"}
+                                      : isAnimeTarget
+                                        ? "Ver anime"
+                                        : "Ver episódio"}
                                   </p>
                                 )}
 
@@ -391,7 +403,7 @@ function NotificationsPage() {
                           </div>
                         )}
 
-                        {hasEpisodeTarget &&
+                        {hasTarget &&
                           (isLikeNotification ||
                             isReplyNotification) &&
                           !notification.animeCover &&
@@ -400,7 +412,9 @@ function NotificationsPage() {
                               <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
                                 {notification.commentId
                                   ? "Ver comentário"
-                                  : "Ver episódio"}
+                                  : isAnimeTarget
+                                    ? "Ver anime"
+                                    : "Ver episódio"}
                               </span>
                             </div>
                           )}
@@ -440,6 +454,36 @@ function NotificationsPage() {
                       search={{
                         ep:
                           notification.episodeId!,
+                        comment:
+                          notification.commentId ??
+                          undefined,
+                      }}
+                      onClick={() => {
+                        void markNotificationAsRead(
+                          notification.id,
+                        );
+                      }}
+                      className="block transition-colors hover:bg-elevated/70"
+                    >
+                      {content}
+                    </Link>
+                  );
+                }
+
+                if (
+                  isAnimeTarget
+                ) {
+                  return (
+                    <Link
+                      key={
+                        notification.id
+                      }
+                      to="/anime/$id"
+                      params={{
+                        id:
+                          notification.animeId!,
+                      }}
+                      search={{
                         comment:
                           notification.commentId ??
                           undefined,

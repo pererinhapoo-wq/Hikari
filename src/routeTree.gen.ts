@@ -34,6 +34,7 @@ import { Route as TestAnilistVercelRouteImport } from './routes/test-anilist-ver
 import { Route as TestApiAnilistRouteImport } from './routes/test-api-anilist'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminIdRouteImport } from './routes/admin.$id'
+import { Route as AdminBannerRouteImport } from './routes/admin.banner'
 import { Route as AdminHikariAiRouteImport } from './routes/admin.hikari-ai'
 import { Route as AdminModerationRouteImport } from './routes/admin.moderation'
 import { Route as AdultIndexRouteImport } from './routes/adult.index'
@@ -52,6 +53,7 @@ import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
 import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
+import { Route as ApiAdminBannerSettingsRouteImport } from './routes/api/admin/banner-settings'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
 import { Route as ApiAdminUploadThumbnailRouteImport } from './routes/api/admin/upload-thumbnail'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -192,6 +194,11 @@ const AdminIdRoute = AdminIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminBannerRoute = AdminBannerRouteImport.update({
+  id: '/banner',
+  path: '/banner',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminHikariAiRoute = AdminHikariAiRouteImport.update({
   id: '/hikari-ai',
   path: '/hikari-ai',
@@ -280,6 +287,11 @@ const ProfileNickRoute = ProfileNickRouteImport.update({
 const WatchIdRoute = WatchIdRouteImport.update({
   id: '/watch/$id',
   path: '/watch/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminBannerSettingsRoute = ApiAdminBannerSettingsRouteImport.update({
+  id: '/api/admin/banner-settings',
+  path: '/api/admin/banner-settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
@@ -379,6 +391,7 @@ export interface FileRoutesByFullPath {
   '/test-anilist-vercel': typeof TestAnilistVercelRoute
   '/test-api-anilist': typeof TestApiAnilistRoute
   '/admin/$id': typeof AdminIdRoute
+  '/admin/banner': typeof AdminBannerRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
   '/adult/hentai': typeof AdultHentaiRoute
@@ -398,6 +411,7 @@ export interface FileRoutesByFullPath {
   '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
+  '/api/admin/banner-settings': typeof ApiAdminBannerSettingsRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -436,6 +450,7 @@ export interface FileRoutesByTo {
   '/test-anilist-vercel': typeof TestAnilistVercelRoute
   '/test-api-anilist': typeof TestApiAnilistRoute
   '/admin/$id': typeof AdminIdRoute
+  '/admin/banner': typeof AdminBannerRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
   '/adult/hentai': typeof AdultHentaiRoute
@@ -455,6 +470,7 @@ export interface FileRoutesByTo {
   '/watch/$id': typeof WatchIdRoute
   '/admin': typeof AdminIndexRoute
   '/adult': typeof AdultIndexRoute
+  '/api/admin/banner-settings': typeof ApiAdminBannerSettingsRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -496,6 +512,7 @@ export interface FileRoutesById {
   '/test-anilist-vercel': typeof TestAnilistVercelRoute
   '/test-api-anilist': typeof TestApiAnilistRoute
   '/admin/$id': typeof AdminIdRoute
+  '/admin/banner': typeof AdminBannerRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
   '/adult/hentai': typeof AdultHentaiRoute
@@ -515,6 +532,7 @@ export interface FileRoutesById {
   '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
+  '/api/admin/banner-settings': typeof ApiAdminBannerSettingsRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -557,6 +575,7 @@ export interface FileRouteTypes {
     | '/test-anilist-vercel'
     | '/test-api-anilist'
     | '/admin/$id'
+    | '/admin/banner'
     | '/admin/hikari-ai'
     | '/admin/moderation'
     | '/adult/hentai'
@@ -576,6 +595,7 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin/'
     | '/adult/'
+    | '/api/admin/banner-settings'
     | '/api/admin/comment-reports'
     | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
@@ -614,6 +634,7 @@ export interface FileRouteTypes {
     | '/test-anilist-vercel'
     | '/test-api-anilist'
     | '/admin/$id'
+    | '/admin/banner'
     | '/admin/hikari-ai'
     | '/admin/moderation'
     | '/adult/hentai'
@@ -633,6 +654,7 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin'
     | '/adult'
+    | '/api/admin/banner-settings'
     | '/api/admin/comment-reports'
     | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
@@ -673,6 +695,7 @@ export interface FileRouteTypes {
     | '/test-anilist-vercel'
     | '/test-api-anilist'
     | '/admin/$id'
+    | '/admin/banner'
     | '/admin/hikari-ai'
     | '/admin/moderation'
     | '/adult/hentai'
@@ -692,6 +715,7 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin/'
     | '/adult/'
+    | '/api/admin/banner-settings'
     | '/api/admin/comment-reports'
     | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
@@ -744,6 +768,7 @@ export interface RootRouteChildren {
   NewsSearchRoute: typeof NewsSearchRoute
   ProfileNickRoute: typeof ProfileNickRoute
   WatchIdRoute: typeof WatchIdRoute
+  ApiAdminBannerSettingsRoute: typeof ApiAdminBannerSettingsRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
   ApiAdminUploadThumbnailRoute: typeof ApiAdminUploadThumbnailRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -937,6 +962,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIdRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/banner': {
+      id: '/admin/banner'
+      path: '/banner'
+      fullPath: '/admin/banner'
+      preLoaderRoute: typeof AdminBannerRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/hikari-ai': {
       id: '/admin/hikari-ai'
       path: '/hikari-ai'
@@ -1063,6 +1095,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/banner-settings': {
+      id: '/api/admin/banner-settings'
+      path: '/api/admin/banner-settings'
+      fullPath: '/api/admin/banner-settings'
+      preLoaderRoute: typeof ApiAdminBannerSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/comment-reports': {
       id: '/api/admin/comment-reports'
       path: '/api/admin/comment-reports'
@@ -1166,6 +1205,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminIdRoute: typeof AdminIdRoute
+  AdminBannerRoute: typeof AdminBannerRoute
   AdminHikariAiRoute: typeof AdminHikariAiRoute
   AdminModerationRoute: typeof AdminModerationRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -1173,6 +1213,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminIdRoute: AdminIdRoute,
+  AdminBannerRoute: AdminBannerRoute,
   AdminHikariAiRoute: AdminHikariAiRoute,
   AdminModerationRoute: AdminModerationRoute,
   AdminIndexRoute: AdminIndexRoute,
@@ -1232,6 +1273,7 @@ const rootRouteChildren: RootRouteChildren = {
   NewsSearchRoute: NewsSearchRoute,
   ProfileNickRoute: ProfileNickRoute,
   WatchIdRoute: WatchIdRoute,
+  ApiAdminBannerSettingsRoute: ApiAdminBannerSettingsRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
   ApiAdminUploadThumbnailRoute: ApiAdminUploadThumbnailRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
@@ -1251,12 +1293,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

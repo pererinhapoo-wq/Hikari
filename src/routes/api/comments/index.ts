@@ -15,14 +15,19 @@ export const Route = createFileRoute(
           const animeId =
             url.searchParams.get("animeId");
 
-          const episodeId =
+          const rawEpisodeId =
             url.searchParams.get("episodeId");
 
-          if (!animeId || !episodeId) {
+          const episodeId =
+            rawEpisodeId && rawEpisodeId.trim()
+              ? rawEpisodeId.trim()
+              : "anime";
+
+          if (!animeId) {
             return Response.json(
               {
                 error:
-                  "animeId e episodeId são obrigatórios.",
+                  "animeId é obrigatório.",
               },
               {
                 status: 400,
@@ -234,11 +239,14 @@ export const Route = createFileRoute(
               ? body.animeId.trim()
               : "";
 
-          const episodeId =
+          const rawEpisodeId =
             typeof body.episodeId ===
             "string"
               ? body.episodeId.trim()
               : "";
+
+          const episodeId =
+            rawEpisodeId || "anime";
 
           const content =
             typeof body.content ===
