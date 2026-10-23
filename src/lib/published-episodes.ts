@@ -274,18 +274,20 @@ export function cleanEpisodeDisplay(
       if (clean.includes(":")) names.add(clean.split(":")[0].trim());
       if (clean.includes(" - ")) names.add(clean.split(" - ")[0].trim());
       if (clean.includes(" (")) names.add(clean.split(" (")[0].trim());
+      if (clean.includes(" [")) names.add(clean.split(" [")[0].trim());
     }
   }
 
   // Remove o nome do anime se estiver no início ou final do título do episódio
   for (const name of Array.from(names).sort((a, b) => b.length - a.length)) {
-    if (!name) continue;
+    if (!name || name.length < 2) continue;
     if (title.toLowerCase() === name.toLowerCase()) {
       return `Episódio ${episodeNumber}`;
     }
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     title = title.replace(new RegExp(`^${escaped}\\s*[-–—:]*\\s*`, "i"), "").trim();
     title = title.replace(new RegExp(`\\s*[-–—:]*\\s*${escaped}$`, "i"), "").trim();
+    title = title.replace(new RegExp(`[\\(\\[]${escaped}[\\)\\]]`, "i"), "").trim();
   }
 
   // 2. Remove pontuações e prefixos de Temporada / Season: ex. "Season 1", "Temporada 1", "S1", "T1"
@@ -293,9 +295,9 @@ export function cleanEpisodeDisplay(
   title = title.replace(/^(?:season|temporada|s|t)\s*\d+\s*[-–—:xX/|\s]*/i, "").trim();
 
   // 3. Loop para remover tokens repetidos de episódio no início:
-  // "Episode 25", "Episódio 25", "Ep 25", "EP. 25", "E25", "Capítulo 25", "#25", "(Episode 25)", ou "25 -"
+  // "Episode 25", "Episódio 25", "Ep 25", "EP. 25", "E25", "Capítulo 25", "#25", "(Episode 25)", ou "25 -", "01."
   const epTokenRegex = new RegExp(
-    `^(?:[([{\\s]*(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*\\d+[)}\\]\\s]*|[([{\\s]*#\\s*\\d+[)}\\]\\s]*|[([{\\s]*\\b${episodeNumber}\\b[)}\\]\\s]*)\\s*[-–—:xX/|\\s]*`,
+    `^(?:[([{\\s]*(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*0*${episodeNumber}[)}\\]\\s]*|[([{\\s]*#\\s*0*${episodeNumber}[)}\\]\\s]*|[([{\\s]*0*${episodeNumber}[)}\\]\\s]*)\\s*[-–—:xX/|\\s.]*`,
     "i",
   );
   let prev = "";
@@ -304,24 +306,31 @@ export function cleanEpisodeDisplay(
     title = title.replace(epTokenRegex, "").trim();
   }
 
+  // Remove tokens genéricos residuais como "Episódio 1 - Episódio 1" ou "Ep. 01"
+  const genericEpTokenRegex = /^(?:[([{\s]*(?:epis[oó]dio|episode|ep\.?|cap[ií]tulo)\s*\d*[)}\]\s]*)\s*[-–—:xX/|\s.]*/i;
+  prev = "";
+  while (title && prev !== title && genericEpTokenRegex.test(title)) {
+    prev = title;
+    title = title.replace(genericEpTokenRegex, "").trim();
+  }
+
   // 4. Remove duplicações residuais no final da string (ex.: "- Episode 25", "(Episode 25)")
-  title = title.replace(/[-–—:]\s*(?:epis[oó]dio|episode|ep\.?)\s*\d+$/i, "").trim();
-  title = title.replace(/[([{\s]*(?:epis[oó]dio|episode|ep\.?|cap[ií]tulo)?\s*\d+\s*[)}\]]$/i, "").trim();
+  title = title.replace(/[-–—:]\s*(?:epis[oó]dio|episode|ep\.?)\s*0*\d*$/i, "").trim();
+  title = title.replace(/^[-–—:/|.,\s"'\\]+/, "").replace(/[-–—:/|.,\s"'\\]+$/, "").trim();
 
-  // 5. Remove pontuações, parênteses ou traços soltos nas extremidades
-  title = title.replace(/^[-–—:/|.,()[\]{}\s]+/, "").replace(/[-–—:/|.,()[\]{}\s]+$/, "").trim();
-
-  // 6. Se o título resultante for vazio, for apenas o número ou palavras de episódio
+  // 5. Se o título resultante for vazio, for apenas o número ou palavras de episódio
   if (
     !title ||
     title === String(episodeNumber) ||
-    new RegExp(`^(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*${episodeNumber}$`, "i").test(title) ||
-    new RegExp(`^(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)$`, "i").test(title)
+    title === `0${episodeNumber}` ||
+    /^[([{\s]*0*\d+[)}\]\s]*$/.test(title) ||
+    new RegExp(`^[([{\\s]*(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)\\s*0*${episodeNumber}[)}\\]\\s]*$`, "i").test(title) ||
+    new RegExp(`^[([{\\s]*(?:epis[oó]dio|episode|ep\\.?|cap[ií]tulo|e)[)}\\]\\s]*$`, "i").test(title)
   ) {
     return `Episódio ${episodeNumber}`;
   }
 
-  // 7. Retorna o número e o título correto e único do episódio sem repetições
+  // 6. Retorna o número e o título correto e único do episódio sem repetições
   return `Episódio ${episodeNumber} — ${title}`;
 }
 
