@@ -15,6 +15,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AdultRouteImport } from './routes/adult'
 import { Route as ApiAnilistRouteImport } from './routes/api-anilist'
 import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as EpisodesRouteImport } from './routes/episodes'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MyListRouteImport } from './routes/my-list'
 import { Route as NewsRouteImport } from './routes/news'
@@ -45,18 +46,21 @@ import { Route as ApiNotificationsRouteImport } from './routes/api/notifications
 import { Route as ApiUploadCommentImageRouteImport } from './routes/api/upload-comment-image'
 import { Route as ApiUploadVideoRouteImport } from './routes/api/upload-video'
 import { Route as ApiUploadVideoPlayer4RouteImport } from './routes/api/upload-video-player4'
+import { Route as ApiVideoProxyRouteImport } from './routes/api/video-proxy'
 import { Route as BrowseSectionRouteImport } from './routes/browse.$section'
 import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
 import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
+import { Route as ApiAdminUploadThumbnailRouteImport } from './routes/api/admin/upload-thumbnail'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCommentsIndexRouteImport } from './routes/api/comments/index'
 import { Route as ApiCommentsEditRouteImport } from './routes/api/comments/edit'
 import { Route as ApiCommentsLikeRouteImport } from './routes/api/comments/like'
 import { Route as ApiCommentsModerationRouteImport } from './routes/api/comments/moderation'
 import { Route as ApiCommentsUploadImageRouteImport } from './routes/api/comments/upload-image'
+import { Route as ApiMediaThumbnailRouteImport } from './routes/api/media/thumbnail'
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile/follow'
 import { Route as ApiUsersSearchRouteImport } from './routes/api/users/search'
 import { Route as ApiVcdnInitRouteImport } from './routes/api/vcdn/init'
@@ -91,6 +95,11 @@ const ApiAnilistRoute = ApiAnilistRouteImport.update({
 const CalendarRoute = CalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EpisodesRoute = EpisodesRouteImport.update({
+  id: '/episodes',
+  path: '/episodes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -243,6 +252,11 @@ const ApiUploadVideoPlayer4Route = ApiUploadVideoPlayer4RouteImport.update({
   path: '/api/upload-video-player4',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVideoProxyRoute = ApiVideoProxyRouteImport.update({
+  id: '/api/video-proxy',
+  path: '/api/video-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrowseSectionRoute = BrowseSectionRouteImport.update({
   id: '/browse/$section',
   path: '/browse/$section',
@@ -273,6 +287,11 @@ const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
   path: '/api/admin/comment-reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminUploadThumbnailRoute = ApiAdminUploadThumbnailRouteImport.update({
+  id: '/api/admin/upload-thumbnail',
+  path: '/api/admin/upload-thumbnail',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -301,6 +320,11 @@ const ApiCommentsModerationRoute = ApiCommentsModerationRouteImport.update({
 const ApiCommentsUploadImageRoute = ApiCommentsUploadImageRouteImport.update({
   id: '/api/comments/upload-image',
   path: '/api/comments/upload-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMediaThumbnailRoute = ApiMediaThumbnailRouteImport.update({
+  id: '/api/media/thumbnail',
+  path: '/api/media/thumbnail',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiProfileFollowRoute = ApiProfileFollowRouteImport.update({
@@ -337,6 +361,7 @@ export interface FileRoutesByFullPath {
   '/adult': typeof AdultRouteWithChildren
   '/api-anilist': typeof ApiAnilistRoute
   '/calendar': typeof CalendarRoute
+  '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/news': typeof NewsRoute
@@ -365,6 +390,7 @@ export interface FileRoutesByFullPath {
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-video': typeof ApiUploadVideoRoute
   '/api/upload-video-player4': typeof ApiUploadVideoPlayer4Route
+  '/api/video-proxy': typeof ApiVideoProxyRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -373,11 +399,13 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
   '/api/comments/upload-image': typeof ApiCommentsUploadImageRoute
+  '/api/media/thumbnail': typeof ApiMediaThumbnailRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/users/search': typeof ApiUsersSearchRoute
   '/api/vcdn/init': typeof ApiVcdnInitRoute
@@ -390,6 +418,7 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/api-anilist': typeof ApiAnilistRoute
   '/calendar': typeof CalendarRoute
+  '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/news': typeof NewsRoute
@@ -418,6 +447,7 @@ export interface FileRoutesByTo {
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-video': typeof ApiUploadVideoRoute
   '/api/upload-video-player4': typeof ApiUploadVideoPlayer4Route
+  '/api/video-proxy': typeof ApiVideoProxyRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -426,11 +456,13 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/adult': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
   '/api/comments/upload-image': typeof ApiCommentsUploadImageRoute
+  '/api/media/thumbnail': typeof ApiMediaThumbnailRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/users/search': typeof ApiUsersSearchRoute
   '/api/vcdn/init': typeof ApiVcdnInitRoute
@@ -446,6 +478,7 @@ export interface FileRoutesById {
   '/adult': typeof AdultRouteWithChildren
   '/api-anilist': typeof ApiAnilistRoute
   '/calendar': typeof CalendarRoute
+  '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/news': typeof NewsRoute
@@ -474,6 +507,7 @@ export interface FileRoutesById {
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-video': typeof ApiUploadVideoRoute
   '/api/upload-video-player4': typeof ApiUploadVideoPlayer4Route
+  '/api/video-proxy': typeof ApiVideoProxyRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news_/$id': typeof NewsIdRoute
   '/news_/search': typeof NewsSearchRoute
@@ -482,11 +516,13 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
   '/api/comments/upload-image': typeof ApiCommentsUploadImageRoute
+  '/api/media/thumbnail': typeof ApiMediaThumbnailRoute
   '/api/profile/follow': typeof ApiProfileFollowRoute
   '/api/users/search': typeof ApiUsersSearchRoute
   '/api/vcdn/init': typeof ApiVcdnInitRoute
@@ -503,6 +539,7 @@ export interface FileRouteTypes {
     | '/adult'
     | '/api-anilist'
     | '/calendar'
+    | '/episodes'
     | '/login'
     | '/my-list'
     | '/news'
@@ -531,6 +568,7 @@ export interface FileRouteTypes {
     | '/api/upload-comment-image'
     | '/api/upload-video'
     | '/api/upload-video-player4'
+    | '/api/video-proxy'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -539,11 +577,13 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/adult/'
     | '/api/admin/comment-reports'
+    | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
     | '/api/comments/upload-image'
+    | '/api/media/thumbnail'
     | '/api/profile/follow'
     | '/api/users/search'
     | '/api/vcdn/init'
@@ -556,6 +596,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/api-anilist'
     | '/calendar'
+    | '/episodes'
     | '/login'
     | '/my-list'
     | '/news'
@@ -584,6 +625,7 @@ export interface FileRouteTypes {
     | '/api/upload-comment-image'
     | '/api/upload-video'
     | '/api/upload-video-player4'
+    | '/api/video-proxy'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -592,11 +634,13 @@ export interface FileRouteTypes {
     | '/admin'
     | '/adult'
     | '/api/admin/comment-reports'
+    | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
     | '/api/comments/upload-image'
+    | '/api/media/thumbnail'
     | '/api/profile/follow'
     | '/api/users/search'
     | '/api/vcdn/init'
@@ -611,6 +655,7 @@ export interface FileRouteTypes {
     | '/adult'
     | '/api-anilist'
     | '/calendar'
+    | '/episodes'
     | '/login'
     | '/my-list'
     | '/news'
@@ -639,6 +684,7 @@ export interface FileRouteTypes {
     | '/api/upload-comment-image'
     | '/api/upload-video'
     | '/api/upload-video-player4'
+    | '/api/video-proxy'
     | '/browse/$section'
     | '/news_/$id'
     | '/news_/search'
@@ -647,11 +693,13 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/adult/'
     | '/api/admin/comment-reports'
+    | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
     | '/api/comments/upload-image'
+    | '/api/media/thumbnail'
     | '/api/profile/follow'
     | '/api/users/search'
     | '/api/vcdn/init'
@@ -667,6 +715,7 @@ export interface RootRouteChildren {
   AdultRoute: typeof AdultRouteWithChildren
   ApiAnilistRoute: typeof ApiAnilistRoute
   CalendarRoute: typeof CalendarRoute
+  EpisodesRoute: typeof EpisodesRoute
   LoginRoute: typeof LoginRoute
   MyListRoute: typeof MyListRoute
   NewsRoute: typeof NewsRoute
@@ -689,17 +738,20 @@ export interface RootRouteChildren {
   ApiUploadCommentImageRoute: typeof ApiUploadCommentImageRoute
   ApiUploadVideoRoute: typeof ApiUploadVideoRoute
   ApiUploadVideoPlayer4Route: typeof ApiUploadVideoPlayer4Route
+  ApiVideoProxyRoute: typeof ApiVideoProxyRoute
   BrowseSectionRoute: typeof BrowseSectionRoute
   NewsIdRoute: typeof NewsIdRoute
   NewsSearchRoute: typeof NewsSearchRoute
   ProfileNickRoute: typeof ProfileNickRoute
   WatchIdRoute: typeof WatchIdRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
+  ApiAdminUploadThumbnailRoute: typeof ApiAdminUploadThumbnailRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCommentsEditRoute: typeof ApiCommentsEditRoute
   ApiCommentsLikeRoute: typeof ApiCommentsLikeRoute
   ApiCommentsModerationRoute: typeof ApiCommentsModerationRoute
   ApiCommentsUploadImageRoute: typeof ApiCommentsUploadImageRoute
+  ApiMediaThumbnailRoute: typeof ApiMediaThumbnailRoute
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
   ApiUsersSearchRoute: typeof ApiUsersSearchRoute
   ApiVcdnInitRoute: typeof ApiVcdnInitRoute
@@ -750,6 +802,13 @@ declare module '@tanstack/react-router' {
       path: '/calendar'
       fullPath: '/calendar'
       preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/episodes': {
+      id: '/episodes'
+      path: '/episodes'
+      fullPath: '/episodes'
+      preLoaderRoute: typeof EpisodesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -962,6 +1021,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadVideoPlayer4RouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/video-proxy': {
+      id: '/api/video-proxy'
+      path: '/api/video-proxy'
+      fullPath: '/api/video-proxy'
+      preLoaderRoute: typeof ApiVideoProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/browse/$section': {
       id: '/browse/$section'
       path: '/browse/$section'
@@ -1004,6 +1070,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminCommentReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/upload-thumbnail': {
+      id: '/api/admin/upload-thumbnail'
+      path: '/api/admin/upload-thumbnail'
+      fullPath: '/api/admin/upload-thumbnail'
+      preLoaderRoute: typeof ApiAdminUploadThumbnailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -1044,6 +1117,13 @@ declare module '@tanstack/react-router' {
       path: '/api/comments/upload-image'
       fullPath: '/api/comments/upload-image'
       preLoaderRoute: typeof ApiCommentsUploadImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/media/thumbnail': {
+      id: '/api/media/thumbnail'
+      path: '/api/media/thumbnail'
+      fullPath: '/api/media/thumbnail'
+      preLoaderRoute: typeof ApiMediaThumbnailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/profile/follow': {
@@ -1123,6 +1203,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdultRoute: AdultRouteWithChildren,
   ApiAnilistRoute: ApiAnilistRoute,
   CalendarRoute: CalendarRoute,
+  EpisodesRoute: EpisodesRoute,
   LoginRoute: LoginRoute,
   MyListRoute: MyListRoute,
   NewsRoute: NewsRoute,
@@ -1145,17 +1226,20 @@ const rootRouteChildren: RootRouteChildren = {
   ApiUploadCommentImageRoute: ApiUploadCommentImageRoute,
   ApiUploadVideoRoute: ApiUploadVideoRoute,
   ApiUploadVideoPlayer4Route: ApiUploadVideoPlayer4Route,
+  ApiVideoProxyRoute: ApiVideoProxyRoute,
   BrowseSectionRoute: BrowseSectionRoute,
   NewsIdRoute: NewsIdRoute,
   NewsSearchRoute: NewsSearchRoute,
   ProfileNickRoute: ProfileNickRoute,
   WatchIdRoute: WatchIdRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
+  ApiAdminUploadThumbnailRoute: ApiAdminUploadThumbnailRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCommentsEditRoute: ApiCommentsEditRoute,
   ApiCommentsLikeRoute: ApiCommentsLikeRoute,
   ApiCommentsModerationRoute: ApiCommentsModerationRoute,
   ApiCommentsUploadImageRoute: ApiCommentsUploadImageRoute,
+  ApiMediaThumbnailRoute: ApiMediaThumbnailRoute,
   ApiProfileFollowRoute: ApiProfileFollowRoute,
   ApiUsersSearchRoute: ApiUsersSearchRoute,
   ApiVcdnInitRoute: ApiVcdnInitRoute,

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Trash2, Camera, Loader2 } from "lucide-react";
+import { Plus, Trash2, Camera, Loader2, AlertCircle, CheckCircle2, Film } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
@@ -7,7 +7,11 @@ import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/
 import { useHikariStore } from "@/lib/store";
 import { youtubeIdFrom } from "@/lib/utils";
 import { uploadVideoToB2 } from "@/lib/b2";
-import { captureVideoFrame, isEpisodePublished } from "@/lib/published-episodes";
+import {
+  captureAndUploadThumbnail,
+  isHikariPlayableUrl,
+  isEpisodePublished,
+} from "@/lib/published-episodes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,34 +81,65 @@ function AdminEditor() {
   const [form, setForm] = useState<LocalAnime | null>(null);
   const [genreText, setGenreText] = useState("");
   const [uploadingEpisode, setUploadingEpisode] = useState<string | null>(null);
-  const [capturingFrame, setCapturingFrame] = useState<string | null>(null);
+  const [captureStatus, setCaptureStatus] = useState<
+    Record<string, { status: "loading" | "error" | "success"; message?: string }>
+  >({});
 
-  async function handleCaptureEpisodeFrame(sid: string, ep: Episode) {
+  async function handleCaptureEpisodeFrame(
+    sid: string,
+    ep: Episode,
+    forcedUrl?: string,
+  ) {
     const videoUrl =
+      forcedUrl ||
       ep.videoUrl ||
       ep.videoUrl2 ||
       ep.videoUrl3 ||
       ep.videoUrl4 ||
       ep.videoUrl5;
 
-    if (!videoUrl) {
+    if (!videoUrl || !isHikariPlayableUrl(videoUrl)) {
       toast.error(
-        "Insira ou envie o vídeo de algum player antes de capturar o frame.",
+        "Insira uma URL de vídeo válida antes de capturar a miniatura.",
       );
       return;
     }
 
-    setCapturingFrame(ep.id);
+    setCaptureStatus((prev) => ({
+      ...prev,
+      [ep.id]: {
+        status: "loading",
+        message: "Capturando miniatura automática do vídeo...",
+      },
+    }));
+
     try {
-      const frame = await captureVideoFrame(videoUrl);
-      patchEpisode(sid, ep.id, { thumbnail: frame });
-      toast.success("Frame do episódio capturado com sucesso!");
-    } catch {
-      toast.info(
-        "A captura automática direta foi limitada pelas políticas de CORS do servidor de vídeo. Você pode inserir a URL da imagem manualmente no campo Thumb.",
-      );
-    } finally {
-      setCapturingFrame(null);
+      const res = await captureAndUploadThumbnail(videoUrl, {
+        episodeTitle: ep.title || `Episódio ${ep.number}`,
+      });
+
+      patchEpisode(sid, ep.id, { thumbnail: res.url });
+      setCaptureStatus((prev) => ({
+        ...prev,
+        [ep.id]: {
+          status: "success",
+          message: "Miniatura capturada e salva com sucesso!",
+        },
+      }));
+      toast.success(`Miniatura do Episódio ${ep.number} salva!`);
+    } catch (err) {
+      const errMsg =
+        err instanceof Error
+          ? err.message
+          : "Falha na captura do quadro do vídeo.";
+      setCaptureStatus((prev) => ({
+        ...prev,
+        [ep.id]: {
+          status: "error",
+          message: errMsg,
+        },
+      }));
+      toast.error(`Falha na captura (Ep. ${ep.number}): ${errMsg}`);
     }
   }
 
@@ -678,7 +713,21 @@ function AdminEditor() {
                                 },
                               )
                             }
-                            placeholder="URL do vídeo"
+                            onBlur={(e) => {
+                              const val = e.target.value.trim();
+                              if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                                void handleCaptureEpisodeFrame(season.id, ep, val);
+                              }
+                            }}
+                            onPaste={(e) => {
+                              const val = e.clipboardData.getData("text").trim();
+                              if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                                setTimeout(() => {
+                                  void handleCaptureEpisodeFrame(season.id, ep, val);
+                                }, 100);
+                              }
+                            }}
+                            placeholder="URL do vídeo (MP4 / R2)"
                           />
 
                           <Button
@@ -716,20 +765,24 @@ function AdminEditor() {
                                         ? URL.createObjectURL(file)
                                         : url;
 
-                                      captureVideoFrame(frameSource)
-                                        .then((frame) => {
+                                      captureAndUploadThumbnail(frameSource, {
+                                        episodeTitle: ep.title || `Episódio ${ep.number}`,
+                                      })
+                                        .then((res) => {
                                           patchEpisode(
                                             season.id,
                                             ep.id,
                                             {
-                                              thumbnail: frame,
+                                              thumbnail: res.url,
                                             },
                                           );
                                           toast.success(
-                                            "Frame capturado automaticamente do vídeo!",
+                                            "Miniatura capturada e salva automaticamente!",
                                           );
                                         })
-                                        .catch(() => {})
+                                        .catch((err) => {
+                                          console.warn("Falha na captura automática do upload:", err);
+                                        })
                                         .finally(() => {
                                           if (file) {
                                             URL.revokeObjectURL(frameSource);
@@ -777,7 +830,21 @@ function AdminEditor() {
                               },
                             )
                           }
-                          placeholder="URL do vídeo"
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                              void handleCaptureEpisodeFrame(season.id, ep, val);
+                            }
+                          }}
+                          onPaste={(e) => {
+                            const val = e.clipboardData.getData("text").trim();
+                            if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                              setTimeout(() => {
+                                void handleCaptureEpisodeFrame(season.id, ep, val);
+                              }, 100);
+                            }
+                          }}
+                          placeholder="URL do vídeo (MP4 / R2)"
                         />
 
                         <Button
@@ -808,64 +875,114 @@ function AdminEditor() {
                               },
                             )
                           }
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                              void handleCaptureEpisodeFrame(season.id, ep, val);
+                            }
+                          }}
+                          onPaste={(e) => {
+                            const val = e.clipboardData.getData("text").trim();
+                            if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                              setTimeout(() => {
+                                void handleCaptureEpisodeFrame(season.id, ep, val);
+                              }, 100);
+                            }
+                          }}
                           placeholder="URL do vídeo (HLS / MP4)"
                         />
                       </div>
                     </Field>
 
                     <Field
-                      label="Thumb do Episódio (Frame do Vídeo)"
+                      label="Thumb do Episódio (Miniatura Real do Vídeo)"
                       className="sm:col-span-11"
                     >
-                      <div className="flex items-center gap-2">
-                        {ep.thumbnail && (
-                          <div className="relative size-10 shrink-0 overflow-hidden rounded-md border border-purple-500/30 bg-black">
-                            <img
-                              src={ep.thumbnail}
-                              alt=""
-                              className="size-full object-cover"
-                            />
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          {ep.thumbnail ? (
+                            <div className="relative size-10 shrink-0 overflow-hidden rounded-md border border-purple-500/30 bg-black">
+                              <img
+                                src={ep.thumbnail}
+                                alt=""
+                                className="size-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-dashed border-zinc-700 bg-black/40 text-zinc-500">
+                              <Film className="size-4" />
+                            </div>
+                          )}
+                          <Input
+                            value={ep.thumbnail ?? ""}
+                            onChange={(e) =>
+                              patchEpisode(
+                                season.id,
+                                ep.id,
+                                {
+                                  thumbnail:
+                                    e.target.value,
+                                },
+                              )
+                            }
+                            placeholder="URL da miniatura do episódio (capturada ou manual)"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={captureStatus[ep.id]?.status === "loading"}
+                            onClick={() =>
+                              handleCaptureEpisodeFrame(
+                                season.id,
+                                ep,
+                              )
+                            }
+                            className="shrink-0 gap-1.5 text-xs text-purple-300 hover:text-white"
+                            title="Capturar quadro do vídeo agora"
+                          >
+                            {captureStatus[ep.id]?.status === "loading" ? (
+                              <>
+                                <Loader2 className="size-3.5 animate-spin" />
+                                <span>Capturando…</span>
+                              </>
+                            ) : (
+                              <>
+                                <Camera className="size-3.5" />
+                                <span>{ep.thumbnail ? "Recapturar" : "Capturar"}</span>
+                              </>
+                            )}
+                          </Button>
+                        </div>
+
+                        {/* Feedback em tempo real do estado da captura */}
+                        {captureStatus[ep.id]?.status === "loading" && (
+                          <div className="flex items-center gap-2 rounded-md bg-purple-950/40 border border-purple-500/30 px-2.5 py-1.5 text-xs text-purple-300">
+                            <Loader2 className="size-3.5 animate-spin shrink-0 text-purple-400" />
+                            <span>Capturando quadro real e salvando miniatura persistente…</span>
                           </div>
                         )}
-                        <Input
-                          value={ep.thumbnail ?? ""}
-                          onChange={(e) =>
-                            patchEpisode(
-                              season.id,
-                              ep.id,
-                              {
-                                thumbnail:
-                                  e.target.value,
-                              },
-                            )
-                          }
-                          placeholder="URL ou captura do frame do episódio"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={capturingFrame === ep.id}
-                          onClick={() =>
-                            handleCaptureEpisodeFrame(
-                              season.id,
-                              ep,
-                            )
-                          }
-                          className="shrink-0 gap-1.5 text-xs text-purple-300 hover:text-white"
-                          title="Capturar frame representativo do vídeo"
-                        >
-                          {capturingFrame === ep.id ? (
-                            <>
-                              <Loader2 className="size-3.5 animate-spin" />
-                              <span>Capturando…</span>
-                            </>
-                          ) : (
-                            <>
-                              <Camera className="size-3.5" />
-                              <span>Capturar Frame</span>
-                            </>
-                          )}
-                        </Button>
+
+                        {captureStatus[ep.id]?.status === "error" && (
+                          <div className="rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-200 space-y-1">
+                            <div className="flex items-center gap-1.5 font-medium text-amber-300">
+                              <AlertCircle className="size-3.5 shrink-0" />
+                              <span>Captura automática indisponível para este vídeo:</span>
+                            </div>
+                            <p className="text-[11px] text-amber-200/90 pl-5">
+                              {captureStatus[ep.id]?.message}
+                            </p>
+                            <p className="text-[10px] text-amber-300/70 pl-5">
+                              Dica: Para Cloudflare R2, ative a regra de CORS no bucket (AllowedOrigins: [&quot;*&quot;]). Você também pode colar uma URL de imagem diretamente no campo acima.
+                            </p>
+                          </div>
+                        )}
+
+                        {captureStatus[ep.id]?.status === "success" && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                            <CheckCircle2 className="size-3.5 shrink-0" />
+                            <span>Miniatura própria capturada e salva com sucesso!</span>
+                          </div>
+                        )}
                       </div>
                     </Field>
 

@@ -336,27 +336,47 @@ export function cleanEpisodeDisplay(
 
 
 /**
- * Captura um quadro (frame) representativo de um vídeo via HTML5 Video e Canvas.
- * - Evita os primeiros segundos para não pegar telas pretas de abertura (mira em ~15% ou 15s).
- * - Se a origem bloquear leitura por CORS, a Promise é rejeitada de forma tratável.
+ * Captura um quadro (frame) representativo de um vídeo via HTML5 Video e Canvas,
+ * retornando um Blob binário (JPEG).
+ * - Se a requisição direta falhar por restrições de CORS no servidor remoto,
+ *   tenta automaticamente via proxy interno `/api/video-proxy`.
+ * - Posiciona em ~15% da duração ou 12-15 segundos para evitar telas pretas de aberturas.
  */
-export async function captureVideoFrame(
+export async function captureVideoFrameBlob(
   videoUrl: string,
   timePercent: number = 0.15,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (!videoUrl || typeof window === "undefined") {
-      return reject(new Error("URL inválida ou ambiente sem DOM"));
-    }
+): Promise<Blob> {
+  if (!videoUrl || typeof window === "undefined") {
+    throw new Error("URL inválida ou ambiente sem DOM.");
+  }
 
+  // Tenta primeiro de forma direta; se falhar por CORS, tenta via proxy interno
+  try {
+    return await executeVideoFrameCapture(videoUrl, timePercent);
+  } catch (directErr) {
+    console.warn("[captureVideoFrame] Captura direta falhou, tentando via proxy interno:", directErr);
+    const proxyUrl = `/api/video-proxy?url=${encodeURIComponent(videoUrl)}`;
+    return await executeVideoFrameCapture(proxyUrl, timePercent);
+  }
+}
+
+function executeVideoFrameCapture(
+  url: string,
+  timePercent: number,
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
     const video = document.createElement("video");
     video.crossOrigin = "anonymous";
     video.preload = "metadata";
     video.muted = true;
     video.playsInline = true;
 
+    let isCleanedUp = false;
     const cleanup = () => {
+      if (isCleanedUp) return;
+      isCleanedUp = true;
       window.clearTimeout(timeoutId);
+      video.pause();
       video.removeAttribute("src");
       video.load();
       video.remove();
@@ -364,15 +384,15 @@ export async function captureVideoFrame(
 
     const timeoutId: number = window.setTimeout(() => {
       cleanup();
-      reject(new Error("Tempo limite excedido ao capturar frame"));
-    }, 12000);
+      reject(new Error("Tempo limite excedido ao capturar o frame do vídeo (15s)."));
+    }, 15000);
 
     video.onloadedmetadata = () => {
       const duration = video.duration;
-      // Posiciona em ~15% da duração ou 12 segundos para evitar telas pretas iniciais
+      // Posiciona em ~15% da duração ou entre 8 e 40 segundos para evitar telas pretas/intros
       const targetTime =
         duration && isFinite(duration) && duration > 5
-          ? Math.min(Math.max(duration * timePercent, 8), 45)
+          ? Math.min(Math.max(duration * timePercent, 8), 40)
           : 2;
       video.currentTime = targetTime;
     };
@@ -380,8 +400,11 @@ export async function captureVideoFrame(
     video.onseeked = () => {
       try {
         const canvas = document.createElement("canvas");
-        const width = 480;
-        const aspect = (video.videoHeight && video.videoWidth) ? video.videoHeight / video.videoWidth : 9 / 16;
+        const width = 640;
+        const aspect =
+          video.videoHeight && video.videoWidth
+            ? video.videoHeight / video.videoWidth
+            : 9 / 16;
         const height = Math.round(width * aspect);
         canvas.width = width;
         canvas.height = height;
@@ -389,13 +412,23 @@ export async function captureVideoFrame(
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           cleanup();
-          return reject(new Error("Não foi possível inicializar contexto do Canvas"));
+          return reject(new Error("Não foi possível inicializar o contexto 2D do Canvas."));
         }
 
         ctx.drawImage(video, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-        cleanup();
-        resolve(dataUrl);
+
+        canvas.toBlob(
+          (blob) => {
+            cleanup();
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error("Falha ao gerar arquivo de imagem a partir do canvas."));
+            }
+          },
+          "image/jpeg",
+          0.85,
+        );
       } catch (err) {
         cleanup();
         reject(err);
@@ -404,9 +437,101 @@ export async function captureVideoFrame(
 
     video.onerror = () => {
       cleanup();
-      reject(new Error("Erro ao carregar o vídeo para captura do frame"));
+      reject(new Error("Erro de conexão ou política de CORS ao carregar o vídeo."));
     };
 
-    video.src = videoUrl;
+    video.src = url;
   });
 }
+
+/**
+ * Envia um Blob de imagem para a rota de armazenamento persistente do servidor (/api/admin/upload-thumbnail).
+ * Salva no Cloudflare R2 / S3 / Vercel Blob / Banco e retorna a URL permanente pública.
+ */
+export async function uploadThumbnailBlob(
+  blob: Blob,
+  filenamePrefix: string = "thumb",
+): Promise<string> {
+  const formData = new FormData();
+  const safePrefix = filenamePrefix
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 30);
+  const filename = `${safePrefix}-${Date.now()}.jpg`;
+
+  formData.append("file", blob, filename);
+
+  const res = await fetch("/api/admin/upload-thumbnail", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let errMsg = `Falha no upload da miniatura (${res.status})`;
+    try {
+      const data = (await res.json()) as { error?: string };
+      if (data.error) errMsg = data.error;
+    } catch {}
+    throw new Error(errMsg);
+  }
+
+  const data = (await res.json()) as { url: string };
+  if (!data.url) {
+    throw new Error("O servidor não retornou a URL da miniatura.");
+  }
+
+  return data.url;
+}
+
+/**
+ * Fluxo completo:
+ * 1. Verifica se a URL já possui miniatura nativa (Cloudinary ou YouTube).
+ * 2. Caso contrário, captura um quadro representativo do vídeo MP4 / R2 via Canvas.
+ * 3. Envia a imagem para o armazenamento persistente (R2 / Banco), retornando apenas a URL final.
+ */
+export async function captureAndUploadThumbnail(
+  videoUrl: string,
+  options?: {
+    episodeTitle?: string;
+    timePercent?: number;
+  },
+): Promise<{ url: string }> {
+  if (!videoUrl || typeof videoUrl !== "string") {
+    throw new Error("URL de vídeo inválida.");
+  }
+
+  // 1. Otimização para serviços com miniaturas nativas por URL
+  const cloudinaryThumb = getCloudinaryThumbnail(videoUrl);
+  if (cloudinaryThumb) {
+    return { url: cloudinaryThumb };
+  }
+
+  const youtubeThumb = getYouTubeThumbnail(videoUrl);
+  if (youtubeThumb) {
+    return { url: youtubeThumb };
+  }
+
+  // 2. Captura real de frame via HTML5 Canvas (com fallback de proxy para CORS)
+  const blob = await captureVideoFrameBlob(videoUrl, options?.timePercent ?? 0.15);
+
+  // 3. Upload e persistência permanente (sem Base64 no localStorage)
+  const finalUrl = await uploadThumbnailBlob(
+    blob,
+    options?.episodeTitle || "episode-thumb",
+  );
+
+  return { url: finalUrl };
+}
+
+/**
+ * Função legado para retrocompatibilidade.
+ */
+export async function captureVideoFrame(
+  videoUrl: string,
+  timePercent: number = 0.15,
+): Promise<string> {
+  const result = await captureAndUploadThumbnail(videoUrl, { timePercent });
+  return result.url;
+}
+
