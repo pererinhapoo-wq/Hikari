@@ -26,6 +26,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { QuickPlayerUpdate } from "@/components/admin/QuickPlayerUpdate";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminIndex,
@@ -194,6 +195,9 @@ function AdminIndex() {
           </label>
         </div>
       </header>
+
+      {/* Ferramenta de Atualização Rápida de Players */}
+      <QuickPlayerUpdate />
 
       {/* Hikari AI */}
       <section className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">
