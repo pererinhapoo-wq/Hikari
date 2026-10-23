@@ -11,6 +11,7 @@ import { overlayList } from "@/lib/overlay";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { RecentEpisodesSection } from "@/components/recent-episodes-section";
+import { SectionReveal } from "@/components/section-reveal";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { Button } from "@/components/ui/button";
 

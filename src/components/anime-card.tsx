@@ -48,7 +48,7 @@ export const AnimeCard = memo(function AnimeCard({
   return (
     <article
       className={cn(
-        "group relative shrink-0 transition-transform duration-300 ease-out [@media(hover:hover)]:hover:-translate-y-1.5",
+        "group relative shrink-0",
         width,
       )}
     >
@@ -69,7 +69,13 @@ export const AnimeCard = memo(function AnimeCard({
           duration-300
           ease-[var(--ease-out)]
           [@media(hover:hover)]:hover:border-purple-400/50
-          [@media(hover:hover)]:hover:shadow-[0_12px_28px_-6px_rgba(168,85,247,0.35)]
+          [@media(hover:hover)]:hover:shadow-[0_8px_20px_-4px_rgba(168,85,247,0.28)]
+          active:border-purple-400/40
+          active:shadow-[0_4px_14px_rgba(168,85,247,0.2)]
+          focus-visible:outline-none
+          focus-visible:ring-2
+          focus-visible:ring-purple-400/50
+          -webkit-tap-highlight-color-transparent
         "
       >
         <div className="relative aspect-[2/3] overflow-hidden bg-[#0d0c16]">
@@ -83,7 +89,8 @@ export const AnimeCard = memo(function AnimeCard({
                 transition-transform
                 duration-500
                 ease-[var(--ease-out)]
-                [@media(hover:hover)]:group-hover:scale-[1.04]
+                [@media(hover:hover)]:group-hover:scale-[1.025]
+                group-active:scale-[1.015]
               "
               loading="lazy"
               decoding="async"
@@ -95,7 +102,7 @@ export const AnimeCard = memo(function AnimeCard({
           )}
 
           {/* Sombra sutil interna com gradiente escuro */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/25 opacity-40 transition-opacity duration-300 [@media(hover:hover)]:group-hover:opacity-60" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/25 opacity-40 transition-opacity duration-300 [@media(hover:hover)]:group-hover:opacity-60 group-active:opacity-60" />
 
           {/* Badge de Ranking para listas como Em Alta */}
           {rank != null && (
@@ -170,6 +177,7 @@ export const AnimeCard = memo(function AnimeCard({
                 [text-wrap:normal]
                 transition-colors
                 [@media(hover:hover)]:group-hover:text-purple-300
+                group-active:text-purple-300
               "
             >
               {title}

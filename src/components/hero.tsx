@@ -161,6 +161,7 @@ export function Hero({
               py-2.5
               px-2
               drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)]
+              animate-hero-image
             "
           />
 
@@ -223,8 +224,7 @@ export function Hero({
                 object-cover
                 object-center
                 md:object-right-top
-                transition-all
-                duration-700
+                animate-hero-image
               "
             />
           </div>
@@ -291,216 +291,221 @@ export function Hero({
           md:py-10
         "
       >
-        {/* Eyebrow em formato de chip sutil com ponto pulsante */}
-        <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-purple-950/70 border border-purple-500/30 text-purple-300 text-[10px] sm:text-xs font-semibold tracking-wider uppercase mb-2 w-fit shadow-[0_0_12px_rgba(168,85,247,0.15)]">
-          <span className="size-1.5 rounded-full bg-purple-400 animate-pulse shadow-[0_0_8px_#c084fc]" />
-          <span>Em Destaque</span>
-        </div>
+        {/* Bloco de Informações com animação suave e sincronizada a cada troca de anime */}
+        <div key={current.id} className="min-w-0">
+          {/* Eyebrow em formato de chip sutil com ponto pulsante */}
+          <div className="animate-hero-eyebrow inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-purple-950/70 border border-purple-500/30 text-purple-300 text-[10px] sm:text-xs font-semibold tracking-wider uppercase mb-2 w-fit shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+            <span className="size-1.5 rounded-full bg-purple-400 animate-pulse shadow-[0_0_8px_#c084fc]" />
+            <span>Em Destaque</span>
+          </div>
 
-        {/* Título Principal */}
-        <h1
-          className="
-            font-display
-            text-2xl
-            leading-tight
-            tracking-tight
-            text-white
-            drop-shadow-md
-            sm:text-4xl
-            md:text-5xl
-            font-bold
-            line-clamp-2
-          "
-        >
-          {title}
-        </h1>
+          {/* Título Principal */}
+          <h1
+            className="
+              animate-hero-title
+              font-display
+              text-2xl
+              leading-tight
+              tracking-tight
+              text-white
+              drop-shadow-md
+              sm:text-4xl
+              md:text-5xl
+              font-bold
+              line-clamp-2
+            "
+          >
+            {title}
+          </h1>
 
-        {/* Título nativo */}
-        {current.titles.native &&
-          current.titles.native !== title && (
-            <p className="mt-0.5 text-xs text-purple-300/60 drop-shadow sm:text-sm" style={{ fontFamily: '"Noto Sans JP", "Noto Serif JP", sans-serif' }}>
-              {current.titles.native}
+          {/* Título nativo */}
+          {current.titles.native &&
+            current.titles.native !== title && (
+              <p className="animate-hero-meta mt-0.5 text-xs text-purple-300/60 drop-shadow sm:text-sm" style={{ fontFamily: '"Noto Sans JP", "Noto Serif JP", sans-serif' }}>
+                {current.titles.native}
+              </p>
+            )}
+
+          {/* Metadados: Nota, Ano, Gêneros */}
+          <div className="animate-hero-meta mt-2.5 flex flex-wrap items-center gap-1.5 sm:mt-3 sm:gap-2">
+            {current.score != null && (
+              <span
+                className="
+                  inline-flex
+                  items-center
+                  gap-1
+                  rounded-md
+                  bg-purple-950/80
+                  border
+                  border-purple-500/35
+                  px-2
+                  py-0.5
+                  text-xs
+                  font-bold
+                  tabular-nums
+                  text-purple-200
+                  shadow-[0_0_10px_rgba(168,85,247,0.15)]
+                "
+              >
+                ★ {scoreLabel(current.score)}
+              </span>
+            )}
+
+            {current.year && (
+              <span
+                className="
+                  inline-flex
+                  items-center
+                  rounded-md
+                  bg-white/5
+                  border
+                  border-white/10
+                  px-2
+                  py-0.5
+                  text-xs
+                  font-medium
+                  text-zinc-300
+                "
+              >
+                {current.year}
+              </span>
+            )}
+
+            {current.genres.slice(0, 3).map((genre) => (
+              <span
+                key={genre}
+                className="
+                  inline-flex
+                  items-center
+                  rounded-md
+                  bg-white/5
+                  border
+                  border-purple-500/20
+                  px-2
+                  py-0.5
+                  text-[10px]
+                  sm:text-xs
+                  font-medium
+                  text-zinc-300
+                  transition-colors
+                  hover:border-purple-500/50
+                "
+              >
+                {genreLabel(genre)}
+              </span>
+            ))}
+          </div>
+
+          {/* Sinopse */}
+          {current.synopsis && (
+            <p
+              className="
+                animate-hero-synopsis
+                mt-2.5
+                max-w-xl
+                line-clamp-2
+                sm:line-clamp-3
+                text-xs
+                sm:text-sm
+                leading-relaxed
+                text-zinc-300/85
+                drop-shadow
+              "
+            >
+              {current.synopsis}
             </p>
           )}
 
-        {/* Metadados: Nota, Ano, Gêneros */}
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 sm:mt-3 sm:gap-2">
-          {current.score != null && (
-            <span
+          {/* Botões de Ação */}
+          <div className="animate-hero-actions mt-4 flex flex-wrap items-center gap-2.5 sm:mt-5 sm:gap-3">
+            <Button
+              asChild
+              size="sm"
               className="
-                inline-flex
-                items-center
-                gap-1
-                rounded-md
-                bg-purple-950/80
-                border
-                border-purple-500/35
-                px-2
-                py-0.5
-                text-xs
-                font-bold
-                tabular-nums
-                text-purple-200
-                shadow-[0_0_10px_rgba(168,85,247,0.15)]
-              "
-            >
-              ★ {scoreLabel(current.score)}
-            </span>
-          )}
-
-          {current.year && (
-            <span
-              className="
-                inline-flex
-                items-center
-                rounded-md
-                bg-white/5
-                border
-                border-white/10
-                px-2
-                py-0.5
-                text-xs
-                font-medium
-                text-zinc-300
-              "
-            >
-              {current.year}
-            </span>
-          )}
-
-          {current.genres.slice(0, 3).map((genre) => (
-            <span
-              key={genre}
-              className="
-                inline-flex
-                items-center
-                rounded-md
-                bg-white/5
-                border
-                border-purple-500/20
-                px-2
-                py-0.5
-                text-[10px]
-                sm:text-xs
-                font-medium
-                text-zinc-300
+                h-9
+                sm:h-10
+                px-4
+                sm:px-5
+                rounded-xl
+                bg-white
+                text-zinc-950
+                font-semibold
+                hover:bg-purple-100
+                hover:shadow-[0_0_20px_rgba(168,85,247,0.4)]
                 transition-colors
-                hover:border-purple-500/50
+                duration-150
+                transform-none
+                hover:scale-100
+                active:scale-100
               "
             >
-              {genreLabel(genre)}
-            </span>
-          ))}
-        </div>
+              <Link
+                to="/watch/$id"
+                params={{ id: current.id }}
+                preload="intent"
+              >
+                <Play className="size-3.5 sm:size-4 fill-current" />
+                Assistir
+              </Link>
+            </Button>
 
-        {/* Sinopse */}
-        {current.synopsis && (
-          <p
-            className="
-              mt-2.5
-              max-w-xl
-              line-clamp-2
-              sm:line-clamp-3
-              text-xs
-              sm:text-sm
-              leading-relaxed
-              text-zinc-300/85
-              drop-shadow
-            "
-          >
-            {current.synopsis}
-          </p>
-        )}
-
-        {/* Botões de Ação */}
-        <div className="mt-4 flex flex-wrap items-center gap-2.5 sm:mt-5 sm:gap-3">
-          <Button
-            asChild
-            size="sm"
-            className="
-              h-9
-              sm:h-10
-              px-4
-              sm:px-5
-              rounded-xl
-              bg-white
-              text-zinc-950
-              font-semibold
-              hover:bg-purple-100
-              hover:shadow-[0_0_20px_rgba(168,85,247,0.4)]
-              transition-colors
-              duration-150
-              transform-none
-              hover:scale-100
-              active:scale-100
-            "
-          >
-            <Link
-              to="/watch/$id"
-              params={{ id: current.id }}
-              preload="intent"
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => toggleList(current)}
+              className="
+                h-9
+                sm:h-10
+                px-3.5
+                sm:px-4
+                rounded-xl
+                bg-zinc-900/80
+                border-purple-500/30
+                hover:border-purple-500/60
+                hover:bg-zinc-800
+                hover:shadow-[0_0_14px_rgba(168,85,247,0.2)]
+                text-white
+                transition-all
+                hover:scale-[1.02]
+                active:scale-[0.98]
+              "
             >
-              <Play className="size-3.5 sm:size-4 fill-current" />
-              Assistir
-            </Link>
-          </Button>
+              {inList ? (
+                <BookmarkCheck className="size-3.5 sm:size-4 text-purple-400" />
+              ) : (
+                <Bookmark className="size-3.5 sm:size-4" />
+              )}
 
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => toggleList(current)}
-            className="
-              h-9
-              sm:h-10
-              px-3.5
-              sm:px-4
-              rounded-xl
-              bg-zinc-900/80
-              border-purple-500/30
-              hover:border-purple-500/60
-              hover:bg-zinc-800
-              hover:shadow-[0_0_14px_rgba(168,85,247,0.2)]
-              text-white
-              transition-all
-              hover:scale-[1.02]
-              active:scale-[0.98]
-            "
-          >
-            {inList ? (
-              <BookmarkCheck className="size-3.5 sm:size-4 text-purple-400" />
-            ) : (
-              <Bookmark className="size-3.5 sm:size-4" />
-            )}
+              <span>
+                {inList ? "Na lista" : "Minha Lista"}
+              </span>
+            </Button>
 
-            <span>
-              {inList ? "Na lista" : "Minha Lista"}
-            </span>
-          </Button>
-
-          <Button
-            asChild
-            variant="ghost"
-            size="sm"
-            className="
-              h-9
-              sm:h-10
-              px-3.5
-              sm:px-4
-              rounded-xl
-              text-zinc-300
-              hover:text-white
-              hover:bg-white/5
-              transition-all
-            "
-          >
-            <Link
-              to="/anime/$id"
-              params={{ id: current.id }}
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              className="
+                h-9
+                sm:h-10
+                px-3.5
+                sm:px-4
+                rounded-xl
+                text-zinc-300
+                hover:text-white
+                hover:bg-white/5
+                transition-all
+              "
             >
-              Detalhes
-            </Link>
-          </Button>
+              <Link
+                to="/anime/$id"
+                params={{ id: current.id }}
+              >
+                Detalhes
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Indicadores de slides */}
