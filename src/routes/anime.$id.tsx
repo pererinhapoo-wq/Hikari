@@ -387,10 +387,9 @@ function AnimePage() {
     <article className="pb-12">
       {/* HERO */}
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
-        {/* BANNER DE FUNDO INTEGRADO */}
         <div
           key={`banner-${anime.id}`}
-          className="absolute inset-0 z-0 overflow-hidden pointer-events-none"
+          className="relative h-[14rem] sm:h-[22rem]"
         >
           {canEdit && bannerSettings && (
             <style>{`
@@ -416,35 +415,35 @@ function AnimePage() {
               loading="eager"
               decoding="async"
               className={cn(
-                "size-full object-cover object-top sm:object-center",
+                "size-full object-cover",
                 canEdit && bannerSettings && "hikari-custom-admin-banner",
               )}
             />
           ) : null}
 
-          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/75 to-bg/15" />
+          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
 
           <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
+
+          {/* BOTÃO VOLTAR */}
+          {canGoBack && (
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="Voltar"
+              title="Voltar"
+              className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-xl border border-purple-500/30 bg-black/60 px-3.5 py-2 text-sm font-medium text-white backdrop-blur-md shadow-md transition-all hover:bg-purple-950/50 hover:border-purple-500/60 hover:text-purple-200 sm:left-6 cursor-pointer"
+            >
+              <ArrowLeft className="size-4" />
+              <span>Voltar</span>
+            </button>
+          )}
         </div>
 
-        {/* BOTÃO VOLTAR */}
-        {canGoBack && (
-          <button
-            type="button"
-            onClick={handleBack}
-            aria-label="Voltar"
-            title="Voltar"
-            className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-xl border border-purple-500/30 bg-black/60 px-3.5 py-2 text-sm font-medium text-white backdrop-blur-md shadow-md transition-all hover:bg-purple-950/50 hover:border-purple-500/60 hover:text-purple-200 sm:left-6 cursor-pointer"
-          >
-            <ArrowLeft className="size-4" />
-            <span>Voltar</span>
-          </button>
-        )}
-
-        <div className="relative z-10 px-4 pt-16 pb-4 sm:px-6 sm:pt-20 sm:pb-6">
+        <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
           <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row">
             {/* CAPA CENTRALIZADA */}
-            <div className="self-center sm:self-auto w-32 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.8),0_0_24px_rgba(168,85,247,0.15)] ring-1 ring-purple-500/30 sm:w-44">
+            <div className="mx-auto w-32 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.8),0_0_24px_rgba(168,85,247,0.15)] ring-1 ring-purple-500/30 sm:mx-0 sm:w-44">
               {anime.cover ? (
                 <img
                   src={anime.cover}
