@@ -88,6 +88,9 @@ export type Anime = SlimAnime & {
   synonyms?: string[];
   tags?: string[];
   images?: string[];
+  producers?: string[];
+  licensors?: string[];
+  broadcast?: string | null;
 };
 
 export type LocalAnime = {

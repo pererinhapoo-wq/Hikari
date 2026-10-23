@@ -7,19 +7,19 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Film,
   MessageSquare,
   Pencil,
   Play,
   Share2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
-import { fetchAnimeDetail } from "@/lib/api";
+import { fetchAnimeDetail, fetchAnimePictures } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { getStudioLogo } from "@/lib/studio-logos";
 import {
   formatDateLabel,
   formatLabel,
@@ -366,8 +366,8 @@ function AnimePage() {
 
         <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
           <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row">
-            {/* CAPA */}
-            <div className="mx-auto w-32 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.8),0_0_24px_rgba(168,85,247,0.15)] ring-1 ring-purple-500/30 sm:mx-0 sm:w-44">
+            {/* CAPA (alinhada à esquerda no teste visual) */}
+            <div className="self-start sm:self-auto w-32 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.8),0_0_24px_rgba(168,85,247,0.15)] ring-1 ring-purple-500/30 sm:w-44">
               {anime.cover ? (
                 <img
                   src={anime.cover}
@@ -565,18 +565,12 @@ function AnimePage() {
         </section>
       )}
 
-      {/* INFORMAÇÕES ADICIONAIS */}
-      <InformacoesAdicionaisSection anime={anime} />
-
-      {/* IMAGENS */}
-      <ImagensSection images={anime.images} title={title} />
-
-      {/* TRAILER */}
+      {/* TRAILER OFICIAL (posicionado logo após a Sinopse) */}
       {yt && (
         <section className="mt-10 max-w-4xl">
           <div className="flex items-center gap-2.5">
-            <span className="h-5 w-1 rounded-full bg-purple-500" />
-            <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-white">
+            <span className="h-6 w-1 rounded-full bg-purple-500" />
+            <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
               Trailer Oficial
             </h2>
           </div>
@@ -648,7 +642,7 @@ function AnimePage() {
         </section>
       )}
 
-      {/* EPISÓDIOS */}
+      {/* EPISÓDIOS (ACIMA DO ELENCO) */}
       {currentSeason && (
         <section id="episodes" className="mt-12">
           <div className="flex items-end justify-between gap-4">
@@ -689,17 +683,61 @@ function AnimePage() {
       {/* DIREÇÃO E EQUIPE TÉCNICA */}
       <DirecaoEquipeSection studios={anime.studios} staff={anime.staff} />
 
-      {/* RELACIONADOS */}
+      {/* INFORMAÇÕES ADICIONAIS */}
+      <InformacoesAdicionaisSection anime={anime} />
+
+      {/* IMAGENS */}
+      <ImagensSection
+        images={anime.images}
+        title={title}
+        bannerUrl={anime.banner}
+        coverUrl={anime.cover}
+        malId={anime.malId}
+      />
+
+      {/* RELACIONADOS (SEM BOTÃO DE SALVAR) */}
       {anime.recommendations.length > 0 && (
         <section className="mt-12 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <span className="h-6 w-1 rounded-full bg-purple-500" />
-            <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Relacionados
-            </h2>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <span className="h-6 w-1 rounded-full bg-purple-500" />
+              <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                Relacionados
+              </h2>
+            </div>
+
+            {anime.recommendations.length > 3 && (
+              <div className="hidden sm:flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rail = document.getElementById("related-anime-rail");
+                    rail?.scrollBy({ left: -320, behavior: "smooth" });
+                  }}
+                  aria-label="Rolar relacionados para a esquerda"
+                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rail = document.getElementById("related-anime-rail");
+                    rail?.scrollBy({ left: 320, behavior: "smooth" });
+                  }}
+                  aria-label="Rolar relacionados para a direita"
+                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="rail -mx-4 px-4 sm:-mx-6 sm:px-6">
+          <div
+            id="related-anime-rail"
+            className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 scroll-smooth"
+          >
             {anime.recommendations.map((r) => (
               <AnimeCard key={r.id} anime={r} showBookmark={false} />
             ))}
@@ -851,6 +889,7 @@ function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
 
   // Não repetimos informações do cabeçalho (formato, status, número de episódios, nota, ano, gêneros)
   // E removemos expressamente "País de origem: Japão"
+  // Não duplicamos estúdios ou diretores (que já possuem sua seção própria)
   const startDate = formatDateLabel(anime.startDate);
   const endDate = formatDateLabel(anime.endDate);
   const season = seasonLabel(anime.season, anime.year);
@@ -861,18 +900,17 @@ function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
     (anime as unknown as { isAdult?: boolean }).isAdult ||
       Boolean(anime.rating?.includes("18+")),
   );
-  const nextEpisodeText = anime.nextEpisode
-    ? `Episódio ${anime.nextEpisode.episode}`
-    : "";
+  const broadcast = anime.broadcast ?? "";
+  const producers = (anime.producers ?? []).filter(Boolean);
+  const licensors = (anime.licensors ?? []).filter(Boolean);
 
   const romajiTitle = anime.titles?.romaji;
   const englishTitle =
     anime.titles?.english && anime.titles?.english !== romajiTitle
       ? anime.titles.english
       : "";
-  const nativeTitle = anime.titles?.native;
   const synonyms = (anime.synonyms ?? []).filter(
-    (s) => s !== romajiTitle && s !== englishTitle && s !== nativeTitle,
+    (s) => s !== romajiTitle && s !== englishTitle,
   );
   const tags = anime.tags ?? [];
 
@@ -883,13 +921,14 @@ function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
     { label: "Duração média", value: duration },
     { label: "Obra original", value: source },
     { label: "Classificação indicativa", value: rating },
-    { label: "Próximo episódio", value: nextEpisodeText },
+    { label: "Transmissão", value: broadcast },
+    { label: "Produtores", value: producers.join(", ") },
+    { label: "Licenciadores", value: licensors.join(", ") },
   ].filter((item) => Boolean(item.value));
 
   const hasSecondary =
     Boolean(romajiTitle) ||
     Boolean(englishTitle) ||
-    Boolean(nativeTitle) ||
     synonyms.length > 0 ||
     tags.length > 0;
 
@@ -898,22 +937,22 @@ function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
   }
 
   return (
-    <section className="mt-10 max-w-4xl">
+    <section className="mt-12 max-w-4xl">
       <div className="flex items-center gap-2.5">
-        <span className="h-5 w-1 rounded-full bg-purple-500" />
-        <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-white">
+        <span className="h-6 w-1 rounded-full bg-purple-500" />
+        <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
           Informações adicionais
         </h2>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-purple-500/15 bg-gradient-to-b from-[#131024]/80 to-[#0e0c1a]/90 p-4 sm:p-6 shadow-sm">
+      <div className="mt-4 rounded-2xl border border-purple-500/15 bg-gradient-to-b from-[#131024]/70 to-[#0e0c18]/90 p-4 sm:p-6 shadow-sm">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 sm:gap-y-3.5">
           {mainRows.map((row) => (
             <div
               key={row.label}
               className="flex items-center justify-between border-b border-purple-500/10 pb-2.5 sm:pb-3"
             >
-              <span className="text-xs font-medium text-purple-300/80 uppercase tracking-wider">
+              <span className="text-[11px] sm:text-xs font-semibold text-purple-300/80 uppercase tracking-wider">
                 {row.label}
               </span>
               <span className="text-xs sm:text-sm font-semibold text-zinc-100 text-right">
@@ -927,7 +966,7 @@ function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
           <div className="mt-4 space-y-3 border-t border-purple-500/15 pt-4">
             {romajiTitle && (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b border-purple-500/10 pb-2.5">
-                <span className="text-xs font-medium text-purple-300/80 uppercase tracking-wider">
+                <span className="text-[11px] sm:text-xs font-semibold text-purple-300/80 uppercase tracking-wider">
                   Título Romaji
                 </span>
                 <span className="text-xs sm:text-sm font-semibold text-zinc-200">
@@ -937,7 +976,7 @@ function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
             )}
             {englishTitle && (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b border-purple-500/10 pb-2.5">
-                <span className="text-xs font-medium text-purple-300/80 uppercase tracking-wider">
+                <span className="text-[11px] sm:text-xs font-semibold text-purple-300/80 uppercase tracking-wider">
                   Título em Inglês
                 </span>
                 <span className="text-xs sm:text-sm font-semibold text-zinc-200">
@@ -945,29 +984,19 @@ function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
                 </span>
               </div>
             )}
-            {nativeTitle && (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b border-purple-500/10 pb-2.5">
-                <span className="text-xs font-medium text-purple-300/80 uppercase tracking-wider">
-                  Título Original (JP)
-                </span>
-                <span className="text-xs sm:text-sm font-semibold text-zinc-200">
-                  {nativeTitle}
-                </span>
-              </div>
-            )}
             {synonyms.length > 0 && (
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5 border-b border-purple-500/10 pb-2.5">
-                <span className="text-xs font-medium text-purple-300/80 uppercase tracking-wider shrink-0">
+                <span className="text-[11px] sm:text-xs font-semibold text-purple-300/80 uppercase tracking-wider shrink-0">
                   Sinônimos
                 </span>
                 <span className="text-xs sm:text-sm text-zinc-300 sm:text-right">
-                  {synonyms.slice(0, 4).join(" • ")}
+                  {synonyms.slice(0, 5).join(" • ")}
                 </span>
               </div>
             )}
             {tags.length > 0 && (
               <div className="pt-1">
-                <span className="text-xs font-medium text-purple-300/80 uppercase tracking-wider block mb-2">
+                <span className="text-[11px] sm:text-xs font-semibold text-purple-300/80 uppercase tracking-wider block mb-2">
                   Temas e Tags
                 </span>
                 <div className="flex flex-wrap gap-1.5">
@@ -1010,18 +1039,108 @@ function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
 function ImagensSection({
   images,
   title,
+  bannerUrl,
+  coverUrl,
+  malId,
 }: {
   images?: string[];
   title: string;
+  bannerUrl?: string;
+  coverUrl?: string;
+  malId?: number | null;
 }) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [extraPictures, setExtraPictures] = useState<string[]>([]);
   const railRef = useRef<HTMLDivElement>(null);
 
+  // Busca em segundo plano na API Jikan (MyAnimeList) caso o anime possua poucas imagens carregadas
+  useEffect(() => {
+    if (!malId || (images && images.length >= 3)) return;
+    let isMounted = true;
+
+    fetchAnimePictures({ data: { malId } })
+      .then((pics) => {
+        if (isMounted && Array.isArray(pics) && pics.length > 0) {
+          setExtraPictures(pics);
+        }
+      })
+      .catch(() => {
+        // Silencioso: não impacta a experiência visual do usuário
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [malId, images]);
+
   const validImages = useMemo(() => {
-    return (images ?? []).filter(
-      (url) => typeof url === "string" && url.trim().length > 0,
-    );
-  }, [images]);
+    const raw = [...(images ?? []), ...extraPictures];
+    const set = new Set<string>();
+    const result: string[] = [];
+
+    const norm = (url: string) =>
+      url.replace(/^https?:\/\//i, "").split("?")[0].toLowerCase().trim();
+
+    const bannerNorm = bannerUrl ? norm(bannerUrl) : "";
+    const coverNorm = coverUrl ? norm(coverUrl) : "";
+
+    for (const url of raw) {
+      if (typeof url === "string" && url.trim().length > 0) {
+        const clean = url.trim();
+        const key = norm(clean);
+
+        // Não exibe a capa principal nem o banner da obra na galeria, nem duplicatas
+        if (
+          !set.has(key) &&
+          key !== bannerNorm &&
+          key !== coverNorm
+        ) {
+          set.add(key);
+          result.push(clean);
+        }
+      }
+    }
+    return result;
+  }, [images, extraPictures, bannerUrl, coverUrl]);
+
+  const closeModal = useCallback(() => {
+    setSelectedImage((current) => {
+      if (current && window.history.state?.hikariGalleryModal) {
+        window.history.back();
+      }
+      return null;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedImage) return;
+
+    // Preserva o scroll original da página sem saltos
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    // Suporte ao botão voltar nativo do celular
+    window.history.pushState({ hikariGalleryModal: true }, "");
+
+    const handlePopState = () => {
+      setSelectedImage(null);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeModal();
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedImage, closeModal]);
 
   if (validImages.length === 0) {
     return null;
@@ -1029,16 +1148,16 @@ function ImagensSection({
 
   const scroll = (direction: "left" | "right") => {
     if (!railRef.current) return;
-    const offset = direction === "left" ? -340 : 340;
+    const offset = direction === "left" ? -320 : 320;
     railRef.current.scrollBy({ left: offset, behavior: "smooth" });
   };
 
   return (
-    <section className="mt-10">
+    <section className="mt-12 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
-          <span className="h-5 w-1 rounded-full bg-purple-500" />
-          <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-white">
+          <span className="h-6 w-1 rounded-full bg-purple-500" />
+          <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Imagens
           </h2>
         </div>
@@ -1067,24 +1186,26 @@ function ImagensSection({
 
       <div
         ref={railRef}
-        className="rail mt-4 -mx-4 flex gap-3.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
+        className="rail -mx-4 flex gap-3.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
       >
         {validImages.map((imgUrl, idx) => (
           <button
             key={`${imgUrl}-${idx}`}
             type="button"
             onClick={() => setSelectedImage(imgUrl)}
-            className="group relative h-44 sm:h-52 w-64 sm:w-80 shrink-0 overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0f0d18] shadow-md transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/60 hover:shadow-[0_8px_30px_rgba(168,85,247,0.2)] cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+            className="group relative h-52 sm:h-60 w-36 sm:w-44 shrink-0 overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0e0c1a] shadow-md transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/60 hover:shadow-[0_8px_30px_rgba(168,85,247,0.25)] cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 p-2 flex flex-col items-center justify-center"
           >
-            <img
-              src={imgUrl}
-              alt={`Imagem promocional de ${title} (${idx + 1})`}
-              className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-              loading="lazy"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
-              <span className="text-xs font-semibold text-white drop-shadow">
-                Visualizar em tamanho real
+            <div className="relative size-full flex items-center justify-center overflow-hidden rounded-xl bg-[#07060d]">
+              <img
+                src={imgUrl}
+                alt={`Arte promocional de ${title} (${idx + 1})`}
+                className="size-full object-contain transition-transform duration-500 group-hover:scale-105"
+                loading="lazy"
+              />
+            </div>
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2.5 pointer-events-none">
+              <span className="text-[11px] font-semibold text-purple-200 drop-shadow">
+                Ampliar arte
               </span>
             </div>
           </button>
@@ -1095,25 +1216,29 @@ function ImagensSection({
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200"
-          onClick={() => setSelectedImage(null)}
+          aria-label={`Visualização de imagem de ${title}`}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-3 sm:p-6 animate-in fade-in duration-200"
+          onClick={closeModal}
         >
+          {/* Botão fechar proeminente */}
+          <button
+            type="button"
+            onClick={closeModal}
+            aria-label="Fechar visualização de imagem"
+            className="absolute right-3.5 top-3.5 sm:right-6 sm:top-6 z-10 flex size-10 sm:size-11 items-center justify-center rounded-full bg-[#18132d]/90 text-zinc-200 hover:text-white hover:bg-purple-600 transition-all cursor-pointer border border-purple-500/30 shadow-lg"
+          >
+            <X className="size-5 sm:size-6" />
+          </button>
+
+          {/* Imagem inteira: object-contain, sem cortes, proporção original intacta */}
           <div
-            className="relative max-h-[90vh] max-w-5xl overflow-hidden rounded-2xl border border-purple-500/30 bg-[#0a0814] shadow-2xl"
+            className="relative flex items-center justify-center max-h-[88vh] max-w-[92vw] select-none"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={() => setSelectedImage(null)}
-              aria-label="Fechar visualização de imagem"
-              className="absolute right-3 top-3 z-10 flex size-9 items-center justify-center rounded-full bg-black/70 text-white hover:bg-purple-600 transition-colors cursor-pointer border border-white/20"
-            >
-              <X className="size-5" />
-            </button>
             <img
               src={selectedImage}
-              alt={`Visualização de ${title}`}
-              className="max-h-[85vh] w-auto max-w-full object-contain"
+              alt={`Visualização completa de ${title}`}
+              className="max-h-[88vh] max-w-[92vw] w-auto h-auto object-contain rounded-xl border border-purple-500/20 bg-[#090812] shadow-[0_20px_60px_rgba(0,0,0,0.85)]"
             />
           </div>
         </div>
@@ -1128,18 +1253,23 @@ function ElencoSection({
   characters?: AnimeCharacter[];
 }) {
   const [selectedLang, setSelectedLang] = useState<"ja" | "pt">("ja");
-  const [expanded, setExpanded] = useState(false);
   const railRef = useRef<HTMLDivElement>(null);
 
   const validCharacters = useMemo(() => {
     return (characters ?? []).filter((c) => Boolean(c.name?.full));
   }, [characters]);
 
+  // Verifica se há dubladores em português brasileiro
   const hasPortuguese = useMemo(() => {
     return validCharacters.some((c) =>
       (c.voiceActors ?? []).some((va) => {
-        const lang = va.language?.toLowerCase() ?? "";
-        return lang.includes("portuguese") || lang.includes("brazil");
+        const lang = (va.language ?? "").toLowerCase();
+        return (
+          lang.includes("portuguese") ||
+          lang.includes("brazil") ||
+          lang.includes("pt-br") ||
+          lang.includes("pt_br")
+        );
       }),
     );
   }, [validCharacters]);
@@ -1150,14 +1280,9 @@ function ElencoSection({
 
   const scroll = (direction: "left" | "right") => {
     if (!railRef.current) return;
-    const offset = direction === "left" ? -300 : 300;
+    const offset = direction === "left" ? -320 : 320;
     railRef.current.scrollBy({ left: offset, behavior: "smooth" });
   };
-
-  const initialLimit = 8;
-  const displayedCharacters = expanded
-    ? validCharacters
-    : validCharacters.slice(0, initialLimit);
 
   return (
     <section className="mt-12 space-y-4">
@@ -1170,7 +1295,7 @@ function ElencoSection({
         </div>
 
         <div className="flex items-center gap-3 self-start sm:self-auto">
-          {hasPortuguese && (
+          {hasPortuguese ? (
             <div className="inline-flex items-center rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1 shadow-sm">
               <button
                 type="button"
@@ -1200,9 +1325,14 @@ function ElencoSection({
                 <span>Português (BR)</span>
               </button>
             </div>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/30 px-2.5 py-1 text-[11px] font-medium text-purple-300">
+              <span className="size-1.5 rounded-full bg-purple-400" />
+              Dublagem original (Japonês)
+            </span>
           )}
 
-          {!expanded && validCharacters.length > 3 && (
+          {validCharacters.length > 3 && (
             <div className="hidden sm:flex items-center gap-1.5">
               <button
                 type="button"
@@ -1225,51 +1355,18 @@ function ElencoSection({
         </div>
       </div>
 
-      {expanded ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {validCharacters.map((char) => (
-            <ElencoCard
-              key={char.id || char.name.full}
-              char={char}
-              selectedLang={selectedLang}
-            />
-          ))}
-        </div>
-      ) : (
-        <div
-          ref={railRef}
-          className="rail -mx-4 flex gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
-        >
-          {displayedCharacters.map((char) => (
-            <div
-              key={char.id || char.name.full}
-              className="w-72 sm:w-80 shrink-0"
-            >
-              <ElencoCard char={char} selectedLang={selectedLang} />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {validCharacters.length > initialLimit && (
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-purple-500/25 bg-[#0f0d18] px-4 py-2 text-xs sm:text-sm font-semibold text-purple-300 transition-all hover:border-purple-500/50 hover:bg-[#161229] hover:text-white cursor-pointer shadow-sm"
-        >
-          <span>
-            {expanded
-              ? "Recolher elenco"
-              : `Ver elenco completo (${validCharacters.length})`}
-          </span>
-          <ChevronDown
-            className={cn(
-              "size-4 transition-transform duration-200",
-              expanded && "rotate-180",
-            )}
+      <div
+        ref={railRef}
+        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
+      >
+        {validCharacters.map((char) => (
+          <ElencoCard
+            key={char.id || char.name.full}
+            char={char}
+            selectedLang={selectedLang}
           />
-        </button>
-      )}
+        ))}
+      </div>
     </section>
   );
 }
@@ -1282,81 +1379,85 @@ function ElencoCard({
   selectedLang: "ja" | "pt";
 }) {
   const matchingVa = (char.voiceActors ?? []).find((va) => {
-    const l = va.language?.toLowerCase() ?? "";
+    const l = (va.language ?? "").toLowerCase();
     if (selectedLang === "pt") {
-      return l.includes("portuguese") || l.includes("brazil");
+      return (
+        l.includes("portuguese") ||
+        l.includes("brazil") ||
+        l.includes("pt-br") ||
+        l.includes("pt_br")
+      );
     }
     return l.includes("japanese");
   });
 
-  const roleLabel =
-    char.role === "MAIN" ? "Protagonista" : "Personagem secundário";
+  const isMain = char.role === "MAIN";
+  const roleLabel = isMain ? "Protagonista" : "Secundário";
 
   return (
-    <div className="group relative flex items-center justify-between gap-3 overflow-hidden rounded-xl border border-purple-500/15 bg-gradient-to-r from-[#110e20]/90 to-[#0c0a15]/95 p-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-purple-500/40 hover:bg-[#161229] shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)]">
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-elevated ring-1 ring-purple-500/20 sm:size-13">
-          {char.image ? (
-            <img
-              src={char.image}
-              alt={char.name.full}
-              className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-              loading="lazy"
-            />
-          ) : (
-            <div className="flex size-full items-center justify-center font-display text-sm font-bold text-purple-400">
-              {char.name.full.charAt(0)}
-            </div>
-          )}
-        </div>
+    <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/45 hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
+      {/* Imagem retangular do personagem (elemento visual principal, nunca circular) */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
+        {char.image ? (
+          <img
+            src={char.image}
+            alt={char.name.full}
+            loading="lazy"
+            decoding="async"
+            className="size-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center bg-gradient-to-b from-[#17132a] to-[#0d0b18] font-display text-xl sm:text-2xl font-bold text-purple-400/80">
+            {char.name.full.charAt(0)}
+          </div>
+        )}
 
-        <div className="min-w-0 flex-1">
-          <p
-            title={char.name.full}
-            className="truncate text-xs font-bold text-white transition-colors group-hover:text-purple-200 sm:text-sm"
-          >
-            {char.name.full}
-          </p>
-          <p className="text-[10.5px] font-medium text-purple-300/80">
-            {roleLabel}
-          </p>
-        </div>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
+
+        {/* Linha discreta para a função (Principal / Secundário) protegida contra overflow */}
+        <span
+          className={cn(
+            "absolute bottom-1.5 left-1.5 max-w-[calc(100%-12px)] truncate rounded px-1.5 py-0.5 text-[8px] sm:text-[8.5px] font-semibold tracking-wider uppercase backdrop-blur-md shadow-sm border",
+            isMain
+              ? "bg-purple-950/85 text-purple-200 border-purple-500/40"
+              : "bg-black/75 text-zinc-300 border-white/10",
+          )}
+        >
+          {roleLabel}
+        </span>
       </div>
 
-      <div className="flex max-w-[48%] shrink-0 items-center justify-end gap-2 text-right">
-        <div className="min-w-0">
-          {matchingVa ? (
-            <>
-              <p
-                title={matchingVa.name.full}
-                className="truncate text-xs font-semibold text-zinc-200 transition-colors group-hover:text-white sm:text-sm"
-              >
-                {matchingVa.name.full}
-              </p>
-              <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold tracking-wider text-purple-400 uppercase">
-                {selectedLang === "pt" ? "Dub. PT-BR" : "Dub. Japonesa"}
-              </span>
-            </>
-          ) : (
-            <>
-              <p className="text-xs italic text-zinc-500">Não listado</p>
-              <span className="text-[9.5px] text-zinc-600">
-                {selectedLang === "pt" ? "Sem dublagem BR" : "Sem dublador"}
-              </span>
-            </>
-          )}
-        </div>
+      {/* Textos abaixo da imagem protegidos com min-w-0 e flexbox */}
+      <div className="flex flex-1 flex-col justify-between p-2 sm:p-2.5 min-w-0">
+        {/* Nome do personagem */}
+        <p
+          title={char.name.full}
+          className="line-clamp-2 font-display text-[11px] sm:text-xs font-bold text-zinc-100 transition-colors group-hover:text-purple-300 min-w-0 break-words leading-snug"
+        >
+          {char.name.full}
+        </p>
 
-        {matchingVa?.image ? (
-          <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-elevated ring-1 ring-white/10 sm:size-11">
-            <img
-              src={matchingVa.image}
-              alt={matchingVa.name.full}
-              className="size-full object-cover"
-              loading="lazy"
-            />
-          </div>
-        ) : null}
+        {/* Nome do dublador correspondente logo abaixo em texto */}
+        <div className="mt-1.5 min-w-0">
+          {matchingVa ? (
+            <p
+              title={matchingVa.name.full}
+              className="truncate text-[10px] sm:text-[10.5px] font-medium text-purple-300/90 min-w-0"
+            >
+              {matchingVa.name.full}
+            </p>
+          ) : (
+            <p className="truncate text-[9.5px] sm:text-[10px] italic text-zinc-500 min-w-0">
+              {selectedLang === "pt"
+                ? "Sem dublagem BR"
+                : "Sem dublador creditado"}
+            </p>
+          )}
+
+          <span className="mt-0.5 inline-block rounded bg-white/5 px-1 py-0.5 text-[8px] sm:text-[8.5px] font-medium uppercase tracking-wider text-zinc-400">
+            {selectedLang === "pt" ? "Voz BR" : "Voz JP"}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -1369,13 +1470,12 @@ function DirecaoEquipeSection({
   studios: string[];
   staff?: AnimeStaff[];
 }) {
-  const [expanded, setExpanded] = useState(false);
   const railRef = useRef<HTMLDivElement>(null);
 
   const getRoleWeight = (role: string): number => {
     const r = role.toLowerCase();
     if (r === "director" || r.startsWith("director")) return 1;
-    if (r.includes("creator") || r.includes("original story")) return 2;
+    if (r.includes("original creator") || r.includes("creator")) return 2;
     if (r.includes("series composition")) return 3;
     if (
       r.includes("script") ||
@@ -1384,7 +1484,7 @@ function DirecaoEquipeSection({
     )
       return 4;
     if (r.includes("character design")) return 5;
-    if (r.includes("music")) return 6;
+    if (r.includes("music") || r.includes("composer")) return 6;
     if (r.includes("sound director")) return 7;
     if (r.includes("art director")) return 8;
     if (r.includes("chief animation director")) return 9;
@@ -1405,7 +1505,7 @@ function DirecaoEquipeSection({
       name,
       role: "Estúdio de animação",
       isStudio: true,
-      image: undefined,
+      image: getStudioLogo(name),
     }));
   }, [studios]);
 
@@ -1419,12 +1519,9 @@ function DirecaoEquipeSection({
 
   const scroll = (direction: "left" | "right") => {
     if (!railRef.current) return;
-    const offset = direction === "left" ? -280 : 280;
+    const offset = direction === "left" ? -320 : 320;
     railRef.current.scrollBy({ left: offset, behavior: "smooth" });
   };
-
-  const initialCount = 8;
-  const displayedItems = expanded ? allItems : allItems.slice(0, initialCount);
 
   return (
     <section className="mt-12 space-y-4">
@@ -1436,7 +1533,7 @@ function DirecaoEquipeSection({
           </h2>
         </div>
 
-        {!expanded && allItems.length > 3 && (
+        {allItems.length > 3 && (
           <div className="hidden sm:flex items-center gap-1.5">
             <button
               type="button"
@@ -1458,50 +1555,14 @@ function DirecaoEquipeSection({
         )}
       </div>
 
-      {expanded ? (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
-          {allItems.map((item, index) => (
-            <StaffCard
-              key={`${item.role}-${item.name}-${index}`}
-              item={item}
-            />
-          ))}
-        </div>
-      ) : (
-        <div
-          ref={railRef}
-          className="rail -mx-4 flex gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
-        >
-          {displayedItems.map((item, index) => (
-            <div
-              key={`${item.role}-${item.name}-${index}`}
-              className="w-56 sm:w-64 shrink-0"
-            >
-              <StaffCard item={item} />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {allItems.length > initialCount && (
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-purple-500/25 bg-[#0f0d18] px-4 py-2 text-xs sm:text-sm font-semibold text-purple-300 transition-all hover:border-purple-500/50 hover:bg-[#161229] hover:text-white cursor-pointer shadow-sm"
-        >
-          <span>
-            {expanded
-              ? "Recolher equipe"
-              : `Ver equipe completa (${allItems.length})`}
-          </span>
-          <ChevronDown
-            className={cn(
-              "size-4 transition-transform duration-200",
-              expanded && "rotate-180",
-            )}
-          />
-        </button>
-      )}
+      <div
+        ref={railRef}
+        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
+      >
+        {allItems.map((item, index) => (
+          <StaffCard key={`${item.role}-${item.name}-${index}`} item={item} />
+        ))}
+      </div>
     </section>
   );
 }
@@ -1516,39 +1577,61 @@ function StaffCard({
     isStudio?: boolean;
   };
 }) {
+  const [imgError, setImgError] = useState(false);
   const roleText = staffRoleLabel(item.role);
+  const showImage = Boolean(item.image) && !imgError;
 
   return (
-    <div className="flex h-full items-center gap-2.5 rounded-xl border border-purple-500/15 bg-gradient-to-b from-[#110e20]/80 to-[#0c0a15]/90 p-2.5 sm:p-3 shadow-sm transition-all duration-200 hover:border-purple-500/35 hover:bg-[#151126]">
-      {item.image ? (
-        <div className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-elevated ring-1 ring-purple-500/20 sm:size-12">
+    <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/45 hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
+      {/* Imagem retangular (logo real para estúdio, retrato real para profissional ou card tipográfico elegante) */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
+        {item.isStudio && showImage ? (
+          <div className="flex size-full items-center justify-center p-2.5 sm:p-3 bg-[#0d0c16]">
+            <img
+              src={item.image}
+              alt={item.name}
+              onError={() => setImgError(true)}
+              className="max-h-full max-w-full object-contain filter drop-shadow transition-transform duration-500 group-hover:scale-105"
+            />
+          </div>
+        ) : !item.isStudio && showImage ? (
           <img
             src={item.image}
             alt={item.name}
-            className="size-full object-cover"
+            onError={() => setImgError(true)}
+            className="size-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
           />
-        </div>
-      ) : item.isStudio ? (
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-purple-500/30 bg-purple-950/60 text-purple-300 sm:size-12">
-          <Film className="size-5" />
-        </div>
-      ) : (
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-purple-500/20 bg-purple-950/40 font-display text-sm font-bold text-purple-300 sm:size-12">
-          {item.name.charAt(0)}
-        </div>
-      )}
+        ) : (
+          <div className="flex size-full flex-col items-center justify-center bg-gradient-to-b from-[#18132d] to-[#0c0a15] p-2.5 text-center">
+            <span className="font-display text-xl sm:text-2xl font-black text-purple-400/80">
+              {item.name.charAt(0).toUpperCase()}
+            </span>
+            <span className="mt-1 text-[8.5px] sm:text-[9.5px] text-zinc-500 uppercase tracking-widest font-medium">
+              {item.isStudio ? "Estúdio" : "Equipe"}
+            </span>
+          </div>
+        )}
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-purple-400">
-          {roleText}
-        </p>
-        <p
-          title={item.name}
-          className="mt-0.5 truncate text-xs sm:text-sm font-semibold text-zinc-100"
-        >
-          {item.name}
-        </p>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
+      </div>
+
+      {/* Textos abaixo da imagem protegidos com min-w-0 e flexbox */}
+      <div className="flex flex-1 flex-col justify-between p-2 sm:p-2.5 min-w-0">
+        <div className="min-w-0">
+          <p
+            title={roleText}
+            className="truncate text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-purple-400 min-w-0"
+          >
+            {roleText}
+          </p>
+          <p
+            title={item.name}
+            className="mt-0.5 line-clamp-2 font-display text-[11px] sm:text-xs font-semibold text-zinc-100 transition-colors group-hover:text-purple-300 min-w-0 break-words leading-snug"
+          >
+            {item.name}
+          </p>
+        </div>
       </div>
     </div>
   );

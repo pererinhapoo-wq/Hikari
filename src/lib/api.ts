@@ -208,6 +208,7 @@ type AniMedia = {
           full?: string | null;
         } | null;
         image?: {
+          large?: string | null;
           medium?: string | null;
         } | null;
       } | null;
@@ -931,6 +932,79 @@ async function jikanEpisodes(
   return toCache(cacheKey, result);
 }
 
+type JikanPictureItem = {
+  jpg?: {
+    image_url?: string | null;
+    small_image_url?: string | null;
+    large_image_url?: string | null;
+  } | null;
+  webp?: {
+    image_url?: string | null;
+    small_image_url?: string | null;
+    large_image_url?: string | null;
+  } | null;
+};
+
+/**
+ * Consulta a galeria de fotos e artes promocionais oficiais do anime no MyAnimeList via Jikan API.
+ * Retorna as URLs em alta resolução (large_image_url), com cache em memória e tratamento de erros.
+ */
+export async function fetchJikanPictures(malId: number): Promise<string[]> {
+  if (!malId || !Number.isFinite(malId)) {
+    return [];
+  }
+
+  const cacheKey = `jikan-pictures:v1:${malId}`;
+  const cached = fromCache<string[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const json = await jikanFetch<{ data: JikanPictureItem[] }>(
+      `/anime/${malId}/pictures`,
+    );
+
+    const urls: string[] = [];
+    const seen = new Set<string>();
+
+    for (const item of json.data ?? []) {
+      // Prioriza a imagem em maior resolução disponível
+      const best =
+        item.jpg?.large_image_url ||
+        item.webp?.large_image_url ||
+        item.jpg?.image_url ||
+        item.webp?.image_url;
+
+      if (best && typeof best === "string" && best.trim().length > 0) {
+        const clean = best.trim();
+        const normKey = clean.replace(/^https?:\/\//i, "").split("?")[0].toLowerCase();
+        if (!seen.has(normKey)) {
+          seen.add(normKey);
+          urls.push(clean);
+        }
+      }
+    }
+
+    return toCache(cacheKey, urls);
+  } catch (error) {
+    console.warn(`[Hikari] Jikan pictures indisponível para malId ${malId}:`, error);
+    return toCache(cacheKey, []);
+  }
+}
+
+export const fetchAnimePictures = createServerFn({
+  method: "GET",
+})
+  .validator(
+    z.object({
+      malId: z.number(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    return fetchJikanPictures(data.malId);
+  });
+
 function streamingFromAni(
   media: AniMedia,
 ): StreamingLink[] {
@@ -1136,6 +1210,7 @@ function mapAniFull(
   media: AniMedia,
   seasons: Season[],
   seasonNavigation?: SeasonNavigation,
+  extraImages?: string[],
 ): Anime & {
   seasonNavigation: SeasonNavigation;
 } {
@@ -1167,7 +1242,7 @@ function mapAniFull(
         full: edge?.node?.name?.full ?? "",
         native: edge?.node?.name?.native ?? undefined,
       },
-      image: edge?.node?.image?.medium || edge?.node?.image?.large || undefined,
+      image: edge?.node?.image?.large || edge?.node?.image?.medium || undefined,
       role: edge?.role ?? "MAIN",
       voiceActors: (edge?.voiceActors ?? [])
         .filter((va) => Boolean(va?.name?.full))
@@ -1177,7 +1252,7 @@ function mapAniFull(
             full: va.name?.full ?? "",
             native: va.name?.native ?? undefined,
           },
-          image: va.image?.medium || va.image?.large || undefined,
+          image: va.image?.large || va.image?.medium || undefined,
           language: va.languageV2 ?? "Japanese",
         })),
     }));
@@ -1188,31 +1263,50 @@ function mapAniFull(
       id: edge?.node?.id ?? 0,
       name: edge?.node?.name?.full ?? "",
       role: edge?.role ?? "",
-      image: edge?.node?.image?.medium || undefined,
+      image: edge?.node?.image?.large || edge?.node?.image?.medium || undefined,
     }));
 
   const images: string[] = [];
   const seenImgs = new Set<string>();
+
+  const normKey = (url: string) =>
+    url.replace(/^https?:\/\//i, "").split("?")[0].toLowerCase().trim();
+
   const addImg = (url?: string | null) => {
-    if (url && typeof url === "string" && !seenImgs.has(url)) {
-      seenImgs.add(url);
-      images.push(url);
+    if (url && typeof url === "string" && url.trim().length > 0) {
+      const clean = url.trim();
+      const key = normKey(clean);
+      if (!seenImgs.has(key)) {
+        seenImgs.add(key);
+        images.push(clean);
+      }
     }
   };
 
-  if (media.bannerImage) addImg(media.bannerImage);
-  if (media.coverImage?.extraLarge) addImg(media.coverImage.extraLarge);
-  else if (media.coverImage?.large) addImg(media.coverImage.large);
+  const mainCoverKey = slim.cover ? normKey(slim.cover) : "";
+  const mainBannerKey = slim.banner ? normKey(slim.banner) : "";
 
+  // 1. Artes promocionais oficiais da galeria MyAnimeList / Jikan
+  if (extraImages && extraImages.length > 0) {
+    for (const pic of extraImages) {
+      const key = normKey(pic);
+      // Não duplica a capa principal do topo nem o banner
+      if (key !== mainCoverKey && key !== mainBannerKey) {
+        addImg(pic);
+      }
+    }
+  }
+
+  // 2. Complementar oficial: Key visuals e pôsteres das obras da franquia (prequels/sequels/filmes)
   (media.relations?.edges ?? []).forEach((edge) => {
-    const node = edge?.node as { coverImage?: { extraLarge?: string; large?: string }; bannerImage?: string } | undefined;
-    if (node?.bannerImage) addImg(node.bannerImage);
-    if (node?.coverImage?.extraLarge) addImg(node.coverImage.extraLarge);
-    else if (node?.coverImage?.large) addImg(node.coverImage.large);
-  });
-
-  (media.streamingEpisodes ?? []).forEach((ep) => {
-    if (ep.thumbnail) addImg(ep.thumbnail);
+    const node = edge?.node as { coverImage?: { extraLarge?: string; large?: string } } | undefined;
+    const relCover = node?.coverImage?.extraLarge || node?.coverImage?.large;
+    if (relCover) {
+      const key = normKey(relCover);
+      if (key !== mainCoverKey && key !== mainBannerKey) {
+        addImg(relCover);
+      }
+    }
   });
 
   const synonyms = (media.synonyms ?? []).filter(Boolean);
@@ -3636,16 +3730,23 @@ export const fetchAnimeDetail =
               json.data,
             );
 
-          let seasons: Season[] =
-            [];
+          let seasons: Season[] = [];
+          let jikanPictures: string[] = [];
 
           try {
-            seasons =
-              await jikanEpisodes(
-                malId,
-              );
+            const [seasonsRes, picsRes] = await Promise.allSettled([
+              jikanEpisodes(malId),
+              fetchJikanPictures(malId),
+            ]);
+            if (seasonsRes.status === "fulfilled") {
+              seasons = seasonsRes.value;
+            }
+            if (picsRes.status === "fulfilled") {
+              jikanPictures = picsRes.value;
+            }
           } catch {
             seasons = [];
+            jikanPictures = [];
           }
 
           let seasonNavigation:
@@ -3691,7 +3792,7 @@ export const fetchAnimeDetail =
               undefined;
           }
 
-          const mappedAni = aniMedia ? mapAniFull(aniMedia, seasons, seasonNavigation) : null;
+          const mappedAni = aniMedia ? mapAniFull(aniMedia, seasons, seasonNavigation, jikanPictures) : null;
 
           const anime: Anime & {
             seasonNavigation?: SeasonNavigation;
@@ -3702,6 +3803,7 @@ export const fetchAnimeDetail =
               : mappedAni?.studios ?? [],
             streamingEpisodes: [],
             seasons,
+            images: jikanPictures.length > 0 ? jikanPictures : (mappedAni?.images ?? []),
             recommendations: mappedAni?.recommendations ?? [],
             characters: mappedAni?.characters ?? [],
             staff: mappedAni?.staff ?? [],
@@ -3898,6 +4000,7 @@ export const fetchAnimeDetail =
           }
 
           let seasons: Season[] = [];
+          let jikanPictures: string[] = [];
 
           if (
             media.streamingEpisodes &&
@@ -3948,20 +4051,43 @@ export const fetchAnimeDetail =
             ];
           } else if (media.idMal) {
             try {
-              seasons = await Promise.race([
-                jikanEpisodes(media.idMal),
-                new Promise<Season[]>((_, reject) =>
-                  setTimeout(
-                    () =>
-                      reject(
-                        new Error(
-                          "Jikan timeout",
+              const [seasonsRes, picsRes] = await Promise.allSettled([
+                Promise.race([
+                  jikanEpisodes(media.idMal),
+                  new Promise<Season[]>((_, reject) =>
+                    setTimeout(
+                      () =>
+                        reject(
+                          new Error(
+                            "Jikan timeout",
+                          ),
                         ),
-                      ),
-                    1800,
+                      2000,
+                    ),
                   ),
-                ),
+                ]),
+                Promise.race([
+                  fetchJikanPictures(media.idMal),
+                  new Promise<string[]>((_, reject) =>
+                    setTimeout(
+                      () =>
+                        reject(
+                          new Error(
+                            "Jikan pics timeout",
+                          ),
+                        ),
+                      2000,
+                    ),
+                  ),
+                ]),
               ]);
+
+              if (seasonsRes.status === "fulfilled") {
+                seasons = seasonsRes.value;
+              }
+              if (picsRes.status === "fulfilled") {
+                jikanPictures = picsRes.value;
+              }
             } catch {
               seasons = [];
             }
@@ -4065,6 +4191,7 @@ export const fetchAnimeDetail =
               media,
               seasons,
               seasonNavigation,
+              jikanPictures,
             ),
           );
         } catch {
