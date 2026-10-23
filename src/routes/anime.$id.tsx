@@ -5,6 +5,7 @@ import {
   BookmarkCheck,
   Check,
   ChevronDown,
+  MessageSquare,
   Pencil,
   Play,
   Share2,
@@ -12,8 +13,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
-import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
 import { fetchAnimeDetail } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -92,9 +91,8 @@ function AnimePage() {
 
   const anime = mergeDetail(remote, id, locals);
 
-  const [seasonsOpen, setSeasonsOpen] =
-    useState(false);
-
+  const [seasonsOpen, setSeasonsOpen] = useState(false);
+  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
 
   useEffect(() => {
@@ -200,7 +198,13 @@ function AnimePage() {
    * TEMPORADAS
    */
   const seasonNavigation =
-    remote?.seasonNavigation?.items ?? [];
+    (
+      remote as unknown as {
+        seasonNavigation?: {
+          items?: Array<{ id: string; label?: string; title?: string }>;
+        };
+      }
+    )?.seasonNavigation?.items ?? [];
 
   const seasons = anime?.seasons ?? [];
 
@@ -208,18 +212,14 @@ function AnimePage() {
    * A página representa uma temporada.
    * Portanto usamos somente os episódios dessa página.
    */
-  const currentSeason =
-    seasons[0] ?? null;
-
-  const currentEpisodes =
-    currentSeason?.episodes;
+  const currentSeason = seasons[0] ?? null;
+  const currentEpisodes = currentSeason?.episodes;
 
   const allEpisodes = useMemo(
     () =>
       (currentEpisodes ?? []).map((episode) => ({
         ...episode,
-        seasonId:
-          currentSeason?.id ?? "",
+        seasonId: currentSeason?.id ?? "",
       })),
     [currentEpisodes, currentSeason?.id],
   );
@@ -286,7 +286,7 @@ function AnimePage() {
 
   const watchButtonLabel =
     continueEpisode
-      ? `Continuar no episódio ${continueEpisode.number}`
+      ? `Continuar no ep. ${continueEpisode.number}`
       : "Assistir";
 
   const handleShare = async () => {
@@ -342,7 +342,7 @@ function AnimePage() {
               onClick={handleBack}
               aria-label="Voltar"
               title="Voltar"
-              className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-white/10 bg-black/45 px-3 py-2 text-sm font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/65 sm:left-6"
+              className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-xl border border-purple-500/30 bg-black/60 px-3.5 py-2 text-sm font-medium text-white backdrop-blur-md shadow-md transition-all hover:bg-purple-950/50 hover:border-purple-500/60 hover:text-purple-200 sm:left-6 cursor-pointer"
             >
               <ArrowLeft className="size-4" />
               <span>Voltar</span>
@@ -353,7 +353,7 @@ function AnimePage() {
         <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
           <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row">
             {/* CAPA */}
-            <div className="mx-auto w-32 shrink-0 overflow-hidden rounded-xl bg-elevated shadow-2xl ring-1 ring-white/10 sm:mx-0 sm:w-44">
+            <div className="mx-auto w-32 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.8),0_0_24px_rgba(168,85,247,0.15)] ring-1 ring-purple-500/30 sm:mx-0 sm:w-44">
               {anime.cover ? (
                 <img
                   src={anime.cover}
@@ -368,47 +368,48 @@ function AnimePage() {
             {/* INFORMAÇÕES */}
             <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:pb-2">
               <div className="mb-2">
-                <span className="text-[11px] font-medium tracking-[0.3em] text-muted uppercase">
-                  Anime
+                <span className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-950/70 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-purple-300 uppercase shadow-[0_0_12px_rgba(168,85,247,0.15)] sm:text-xs">
+                  <span className="size-1.5 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
+                  <span>Anime</span>
                 </span>
               </div>
 
-              <h1 className="font-display text-3xl leading-tight tracking-tight sm:text-5xl">
+              <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-white drop-shadow-sm sm:text-4xl md:text-5xl">
                 {title}
               </h1>
 
               {anime.titles.native && (
-                <p className="mt-1 font-display text-sm text-muted">
+                <p className="mt-1 font-display text-sm font-medium text-purple-300/70">
                   {anime.titles.native}
                 </p>
               )}
 
               {/* METADADOS */}
-              <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
                 {anime.score != null && (
-                  <span className="font-semibold tabular-nums text-score">
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-purple-500/35 bg-purple-950/80 px-2.5 py-1 text-xs font-bold tabular-nums text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.15)]">
                     ★ {scoreLabel(anime.score)}
                   </span>
                 )}
 
                 {anime.year && (
-                  <span className="text-muted">
+                  <span className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
                     {anime.year}
                   </span>
                 )}
 
-                <span className="text-muted">
+                <span className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
                   {formatLabel(anime.format)}
                 </span>
 
                 {episodeCount > 0 && (
-                  <span className="text-muted">
+                  <span className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-zinc-300">
                     {episodeCount} episódios
                   </span>
                 )}
 
                 {statusLabel(anime.status) && (
-                  <span className="text-muted">
+                  <span className="inline-flex items-center rounded-lg border border-purple-500/20 bg-purple-950/40 px-2.5 py-1 text-xs font-medium text-purple-300">
                     {statusLabel(anime.status)}
                   </span>
                 )}
@@ -428,16 +429,15 @@ function AnimePage() {
                       status: "",
                       sort: "TRENDING_DESC",
                     }}
+                    className="inline-flex items-center rounded-lg border border-purple-500/20 bg-[#161326]/80 px-2.5 py-1 text-xs font-medium text-purple-200/90 transition-all hover:border-purple-500/50 hover:bg-purple-950/50 hover:text-purple-100"
                   >
-                    <Badge>
-                      {genreLabel(g)}
-                    </Badge>
+                    {genreLabel(g)}
                   </Link>
                 ))}
               </div>
 
-              {/* BOTÕES */}
-              <div className="mt-5 flex flex-wrap gap-2">
+              {/* BOTÕES DE AÇÃO */}
+              <div className="mt-5 flex flex-wrap items-center gap-2.5 sm:gap-3">
                 <Link
                   to="/watch/$id"
                   params={{
@@ -450,7 +450,7 @@ function AnimePage() {
                         }
                       : undefined
                   }
-                  className={buttonVariants({ size: "lg" })}
+                  className="inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 px-5 sm:px-6 text-sm sm:text-base font-semibold text-white shadow-[0_4px_20px_rgba(168,85,247,0.35)] transition-all duration-200 hover:from-purple-500 hover:to-purple-400 hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
                   onClick={(e) => {
                     if (
                       !e.metaKey &&
@@ -475,61 +475,45 @@ function AnimePage() {
                   }}
                 >
                   <Play className="size-4 fill-current pointer-events-none" />
-
-                  {watchButtonLabel}
+                  <span>{watchButtonLabel}</span>
                 </Link>
 
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  size="lg"
-                  onClick={() =>
-                    toggleList(anime)
-                  }
+                  onClick={() => toggleList(anime)}
+                  className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-[#0f0d18]/90 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-100 shadow-sm transition-all duration-200 hover:border-purple-500/60 hover:bg-[#1a142e] hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
                 >
                   {inList ? (
-                    <BookmarkCheck className="size-4" />
+                    <BookmarkCheck className="size-4 text-purple-400" />
                   ) : (
-                    <Bookmark className="size-4" />
+                    <Bookmark className="size-4 text-zinc-400" />
                   )}
+                  <span>{inList ? "Na lista" : "Minha Lista"}</span>
+                </button>
 
-                  {inList
-                    ? "Na lista"
-                    : "Minha Lista"}
-                </Button>
-
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  size="lg"
                   onClick={handleShare}
+                  className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-purple-500/25 bg-[#0f0d18]/90 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-200 shadow-sm transition-all duration-200 hover:border-purple-500/50 hover:bg-[#1a142e] hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
                 >
-                  <Share2 className="size-4" />
-
-                  Compartilhar
-                </Button>
+                  <Share2 className="size-4 text-zinc-400" />
+                  <span>Compartilhar</span>
+                </button>
 
                 {canEdit && (
-                  <Button
-                    asChild
-                    variant="ghost"
+                  <Link
+                    to="/admin/$id"
+                    params={{
+                      id: localRecord?.id ?? "new",
+                    }}
+                    search={{
+                      importId: anime.id,
+                    }}
+                    className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-300 shadow-sm transition-all duration-200 hover:border-purple-500/40 hover:bg-[#1a142e] hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
                   >
-                    <Link
-                      to="/admin/$id"
-                      params={{
-                        id:
-                          localRecord?.id ??
-                          "new",
-                      }}
-                      search={{
-                        importId: anime.id,
-                      }}
-                    >
-                      <Pencil className="size-4" />
-
-                      Editar
-                    </Link>
-                  </Button>
+                    <Pencil className="size-4 text-zinc-400" />
+                    <span>Editar</span>
+                  </Link>
                 )}
               </div>
             </div>
@@ -539,27 +523,45 @@ function AnimePage() {
 
       {/* SINOPSE */}
       {anime.synopsis && (
-        <section className="mt-10 max-w-4xl">
-          <h2 className="font-display text-2xl tracking-tight">
-            Sinopse
-          </h2>
+        <section className="mt-10 max-w-4xl rounded-2xl border border-purple-500/15 bg-gradient-to-b from-[#131024]/70 to-[#0d0b18]/50 p-5 sm:p-6 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <span className="h-5 w-1 rounded-full bg-purple-500" />
+            <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-white">
+              Sinopse
+            </h2>
+          </div>
 
-          <p className="mt-3 text-sm leading-7 text-muted sm:text-base">
+          <p
+            className={`mt-3.5 text-sm sm:text-base leading-relaxed text-zinc-300 ${
+              synopsisExpanded ? "" : "line-clamp-4"
+            }`}
+          >
             {anime.synopsis}
           </p>
+
+          {anime.synopsis.length > 260 && (
+            <button
+              type="button"
+              onClick={() => setSynopsisExpanded(!synopsisExpanded)}
+              className="mt-3 inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-purple-400 hover:text-purple-300 transition-colors cursor-pointer"
+            >
+              {synopsisExpanded ? "Mostrar menos" : "Ler mais"}
+            </button>
+          )}
         </section>
       )}
 
       {/* TRAILER */}
       {yt && (
-        <section className="mt-10">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-2xl tracking-tight">
-              Trailer
+        <section className="mt-10 max-w-4xl">
+          <div className="flex items-center gap-2.5">
+            <span className="h-5 w-1 rounded-full bg-purple-500" />
+            <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-white">
+              Trailer Oficial
             </h2>
           </div>
 
-          <div className="mt-4 aspect-video overflow-hidden rounded-xl bg-elevated shadow-[var(--shadow-border)]">
+          <div className="mt-4 aspect-video overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0d0b18] shadow-[0_8px_30px_rgba(0,0,0,0.6)]">
             <iframe
               title={`Trailer de ${title}`}
               src={`https://www.youtube-nocookie.com/embed/${yt}`}
@@ -574,71 +576,52 @@ function AnimePage() {
       {/* TEMPORADAS */}
       {seasonNavigation.length > 1 && (
         <section className="mt-8">
-          <div className="relative w-[220px] max-w-full">
+          <div className="relative w-[240px] max-w-full">
             <button
               type="button"
-              onClick={() =>
-                setSeasonsOpen(
-                  (open) => !open,
-                )
-              }
-              className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-surface px-3 py-1.5 text-left transition-colors hover:bg-elevated"
+              onClick={() => setSeasonsOpen((open) => !open)}
+              className="flex w-full items-center justify-between rounded-xl border border-purple-500/25 bg-[#0f0d18] px-3.5 py-2.5 text-left shadow-sm transition-all hover:border-purple-500/50 hover:bg-[#161326] cursor-pointer"
               aria-expanded={seasonsOpen}
             >
-              <span className="font-display text-base tracking-tight">
+              <span className="font-display text-sm font-semibold tracking-tight text-zinc-100">
                 Temporadas
               </span>
 
               <ChevronDown
-                className={`size-4 text-muted transition-transform ${
-                  seasonsOpen
-                    ? "rotate-180"
-                    : ""
+                className={`size-4 text-purple-400 transition-transform duration-200 ${
+                  seasonsOpen ? "rotate-180" : ""
                 }`}
               />
             </button>
 
             {seasonsOpen && (
-              <div className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-lg border border-white/10 bg-surface p-1 shadow-2xl">
-                {seasonNavigation.map(
-                  (season, index) => {
-                    const selected =
-                      season.id === anime.id;
+              <div className="absolute left-0 right-0 z-30 mt-1.5 overflow-hidden rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1.5 shadow-2xl backdrop-blur-md">
+                {seasonNavigation.map((season, index) => {
+                  const selected = season.id === anime.id;
+                  const seasonName =
+                    season.label ??
+                    season.title ??
+                    `Temporada ${index + 1}`;
 
-                    const seasonName =
-                      season.label ??
-                      season.title ??
-                      `Temporada ${index + 1}`;
-
-                    return (
-                      <Link
-                        key={season.id}
-                        to="/anime/$id"
-                        params={{
-                          id: season.id,
-                        }}
-                        onClick={() =>
-                          setSeasonsOpen(
-                            false,
-                          )
-                        }
-                        className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-xs leading-snug transition-colors ${
-                          selected
-                            ? "bg-elevated font-medium text-fg"
-                            : "text-muted hover:bg-elevated hover:text-fg"
-                        }`}
-                      >
-                        <span>
-                          {seasonName}
-                        </span>
-
-                        {selected && (
-                          <Check className="ml-2 size-3.5 shrink-0" />
-                        )}
-                      </Link>
-                    );
-                  },
-                )}
+                  return (
+                    <Link
+                      key={season.id}
+                      to="/anime/$id"
+                      params={{ id: season.id }}
+                      onClick={() => setSeasonsOpen(false)}
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs leading-snug transition-colors ${
+                        selected
+                          ? "bg-purple-950/70 font-semibold text-purple-200 border border-purple-500/30"
+                          : "text-zinc-300 hover:bg-white/5 hover:text-white"
+                      }`}
+                    >
+                      <span>{seasonName}</span>
+                      {selected && (
+                        <Check className="ml-2 size-3.5 shrink-0 text-purple-400" />
+                      )}
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -647,28 +630,23 @@ function AnimePage() {
 
       {/* EPISÓDIOS */}
       {currentSeason && (
-        <section
-          id="episodes"
-          className="mt-12"
-        >
+        <section id="episodes" className="mt-12">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
-                Episódios
-              </h2>
+              <div className="flex items-center gap-2.5">
+                <span className="h-6 w-1 rounded-full bg-purple-500" />
+                <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                  Episódios
+                </h2>
+              </div>
 
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-                <span>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs sm:text-sm text-zinc-400">
+                <span className="inline-flex items-center rounded-md border border-white/5 bg-white/5 px-2.5 py-1 text-zinc-300">
                   {episodeCount} episódios disponíveis
                 </span>
-
-                <span className="text-subtle">
-                  •
-                </span>
-
-                <span>
-                  {watchedCount}/{episodeCount}{" "}
-                  assistidos
+                <span className="text-zinc-600">·</span>
+                <span className="inline-flex items-center rounded-md border border-purple-500/20 bg-purple-950/40 px-2.5 py-1 font-medium text-purple-300">
+                  {watchedCount}/{episodeCount} assistidos
                 </span>
               </div>
             </div>
@@ -676,14 +654,10 @@ function AnimePage() {
 
           <div className="mt-5">
             <EpisodeGrid
-              episodes={
-                currentSeason.episodes
-              }
+              episodes={currentSeason.episodes}
               animeId={anime.id}
               cover={anime.cover}
-              watchedEpisodes={
-                watchedEpisodes
-              }
+              watchedEpisodes={watchedEpisodes}
             />
           </div>
         </section>
@@ -691,12 +665,11 @@ function AnimePage() {
 
       {/* ESTÚDIO */}
       {anime.studios.length > 0 && (
-        <section className="mt-10 rounded-xl border border-white/5 bg-surface p-5">
-          <p className="text-xs tracking-[0.2em] text-subtle uppercase">
+        <section className="mt-10 rounded-2xl border border-purple-500/20 bg-gradient-to-r from-[#120f22]/70 via-[#0f0d18] to-[#0d0b18] p-5 shadow-sm">
+          <p className="text-[11px] font-bold tracking-[0.2em] text-purple-400 uppercase">
             Estúdio
           </p>
-
-          <p className="mt-2 text-sm text-fg">
+          <p className="mt-1.5 text-sm font-medium text-zinc-200">
             {anime.studios.join(", ")}
           </p>
         </section>
@@ -705,43 +678,44 @@ function AnimePage() {
       {/* RELACIONADOS */}
       {anime.recommendations.length > 0 && (
         <section className="mt-12 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
+          <div className="flex items-center gap-2.5">
+            <span className="h-6 w-1 rounded-full bg-purple-500" />
+            <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
               Relacionados
             </h2>
           </div>
 
           <div className="rail -mx-4 px-4 sm:-mx-6 sm:px-6">
-            {anime.recommendations.map(
-              (r) => (
-                <AnimeCard
-                  key={r.id}
-                  anime={r}
-                />
-              ),
-            )}
+            {anime.recommendations.map((r) => (
+              <AnimeCard key={r.id} anime={r} />
+            ))}
           </div>
         </section>
       )}
 
       {/* COMENTÁRIOS */}
-      <section className="mt-12 border-t border-white/5 pt-10">
-        <div className="flex items-center justify-between">
+      <section className="mt-14 border-t border-purple-500/20 pt-10">
+        <div className="flex items-center gap-2.5">
+          <span className="h-6 w-1 rounded-full bg-purple-500" />
           <div>
-            <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
+            <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
               Comentários
             </h2>
-
-            <p className="mt-1 text-sm text-muted">
-              A discussão deste anime ficará aqui.
+            <p className="mt-1 text-sm text-zinc-400">
+              Espaço para a comunidade compartilhar impressões sobre este anime.
             </p>
           </div>
         </div>
 
-        <div className="mt-5 rounded-xl border border-white/5 bg-surface p-6 text-center">
-          <p className="text-sm text-muted">
-            Os comentários do Hikari serão
-            adicionados aqui.
+        <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#120f22]/60 to-[#0d0b18] p-8 text-center shadow-sm sm:p-10">
+          <div className="flex size-12 items-center justify-center rounded-full border border-purple-500/30 bg-purple-950/60 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+            <MessageSquare className="size-6" />
+          </div>
+          <h3 className="mt-4 font-display text-base font-semibold text-white">
+            Comentários em breve
+          </h3>
+          <p className="mt-1.5 max-w-md text-xs sm:text-sm text-zinc-400 leading-relaxed">
+            O sistema de discussão e avaliação da comunidade do Hikari está sendo preparado e estará disponível aqui em breve.
           </p>
         </div>
       </section>
@@ -780,10 +754,7 @@ function EpisodeGrid({
     >
       <ol className="grid gap-3 sm:grid-cols-2">
         {episodes.map((ep) => {
-          const watched =
-            watchedEpisodes.includes(
-              ep.id,
-            );
+          const watched = watchedEpisodes.includes(ep.id);
 
           return (
             <li key={ep.id}>
@@ -795,41 +766,35 @@ function EpisodeGrid({
                 search={{
                   ep: ep.id,
                 }}
-                className={`group flex gap-3 rounded-xl border p-2.5 shadow-[var(--shadow-border)] transition-all hover:-translate-y-0.5 ${
+                className={`group flex gap-3 rounded-xl border p-2.5 transition-all duration-200 hover:-translate-y-0.5 ${
                   watched
-                    ? "border-white/10 bg-elevated"
-                    : "border-white/5 bg-surface hover:bg-elevated"
-                }`}
+                    ? "border-purple-500/30 bg-[#141026]/90 hover:bg-[#1a1530] hover:border-purple-500/50"
+                    : "border-purple-500/15 bg-[#0f0d18]/90 hover:border-purple-500/40 hover:bg-[#161326]"
+                } shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)]`}
               >
                 {/* THUMBNAIL */}
                 <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
-                  {ep.thumbnail ||
-                  cover ? (
+                  {ep.thumbnail || cover ? (
                     <img
-                      src={
-                        ep.thumbnail ||
-                        cover
-                      }
+                      src={ep.thumbnail || cover}
                       alt=""
                       className={`size-full object-cover transition-transform duration-300 group-hover:scale-105 ${
-                        watched
-                          ? "opacity-70"
-                          : ""
+                        watched ? "opacity-75" : ""
                       }`}
                     />
                   ) : null}
 
                   <div className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/5" />
 
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                    <div className="flex size-9 items-center justify-center rounded-full bg-white text-black shadow-lg">
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    <div className="flex size-9 items-center justify-center rounded-full bg-purple-600 text-white shadow-lg shadow-purple-950/60 ring-2 ring-white/20">
                       <Play className="ml-0.5 size-4 fill-current" />
                     </div>
                   </div>
 
                   {watched && (
-                    <div className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full bg-black/75 text-white">
-                      <Check className="size-4" />
+                    <div className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full border border-purple-500/40 bg-purple-950/90 text-purple-200 shadow-md">
+                      <Check className="size-3.5" />
                     </div>
                   )}
                 </div>
@@ -837,24 +802,23 @@ function EpisodeGrid({
                 {/* INFORMAÇÕES */}
                 <div className="min-w-0 flex-1 py-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-medium tracking-wide text-subtle uppercase">
-                      Episódio{" "}
-                      {ep.number}
+                    <p className="text-[11px] font-bold tracking-wider text-purple-400 uppercase">
+                      Episódio {ep.number}
                     </p>
 
                     {watched && (
-                      <span className="shrink-0 text-[10px] font-medium tracking-wide text-subtle uppercase">
+                      <span className="shrink-0 rounded bg-purple-950/80 border border-purple-500/30 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-purple-300 uppercase">
                         Assistido
                       </span>
                     )}
                   </div>
 
-                  <p className="mt-1 line-clamp-2 text-sm leading-snug text-fg">
+                  <p className="mt-1 line-clamp-2 text-sm font-medium leading-snug text-zinc-100 group-hover:text-purple-200 transition-colors">
                     {ep.title}
                   </p>
 
                   {ep.duration && (
-                    <p className="mt-1 text-xs text-subtle">
+                    <p className="mt-1.5 text-xs text-zinc-400">
                       {ep.duration}
                     </p>
                   )}
@@ -866,4 +830,4 @@ function EpisodeGrid({
       </ol>
     </div>
   );
-                                     }
+}

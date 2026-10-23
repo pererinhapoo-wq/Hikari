@@ -49,6 +49,28 @@ export type SlimAnime = {
   source: "anilist" | "jikan" | "kitsu" | "local" | "cache";
 };
 
+export type AnimeVoiceActor = {
+  id: number;
+  name: { full: string; native?: string };
+  image?: string;
+  language: string;
+};
+
+export type AnimeCharacter = {
+  id: number;
+  name: { full: string; native?: string };
+  image?: string;
+  role: string;
+  voiceActors: AnimeVoiceActor[];
+};
+
+export type AnimeStaff = {
+  id: number;
+  name: string;
+  role: string;
+  image?: string;
+};
+
 export type Anime = SlimAnime & {
   studios: string[];
   duration?: number | null;
@@ -56,6 +78,13 @@ export type Anime = SlimAnime & {
   streamingEpisodes: StreamingLink[];
   seasons: Season[];
   recommendations: SlimAnime[];
+  characters?: AnimeCharacter[];
+  staff?: AnimeStaff[];
+  originSource?: string | null;
+  countryOfOrigin?: string | null;
+  startDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
+  endDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
+  rating?: string | null;
 };
 
 export type LocalAnime = {

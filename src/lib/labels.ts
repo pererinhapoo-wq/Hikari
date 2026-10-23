@@ -81,3 +81,77 @@ export function scoreLabel(score: number | null | undefined): string {
   if (score == null || Number.isNaN(score)) return "—";
   return (score / 10).toFixed(1);
 }
+
+export const SOURCE_PT: Record<string, string> = {
+  ORIGINAL: "Obra original",
+  MANGA: "Mangá",
+  LIGHT_NOVEL: "Light novel",
+  VISUAL_NOVEL: "Visual novel",
+  VIDEO_GAME: "Jogo eletrônico",
+  GAME: "Jogo eletrônico",
+  OTHER: "Outro",
+  NOVEL: "Livro / Romance",
+  DOUJINSHI: "Doujinshi",
+  ANIME: "Anime",
+  WEB_NOVEL: "Web novel",
+  LIVE_ACTION: "Live action",
+  MULTIMEDIA_PROJECT: "Projeto multimídia",
+  PICTURE_BOOK: "Livro ilustrado",
+};
+
+export function sourceLabel(source: string | null | undefined): string {
+  if (!source) return "";
+  return SOURCE_PT[source.toUpperCase()] ?? source;
+}
+
+export const STAFF_ROLE_PT: Record<string, string> = {
+  Director: "Diretor",
+  "Series Composition": "Composição da série",
+  "Character Design": "Design de personagens",
+  "Original Creator": "Criador original",
+  "Original Character Design": "Design original de personagens",
+  Music: "Música / Trilha sonora",
+  Script: "Roteiro",
+  "Sound Director": "Direção de som",
+  "Art Director": "Direção de arte",
+  "Chief Animation Director": "Direção-chefe de animação",
+  "Animation Director": "Direção de animação",
+  Producer: "Produtor",
+  "Executive Producer": "Produtor executivo",
+  "Theme Song Performance": "Tema musical",
+  Editing: "Edição",
+};
+
+export function staffRoleLabel(role: string | null | undefined): string {
+  if (!role) return "";
+  return STAFF_ROLE_PT[role] ?? role;
+}
+
+export function formatDateLabel(
+  date?: { year?: number | null; month?: number | null; day?: number | null } | null,
+): string {
+  if (!date || !date.year) return "";
+  const months = [
+    "janeiro",
+    "fevereiro",
+    "março",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+  ];
+  if (date.day && date.month && date.month >= 1 && date.month <= 12) {
+    const dayStr = String(date.day).padStart(2, "0");
+    return `${dayStr} de ${months[date.month - 1]} de ${date.year}`;
+  }
+  if (date.month && date.month >= 1 && date.month <= 12) {
+    return `${months[date.month - 1]} de ${date.year}`;
+  }
+  return String(date.year);
+}
+

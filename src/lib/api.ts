@@ -11,6 +11,8 @@ import { seasonLabel } from "@/lib/labels";
 
 import type {
   Anime,
+  AnimeCharacter,
+  AnimeStaff,
   Episode,
   HomeCatalog,
   SearchParams,
@@ -158,6 +160,55 @@ type AniMedia = {
       node?: {
         id: number;
         title?: AniTitle | null;
+      } | null;
+    }[] | null;
+  } | null;
+
+  source?: string | null;
+  countryOfOrigin?: string | null;
+  startDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
+  endDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
+
+  characters?: {
+    edges?: {
+      role?: string | null;
+      node?: {
+        id: number;
+        name?: {
+          full?: string | null;
+          native?: string | null;
+        } | null;
+        image?: {
+          large?: string | null;
+          medium?: string | null;
+        } | null;
+      } | null;
+      voiceActors?: {
+        id: number;
+        name?: {
+          full?: string | null;
+          native?: string | null;
+        } | null;
+        image?: {
+          large?: string | null;
+          medium?: string | null;
+        } | null;
+        languageV2?: string | null;
+      }[] | null;
+    }[] | null;
+  } | null;
+
+  staff?: {
+    edges?: {
+      role?: string | null;
+      node?: {
+        id: number;
+        name?: {
+          full?: string | null;
+        } | null;
+        image?: {
+          medium?: string | null;
+        } | null;
       } | null;
     }[] | null;
   } | null;
@@ -1045,6 +1096,38 @@ function mapAniFull(
         "SEQUEL",
     );
 
+  const characters: AnimeCharacter[] = (media.characters?.edges ?? [])
+    .filter((edge) => Boolean(edge?.node?.name?.full))
+    .map((edge) => ({
+      id: edge?.node?.id ?? 0,
+      name: {
+        full: edge?.node?.name?.full ?? "",
+        native: edge?.node?.name?.native ?? undefined,
+      },
+      image: edge?.node?.image?.medium || edge?.node?.image?.large || undefined,
+      role: edge?.role ?? "MAIN",
+      voiceActors: (edge?.voiceActors ?? [])
+        .filter((va) => Boolean(va?.name?.full))
+        .map((va) => ({
+          id: va.id,
+          name: {
+            full: va.name?.full ?? "",
+            native: va.name?.native ?? undefined,
+          },
+          image: va.image?.medium || va.image?.large || undefined,
+          language: va.languageV2 ?? "Japanese",
+        })),
+    }));
+
+  const staff: AnimeStaff[] = (media.staff?.edges ?? [])
+    .filter((edge) => Boolean(edge?.node?.name?.full && edge?.role))
+    .map((edge) => ({
+      id: edge?.node?.id ?? 0,
+      name: edge?.node?.name?.full ?? "",
+      role: edge?.role ?? "",
+      image: edge?.node?.image?.medium || undefined,
+    }));
+
   return {
     ...slim,
 
@@ -1059,6 +1142,14 @@ function mapAniFull(
       (studio) =>
         studio.name,
     ),
+
+    characters,
+    staff,
+    originSource: media.source ?? null,
+    countryOfOrigin: media.countryOfOrigin ?? null,
+    startDate: media.startDate ?? null,
+    endDate: media.endDate ?? null,
+    rating: media.isAdult ? "18+ (Adulto)" : null,
 
     nextEpisode:
       media.nextAiringEpisode ??
