@@ -168,6 +168,7 @@ type AniMedia = {
   countryOfOrigin?: string | null;
   startDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
   endDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
+  synonyms?: string[] | null;
 
   characters?: {
     edges?: {
@@ -975,13 +976,70 @@ async function fetchAniMediaByMalId(
           idMal: $malId,
           type: ANIME
         ) {
-          id
-          idMal
-          title {
-            romaji
-            english
-            native
+          ${CARD_FIELDS}
+          duration
+          source
+          countryOfOrigin
+          startDate {
+            year
+            month
+            day
           }
+          endDate {
+            year
+            month
+            day
+          }
+          studios(isMain: true) {
+            nodes {
+              name
+            }
+          }
+          characters(sort: [ROLE, RELEVANCE, ID], perPage: 25) {
+            edges {
+              role
+              node {
+                id
+                name {
+                  full
+                  native
+                }
+                image {
+                  large
+                  medium
+                }
+              }
+              voiceActors {
+                id
+                name {
+                  full
+                  native
+                }
+                image {
+                  large
+                  medium
+                }
+                languageV2
+              }
+            }
+          }
+          staff(sort: [RELEVANCE, ID], perPage: 25) {
+            edges {
+              role
+              node {
+                id
+                name {
+                  full
+                  native
+                }
+                image {
+                  large
+                  medium
+                }
+              }
+            }
+          }
+          synonyms
           relations {
             edges {
               relationType
@@ -991,6 +1049,11 @@ async function fetchAniMediaByMalId(
                   romaji
                   english
                 }
+                coverImage {
+                  extraLarge
+                  large
+                }
+                bannerImage
               }
             }
           }
@@ -1128,6 +1191,37 @@ function mapAniFull(
       image: edge?.node?.image?.medium || undefined,
     }));
 
+  const images: string[] = [];
+  const seenImgs = new Set<string>();
+  const addImg = (url?: string | null) => {
+    if (url && typeof url === "string" && !seenImgs.has(url)) {
+      seenImgs.add(url);
+      images.push(url);
+    }
+  };
+
+  if (media.bannerImage) addImg(media.bannerImage);
+  if (media.coverImage?.extraLarge) addImg(media.coverImage.extraLarge);
+  else if (media.coverImage?.large) addImg(media.coverImage.large);
+
+  (media.relations?.edges ?? []).forEach((edge) => {
+    const node = edge?.node as { coverImage?: { extraLarge?: string; large?: string }; bannerImage?: string } | undefined;
+    if (node?.bannerImage) addImg(node.bannerImage);
+    if (node?.coverImage?.extraLarge) addImg(node.coverImage.extraLarge);
+    else if (node?.coverImage?.large) addImg(node.coverImage.large);
+  });
+
+  (media.streamingEpisodes ?? []).forEach((ep) => {
+    if (ep.thumbnail) addImg(ep.thumbnail);
+  });
+
+  const synonyms = (media.synonyms ?? []).filter(Boolean);
+  const tags = (media.tags ?? [])
+    .filter((t) => !t.isAdult && t.name)
+    .sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))
+    .slice(0, 10)
+    .map((t) => t.name);
+
   return {
     ...slim,
 
@@ -1150,6 +1244,9 @@ function mapAniFull(
     startDate: media.startDate ?? null,
     endDate: media.endDate ?? null,
     rating: media.isAdult ? "18+ (Adulto)" : null,
+    synonyms,
+    tags,
+    images,
 
     nextEpisode:
       media.nextAiringEpisode ??
@@ -3553,9 +3650,10 @@ export const fetchAnimeDetail =
 
           let seasonNavigation:
             SeasonNavigation | undefined;
+          let aniMedia: AniMedia | null = null;
 
           try {
-            const aniMedia =
+            aniMedia =
               await fetchAniMediaByMalId(
                 malId,
               );
@@ -3593,30 +3691,27 @@ export const fetchAnimeDetail =
               undefined;
           }
 
+          const mappedAni = aniMedia ? mapAniFull(aniMedia, seasons, seasonNavigation) : null;
+
           const anime: Anime & {
             seasonNavigation?: SeasonNavigation;
-          } =
-            {
-              ...slim,
-
-              studios: (
-                json.data
-                  .studios ?? []
-              ).map(
-                (studio) =>
-                  studio.name,
-              ),
-
-              streamingEpisodes:
-                [],
-
-              seasons,
-
-              recommendations:
-                [],
-
-              seasonNavigation,
-            };
+          } = {
+            ...slim,
+            studios: (json.data.studios ?? []).map((studio) => studio.name).length > 0
+              ? (json.data.studios ?? []).map((studio) => studio.name)
+              : mappedAni?.studios ?? [],
+            streamingEpisodes: [],
+            seasons,
+            recommendations: mappedAni?.recommendations ?? [],
+            characters: mappedAni?.characters ?? [],
+            staff: mappedAni?.staff ?? [],
+            originSource: mappedAni?.originSource ?? (json.data as Record<string, unknown>)?.source as string ?? null,
+            countryOfOrigin: mappedAni?.countryOfOrigin ?? "JP",
+            startDate: mappedAni?.startDate ?? null,
+            endDate: mappedAni?.endDate ?? null,
+            rating: ((json.data as Record<string, unknown>)?.rating as string) ?? null,
+            seasonNavigation,
+          };
 
           return toCache(
             key,
@@ -3651,12 +3746,70 @@ export const fetchAnimeDetail =
                   ${CARD_FIELDS}
 
                   duration
+                  source
+                  countryOfOrigin
+                  startDate {
+                    year
+                    month
+                    day
+                  }
+                  endDate {
+                    year
+                    month
+                    day
+                  }
 
                   studios(
                     isMain: true
                   ) {
                     nodes {
                       name
+                    }
+                  }
+
+                  characters(sort: [ROLE, RELEVANCE, ID], perPage: 25) {
+                    edges {
+                      role
+                      node {
+                        id
+                        name {
+                          full
+                          native
+                        }
+                        image {
+                          large
+                          medium
+                        }
+                      }
+                      voiceActors {
+                        id
+                        name {
+                          full
+                          native
+                        }
+                        image {
+                          large
+                          medium
+                        }
+                        languageV2
+                      }
+                    }
+                  }
+
+                  staff(sort: [RELEVANCE, ID], perPage: 25) {
+                    edges {
+                      role
+                      node {
+                        id
+                        name {
+                          full
+                          native
+                        }
+                        image {
+                          large
+                          medium
+                        }
+                      }
                     }
                   }
 
@@ -3672,6 +3825,8 @@ export const fetchAnimeDetail =
                     site
                   }
 
+                  synonyms
+
                   relations {
                     edges {
                       relationType
@@ -3681,6 +3836,11 @@ export const fetchAnimeDetail =
                           romaji
                           english
                         }
+                        coverImage {
+                          extraLarge
+                          large
+                        }
+                        bannerImage
                       }
                     }
                   }

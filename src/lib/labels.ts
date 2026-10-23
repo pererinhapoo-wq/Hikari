@@ -112,6 +112,8 @@ export const STAFF_ROLE_PT: Record<string, string> = {
   "Original Character Design": "Design original de personagens",
   Music: "Música / Trilha sonora",
   Script: "Roteiro",
+  Screenplay: "Roteiro",
+  Writer: "Roteirista",
   "Sound Director": "Direção de som",
   "Art Director": "Direção de arte",
   "Chief Animation Director": "Direção-chefe de animação",
@@ -120,11 +122,22 @@ export const STAFF_ROLE_PT: Record<string, string> = {
   "Executive Producer": "Produtor executivo",
   "Theme Song Performance": "Tema musical",
   Editing: "Edição",
+  "Director of Photography": "Direção de fotografia",
+  "Color Design": "Design de cores",
+  "Assistant Director": "Assistente de direção",
+  "Key Animation": "Animação-chave",
+  Storyboard: "Storyboard",
+  "Sound Effects": "Efeitos sonoros",
+  Planning: "Planejamento",
 };
 
 export function staffRoleLabel(role: string | null | undefined): string {
   if (!role) return "";
-  return STAFF_ROLE_PT[role] ?? role;
+  if (STAFF_ROLE_PT[role]) return STAFF_ROLE_PT[role];
+  for (const [key, val] of Object.entries(STAFF_ROLE_PT)) {
+    if (role.toLowerCase() === key.toLowerCase()) return val;
+  }
+  return role;
 }
 
 export function formatDateLabel(
@@ -154,4 +167,17 @@ export function formatDateLabel(
   }
   return String(date.year);
 }
+
+export function ratingLabel(rating?: string | null, isAdult?: boolean): string {
+  if (isAdult) return "18+ (Conteúdo Adulto)";
+  if (!rating) return "";
+  const r = rating.toLowerCase();
+  if (r.includes("rx") || r.includes("hentai") || r.includes("18+")) return "18+ (Conteúdo Adulto)";
+  if (r.includes("r - 17+") || r.includes("r+")) return "16+ (Não recomendado para menores de 16 anos)";
+  if (r.includes("pg-13") || r.includes("13") || r.includes("14")) return "14+ (Não recomendado para menores de 14 anos)";
+  if (r.includes("pg") || r.includes("10")) return "10+ (Não recomendado para menores de 10 anos)";
+  if (r.includes("g -") || r.includes("all ages") || r.includes("livre")) return "Livre para todos os públicos";
+  return rating;
+}
+
 

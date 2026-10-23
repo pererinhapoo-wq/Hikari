@@ -85,6 +85,9 @@ export type Anime = SlimAnime & {
   startDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
   endDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
   rating?: string | null;
+  synonyms?: string[];
+  tags?: string[];
+  images?: string[];
 };
 
 export type LocalAnime = {
