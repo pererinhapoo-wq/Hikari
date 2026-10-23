@@ -2,6 +2,7 @@ import {
   createRootRoute,
   HeadContent,
   Scripts,
+  ScrollRestoration,
 } from "@tanstack/react-router";
 
 import { Analytics } from "@vercel/analytics/react";
@@ -128,6 +129,8 @@ export const Route = createRootRoute({
         <AuthProvider>
           <Shell />
         </AuthProvider>
+
+        <ScrollRestoration />
 
         <Scripts />
 

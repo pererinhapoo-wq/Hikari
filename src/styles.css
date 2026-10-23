@@ -118,6 +118,7 @@ html[data-theme="light"] {
     overflow-x: auto;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
     padding-bottom: 0.5rem;
     padding-top: 0.25rem;
     -ms-overflow-style: none;
@@ -462,61 +463,4 @@ textarea:focus {
   transition: border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
-
-/* =========================================================
-   ANIMAÇÕES REFINADAS E ELEGANTES DA HOME
-   Estilo escuro premium com toques roxos, discretos e suaves
-========================================================= */
-
-@keyframes heroFadeUp {
-  0% {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes heroBackdropFade {
-  0% {
-    opacity: 0.55;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
-.animate-hero-eyebrow {
-  animation: heroFadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: opacity, transform;
-}
-
-.animate-hero-title {
-  animation: heroFadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: opacity, transform;
-}
-
-.animate-hero-meta {
-  animation: heroFadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
-  will-change: opacity, transform;
-}
-
-.animate-hero-synopsis {
-  animation: heroFadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.16s both;
-  will-change: opacity, transform;
-}
-
-.animate-hero-actions {
-  animation: heroFadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.24s both;
-  will-change: opacity, transform;
-}
-
-.animate-hero-image {
-  animation: heroBackdropFade 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: opacity;
-}
-
-
 

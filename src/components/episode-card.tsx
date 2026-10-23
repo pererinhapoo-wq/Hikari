@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Play, Film } from "lucide-react";
 import { cleanEpisodeDisplay, type PublishedEpisode } from "@/lib/published-episodes";
@@ -15,43 +15,56 @@ export const EpisodeCard = memo(function EpisodeCard({
   const hasValidThumbnail = Boolean(episode.thumbnail && !thumbFailed);
   const showFallback = !hasValidThumbnail && Boolean(fallbackImage && !fallbackFailed);
 
-  const formattedSubtitle = cleanEpisodeDisplay(
+  const formattedSubtitle = useMemo(() => {
+    return cleanEpisodeDisplay(
+      episode.episodeNumber,
+      episode.episodeTitle,
+      episode.animeAltTitles && episode.animeAltTitles.length > 0
+        ? episode.animeAltTitles
+        : episode.animeTitle,
+    );
+  }, [
     episode.episodeNumber,
     episode.episodeTitle,
-    episode.animeAltTitles && episode.animeAltTitles.length > 0
-      ? episode.animeAltTitles
-      : episode.animeTitle,
-  );
+    episode.animeAltTitles,
+    episode.animeTitle,
+  ]);
 
   return (
-    <article className="group relative w-full overflow-hidden transition-all duration-300">
+    <article className="group relative w-full overflow-hidden">
       <Link
         to="/watch/$id"
         params={{ id: episode.animeId }}
         search={{ ep: episode.episodeId }}
-        className="block group focus:outline-none"
+        preload="intent"
+        resetScroll={true}
+        className="block group focus:outline-none touch-manipulation"
       >
         {/* Contêiner da Imagem Horizontal (Proporção 16:9 de Vídeo) */}
-        <div className="relative aspect-video w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#0f0d1a] border border-purple-500/15 transition-all duration-300 ease-out group-hover:border-purple-400/50 group-hover:shadow-[0_10px_25px_-5px_rgba(168,85,247,0.3)]">
+        <div className="relative aspect-video w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#0f0d1a] border border-purple-500/15 transition-colors duration-200 [@media(hover:hover)]:group-hover:border-purple-400/50 [@media(hover:hover)]:group-hover:shadow-[0_8px_20px_-4px_rgba(168,85,247,0.25)]">
           {hasValidThumbnail ? (
-            /* Imagem real correspondente ao vídeo do episódio */
+            /* Imagem real correspondente ao vídeo do episódio com dimensões intrínsecas e estável sem zoom */
             <img
               src={episode.thumbnail}
               alt=""
+              width={320}
+              height={180}
               loading="lazy"
               decoding="async"
               onError={() => setThumbFailed(true)}
-              className="size-full object-cover transition-transform duration-500 ease-out [@media(hover:hover)]:group-hover:scale-[1.05]"
+              className="size-full object-cover transition-opacity duration-200"
             />
           ) : showFallback ? (
             /* Imagem alternativa adequada (banner/capa oficial do anime em 16:9) */
             <img
               src={fallbackImage}
               alt=""
+              width={320}
+              height={180}
               loading="lazy"
               decoding="async"
               onError={() => setFallbackFailed(true)}
-              className="size-full object-cover opacity-90 transition-transform duration-500 ease-out [@media(hover:hover)]:group-hover:scale-[1.05]"
+              className="size-full object-cover opacity-90 transition-opacity duration-200"
             />
           ) : (
             /* Tratamento gracioso caso nenhuma imagem esteja acessível, sem deixar espaços quebrados */
@@ -64,23 +77,23 @@ export const EpisodeCard = memo(function EpisodeCard({
           )}
 
           {/* Sombra interna com gradiente escuro */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 transition-opacity duration-300 group-hover:opacity-40" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60" />
 
-          {/* Badge do Número do Episódio */}
-          <div className="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 flex items-center rounded bg-purple-950/90 backdrop-blur-md border border-purple-500/40 px-1 sm:px-1.5 py-0.5 text-[8.5px] sm:text-[10px] font-bold text-purple-200 shadow-md">
+          {/* Badge do Número do Episódio sem filtro blur pesado para fluidez na rolagem */}
+          <div className="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 flex items-center rounded bg-[#160c2b]/95 border border-purple-500/40 px-1 sm:px-1.5 py-0.5 text-[8.5px] sm:text-[10px] font-bold text-purple-200 shadow-md">
             <span>EP {episode.episodeNumber}</span>
           </div>
 
           {/* Duração se disponível */}
           {episode.duration ? (
-            <div className="absolute bottom-1.5 right-1.5 sm:bottom-2 sm:right-2 rounded bg-black/85 backdrop-blur-md border border-white/10 px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9.5px] font-medium text-zinc-300">
+            <div className="absolute bottom-1.5 right-1.5 sm:bottom-2 sm:right-2 rounded bg-black/90 border border-white/10 px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9.5px] font-medium text-zinc-300">
               {episode.duration}
             </div>
           ) : null}
 
           {/* Overlay de Play ao passar o mouse */}
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-300 [@media(hover:hover)]:group-hover:opacity-100">
-            <div className="flex size-8 sm:size-11 items-center justify-center rounded-full bg-purple-600/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.7)] backdrop-blur-sm transition-transform duration-300 [@media(hover:hover)]:group-hover:scale-110">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 [@media(hover:hover)]:group-hover:opacity-100">
+            <div className="flex size-8 sm:size-11 items-center justify-center rounded-full bg-purple-600/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.7)] transition-transform duration-200 [@media(hover:hover)]:group-hover:scale-105">
               <Play className="size-3.5 sm:size-5 fill-current ml-0.5" />
             </div>
           </div>
@@ -91,7 +104,7 @@ export const EpisodeCard = memo(function EpisodeCard({
           {/* Nome do Anime exibido uma única vez */}
           <h4
             title={episode.animeTitle}
-            className="text-[10.5px] sm:text-xs md:text-[13px] font-bold text-zinc-200 transition-colors group-hover:text-purple-300 truncate"
+            className="text-[10.5px] sm:text-xs md:text-[13px] font-bold text-zinc-200 transition-colors [@media(hover:hover)]:group-hover:text-purple-300 truncate"
           >
             {episode.animeTitle}
           </h4>

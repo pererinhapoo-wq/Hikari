@@ -161,7 +161,6 @@ export function Hero({
               py-2.5
               px-2
               drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)]
-              animate-hero-image
             "
           />
 
@@ -224,7 +223,6 @@ export function Hero({
                 object-cover
                 object-center
                 md:object-right-top
-                animate-hero-image
               "
             />
           </div>
@@ -291,10 +289,10 @@ export function Hero({
           md:py-10
         "
       >
-        {/* Bloco de Informações com animação suave e sincronizada a cada troca de anime */}
-        <div key={current.id} className="min-w-0">
+        {/* Bloco de Informações */}
+        <div className="min-w-0">
           {/* Eyebrow em formato de chip sutil com ponto pulsante */}
-          <div className="animate-hero-eyebrow inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-purple-950/70 border border-purple-500/30 text-purple-300 text-[10px] sm:text-xs font-semibold tracking-wider uppercase mb-2 w-fit shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-purple-950/70 border border-purple-500/30 text-purple-300 text-[10px] sm:text-xs font-semibold tracking-wider uppercase mb-2 w-fit shadow-[0_0_12px_rgba(168,85,247,0.15)]">
             <span className="size-1.5 rounded-full bg-purple-400 animate-pulse shadow-[0_0_8px_#c084fc]" />
             <span>Em Destaque</span>
           </div>
@@ -302,7 +300,6 @@ export function Hero({
           {/* Título Principal */}
           <h1
             className="
-              animate-hero-title
               font-display
               text-2xl
               leading-tight
@@ -321,13 +318,13 @@ export function Hero({
           {/* Título nativo */}
           {current.titles.native &&
             current.titles.native !== title && (
-              <p className="animate-hero-meta mt-0.5 text-xs text-purple-300/60 drop-shadow sm:text-sm" style={{ fontFamily: '"Noto Sans JP", "Noto Serif JP", sans-serif' }}>
+              <p className="mt-0.5 text-xs text-purple-300/60 drop-shadow sm:text-sm" style={{ fontFamily: '"Noto Sans JP", "Noto Serif JP", sans-serif' }}>
                 {current.titles.native}
               </p>
             )}
 
           {/* Metadados: Nota, Ano, Gêneros */}
-          <div className="animate-hero-meta mt-2.5 flex flex-wrap items-center gap-1.5 sm:mt-3 sm:gap-2">
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 sm:mt-3 sm:gap-2">
             {current.score != null && (
               <span
                 className="
@@ -400,7 +397,6 @@ export function Hero({
           {current.synopsis && (
             <p
               className="
-                animate-hero-synopsis
                 mt-2.5
                 max-w-xl
                 line-clamp-2
@@ -417,7 +413,7 @@ export function Hero({
           )}
 
           {/* Botões de Ação */}
-          <div className="animate-hero-actions mt-4 flex flex-wrap items-center gap-2.5 sm:mt-5 sm:gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-2.5 sm:mt-5 sm:gap-3">
             <Button
               asChild
               size="sm"

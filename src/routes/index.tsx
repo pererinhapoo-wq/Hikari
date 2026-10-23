@@ -128,7 +128,7 @@ function Home() {
         <HomePending />
       )}
 
-      {/* Seção 1: Em Alta (posicionada acima de Animes da Temporada, sem botão Ver tudo, sem números de ranking) */}
+      {/* Seção 1: Em Alta */}
       <AnimeRow
         title="Em Alta"
         eyebrow="TENDÊNCIAS & POPULARIDADE"
@@ -138,7 +138,10 @@ function Home() {
         showRank={false}
       />
 
-      {/* Seção 2: Animes da Temporada */}
+      {/* Seção 2: Últimos Episódios (publicados pelo administrador) */}
+      <RecentEpisodesSection />
+
+      {/* Seção 3: Animes da Temporada */}
       <AnimeRow
         title="Animes da Temporada"
         eyebrow="SIMULCAST SEMANAL"
@@ -149,9 +152,6 @@ function Home() {
         showBookmark={false}
         showRank={false}
       />
-
-      {/* Seção 3: Últimos Episódios (publicados pelo administrador) */}
-      <RecentEpisodesSection />
 
       {/* Rodapé Elegante com indicação de catálogo */}
       <div className="pt-6 pb-2 text-center">

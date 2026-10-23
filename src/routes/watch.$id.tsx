@@ -184,6 +184,12 @@ function WatchPage() {
     current?.id,
   ]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, [id, epQuery]);
+
   const title = anime
     ? displayTitle(anime)
     : "";

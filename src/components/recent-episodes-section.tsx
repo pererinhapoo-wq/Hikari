@@ -21,7 +21,7 @@ export function RecentEpisodesSection() {
   const recentEpisodes = allEpisodes.slice(0, 18);
 
   return (
-    <section className="space-y-3 sm:space-y-4 [content-visibility:auto]">
+    <section className="space-y-3 sm:space-y-4 [content-visibility:auto] [contain-intrinsic-size:auto_600px]">
       {/* Cabeçalho da Seção com Botão Ver todos alinhado à direita */}
       <div className="flex items-end justify-between gap-3 px-0.5">
         <div className="min-w-0 flex-1 space-y-0.5 sm:space-y-1">
