@@ -17,7 +17,12 @@ function filterPublishedSeasons(seasons: Season[]): Season[] {
 }
 
 export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime[]): Anime | null {
-  const byId = locals.find((a) => a.id === id);
+  const numericId = Number(id);
+  const byId = locals.find(
+    (a) =>
+      a.id === id ||
+      (!isNaN(numericId) && numericId > 0 && (a.anilistId === numericId || a.malId === numericId)),
+  );
   if (byId) {
     const local = localToAnime(byId);
     const publishedSeasons = filterPublishedSeasons(local.seasons);
@@ -62,7 +67,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
     const publishedSeasons = filterPublishedSeasons(local.seasons);
     const resolvedSeasons = publishedSeasons.length
       ? publishedSeasons
-      : (remote.seasons ?? []);
+      : local.seasons.length
+        ? local.seasons
+        : (remote.seasons ?? []);
 
     return {
       ...remote,

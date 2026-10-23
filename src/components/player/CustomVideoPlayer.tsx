@@ -80,7 +80,22 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const initialTimeAppliedRef = useRef<boolean>(false);
 
   const [videoError, setVideoError] = useState<string | null>(null);
-  const [isHlsActive, setIsHlsActive] = useState<boolean>(false);
+
+  // Armazena callbacks em refs para evitar desmontagens ou re-execuções desnecessárias do player
+  const onTimeUpdateRef = useRef(onTimeUpdate);
+  onTimeUpdateRef.current = onTimeUpdate;
+  const onPauseRef = useRef(onPause);
+  onPauseRef.current = onPause;
+  const onRestoredRef = useRef(onRestored);
+  onRestoredRef.current = onRestored;
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const onUpdateMetadataRef = useRef(onUpdateMetadata);
+  onUpdateMetadataRef.current = onUpdateMetadata;
+  const initialTimeRef = useRef(initialTime);
+  initialTimeRef.current = initialTime;
 
   // Resolução da URL efetiva do vídeo
   const effectiveVideoUrl = useMemo(() => {
@@ -99,11 +114,15 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return cleanUrl.endsWith('.m3u8') || url.includes('.m3u8') || url.includes('/hls/');
   }, []);
 
+  // Determina síncronamente se a URL é HLS para evitar oscilações de src no DOM
+  const isHls = useMemo(() => isHlsUrl(effectiveVideoUrl), [effectiveVideoUrl, isHlsUrl]);
+
   // Aplicação segura do tempo inicial (retomada de progresso) somente quando o elemento de mídia está pronto
   const applyInitialTime = useCallback(() => {
     const el = videoRef.current;
     if (!el || initialTimeAppliedRef.current) return;
-    if (!initialTime || initialTime <= 0) {
+    const target = initialTimeRef.current;
+    if (!target || target <= 0) {
       initialTimeAppliedRef.current = true;
       return;
     }
@@ -114,17 +133,36 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         const dur = el.duration;
         const targetTime =
           dur && Number.isFinite(dur) && dur > 0
-            ? Math.min(initialTime, Math.max(0, dur - 2))
-            : initialTime;
+            ? Math.min(target, Math.max(0, dur - 2))
+            : target;
 
         el.currentTime = targetTime;
         initialTimeAppliedRef.current = true;
-        onRestored?.(targetTime);
+        onRestoredRef.current?.(targetTime);
       } catch {
         // Tenta novamente quando canplay disparar
       }
     }
-  }, [initialTime, onRestored]);
+  }, []);
+
+  // Função resiliente de autoplay com fallback para modo silenciado se o navegador restringir áudio inicial
+  const playSafely = useCallback((videoEl: HTMLVideoElement) => {
+    if (!autoPlay) return;
+    const promise = videoEl.play();
+    if (promise !== undefined) {
+      promise.catch((err) => {
+        // Se a reprodução com áudio foi restrita pelo navegador na navegação inicial, inicia silenciado
+        if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
+          videoEl.muted = true;
+          videoEl.play().catch((mutedErr) => {
+            console.warn('Reprodução automática restrita pelo navegador:', mutedErr);
+          });
+        } else {
+          console.warn('Reprodução automática restrita:', err);
+        }
+      });
+    }
+  }, [autoPlay]);
 
   // Estratégia de reprodução explícita: hls.js único para HLS, direto para MP4/WebM
   useEffect(() => {
@@ -140,16 +178,13 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     initialTimeAppliedRef.current = false;
     setVideoError(null);
 
-    const isHls = isHlsUrl(effectiveVideoUrl);
-    setIsHlsActive(isHls);
-
     if (isHls && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
         backBufferLength: 60,
         capLevelToPlayerSize: false,
-        ...(initialTime && initialTime > 0 ? { startPosition: initialTime } : {}),
+        ...(initialTimeRef.current && initialTimeRef.current > 0 ? { startPosition: initialTimeRef.current } : {}),
       });
       hlsRef.current = hls;
       hls.loadSource(effectiveVideoUrl);
@@ -157,11 +192,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         applyInitialTime();
-        if (autoPlay) {
-          videoEl.play().catch((err) => {
-            console.warn('Reprodução automática restrita pelo navegador:', err);
-          });
-        }
+        playSafely(videoEl);
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -178,7 +209,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               hlsRef.current = null;
               const msg = 'Não foi possível carregar a transmissão HLS.';
               setVideoError(msg);
-              onError?.(msg);
+              onErrorRef.current?.(msg);
               break;
           }
         }
@@ -193,18 +224,22 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     } else if (isHls && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
       // Suporte nativo ao HLS (ex: Safari iOS / macOS)
       videoEl.src = effectiveVideoUrl;
-      setIsHlsActive(true);
-      if (autoPlay) {
-        videoEl.play().catch(() => {});
-      }
+      playSafely(videoEl);
     } else {
       // Vídeo direto (MP4, WebM, etc.)
-      videoEl.src = effectiveVideoUrl;
-      setIsHlsActive(false);
-      if (autoPlay) {
-        videoEl.play().catch((err) => {
-          console.warn('Reprodução automática restrita pelo navegador:', err);
-        });
+      if (videoEl.src !== effectiveVideoUrl) {
+        videoEl.src = effectiveVideoUrl;
+      }
+      if (videoEl.readyState >= 2) {
+        applyInitialTime();
+        playSafely(videoEl);
+      } else {
+        const handleCanPlayOnce = () => {
+          videoEl.removeEventListener('canplay', handleCanPlayOnce);
+          applyInitialTime();
+          playSafely(videoEl);
+        };
+        videoEl.addEventListener('canplay', handleCanPlayOnce);
       }
     }
 
@@ -223,7 +258,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         }
       }
     };
-  }, [effectiveVideoUrl, autoPlay, isHlsUrl, applyInitialTime, onError, initialTime]);
+  }, [effectiveVideoUrl, isHls, autoPlay, playSafely, applyInitialTime]);
 
   // Manipulador de carregamento de metadados
   const handleLoadedMetadata = useCallback(() => {
@@ -297,8 +332,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       ? 'O navegador não conseguiu decodificar o arquivo local.'
       : 'Não foi possível reproduzir este vídeo no momento.';
     setVideoError(message);
-    onError?.(message);
-  }, [video?.isLocalFile, onError]);
+    onErrorRef.current?.(message);
+  }, [video?.isLocalFile]);
 
   return (
     <VideoPlayer
@@ -320,7 +355,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         >
           <Video
             ref={videoRef}
-            src={isHlsActive && Hls.isSupported() ? undefined : effectiveVideoUrl}
+            src={isHls && Hls.isSupported() ? undefined : effectiveVideoUrl}
             poster={effectivePosterUrl}
             playsInline
             autoPlay={autoPlay}

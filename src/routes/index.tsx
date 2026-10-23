@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   createFileRoute,
   type ErrorComponentProps,
@@ -77,8 +78,34 @@ function Home() {
 
   const trending = overlayList(data.trending, locals);
   const popular = overlayList(data.popular, locals);
-  const top = overlayList(data.top, locals);
   const season = overlayList(data.season, locals);
+
+  // Combina dados reais de tendências recentes (sort: TRENDING_DESC) e popularidade geral (sort: POPULARITY_DESC) do AniList
+  const trendingAndPopular = useMemo(() => {
+    const scoreMap = new Map<string, { anime: (typeof trending)[number]; score: number }>();
+
+    // Tendências recentes reais (AniList TRENDING_DESC)
+    trending.forEach((item, index) => {
+      const trendScore = (trending.length - index) * 1.5;
+      scoreMap.set(item.id, { anime: item, score: trendScore });
+    });
+
+    // Popularidade geral real (AniList POPULARITY_DESC)
+    popular.forEach((item, index) => {
+      const popScore = popular.length - index;
+      const existing = scoreMap.get(item.id);
+      if (existing) {
+        existing.score += popScore;
+      } else {
+        scoreMap.set(item.id, { anime: item, score: popScore });
+      }
+    });
+
+    return Array.from(scoreMap.values())
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.anime)
+      .slice(0, 10);
+  }, [trending, popular]);
 
   const featured = trending[0] ?? popular[0];
 
@@ -100,7 +127,17 @@ function Home() {
         <HomePending />
       )}
 
-      {/* Seção 1: Animes da Temporada */}
+      {/* Seção 1: Em Alta (posicionada acima de Animes da Temporada, sem botão Ver tudo, sem números de ranking) */}
+      <AnimeRow
+        title="Em Alta"
+        eyebrow="TENDÊNCIAS & POPULARIDADE"
+        iconType="flame"
+        items={trendingAndPopular}
+        showBookmark={false}
+        showRank={false}
+      />
+
+      {/* Seção 2: Animes da Temporada */}
       <AnimeRow
         title="Animes da Temporada"
         eyebrow="SIMULCAST SEMANAL"
@@ -109,21 +146,11 @@ function Home() {
         href="/browse/season"
         items={season}
         showBookmark={false}
+        showRank={false}
       />
 
-      {/* Seção 2: Últimos Episódios (publicados pelo administrador) */}
+      {/* Seção 3: Últimos Episódios (publicados pelo administrador) */}
       <RecentEpisodesSection />
-
-      {/* Seção 3: Mais Bem Avaliados */}
-      <AnimeRow
-        title="Obras-Primas Aclamadas"
-        eyebrow="CRÍTICA & CLASSIFICAÇÃO"
-        tag="Média Alta ★ 8.0+"
-        iconType="trophy"
-        href="/browse/top"
-        items={top}
-        showBookmark={false}
-      />
 
       {/* Rodapé Elegante com indicação de catálogo */}
       <div className="pt-6 pb-2 text-center">

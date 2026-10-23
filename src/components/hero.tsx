@@ -428,14 +428,17 @@ export function Hero({
               font-semibold
               hover:bg-purple-100
               hover:shadow-[0_0_20px_rgba(168,85,247,0.4)]
-              transition-all
-              hover:scale-[1.02]
-              active:scale-[0.98]
+              transition-colors
+              duration-150
+              transform-none
+              hover:scale-100
+              active:scale-100
             "
           >
             <Link
               to="/watch/$id"
               params={{ id: current.id }}
+              preload="intent"
             >
               <Play className="size-3.5 sm:size-4 fill-current" />
               Assistir

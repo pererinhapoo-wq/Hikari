@@ -186,7 +186,7 @@ export function AnimeRow({
       {/* Trilho de Cards */}
       <div
         ref={railRef}
-        className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 gap-3 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"
+        className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 gap-2.5 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"
       >
         {loading
           ? Array.from({ length: 8 }, (_, i) => (

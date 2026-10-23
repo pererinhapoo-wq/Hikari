@@ -131,11 +131,19 @@ function WatchPage() {
       return null;
     }
 
-    return (
-      episodes.find(
-        (e) => e.id === epQuery,
-      ) ?? episodes[0]
-    );
+    if (epQuery) {
+      const match = episodes.find(
+        (e) =>
+          e.id === epQuery ||
+          String(e.id) === String(epQuery) ||
+          String(e.number) === String(epQuery),
+      );
+      if (match) {
+        return match;
+      }
+    }
+
+    return episodes[0];
   }, [episodes, epQuery]);
 
   const idx = current
@@ -363,13 +371,14 @@ function WatchPage() {
       }
 
       lastEpisodeIdRef.current = current?.id;
-      setSelectedPlayerId("player-1");
+      const defaultId = playerSources[0]?.id ?? "player-1";
+      setSelectedPlayerId(defaultId);
       livePlaybackRef.current = { episodeId: current?.id ?? "", time: 0 };
       setSessionTime(null);
       hasRestoredRef.current = savedInitialTime <= 0;
       lastSavedTimeRef.current = savedInitialTime;
     }
-  }, [current?.id, anime, savedInitialTime]);
+  }, [current?.id, anime, savedInitialTime, playerSources]);
 
   // Salva o progresso ao sair da página, fechar ou recarregar a aba
   useEffect(() => {
@@ -643,8 +652,28 @@ function parseDurationToSeconds(raw?: string | number | null): number {
     };
   }, [current, file, title, anime?.cover, anime?.synopsis, selectedPlayer?.name]);
 
-  if (!anime && !hydrated) {
-    return null;
+  const handlePlayerError = useCallback(() => {
+    if (!selectedPlayer) return;
+    const alt = playerSources.find((s) => s.id !== selectedPlayer.id);
+    if (alt) {
+      handleSelectPlayer(alt.id);
+    }
+  }, [playerSources, selectedPlayer, handleSelectPlayer]);
+
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-bg text-fg">
+        <div className="flex flex-col items-center justify-center gap-3">
+          <div
+            className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]"
+            aria-label="Carregando"
+          />
+          <span className="text-sm text-white/50">
+            Carregando...
+          </span>
+        </div>
+      </div>
+    );
   }
 
   if (!anime) {
@@ -697,13 +726,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
             onPause={handlePause}
             onRestored={handleRestored}
             onEnded={handleEnded}
-            onError={() => {
-              // Alterna silenciosamente para outra fonte disponível se houver falha de rede/codec
-              const alt = playerSources.find((s) => s.id !== selectedPlayer.id);
-              if (alt) {
-                handleSelectPlayer(alt.id);
-              }
-            }}
+            onError={handlePlayerError}
           />
         ) : yt ? (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">

@@ -472,7 +472,9 @@ export async function uploadThumbnailBlob(
     try {
       const data = (await res.json()) as { error?: string };
       if (data.error) errMsg = data.error;
-    } catch {}
+    } catch {
+      // Ignora falha de parse do corpo de erro
+    }
     throw new Error(errMsg);
   }
 

@@ -43,7 +43,7 @@ export const AnimeCard = memo(function AnimeCard({
       ? "w-24 sm:w-28"
       : size === "lg"
         ? "w-full sm:w-full"
-        : "w-[7.5rem] sm:w-[8.25rem] md:w-[9.25rem] lg:w-[9.75rem]";
+        : "w-[6.6rem] sm:w-[7.85rem] md:w-[8.85rem] lg:w-[9.35rem]";
 
   return (
     <article
@@ -72,7 +72,7 @@ export const AnimeCard = memo(function AnimeCard({
           [@media(hover:hover)]:hover:shadow-[0_12px_28px_-6px_rgba(168,85,247,0.35)]
         "
       >
-        <div className="relative aspect-[3/4.4] sm:aspect-[2/3] overflow-hidden bg-[#0d0c16]">
+        <div className="relative aspect-[2/3] overflow-hidden bg-[#0d0c16]">
           {anime.cover ? (
             <img
               src={anime.cover}
@@ -136,7 +136,7 @@ export const AnimeCard = memo(function AnimeCard({
                 border-purple-500/35
                 px-1.5
                 py-0.5
-                text-[10px]
+                text-[9.5px]
                 font-bold
                 tabular-nums
                 text-purple-200
@@ -151,47 +151,51 @@ export const AnimeCard = memo(function AnimeCard({
           )}
         </div>
 
-        {/* Nomes dos animes com altura estável, até 2 linhas, reticências e sem sobreposição */}
-        <div className="px-2 py-2 sm:px-2.5 sm:py-2.5">
-          <h3
-            title={title}
-            className="
-              text-[11px]
-              sm:text-xs
-              font-semibold
-              leading-[1.3]
-              tracking-tight
-              text-zinc-200
-              transition-colors
-              [@media(hover:hover)]:group-hover:text-purple-300
-              line-clamp-2
-              h-[2.45rem]
-              overflow-hidden
-              text-ellipsis
-            "
-            style={{
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-            }}
-          >
-            {title}
-          </h3>
+        {/* Bloco de informações com alinhamento uniforme e espaçamento compacto */}
+        <div className="flex flex-col px-2 pt-1.5 pb-2 sm:px-2.5 sm:pt-2 sm:pb-2.5">
+          {/* Área com altura fixa precisa (26px mobile, 30px desktop) e centralização vertical */}
+          <div className="h-[26px] sm:h-[30px] flex flex-col justify-center overflow-hidden">
+            <h3
+              title={title}
+              className="
+                text-[10.5px]
+                sm:text-xs
+                font-semibold
+                leading-[13px]
+                sm:leading-[15px]
+                tracking-tight
+                text-zinc-200
+                line-clamp-2
+                break-words
+                [text-wrap:normal]
+                transition-colors
+                [@media(hover:hover)]:group-hover:text-purple-300
+              "
+            >
+              {title}
+            </h3>
+          </div>
 
-          {/* Hierarquia refinada com ano, formato e gênero sem sobreposição */}
-          <div className="mt-1 flex items-center gap-1.5 text-[9.5px] sm:text-[10px] font-medium text-zinc-400">
+          {/* Ano e tipo imediatamente abaixo do título, com espaçamento sutilmente aproximado e alinhamento linear uniforme */}
+          <div className="mt-px sm:mt-0.5 flex items-center gap-1 text-[9.5px] sm:text-[10px] font-medium text-zinc-400 truncate">
             {anime.year && <span className="shrink-0">{anime.year}</span>}
             {anime.year && (anime.format || anime.genres?.[0]) && (
-              <span className="size-1 shrink-0 rounded-full bg-purple-500/40" />
+              <span className="text-purple-400/80 font-bold select-none px-0.5">·</span>
             )}
-            <span className="truncate text-zinc-400">
+            <span className="truncate">
               {anime.format === "TV"
                 ? "Série"
                 : anime.format === "MOVIE"
                   ? "Filme"
-                  : anime.genres?.[0]
-                    ? anime.genres[0]
-                    : ""}
+                  : anime.format === "OVA"
+                    ? "OVA"
+                    : anime.format === "ONA"
+                      ? "ONA"
+                      : anime.format === "SPECIAL"
+                        ? "Especial"
+                        : anime.genres?.[0]
+                          ? anime.genres[0]
+                          : ""}
             </span>
           </div>
         </div>
@@ -239,7 +243,7 @@ export function AnimeCardSkeleton({
       ? "w-24 sm:w-28"
       : size === "lg"
         ? "w-full sm:w-full"
-        : "w-[7.5rem] sm:w-[8.25rem] md:w-[9.25rem] lg:w-[9.75rem]";
+        : "w-[6.6rem] sm:w-[7.85rem] md:w-[8.85rem] lg:w-[9.35rem]";
 
   return (
     <div
@@ -248,11 +252,16 @@ export function AnimeCardSkeleton({
         "shrink-0",
       )}
     >
-      <div className="aspect-[3/4.4] sm:aspect-[2/3] animate-pulse rounded-xl bg-elevated/70 border border-purple-500/10" />
+      <div className="aspect-[2/3] animate-pulse rounded-xl bg-elevated/70 border border-purple-500/10" />
 
-      <div className="mt-2 h-3.5 w-4/5 animate-pulse rounded bg-elevated/80" />
+      <div className="px-2 pt-1.5 pb-2 sm:px-2.5 sm:pt-2 sm:pb-2.5">
+        <div className="h-[26px] sm:h-[30px] flex flex-col justify-center gap-1">
+          <div className="h-3 w-4/5 animate-pulse rounded bg-elevated/80" />
+          <div className="h-2.5 w-3/5 animate-pulse rounded bg-elevated/80" />
+        </div>
 
-      <div className="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-elevated/50" />
+        <div className="mt-px sm:mt-0.5 h-2.5 w-1/2 animate-pulse rounded bg-elevated/50" />
+      </div>
     </div>
   );
 }
