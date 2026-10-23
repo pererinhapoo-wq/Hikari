@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { auth } from "@/lib/auth/server";
+import { auth, authConfigured } from "@/lib/auth/server";
+import { DEV_USER_ID } from "@/lib/auth/verify.server";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import {
   DEFAULT_BANNER_SETTINGS,
@@ -16,9 +17,15 @@ export const Route = createFileRoute("/api/admin/banner-settings")({
             headers: request.headers,
           });
 
-          const email = session?.user?.email ?? null;
+          let email = session?.user?.email ?? null;
+          let userId = session?.user?.id ?? null;
 
-          if (!session?.user?.id || !isHikariAdmin(email)) {
+          if (!userId && !authConfigured) {
+            userId = DEV_USER_ID;
+            email = "dev@example.com";
+          }
+
+          if (!userId || !isHikariAdmin(email)) {
             return Response.json(
               { error: "Acesso permitido somente ao administrador." },
               { status: 403 },
@@ -43,7 +50,7 @@ export const Route = createFileRoute("/api/admin/banner-settings")({
               where "userId" = $1
               limit 1
             `,
-            [session.user.id],
+            [userId],
           );
 
           const rows = Array.isArray(result) ? result : (result as { rows?: Array<{ settings: string }> })?.rows ?? [];
@@ -86,9 +93,15 @@ export const Route = createFileRoute("/api/admin/banner-settings")({
             headers: request.headers,
           });
 
-          const email = session?.user?.email ?? null;
+          let email = session?.user?.email ?? null;
+          let userId = session?.user?.id ?? null;
 
-          if (!session?.user?.id || !isHikariAdmin(email)) {
+          if (!userId && !authConfigured) {
+            userId = DEV_USER_ID;
+            email = "dev@example.com";
+          }
+
+          if (!userId || !isHikariAdmin(email)) {
             return Response.json(
               { error: "Acesso permitido somente ao administrador." },
               { status: 403 },
@@ -127,7 +140,7 @@ export const Route = createFileRoute("/api/admin/banner-settings")({
                 "settings" = excluded."settings",
                 "updatedAt" = current_timestamp;
             `,
-            [session.user.id, JSON.stringify(settings)],
+            [userId, JSON.stringify(settings)],
           );
 
           return Response.json({

@@ -83,7 +83,11 @@ export function setCachedAdminBannerSettings(settings: AdminBannerSettings): voi
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    window.dispatchEvent(
+      new CustomEvent("hikari-banner-settings-changed", { detail: settings }),
+    );
   } catch {
     // Ignore quota errors
   }
 }
+

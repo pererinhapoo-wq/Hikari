@@ -7,7 +7,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  MessageSquare,
   Pencil,
   Play,
   Share2,
@@ -20,6 +19,7 @@ import { AnimeCard } from "@/components/anime-card";
 import { CommentsSection } from "@/components/comments/CommentsSection";
 import { fetchAnimeDetail, fetchAnimePictures } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
+import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import {
   type AdminBannerSettings,
@@ -118,8 +118,13 @@ function AnimePage() {
     setBannerSettings(getCachedAdminBannerSettings());
 
     let active = true;
+    const headers: Record<string, string> = {};
+    const token = getBearerToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     fetch("/api/admin/banner-settings", {
       method: "GET",
+      headers,
       credentials: "include",
     })
       .then((res) => (res.ok ? res.json() : null))
@@ -132,8 +137,20 @@ function AnimePage() {
       })
       .catch(() => {});
 
+    const onSettingsChange = (e: Event) => {
+      const custom = e as CustomEvent<AdminBannerSettings>;
+      if (custom.detail) {
+        setBannerSettings(sanitizeBannerSettings(custom.detail));
+      } else {
+        setBannerSettings(getCachedAdminBannerSettings());
+      }
+    };
+
+    window.addEventListener("hikari-banner-settings-changed", onSettingsChange);
+
     return () => {
       active = false;
+      window.removeEventListener("hikari-banner-settings-changed", onSettingsChange);
     };
   }, [canEdit]);
 
@@ -389,7 +406,7 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[14rem] sm:h-[22rem]"
+          className="relative h-[14rem] sm:h-[22rem] overflow-hidden"
         >
           {canEdit && bannerSettings && (
             <style>{`

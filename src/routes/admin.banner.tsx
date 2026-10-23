@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { getBearerToken } from "@/lib/auth/client";
 import {
   DEFAULT_BANNER_SETTINGS,
   type AdminBannerSettings,
@@ -73,8 +74,13 @@ function AdminBannerPage() {
 
     async function loadSettings() {
       try {
+        const headers: Record<string, string> = {};
+        const token = getBearerToken();
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
         const res = await fetch("/api/admin/banner-settings", {
           method: "GET",
+          headers,
           credentials: "include",
         });
 
@@ -143,9 +149,13 @@ function AdminBannerPage() {
   async function handleSave() {
     setSaving(true);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const token = getBearerToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const res = await fetch("/api/admin/banner-settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({ settings }),
       });
@@ -156,6 +166,7 @@ function AdminBannerPage() {
       }
 
       setCachedAdminBannerSettings(settings);
+      setLoadedFromServer(true);
       setHasChanges(false);
       toast.success("Ajustes do banner salvos com sucesso na sua conta!");
     } catch (err) {
@@ -396,8 +407,23 @@ function AdminBannerPage() {
 
           {/* STATUS E AÇÕES */}
           <div className="flex items-center justify-between text-xs text-muted px-1">
-            <span>
-              {hasChanges ? "⚠️ Alterações pendentes de salvamento" : "✓ Sincronizado com sua conta"}
+            <span className="flex items-center gap-1.5">
+              <span
+                className={`size-2 rounded-full ${
+                  hasChanges
+                    ? "bg-amber-400"
+                    : loadedFromServer
+                      ? "bg-emerald-400"
+                      : "bg-purple-400"
+                }`}
+              />
+              <span>
+                {hasChanges
+                  ? "Alterações pendentes de salvamento"
+                  : loadedFromServer
+                    ? "Sincronizado com sua conta no banco de dados"
+                    : "Sincronizado na sua conta"}
+              </span>
             </span>
             <button
               type="button"
