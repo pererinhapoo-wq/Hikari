@@ -10,7 +10,6 @@ import {
   Pencil,
   Play,
   Share2,
-  Sliders,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -19,14 +18,7 @@ import { AnimeCard } from "@/components/anime-card";
 import { CommentsSection } from "@/components/comments/CommentsSection";
 import { fetchAnimeDetail, fetchAnimePictures } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
-import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import {
-  type AdminBannerSettings,
-  getCachedAdminBannerSettings,
-  sanitizeBannerSettings,
-  setCachedAdminBannerSettings,
-} from "@/lib/banner-settings";
 import { getStudioLogo } from "@/lib/studio-logos";
 import {
   formatDateLabel,
@@ -100,59 +92,6 @@ function AnimePage() {
 
   const { user } = useCurrentUserState();
   const canEdit = isHikariAdmin(user?.primaryEmail);
-
-  // Preferências privadas de banner do administrador
-  const [bannerSettings, setBannerSettings] = useState<AdminBannerSettings | null>(() => {
-    if (typeof window !== "undefined" && canEdit) {
-      return getCachedAdminBannerSettings();
-    }
-    return null;
-  });
-
-  useEffect(() => {
-    if (!canEdit) {
-      setBannerSettings(null);
-      return;
-    }
-
-    setBannerSettings(getCachedAdminBannerSettings());
-
-    let active = true;
-    const headers: Record<string, string> = {};
-    const token = getBearerToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-
-    fetch("/api/admin/banner-settings", {
-      method: "GET",
-      headers,
-      credentials: "include",
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { settings?: AdminBannerSettings } | null) => {
-        if (active && data?.settings) {
-          const sanitized = sanitizeBannerSettings(data.settings);
-          setBannerSettings(sanitized);
-          setCachedAdminBannerSettings(sanitized);
-        }
-      })
-      .catch(() => {});
-
-    const onSettingsChange = (e: Event) => {
-      const custom = e as CustomEvent<AdminBannerSettings>;
-      if (custom.detail) {
-        setBannerSettings(sanitizeBannerSettings(custom.detail));
-      } else {
-        setBannerSettings(getCachedAdminBannerSettings());
-      }
-    };
-
-    window.addEventListener("hikari-banner-settings-changed", onSettingsChange);
-
-    return () => {
-      active = false;
-      window.removeEventListener("hikari-banner-settings-changed", onSettingsChange);
-    };
-  }, [canEdit]);
 
   const locals = useHikariStore((s) => s.animes);
 
@@ -406,35 +345,15 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[14rem] sm:h-[22rem] overflow-hidden"
+          className="relative h-[14rem] sm:h-[22rem]"
         >
-          {canEdit && bannerSettings && (
-            <style>{`
-              .hikari-custom-admin-banner {
-                object-position: ${bannerSettings.mobile.posX}% ${bannerSettings.mobile.posY}% !important;
-                transform: scale(${bannerSettings.mobile.zoom}) !important;
-                transform-origin: ${bannerSettings.mobile.posX}% ${bannerSettings.mobile.posY}% !important;
-              }
-              @media (min-width: 640px) {
-                .hikari-custom-admin-banner {
-                  object-position: ${bannerSettings.desktop.posX}% ${bannerSettings.desktop.posY}% !important;
-                  transform: scale(${bannerSettings.desktop.zoom}) !important;
-                  transform-origin: ${bannerSettings.desktop.posX}% ${bannerSettings.desktop.posY}% !important;
-                }
-              }
-            `}</style>
-          )}
-
           {anime.banner ? (
             <img
               src={anime.banner}
               alt=""
               loading="eager"
               decoding="async"
-              className={cn(
-                "size-full object-cover",
-                canEdit && bannerSettings && "hikari-custom-admin-banner",
-              )}
+              className="size-full object-cover"
             />
           ) : null}
 
@@ -620,17 +539,6 @@ function AnimePage() {
                   >
                     <Pencil className="size-4 text-zinc-400" />
                     <span>Editar</span>
-                  </Link>
-                )}
-
-                {canEdit && (
-                  <Link
-                    to="/admin/banner"
-                    title="Personalizar banner dos animes"
-                    className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-950/40 px-3.5 sm:px-4 text-sm font-medium text-purple-300 shadow-sm transition-all duration-200 hover:border-purple-500/60 hover:bg-purple-900/50 hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
-                  >
-                    <Sliders className="size-4 text-purple-400" />
-                    <span className="hidden sm:inline">Banner</span>
                   </Link>
                 )}
               </div>

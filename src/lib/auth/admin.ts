@@ -6,9 +6,6 @@ export const HIKARI_ADMIN_EMAILS = [
 
 export function isHikariAdmin(email: string | null | undefined): boolean {
   if (!email) return false;
-  const normalized = email.trim().toLowerCase();
-  if (HIKARI_ADMIN_EMAILS.includes(normalized)) return true;
-  if (normalized === "dev@example.com") return true;
-  return false;
+  return HIKARI_ADMIN_EMAILS.includes(email.trim().toLowerCase());
 }
 
