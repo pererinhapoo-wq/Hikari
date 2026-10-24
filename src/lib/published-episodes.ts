@@ -464,6 +464,7 @@ export async function uploadThumbnailBlob(
 
   const res = await fetch("/api/admin/upload-thumbnail", {
     method: "POST",
+    credentials: "include",
     body: formData,
   });
 

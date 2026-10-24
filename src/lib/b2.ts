@@ -35,6 +35,7 @@ export async function uploadVideoToB2(
       try {
         const prepareResponse = await fetch("/api/upload-video", {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
           },

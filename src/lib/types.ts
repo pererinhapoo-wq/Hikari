@@ -91,6 +91,18 @@ export type Anime = SlimAnime & {
   producers?: string[];
   licensors?: string[];
   broadcast?: string | null;
+  seasonNavigation?: SeasonNavigation;
+};
+
+export type SeasonNavigationItem = {
+  id: string;
+  title?: string;
+};
+
+export type SeasonNavigation = {
+  items: SeasonNavigationItem[];
+  previous?: SeasonNavigationItem;
+  next?: SeasonNavigationItem;
 };
 
 export type LocalAnime = {
@@ -116,6 +128,9 @@ export type LocalAnime = {
   seasons: Season[];
   createdAt: number;
   updatedAt: number;
+  studios?: string[];
+  characters?: AnimeCharacter[];
+  staff?: AnimeStaff[];
 };
 
 export type HomeCatalog = {
@@ -176,10 +191,12 @@ export function localToAnime(local: LocalAnime): Anime {
     year: local.year,
     trailerId: local.trailerId,
     source: "local",
-    studios: [],
+    studios: local.studios ?? [],
     streamingEpisodes: [],
     seasons: local.seasons,
     recommendations: [],
+    characters: local.characters ?? [],
+    staff: local.staff ?? [],
   };
 }
 
@@ -197,6 +214,8 @@ export function animeToLocal(
       episodes: [],
     },
   ];
+
+  const fullAnime = anime as Partial<Anime>;
 
   return {
     id:
@@ -228,5 +247,20 @@ export function animeToLocal(
         : defaultSeasons),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
+    studios:
+      existing?.studios ??
+      (Array.isArray(fullAnime.studios) && fullAnime.studios.length > 0
+        ? fullAnime.studios
+        : undefined),
+    characters:
+      existing?.characters ??
+      (Array.isArray(fullAnime.characters) && fullAnime.characters.length > 0
+        ? fullAnime.characters
+        : undefined),
+    staff:
+      existing?.staff ??
+      (Array.isArray(fullAnime.staff) && fullAnime.staff.length > 0
+        ? fullAnime.staff
+        : undefined),
   };
 }

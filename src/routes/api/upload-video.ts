@@ -3,6 +3,7 @@ import {
   handleUpload,
   type HandleUploadBody,
 } from "@vercel/blob/client";
+import { assertAdminResponse } from "@/lib/auth/admin.server";
 
 const ALLOWED_TYPES = [
   "video/mp4",
@@ -13,6 +14,9 @@ const ALLOWED_TYPES = [
 const MAX_SIZE = 900 * 1024 * 1024;
 
 async function handlePost({ request }: { request: Request }) {
+  const authError = await assertAdminResponse(request);
+  if (authError) return authError;
+
   try {
     const body = (await request.json()) as HandleUploadBody;
 

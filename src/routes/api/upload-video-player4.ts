@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { auth } from "@/lib/auth/server";
-import { isHikariAdmin } from "@/lib/auth/admin";
+import { assertAdminResponse } from "@/lib/auth/admin.server";
 
 const ALLOWED_CONTENT_TYPES = [
   "video/mp4",
@@ -51,21 +50,9 @@ function sanitizeBaseName(filename: string): string {
 
 async function handlePost({ request }: { request: Request }) {
   try {
-    // 1. Verificação estrita de autenticação e autorização administrativa
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    const userEmail = session?.user?.email ?? null;
-
-    if (!session?.user?.id || !isHikariAdmin(userEmail)) {
-      return Response.json(
-        {
-          error: "Acesso não autorizado. Apenas o administrador pode gerar URLs de upload.",
-        },
-        { status: 403 },
-      );
-    }
+    // 1. Verificação estrita de autenticação e autorização administrativa (401 se deslogado, 403 se não-admin)
+    const authError = await assertAdminResponse(request);
+    if (authError) return authError;
 
     // 2. Leitura e validação do corpo da requisição
     let body: Record<string, unknown>;

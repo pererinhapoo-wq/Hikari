@@ -9,17 +9,18 @@ import {
 
 import { seasonLabel } from "@/lib/labels";
 
-import type {
-  Anime,
-  AnimeCharacter,
-  AnimeStaff,
-  Episode,
-  HomeCatalog,
-  SearchParams,
-  SearchResult,
-  Season,
-  SlimAnime,
-  StreamingLink,
+import {
+  displayTitle,
+  type Anime,
+  type AnimeCharacter,
+  type AnimeStaff,
+  type Episode,
+  type HomeCatalog,
+  type SearchParams,
+  type SearchResult,
+  type Season,
+  type SlimAnime,
+  type StreamingLink,
 } from "@/lib/types";
 
 import {
@@ -3179,6 +3180,19 @@ const ADULT_REMOVED_TAGS = new Set([
   "gay",
 ]);
 
+type AdultTagCatalog = {
+  items: SlimAnime[];
+  tags: {
+    name: string;
+    count: number;
+    animeIds: string[];
+  }[];
+};
+
+function normalizeAdultTagName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 export const fetchAdultTags =
   createServerFn({
     method: "GET",
@@ -3699,6 +3713,8 @@ export const fetchAnimeDetail =
                   },
                 ],
                 recommendations: [],
+                characters: [],
+                staff: [],
               };
             }
             return null;
@@ -4222,6 +4238,8 @@ export const fetchAnimeDetail =
                 },
               ],
               recommendations: [],
+              characters: [],
+              staff: [],
               seasonNavigation: {
                 items: [
                   {

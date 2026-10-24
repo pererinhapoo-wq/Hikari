@@ -1,4 +1,4 @@
-import { VideoResolution } from '../types/video';
+import type { VideoResolution } from '../types/video.ts';
 
 /**
  * Classifica a resolução do vídeo a partir da altura real dos quadros (videoHeight).

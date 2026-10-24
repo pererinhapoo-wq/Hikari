@@ -13,6 +13,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { CommentsSection } from "@/components/comments/CommentsSection";
+import { Logo } from "@/components/logo";
 import {
   CustomVideoPlayer,
   type VideoItem,
@@ -24,6 +25,7 @@ import {
   displayTitle,
   type Episode,
 } from "@/lib/types";
+import { youtubeIdFrom } from "@/lib/utils";
 
 export const Route = createFileRoute("/watch/$id")({
   validateSearch: (

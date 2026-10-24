@@ -35,7 +35,12 @@ export const authClient = createAuthClient({
  * with the key removed, sign-in is real in preview (baked preview client) and
  * when deployed (injected per-app client).
  */
-export const authEnabled = import.meta.env.VITE_AUTH_ENABLED !== "false";
+export const authEnabled =
+  typeof import.meta !== "undefined" && import.meta.env
+    ? import.meta.env.VITE_AUTH_ENABLED !== "false"
+    : typeof process !== "undefined" && process.env
+      ? process.env.VITE_AUTH_ENABLED !== "false"
+      : true;
 
 /** The upstream providers to render sign-in buttons for. */
 export { GROK_PROVIDERS };

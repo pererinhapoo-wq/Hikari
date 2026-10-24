@@ -162,14 +162,6 @@ const STUDIO_VECTORS: Record<string, string> = {
     </svg>
   `),
 
-  "bandai namco filmworks": svgUri(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100" fill="none">
-      <rect width="240" height="100" rx="12" fill="#0d0c16"/>
-      <circle cx="50" cy="50" r="15" fill="#ea580c"/>
-      <text x="76" y="58" font-family="'Manrope', system-ui, sans-serif" font-weight="900" font-size="26" letter-spacing="2" fill="#ffffff">SUNRISE</text>
-    </svg>
-  `),
-
   "studio ghibli": svgUri(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100" fill="none">
       <rect width="240" height="100" rx="12" fill="#0d0c16"/>

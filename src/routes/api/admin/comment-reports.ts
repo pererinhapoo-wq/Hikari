@@ -1,7 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { auth } from "@/lib/auth/server";
-import { isHikariAdmin } from "@/lib/auth/admin";
+import {
+  assertAdminResponse,
+  verifyAdminRequest,
+  AdminAuthError,
+} from "@/lib/auth/admin.server";
 
 type ReportAction =
   | "resolve"
@@ -23,23 +26,8 @@ export const Route = createFileRoute(
     handlers: {
       GET: async ({ request }) => {
         try {
-          const session =
-            await auth.api.getSession({
-              headers: request.headers,
-            });
-
-          const email =
-            session?.user?.email ?? null;
-
-          if (!session?.user?.id || !isHikariAdmin(email)) {
-            return Response.json(
-              {
-                error:
-                  "Acesso permitido somente ao administrador.",
-              },
-              { status: 403 },
-            );
-          }
+          const authError = await assertAdminResponse(request);
+          if (authError) return authError;
 
           const sql = await getSql();
 
@@ -178,20 +166,15 @@ export const Route = createFileRoute(
 
       POST: async ({ request }) => {
         try {
-          const session =
-            await auth.api.getSession({
-              headers: request.headers,
-            });
-
-          const email =
-            session?.user?.email ?? null;
-
-          if (!session?.user?.id || !isHikariAdmin(email)) {
+          let adminSession: { id: string; email: string };
+          try {
+            adminSession = await verifyAdminRequest(request);
+          } catch (err) {
+            if (err instanceof AdminAuthError) {
+              return Response.json({ error: err.message }, { status: err.status });
+            }
             return Response.json(
-              {
-                error:
-                  "Acesso permitido somente ao administrador.",
-              },
+              { error: "Acesso não autorizado." },
               { status: 403 },
             );
           }
@@ -300,7 +283,7 @@ export const Route = createFileRoute(
               `,
               [
                 commentId,
-                session.user.id,
+                adminSession.id,
               ],
             );
 

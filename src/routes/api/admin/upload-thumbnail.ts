@@ -1,8 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSql } from "@/lib/db";
+import { assertAdminResponse } from "@/lib/auth/admin.server";
 
 async function handlePost({ request }: { request: Request }) {
+  const authError = await assertAdminResponse(request);
+  if (authError) return authError;
+
   try {
     let imageBuffer: Buffer;
     let mimeType = "image/jpeg";

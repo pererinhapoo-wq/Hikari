@@ -1,27 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { auth } from "@/lib/auth/server";
-import { isHikariAdmin } from "@/lib/auth/admin";
+import { assertAdminResponse } from "@/lib/auth/admin.server";
 
 const VCDN_BASE_URL = "https://cdn.vcdn.me";
 const MAX_STRING_LENGTH = 300;
 
 async function handlePost({ request }: { request: Request }) {
   try {
-    // 1. Autenticação e autorização estrita de administrador
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    const email = session?.user?.email ?? null;
-
-    if (!session?.user?.id || !isHikariAdmin(email)) {
-      return Response.json(
-        {
-          error: "Acesso permitido somente ao administrador.",
-        },
-        { status: 403 },
-      );
-    }
+    // 1. Autenticação e autorização estrita de administrador (401 se deslogado, 403 se não-admin)
+    const authError = await assertAdminResponse(request);
+    if (authError) return authError;
 
     // 2. Leitura segura da chave de API no servidor
     const apiKey = process.env.VCDN_API_KEY?.trim();

@@ -36,8 +36,26 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       return {
         ...local,
         seasons: resolvedSeasons,
+        studios: local.studios ?? [],
+        characters: local.characters ?? [],
+        staff: local.staff ?? [],
       };
     }
+
+    const mergedCharacters =
+      local.characters && local.characters.length > 0
+        ? local.characters
+        : (remote.characters ?? []);
+
+    const mergedStaff =
+      local.staff && local.staff.length > 0
+        ? local.staff
+        : (remote.staff ?? []);
+
+    const mergedStudios =
+      local.studios && local.studios.length > 0
+        ? local.studios
+        : (remote.studios ?? []);
 
     return {
       ...remote,
@@ -51,7 +69,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       genres: local.genres.length ? local.genres : remote.genres,
       recommendations: remote.recommendations,
       streamingEpisodes: remote.streamingEpisodes,
-      studios: remote.studios,
+      studios: mergedStudios,
+      characters: mergedCharacters,
+      staff: mergedStaff,
       source: "local",
     };
   }
@@ -71,6 +91,21 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
         ? local.seasons
         : (remote.seasons ?? []);
 
+    const mergedCharacters =
+      local.characters && local.characters.length > 0
+        ? local.characters
+        : (remote.characters ?? []);
+
+    const mergedStaff =
+      local.staff && local.staff.length > 0
+        ? local.staff
+        : (remote.staff ?? []);
+
+    const mergedStudios =
+      local.studios && local.studios.length > 0
+        ? local.studios
+        : (remote.studios ?? []);
+
     return {
       ...remote,
       ...local,
@@ -79,7 +114,9 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       trailerId: local.trailerId || remote.trailerId,
       recommendations: remote.recommendations,
       streamingEpisodes: remote.streamingEpisodes,
-      studios: remote.studios,
+      studios: mergedStudios,
+      characters: mergedCharacters,
+      staff: mergedStaff,
     };
   }
 
