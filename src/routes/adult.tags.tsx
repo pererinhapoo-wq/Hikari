@@ -67,7 +67,7 @@ function normalizeAdultTag(value: string) {
 export const Route = createFileRoute("/adult/tags")({
   validateSearch: (
     search: Record<string, unknown>,
-  ) => {
+  ): { tag?: string; page?: number } => {
     const page = Number(search.page);
 
     return {
@@ -139,7 +139,7 @@ function AdultTagsPage() {
 
   const {
     tag,
-    page,
+    page = 1,
   } = Route.useSearch();
 
   const locals = useHikariStore(

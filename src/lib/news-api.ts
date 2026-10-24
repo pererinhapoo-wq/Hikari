@@ -1374,11 +1374,13 @@ async function reviewExternalNewsWithHikariAI(
       : null;
 
     const review = await reviewHikariAINews({
-      title: item.title,
-      description: item.description,
-      source: item.source,
-      sourceUrl: item.url,
-      animeName: knownAnime?.title || "",
+      data: {
+        title: item.title,
+        description: item.description,
+        source: item.source,
+        sourceUrl: item.url,
+        animeName: knownAnime?.title || "",
+      },
     });
 
     const aiReviewFailed =

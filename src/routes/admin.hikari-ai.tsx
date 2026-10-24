@@ -34,7 +34,7 @@ function HikariAIPage() {
     title: string;
     description: string;
     reason: string;
-    provider: "Gemini" | "Groq" | "Fallback";
+    provider?: "Gemini" | "Groq" | "Fallback";
   } | null>(null);
 
   async function handleTestAI(provider: "gemini" | "groq") {

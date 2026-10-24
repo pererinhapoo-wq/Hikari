@@ -1410,7 +1410,8 @@ export function Shell() {
                 <div className="space-y-1">
 
                   <Link
-                    to="/browse/season"
+                    to="/browse/$section"
+                    params={{ section: "season" }}
                     onClick={() =>
                       setMenuOpen(false)
                     }
@@ -1431,7 +1432,8 @@ export function Shell() {
                   </Link>
 
                   <Link
-                    to="/browse/genres"
+                    to="/browse/$section"
+                    params={{ section: "genres" }}
                     onClick={() =>
                       setMenuOpen(false)
                     }

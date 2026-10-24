@@ -1,3 +1,4 @@
+import { getRequest } from "@tanstack/react-start/server";
 import { auth } from "./server";
 import { isHikariAdmin } from "./admin";
 
@@ -19,12 +20,22 @@ export type AdminUserSession = {
 /**
  * Validação segura de sessão administrativa no servidor:
  * - Requer sessão ativa e válida via Better Auth.
+ * - Suporta cookies de sessão e cabeçalho Authorization: Bearer (preview iframe).
  * - Rejeita com 401 requisições sem sessão válida ou deslogadas.
  * - Rejeita com 403 requisições autenticadas cujo email não pertença à lista administrativa oficial.
  */
-export async function verifyAdminRequest(request: Request): Promise<AdminUserSession> {
+export async function verifyAdminRequest(
+  request: Request,
+  bearerToken?: string,
+): Promise<AdminUserSession> {
+  let headers = request.headers;
+  if (bearerToken && !headers.has("authorization")) {
+    headers = new Headers(request.headers);
+    headers.set("Authorization", `Bearer ${bearerToken}`);
+  }
+
   const session = await auth.api.getSession({
-    headers: request.headers,
+    headers,
   });
 
   const userId = session?.user?.id;
@@ -49,6 +60,19 @@ export async function verifyAdminRequest(request: Request): Promise<AdminUserSes
     email,
     name: session.user.name,
   };
+}
+
+/**
+ * Validação administrativa para Server Functions do TanStack Start.
+ */
+export async function verifyAdminServerCaller(
+  bearerToken?: string,
+): Promise<AdminUserSession> {
+  const req = getRequest();
+  if (!req) {
+    throw new AdminAuthError("Requisição não encontrada.", 401);
+  }
+  return verifyAdminRequest(req, bearerToken);
 }
 
 /**

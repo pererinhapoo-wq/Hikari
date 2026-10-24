@@ -155,8 +155,9 @@ function AdultRecentPage() {
     (s) => s.animes,
   );
 
+  const recentRaw = "recentItems" in data ? (data.recentItems ?? []) : data.items;
   const items = overlayList(
-    data.recentItems ?? [],
+    recentRaw,
     locals,
   );
 

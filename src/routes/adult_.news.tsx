@@ -30,26 +30,19 @@ import {
 export const Route = createFileRoute(
   "/adult_/news",
 )({
-  validateSearch: (search) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { q?: string; page?: number } => ({
     q:
-      typeof search.q === "string"
-        ? search.q
-        : "",
+      typeof search.q === "string" && search.q.trim()
+        ? search.q.trim()
+        : undefined,
 
-    page: Math.max(
-      1,
-      Number(search.page) || 1,
-    ),
+    page:
+      Number(search.page) > 1
+        ? Number(search.page)
+        : undefined,
   }),
-
-  search: {
-    middlewares: [
-      stripSearchParams({
-        q: "",
-        page: 1,
-      }),
-    ],
-  },
 
   loader: async () => {
     return await fetchAdultNews();

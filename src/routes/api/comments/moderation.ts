@@ -193,12 +193,12 @@ export const Route = createFileRoute(
                 ],
               );
 
-            const existingRows =
+            const existingRows: any[] =
               Array.isArray(
                 existingResult,
               )
                 ? existingResult
-                : existingResult?.rows ??
+                : (existingResult as any)?.rows ??
                   [];
 
             if (
@@ -281,12 +281,12 @@ export const Route = createFileRoute(
                 ],
               );
 
-            const existingRows =
+            const existingRows: any[] =
               Array.isArray(
                 existingResult,
               )
                 ? existingResult
-                : existingResult?.rows ??
+                : (existingResult as any)?.rows ??
                   [];
 
             /* ========================================== */

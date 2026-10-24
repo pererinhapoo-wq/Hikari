@@ -198,12 +198,84 @@ async function runAdminSecuritySuite() {
     }
   }
 
+  // TESTE 8: Validação de 401/403 em todos os endpoints administrativos específicos
+  console.log("\n--- 8. VALIDAÇÃO DE AUTORIZAÇÃO EM TODOS OS ENDPOINTS ADMINISTRATIVOS ---");
+  const adminEndpoints = [
+    { url: "http://localhost:3000/api/admin/comment-reports", method: "GET" },
+    { url: "http://localhost:3000/api/admin/comment-reports", method: "POST" },
+    { url: "http://localhost:3000/api/admin/upload-thumbnail", method: "POST" },
+    { url: "http://localhost:3000/api/upload-video", method: "POST" },
+    { url: "http://localhost:3000/api/upload-video-player4", method: "POST" },
+    { url: "http://localhost:3000/api/vcdn/init", method: "POST" },
+  ];
+
+  for (const ep of adminEndpoints) {
+    const req = new Request(ep.url, { method: ep.method });
+    const res = await assertAdminResponse(req);
+    assert(
+      res !== null && (res.status === 401 || res.status === 403),
+      `Endpoint [${ep.method} ${new URL(ep.url).pathname}] bloqueia requisições não autenticadas com HTTP ${res?.status}`,
+    );
+  }
+
+  // TESTE 9: Operações legítimas de streaming e episódios funcionam conforme regras de publicação
+  console.log("\n--- 9. OPERAÇÕES LEGÍTIMAS E VALIDAÇÕES DO REPRODUTOR / EPISÓDIOS ---");
+  const { isHikariPlayableUrl, isEpisodePublished } = await import("../src/lib/published-episodes");
+
+  // URLs válidas de streaming (MP4, Backblaze B2, R2, CDN)
+  assert(
+    isHikariPlayableUrl("https://f005.backblazeb2.com/file/hikari-bucket/episode1.mp4"),
+    "URL do Backblaze B2 é aceita como reproduzível no Hikari",
+  );
+  assert(
+    isHikariPlayableUrl("https://pub-r2.hikari.tv/episodes/ep1.mp4"),
+    "URL do Cloudflare R2 é aceita como reproduzível no Hikari",
+  );
+  assert(
+    !isHikariPlayableUrl("https://crunchyroll.com/series/abc"),
+    "Links de catálogo externo (Crunchyroll) são rejeitados para evitar episódios falsos",
+  );
+  assert(
+    !isHikariPlayableUrl("https://anilist.co/anime/123"),
+    "Links do AniList são rejeitados como player de vídeo",
+  );
+
+  // Validação de publicação de episódio
+  assert(
+    isEpisodePublished({
+      id: "ep-1",
+      number: 1,
+      videoUrl: "https://pub-r2.hikari.tv/ep1.mp4",
+      published: true,
+    }),
+    "Episódio com vídeo configurado pelo administrador é marcado como publicado",
+  );
+  assert(
+    !isEpisodePublished({
+      id: "ep-2",
+      number: 2,
+      published: true,
+    }),
+    "Episódio sem fonte de vídeo configurada não é publicado incorretamente",
+  );
+  assert(
+    !isEpisodePublished({
+      id: "ep-3",
+      number: 3,
+      videoUrl: "https://pub-r2.hikari.tv/ep3.mp4",
+      published: false,
+    }),
+    "Episódio explicitamente despublicado (published=false) é respeitado",
+  );
+
   console.log("\n===============================================================");
   console.log(`RESULTADO DA SUITE: ${passed} passaram, ${failed} falharam.`);
   console.log("===============================================================");
 
   if (failed > 0) {
     process.exit(1);
+  } else {
+    process.exit(0);
   }
 }
 

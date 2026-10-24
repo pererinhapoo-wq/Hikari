@@ -535,7 +535,7 @@ function BrowsePage() {
     const totalPages = Math.max(
       1,
       Math.ceil(
-        (result?.total ?? 0) /
+        ((result && "total" in result && typeof result.total === "number" ? result.total : 0)) /
           itemsPerPage,
       ),
     );

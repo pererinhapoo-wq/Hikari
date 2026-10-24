@@ -67,8 +67,9 @@ function AdultPage() {
     locals,
   );
 
+  const recentRaw = "recentItems" in data ? (data.recentItems ?? []) : [];
   const recentItems = overlayList(
-    data.recentItems ?? [],
+    recentRaw,
     locals,
   );
 

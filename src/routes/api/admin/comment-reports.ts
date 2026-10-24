@@ -88,12 +88,12 @@ export const Route = createFileRoute(
             `,
           );
 
-          const rows = Array.isArray(result)
+          const rows: any[] = Array.isArray(result)
             ? result
-            : result?.rows ?? [];
+            : (result as any)?.rows ?? [];
 
           const reports = rows.map(
-            (row) => ({
+            (row: any) => ({
               commentId: row.commentId,
               animeId: row.animeId,
               episodeId: row.episodeId,
@@ -247,12 +247,12 @@ export const Route = createFileRoute(
               [commentId],
             );
 
-          const commentRows =
+          const commentRows: any[] =
             Array.isArray(
               commentResult,
             )
               ? commentResult
-              : commentResult?.rows ??
+              : (commentResult as any)?.rows ??
                 [];
 
           if (

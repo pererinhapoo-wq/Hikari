@@ -1,3 +1,5 @@
+import { getBearerToken } from "@/lib/auth/client";
+
 export async function uploadVideoToB2(
   onDone: (videoUrl: string, file?: File) => void,
 ): Promise<void> {
@@ -33,12 +35,18 @@ export async function uploadVideoToB2(
       }
 
       try {
-        const prepareResponse = await fetch("/api/upload-video", {
+        const token = getBearerToken();
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        const prepareResponse = await fetch("/api/upload-video-player4", {
           method: "POST",
           credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
           body: JSON.stringify({
             filename: file.name,
             contentType: file.type,
@@ -47,9 +55,14 @@ export async function uploadVideoToB2(
         });
 
         if (!prepareResponse.ok) {
-          throw new Error(
-            `Falha ao preparar o upload (${prepareResponse.status})`,
-          );
+          let errorMsg = `Falha ao preparar o upload (${prepareResponse.status})`;
+          try {
+            const errData = (await prepareResponse.json()) as { error?: string };
+            if (errData?.error) errorMsg = errData.error;
+          } catch {
+            /* ignore parse error */
+          }
+          throw new Error(errorMsg);
         }
 
         const prepareData = (await prepareResponse.json()) as {

@@ -23,6 +23,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { getBearerToken } from "@/lib/auth/client";
 
 export const Route = createFileRoute(
   "/admin/moderation",
@@ -77,12 +78,17 @@ function AdminModeration() {
       setLoading(true);
 
       try {
+        const token = getBearerToken();
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
         const response =
           await fetch(
             "/api/admin/comment-reports",
             {
               method: "GET",
               credentials: "include",
+              headers,
             },
           );
 
@@ -127,15 +133,18 @@ function AdminModeration() {
     setProcessing(true);
 
     try {
+      const token = getBearerToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response =
         await fetch(
           "/api/admin/comment-reports",
           {
             method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
+            headers,
             credentials: "include",
             body: JSON.stringify({
               commentId:
@@ -191,7 +200,7 @@ function AdminModeration() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link
-            to="/admin/"
+            to="/admin"
             className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
           >
             <ChevronLeft className="size-3.5" />

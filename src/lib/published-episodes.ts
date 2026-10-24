@@ -1,4 +1,5 @@
 import type { LocalAnime } from "@/lib/types";
+import { getBearerToken } from "@/lib/auth/client";
 
 export type PublishedEpisode = {
   animeId: string;
@@ -460,11 +461,16 @@ export async function uploadThumbnailBlob(
     .slice(0, 30);
   const filename = `${safePrefix}-${Date.now()}.jpg`;
 
-  formData.append("file", blob, filename);
+  const token = getBearerToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   const res = await fetch("/api/admin/upload-thumbnail", {
     method: "POST",
     credentials: "include",
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: formData,
   });
 

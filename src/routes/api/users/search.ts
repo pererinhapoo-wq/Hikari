@@ -55,13 +55,13 @@ export const Route = createFileRoute(
               [`%${q}%`],
             );
 
-          const rows =
+          const rows: any[] =
             Array.isArray(result)
               ? result
-              : result?.rows ?? [];
+              : (result as any)?.rows ?? [];
 
           const users = rows.map(
-            (user) => ({
+            (user: any) => ({
               id: user.id,
               name:
                 user.name ||
