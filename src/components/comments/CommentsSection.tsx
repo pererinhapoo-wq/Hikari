@@ -34,6 +34,12 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { LoginMenu } from "@/components/LoginMenu";
 import { signOut, signIn, getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -116,6 +122,8 @@ export function CommentsSection({
   const inFlightReactionsRef = useRef<Set<string>>(new Set());
 
   const [rootOrder, setRootOrder] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortBy>("recent");
+  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [replyIsSpoiler, setReplyIsSpoiler] = useState(false);
@@ -227,17 +235,18 @@ export function CommentsSection({
   }, [authUser?.id, getProfileFn]);
 
   useEffect(() => {
-    if (!userMenuOpen && !loginOpen && !commentsLoginOpen) return;
+    if (!userMenuOpen && !loginOpen && !commentsLoginOpen && !sortDropdownOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setUserMenuOpen(false);
         setLoginOpen(false);
         setCommentsLoginOpen(false);
+        setSortDropdownOpen(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [userMenuOpen, loginOpen, commentsLoginOpen]);
+  }, [userMenuOpen, loginOpen, commentsLoginOpen, sortDropdownOpen]);
 
   const effectiveUserId = authUser?.id ?? currentUserId;
   const effectiveUserEmail = authUser?.primaryEmail ?? currentUserEmail;
@@ -260,11 +269,6 @@ export function CommentsSection({
     null,
   );
 
-  /* ====================================================== */
-  /* ORDENAÇÃO / FILTRO                                      */
-  /* ====================================================== */
-
-  const [sortBy, setSortBy] = useState<SortBy>("highlight");
 
   /* ====================================================== */
   /* MODERAÇÃO                                               */
@@ -1355,395 +1359,701 @@ export function CommentsSection({
   }, [comments, rootOrder]);
 
   return (
-    <section className="mt-10 border-t border-purple-500/20 pt-8 sm:pt-10">
+    <section
+      className={cn(
+        isAnimeGeneral
+          ? "mt-12"
+          : "mt-10 border-t border-purple-500/20 pt-8 sm:pt-10",
+      )}
+    >
       <div className="grid gap-6 sm:gap-8">
         <div className="min-w-0">
           {/* =============================================== */}
-          {/* CABEÇALHO DOS COMENTÁRIOS ESTILO DISQUS/HIKARI  */}
+          {/* CABEÇALHO CONTEXTUAL DOS COMENTÁRIOS           */}
           {/* =============================================== */}
 
-          <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-2 border-b border-purple-500/20 pb-3">
-            {/* Lado esquerdo: Título com contagem e as 3 abas de ordenação */}
-            <div className="flex flex-wrap items-center gap-3 sm:gap-6 min-w-0">
-              <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-                <div className="flex size-7 sm:size-8 items-center justify-center rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300 shrink-0">
-                  <MessageCircle className="size-3.5 sm:size-4" />
+          {isAnimeGeneral ? (
+            /* Contexto 1: Página de detalhes do anime (estilo nativo Hikari) */
+            <div className="border-b border-purple-500/20 pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2.5">
+                    <span className="h-6 w-1 rounded-full bg-purple-500 shrink-0" />
+                    <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                      Comentários
+                    </h2>
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 shrink-0 tabular-nums">
+                      {comments.length}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs sm:text-sm text-zinc-400">
+                    Espaço para a comunidade compartilhar impressões sobre este anime.
+                  </p>
                 </div>
-                <h2 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
-                  Comentários
-                </h2>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 shrink-0">
-                  {comments.length}
-                </span>
-              </div>
 
-              {/* Três opções compactas alinhadas horizontalmente: Destaque, Recentes, Antigos */}
-              <div className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm">
-                <button
-                  type="button"
-                  onClick={() => setSortBy("highlight")}
-                  className={cn(
-                    "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2 -mb-[13px] sm:-mb-[13px] cursor-pointer",
-                    sortBy === "highlight"
-                      ? "border-purple-500 text-purple-300 font-semibold"
-                      : "border-transparent text-white/50 hover:text-white/80",
-                  )}
-                >
-                  Destaque
-                </button>
+                <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto">
+                  {/* Seletor compacto de ordenação: "Mais recentes ˅" */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setSortDropdownOpen((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-purple-500/25 bg-purple-950/30 text-purple-200 hover:bg-purple-950/60 hover:border-purple-500/40 transition-all cursor-pointer"
+                      aria-expanded={sortDropdownOpen}
+                      aria-haspopup="menu"
+                    >
+                      <span>
+                        {sortBy === "recent"
+                          ? "Mais recentes"
+                          : sortBy === "highlight"
+                            ? "Em destaque"
+                            : "Mais antigos"}
+                      </span>
+                      <ChevronDown
+                        className={cn(
+                          "size-3.5 text-purple-400 transition-transform duration-200",
+                          sortDropdownOpen && "rotate-180",
+                        )}
+                      />
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => setSortBy("recent")}
-                  className={cn(
-                    "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2 -mb-[13px] sm:-mb-[13px] cursor-pointer",
-                    sortBy === "recent"
-                      ? "border-purple-500 text-purple-300 font-semibold"
-                      : "border-transparent text-white/50 hover:text-white/80",
-                  )}
-                >
-                  Recentes
-                </button>
+                    {sortDropdownOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setSortDropdownOpen(false)}
+                        />
+                        <div
+                          role="menu"
+                          className="absolute left-0 sm:left-auto sm:right-0 top-[calc(100%+6px)] z-50 min-w-[140px] overflow-hidden rounded-xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                        >
+                          {[
+                            { value: "recent" as const, label: "Mais recentes" },
+                            { value: "highlight" as const, label: "Em destaque" },
+                            { value: "oldest" as const, label: "Mais antigos" },
+                          ].map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setSortBy(opt.value);
+                                setSortDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "flex w-full items-center justify-between px-3 py-1.5 text-xs rounded-lg text-left transition-colors cursor-pointer",
+                                sortBy === opt.value
+                                  ? "bg-purple-600/30 font-semibold text-purple-200"
+                                  : "text-zinc-300 hover:bg-white/5 hover:text-white",
+                              )}
+                            >
+                              <span>{opt.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => setSortBy("oldest")}
-                  className={cn(
-                    "px-2.5 sm:px-3 py-1 font-medium transition-all relative border-b-2 -mb-[13px] sm:-mb-[13px] cursor-pointer",
-                    sortBy === "oldest"
-                      ? "border-purple-500 text-purple-300 font-semibold"
-                      : "border-transparent text-white/50 hover:text-white/80",
-                  )}
-                >
-                  Antigos
-                </button>
-              </div>
-            </div>
-
-            {/* Lado direito: Login OU Menu da pessoa autenticada */}
-            <div className="flex items-center shrink-0 relative ml-auto">
-              {!effectiveUserId ? (
-                /* Visitante: Opção ENTRAR com Popover estilo Disqus */
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCommentsLoginOpen((prev) => !prev);
-                      setCommentsLoginWarning(null);
-                    }}
-                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-xl border border-purple-500/35 bg-purple-950/40 px-3 py-1 text-xs sm:text-sm font-semibold text-purple-300 hover:bg-purple-950/70 hover:text-white hover:border-purple-500/55 active:scale-95 transition-all shadow-sm cursor-pointer"
-                    aria-expanded={commentsLoginOpen}
-                    aria-haspopup="dialog"
-                  >
-                    <LogIn className="size-3.5" />
-                    <span>Entrar</span>
-                  </button>
-
-                  {commentsLoginOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
+                  {/* Lado direito: Login OU Menu da pessoa autenticada */}
+                  {!effectiveUserId ? (
+                    <div className="relative">
+                      <button
+                        type="button"
                         onClick={() => {
-                          setCommentsLoginOpen(false);
+                          setCommentsLoginOpen((prev) => !prev);
                           setCommentsLoginWarning(null);
                         }}
-                      />
-                      <div
-                        role="dialog"
-                        aria-label="Opções de login"
-                        className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-purple-500/30 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                        className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-purple-500/35 bg-purple-950/40 px-3 py-1 text-xs sm:text-sm font-semibold text-purple-300 hover:bg-purple-950/70 hover:text-white hover:border-purple-500/55 active:scale-95 transition-all shadow-sm cursor-pointer"
+                        aria-expanded={commentsLoginOpen}
+                        aria-haspopup="dialog"
                       >
-                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
-                          <span className="text-xs font-bold text-white tracking-tight">
-                            Entrar para comentar
-                          </span>
-                          <button
-                            type="button"
+                        <LogIn className="size-3.5" />
+                        <span>Entrar</span>
+                      </button>
+
+                      {commentsLoginOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40"
                             onClick={() => {
                               setCommentsLoginOpen(false);
                               setCommentsLoginWarning(null);
                             }}
-                            className="text-white/40 hover:text-white text-xs transition-colors p-1 cursor-pointer"
-                            aria-label="Fechar"
+                          />
+                          <div
+                            role="dialog"
+                            aria-label="Opções de login"
+                            className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-purple-500/30 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
                           >
-                            <X className="size-3.5" />
-                          </button>
-                        </div>
+                            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
+                              <span className="text-xs font-bold text-white tracking-tight">
+                                Entrar para comentar
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCommentsLoginOpen(false);
+                                  setCommentsLoginWarning(null);
+                                }}
+                                className="text-white/40 hover:text-white text-xs transition-colors p-1 cursor-pointer"
+                                aria-label="Fechar"
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
 
-                        <p className="text-[11px] text-white/60 mb-3">
-                          Conecte-se com sua rede favorita ou conta Hikari para participar da conversa.
-                        </p>
+                            <p className="text-[11px] text-white/60 mb-3">
+                              Conecte-se com sua rede favorita ou conta Hikari para participar da conversa.
+                            </p>
 
-                        <div className="space-y-1.5">
-                          {/* Google */}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await signIn("google", {
-                                  callbackURL: window.location.href,
-                                });
-                              } catch {
-                                setCommentsLoginWarning(
-                                  "Erro ao iniciar login com Google.",
-                                );
-                              }
-                            }}
-                            className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-all cursor-pointer"
-                          >
-                            <svg className="size-3.5" viewBox="0 0 24 24">
-                              <path
-                                fill="currentColor"
-                                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                              />
-                              <path
-                                fill="currentColor"
-                                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                              />
-                              <path
-                                fill="currentColor"
-                                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                              />
-                              <path
-                                fill="currentColor"
-                                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                              />
-                            </svg>
-                            <span>Entrar com Google</span>
-                          </button>
+                            <div className="space-y-1.5">
+                              {/* Google */}
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await signIn("google", {
+                                      callbackURL: window.location.href,
+                                    });
+                                  } catch {
+                                    setCommentsLoginWarning(
+                                      "Erro ao iniciar login com Google.",
+                                    );
+                                  }
+                                }}
+                                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-all cursor-pointer"
+                              >
+                                <svg className="size-3.5" viewBox="0 0 24 24">
+                                  <path
+                                    fill="currentColor"
+                                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                                  />
+                                  <path
+                                    fill="currentColor"
+                                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                                  />
+                                  <path
+                                    fill="currentColor"
+                                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                                  />
+                                  <path
+                                    fill="currentColor"
+                                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                                  />
+                                </svg>
+                                <span>Entrar com Google</span>
+                              </button>
 
-                          {/* Email / Conta Hikari */}
-                          <Link
-                            to="/login"
-                            search={{ redirect: typeof window !== "undefined" ? window.location.pathname + window.location.search : "/" }}
-                            onClick={() => setCommentsLoginOpen(false)}
-                            className="w-full flex items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-950/40 hover:bg-purple-950/70 px-3 py-2 text-xs font-semibold text-purple-200 transition-all text-center"
-                          >
-                            <LogIn className="size-3.5" />
-                            <span>Entrar com Email / Hikari</span>
-                          </Link>
-                        </div>
+                              {/* Email / Conta Hikari */}
+                              <Link
+                                to="/login"
+                                search={{ redirect: typeof window !== "undefined" ? window.location.pathname + window.location.search : "/" }}
+                                onClick={() => setCommentsLoginOpen(false)}
+                                className="w-full flex items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-950/40 hover:bg-purple-950/70 px-3 py-2 text-xs font-semibold text-purple-200 transition-all text-center"
+                              >
+                                <LogIn className="size-3.5" />
+                                <span>Entrar com Email / Hikari</span>
+                              </Link>
+                            </div>
 
-                        {commentsLoginWarning && (
-                          <div className="mt-2.5 rounded-lg bg-red-950/50 border border-red-500/30 p-2 text-[10px] text-red-200">
-                            {commentsLoginWarning}
+                            {commentsLoginWarning && (
+                              <div className="mt-2.5 rounded-lg bg-red-950/50 border border-red-500/30 p-2 text-[10px] text-red-200">
+                                {commentsLoginWarning}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : (
-                /* Autenticado: Menu do usuário */
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setUserMenuOpen((prev) => !prev)}
-                    className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1.5 pr-2.5 text-xs text-white hover:bg-white/[0.08] hover:border-purple-500/40 transition-all cursor-pointer"
-                  >
-                    <div className="size-6 rounded-full overflow-hidden bg-purple-950/60 ring-1 ring-purple-500/30 flex items-center justify-center text-[10px] font-bold text-purple-200">
-                      {effectiveUserImage ? (
-                        <img
-                          src={effectiveUserImage}
-                          alt=""
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        (effectiveUserName || "U").charAt(0).toUpperCase()
+                        </>
                       )}
                     </div>
-                    <span className="font-semibold max-w-[100px] truncate">
-                      {effectiveUserName}
-                    </span>
-                    <ChevronDown className="size-3 text-white/50" />
-                  </button>
+                  ) : (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setUserMenuOpen((prev) => !prev)}
+                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1.5 pr-2.5 text-xs text-white hover:bg-white/[0.08] hover:border-purple-500/40 transition-all cursor-pointer"
+                      >
+                        <div className="size-6 rounded-full overflow-hidden bg-purple-950/60 ring-1 ring-purple-500/30 flex items-center justify-center text-[10px] font-bold text-purple-200">
+                          {effectiveUserImage ? (
+                            <img
+                              src={effectiveUserImage}
+                              alt=""
+                              className="size-full object-cover"
+                            />
+                          ) : (
+                            (effectiveUserName || "U").charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <span className="font-semibold max-w-[100px] truncate">
+                          {effectiveUserName}
+                        </span>
+                        <ChevronDown className="size-3 text-white/50" />
+                      </button>
 
-                  {userMenuOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setUserMenuOpen(false)}
-                      />
-                      <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#141419] p-1.5 shadow-2xl backdrop-blur-md">
-                        {userNick && (
-                          <Link
-                            to="/profile/$nick"
-                            params={{ nick: userNick }}
+                      {userMenuOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40"
                             onClick={() => setUserMenuOpen(false)}
-                            className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
-                          >
-                            <UserCircle className="size-4 text-purple-400" />
-                            <span>Meu Perfil</span>
-                          </Link>
-                        )}
-                        <Link
-                          to="/settings"
-                          onClick={() => setUserMenuOpen(false)}
-                          className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
-                        >
-                          <Settings2 className="size-4 text-purple-400" />
-                          <span>Configurações</span>
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setUserMenuOpen(false);
-                            try {
-                              await signOut();
-                              window.location.reload();
-                            } catch {
-                              /* ignore signout error */
-                            }
-                          }}
-                          className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        >
-                          <LogOut className="size-4" />
-                          <span>Sair da conta</span>
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* =============================================== */}
-          {/* FORMULÁRIO DE COMENTÁRIO PRINCIPAL               */}
-          {/* =============================================== */}
-
-          <div className="mt-4 rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#120f22]/70 to-[#0e0c18] p-3 sm:p-4 shadow-sm focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
-            <div className="flex gap-2.5 sm:gap-3">
-              {/* Avatar do usuário */}
-              <div className="size-8 sm:size-9 shrink-0 rounded-full overflow-hidden bg-purple-950/60 ring-1 ring-purple-500/30 flex items-center justify-center text-xs font-bold text-purple-200">
-                {effectiveUserImage ? (
-                  <img
-                    src={effectiveUserImage}
-                    alt=""
-                    className="size-full object-cover"
-                  />
-                ) : (
-                  <UserCircle className="size-5 text-purple-400" />
-                )}
-              </div>
-
-              {/* Textarea e controles */}
-              <div className="min-w-0 flex-1">
-                <textarea
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void handleComment();
-                    }
-                  }}
-                  rows={2}
-                  maxLength={2000}
-                  placeholder={
-                    isAnimeGeneral
-                      ? "Participe da conversa sobre este anime..."
-                      : "Participe da conversa..."
-                  }
-                  className="w-full resize-none rounded-xl border border-white/10 bg-[#0c0c10] px-3 py-2.5 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-purple-500/40 transition-colors"
-                />
-
-                {/* Previews de imagem/GIF anexados */}
-                {(commentImagePreview || selectedGifUrl) && (
-                  <div className="mt-2 relative inline-block rounded-xl overflow-hidden border border-purple-500/30 bg-black/40">
-                    <img
-                      src={commentImagePreview || selectedGifUrl || ""}
-                      alt="Anexo"
-                      className="max-h-40 rounded-xl object-contain"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleRemoveImage();
-                        handleRemoveGif();
-                      }}
-                      className="absolute top-1.5 right-1.5 size-6 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black transition-colors cursor-pointer"
-                      aria-label="Remover mídia"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Barra de Ações Inferior */}
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    {/* Botão de Anexo de Imagem */}
-                    <input
-                      ref={imageInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      className="hidden"
-                      onChange={handleSelectImage}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => imageInputRef.current?.click()}
-                      className="flex items-center gap-1.5 text-xs text-white/60 hover:text-purple-300 transition-colors cursor-pointer"
-                      title="Anexar imagem (JPG, PNG, WebP até 10MB)"
-                    >
-                      <ImageIcon className="size-4" />
-                      <span className="hidden sm:inline">Imagem</span>
-                    </button>
-
-                    {/* Botão de GIF */}
-                    <button
-                      type="button"
-                      onClick={openGifPicker}
-                      className="flex items-center gap-1.5 text-xs text-white/60 hover:text-purple-300 transition-colors cursor-pointer"
-                      title="Inserir GIF"
-                    >
-                      <span className="rounded border border-white/20 px-1 py-0.2 text-[10px] font-bold">
-                        GIF
-                      </span>
-                    </button>
-
-                    {/* Checkbox de Spoiler */}
-                    <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">
-                      <input
-                        type="checkbox"
-                        checked={isSpoiler}
-                        onChange={(e) => setIsSpoiler(e.target.checked)}
-                        className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-purple-600 accent-purple-600"
-                      />
-                      <span>Spoiler</span>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => void handleComment()}
-                      disabled={
-                        (!text.trim() && !commentImage && !selectedGifUrl) ||
-                        sending ||
-                        imageUploading
-                      }
-                      className="h-8 px-4 text-xs font-semibold rounded-xl bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] active:scale-95 transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    >
-                      {sending || imageUploading ? (
-                        <>
-                          <Loader2 className="size-3 animate-spin" />
-                          <span>Publicando...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Send className="size-3 shrink-0" />
-                          <span>Comentar</span>
+                          />
+                          <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#141419] p-1.5 shadow-2xl backdrop-blur-md">
+                            {userNick && (
+                              <Link
+                                to="/profile/$nick"
+                                params={{ nick: userNick }}
+                                onClick={() => setUserMenuOpen(false)}
+                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
+                              >
+                                <UserCircle className="size-4 text-purple-400" />
+                                <span>Meu Perfil</span>
+                              </Link>
+                            )}
+                            <Link
+                              to="/settings"
+                              onClick={() => setUserMenuOpen(false)}
+                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
+                            >
+                              <Settings2 className="size-4 text-purple-400" />
+                              <span>Configurações</span>
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setUserMenuOpen(false);
+                                try {
+                                  await signOut();
+                                  window.location.reload();
+                                } catch {
+                                  /* ignore signout error */
+                                }
+                              }}
+                              className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                            >
+                              <LogOut className="size-4" />
+                              <span>Sair da conta</span>
+                            </button>
+                          </div>
                         </>
                       )}
-                    </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Contexto 2: Página de reprodução (estilo compacto com contexto do episódio) */
+            <div className="border-b border-purple-500/20 pb-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                    <div className="flex size-7 sm:size-8 items-center justify-center rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300 shrink-0">
+                      <MessageCircle className="size-3.5 sm:size-4" />
+                    </div>
+                    <h2 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
+                      Comentários
+                    </h2>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 shrink-0 tabular-nums">
+                      {comments.length}
+                    </span>
                   </div>
+                  <p className="mt-1 text-xs text-zinc-400">
+                    {episodeNumber && animeTitle
+                      ? `Episódio ${episodeNumber} · ${animeTitle}`
+                      : episodeNumber
+                        ? `Episódio ${episodeNumber}`
+                        : animeTitle || "Comentários deste episódio"}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto">
+                  {/* Seletor compacto de ordenação: "Mais recentes ˅" */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setSortDropdownOpen((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-purple-500/25 bg-purple-950/30 text-purple-200 hover:bg-purple-950/60 hover:border-purple-500/40 transition-all cursor-pointer"
+                      aria-expanded={sortDropdownOpen}
+                      aria-haspopup="menu"
+                    >
+                      <span>
+                        {sortBy === "recent"
+                          ? "Mais recentes"
+                          : sortBy === "highlight"
+                            ? "Em destaque"
+                            : "Mais antigos"}
+                      </span>
+                      <ChevronDown
+                        className={cn(
+                          "size-3.5 text-purple-400 transition-transform duration-200",
+                          sortDropdownOpen && "rotate-180",
+                        )}
+                      />
+                    </button>
+
+                    {sortDropdownOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setSortDropdownOpen(false)}
+                        />
+                        <div
+                          role="menu"
+                          className="absolute left-0 sm:left-auto sm:right-0 top-[calc(100%+6px)] z-50 min-w-[140px] overflow-hidden rounded-xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                        >
+                          {[
+                            { value: "recent" as const, label: "Mais recentes" },
+                            { value: "highlight" as const, label: "Em destaque" },
+                            { value: "oldest" as const, label: "Mais antigos" },
+                          ].map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setSortBy(opt.value);
+                                setSortDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "flex w-full items-center justify-between px-3 py-1.5 text-xs rounded-lg text-left transition-colors cursor-pointer",
+                                sortBy === opt.value
+                                  ? "bg-purple-600/30 font-semibold text-purple-200"
+                                  : "text-zinc-300 hover:bg-white/5 hover:text-white",
+                              )}
+                            >
+                              <span>{opt.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Lado direito: Login OU Menu da pessoa autenticada */}
+                  {!effectiveUserId ? (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCommentsLoginOpen((prev) => !prev);
+                          setCommentsLoginWarning(null);
+                        }}
+                        className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-purple-500/35 bg-purple-950/40 px-3 py-1 text-xs sm:text-sm font-semibold text-purple-300 hover:bg-purple-950/70 hover:text-white hover:border-purple-500/55 active:scale-95 transition-all shadow-sm cursor-pointer"
+                        aria-expanded={commentsLoginOpen}
+                        aria-haspopup="dialog"
+                      >
+                        <LogIn className="size-3.5" />
+                        <span>Entrar</span>
+                      </button>
+
+                      {commentsLoginOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => {
+                              setCommentsLoginOpen(false);
+                              setCommentsLoginWarning(null);
+                            }}
+                          />
+                          <div
+                            role="dialog"
+                            aria-label="Opções de login"
+                            className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-purple-500/30 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                          >
+                            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
+                              <span className="text-xs font-bold text-white tracking-tight">
+                                Entrar para comentar
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCommentsLoginOpen(false);
+                                  setCommentsLoginWarning(null);
+                                }}
+                                className="text-white/40 hover:text-white text-xs transition-colors p-1 cursor-pointer"
+                                aria-label="Fechar"
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+
+                            <p className="text-[11px] text-white/60 mb-3">
+                              Conecte-se com sua rede favorita ou conta Hikari para participar da conversa.
+                            </p>
+
+                            <div className="space-y-1.5">
+                              {/* Google */}
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await signIn("google", {
+                                      callbackURL: window.location.href,
+                                    });
+                                  } catch {
+                                    setCommentsLoginWarning(
+                                      "Erro ao iniciar login com Google.",
+                                    );
+                                  }
+                                }}
+                                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-all cursor-pointer"
+                              >
+                                <svg className="size-3.5" viewBox="0 0 24 24">
+                                  <path
+                                    fill="currentColor"
+                                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                                  />
+                                  <path
+                                    fill="currentColor"
+                                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                                  />
+                                  <path
+                                    fill="currentColor"
+                                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                                  />
+                                  <path
+                                    fill="currentColor"
+                                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                                  />
+                                </svg>
+                                <span>Entrar com Google</span>
+                              </button>
+
+                              {/* Email / Conta Hikari */}
+                              <Link
+                                to="/login"
+                                search={{ redirect: typeof window !== "undefined" ? window.location.pathname + window.location.search : "/" }}
+                                onClick={() => setCommentsLoginOpen(false)}
+                                className="w-full flex items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-950/40 hover:bg-purple-950/70 px-3 py-2 text-xs font-semibold text-purple-200 transition-all text-center"
+                              >
+                                <LogIn className="size-3.5" />
+                                <span>Entrar com Email / Hikari</span>
+                              </Link>
+                            </div>
+
+                            {commentsLoginWarning && (
+                              <div className="mt-2.5 rounded-lg bg-red-950/50 border border-red-500/30 p-2 text-[10px] text-red-200">
+                                {commentsLoginWarning}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setUserMenuOpen((prev) => !prev)}
+                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1.5 pr-2.5 text-xs text-white hover:bg-white/[0.08] hover:border-purple-500/40 transition-all cursor-pointer"
+                      >
+                        <div className="size-6 rounded-full overflow-hidden bg-purple-950/60 ring-1 ring-purple-500/30 flex items-center justify-center text-[10px] font-bold text-purple-200">
+                          {effectiveUserImage ? (
+                            <img
+                              src={effectiveUserImage}
+                              alt=""
+                              className="size-full object-cover"
+                            />
+                          ) : (
+                            (effectiveUserName || "U").charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <span className="font-semibold max-w-[100px] truncate">
+                          {effectiveUserName}
+                        </span>
+                        <ChevronDown className="size-3 text-white/50" />
+                      </button>
+
+                      {userMenuOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setUserMenuOpen(false)}
+                          />
+                          <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#141419] p-1.5 shadow-2xl backdrop-blur-md">
+                            {userNick && (
+                              <Link
+                                to="/profile/$nick"
+                                params={{ nick: userNick }}
+                                onClick={() => setUserMenuOpen(false)}
+                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
+                              >
+                                <UserCircle className="size-4 text-purple-400" />
+                                <span>Meu Perfil</span>
+                              </Link>
+                            )}
+                            <Link
+                              to="/settings"
+                              onClick={() => setUserMenuOpen(false)}
+                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
+                            >
+                              <Settings2 className="size-4 text-purple-400" />
+                              <span>Configurações</span>
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setUserMenuOpen(false);
+                                try {
+                                  await signOut();
+                                  window.location.reload();
+                                } catch {
+                                  /* ignore signout error */
+                                }
+                              }}
+                              className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                            >
+                              <LogOut className="size-4" />
+                              <span>Sair da conta</span>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+            </div>
+          )}
+
+        {/* =============================================== */}
+        {/* FORMULÁRIO DE COMENTÁRIO PRINCIPAL               */}
+        {/* =============================================== */}
+
+        <div className="mt-4 sm:mt-5 rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#120f22]/70 to-[#0e0c18] p-3 sm:p-4 shadow-sm focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
+          <div className="flex gap-2.5 sm:gap-3">
+            {/* Avatar do usuário */}
+            <div className="size-8 sm:size-9 shrink-0 rounded-full overflow-hidden bg-purple-950/60 ring-1 ring-purple-500/30 flex items-center justify-center text-xs font-bold text-purple-200">
+              {effectiveUserImage ? (
+                <img
+                  src={effectiveUserImage}
+                  alt=""
+                  className="size-full object-cover"
+                />
+              ) : (
+                <UserCircle className="size-5 text-purple-400" />
+              )}
+            </div>
+
+            {/* Textarea e controles */}
+            <div className="min-w-0 flex-1">
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleComment();
+                  }
+                }}
+                rows={2}
+                maxLength={2000}
+                placeholder={
+                  isAnimeGeneral
+                    ? "Participe da conversa sobre este anime..."
+                    : "Participe da conversa..."
+                }
+                className="w-full resize-none rounded-xl border border-white/10 bg-[#0c0c10] px-3 py-2.5 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-purple-500/40 transition-colors"
+              />
+
+              {/* Previews de imagem/GIF anexados */}
+              {(commentImagePreview || selectedGifUrl) && (
+                <div className="mt-2 relative inline-block rounded-xl overflow-hidden border border-purple-500/30 bg-black/40">
+                  <img
+                    src={commentImagePreview || selectedGifUrl || ""}
+                    alt="Anexo"
+                    className="max-h-40 rounded-xl object-contain"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleRemoveImage();
+                      handleRemoveGif();
+                    }}
+                    className="absolute top-1.5 right-1.5 size-6 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black transition-colors cursor-pointer"
+                    aria-label="Remover mídia"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Dica única e discreta posicionada logo abaixo do campo de texto */}
+              <p className="mt-1.5 text-[11px] text-white/40 select-none">
+                Enter para enviar · Shift + Enter para quebrar linha
+              </p>
+
+              {/* Barra de Ações Inferior com controles à esquerda e botão à direita */}
+              <div className="mt-2.5 flex items-center justify-between gap-2.5 pt-1">
+                <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                  {/* Botão de Anexo de Imagem */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleSelectImage}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="flex items-center gap-1.5 text-xs text-white/60 hover:text-purple-300 transition-colors cursor-pointer"
+                    title="Anexar imagem (JPG, PNG, WebP até 10MB)"
+                  >
+                    <ImageIcon className="size-4" />
+                    <span className="hidden sm:inline">Imagem</span>
+                  </button>
+
+                  {/* Botão de GIF */}
+                  <button
+                    type="button"
+                    onClick={openGifPicker}
+                    className="flex items-center gap-1.5 text-xs text-white/60 hover:text-purple-300 transition-colors cursor-pointer"
+                    title="Inserir GIF"
+                  >
+                    <span className="rounded border border-white/20 px-1 py-0.2 text-[10px] font-bold">
+                      GIF
+                    </span>
+                  </button>
+
+                  {/* Checkbox de Spoiler */}
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">
+                    <input
+                      type="checkbox"
+                      checked={isSpoiler}
+                      onChange={(e) => setIsSpoiler(e.target.checked)}
+                      className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-purple-600 accent-purple-600"
+                    />
+                    <span>Spoiler</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center shrink-0 ml-auto">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleComment()}
+                    disabled={
+                      (!text.trim() && !commentImage && !selectedGifUrl) ||
+                      sending ||
+                      imageUploading
+                    }
+                    className="h-8 px-4 text-xs font-semibold rounded-xl bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] active:scale-95 transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                  >
+                    {sending || imageUploading ? (
+                      <>
+                        <Loader2 className="size-3 animate-spin" />
+                        <span>Publicando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="size-3 shrink-0" />
+                        <span>Comentar</span>
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
           {/* Mensagens de Erro ou Sucesso */}
           {error && (
@@ -2066,41 +2376,51 @@ export function CommentsSection({
         </div>
       )}
 
-      {/* Modal de Exclusão */}
-      {deletingComment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-red-500/30 bg-[#140e18] p-5 shadow-2xl text-center">
-            <div className="mx-auto size-11 rounded-full bg-red-950/70 border border-red-500/40 text-red-300 flex items-center justify-center mb-3">
+      {/* Modal de Exclusão Padronizado */}
+      <Dialog
+        open={Boolean(deletingComment)}
+        onOpenChange={(open) => {
+          if (!open && !deleteSending) setDeletingComment(null);
+        }}
+      >
+        <DialogContent className="border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl sm:max-w-md text-left shadow-2xl">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-950/70 border border-red-500/40 text-red-300">
               <Trash2 className="size-5" />
             </div>
-            <h3 className="text-base font-bold text-white">Excluir comentário?</h3>
-            <p className="mt-1 text-xs text-zinc-300">
-              Esta ação é permanente e removerá o comentário e todas as respostas associadas.
-            </p>
-
-            <div className="mt-5 flex gap-2 justify-center">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setDeletingComment(null)}
-                className="rounded-xl text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void handleDelete()}
-                disabled={deleteSending}
-                className="rounded-xl bg-red-600 hover:bg-red-500 text-xs font-semibold text-white"
-              >
-                {deleteSending ? "Excluindo..." : "Excluir"}
-              </Button>
+            <div>
+              <DialogTitle className="text-base font-bold text-white">
+                Excluir comentário?
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-xs text-zinc-300">
+                Esta ação é permanente e removerá o comentário e todas as respostas associadas.
+              </DialogDescription>
             </div>
           </div>
-        </div>
-      )}
+
+          <div className="mt-5 flex gap-2 justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeletingComment(null)}
+              disabled={deleteSending}
+              className="rounded-xl border border-white/10 bg-white/5 text-xs text-white/80 hover:bg-white/10 hover:text-white transition-all cursor-pointer"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void handleDelete()}
+              disabled={deleteSending}
+              className="rounded-xl bg-red-600 hover:bg-red-500 text-xs font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-all cursor-pointer"
+            >
+              {deleteSending ? "Excluindo..." : "Excluir"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Denúncia */}
       {reportingComment && (

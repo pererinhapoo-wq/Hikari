@@ -42,6 +42,7 @@ import { Route as AdultRecentRouteImport } from './routes/adult.recent'
 import { Route as AdultTagsRouteImport } from './routes/adult.tags'
 import { Route as AdultNewsRouteImport } from './routes/adult_.news'
 import { Route as AnimeIdRouteImport } from './routes/anime.$id'
+import { Route as ApiGifsRouteImport } from './routes/api/gifs'
 import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
 import { Route as ApiUploadCommentImageRouteImport } from './routes/api/upload-comment-image'
 import { Route as ApiUploadVideoRouteImport } from './routes/api/upload-video'
@@ -64,8 +65,6 @@ import { Route as ApiMediaThumbnailRouteImport } from './routes/api/media/thumbn
 import { Route as ApiProfileFollowRouteImport } from './routes/api/profile/follow'
 import { Route as ApiUsersSearchRouteImport } from './routes/api/users/search'
 import { Route as ApiVcdnInitRouteImport } from './routes/api/vcdn/init'
-import { Route as ApiSrcRoutesApiGifsRouteImport } from './routes/api/src/routes/api/gifs'
-import { Route as ApiSrcRoutesApiAdminCommentReportsRouteImport } from './routes/api/src/routes/api/admin/comment-reports'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -232,6 +231,11 @@ const AnimeIdRoute = AnimeIdRouteImport.update({
   path: '/anime/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGifsRoute = ApiGifsRouteImport.update({
+  id: '/api/gifs',
+  path: '/api/gifs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiNotificationsRoute = ApiNotificationsRouteImport.update({
   id: '/api/notifications',
   path: '/api/notifications',
@@ -342,17 +346,6 @@ const ApiVcdnInitRoute = ApiVcdnInitRouteImport.update({
   path: '/api/vcdn/init',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiSrcRoutesApiGifsRoute = ApiSrcRoutesApiGifsRouteImport.update({
-  id: '/api/src/routes/api/gifs',
-  path: '/api/src/routes/api/gifs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiSrcRoutesApiAdminCommentReportsRoute =
-  ApiSrcRoutesApiAdminCommentReportsRouteImport.update({
-    id: '/api/src/routes/api/admin/comment-reports',
-    path: '/api/src/routes/api/admin/comment-reports',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -386,6 +379,7 @@ export interface FileRoutesByFullPath {
   '/adult/tags': typeof AdultTagsRoute
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
+  '/api/gifs': typeof ApiGifsRoute
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-video': typeof ApiUploadVideoRoute
@@ -410,8 +404,6 @@ export interface FileRoutesByFullPath {
   '/api/users/search': typeof ApiUsersSearchRoute
   '/api/vcdn/init': typeof ApiVcdnInitRoute
   '/api/comments/': typeof ApiCommentsIndexRoute
-  '/api/src/routes/api/gifs': typeof ApiSrcRoutesApiGifsRoute
-  '/api/src/routes/api/admin/comment-reports': typeof ApiSrcRoutesApiAdminCommentReportsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -443,6 +435,7 @@ export interface FileRoutesByTo {
   '/adult/tags': typeof AdultTagsRoute
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
+  '/api/gifs': typeof ApiGifsRoute
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-video': typeof ApiUploadVideoRoute
@@ -467,8 +460,6 @@ export interface FileRoutesByTo {
   '/api/users/search': typeof ApiUsersSearchRoute
   '/api/vcdn/init': typeof ApiVcdnInitRoute
   '/api/comments': typeof ApiCommentsIndexRoute
-  '/api/src/routes/api/gifs': typeof ApiSrcRoutesApiGifsRoute
-  '/api/src/routes/api/admin/comment-reports': typeof ApiSrcRoutesApiAdminCommentReportsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -503,6 +494,7 @@ export interface FileRoutesById {
   '/adult/tags': typeof AdultTagsRoute
   '/adult_/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
+  '/api/gifs': typeof ApiGifsRoute
   '/api/notifications': typeof ApiNotificationsRoute
   '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
   '/api/upload-video': typeof ApiUploadVideoRoute
@@ -527,8 +519,6 @@ export interface FileRoutesById {
   '/api/users/search': typeof ApiUsersSearchRoute
   '/api/vcdn/init': typeof ApiVcdnInitRoute
   '/api/comments/': typeof ApiCommentsIndexRoute
-  '/api/src/routes/api/gifs': typeof ApiSrcRoutesApiGifsRoute
-  '/api/src/routes/api/admin/comment-reports': typeof ApiSrcRoutesApiAdminCommentReportsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -564,6 +554,7 @@ export interface FileRouteTypes {
     | '/adult/tags'
     | '/adult/news'
     | '/anime/$id'
+    | '/api/gifs'
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-video'
@@ -588,8 +579,6 @@ export interface FileRouteTypes {
     | '/api/users/search'
     | '/api/vcdn/init'
     | '/api/comments/'
-    | '/api/src/routes/api/gifs'
-    | '/api/src/routes/api/admin/comment-reports'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -621,6 +610,7 @@ export interface FileRouteTypes {
     | '/adult/tags'
     | '/adult/news'
     | '/anime/$id'
+    | '/api/gifs'
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-video'
@@ -645,8 +635,6 @@ export interface FileRouteTypes {
     | '/api/users/search'
     | '/api/vcdn/init'
     | '/api/comments'
-    | '/api/src/routes/api/gifs'
-    | '/api/src/routes/api/admin/comment-reports'
   id:
     | '__root__'
     | '/'
@@ -680,6 +668,7 @@ export interface FileRouteTypes {
     | '/adult/tags'
     | '/adult_/news'
     | '/anime/$id'
+    | '/api/gifs'
     | '/api/notifications'
     | '/api/upload-comment-image'
     | '/api/upload-video'
@@ -704,8 +693,6 @@ export interface FileRouteTypes {
     | '/api/users/search'
     | '/api/vcdn/init'
     | '/api/comments/'
-    | '/api/src/routes/api/gifs'
-    | '/api/src/routes/api/admin/comment-reports'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -734,6 +721,7 @@ export interface RootRouteChildren {
   TestApiAnilistRoute: typeof TestApiAnilistRoute
   AdultNewsRoute: typeof AdultNewsRoute
   AnimeIdRoute: typeof AnimeIdRoute
+  ApiGifsRoute: typeof ApiGifsRoute
   ApiNotificationsRoute: typeof ApiNotificationsRoute
   ApiUploadCommentImageRoute: typeof ApiUploadCommentImageRoute
   ApiUploadVideoRoute: typeof ApiUploadVideoRoute
@@ -756,8 +744,6 @@ export interface RootRouteChildren {
   ApiUsersSearchRoute: typeof ApiUsersSearchRoute
   ApiVcdnInitRoute: typeof ApiVcdnInitRoute
   ApiCommentsIndexRoute: typeof ApiCommentsIndexRoute
-  ApiSrcRoutesApiGifsRoute: typeof ApiSrcRoutesApiGifsRoute
-  ApiSrcRoutesApiAdminCommentReportsRoute: typeof ApiSrcRoutesApiAdminCommentReportsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -993,6 +979,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AnimeIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/gifs': {
+      id: '/api/gifs'
+      path: '/api/gifs'
+      fullPath: '/api/gifs'
+      preLoaderRoute: typeof ApiGifsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/notifications': {
       id: '/api/notifications'
       path: '/api/notifications'
@@ -1147,20 +1140,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiVcdnInitRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/src/routes/api/gifs': {
-      id: '/api/src/routes/api/gifs'
-      path: '/api/src/routes/api/gifs'
-      fullPath: '/api/src/routes/api/gifs'
-      preLoaderRoute: typeof ApiSrcRoutesApiGifsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/src/routes/api/admin/comment-reports': {
-      id: '/api/src/routes/api/admin/comment-reports'
-      path: '/api/src/routes/api/admin/comment-reports'
-      fullPath: '/api/src/routes/api/admin/comment-reports'
-      preLoaderRoute: typeof ApiSrcRoutesApiAdminCommentReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -1222,6 +1201,7 @@ const rootRouteChildren: RootRouteChildren = {
   TestApiAnilistRoute: TestApiAnilistRoute,
   AdultNewsRoute: AdultNewsRoute,
   AnimeIdRoute: AnimeIdRoute,
+  ApiGifsRoute: ApiGifsRoute,
   ApiNotificationsRoute: ApiNotificationsRoute,
   ApiUploadCommentImageRoute: ApiUploadCommentImageRoute,
   ApiUploadVideoRoute: ApiUploadVideoRoute,
@@ -1244,9 +1224,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiUsersSearchRoute: ApiUsersSearchRoute,
   ApiVcdnInitRoute: ApiVcdnInitRoute,
   ApiCommentsIndexRoute: ApiCommentsIndexRoute,
-  ApiSrcRoutesApiGifsRoute: ApiSrcRoutesApiGifsRoute,
-  ApiSrcRoutesApiAdminCommentReportsRoute:
-    ApiSrcRoutesApiAdminCommentReportsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

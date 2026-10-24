@@ -599,13 +599,10 @@ function Account() {
                         </span>
                       </button>
 
-                      <button
-                        type="button"
+                      <Link
+                        to="/settings"
                         onClick={() => {
                           setMenuOpen(false);
-                          setActiveTab(
-                            "about",
-                          );
                         }}
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-white transition hover:bg-[#102343]"
                       >
@@ -614,7 +611,7 @@ function Account() {
                         <span>
                           Configurações
                         </span>
-                      </button>
+                      </Link>
 
                       <div className="my-1.5 border-t border-[#1c3c70]" />
 
