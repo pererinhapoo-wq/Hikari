@@ -1,0 +1,86 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #09090b; color: white; font-family: system-ui, sans-serif; padding: 12px; }
+  .grid { display: flex; flex-direction: column; gap: 32px; max-width: 390px; margin: 0 auto; }
+  .card { background: #09090b; border: 1px solid rgba(168,85,247,0.2); border-radius: 20px; overflow: hidden; padding-bottom: 20px; }
+  .card-title { padding: 10px 14px; font-size: 13px; font-weight: bold; color: #d8b4fe; background: rgba(88,28,135,0.3); }
+
+  /* HERO CONTAINER */
+  .hero-box { position: relative; width: 100%; background: #09090b; overflow: hidden; }
+  
+  /* TEST OPTION: Top-anchored wide banner with height matching natural proportion or smooth dark gradient integration */
+  .banner-wrap { position: relative; width: 100%; height: 180px; background: #09090b; display: flex; flex-direction: column; }
+  .banner-img-contain { width: 100%; height: auto; max-height: 140px; object-fit: contain; object-position: top center; display: block; }
+
+  /* Smooth bottom integration */
+  .fade-bottom { position: absolute; inset-x: 0; bottom: 0; height: 80px; background: linear-gradient(to top, #09090b 25%, rgba(9,9,11,0.85) 65%, transparent); pointer-events: none; z-index: 5; }
+  .fade-top { position: absolute; inset-x: 0; top: 0; height: 40px; background: linear-gradient(to bottom, rgba(0,0,0,0.65), transparent); pointer-events: none; z-index: 5; }
+
+  .meta-row { position: relative; z-index: 10; margin-top: -36px; padding: 0 16px; display: flex; align-items: flex-end; gap: 14px; }
+  .mock-poster { width: 108px; height: 160px; border-radius: 14px; border: 1.5px solid rgba(168,85,247,0.35); box-shadow: 0 12px 30px rgba(0,0,0,0.9); background: #18142a; shrink: 0; object-fit: cover; }
+  .mock-title-area { flex: 1; min-width: 0; padding-bottom: 6px; }
+  .badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; background: rgba(88,28,135,0.7); border: 1px solid rgba(168,85,247,0.3); color: #d8b4fe; margin-bottom: 4px; }
+  .mock-title { font-size: 18px; font-weight: bold; line-height: 1.2; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <!-- Cyberpunk 2 -->
+    <div class="card">
+      <div class="card-title">Cyberpunk 2 - Contain at Top with Dark Blend</div>
+      <div class="banner-wrap">
+        <img class="banner-img-contain" src="file:///app/applet/screenshots/banner-195539-cyberpunk.jpg" />
+        <div class="fade-top"></div>
+        <div class="fade-bottom"></div>
+      </div>
+      <div class="meta-row">
+        <div class="mock-poster"></div>
+        <div class="mock-title-area">
+          <div class="badge">ANIME ★ 8.4</div>
+          <div class="mock-title">Cyberpunk: Edgerunners 2</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Student Council -->
+    <div class="card">
+      <div class="card-title">Student Council - Contain at Top with Dark Blend</div>
+      <div class="banner-wrap">
+        <img class="banner-img-contain" src="file:///app/applet/screenshots/banner-191656-original.jpg" />
+        <div class="fade-top"></div>
+        <div class="fade-bottom"></div>
+      </div>
+      <div class="meta-row">
+        <div class="mock-poster"></div>
+        <div class="mock-title-area">
+          <div class="badge">ANIME ★ 7.3</div>
+          <div class="mock-title">Even the Student Council Has Its Holes!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Apothecary Diaries -->
+    <div class="card">
+      <div class="card-title">Apothecary Diaries - Contain at Top with Dark Blend</div>
+      <div class="banner-wrap">
+        <img class="banner-img-contain" src="file:///app/applet/screenshots/banner-195516-original.jpg" />
+        <div class="fade-top"></div>
+        <div class="fade-bottom"></div>
+      </div>
+      <div class="meta-row">
+        <div class="mock-poster"></div>
+        <div class="mock-title-area">
+          <div class="badge">ANIME ★ 8.5</div>
+          <div class="mock-title">The Apothecary Diaries</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+  

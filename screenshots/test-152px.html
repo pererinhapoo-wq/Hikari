@@ -1,0 +1,118 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #09090b; color: white; font-family: system-ui, sans-serif; padding: 16px; }
+  .wrapper { display: flex; flex-direction: column; gap: 32px; max-width: 390px; margin: 0 auto; }
+  .card { background: #0e0c15; border: 1px solid rgba(168,85,247,0.25); border-radius: 20px; overflow: hidden; padding-bottom: 20px; }
+  .card-header { padding: 10px 14px; font-size: 13px; font-weight: bold; background: rgba(88,28,135,0.3); color: #d8b4fe; }
+
+  .fade-top { position: absolute; inset-x: 0; top: 0; height: 50px; background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent); pointer-events: none; z-index: 5; }
+  .fade-bottom { position: absolute; inset-x: 0; bottom: 0; height: 75px; background: linear-gradient(to top, #09090b, rgba(9,9,11,0.75) 50%, transparent); pointer-events: none; z-index: 5; }
+  .vignette { position: absolute; inset: 0; background: linear-gradient(to right, rgba(9,9,11,0.3), transparent 20%, transparent 80%, rgba(9,9,11,0.3)); pointer-events: none; z-index: 4; }
+
+  .overlap-area { position: relative; z-index: 10; margin-top: -48px; padding: 0 16px; display: flex; align-items: flex-end; gap: 14px; }
+  .poster { width: 104px; height: 156px; border-radius: 14px; border: 1.5px solid rgba(168,85,247,0.35); box-shadow: 0 12px 30px rgba(0,0,0,0.85); background: #1a162b; shrink: 0; object-fit: cover; }
+  .info { flex: 1; min-width: 0; padding-bottom: 4px; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; background: rgba(88,28,135,0.7); border: 1px solid rgba(168,85,247,0.3); color: #d8b4fe; margin-bottom: 4px; }
+  .title { font-size: 17px; font-weight: bold; line-height: 1.2; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+
+  .banner-box { position: relative; height: 152px; width: 100%; background: #09090b; overflow: hidden; }
+  .banner-box img.banner { width: 100%; height: 100%; object-fit: cover; object-position: 50% 25%; }
+</style>
+</head>
+<body>
+  <div class="wrapper">
+    
+      <div class="card">
+        <div class="card-header">Cyberpunk: Edgerunners 2</div>
+        <div class="banner-box">
+          <img class="banner" src="https://s4.anilist.co/file/anilistcdn/media/anime/banner/195539-lO5SUdp4SOrq.jpg" />
+          <div class="fade-top"></div>
+          <div class="vignette"></div>
+          <div class="fade-bottom"></div>
+        </div>
+        <div class="overlap-area">
+          <img class="poster" src="https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx195539-4LdfmKIHzuxr.png" />
+          <div class="info">
+            <div class="badge">ANIME</div>
+            <div class="title">Cyberpunk: Edgerunners 2</div>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-header">Even the Student Council Has Its Holes!</div>
+        <div class="banner-box">
+          <img class="banner" src="https://s4.anilist.co/file/anilistcdn/media/anime/banner/191656-JQILdzh3FQxN.jpg" />
+          <div class="fade-top"></div>
+          <div class="vignette"></div>
+          <div class="fade-bottom"></div>
+        </div>
+        <div class="overlap-area">
+          <img class="poster" src="https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx191656-F1pT0Gk1R7Uf.jpg" />
+          <div class="info">
+            <div class="badge">ANIME</div>
+            <div class="title">Even the Student Council Has Its Holes!</div>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-header">The Apothecary Diaries Season 3</div>
+        <div class="banner-box">
+          <img class="banner" src="https://s4.anilist.co/file/anilistcdn/media/anime/banner/195516-B5M0cPaQbQXI.jpg" />
+          <div class="fade-top"></div>
+          <div class="vignette"></div>
+          <div class="fade-bottom"></div>
+        </div>
+        <div class="overlap-area">
+          <img class="poster" src="https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx195516-04Lz8Bq9o2tD.jpg" />
+          <div class="info">
+            <div class="badge">ANIME</div>
+            <div class="title">The Apothecary Diaries Season 3</div>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-header">Cyberpunk: Edgerunners</div>
+        <div class="banner-box">
+          <img class="banner" src="https://s4.anilist.co/file/anilistcdn/media/anime/banner/120377-c15oLS8CA31s.jpg" />
+          <div class="fade-top"></div>
+          <div class="vignette"></div>
+          <div class="fade-bottom"></div>
+        </div>
+        <div class="overlap-area">
+          <img class="poster" src="https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx120377-ayZPoxiWt4Li.jpg" />
+          <div class="info">
+            <div class="badge">ANIME</div>
+            <div class="title">Cyberpunk: Edgerunners</div>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-header">ONE PIECE</div>
+        <div class="banner-box">
+          <img class="banner" src="https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqs.jpg" />
+          <div class="fade-top"></div>
+          <div class="vignette"></div>
+          <div class="fade-bottom"></div>
+        </div>
+        <div class="overlap-area">
+          <img class="poster" src="https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-4wU4CCyQpYd9.jpg" />
+          <div class="info">
+            <div class="badge">ANIME</div>
+            <div class="title">ONE PIECE</div>
+          </div>
+        </div>
+      </div>
+    
+  </div>
+</body>
+</html>
+  

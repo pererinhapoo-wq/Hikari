@@ -1,0 +1,98 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #09090b; color: white; font-family: system-ui, sans-serif; padding: 12px; }
+  .grid { display: flex; flex-direction: column; gap: 32px; max-width: 390px; margin: 0 auto; }
+  .card { background: #0e0c15; border: 1px solid rgba(168,85,247,0.2); border-radius: 20px; overflow: hidden; padding-bottom: 16px; }
+  .card-title { padding: 10px 14px; font-size: 13px; font-weight: bold; color: #d8b4fe; background: rgba(88,28,135,0.3); }
+
+  /* OVERLAY DEGRADÊS */
+  .top-gradient { position: absolute; inset-x: 0; top: 0; height: 60px; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); pointer-events: none; z-index: 5; }
+  .bottom-gradient { position: absolute; inset-x: 0; bottom: 0; height: 90px; background: linear-gradient(to top, #09090b, rgba(9,9,11,0.8) 50%, transparent); pointer-events: none; z-index: 5; }
+  .vignette { position: absolute; inset: 0; background: linear-gradient(to right, rgba(9,9,11,0.35), transparent 25%, transparent 75%, rgba(9,9,11,0.35)); pointer-events: none; z-index: 4; }
+
+  /* MOCK POSTER & TITLE */
+  .meta-row { position: relative; z-index: 10; margin-top: -50px; padding: 0 16px; display: flex; align-items: flex-end; gap: 14px; }
+  .mock-poster { width: 104px; height: 156px; border-radius: 14px; border: 1.5px solid rgba(168,85,247,0.35); box-shadow: 0 12px 30px rgba(0,0,0,0.85); background: #18142a; shrink: 0; object-fit: cover; }
+  .mock-title-area { flex: 1; min-width: 0; padding-bottom: 6px; }
+  .badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; background: rgba(88,28,135,0.7); border: 1px solid rgba(168,85,247,0.3); color: #d8b4fe; margin-bottom: 4px; }
+  .mock-title { font-size: 18px; font-weight: bold; line-height: 1.2; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+
+  /* APPROACH A: Current h=200px cover center 35% */
+  .hero-a { position: relative; height: 200px; width: 100%; background: #09090b; overflow: hidden; }
+  .hero-a img.banner { width: 100%; height: 100%; object-fit: cover; object-position: center 35%; }
+
+  /* APPROACH B: Proportional Cinematic Height (aspect-ratio 21/9 ~ 167px, subtle zoom) */
+  .hero-b { position: relative; height: 160px; width: 100%; background: #09090b; overflow: hidden; }
+  .hero-b img.banner { width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+
+  /* APPROACH C: Smart framing - full panoramic width (100% width, height auto aligned top, bottom smooth blend) */
+  .hero-c { position: relative; height: 190px; width: 100%; background: #09090b; overflow: hidden; }
+  .hero-c img.banner { width: 100%; height: auto; min-height: 120px; object-fit: contain; object-position: top center; display: block; }
+  .hero-c .bottom-fade { position: absolute; inset-x: 0; bottom: 0; height: 110px; background: linear-gradient(to top, #09090b 20%, rgba(9,9,11,0.85) 60%, transparent); pointer-events: none; z-index: 5; }
+
+  /* APPROACH D: Responsive Fill: object-fit cover with focal 55% and calibrated height */
+  .hero-d { position: relative; height: 175px; width: 100%; background: #09090b; overflow: hidden; }
+  .hero-d img.banner { width: 100%; height: 100%; object-fit: cover; object-position: 55% 30%; }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <!-- Test Cyberpunk 2 -->
+    <div class="card">
+      <div class="card-title">Cyberpunk 2 - Approach A (Current Fixed 200px Cover)</div>
+      <div class="hero-a">
+        <img class="banner" src="file:///app/applet/screenshots/banner-195539-cyberpunk.jpg" />
+        <div class="top-gradient"></div>
+        <div class="vignette"></div>
+        <div class="bottom-gradient"></div>
+      </div>
+      <div class="meta-row">
+        <div class="mock-poster"></div>
+        <div class="mock-title-area">
+          <div class="badge">ANIME ★ 8.4</div>
+          <div class="mock-title">Cyberpunk: Edgerunners 2</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cyberpunk 2 - Approach B (Height 160px - less zoom)</div>
+      <div class="hero-b">
+        <img class="banner" src="file:///app/applet/screenshots/banner-195539-cyberpunk.jpg" />
+        <div class="top-gradient"></div>
+        <div class="vignette"></div>
+        <div class="bottom-gradient"></div>
+      </div>
+      <div class="meta-row">
+        <div class="mock-poster"></div>
+        <div class="mock-title-area">
+          <div class="badge">ANIME ★ 8.4</div>
+          <div class="mock-title">Cyberpunk: Edgerunners 2</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cyberpunk 2 - Approach C (Full width, top aligned, dark blend)</div>
+      <div class="hero-c">
+        <img class="banner" src="file:///app/applet/screenshots/banner-195539-cyberpunk.jpg" />
+        <div class="top-gradient"></div>
+        <div class="bottom-fade"></div>
+      </div>
+      <div class="meta-row">
+        <div class="mock-poster"></div>
+        <div class="mock-title-area">
+          <div class="badge">ANIME ★ 8.4</div>
+          <div class="mock-title">Cyberpunk: Edgerunners 2</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+  

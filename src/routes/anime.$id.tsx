@@ -109,6 +109,12 @@ function AnimePage() {
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
 
+  const [bannerFocalX, setBannerFocalX] = useState<string>("50%");
+
+  useEffect(() => {
+    setBannerFocalX("50%");
+  }, [id, anime?.banner]);
+
   useEffect(() => {
     if (typeof window !== "undefined" && window.history.length > 1) {
       setCanGoBack(true);
@@ -116,7 +122,7 @@ function AnimePage() {
   }, []);
 
   /*
-   * COR DA ABA DO NAVEGADOR
+   * COR DA ABA DO NAVEGADOR & ENQUADRAMENTO RESPONSIVO DO BANNER
    */
   useEffect(() => {
     const defaultColor = "#09090b";
@@ -133,71 +139,122 @@ function AnimePage() {
 
     if (anime?.color) {
       meta.content = anime.color;
-      return;
+    } else {
+      meta.content = defaultColor;
     }
-
-    meta.content = defaultColor;
 
     if (!anime?.banner) {
       return;
     }
 
-    // Executa em segundo plano para não disputar CPU com a navegação/renderização inicial
+    // Análise visual automatizada em segundo plano para banners ultra-wide (aspect >= 2.4)
+    // Sem listas manuais de IDs: detecta a distribuição de contraste e densidade visual
     const timer = setTimeout(() => {
       const image = new Image();
       image.crossOrigin = "anonymous";
+      // Cache-bust discreto para evitar colisões com cache não-CORS do navegador
+      const corsUrl = anime.banner + (anime.banner.includes("?") ? "&" : "?") + "cors=1";
+      image.src = corsUrl;
 
       image.onload = () => {
         try {
-          const canvas = document.createElement("canvas");
-          const context = canvas.getContext("2d", { willReadFrequently: true });
-          if (!context) return;
-
           const width = image.naturalWidth;
           const height = image.naturalHeight;
           if (!width || !height) return;
 
-          canvas.width = 40;
-          canvas.height = 20;
+          const aspect = width / height;
 
-          context.drawImage(
-            image,
-            width * 0.25,
-            height * 0.1,
-            width * 0.5,
-            height * 0.35,
-            0,
-            0,
-            canvas.width,
-            canvas.height,
-          );
+          // Para banners muito panorâmicos, avalia se os elementos principais
+          // estão concentrados em uma das laterais
+          if (aspect >= 2.4) {
+            const scanCanvas = document.createElement("canvas");
+            const scanCtx = scanCanvas.getContext("2d", { willReadFrequently: true });
+            if (scanCtx) {
+              const scanW = 80;
+              const scanH = 20;
+              scanCanvas.width = scanW;
+              scanCanvas.height = scanH;
+              scanCtx.drawImage(image, 0, 0, scanW, scanH);
+              const scanPixels = scanCtx.getImageData(0, 0, scanW, scanH).data;
 
-          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-          let red = 0, green = 0, blue = 0, count = 0;
+              let leftEnergy = 0;
+              let centerEnergy = 0;
+              let rightEnergy = 0;
 
-          for (let i = 0; i < pixels.length; i += 4) {
-            if (pixels[i + 3] < 180) continue;
-            red += pixels[i];
-            green += pixels[i + 1];
-            blue += pixels[i + 2];
-            count++;
+              for (let y = 0; y < scanH; y++) {
+                for (let x = 1; x < scanW; x++) {
+                  const idx1 = (y * scanW + x) * 4;
+                  const idx0 = (y * scanW + (x - 1)) * 4;
+                  // Gradiente e contraste de detalhes (bordas e elementos de ilustração)
+                  const diff =
+                    Math.abs(scanPixels[idx1] - scanPixels[idx0]) +
+                    Math.abs(scanPixels[idx1 + 1] - scanPixels[idx0 + 1]) +
+                    Math.abs(scanPixels[idx1 + 2] - scanPixels[idx0 + 2]);
+
+                  if (x < scanW * 0.35) leftEnergy += diff;
+                  else if (x > scanW * 0.65) rightEnergy += diff;
+                  else centerEnergy += diff;
+                }
+              }
+
+              // Se uma das laterais tiver concentração nítida de detalhes visuais
+              if (rightEnergy > leftEnergy * 1.35 && rightEnergy > centerEnergy * 1.15) {
+                setBannerFocalX("68%");
+              } else if (leftEnergy > rightEnergy * 1.35 && leftEnergy > centerEnergy * 1.15) {
+                setBannerFocalX("32%");
+              } else {
+                setBannerFocalX("50%");
+              }
+            }
           }
 
-          if (!count || !meta) return;
+          // Extração da cor predominante para o theme-color
+          if (!anime?.color && meta) {
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d", { willReadFrequently: true });
+            if (!context) return;
 
-          const factor = 0.72;
-          const finalRed = Math.round((red / count) * factor);
-          const finalGreen = Math.round((green / count) * factor);
-          const finalBlue = Math.round((blue / count) * factor);
+            canvas.width = 40;
+            canvas.height = 20;
 
-          meta.content = `rgb(${finalRed}, ${finalGreen}, ${finalBlue})`;
+            context.drawImage(
+              image,
+              width * 0.25,
+              height * 0.1,
+              width * 0.5,
+              height * 0.35,
+              0,
+              0,
+              canvas.width,
+              canvas.height,
+            );
+
+            const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+            let red = 0, green = 0, blue = 0, count = 0;
+
+            for (let i = 0; i < pixels.length; i += 4) {
+              if (pixels[i + 3] < 180) continue;
+              red += pixels[i];
+              green += pixels[i + 1];
+              blue += pixels[i + 2];
+              count++;
+            }
+
+            if (count > 0) {
+              const factor = 0.72;
+              const finalRed = Math.round((red / count) * factor);
+              const finalGreen = Math.round((green / count) * factor);
+              const finalBlue = Math.round((blue / count) * factor);
+              meta.content = `rgb(${finalRed}, ${finalGreen}, ${finalBlue})`;
+            }
+          }
         } catch {
-          if (meta) meta.content = defaultColor;
+          if (!anime?.color && meta) meta.content = defaultColor;
         }
       };
 
       image.onerror = () => {
-        if (meta) meta.content = defaultColor;
+        if (!anime?.color && meta) meta.content = defaultColor;
       };
 
       image.src = anime.banner;
@@ -333,7 +390,7 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[14rem] sm:h-[22rem]"
+          className="relative h-[9.75rem] xs:h-[11.5rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated"
         >
           {anime.banner ? (
             <img
@@ -341,13 +398,29 @@ function AnimePage() {
               alt=""
               loading="eager"
               decoding="async"
-              className="size-full object-cover"
+              style={{ objectPosition: `${bannerFocalX} 25%` }}
+              className="size-full object-cover sm:!object-center transition-[object-position] duration-500"
             />
+          ) : anime.cover ? (
+            <div className="relative size-full overflow-hidden">
+              <img
+                src={anime.cover}
+                alt=""
+                loading="eager"
+                decoding="async"
+                className="size-full object-cover blur-2xl scale-110 opacity-60"
+              />
+            </div>
           ) : null}
 
-          <div className="absolute inset-0 bg-linear-to-t from-bg via-bg/60 to-bg/10" />
+          {/* Sombra superior suave para contraste do botão Voltar */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-16 sm:h-28 bg-gradient-to-b from-black/80 via-black/30 to-transparent" />
 
-          <div className="absolute inset-0 bg-linear-to-r from-bg/80 via-transparent to-bg/30" />
+          {/* Vinheta lateral sutil */}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-bg/40 via-transparent to-bg/30" />
+
+          {/* Degradê inferior suave integrando com o fundo dark da página */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 sm:h-44 bg-gradient-to-t from-bg via-bg/75 to-transparent" />
 
           {/* BOTÃO VOLTAR */}
           {canGoBack && (
@@ -364,44 +437,75 @@ function AnimePage() {
           )}
         </div>
 
-        <div className="relative z-10 -mt-24 px-4 sm:-mt-32 sm:px-6">
-          <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row">
-            {/* CAPA CENTRALIZADA */}
-            <div className="mx-auto w-32 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.8),0_0_24px_rgba(168,85,247,0.15)] ring-1 ring-purple-500/30 sm:mx-0 sm:w-44">
-              {anime.cover ? (
-                <img
-                  src={anime.cover}
-                  alt={title}
-                  className="aspect-2/3 w-full object-cover"
-                />
-              ) : (
-                <div className="aspect-2/3 bg-elevated" />
-              )}
-            </div>
-
-            {/* INFORMAÇÕES */}
-            <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:pb-2">
-              <div className="mb-2">
-                <span className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-950/70 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-purple-300 uppercase shadow-[0_0_12px_rgba(168,85,247,0.15)] sm:text-xs">
-                  <span className="size-1.5 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
-                  <span>Anime</span>
-                </span>
+        <div className="relative z-10 -mt-12 xs:-mt-14 sm:-mt-28 md:-mt-32 px-4 sm:px-6">
+          <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:gap-6">
+            {/* CAPA + INFO MOBILE (alinhada à esquerda com sobreposição natural) */}
+            <div className="flex items-end gap-3.5 sm:gap-0 sm:block">
+              {/* CAPA VERTICAL SOBREPOSTA */}
+              <div className="w-28 xs:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35">
+                {anime.cover ? (
+                  <img
+                    src={anime.cover}
+                    alt={title}
+                    className="aspect-2/3 w-full object-cover"
+                  />
+                ) : (
+                  <div className="aspect-2/3 bg-elevated" />
+                )}
               </div>
 
-              <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-white drop-shadow-sm sm:text-4xl md:text-5xl">
-                {title}
-              </h1>
+              {/* TÍTULO E BADGE NO MOBILE AO LADO DA CAPA */}
+              <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:hidden">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-950/70 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-purple-300 uppercase shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+                    <span className="size-1.5 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
+                    <span>Anime</span>
+                  </span>
+                  {anime.score != null && (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-purple-500/35 bg-purple-950/80 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-purple-200">
+                      ★ {scoreLabel(anime.score)}
+                    </span>
+                  )}
+                </div>
 
-              {anime.titles.native && (
-                <p className="mt-1 font-display text-sm font-medium text-purple-300/70">
-                  {anime.titles.native}
-                </p>
-              )}
+                <h1 className="font-display text-xl xs:text-2xl font-bold leading-tight tracking-tight text-white line-clamp-2 drop-shadow-sm">
+                  {title}
+                </h1>
+
+                {anime.titles.native && (
+                  <p className="mt-0.5 font-display text-xs font-medium text-purple-300/70 truncate">
+                    {anime.titles.native}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* INFORMAÇÕES COMPLETAS */}
+            <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:pb-2">
+              {/* TÍTULO NO DESKTOP */}
+              <div className="hidden sm:block">
+                <div className="mb-2">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-950/70 px-2.5 py-0.5 text-xs font-semibold tracking-wider text-purple-300 uppercase shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+                    <span className="size-1.5 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
+                    <span>Anime</span>
+                  </span>
+                </div>
+
+                <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-white drop-shadow-sm sm:text-4xl md:text-5xl">
+                  {title}
+                </h1>
+
+                {anime.titles.native && (
+                  <p className="mt-1 font-display text-sm font-medium text-purple-300/70">
+                    {anime.titles.native}
+                  </p>
+                )}
+              </div>
 
               {/* METADADOS */}
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+              <div className="mt-2.5 sm:mt-4 flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
                 {anime.score != null && (
-                  <span className="inline-flex items-center gap-1 rounded-lg border border-purple-500/35 bg-purple-950/80 px-2.5 py-1 text-xs font-bold tabular-nums text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.15)]">
+                  <span className="hidden sm:inline-flex items-center gap-1 rounded-lg border border-purple-500/35 bg-purple-950/80 px-2.5 py-1 text-xs font-bold tabular-nums text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.15)]">
                     ★ {scoreLabel(anime.score)}
                   </span>
                 )}
