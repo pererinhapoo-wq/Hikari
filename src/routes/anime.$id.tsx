@@ -413,15 +413,6 @@ function AnimePage() {
             </div>
           ) : null}
 
-          {/* Sombra superior suave para contraste do botão Voltar */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-16 sm:h-28 bg-gradient-to-b from-black/80 via-black/30 to-transparent" />
-
-          {/* Vinheta lateral sutil */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-bg/40 via-transparent to-bg/30" />
-
-          {/* Degradê inferior suave integrando com o fundo dark da página */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 sm:h-44 bg-gradient-to-t from-bg via-bg/75 to-transparent" />
-
           {/* BOTÃO VOLTAR */}
           {canGoBack && (
             <button
