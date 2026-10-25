@@ -964,14 +964,7 @@ export function Shell() {
                         notification.episodeId !== "anime",
                       );
 
-                    const isAnimeTarget =
-                      Boolean(
-                        notification.animeId &&
-                        (!notification.episodeId ||
-                          notification.episodeId === "anime"),
-                      );
-
-                    const hasTarget = hasEpisodeTarget || isAnimeTarget;
+                    const hasTarget = hasEpisodeTarget;
 
                     const isLikeNotification =
                       notification.type ===
@@ -1143,9 +1136,7 @@ export function Shell() {
                                         <p className="mt-1 text-xs font-medium text-muted">
                                           {notification.commentId
                                             ? "Ver comentário"
-                                            : isAnimeTarget
-                                              ? "Ver anime"
-                                              : "Ver episódio"}
+                                            : "Ver episódio"}
                                         </p>
                                       )}
 
@@ -1162,9 +1153,7 @@ export function Shell() {
                                     <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
                                       {notification.commentId
                                         ? "Ver comentário"
-                                        : isAnimeTarget
-                                          ? "Ver anime"
-                                          : "Ver episódio"}
+                                        : "Ver episódio"}
                                     </span>
                                   </div>
                                 )}
@@ -1230,41 +1219,6 @@ export function Shell() {
                       );
                     }
 
-                    if (
-                      isAnimeTarget
-                    ) {
-                      return (
-                        <Link
-                          key={
-                            notification.id
-                          }
-                          to="/anime/$id"
-                          params={{
-                            id:
-                              notification.animeId!,
-                          }}
-                          search={{
-                            comment:
-                              notification.commentId ??
-                              undefined,
-                          }}
-                          onClick={() => {
-                            void markNotificationAsRead(
-                              notification.id,
-                            );
-
-                            setNotificationsOpen(
-                              false,
-                            );
-                          }}
-                          className="block transition-colors hover:bg-elevated/70"
-                        >
-                          {
-                            notificationContent
-                          }
-                        </Link>
-                      );
-                    }
 
                     return (
                       <button

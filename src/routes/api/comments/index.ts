@@ -18,22 +18,19 @@ export const Route = createFileRoute(
           const rawEpisodeId =
             url.searchParams.get("episodeId");
 
-          const episodeId =
-            rawEpisodeId && rawEpisodeId.trim()
-              ? rawEpisodeId.trim()
-              : "anime";
-
-          if (!animeId) {
+          if (!animeId || !rawEpisodeId || !rawEpisodeId.trim()) {
             return Response.json(
               {
                 error:
-                  "animeId é obrigatório.",
+                  "animeId e episodeId são obrigatórios.",
               },
               {
                 status: 400,
               },
             );
           }
+
+          const episodeId = rawEpisodeId.trim();
 
           const sql = await getSql();
 
@@ -245,8 +242,19 @@ export const Route = createFileRoute(
               ? body.episodeId.trim()
               : "";
 
-          const episodeId =
-            rawEpisodeId || "anime";
+          if (!animeId || !rawEpisodeId) {
+            return Response.json(
+              {
+                error:
+                  "animeId e episodeId são obrigatórios.",
+              },
+              {
+                status: 400,
+              },
+            );
+          }
+
+          const episodeId = rawEpisodeId;
 
           const content =
             typeof body.content ===

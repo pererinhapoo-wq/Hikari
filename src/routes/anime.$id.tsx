@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  MessageCircle,
   Pencil,
   Play,
   Share2,
@@ -15,7 +16,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
-import { CommentsSection } from "@/components/comments/CommentsSection";
 import { fetchAnimeDetail, fetchAnimePictures } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -44,17 +44,6 @@ import { cn, youtubeIdFrom } from "@/lib/utils";
 const EMPTY_WATCHED_EPISODES: string[] = [];
 
 export const Route = createFileRoute("/anime/$id")({
-  validateSearch: (
-    raw: Record<string, unknown>,
-  ): {
-    comment?: string;
-  } => ({
-    comment:
-      typeof raw.comment === "string" && raw.comment
-        ? raw.comment
-        : undefined,
-  }),
-
   staleTime: 1000 * 60 * 5,
   gcTime: 1000 * 60 * 15,
   loader: async ({ params }) => {
@@ -85,7 +74,6 @@ export const Route = createFileRoute("/anime/$id")({
 function AnimePage() {
   const { id } = Route.useParams();
   const { remote } = Route.useLoaderData();
-  const { comment: commentQuery } = Route.useSearch();
   const navigate = useNavigate();
 
   const hydrated = useHikariStore((s) => s.hydrated);
@@ -757,14 +745,34 @@ function AnimePage() {
         </section>
       )}
 
-      {/* COMENTÁRIOS DO HIKARI (GERAL DO ANIME) */}
-      <CommentsSection
-        animeId={anime.id}
-        episodeId="anime"
-        animeTitle={title}
-        targetCommentId={commentQuery}
-        isAnimeGeneral
-      />
+      {/* COMENTÁRIOS DO HIKARI (EM BREVE) */}
+      <section className="mt-12 space-y-4">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <span className="h-6 w-1 rounded-full bg-purple-500" />
+            <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              Comentários
+            </h2>
+          </div>
+          <p className="mt-1 text-xs sm:text-sm text-zinc-400">
+            Espaço para a comunidade compartilhar impressões sobre este anime.
+          </p>
+        </div>
+
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-purple-500/15 bg-gradient-to-b from-[#131024]/70 to-[#0e0c18]/90 p-8 text-center shadow-sm">
+          <div className="flex size-12 items-center justify-center rounded-2xl border border-purple-500/20 bg-purple-950/40 text-purple-400">
+            <MessageCircle className="size-6" />
+          </div>
+
+          <h3 className="mt-4 font-display text-base font-semibold text-white sm:text-lg">
+            Comentários em breve
+          </h3>
+
+          <p className="mt-1.5 max-w-md text-xs sm:text-sm text-zinc-400">
+            O sistema de discussão e avaliação da comunidade do Hikari está sendo preparado e estará disponível aqui em breve.
+          </p>
+        </div>
+      </section>
     </article>
   );
 }

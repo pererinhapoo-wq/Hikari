@@ -12,7 +12,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
-import { CommentsSection } from "@/components/comments/CommentsSection";
+import { EpisodeCommentsSection } from "@/components/comments/EpisodeCommentsSection";
 import { Logo } from "@/components/logo";
 import {
   CustomVideoPlayer,
@@ -868,19 +868,20 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* COMENTÁRIOS */}
         {/* ================================================== */}
 
-        <CommentsSection
-          animeId={anime.id}
-          episodeId={
-            current?.id ?? ""
-          }
-          animeTitle={title}
-          episodeNumber={
-            current?.number ?? 1
-          }
-          targetCommentId={
-            commentQuery
-          }
-        />
+        {current?.id ? (
+          <EpisodeCommentsSection
+            key={`${anime.id}-${current.id}`}
+            animeId={anime.id}
+            episodeId={current.id}
+            animeTitle={title}
+            episodeNumber={current.number ?? 1}
+            targetCommentId={commentQuery}
+          />
+        ) : (
+          <div className="mt-10 border-t border-purple-500/20 pt-8 text-center text-sm text-zinc-500">
+            Selecione um episódio para carregar os comentários.
+          </div>
+        )}
 
       </div>
     </div>
