@@ -68,6 +68,65 @@ const CARD_FIELDS = `
   }
 `;
 
+const ANI_CREDITS_FIELDS = `
+  studios {
+    edges {
+      isMain
+      node {
+        name
+        isAnimationStudio
+      }
+    }
+    nodes {
+      name
+    }
+  }
+  characters(sort: [ROLE, RELEVANCE, ID], perPage: 25) {
+    edges {
+      role
+      node {
+        id
+        name {
+          full
+          native
+        }
+        image {
+          large
+          medium
+        }
+      }
+      voiceActors(sort: [RELEVANCE, ID]) {
+        id
+        name {
+          full
+          native
+        }
+        image {
+          large
+          medium
+        }
+        languageV2
+      }
+    }
+  }
+  staff(sort: [RELEVANCE, ID], perPage: 25) {
+    edges {
+      role
+      node {
+        id
+        name {
+          full
+          native
+        }
+        image {
+          large
+          medium
+        }
+      }
+    }
+  }
+`;
+
 type AniTitle = {
   romaji?: string | null;
   english?: string | null;
@@ -132,6 +191,13 @@ type AniMedia = {
   } | null;
 
   studios?: {
+    edges?: {
+      isMain?: boolean | null;
+      node?: {
+        name?: string | null;
+        isAnimationStudio?: boolean | null;
+      } | null;
+    }[] | null;
     nodes?: {
       name: string;
     }[] | null;
@@ -207,6 +273,7 @@ type AniMedia = {
         id: number;
         name?: {
           full?: string | null;
+          native?: string | null;
         } | null;
         image?: {
           large?: string | null;
@@ -367,8 +434,19 @@ async function anilistGraphQL<T>(
           }[];
         };
 
+      const hasUsableData =
+        json.data != null &&
+        Object.values(
+          json.data as Record<string, unknown>,
+        ).some(
+          (value) =>
+            value !== null &&
+            value !== undefined,
+        );
+
       if (
-        json.errors?.length
+        json.errors?.length &&
+        !hasUsableData
       ) {
         throw new Error(
           json.errors[0]?.message ??
@@ -376,7 +454,7 @@ async function anilistGraphQL<T>(
         );
       }
 
-      if (!json.data) {
+      if (!json.data || !hasUsableData) {
         throw new Error(
           "AniList sem dados",
         );
@@ -1038,6 +1116,1023 @@ function streamingFromAni(
     );
 }
 
+function extractAniStudios(
+  studios: AniMedia["studios"],
+): string[] {
+  const uniqueNames = (names: (string | null | undefined)[]): string[] => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of names) {
+      const clean = raw?.trim();
+      if (!clean) continue;
+      const key = clean.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(clean);
+      }
+    }
+    return out;
+  };
+
+  const edges = studios?.edges ?? [];
+  const mainFromEdges = uniqueNames(
+    edges
+      .filter((edge) => edge?.isMain)
+      .map((edge) => edge?.node?.name),
+  );
+  if (mainFromEdges.length > 0) {
+    return mainFromEdges;
+  }
+
+  const animFromEdges = uniqueNames(
+    edges
+      .filter((edge) => edge?.node?.isAnimationStudio)
+      .map((edge) => edge?.node?.name),
+  );
+  if (animFromEdges.length > 0) {
+    return animFromEdges;
+  }
+
+  return uniqueNames((studios?.nodes ?? []).map((s) => s?.name));
+}
+
+function extractAniCharacters(
+  characters: AniMedia["characters"],
+): AnimeCharacter[] {
+  const seenCharIds = new Set<string>();
+  const out: AnimeCharacter[] = [];
+
+  for (const edge of characters?.edges ?? []) {
+    const fullName = (
+      edge?.node?.name?.full ||
+      edge?.node?.name?.native ||
+      ""
+    ).trim();
+    if (!fullName) continue;
+
+    const id = edge?.node?.id ?? 0;
+    const dedupKey = id > 0 ? `id:${id}` : `name:${fullName.toLowerCase()}`;
+    if (seenCharIds.has(dedupKey)) continue;
+    seenCharIds.add(dedupKey);
+
+    const seenVaIds = new Set<string>();
+    const voiceActors = (edge?.voiceActors ?? [])
+      .map((va) => {
+        const vaFull = (va?.name?.full || va?.name?.native || "").trim();
+        if (!vaFull) return null;
+        const lang = (va?.languageV2 ?? "Japanese").trim() || "Japanese";
+        const vaKey = `${va.id || vaFull.toLowerCase()}:${lang.toLowerCase()}`;
+        if (seenVaIds.has(vaKey)) return null;
+        seenVaIds.add(vaKey);
+        return {
+          id: va.id ?? 0,
+          name: {
+            full: vaFull,
+            native: va?.name?.native?.trim() || undefined,
+          },
+          image: va?.image?.large || va?.image?.medium || undefined,
+          language: lang,
+        };
+      })
+      .filter((va): va is NonNullable<typeof va> => va !== null);
+
+    out.push({
+      id,
+      name: {
+        full: fullName,
+        native: edge?.node?.name?.native?.trim() || undefined,
+      },
+      image: edge?.node?.image?.large || edge?.node?.image?.medium || undefined,
+      role: (edge?.role ?? "SUPPORTING").toUpperCase() === "MAIN" ? "MAIN" : "SUPPORTING",
+      voiceActors,
+    });
+  }
+
+  return out;
+}
+
+function extractAniStaff(
+  staff: AniMedia["staff"],
+): AnimeStaff[] {
+  const seen = new Set<string>();
+  const out: AnimeStaff[] = [];
+
+  for (const edge of staff?.edges ?? []) {
+    const name = (
+      edge?.node?.name?.full ||
+      edge?.node?.name?.native ||
+      ""
+    ).trim();
+    if (!name) continue;
+
+    const role = (edge?.role ?? "").trim() || "Equipe técnica";
+    const id = edge?.node?.id ?? 0;
+    const key = `${id || name.toLowerCase()}::${role.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    out.push({
+      id,
+      name,
+      role,
+      image: edge?.node?.image?.large || edge?.node?.image?.medium || undefined,
+    });
+  }
+
+  return out;
+}
+
+function normalizePersonName(raw?: string | null): string {
+  const clean = (raw ?? "").trim();
+  if (!clean) return "";
+  // Jikan/MAL frequentemente formata nomes como "Sobrenome, Nome"
+  const parts = clean.split(",");
+  if (parts.length === 2) {
+    const last = parts[0].trim();
+    const first = parts[1].trim();
+    if (first && last) {
+      return `${first} ${last}`;
+    }
+  }
+  return clean;
+}
+
+function cleanExternalPersonImage(url?: string | null): string | undefined {
+  const clean = (url ?? "").trim();
+  if (!clean) return undefined;
+  if (clean.includes("questionmark_") || clean.endsWith("/na.gif")) {
+    return undefined;
+  }
+  return clean;
+}
+
+export type AnimeCreditsResult = {
+  studios: string[];
+  characters: AnimeCharacter[];
+  staff: AnimeStaff[];
+  anilistId?: number;
+  malId?: number;
+  kitsuId?: number;
+};
+
+async function fetchAniCreditsById(
+  anilistId: number,
+): Promise<AnimeCreditsResult | null> {
+  if (!Number.isFinite(anilistId) || anilistId <= 0) {
+    return null;
+  }
+  try {
+    const res = await anilistGraphQL<{ Media: AniMedia | null }>(
+      `
+      query MediaCreditsById($id: Int) {
+        Media(id: $id, type: ANIME) {
+          id
+          idMal
+          ${ANI_CREDITS_FIELDS}
+        }
+      }
+      `,
+      { id: anilistId },
+    );
+    if (!res.Media) return null;
+    return {
+      anilistId: res.Media.id,
+      malId: res.Media.idMal ?? undefined,
+      studios: extractAniStudios(res.Media.studios),
+      characters: extractAniCharacters(res.Media.characters),
+      staff: extractAniStaff(res.Media.staff),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchAniCreditsByMalId(
+  malId: number,
+): Promise<AnimeCreditsResult | null> {
+  if (!Number.isFinite(malId) || malId <= 0) {
+    return null;
+  }
+  try {
+    const res = await anilistGraphQL<{ Media: AniMedia | null }>(
+      `
+      query MediaCreditsByMalId($malId: Int) {
+        Media(idMal: $malId, type: ANIME) {
+          id
+          idMal
+          ${ANI_CREDITS_FIELDS}
+        }
+      }
+      `,
+      { malId },
+    );
+    if (!res.Media) return null;
+    return {
+      anilistId: res.Media.id,
+      malId: res.Media.idMal ?? malId,
+      studios: extractAniStudios(res.Media.studios),
+      characters: extractAniCharacters(res.Media.characters),
+      staff: extractAniStaff(res.Media.staff),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function scoreTitleCandidate(
+  candidateTitles: (string | null | undefined)[],
+  targetTitles: string[],
+  candidateYear?: number | null,
+  targetYear?: number | null,
+  candidateFormat?: string | null,
+  targetFormat?: string | null,
+): number {
+  const normTargets = targetTitles
+    .map((t) => normalizeSearchText(t))
+    .filter((t) => t.length >= 2);
+  const normCandidates = candidateTitles
+    .filter((t): t is string => Boolean(t && t.trim()))
+    .map((t) => normalizeSearchText(t))
+    .filter((t) => t.length >= 2);
+
+  if (normTargets.length === 0 || normCandidates.length === 0) {
+    return 0;
+  }
+
+  let best = 0;
+  for (const target of normTargets) {
+    const compactTarget = target.replace(/\s/g, "");
+    for (const cand of normCandidates) {
+      const compactCand = cand.replace(/\s/g, "");
+      if (cand === target || compactCand === compactTarget) {
+        best = Math.max(best, 1000);
+      } else if (
+        cand.startsWith(`${target} `) ||
+        target.startsWith(`${cand} `)
+      ) {
+        // Prefixo de título (ex.: subtítulo), pontuação menor para nunca ganhar do título exato
+        const lenDiff = Math.abs(cand.length - target.length);
+        best = Math.max(best, Math.max(700, 860 - lenDiff * 4));
+      }
+    }
+  }
+
+  if (best < 750) {
+    return 0;
+  }
+
+  if (targetYear && candidateYear) {
+    if (targetYear === candidateYear) {
+      best += 60;
+    } else if (Math.abs(targetYear - candidateYear) <= 1) {
+      best += 25;
+    } else {
+      best -= 40;
+    }
+  }
+
+  if (targetFormat && candidateFormat) {
+    if (targetFormat.toUpperCase() === candidateFormat.toUpperCase()) {
+      best += 30;
+    } else {
+      best -= 20;
+    }
+  }
+
+  return best;
+}
+
+async function fetchAniCreditsByTitle(
+  titles: string[],
+  year?: number | null,
+  format?: string | null,
+): Promise<AnimeCreditsResult | null> {
+  const cleanTitles = titles
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+  if (cleanTitles.length === 0) {
+    return null;
+  }
+
+  try {
+    const res = await anilistGraphQL<{
+      Page?: {
+        media?: AniMedia[] | null;
+      } | null;
+    }>(
+      `
+      query SearchCreditsByTitle($search: String) {
+        Page(page: 1, perPage: 8) {
+          media(
+            type: ANIME,
+            search: $search,
+            sort: [SEARCH_MATCH, POPULARITY_DESC]
+          ) {
+            id
+            idMal
+            format
+            seasonYear
+            title {
+              romaji
+              english
+              native
+            }
+            synonyms
+            ${ANI_CREDITS_FIELDS}
+          }
+        }
+      }
+      `,
+      { search: cleanTitles[0] },
+    );
+
+    const candidates = res.Page?.media ?? [];
+    let bestMedia: AniMedia | null = null;
+    let bestScore = 0;
+
+    for (const media of candidates) {
+      if (!media?.id) continue;
+      const score = scoreTitleCandidate(
+        [
+          media.title?.romaji,
+          media.title?.english,
+          media.title?.native,
+          ...(media.synonyms ?? []),
+        ],
+        cleanTitles,
+        media.seasonYear,
+        year,
+        media.format,
+        format,
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        bestMedia = media;
+      }
+    }
+
+    if (!bestMedia || bestScore < 750) {
+      return null;
+    }
+
+    return {
+      anilistId: bestMedia.id,
+      malId: bestMedia.idMal ?? undefined,
+      studios: extractAniStudios(bestMedia.studios),
+      characters: extractAniCharacters(bestMedia.characters),
+      staff: extractAniStaff(bestMedia.staff),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchKitsuMappings(
+  kitsuId: number,
+): Promise<{ anilistId?: number; malId?: number }> {
+  if (!Number.isFinite(kitsuId) || kitsuId <= 0) {
+    return {};
+  }
+
+  const cacheKey = `kitsu-map:v1:${kitsuId}`;
+  const cached = fromCache<{ anilistId?: number; malId?: number }>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const json = await kitsuFetch<{
+      data?: {
+        attributes?: {
+          externalSite?: string | null;
+          externalId?: string | null;
+        };
+      }[];
+    }>(`/anime/${kitsuId}/mappings`);
+
+    let anilistId: number | undefined;
+    let malId: number | undefined;
+
+    for (const item of json.data ?? []) {
+      const site = (item.attributes?.externalSite ?? "").toLowerCase();
+      const rawId = String(item.attributes?.externalId ?? "").trim();
+      const match = rawId.match(/(\d+)$/);
+      const numId = match ? Number(match[1]) : NaN;
+      if (!Number.isFinite(numId) || numId <= 0) continue;
+
+      if (site === "anilist/anime" || site === "anilist") {
+        anilistId = anilistId ?? numId;
+      } else if (site === "myanimelist/anime") {
+        malId = malId ?? numId;
+      }
+    }
+
+    const mapped = { anilistId, malId };
+    if (anilistId || malId) {
+      toCache(cacheKey, mapped);
+    }
+    return mapped;
+  } catch {
+    return {};
+  }
+}
+
+async function fetchKitsuIdByExternal(
+  externalSite: "anilist/anime" | "myanimelist/anime",
+  externalId: number,
+): Promise<number | undefined> {
+  if (!Number.isFinite(externalId) || externalId <= 0) {
+    return undefined;
+  }
+  const cacheKey = `kitsu-rev:v1:${externalSite}:${externalId}`;
+  const cached = fromCache<number>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  try {
+    const json = await kitsuFetch<{
+      data?: {
+        relationships?: {
+          item?: {
+            data?: { type?: string; id?: string } | null;
+          };
+        };
+      }[];
+    }>(
+      `/mappings?filter[externalSite]=${encodeURIComponent(externalSite)}&filter[externalId]=${externalId}&include=item`,
+    );
+    const ref = json.data?.find(
+      (entry) => entry.relationships?.item?.data?.type === "anime",
+    )?.relationships?.item?.data;
+    const kitsuId = ref?.id ? Number(ref.id) : NaN;
+    if (Number.isFinite(kitsuId) && kitsuId > 0) {
+      return toCache(cacheKey, kitsuId);
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function fetchKitsuIdByTitle(
+  titles: string[],
+  year?: number | null,
+  format?: string | null,
+): Promise<number | undefined> {
+  const cleanTitles = titles
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+  if (cleanTitles.length === 0) {
+    return undefined;
+  }
+
+  try {
+    const json = await kitsuFetch<{ data?: KitsuAnimeItem[] }>(
+      `/anime?filter[text]=${encodeURIComponent(cleanTitles[0])}&page[limit]=8`,
+    );
+    let bestId: number | undefined;
+    let bestScore = 0;
+
+    for (const item of json.data ?? []) {
+      const slim = mapKitsuSlim(item);
+      const score = scoreTitleCandidate(
+        [
+          slim.titles.romaji,
+          slim.titles.english,
+          slim.titles.native,
+          item.attributes?.canonicalTitle,
+        ],
+        cleanTitles,
+        slim.year,
+        year,
+        slim.format,
+        format,
+      );
+      if (score > bestScore && slim.kitsuId) {
+        bestScore = score;
+        bestId = slim.kitsuId;
+      }
+    }
+
+    return bestScore >= 750 ? bestId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function fetchKitsuCreditsDirect(
+  kitsuId: number,
+): Promise<AnimeCreditsResult | null> {
+  if (!Number.isFinite(kitsuId) || kitsuId <= 0) {
+    return null;
+  }
+
+  type KitsuIncludedEntity = {
+    id: string;
+    type: string;
+    attributes?: {
+      name?: string | null;
+      canonicalName?: string | null;
+      names?: { en?: string | null; ja_jp?: string | null } | null;
+      locale?: string | null;
+      role?: string | null;
+      image?: {
+        large?: string | null;
+        medium?: string | null;
+        original?: string | null;
+        small?: string | null;
+      } | null;
+    };
+    relationships?: Record<
+      string,
+      {
+        data?:
+          | { id: string; type: string }
+          | { id: string; type: string }[]
+          | null;
+      }
+    >;
+  };
+
+  type KitsuResourceResponse = {
+    data?: KitsuIncludedEntity[];
+    included?: KitsuIncludedEntity[];
+  };
+
+  const [charsSettled, staffSettled, prodSettled] = await Promise.allSettled([
+    kitsuFetch<KitsuResourceResponse>(
+      `/anime/${kitsuId}/characters?sort=role&page[limit]=25&include=character,voices.person`,
+    ),
+    kitsuFetch<KitsuResourceResponse>(
+      `/anime/${kitsuId}/staff?page[limit]=25&include=person`,
+    ),
+    kitsuFetch<KitsuResourceResponse>(
+      `/anime/${kitsuId}/productions?page[limit]=20&include=company`,
+    ),
+  ]);
+
+  const characters: AnimeCharacter[] = [];
+  if (charsSettled.status === "fulfilled") {
+    const body = charsSettled.value;
+    const inc = new Map<string, KitsuIncludedEntity>(
+      (body.included ?? []).map((item) => [`${item.type}:${item.id}`, item]),
+    );
+    const seenChar = new Set<string>();
+
+    for (const mc of body.data ?? []) {
+      const charRef = mc.relationships?.character?.data;
+      if (!charRef || Array.isArray(charRef)) continue;
+      const ch = inc.get(`${charRef.type}:${charRef.id}`);
+      const fullName = stripHtml(
+        ch?.attributes?.canonicalName ||
+          ch?.attributes?.name ||
+          ch?.attributes?.names?.en ||
+          "",
+      ).trim();
+      if (!fullName) continue;
+
+      const charId = Number(ch?.id ?? 0);
+      const dedupKey = charId > 0 ? `id:${charId}` : `name:${fullName.toLowerCase()}`;
+      if (seenChar.has(dedupKey)) continue;
+      seenChar.add(dedupKey);
+
+      const voiceRefsRaw = mc.relationships?.voices?.data;
+      const voiceRefs = Array.isArray(voiceRefsRaw) ? voiceRefsRaw : [];
+      const voiceActors: AnimeCharacter["voiceActors"] = [];
+      const seenVa = new Set<string>();
+
+      for (const vr of voiceRefs) {
+        const voice = inc.get(`${vr.type}:${vr.id}`);
+        const personRef = voice?.relationships?.person?.data;
+        if (!personRef || Array.isArray(personRef)) continue;
+        const person = inc.get(`${personRef.type}:${personRef.id}`);
+        const vaName = stripHtml(
+          person?.attributes?.name || person?.attributes?.canonicalName || "",
+        ).trim();
+        if (!vaName) continue;
+
+        const locale = (voice?.attributes?.locale ?? "").toLowerCase();
+        let language = "";
+        if (locale === "ja_jp" || locale === "ja") {
+          language = "Japanese";
+        } else if (locale === "pt_br" || locale === "pt-br") {
+          language = "Portuguese (Brazil)";
+        } else if (locale === "pt") {
+          language = "Portuguese";
+        } else {
+          continue;
+        }
+
+        const vaId = Number(person?.id ?? 0);
+        const vaKey = `${vaId || vaName.toLowerCase()}:${language}`;
+        if (seenVa.has(vaKey)) continue;
+        seenVa.add(vaKey);
+
+        voiceActors.push({
+          id: vaId,
+          name: { full: vaName },
+          image: cleanExternalPersonImage(
+            person?.attributes?.image?.large ||
+              person?.attributes?.image?.original ||
+              person?.attributes?.image?.medium,
+          ),
+          language,
+        });
+      }
+
+      const isMain = (mc.attributes?.role ?? "").toLowerCase() === "main";
+      characters.push({
+        id: charId,
+        name: {
+          full: fullName,
+          native: ch?.attributes?.names?.ja_jp?.trim() || undefined,
+        },
+        image: cleanExternalPersonImage(
+          ch?.attributes?.image?.large ||
+            ch?.attributes?.image?.original ||
+            ch?.attributes?.image?.medium,
+        ),
+        role: isMain ? "MAIN" : "SUPPORTING",
+        voiceActors,
+      });
+    }
+
+    characters.sort((a, b) =>
+      a.role === b.role ? 0 : a.role === "MAIN" ? -1 : 1,
+    );
+  }
+
+  const staff: AnimeStaff[] = [];
+  if (staffSettled.status === "fulfilled") {
+    const body = staffSettled.value;
+    const inc = new Map<string, KitsuIncludedEntity>(
+      (body.included ?? []).map((item) => [`${item.type}:${item.id}`, item]),
+    );
+    const seenStaff = new Set<string>();
+
+    for (const st of body.data ?? []) {
+      const personRef = st.relationships?.person?.data;
+      if (!personRef || Array.isArray(personRef)) continue;
+      const person = inc.get(`${personRef.type}:${personRef.id}`);
+      const name = stripHtml(
+        person?.attributes?.name || person?.attributes?.canonicalName || "",
+      ).trim();
+      if (!name) continue;
+
+      const role = (st.attributes?.role ?? "").trim() || "Equipe técnica";
+      const personId = Number(person?.id ?? 0);
+      const key = `${personId || name.toLowerCase()}::${role.toLowerCase()}`;
+      if (seenStaff.has(key)) continue;
+      seenStaff.add(key);
+
+      staff.push({
+        id: personId,
+        name,
+        role,
+        image: cleanExternalPersonImage(
+          person?.attributes?.image?.large ||
+            person?.attributes?.image?.original ||
+            person?.attributes?.image?.medium,
+        ),
+      });
+    }
+  }
+
+  const studios: string[] = [];
+  if (prodSettled.status === "fulfilled") {
+    const body = prodSettled.value;
+    const inc = new Map<string, KitsuIncludedEntity>(
+      (body.included ?? []).map((item) => [`${item.type}:${item.id}`, item]),
+    );
+    const studioExplicit: string[] = [];
+    const studioHeuristic: string[] = [];
+    const studioPattern =
+      /\b(animation|studio|studios|bones|madhouse|mappa|ufotable|wit|trigger|sunrise|pierrot|gainax|shaft|cloverworks|a-1 pictures|j\.c\.staff|tms|olm|gonzo|deen|silver link|white fox|lerche|p\.a\. works|kinema citrus|david production|science saru|kyoto animation|production i\.g)\b/i;
+
+    for (const pr of body.data ?? []) {
+      const compRef = pr.relationships?.company?.data;
+      if (!compRef || Array.isArray(compRef)) continue;
+      const comp = inc.get(`${compRef.type}:${compRef.id}`);
+      const compName = (comp?.attributes?.name ?? "").trim();
+      if (!compName) continue;
+
+      const role = (pr.attributes?.role ?? "").toLowerCase();
+      if (role === "studio") {
+        studioExplicit.push(compName);
+      } else if (studioPattern.test(compName)) {
+        studioHeuristic.push(compName);
+      }
+    }
+
+    const picked = studioExplicit.length > 0 ? studioExplicit : studioHeuristic;
+    const seenS = new Set<string>();
+    for (const name of picked) {
+      const k = name.toLowerCase();
+      if (!seenS.has(k)) {
+        seenS.add(k);
+        studios.push(name);
+      }
+    }
+  }
+
+  if (characters.length === 0 && staff.length === 0 && studios.length === 0) {
+    return null;
+  }
+
+  return {
+    kitsuId,
+    studios,
+    characters,
+    staff,
+  };
+}
+
+async function fetchJikanCredits(
+  malId: number,
+): Promise<AnimeCreditsResult | null> {
+  if (!Number.isFinite(malId) || malId <= 0) {
+    return null;
+  }
+
+  type JikanCharItem = {
+    character?: {
+      mal_id?: number;
+      name?: string;
+      images?: {
+        jpg?: { image_url?: string };
+        webp?: { image_url?: string };
+      };
+    };
+    role?: string;
+    voice_actors?: {
+      person?: {
+        mal_id?: number;
+        name?: string;
+        images?: {
+          jpg?: { image_url?: string };
+        };
+      };
+      language?: string;
+    }[];
+  };
+
+  type JikanStaffItem = {
+    person?: {
+      mal_id?: number;
+      name?: string;
+      images?: {
+        jpg?: { image_url?: string };
+      };
+    };
+    positions?: string[];
+  };
+
+  const [charsRes, staffRes] = await Promise.allSettled([
+    jikanFetch<{ data?: JikanCharItem[] }>(`/anime/${malId}/characters`),
+    jikanFetch<{ data?: JikanStaffItem[] }>(`/anime/${malId}/staff`),
+  ]);
+
+  const characters: AnimeCharacter[] = [];
+  if (charsRes.status === "fulfilled") {
+    for (const item of (charsRes.value.data ?? []).slice(0, 25)) {
+      const fullName = normalizePersonName(item.character?.name);
+      if (!fullName) continue;
+
+      const voiceActors = (item.voice_actors ?? [])
+        .map((va) => {
+          const vaName = normalizePersonName(va.person?.name);
+          if (!vaName) return null;
+          const rawLang = (va.language ?? "").trim();
+          const low = rawLang.toLowerCase();
+          const language =
+            low.includes("portuguese") || low.includes("brazil")
+              ? "Portuguese (Brazil)"
+              : rawLang || "Japanese";
+          return {
+            id: va.person?.mal_id ?? 0,
+            name: { full: vaName },
+            image: cleanExternalPersonImage(va.person?.images?.jpg?.image_url),
+            language,
+          };
+        })
+        .filter((va): va is NonNullable<typeof va> => va !== null);
+
+      characters.push({
+        id: item.character?.mal_id ?? 0,
+        name: { full: fullName },
+        image: cleanExternalPersonImage(
+          item.character?.images?.jpg?.image_url ||
+            item.character?.images?.webp?.image_url,
+        ),
+        role: (item.role ?? "").toUpperCase() === "MAIN" ? "MAIN" : "SUPPORTING",
+        voiceActors,
+      });
+    }
+  }
+
+  const staff: AnimeStaff[] = [];
+  if (staffRes.status === "fulfilled") {
+    for (const item of (staffRes.value.data ?? []).slice(0, 25)) {
+      const name = normalizePersonName(item.person?.name);
+      if (!name) continue;
+      const role =
+        (item.positions ?? []).map((p) => p.trim()).filter(Boolean).join(", ") ||
+        "Equipe técnica";
+      staff.push({
+        id: item.person?.mal_id ?? 0,
+        name,
+        role,
+        image: cleanExternalPersonImage(item.person?.images?.jpg?.image_url),
+      });
+    }
+  }
+
+  if (characters.length === 0 && staff.length === 0) {
+    return null;
+  }
+
+  return {
+    malId,
+    studios: [],
+    characters,
+    staff,
+  };
+}
+
+async function resolveAnimeCredits(input: {
+  anilistId?: number;
+  malId?: number;
+  kitsuId?: number;
+  titles?: string[];
+  year?: number | null;
+  format?: string | null;
+  skipAnilist?: boolean;
+}): Promise<AnimeCreditsResult> {
+  const cleanTitles = (input.titles ?? [])
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+
+  const cacheKey = `credits:v1:${input.anilistId ?? 0}:${input.malId ?? 0}:${input.kitsuId ?? 0}:${input.skipAnilist ? 1 : 0}:${normalizeSearchText(cleanTitles[0] ?? "")}:${input.year ?? 0}`;
+  const cached = fromCache<AnimeCreditsResult>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  let studios: string[] = [];
+  let characters: AnimeCharacter[] = [];
+  let staff: AnimeStaff[] = [];
+  let resolvedAniId =
+    input.anilistId && Number.isFinite(input.anilistId) && input.anilistId > 0
+      ? input.anilistId
+      : undefined;
+  let resolvedMalId =
+    input.malId && Number.isFinite(input.malId) && input.malId > 0
+      ? input.malId
+      : undefined;
+  let resolvedKitsuId =
+    input.kitsuId && Number.isFinite(input.kitsuId) && input.kitsuId > 0
+      ? input.kitsuId
+      : undefined;
+
+  const mergePart = (part: AnimeCreditsResult | null) => {
+    if (!part) return;
+    if (studios.length === 0 && part.studios.length > 0) {
+      studios = part.studios;
+    }
+    if (characters.length === 0 && part.characters.length > 0) {
+      characters = part.characters;
+    }
+    if (staff.length === 0 && part.staff.length > 0) {
+      staff = part.staff;
+    }
+    if (!resolvedAniId && part.anilistId) {
+      resolvedAniId = part.anilistId;
+    }
+    if (!resolvedMalId && part.malId) {
+      resolvedMalId = part.malId;
+    }
+    if (!resolvedKitsuId && part.kitsuId) {
+      resolvedKitsuId = part.kitsuId;
+    }
+  };
+
+  let triedAniById: number | undefined;
+
+  // 1. AniList por ID direto
+  if (!input.skipAnilist && resolvedAniId) {
+    triedAniById = resolvedAniId;
+    mergePart(await fetchAniCreditsById(resolvedAniId));
+  }
+
+  // 2. Se possui kitsuId e ainda faltam créditos, descobre IDs mapeados (AniList / MAL)
+  if (
+    resolvedKitsuId &&
+    (characters.length === 0 || staff.length === 0 || studios.length === 0)
+  ) {
+    const mapped = await fetchKitsuMappings(resolvedKitsuId);
+    if (!resolvedAniId && mapped.anilistId) {
+      resolvedAniId = mapped.anilistId;
+    }
+    if (!resolvedMalId && mapped.malId) {
+      resolvedMalId = mapped.malId;
+    }
+    if (
+      !input.skipAnilist &&
+      resolvedAniId &&
+      resolvedAniId !== triedAniById
+    ) {
+      triedAniById = resolvedAniId;
+      mergePart(await fetchAniCreditsById(resolvedAniId));
+    }
+  }
+
+  // 3. AniList por malId
+  if (
+    !input.skipAnilist &&
+    resolvedMalId &&
+    !triedAniById &&
+    (characters.length === 0 || staff.length === 0 || studios.length === 0)
+  ) {
+    mergePart(await fetchAniCreditsByMalId(resolvedMalId));
+    if (resolvedAniId) {
+      triedAniById = resolvedAniId;
+    }
+  }
+
+  // 4. AniList por correspondência estrita de título (para animes locais sem ID externo)
+  if (
+    !input.skipAnilist &&
+    !triedAniById &&
+    cleanTitles.length > 0 &&
+    (characters.length === 0 || staff.length === 0)
+  ) {
+    mergePart(await fetchAniCreditsByTitle(cleanTitles, input.year, input.format));
+  }
+
+  // 5. Kitsu direto (resiliente quando AniList está indisponível ou incompleto)
+  if (characters.length === 0 || staff.length === 0 || studios.length === 0) {
+    if (!resolvedKitsuId && resolvedAniId) {
+      resolvedKitsuId = await fetchKitsuIdByExternal(
+        "anilist/anime",
+        resolvedAniId,
+      );
+    }
+    if (!resolvedKitsuId && resolvedMalId) {
+      resolvedKitsuId = await fetchKitsuIdByExternal(
+        "myanimelist/anime",
+        resolvedMalId,
+      );
+    }
+    if (!resolvedKitsuId && cleanTitles.length > 0) {
+      resolvedKitsuId = await fetchKitsuIdByTitle(
+        cleanTitles,
+        input.year,
+        input.format,
+      );
+    }
+    if (resolvedKitsuId) {
+      mergePart(await fetchKitsuCreditsDirect(resolvedKitsuId));
+    }
+  }
+
+  // 6. Jikan / MyAnimeList direto como reserva complementar
+  if ((characters.length === 0 || staff.length === 0) && resolvedMalId) {
+    mergePart(await fetchJikanCredits(resolvedMalId));
+  }
+
+  const result: AnimeCreditsResult = {
+    studios,
+    characters,
+    staff,
+    anilistId: resolvedAniId,
+    malId: resolvedMalId,
+    kitsuId: resolvedKitsuId,
+  };
+
+  if (characters.length > 0 || staff.length > 0) {
+    toCache(cacheKey, result);
+  }
+
+  return result;
+}
+
+export const fetchAnimeCredits = createServerFn({
+  method: "GET",
+})
+  .validator(
+    z.object({
+      anilistId: z.number().optional(),
+      malId: z.number().optional(),
+      kitsuId: z.number().optional(),
+      titles: z.array(z.string()).optional(),
+      year: z.number().nullable().optional(),
+      format: z.string().nullable().optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    return resolveAnimeCredits(data);
+  });
+
 async function fetchAniMediaByMalId(
   malId: number,
 ): Promise<AniMedia | null> {
@@ -1065,55 +2160,7 @@ async function fetchAniMediaByMalId(
             month
             day
           }
-          studios(isMain: true) {
-            nodes {
-              name
-            }
-          }
-          characters(sort: [ROLE, RELEVANCE, ID], perPage: 25) {
-            edges {
-              role
-              node {
-                id
-                name {
-                  full
-                  native
-                }
-                image {
-                  large
-                  medium
-                }
-              }
-              voiceActors {
-                id
-                name {
-                  full
-                  native
-                }
-                image {
-                  large
-                  medium
-                }
-                languageV2
-              }
-            }
-          }
-          staff(sort: [RELEVANCE, ID], perPage: 25) {
-            edges {
-              role
-              node {
-                id
-                name {
-                  full
-                  native
-                }
-                image {
-                  large
-                  medium
-                }
-              }
-            }
-          }
+          ${ANI_CREDITS_FIELDS}
           synonyms
           relations {
             edges {
@@ -1235,37 +2282,8 @@ function mapAniFull(
         "SEQUEL",
     );
 
-  const characters: AnimeCharacter[] = (media.characters?.edges ?? [])
-    .filter((edge) => Boolean(edge?.node?.name?.full))
-    .map((edge) => ({
-      id: edge?.node?.id ?? 0,
-      name: {
-        full: edge?.node?.name?.full ?? "",
-        native: edge?.node?.name?.native ?? undefined,
-      },
-      image: edge?.node?.image?.large || edge?.node?.image?.medium || undefined,
-      role: edge?.role ?? "MAIN",
-      voiceActors: (edge?.voiceActors ?? [])
-        .filter((va) => Boolean(va?.name?.full))
-        .map((va) => ({
-          id: va.id,
-          name: {
-            full: va.name?.full ?? "",
-            native: va.name?.native ?? undefined,
-          },
-          image: va.image?.large || va.image?.medium || undefined,
-          language: va.languageV2 ?? "Japanese",
-        })),
-    }));
-
-  const staff: AnimeStaff[] = (media.staff?.edges ?? [])
-    .filter((edge) => Boolean(edge?.node?.name?.full && edge?.role))
-    .map((edge) => ({
-      id: edge?.node?.id ?? 0,
-      name: edge?.node?.name?.full ?? "",
-      role: edge?.role ?? "",
-      image: edge?.node?.image?.large || edge?.node?.image?.medium || undefined,
-    }));
+  const characters = extractAniCharacters(media.characters);
+  const staff = extractAniStaff(media.staff);
 
   const images: string[] = [];
   const seenImgs = new Set<string>();
@@ -1324,13 +2342,7 @@ function mapAniFull(
       media.duration ??
       null,
 
-    studios: (
-      media.studios
-        ?.nodes ?? []
-    ).map(
-      (studio) =>
-        studio.name,
-    ),
+    studios: extractAniStudios(media.studios),
 
     characters,
     staff,
@@ -3581,40 +4593,56 @@ async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
   }
   const slim = mapKitsuSlim(item);
 
-  let episodes: Episode[] = [];
-  try {
-    const epJson = await kitsuFetch<{
-      data?: {
-        id: string;
-        attributes?: {
-          number?: number;
-          canonicalTitle?: string;
-          titles?: { en_jp?: string; en_us?: string; ja_jp?: string };
-          synopsis?: string;
-          thumbnail?: { original?: string };
-          airdate?: string;
-          length?: number;
-        };
-      }[];
-    }>(`/anime/${kitsuId}/episodes?page[limit]=20`);
+  const episodesTask = (async (): Promise<Episode[]> => {
+    try {
+      const epJson = await kitsuFetch<{
+        data?: {
+          id: string;
+          attributes?: {
+            number?: number;
+            canonicalTitle?: string;
+            titles?: { en_jp?: string; en_us?: string; ja_jp?: string };
+            synopsis?: string;
+            thumbnail?: { original?: string };
+            airdate?: string;
+            length?: number;
+          };
+        }[];
+      }>(`/anime/${kitsuId}/episodes?page[limit]=20`);
 
-    episodes = (epJson.data ?? []).map((ep, idx) => {
-      const epNum = ep.attributes?.number ?? idx + 1;
-      return {
-        id: `kitsu-ep-${kitsuId}-${epNum}`,
-        number: epNum,
-        title:
-          ep.attributes?.canonicalTitle ||
-          ep.attributes?.titles?.en_us ||
-          `Episódio ${epNum}`,
-        thumbnail: ep.attributes?.thumbnail?.original,
-        synopsis: ep.attributes?.synopsis,
-        aired: ep.attributes?.airdate,
-      };
-    });
-  } catch {
-    episodes = [];
-  }
+      return (epJson.data ?? []).map((ep, idx) => {
+        const epNum = ep.attributes?.number ?? idx + 1;
+        return {
+          id: `kitsu-ep-${kitsuId}-${epNum}`,
+          number: epNum,
+          title:
+            ep.attributes?.canonicalTitle ||
+            ep.attributes?.titles?.en_us ||
+            `Episódio ${epNum}`,
+          thumbnail: ep.attributes?.thumbnail?.original,
+          synopsis: ep.attributes?.synopsis,
+          aired: ep.attributes?.airdate,
+        };
+      });
+    } catch {
+      return [];
+    }
+  })();
+
+  const creditsTask = resolveAnimeCredits({
+    kitsuId,
+    titles: [slim.titles.romaji, slim.titles.english, slim.titles.native],
+    year: slim.year,
+    format: slim.format,
+  }).catch(
+    (): AnimeCreditsResult => ({
+      studios: [],
+      characters: [],
+      staff: [],
+    }),
+  );
+
+  let [episodes, credits] = await Promise.all([episodesTask, creditsTask]);
 
   if (episodes.length === 0 && slim.episodesCount) {
     episodes = Array.from(
@@ -3638,7 +4666,11 @@ async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
 
   return {
     ...slim,
-    studios: [],
+    anilistId: credits.anilistId ?? slim.anilistId,
+    malId: credits.malId ?? slim.malId,
+    studios: credits.studios,
+    characters: credits.characters,
+    staff: credits.staff,
     streamingEpisodes: [],
     seasons,
     recommendations: [],
@@ -3674,7 +4706,7 @@ export const fetchAnimeDetail =
         }
 
         const key =
-          `detail:v3:${id}`;
+          `detail:v4:${id}`;
 
         const cached =
           fromCache<Anime>(
@@ -3689,13 +4721,38 @@ export const fetchAnimeDetail =
           const kitsuId = Number(id.replace("kitsu-", ""));
           try {
             const detail = await fetchKitsuDetail(kitsuId);
-            return toCache(key, detail);
+            if (
+              (detail.characters?.length ?? 0) > 0 ||
+              (detail.staff?.length ?? 0) > 0
+            ) {
+              return toCache(key, detail);
+            }
+            return detail;
           } catch {
             const fallback = FALLBACK_ANIMES.find((a) => a.id === id);
             if (fallback) {
+              const fallbackCredits = await resolveAnimeCredits({
+                anilistId: fallback.anilistId,
+                malId: fallback.malId,
+                kitsuId: fallback.kitsuId ?? kitsuId,
+                titles: [
+                  fallback.titles.romaji,
+                  fallback.titles.english,
+                  fallback.titles.native,
+                ],
+                year: fallback.year,
+                format: fallback.format,
+              }).catch(
+                (): AnimeCreditsResult => ({
+                  studios: [],
+                  characters: [],
+                  staff: [],
+                }),
+              );
+
               return {
                 ...fallback,
-                studios: [],
+                studios: fallbackCredits.studios,
                 streamingEpisodes: [],
                 seasons: [
                   {
@@ -3713,8 +4770,8 @@ export const fetchAnimeDetail =
                   },
                 ],
                 recommendations: [],
-                characters: [],
-                staff: [],
+                characters: fallbackCredits.characters,
+                staff: fallbackCredits.staff,
               };
             }
             return null;
@@ -3809,20 +4866,60 @@ export const fetchAnimeDetail =
           }
 
           const mappedAni = aniMedia ? mapAniFull(aniMedia, seasons, seasonNavigation, jikanPictures) : null;
+          const jikanStudios = (json.data.studios ?? [])
+            .map((studio) => studio.name?.trim())
+            .filter((name): name is string => Boolean(name));
+
+          let resolvedCharacters = mappedAni?.characters ?? [];
+          let resolvedStaff = mappedAni?.staff ?? [];
+          let resolvedStudios =
+            jikanStudios.length > 0
+              ? jikanStudios
+              : (mappedAni?.studios ?? []);
+
+          if (
+            resolvedCharacters.length === 0 ||
+            resolvedStaff.length === 0 ||
+            resolvedStudios.length === 0
+          ) {
+            const extraCredits = await resolveAnimeCredits({
+              anilistId: aniMedia?.id,
+              malId,
+              titles: [
+                slim.titles.romaji,
+                slim.titles.english,
+                slim.titles.native,
+              ],
+              year: slim.year,
+              format: slim.format,
+              skipAnilist: Boolean(aniMedia),
+            }).catch(() => null);
+
+            if (extraCredits) {
+              if (resolvedCharacters.length === 0 && extraCredits.characters.length > 0) {
+                resolvedCharacters = extraCredits.characters;
+              }
+              if (resolvedStaff.length === 0 && extraCredits.staff.length > 0) {
+                resolvedStaff = extraCredits.staff;
+              }
+              if (resolvedStudios.length === 0 && extraCredits.studios.length > 0) {
+                resolvedStudios = extraCredits.studios;
+              }
+            }
+          }
 
           const anime: Anime & {
             seasonNavigation?: SeasonNavigation;
           } = {
             ...slim,
-            studios: (json.data.studios ?? []).map((studio) => studio.name).length > 0
-              ? (json.data.studios ?? []).map((studio) => studio.name)
-              : mappedAni?.studios ?? [],
+            anilistId: aniMedia?.id ?? slim.anilistId,
+            studios: resolvedStudios,
             streamingEpisodes: [],
             seasons,
             images: jikanPictures.length > 0 ? jikanPictures : (mappedAni?.images ?? []),
             recommendations: mappedAni?.recommendations ?? [],
-            characters: mappedAni?.characters ?? [],
-            staff: mappedAni?.staff ?? [],
+            characters: resolvedCharacters,
+            staff: resolvedStaff,
             originSource: mappedAni?.originSource ?? (json.data as Record<string, unknown>)?.source as string ?? null,
             countryOfOrigin: mappedAni?.countryOfOrigin ?? "JP",
             startDate: mappedAni?.startDate ?? null,
@@ -3831,10 +4928,11 @@ export const fetchAnimeDetail =
             seasonNavigation,
           };
 
-          return toCache(
-            key,
-            anime,
-          );
+          if (resolvedCharacters.length > 0 || resolvedStaff.length > 0) {
+            return toCache(key, anime);
+          }
+
+          return anime;
         }
 
         const anilistId =
@@ -3877,59 +4975,7 @@ export const fetchAnimeDetail =
                     day
                   }
 
-                  studios(
-                    isMain: true
-                  ) {
-                    nodes {
-                      name
-                    }
-                  }
-
-                  characters(sort: [ROLE, RELEVANCE, ID], perPage: 25) {
-                    edges {
-                      role
-                      node {
-                        id
-                        name {
-                          full
-                          native
-                        }
-                        image {
-                          large
-                          medium
-                        }
-                      }
-                      voiceActors {
-                        id
-                        name {
-                          full
-                          native
-                        }
-                        image {
-                          large
-                          medium
-                        }
-                        languageV2
-                      }
-                    }
-                  }
-
-                  staff(sort: [RELEVANCE, ID], perPage: 25) {
-                    edges {
-                      role
-                      node {
-                        id
-                        name {
-                          full
-                          native
-                        }
-                        image {
-                          large
-                          medium
-                        }
-                      }
-                    }
-                  }
+                  ${ANI_CREDITS_FIELDS}
 
                   nextAiringEpisode {
                     episode
@@ -4201,15 +5247,45 @@ export const fetchAnimeDetail =
               media,
             );
 
-          return toCache(
-            key,
-            mapAniFull(
-              media,
-              seasons,
-              seasonNavigation,
-              jikanPictures,
-            ),
+          const mapped = mapAniFull(
+            media,
+            seasons,
+            seasonNavigation,
+            jikanPictures,
           );
+
+          if (
+            (mapped.characters?.length ?? 0) === 0 ||
+            (mapped.staff?.length ?? 0) === 0 ||
+            (mapped.studios?.length ?? 0) === 0
+          ) {
+            const extraCredits = await resolveAnimeCredits({
+              anilistId,
+              malId: media.idMal ?? undefined,
+              titles: [
+                mapped.titles.romaji,
+                mapped.titles.english,
+                mapped.titles.native,
+              ],
+              year: mapped.year,
+              format: mapped.format,
+              skipAnilist: true,
+            }).catch(() => null);
+
+            if (extraCredits) {
+              if ((mapped.characters?.length ?? 0) === 0 && extraCredits.characters.length > 0) {
+                mapped.characters = extraCredits.characters;
+              }
+              if ((mapped.staff?.length ?? 0) === 0 && extraCredits.staff.length > 0) {
+                mapped.staff = extraCredits.staff;
+              }
+              if ((mapped.studios?.length ?? 0) === 0 && extraCredits.studios.length > 0) {
+                mapped.studios = extraCredits.studios;
+              }
+            }
+          }
+
+          return toCache(key, mapped);
         } catch {
           // O ID desta rota é um ID do AniList.
           // Se o AniList estiver indisponível, verificamos se o anime está no catálogo seguro
@@ -4218,9 +5294,29 @@ export const fetchAnimeDetail =
           );
 
           if (fallback) {
-            return toCache(key, {
+            const fallbackCredits = await resolveAnimeCredits({
+              anilistId: fallback.anilistId ?? anilistId,
+              malId: fallback.malId,
+              kitsuId: fallback.kitsuId,
+              titles: [
+                fallback.titles.romaji,
+                fallback.titles.english,
+                fallback.titles.native,
+              ],
+              year: fallback.year,
+              format: fallback.format,
+              skipAnilist: true,
+            }).catch(
+              (): AnimeCreditsResult => ({
+                studios: [],
+                characters: [],
+                staff: [],
+              }),
+            );
+
+            const fallbackDetail = {
               ...fallback,
-              studios: [],
+              studios: fallbackCredits.studios,
               streamingEpisodes: [],
               seasons: [
                 {
@@ -4238,8 +5334,8 @@ export const fetchAnimeDetail =
                 },
               ],
               recommendations: [],
-              characters: [],
-              staff: [],
+              characters: fallbackCredits.characters,
+              staff: fallbackCredits.staff,
               seasonNavigation: {
                 items: [
                   {
@@ -4248,7 +5344,16 @@ export const fetchAnimeDetail =
                   },
                 ],
               },
-            });
+            };
+
+            if (
+              fallbackCredits.characters.length > 0 ||
+              fallbackCredits.staff.length > 0
+            ) {
+              return toCache(key, fallbackDetail);
+            }
+
+            return fallbackDetail;
           }
 
           return null;

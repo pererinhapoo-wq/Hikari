@@ -174,6 +174,7 @@ export function localToAnime(local: LocalAnime): Anime {
     id: local.id,
     anilistId: local.anilistId,
     malId: local.malId,
+    kitsuId: local.kitsuId,
     titles: {
       romaji: local.titleRomaji,
       english: local.titleEnglish,
@@ -223,8 +224,9 @@ export function animeToLocal(
       (anime.source === "local"
         ? anime.id
         : `local-${crypto.randomUUID()}`),
-    anilistId: anime.anilistId,
-    malId: anime.malId,
+    anilistId: anime.anilistId ?? existing?.anilistId,
+    malId: anime.malId ?? existing?.malId,
+    kitsuId: anime.kitsuId ?? existing?.kitsuId,
     titleRomaji: anime.titles.romaji,
     titleEnglish: anime.titles.english,
     titleNative: anime.titles.native,

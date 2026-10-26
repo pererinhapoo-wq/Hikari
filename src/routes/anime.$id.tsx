@@ -15,7 +15,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
-import { fetchAnimeDetail, fetchAnimePictures } from "@/lib/api";
+import {
+  fetchAnimeCredits,
+  fetchAnimeDetail,
+  fetchAnimePictures,
+} from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getStudioLogo } from "@/lib/studio-logos";
@@ -103,6 +107,119 @@ function AnimePage() {
   );
 
   const anime = mergeDetail(remote, id, locals);
+
+  const [extraCredits, setExtraCredits] = useState<{
+    forId: string;
+    studios: string[];
+    characters: AnimeCharacter[];
+    staff: AnimeStaff[];
+  } | null>(null);
+
+  const animeId = anime?.id;
+  const animeAnilistId = anime?.anilistId;
+  const animeMalId = anime?.malId;
+  const animeKitsuId = anime?.kitsuId;
+  const animeTitleRomaji = anime?.titles.romaji ?? "";
+  const animeTitleEnglish = anime?.titles.english ?? "";
+  const animeTitleNative = anime?.titles.native ?? "";
+  const animeYear = anime?.year ?? null;
+  const animeFormat = anime?.format ?? null;
+  const hasCharacters = (anime?.characters?.length ?? 0) > 0;
+  const hasStaff = (anime?.staff?.length ?? 0) > 0;
+  const hasStudios = (anime?.studios?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (!animeId) return;
+    if (hasCharacters && hasStaff && hasStudios) return;
+
+    let cancelled = false;
+
+    const parsedAniId =
+      animeAnilistId ??
+      (/^\d+$/.test(animeId) ? Number(animeId) : undefined);
+    const parsedMalId =
+      animeMalId ??
+      (animeId.startsWith("mal-")
+        ? Number(animeId.replace("mal-", ""))
+        : undefined);
+    const parsedKitsuId =
+      animeKitsuId ??
+      (animeId.startsWith("kitsu-")
+        ? Number(animeId.replace("kitsu-", ""))
+        : undefined);
+    const titles = [animeTitleRomaji, animeTitleEnglish, animeTitleNative].filter(
+      (t) => Boolean(t && t.trim()),
+    );
+
+    fetchAnimeCredits({
+      data: {
+        anilistId:
+          parsedAniId && Number.isFinite(parsedAniId) ? parsedAniId : undefined,
+        malId:
+          parsedMalId && Number.isFinite(parsedMalId) ? parsedMalId : undefined,
+        kitsuId:
+          parsedKitsuId && Number.isFinite(parsedKitsuId)
+            ? parsedKitsuId
+            : undefined,
+        titles,
+        year: animeYear,
+        format: animeFormat,
+      },
+    })
+      .then((res) => {
+        if (cancelled || !res) return;
+        if (
+          res.characters.length > 0 ||
+          res.staff.length > 0 ||
+          res.studios.length > 0
+        ) {
+          setExtraCredits({
+            forId: animeId,
+            studios: res.studios,
+            characters: res.characters,
+            staff: res.staff,
+          });
+        }
+      })
+      .catch(() => {
+        // Silencioso: preserva o que já estiver disponível na página
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    animeId,
+    animeAnilistId,
+    animeMalId,
+    animeKitsuId,
+    animeTitleRomaji,
+    animeTitleEnglish,
+    animeTitleNative,
+    animeYear,
+    animeFormat,
+    hasCharacters,
+    hasStaff,
+    hasStudios,
+  ]);
+
+  const activeExtraCredits =
+    anime && extraCredits?.forId === anime.id ? extraCredits : null;
+
+  const effectiveCharacters =
+    anime?.characters && anime.characters.length > 0
+      ? anime.characters
+      : activeExtraCredits?.characters;
+
+  const effectiveStaff =
+    anime?.staff && anime.staff.length > 0
+      ? anime.staff
+      : activeExtraCredits?.staff;
+
+  const effectiveStudios =
+    anime?.studios && anime.studios.length > 0
+      ? anime.studios
+      : (activeExtraCredits?.studios ?? []);
 
   const [seasonsOpen, setSeasonsOpen] = useState(false);
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
@@ -821,10 +938,10 @@ function AnimePage() {
       )}
 
       {/* ELENCO */}
-      <ElencoSection characters={anime.characters} />
+      <ElencoSection characters={effectiveCharacters} />
 
       {/* DIREÇÃO E EQUIPE TÉCNICA */}
-      <DirecaoEquipeSection studios={anime.studios} staff={anime.staff} />
+      <DirecaoEquipeSection studios={effectiveStudios} staff={effectiveStaff} />
 
       {/* INFORMAÇÕES ADICIONAIS */}
       <InformacoesAdicionaisSection anime={anime} />
@@ -1401,13 +1518,19 @@ function ElencoSection({
   const railRef = useRef<HTMLDivElement>(null);
 
   const validCharacters = useMemo(() => {
-    return (characters ?? []).filter((c) => Boolean(c.name?.full));
+    return (characters ?? []).filter((c) =>
+      Boolean(c?.name?.full?.trim() || c?.name?.native?.trim()),
+    );
   }, [characters]);
 
   // Verifica se há dubladores em português brasileiro
   const hasPortuguese = useMemo(() => {
     return validCharacters.some((c) =>
       (c.voiceActors ?? []).some((va) => {
+        const hasName = Boolean(
+          va?.name?.full?.trim() || va?.name?.native?.trim(),
+        );
+        if (!hasName) return false;
         const lang = (va.language ?? "").toLowerCase();
         return (
           lang.includes("portuguese") ||
@@ -1418,6 +1541,8 @@ function ElencoSection({
       }),
     );
   }, [validCharacters]);
+
+  const activeLang: "ja" | "pt" = hasPortuguese ? selectedLang : "ja";
 
   if (validCharacters.length === 0) {
     return null;
@@ -1447,7 +1572,7 @@ function ElencoSection({
                 onClick={() => setSelectedLang("ja")}
                 className={cn(
                   "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
-                  selectedLang === "ja"
+                  activeLang === "ja"
                     ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
                     : "text-zinc-400 hover:text-zinc-200",
                 )}
@@ -1461,7 +1586,7 @@ function ElencoSection({
                 onClick={() => setSelectedLang("pt")}
                 className={cn(
                   "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
-                  selectedLang === "pt"
+                  activeLang === "pt"
                     ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
                     : "text-zinc-400 hover:text-zinc-200",
                 )}
@@ -1504,11 +1629,11 @@ function ElencoSection({
         ref={railRef}
         className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
       >
-        {validCharacters.map((char) => (
+        {validCharacters.map((char, index) => (
           <ElencoCard
-            key={char.id || char.name.full}
+            key={`${char.id || char.name.full || char.name.native}-${index}`}
             char={char}
-            selectedLang={selectedLang}
+            selectedLang={activeLang}
           />
         ))}
       </div>
@@ -1523,37 +1648,58 @@ function ElencoCard({
   char: AnimeCharacter;
   selectedLang: "ja" | "pt";
 }) {
-  const matchingVa = (char.voiceActors ?? []).find((va) => {
-    const l = (va.language ?? "").toLowerCase();
-    if (selectedLang === "pt") {
-      return (
-        l.includes("portuguese") ||
-        l.includes("brazil") ||
-        l.includes("pt-br") ||
-        l.includes("pt_br")
-      );
-    }
-    return l.includes("japanese");
-  });
+  const [imgError, setImgError] = useState(false);
 
-  const isMain = char.role === "MAIN";
+  useEffect(() => {
+    setImgError(false);
+  }, [char.image]);
+
+  const charName = char.name?.full?.trim() || char.name?.native?.trim() || "";
+  const validVas = (char.voiceActors ?? []).filter((va) =>
+    Boolean(va?.name?.full?.trim() || va?.name?.native?.trim()),
+  );
+
+  const matchingVa =
+    selectedLang === "pt"
+      ? validVas.find((va) => {
+          const l = (va.language ?? "").toLowerCase();
+          return (
+            l.includes("brazil") ||
+            l.includes("pt-br") ||
+            l.includes("pt_br")
+          );
+        }) ??
+        validVas.find((va) =>
+          (va.language ?? "").toLowerCase().includes("portuguese"),
+        )
+      : validVas.find((va) => {
+          const l = (va.language ?? "").toLowerCase();
+          return l.includes("japanese") || l === "ja" || l === "ja_jp";
+        });
+
+  const vaName =
+    matchingVa?.name?.full?.trim() || matchingVa?.name?.native?.trim() || "";
+
+  const isMain = (char.role ?? "").toUpperCase() === "MAIN";
   const roleLabel = isMain ? "Protagonista" : "Secundário";
+  const showImage = Boolean(char.image) && !imgError;
 
   return (
     <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/45 hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
       {/* Imagem retangular do personagem (elemento visual principal, nunca circular) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
-        {char.image ? (
+        {showImage ? (
           <img
             src={char.image}
-            alt={char.name.full}
+            alt={charName}
+            onError={() => setImgError(true)}
             loading="lazy"
             decoding="async"
             className="size-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-105"
           />
         ) : (
           <div className="flex size-full items-center justify-center bg-gradient-to-b from-[#17132a] to-[#0d0b18] font-display text-xl sm:text-2xl font-bold text-purple-400/80">
-            {char.name.full.charAt(0)}
+            {charName.charAt(0)}
           </div>
         )}
 
@@ -1576,20 +1722,20 @@ function ElencoCard({
       <div className="flex flex-1 flex-col justify-between p-2 sm:p-2.5 min-w-0">
         {/* Nome do personagem */}
         <p
-          title={char.name.full}
+          title={charName}
           className="line-clamp-2 font-display text-[11px] sm:text-xs font-bold text-zinc-100 transition-colors group-hover:text-purple-300 min-w-0 break-words leading-snug"
         >
-          {char.name.full}
+          {charName}
         </p>
 
         {/* Nome do dublador correspondente logo abaixo em texto */}
         <div className="mt-1.5 min-w-0">
-          {matchingVa ? (
+          {vaName ? (
             <p
-              title={matchingVa.name.full}
+              title={vaName}
               className="truncate text-[10px] sm:text-[10.5px] font-medium text-purple-300/90 min-w-0"
             >
-              {matchingVa.name.full}
+              {vaName}
             </p>
           ) : (
             <p className="truncate text-[9.5px] sm:text-[10px] italic text-zinc-500 min-w-0">
@@ -1619,7 +1765,7 @@ function DirecaoEquipeSection({
 
   const getRoleWeight = (role: string): number => {
     const r = role.toLowerCase();
-    if (r === "director" || r.startsWith("director")) return 1;
+    if (r === "director" || r.startsWith("director") || r.includes("series director")) return 1;
     if (r.includes("original creator") || r.includes("creator")) return 2;
     if (r.includes("series composition")) return 3;
     if (
@@ -1640,18 +1786,40 @@ function DirecaoEquipeSection({
 
   const validStaff = useMemo(() => {
     return [...(staff ?? [])]
-      .filter((s) => Boolean(s.name && s.role))
+      .filter((s) => Boolean(s?.name?.trim()))
+      .map((s) => ({
+        ...s,
+        name: s.name.trim(),
+        role: s.role?.trim() || "Equipe técnica",
+      }))
       .sort((a, b) => getRoleWeight(a.role) - getRoleWeight(b.role));
   }, [staff]);
 
   const studioItems = useMemo(() => {
-    return (studios ?? []).map((name) => ({
-      id: `studio-${name}`,
-      name,
-      role: "Estúdio de animação",
-      isStudio: true,
-      image: getStudioLogo(name),
-    }));
+    const seen = new Set<string>();
+    const out: {
+      id: string;
+      name: string;
+      role: string;
+      isStudio: boolean;
+      image?: string;
+    }[] = [];
+
+    for (const rawName of studios ?? []) {
+      const name = rawName?.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        id: `studio-${name}`,
+        name,
+        role: "Estúdio de animação",
+        isStudio: true,
+        image: getStudioLogo(name),
+      });
+    }
+    return out;
   }, [studios]);
 
   const allItems = useMemo(() => {
@@ -1723,6 +1891,11 @@ function StaffCard({
   };
 }) {
   const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [item.image]);
+
   const roleText = staffRoleLabel(item.role);
   const showImage = Boolean(item.image) && !imgError;
 
