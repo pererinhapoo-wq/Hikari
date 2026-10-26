@@ -9,9 +9,9 @@ export interface LogoProps {
 }
 
 /**
- * Identidade visual oficial HIKARI.
- * Apresenta exclusivamente o nome HIKARI em tipografia fina, refinada e sofisticada,
- * iluminada por um reflexo luminoso contínuo em tons de branco e violeta.
+ * Identidade visual oficial HIKARI com Elizabeth (Gintama).
+ * Apresenta Elizabeth segurando a placa sobre o nome HIKARI em tipografia com brilho violeta,
+ * perfeitamente adaptado para o cabeçalho transparente em desktop e celular.
  */
 export function Logo({
   className,
@@ -19,22 +19,31 @@ export function Logo({
   linkToHome = true,
 }: LogoProps) {
   const sizeClasses = {
-    sm: "text-base tracking-[0.26em]",
-    md: "text-lg sm:text-xl tracking-[0.3em]",
-    lg: "text-2xl sm:text-3xl tracking-[0.34em]",
+    sm: "h-9 sm:h-10 max-h-[38px] sm:max-h-[42px]",
+    md: "h-11 sm:h-12 max-h-[46px] sm:max-h-[50px]",
+    lg: "h-12 sm:h-14 max-h-[50px] sm:max-h-[58px]",
   }[size];
 
   const content = (
-    <span
+    <div
       className={cn(
-        "hikari-luminous-text select-none uppercase tracking-[0.3em] font-medium leading-none",
-        sizeClasses,
+        "relative inline-flex items-center justify-center select-none group",
         className
       )}
       aria-label="HIKARI"
     >
-      HIKARI
-    </span>
+      <img
+        src="/assets/hikari-elizabeth-logo.png"
+        alt="HIKARI — Elizabeth"
+        className={cn(
+          "w-auto object-contain transition-transform duration-200 ease-out will-change-transform group-hover:scale-[1.03] drop-shadow-[0_2px_10px_rgba(168,85,247,0.35)]",
+          sizeClasses
+        )}
+        loading="eager"
+        decoding="async"
+        draggable={false}
+      />
+    </div>
   );
 
   if (!linkToHome) {
