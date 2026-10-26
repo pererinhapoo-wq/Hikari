@@ -1,6 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
-  ArrowLeft,
   Bookmark,
   BookmarkCheck,
   Check,
@@ -107,19 +106,22 @@ function AnimePage() {
 
   const [seasonsOpen, setSeasonsOpen] = useState(false);
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
-  const [canGoBack, setCanGoBack] = useState(false);
+  const [isListToggling, setIsListToggling] = useState(false);
+  const [isWatchPressing, setIsWatchPressing] = useState(false);
+
+  const handleToggleList = useCallback(() => {
+    setIsListToggling(true);
+    toggleList(anime);
+    setTimeout(() => {
+      setIsListToggling(false);
+    }, 300);
+  }, [anime, toggleList]);
 
   const [bannerFocalX, setBannerFocalX] = useState<string>("50%");
 
   useEffect(() => {
     setBannerFocalX("50%");
   }, [id, anime?.banner]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      setCanGoBack(true);
-    }
-  }, []);
 
   /*
    * COR DA ABA DO NAVEGADOR & ENQUADRAMENTO RESPONSIVO DO BANNER
@@ -317,6 +319,7 @@ function AnimePage() {
   }
 
   const title = displayTitle(anime);
+  const isReleasing = anime.status === "RELEASING";
   const yt = youtubeIdFrom(anime.trailerId);
 
   const localRecord = locals.find(
@@ -378,14 +381,30 @@ function AnimePage() {
     }
   };
 
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      window.history.back();
-    }
-  };
-
   return (
-    <article className="pb-12">
+    <article className="pb-12 motion-safe:animate-[pageEnter_250ms_ease-out]">
+      {/* Testes experimentais isolados: entrada suave da página e assentamento sutil do banner */}
+      <style>{`
+        @keyframes pageEnter {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes bannerSettle {
+          from { transform: scale(1.02); }
+          to { transform: scale(1); }
+        }
+        @keyframes bookmarkPop {
+          0% { transform: scale(0.85); }
+          50% { transform: scale(1.22); }
+          100% { transform: scale(1); }
+        }
+        @keyframes bookmarkDepop {
+          0% { transform: scale(1.15); }
+          50% { transform: scale(0.88); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
+
       {/* HERO */}
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
@@ -399,7 +418,7 @@ function AnimePage() {
               loading="eager"
               decoding="async"
               style={{ objectPosition: `${bannerFocalX} 25%` }}
-              className="size-full object-cover sm:!object-center transition-[object-position] duration-500"
+              className="size-full object-cover sm:!object-center transition-[object-position] duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
             />
           ) : anime.cover ? (
             <div className="relative size-full overflow-hidden">
@@ -413,7 +432,7 @@ function AnimePage() {
             </div>
           ) : null}
 
-          {/* Sombra superior suave para contraste do botão Voltar */}
+          {/* Sombra superior suave para contraste */}
           <div className="pointer-events-none absolute inset-x-0 top-0 h-16 sm:h-28 bg-gradient-to-b from-black/80 via-black/30 to-transparent" />
 
           {/* Vinheta lateral sutil */}
@@ -421,20 +440,6 @@ function AnimePage() {
 
           {/* Degradê inferior suave integrando com o fundo dark da página */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 sm:h-44 bg-gradient-to-t from-bg via-bg/75 to-transparent" />
-
-          {/* BOTÃO VOLTAR */}
-          {canGoBack && (
-            <button
-              type="button"
-              onClick={handleBack}
-              aria-label="Voltar"
-              title="Voltar"
-              className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-xl border border-purple-500/30 bg-black/60 px-3.5 py-2 text-sm font-medium text-white backdrop-blur-md shadow-md transition-all hover:bg-purple-950/50 hover:border-purple-500/60 hover:text-purple-200 sm:left-6 cursor-pointer"
-            >
-              <ArrowLeft className="size-4" />
-              <span>Voltar</span>
-            </button>
-          )}
         </div>
 
         <div className="relative z-10 -mt-12 xs:-mt-14 sm:-mt-28 md:-mt-32 px-4 sm:px-6">
@@ -442,7 +447,7 @@ function AnimePage() {
             {/* CAPA + INFO MOBILE (alinhada à esquerda com sobreposição natural) */}
             <div className="flex items-end gap-3.5 sm:gap-0 sm:block">
               {/* CAPA VERTICAL SOBREPOSTA */}
-              <div className="w-28 xs:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35">
+              <div className="w-28 xs:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 translate-y-2.5 sm:translate-y-4">
                 {anime.cover ? (
                   <img
                     src={anime.cover}
@@ -458,11 +463,10 @@ function AnimePage() {
               <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:hidden">
                 <div className="mb-1.5 flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-950/70 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-purple-300 uppercase shadow-[0_0_12px_rgba(168,85,247,0.15)]">
-                    <span className="size-1.5 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
                     <span>Anime</span>
                   </span>
                   {anime.score != null && (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-purple-500/35 bg-purple-950/80 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-purple-200">
+                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/35 bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
                       ★ {scoreLabel(anime.score)}
                     </span>
                   )}
@@ -486,7 +490,6 @@ function AnimePage() {
               <div className="hidden sm:block">
                 <div className="mb-2">
                   <span className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-950/70 px-2.5 py-0.5 text-xs font-semibold tracking-wider text-purple-300 uppercase shadow-[0_0_12px_rgba(168,85,247,0.15)]">
-                    <span className="size-1.5 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
                     <span>Anime</span>
                   </span>
                 </div>
@@ -505,7 +508,7 @@ function AnimePage() {
               {/* METADADOS */}
               <div className="mt-2.5 sm:mt-4 flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm">
                 {anime.score != null && (
-                  <span className="hidden sm:inline-flex items-center gap-1 rounded-lg border border-purple-500/35 bg-purple-950/80 px-2.5 py-1 text-xs font-bold tabular-nums text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.15)]">
+                  <span className="hidden sm:inline-flex items-center gap-1 rounded-lg border border-amber-500/35 bg-amber-950/60 px-2.5 py-1 text-xs font-bold tabular-nums text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.2)]">
                     ★ {scoreLabel(anime.score)}
                   </span>
                 )}
@@ -527,8 +530,11 @@ function AnimePage() {
                 )}
 
                 {statusLabel(anime.status) && (
-                  <span className="inline-flex items-center rounded-lg border border-purple-500/20 bg-purple-950/40 px-2.5 py-1 text-xs font-medium text-purple-300">
-                    {statusLabel(anime.status)}
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/40 px-2.5 py-1 text-xs font-medium text-purple-300">
+                    {isReleasing && (
+                      <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] motion-safe:animate-pulse" />
+                    )}
+                    <span>{statusLabel(anime.status)}</span>
                   </span>
                 )}
               </div>
@@ -547,7 +553,7 @@ function AnimePage() {
                       status: "",
                       sort: "TRENDING_DESC",
                     }}
-                    className="inline-flex items-center rounded-lg border border-purple-500/20 bg-[#161326]/80 px-2.5 py-1 text-xs font-medium text-purple-200/90 transition-all hover:border-purple-500/50 hover:bg-purple-950/50 hover:text-purple-100"
+                    className="inline-flex items-center rounded-lg border border-purple-500/20 bg-[#161326]/80 px-2.5 py-1 text-xs font-medium text-purple-200/90 transition-all duration-250 ease-out select-none cursor-pointer hover:border-purple-500/60 hover:bg-purple-950/70 hover:text-purple-100 hover:shadow-[0_0_12px_rgba(168,85,247,0.35)] motion-safe:hover:scale-[1.03] motion-safe:active:scale-[0.95] active:border-purple-400/80 active:bg-purple-900/60 active:shadow-[0_0_14px_rgba(168,85,247,0.5)] active:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70"
                   >
                     {genreLabel(g)}
                   </Link>
@@ -568,8 +574,19 @@ function AnimePage() {
                         }
                       : undefined
                   }
-                  className="inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 px-5 sm:px-6 text-sm sm:text-base font-semibold text-white shadow-[0_4px_20px_rgba(168,85,247,0.35)] transition-all duration-200 hover:from-purple-500 hover:to-purple-400 hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
+                  className={cn(
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 px-5 sm:px-6 text-sm sm:text-base font-semibold text-white shadow-[0_4px_20px_rgba(168,85,247,0.35)] transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+                    "hover:from-purple-500 hover:to-purple-400 hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] hover:brightness-110",
+                    "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.96]",
+                    "active:brightness-125 active:shadow-[0_0_28px_rgba(168,85,247,0.65)]",
+                    isWatchPressing && "motion-safe:scale-[0.96] brightness-125 shadow-[0_0_28px_rgba(168,85,247,0.65)]"
+                  )}
                   onClick={(e) => {
+                    setIsWatchPressing(true);
+                    setTimeout(() => {
+                      setIsWatchPressing(false);
+                    }, 250);
+
                     if (
                       !e.metaKey &&
                       !e.altKey &&
@@ -592,27 +609,49 @@ function AnimePage() {
                     }
                   }}
                 >
-                  <Play className="size-4 fill-current pointer-events-none" />
+                  <Play className="size-4 fill-current pointer-events-none transition-transform duration-250 ease-out group-hover:scale-105" />
                   <span>{watchButtonLabel}</span>
                 </Link>
 
                 <button
                   type="button"
-                  onClick={() => toggleList(anime)}
-                  className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-[#0f0d18]/90 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-100 shadow-sm transition-all duration-200 hover:border-purple-500/60 hover:bg-[#1a142e] hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
+                  onClick={handleToggleList}
+                  aria-label={inList ? "Remover da minha lista" : "Adicionar à minha lista"}
+                  className={cn(
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-medium shadow-sm transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+                    "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.96]",
+                    inList
+                      ? "border border-purple-500/50 bg-[#151126] text-purple-200 shadow-[0_0_16px_rgba(168,85,247,0.22)] hover:border-purple-400/70 hover:bg-[#1b1532] hover:shadow-[0_0_20px_rgba(168,85,247,0.32)]"
+                      : "border border-purple-500/30 bg-[#0f0d18]/90 text-zinc-200 hover:border-purple-500/60 hover:bg-[#1a142e] hover:text-white hover:shadow-[0_0_12px_rgba(168,85,247,0.18)]",
+                    isListToggling && (inList
+                      ? "border-purple-400 shadow-[0_0_22px_rgba(168,85,247,0.45)] brightness-110"
+                      : "shadow-[0_0_10px_rgba(168,85,247,0.15)]")
+                  )}
                 >
                   {inList ? (
-                    <BookmarkCheck className="size-4 text-purple-400" />
+                    <BookmarkCheck
+                      className={cn(
+                        "size-4 text-purple-300 transition-all duration-250 ease-out",
+                        isListToggling && "motion-safe:animate-[bookmarkPop_300ms_cubic-bezier(0.34,1.56,0.64,1)] text-purple-200"
+                      )}
+                    />
                   ) : (
-                    <Bookmark className="size-4 text-zinc-400" />
+                    <Bookmark
+                      className={cn(
+                        "size-4 text-zinc-400 transition-all duration-250 ease-out group-hover:text-purple-300",
+                        isListToggling && "motion-safe:animate-[bookmarkDepop_300ms_ease-out]"
+                      )}
+                    />
                   )}
-                  <span>{inList ? "Na lista" : "Minha Lista"}</span>
+                  <span className="transition-colors duration-250">
+                    {inList ? "Na Minha Lista" : "Minha Lista"}
+                  </span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleShare}
-                  className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-purple-500/25 bg-[#0f0d18]/90 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-200 shadow-sm transition-all duration-200 hover:border-purple-500/50 hover:bg-[#1a142e] hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
+                  className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-purple-500/25 bg-[#0f0d18]/90 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-200 shadow-sm transition-all duration-200 ease-out hover:border-purple-500/50 hover:bg-[#1a142e] hover:text-white hover:brightness-110 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
                 >
                   <Share2 className="size-4 text-zinc-400" />
                   <span>Compartilhar</span>
@@ -627,7 +666,7 @@ function AnimePage() {
                     search={{
                       importId: anime.id,
                     }}
-                    className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-300 shadow-sm transition-all duration-200 hover:border-purple-500/40 hover:bg-[#1a142e] hover:text-white active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
+                    className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-300 shadow-sm transition-all duration-200 ease-out hover:border-purple-500/40 hover:bg-[#1a142e] hover:text-white hover:brightness-110 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
                   >
                     <Pencil className="size-4 text-zinc-400" />
                     <span>Editar</span>
@@ -661,7 +700,7 @@ function AnimePage() {
             <button
               type="button"
               onClick={() => setSynopsisExpanded(!synopsisExpanded)}
-              className="mt-3 inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-purple-400 hover:text-purple-300 transition-colors cursor-pointer"
+              className="mt-3 inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-purple-400 hover:text-purple-300 transition-all duration-200 ease-out hover:brightness-110 motion-safe:hover:scale-[1.02] cursor-pointer"
             >
               {synopsisExpanded ? "Mostrar menos" : "Ler mais"}
             </button>
