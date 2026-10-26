@@ -113,6 +113,7 @@ function main(argv) {
   const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
   const binDir = join(projectRoot(), "node_modules", ".bin");
   env.PATH = env.PATH ? `${binDir}:${env.PATH}` : binDir;
+  process.env.PATH = env.PATH;
   const child = spawn(command, args, { stdio: "inherit", env });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {

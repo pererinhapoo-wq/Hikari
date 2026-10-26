@@ -527,7 +527,7 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[9.75rem] xs:h-[11.5rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated"
+          className="relative h-[16.75rem] xs:h-[18.5rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated"
         >
           {anime.banner ? (
             <img
@@ -557,10 +557,10 @@ function AnimePage() {
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-bg/15 via-transparent to-bg/10" />
 
           {/* Degradê inferior suave integrando com o fundo dark da página */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 sm:h-36 bg-gradient-to-t from-bg via-bg/10 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 sm:h-36 bg-gradient-to-t from-bg via-bg/25 to-transparent" />
         </div>
 
-        <div className="relative z-10 -mt-12 xs:-mt-14 sm:-mt-28 md:-mt-32 px-4 sm:px-6">
+        <div className="relative z-10 -mt-24 xs:-mt-28 sm:-mt-28 md:-mt-32 px-4 sm:px-6">
           <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:gap-6">
             {/* CAPA + INFO MOBILE (alinhada à esquerda com sobreposição natural) */}
             <div className="flex items-end gap-3.5 sm:gap-0 sm:block">
