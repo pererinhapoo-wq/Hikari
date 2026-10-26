@@ -551,13 +551,13 @@ function AnimePage() {
           ) : null}
 
           {/* Sombra superior suave para contraste */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-16 sm:h-28 bg-gradient-to-b from-black/60 via-black/20 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-16 sm:h-28 bg-gradient-to-b from-black/50 via-black/15 to-transparent" />
 
           {/* Vinheta lateral sutil */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-bg/25 via-transparent to-bg/20" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-bg/15 via-transparent to-bg/10" />
 
           {/* Degradê inferior suave integrando com o fundo dark da página */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 sm:h-40 bg-gradient-to-t from-bg via-bg/40 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 sm:h-36 bg-gradient-to-t from-bg via-bg/10 to-transparent" />
         </div>
 
         <div className="relative z-10 -mt-12 xs:-mt-14 sm:-mt-28 md:-mt-32 px-4 sm:px-6">
@@ -565,7 +565,7 @@ function AnimePage() {
             {/* CAPA + INFO MOBILE (alinhada à esquerda com sobreposição natural) */}
             <div className="flex items-end gap-3.5 sm:gap-0 sm:block">
               {/* CAPA VERTICAL SOBREPOSTA */}
-              <div className="w-28 xs:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 translate-y-5 sm:translate-y-7">
+              <div className="w-28 xs:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 translate-y-6 sm:translate-y-8.5">
                 {anime.cover ? (
                   <img
                     src={anime.cover}
