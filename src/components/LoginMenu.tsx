@@ -112,11 +112,8 @@ export function LoginMenu({
 
       {/* Cabeçalho */}
       <div className="flex flex-col items-center text-center">
-        <div className="mb-2 flex items-center justify-center gap-2">
-          <Logo />
-          <span className="font-display text-sm font-black tracking-widest text-white">
-            HIKARI
-          </span>
+        <div className="mb-2.5 flex items-center justify-center">
+          <Logo size="sm" linkToHome={false} />
         </div>
 
         <h2

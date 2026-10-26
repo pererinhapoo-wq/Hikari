@@ -263,6 +263,57 @@ export function Shell() {
       "/watch",
     );
 
+  const isBannerPage =
+    pathname === "/" ||
+    pathname.startsWith("/anime/");
+
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [showHeader, setShowHeader] = useState(true);
+
+  // Mantém o cabeçalho imediatamente visível ao navegar para qualquer página
+  useEffect(() => {
+    setShowHeader(true);
+    setIsScrolled(window.scrollY > 15);
+  }, [pathname]);
+
+  useEffect(() => {
+    let lastScrollY = window.scrollY;
+
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+
+      // Se qualquer painel/menu/busca estiver aberto, mantém o cabeçalho visível
+      if (searchOpen || notificationsOpen || menuOpen) {
+        setShowHeader(true);
+        setIsScrolled(currentScrollY > 15);
+        lastScrollY = currentScrollY;
+        return;
+      }
+
+      // Fundo translúcido com desfoque discreto ao rolar
+      setIsScrolled(currentScrollY > 15);
+
+      // 1. No topo da página (<= 20px), exibir o cabeçalho normalmente (com fundo transparente nas páginas com banner)
+      if (currentScrollY <= 20) {
+        setShowHeader(true);
+      } else if (currentScrollY > lastScrollY + 6 && currentScrollY > 50) {
+        // 2. Quando o usuário começar a rolar para baixo, ocultar o cabeçalho inteiro
+        setShowHeader(false);
+      } else if (currentScrollY < lastScrollY - 6) {
+        // 3. Assim que o usuário começar a rolar para cima, mostrar novamente o cabeçalho inteiro
+        setShowHeader(true);
+      }
+
+      lastScrollY = currentScrollY;
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [searchOpen, notificationsOpen, menuOpen]);
+
   const nav =
     user &&
     isHikariAdmin(
@@ -621,8 +672,33 @@ export function Shell() {
 
       {/* =========================================================
           HEADER
+          - No topo: transparente sobre o banner
+          - Ao rolar para baixo: oculta o cabeçalho inteiro suavemente
+          - Ao rolar para cima: reaparece o cabeçalho inteiro com fundo translúcido
       ========================================================== */}
-      <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
+      <header
+        className={cn(
+          "sticky top-0 z-40 transition-all duration-300 ease-out will-change-transform",
+          showHeader
+            ? "translate-y-0 opacity-100 pointer-events-auto"
+            : "-translate-y-full opacity-0 pointer-events-none",
+          isBannerPage
+            ? isScrolled
+              ? "border-b border-purple-500/15 bg-bg/85 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.6)]"
+              : "border-b border-transparent bg-transparent"
+            : isScrolled
+              ? "border-b border-purple-500/15 bg-bg/85 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.6)]"
+              : "border-b border-border bg-bg/85 backdrop-blur-md"
+        )}
+      >
+        {/* Degradê sutil de proteção para contraste no topo do banner */}
+        {isBannerPage && !isScrolled && (
+          <div
+            className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/80 via-black/35 to-transparent transition-opacity duration-300 -z-10"
+            aria-hidden="true"
+          />
+        )}
+
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
 
           {/* MENU */}
@@ -631,17 +707,15 @@ export function Shell() {
             onClick={() =>
               setMenuOpen(true)
             }
-            className="flex size-11 items-center justify-center rounded-md text-fg hover:bg-elevated"
+            className="flex size-11 items-center justify-center rounded-md text-fg hover:bg-elevated/70 transition-colors"
             aria-label="Abrir menu"
           >
             <Menu className="size-6" />
           </button>
 
-          {/* LOGO */}
+          {/* LOGO OFICIAL HIKARI */}
           <div className="flex flex-1 items-center justify-center md:justify-start">
-            <div className="origin-left scale-110 sm:scale-125">
-              <Logo />
-            </div>
+            <Logo size="md" />
           </div>
 
           {/* AÇÕES DA DIREITA */}
@@ -1282,7 +1356,9 @@ export function Shell() {
 
             {/* CABEÇALHO DO MENU */}
             <div className="flex h-20 items-center justify-between border-b border-border px-5">
-              <Logo />
+              <div onClick={() => setMenuOpen(false)}>
+                <Logo size="md" />
+              </div>
 
               <button
                 type="button"
@@ -1608,7 +1684,12 @@ export function Shell() {
       {/* =========================================================
           CONTEÚDO PRINCIPAL
       ========================================================== */}
-      <main className="mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8">
+      <main
+        className={cn(
+          "mx-auto w-full max-w-6xl px-4 pb-5 sm:px-6 sm:pb-8",
+          isBannerPage && "-mt-14 sm:-mt-16"
+        )}
+      >
         <Outlet />
       </main>
 

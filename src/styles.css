@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "video.js/dist/video-js.css";
 @import "@videojs/react/video/skin.css";
-@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Manrope:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Manrope:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@500;700&display=swap");
 
 @theme {
   --color-bg: #08070d;
@@ -163,6 +163,53 @@ html[data-theme="light"] {
 
   html[data-theme="light"] .custom-scrollbar {
     scrollbar-color: rgb(0 0 0 / 0.18) transparent;
+  }
+}
+
+/* =========================================================
+   REFLEXO LUMINOSO CONTÍNUO HIKARI (LUZ VIOLETA & BRANCA)
+========================================================= */
+
+@keyframes hikariLuminousGleam {
+  0% {
+    background-position: 160% 0;
+  }
+  42% {
+    background-position: -60% 0;
+  }
+  100% {
+    background-position: -60% 0;
+  }
+}
+
+.hikari-luminous-text {
+  font-family: "Cinzel", "Playfair Display", Georgia, serif;
+  font-weight: 500;
+  background: linear-gradient(
+    115deg,
+    #f4f4f6 0%,
+    #e4e4e7 25%,
+    #ffffff 38%,
+    #c084fc 46%,
+    #ffffff 54%,
+    #d8b4fe 62%,
+    #f4f4f6 75%,
+    #f4f4f6 100%
+  );
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+  will-change: background-position;
+  animation: hikariLuminousGleam 4.6s ease-in-out infinite;
+  filter: drop-shadow(0 2px 10px rgba(168, 85, 247, 0.42));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hikari-luminous-text {
+    animation: none !important;
+    background-position: 50% 0 !important;
   }
 }
 

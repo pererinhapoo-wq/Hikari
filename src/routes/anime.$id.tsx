@@ -227,6 +227,7 @@ function AnimePage() {
   const [isWatchPressing, setIsWatchPressing] = useState(false);
 
   const handleToggleList = useCallback(() => {
+    if (!anime) return;
     setIsListToggling(true);
     toggleList(anime);
     setTimeout(() => {

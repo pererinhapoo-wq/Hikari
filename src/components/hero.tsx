@@ -286,7 +286,8 @@ export function Hero({
           lg:max-w-2xl
           md:px-10
           lg:px-12
-          md:py-10
+          md:pt-24
+          md:pb-12
         "
       >
         {/* Bloco de Informações */}
