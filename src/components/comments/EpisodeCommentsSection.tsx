@@ -88,6 +88,50 @@ export interface EpisodeCommentsSectionProps {
 }
 
 /* ========================================================= */
+/* TELA DE CARREGAMENTO DOS COMENTÁRIOS COM ELIZABETH (HIKARI) */
+/* ========================================================= */
+export function ElizabethCommentsLoading() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="elizabeth-loading-container relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24]/90 via-[#0c0a15]/95 to-[#08070d] p-8 sm:p-14 text-center shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] backdrop-blur-md"
+    >
+      {/* Brilho violeta radial sutil no fundo */}
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-44 bg-[#a855f7]/15 rounded-full blur-3xl"
+        aria-hidden="true"
+      />
+
+      <div className="relative z-10 flex flex-col items-center justify-center">
+        {/* Elizabeth segurando a placa com balanço suave e inclinação sutil */}
+        <div className="elizabeth-sway-anim inline-flex items-center justify-center select-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)]">
+          <img
+            src="/assets/hikari-elizabeth-character.png"
+            alt="Elizabeth"
+            className="w-44 sm:w-52 md:w-56 h-auto object-contain pointer-events-none"
+            loading="eager"
+            decoding="async"
+            draggable={false}
+          />
+        </div>
+
+        {/* Indicador circular roxo com animação suave e texto fixo */}
+        <div className="mt-5 flex items-center justify-center gap-2.5">
+          <div
+            className="elizabeth-spinner size-5 rounded-full border-2 border-[#a855f7]/25 border-t-[#c084fc] animate-spin shadow-[0_0_12px_rgba(168,85,247,0.45)] shrink-0"
+            aria-hidden="true"
+          />
+          <p className="text-sm font-medium tracking-wide text-white/85 select-none">
+            Carregando os comentários...
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ========================================================= */
 /* COMENTÁRIOS DO EPISÓDIO (HIKARI / WATCH)                  */
 /* ========================================================= */
 export function EpisodeCommentsSection({
@@ -97,16 +141,6 @@ export function EpisodeCommentsSection({
   episodeNumber,
   targetCommentId,
 }: EpisodeCommentsSectionProps) {
-
-  // Se não houver episódio selecionado, não carrega comentários
-  if (!episodeId || !episodeId.trim()) {
-    return (
-      <div className="mt-10 border-t border-purple-500/20 pt-8 text-center text-sm text-zinc-500">
-        Selecione um episódio para carregar os comentários.
-      </div>
-    );
-  }
-
   const [text, setText] =
     useState("");
 
@@ -855,6 +889,8 @@ export function EpisodeCommentsSection({
     async function loadComments() {
       try {
         setLoading(true);
+        setComments([]);
+        setRootOrder([]);
         setError("");
 
         const bearer = getBearerToken();
@@ -1873,10 +1909,21 @@ export function EpisodeCommentsSection({
   /* RENDER                                                   */
   /* ====================================================== */
 
+  if (!episodeId || !episodeId.trim()) {
+    return (
+      <div className="mt-10 border-t border-purple-500/20 pt-8 text-center text-sm text-zinc-500">
+        Selecione um episódio para carregar os comentários.
+      </div>
+    );
+  }
+
   return (
     <section className="mt-10 border-t border-white/10 pt-8 sm:pt-10">
 
-      <div className="grid gap-6 sm:gap-8">
+      {loading ? (
+        <ElizabethCommentsLoading />
+      ) : (
+        <div className="grid gap-6 sm:gap-8">
 
         <div className="min-w-0">
 
@@ -2619,9 +2666,7 @@ export function EpisodeCommentsSection({
           <div className="mt-6 divide-y divide-white/[0.06] border-y border-white/[0.06]">
 
             {loading ? (
-              <div className="py-8 text-center text-sm text-white/40">
-                Carregando comentários...
-              </div>
+              <ElizabethCommentsLoading />
             ) : displayedRootComments.length ===
               0 ? (
               <div className="py-10 text-center text-sm text-white/40">
@@ -2817,6 +2862,7 @@ export function EpisodeCommentsSection({
         </div>
 
       </div>
+      )}
 
       {/* ================================================== */}
       {/* MODAL DE EDIÇÃO                                    */}
