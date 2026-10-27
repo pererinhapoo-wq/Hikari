@@ -41,10 +41,10 @@ const FETCH_TIMEOUT_MS = 2500;
 const IMAGE_PROBE_TIMEOUT_MS = 3500;
 const PROVIDER_COOLDOWN_MS = 60 * 1000;
 
-const MIN_ALT_WIDTH = 1100;
-const MIN_ALT_HEIGHT = 580;
-const MIN_HORIZONTAL_ASPECT = 1.25;
-const MAX_MOBILE_ALT_ASPECT = 2.05;
+const MIN_ALT_WIDTH = 1200;
+const MIN_ALT_HEIGHT = 440;
+const MIN_HORIZONTAL_ASPECT = 1.35;
+const MAX_MOBILE_ALT_ASPECT = 3.25;
 
 const memoryCache = new Map<string, CacheEntry>();
 let kitsuCooldownUntil = 0;
