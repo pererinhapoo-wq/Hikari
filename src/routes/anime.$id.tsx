@@ -35,6 +35,11 @@ import {
   statusLabel,
 } from "@/lib/labels";
 import { mergeDetail } from "@/lib/overlay";
+import {
+  analyzeBannerFramingAndTheme,
+  hasAdminCustomBanner,
+  resolveSeasonMobileBanner,
+} from "@/lib/season-banner";
 import { useHikariStore } from "@/lib/store";
 import {
   displayTitle,
@@ -235,14 +240,153 @@ function AnimePage() {
     }, 300);
   }, [anime, toggleList]);
 
-  const [bannerFocalX, setBannerFocalX] = useState<string>("50%");
+  const localRecord = useMemo(
+    () =>
+      anime
+        ? locals.find(
+            (a) =>
+              a.id === anime.id ||
+              (anime.anilistId != null && a.anilistId === anime.anilistId),
+          )
+        : undefined,
+    [anime, locals],
+  );
+
+  const isAdminBanner = useMemo(
+    () => hasAdminCustomBanner(localRecord, remote),
+    [localRecord, remote],
+  );
+
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   useEffect(() => {
-    setBannerFocalX("50%");
-  }, [id, anime?.banner]);
+    const mq = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsMobileViewport(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const [mobileBannerState, setMobileBannerState] = useState<{
+    forId: string;
+    url: string;
+    initialObjectPosition: string;
+  } | null>(null);
+
+  const [failedBannerUrls, setFailedBannerUrls] = useState<
+    Record<string, true>
+  >({});
+
+  const animeStartYear = anime?.startDate?.year ?? null;
+  const animeStatus = anime?.status ?? null;
+  const animeBanner = anime?.banner ?? null;
+  const animeCover = anime?.cover ?? null;
+  const animeColor = anime?.color ?? null;
+
+  useEffect(() => {
+    if (!animeId || !isMobileViewport || isAdminBanner) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const parsedAniId =
+      animeAnilistId ??
+      (/^\d+$/.test(animeId) ? Number(animeId) : undefined);
+    const parsedMalId =
+      animeMalId ??
+      (animeId.startsWith("mal-")
+        ? Number(animeId.replace("mal-", ""))
+        : undefined);
+    const parsedKitsuId =
+      animeKitsuId ??
+      (animeId.startsWith("kitsu-")
+        ? Number(animeId.replace("kitsu-", ""))
+        : undefined);
+
+    void resolveSeasonMobileBanner(
+      {
+        animeId,
+        anilistId:
+          parsedAniId && Number.isFinite(parsedAniId) ? parsedAniId : undefined,
+        malId:
+          parsedMalId && Number.isFinite(parsedMalId) ? parsedMalId : undefined,
+        kitsuId:
+          parsedKitsuId && Number.isFinite(parsedKitsuId)
+            ? parsedKitsuId
+            : undefined,
+        year: animeYear,
+        startYear: animeStartYear,
+        format: animeFormat,
+        status: animeStatus,
+        currentBanner: animeBanner,
+        currentCover: animeCover,
+        isAdminCustomBanner: isAdminBanner,
+      },
+      controller.signal,
+    ).then((resolved) => {
+      if (controller.signal.aborted) return;
+      if (resolved.isAlternative && resolved.url) {
+        setMobileBannerState({
+          forId: animeId,
+          url: resolved.url,
+          initialObjectPosition: resolved.initialObjectPosition,
+        });
+      }
+    });
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    animeId,
+    isMobileViewport,
+    isAdminBanner,
+    animeAnilistId,
+    animeMalId,
+    animeKitsuId,
+    animeYear,
+    animeStartYear,
+    animeFormat,
+    animeStatus,
+    animeBanner,
+    animeCover,
+  ]);
+
+  const activeMobileAlt =
+    !isAdminBanner &&
+    isMobileViewport &&
+    animeId &&
+    mobileBannerState?.forId === animeId &&
+    !failedBannerUrls[mobileBannerState.url]
+      ? mobileBannerState
+      : null;
+
+  const baseSeasonBanner =
+    isAdminBanner && localRecord?.banner?.trim()
+      ? localRecord.banner.trim()
+      : animeBanner;
+
+  const effectiveBannerUrl =
+    activeMobileAlt?.url ??
+    (baseSeasonBanner && !failedBannerUrls[baseSeasonBanner]
+      ? baseSeasonBanner
+      : null);
+
+  const defaultObjectPosition =
+    activeMobileAlt?.initialObjectPosition ?? "50% 24%";
+
+  const [framedBannerPosition, setFramedBannerPosition] = useState<{
+    forUrl: string;
+    objectPosition: string;
+  } | null>(null);
+
+  const bannerObjectPosition =
+    effectiveBannerUrl && framedBannerPosition?.forUrl === effectiveBannerUrl
+      ? framedBannerPosition.objectPosition
+      : defaultObjectPosition;
 
   /*
-   * COR DA ABA DO NAVEGADOR & ENQUADRAMENTO RESPONSIVO DO BANNER
+   * COR DA ABA DO NAVEGADOR & ENQUADRAMENTO ADAPTÁVEL DO BANNER
    */
   useEffect(() => {
     const defaultColor = "#09090b";
@@ -257,133 +401,29 @@ function AnimePage() {
       document.head.appendChild(meta);
     }
 
-    if (anime?.color) {
-      meta.content = anime.color;
-    } else {
-      meta.content = defaultColor;
-    }
+    meta.content = animeColor || defaultColor;
 
-    if (!anime?.banner) {
+    if (!effectiveBannerUrl) {
       return;
     }
 
-    // Análise visual automatizada em segundo plano para banners ultra-wide (aspect >= 2.4)
-    // Sem listas manuais de IDs: detecta a distribuição de contraste e densidade visual
-    const timer = setTimeout(() => {
-      const image = new Image();
-      image.crossOrigin = "anonymous";
-      // Cache-bust discreto para evitar colisões com cache não-CORS do navegador
-      const corsUrl = anime.banner + (anime.banner.includes("?") ? "&" : "?") + "cors=1";
-      image.src = corsUrl;
-
-      image.onload = () => {
-        try {
-          const width = image.naturalWidth;
-          const height = image.naturalHeight;
-          if (!width || !height) return;
-
-          const aspect = width / height;
-
-          // Para banners muito panorâmicos, avalia se os elementos principais
-          // estão concentrados em uma das laterais
-          if (aspect >= 2.4) {
-            const scanCanvas = document.createElement("canvas");
-            const scanCtx = scanCanvas.getContext("2d", { willReadFrequently: true });
-            if (scanCtx) {
-              const scanW = 80;
-              const scanH = 20;
-              scanCanvas.width = scanW;
-              scanCanvas.height = scanH;
-              scanCtx.drawImage(image, 0, 0, scanW, scanH);
-              const scanPixels = scanCtx.getImageData(0, 0, scanW, scanH).data;
-
-              let leftEnergy = 0;
-              let centerEnergy = 0;
-              let rightEnergy = 0;
-
-              for (let y = 0; y < scanH; y++) {
-                for (let x = 1; x < scanW; x++) {
-                  const idx1 = (y * scanW + x) * 4;
-                  const idx0 = (y * scanW + (x - 1)) * 4;
-                  // Gradiente e contraste de detalhes (bordas e elementos de ilustração)
-                  const diff =
-                    Math.abs(scanPixels[idx1] - scanPixels[idx0]) +
-                    Math.abs(scanPixels[idx1 + 1] - scanPixels[idx0 + 1]) +
-                    Math.abs(scanPixels[idx1 + 2] - scanPixels[idx0 + 2]);
-
-                  if (x < scanW * 0.35) leftEnergy += diff;
-                  else if (x > scanW * 0.65) rightEnergy += diff;
-                  else centerEnergy += diff;
-                }
-              }
-
-              // Se uma das laterais tiver concentração nítida de detalhes visuais
-              if (rightEnergy > leftEnergy * 1.35 && rightEnergy > centerEnergy * 1.15) {
-                setBannerFocalX("68%");
-              } else if (leftEnergy > rightEnergy * 1.35 && leftEnergy > centerEnergy * 1.15) {
-                setBannerFocalX("32%");
-              } else {
-                setBannerFocalX("50%");
-              }
-            }
-          }
-
-          // Extração da cor predominante para o theme-color
-          if (!anime?.color && meta) {
-            const canvas = document.createElement("canvas");
-            const context = canvas.getContext("2d", { willReadFrequently: true });
-            if (!context) return;
-
-            canvas.width = 40;
-            canvas.height = 20;
-
-            context.drawImage(
-              image,
-              width * 0.25,
-              height * 0.1,
-              width * 0.5,
-              height * 0.35,
-              0,
-              0,
-              canvas.width,
-              canvas.height,
-            );
-
-            const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-            let red = 0, green = 0, blue = 0, count = 0;
-
-            for (let i = 0; i < pixels.length; i += 4) {
-              if (pixels[i + 3] < 180) continue;
-              red += pixels[i];
-              green += pixels[i + 1];
-              blue += pixels[i + 2];
-              count++;
-            }
-
-            if (count > 0) {
-              const factor = 0.72;
-              const finalRed = Math.round((red / count) * factor);
-              const finalGreen = Math.round((green / count) * factor);
-              const finalBlue = Math.round((blue / count) * factor);
-              meta.content = `rgb(${finalRed}, ${finalGreen}, ${finalBlue})`;
-            }
-          }
-        } catch {
-          if (!anime?.color && meta) meta.content = defaultColor;
+    return analyzeBannerFramingAndTheme({
+      bannerUrl: effectiveBannerUrl,
+      hasExplicitColor: Boolean(animeColor),
+      defaultThemeColor: defaultColor,
+      onResult: ({ objectPosition, themeColor }) => {
+        if (objectPosition) {
+          setFramedBannerPosition({
+            forUrl: effectiveBannerUrl,
+            objectPosition,
+          });
         }
-      };
-
-      image.onerror = () => {
-        if (!anime?.color && meta) meta.content = defaultColor;
-      };
-
-      image.src = anime.banner;
-    }, 200);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [anime?.id, anime?.banner, anime?.color]);
+        if (themeColor && !animeColor && meta) {
+          meta.content = themeColor;
+        }
+      },
+    });
+  }, [animeId, effectiveBannerUrl, animeColor]);
 
   /*
    * TEMPORADAS
@@ -439,13 +479,6 @@ function AnimePage() {
   const title = displayTitle(anime);
   const isReleasing = anime.status === "RELEASING";
   const yt = youtubeIdFrom(anime.trailerId);
-
-  const localRecord = locals.find(
-    (a) =>
-      a.id === anime.id ||
-      (anime.anilistId &&
-        a.anilistId === anime.anilistId),
-  );
 
   const episodeCount =
     currentEpisodes?.length ||
@@ -527,45 +560,43 @@ function AnimePage() {
       <section className="relative -mx-4 overflow-hidden sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative h-[16.75rem] xs:h-[18.5rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated"
+          className="relative max-sm:h-[22rem] max-sm:min-[380px]:h-[24rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated"
         >
-          {anime.banner ? (
+          {effectiveBannerUrl ? (
             <img
-              src={anime.banner}
+              src={effectiveBannerUrl}
               alt=""
               loading="eager"
               decoding="async"
-              style={{ objectPosition: `${bannerFocalX} 25%` }}
-              className="size-full object-cover sm:!object-center transition-[object-position] duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
+              onError={() => {
+                setFailedBannerUrls((prev) =>
+                  prev[effectiveBannerUrl]
+                    ? prev
+                    : { ...prev, [effectiveBannerUrl]: true },
+                );
+              }}
+              style={{ objectPosition: bannerObjectPosition }}
+              className="size-full object-cover sm:!object-center transition-[object-position,opacity] duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
             />
-          ) : anime.cover ? (
-            <div className="relative size-full overflow-hidden">
-              <img
-                src={anime.cover}
-                alt=""
-                loading="eager"
-                decoding="async"
-                className="size-full object-cover blur-2xl scale-110 opacity-60"
-              />
-            </div>
-          ) : null}
+          ) : (
+            <div className="size-full bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
+          )}
 
           {/* Sombra superior suave para contraste */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-16 sm:h-28 bg-gradient-to-b from-black/50 via-black/15 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 max-sm:h-20 sm:h-28 bg-gradient-to-b from-black/60 via-black/20 to-transparent sm:from-black/50 sm:via-black/15" />
 
           {/* Vinheta lateral sutil */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-bg/15 via-transparent to-bg/10" />
 
           {/* Degradê inferior suave integrando com o fundo dark da página */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 sm:h-36 bg-gradient-to-t from-bg via-bg/25 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 max-sm:h-40 sm:h-36 max-sm:bg-[linear-gradient(to_top,var(--color-bg)_0%,color-mix(in_srgb,var(--color-bg)_88%,transparent)_24%,color-mix(in_srgb,var(--color-bg)_44%,transparent)_60%,transparent_100%)] sm:bg-gradient-to-t sm:from-bg sm:via-bg/25 sm:to-transparent" />
         </div>
 
-        <div className="relative z-10 -mt-24 xs:-mt-28 sm:-mt-28 md:-mt-32 px-4 sm:px-6">
-          <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:gap-6">
-            {/* CAPA + INFO MOBILE (alinhada à esquerda com sobreposição natural) */}
-            <div className="flex items-end gap-3.5 sm:gap-0 sm:block">
-              {/* CAPA VERTICAL SOBREPOSTA */}
-              <div className="w-28 xs:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 translate-y-6 sm:translate-y-8.5">
+        <div className="relative z-10 max-sm:-mt-40 max-sm:min-[380px]:-mt-44 sm:-mt-28 md:-mt-32 px-4 sm:px-6">
+          <div className="mx-auto flex max-w-6xl flex-col max-sm:gap-3.5 sm:flex-row sm:gap-6">
+            {/* CAPA VERTICAL SOBREPOSTA À ESQUERDA */}
+            <div className="block">
+              <div className="w-28 max-sm:min-[380px]:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 sm:translate-y-8.5">
                 {anime.cover ? (
                   <img
                     src={anime.cover}
@@ -576,9 +607,12 @@ function AnimePage() {
                   <div className="aspect-2/3 bg-elevated" />
                 )}
               </div>
+            </div>
 
-              {/* TÍTULO E BADGE NO MOBILE AO LADO DA CAPA */}
-              <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:hidden">
+            {/* INFORMAÇÕES COMPLETAS */}
+            <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:pb-2">
+              {/* TÍTULO E BADGES NO MOBILE ABAIXO DA CAPA */}
+              <div className="sm:hidden">
                 <div className="mb-1.5 flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-950/70 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-purple-300 uppercase shadow-[0_0_12px_rgba(168,85,247,0.15)]">
                     <span>Anime</span>
@@ -590,20 +624,17 @@ function AnimePage() {
                   )}
                 </div>
 
-                <h1 className="font-display text-xl xs:text-2xl font-bold leading-tight tracking-tight text-white line-clamp-2 drop-shadow-sm">
+                <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-white line-clamp-3 drop-shadow-sm">
                   {title}
                 </h1>
 
                 {anime.titles.native && (
-                  <p className="mt-0.5 font-display text-xs font-medium text-purple-300/70 truncate">
+                  <p className="mt-1 font-display text-xs font-medium text-purple-300/70 truncate">
                     {anime.titles.native}
                   </p>
                 )}
               </div>
-            </div>
 
-            {/* INFORMAÇÕES COMPLETAS */}
-            <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:pb-2">
               {/* TÍTULO NO DESKTOP */}
               <div className="hidden sm:block">
                 <div className="mb-2">

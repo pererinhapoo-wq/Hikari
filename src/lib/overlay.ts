@@ -110,6 +110,8 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
       ...remote,
       ...local,
       id: remote.id,
+      cover: local.cover || remote.cover,
+      banner: local.banner || remote.banner,
       seasons: resolvedSeasons,
       trailerId: local.trailerId || remote.trailerId,
       recommendations: remote.recommendations,
