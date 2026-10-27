@@ -34,7 +34,7 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-const CACHE_PREFIX = "hikari:season-banner:v3:";
+const CACHE_PREFIX = "hikari:season-banner:v4:";
 const POSITIVE_TTL_MS = 24 * 60 * 60 * 1000;
 const NEGATIVE_TTL_MS = 6 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 2500;
@@ -43,7 +43,8 @@ const PROVIDER_COOLDOWN_MS = 60 * 1000;
 
 const MIN_ALT_WIDTH = 1200;
 const MIN_ALT_HEIGHT = 440;
-const MIN_HORIZONTAL_ASPECT = 1.35;
+const MIN_HORIZONTAL_ASPECT = 1.48;
+const MAX_STANDARD_HORIZONTAL_ASPECT = 2.05;
 const MAX_MOBILE_ALT_ASPECT = 3.25;
 
 const memoryCache = new Map<string, CacheEntry>();
@@ -122,7 +123,7 @@ export function isValidPermanentKitsuSeasonUrl(
     if (parsed.protocol !== "https:") return false;
 
     const host = parsed.hostname.toLowerCase();
-    if (host !== "media.kitsu.app") {
+    if (host !== "media.kitsu.app" && host !== "media.kitsu.io") {
       return false;
     }
 
@@ -240,40 +241,53 @@ export function verifyBidirectionalSeasonMappings(params: {
     .filter((m) => m.externalSite === "myanimelist/anime" && m.externalId)
     .map((m) => String(m.externalId).trim());
 
-  if (anilistId != null) {
-    if (aniIds.length !== 1 || aniIds[0] !== String(anilistId)) {
+  // Se o Kitsu mapear múltiplos IDs de uma mesma plataforma, significa agrupamento
+  // de temporadas/cours em uma única entrada, não sendo 1:1.
+  if (aniIds.length > 1 || malIds.length > 1) {
+    return false;
+  }
+
+  // Se o Kitsu tiver mapeamento AniList e o anilistId foi informado, devem ser estritamente iguais
+  if (aniIds.length === 1 && anilistId != null) {
+    if (aniIds[0] !== String(anilistId)) {
       return false;
     }
   }
 
-  if (malId != null && malIds.length > 0) {
-    if (malIds.length !== 1 || malIds[0] !== String(malId)) {
+  // Se o Kitsu tiver mapeamento MyAnimeList e o malId foi informado, devem ser estritamente iguais
+  if (malIds.length === 1 && malId != null) {
+    if (malIds[0] !== String(malId)) {
       return false;
     }
   }
 
-  if (anilistId == null && malId != null) {
-    if (malIds.length !== 1 || malIds[0] !== String(malId)) {
-      return false;
-    }
-  }
+  // Pelo menos um identificador externo deve ter sido confirmado com sucesso
+  const aniMatched =
+    anilistId != null && aniIds.length === 1 && aniIds[0] === String(anilistId);
+  const malMatched =
+    malId != null && malIds.length === 1 && malIds[0] === String(malId);
 
-  return true;
+  return aniMatched || malMatched;
 }
 
 /**
- * Ponto de partida de object-position adaptável conforme a geometria da imagem:
- * - Artes horizontais completas 1.25..2.05 (ex.: 16:10, 16:9): 52% 20% para equilibrar
+ * Ponto de partida de object-position adaptável conforme a geometria e composição da arte:
+ * - Artes horizontais padrão [1.48..2.05] (ex.: 16:9, 16:10, 3:2): 52% 20% para equilibrar
  *   a composição ao lado da capa vertical sobreposta à esquerda sem cortar personagens nas bordas.
  * - Banners panorâmicos (> 2.05): ponto inicial 50% 24%, refinado pela leitura de
  *   densidade visual quando a origem suporta CORS.
+ * - Imagens com proporção inferior a 1.48 (< 1.48): ponto equilibrado 50% 40% para
+ *   evitar zoom excessivo no topo/cabelo ou corte do corpo dos personagens.
  */
 export function initialObjectPositionForAspect(aspect?: number): string {
   if (!aspect || !Number.isFinite(aspect)) {
     return "50% 24%";
   }
-  if (aspect >= MIN_HORIZONTAL_ASPECT && aspect <= MAX_MOBILE_ALT_ASPECT) {
+  if (aspect >= MIN_HORIZONTAL_ASPECT && aspect <= MAX_STANDARD_HORIZONTAL_ASPECT) {
     return "52% 20%";
+  }
+  if (aspect < MIN_HORIZONTAL_ASPECT) {
+    return "50% 40%";
   }
   return "50% 24%";
 }
@@ -554,7 +568,9 @@ export async function resolveSeasonMobileBanner(
       const animeCandidates = (res?.included ?? []).filter(
         (item) => item.type === "anime" && item.id,
       );
-      return animeCandidates.length === 1 ? animeCandidates[0] : undefined;
+      if (animeCandidates.length === 1) {
+        return animeCandidates[0];
+      }
     }
 
     if (input.malId != null) {
@@ -568,7 +584,9 @@ export async function resolveSeasonMobileBanner(
       const animeCandidates = (res?.included ?? []).filter(
         (item) => item.type === "anime" && item.id,
       );
-      return animeCandidates.length === 1 ? animeCandidates[0] : undefined;
+      if (animeCandidates.length === 1) {
+        return animeCandidates[0];
+      }
     }
 
     if (input.kitsuId != null) {
@@ -579,7 +597,9 @@ export async function resolveSeasonMobileBanner(
         lookupUrl,
         signal,
       );
-      return res?.data?.type === "anime" && res.data.id ? res.data : undefined;
+      if (res?.data?.type === "anime" && res.data.id) {
+        return res.data;
+      }
     }
 
     return undefined;
@@ -606,7 +626,7 @@ export async function resolveSeasonMobileBanner(
     currentDims.width >= 960 &&
     currentDims.height >= 500 &&
     currentDims.aspect >= MIN_HORIZONTAL_ASPECT &&
-    currentDims.aspect <= MAX_MOBILE_ALT_ASPECT
+    currentDims.aspect <= MAX_STANDARD_HORIZONTAL_ASPECT
   ) {
     writeCache(cacheKey, null);
     return {
@@ -710,7 +730,10 @@ export async function resolveSeasonMobileBanner(
     candidateDims.height >= MIN_ALT_HEIGHT &&
     candidateDims.aspect >= MIN_HORIZONTAL_ASPECT &&
     candidateDims.aspect <= MAX_MOBILE_ALT_ASPECT &&
-    (!currentDims || candidateDims.aspect < currentDims.aspect - 0.6);
+    (!currentDims ||
+      candidateDims.aspect < currentDims.aspect - 0.35 ||
+      (currentDims.aspect >= 2.1 &&
+        candidateDims.aspect <= MAX_STANDARD_HORIZONTAL_ASPECT));
 
   if (!passesQualityAndAspect || !candidateDims) {
     writeCache(cacheKey, null);

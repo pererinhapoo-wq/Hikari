@@ -283,8 +283,23 @@ function AnimePage() {
   const animeCover = anime?.cover ?? null;
   const animeColor = anime?.color ?? null;
 
+  const baseSeasonBanner =
+    isAdminBanner && localRecord?.banner?.trim()
+      ? localRecord.banner.trim()
+      : animeBanner;
+
   useEffect(() => {
-    if (!animeId || !isMobileViewport || isAdminBanner) {
+    if (!animeId || isAdminBanner) {
+      return;
+    }
+
+    // Se estiver no Desktop e já tiver um banner base válido que não falhou,
+    // preserva o banner oficial widescreen de desktop sem necessidade de buscar alternativa.
+    if (
+      !isMobileViewport &&
+      baseSeasonBanner &&
+      !failedBannerUrls[baseSeasonBanner]
+    ) {
       return;
     }
 
@@ -341,6 +356,8 @@ function AnimePage() {
     animeId,
     isMobileViewport,
     isAdminBanner,
+    baseSeasonBanner,
+    failedBannerUrls,
     animeAnilistId,
     animeMalId,
     animeKitsuId,
@@ -361,19 +378,28 @@ function AnimePage() {
       ? mobileBannerState
       : null;
 
-  const baseSeasonBanner =
-    isAdminBanner && localRecord?.banner?.trim()
-      ? localRecord.banner.trim()
-      : animeBanner;
+  const fallbackResolvedBanner =
+    !isAdminBanner &&
+    animeId &&
+    mobileBannerState &&
+    mobileBannerState.forId === animeId &&
+    !failedBannerUrls[mobileBannerState.url]
+      ? mobileBannerState.url
+      : null;
 
   const effectiveBannerUrl =
     activeMobileAlt?.url ??
     (baseSeasonBanner && !failedBannerUrls[baseSeasonBanner]
       ? baseSeasonBanner
-      : null);
+      : fallbackResolvedBanner);
 
   const defaultObjectPosition =
-    activeMobileAlt?.initialObjectPosition ?? "50% 24%";
+    activeMobileAlt?.initialObjectPosition ??
+    (mobileBannerState &&
+    mobileBannerState.forId === animeId &&
+    effectiveBannerUrl === mobileBannerState.url
+      ? mobileBannerState.initialObjectPosition
+      : "50% 24%");
 
   const [framedBannerPosition, setFramedBannerPosition] = useState<{
     forUrl: string;

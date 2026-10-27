@@ -198,4 +198,87 @@ describe("season-banner validation & Admin priority", () => {
     );
     assert.equal(unreleasedRes.isAlternative, false);
   });
+
+  it("accepts valid media.kitsu.io host and preserves both media.kitsu.app and media.kitsu.io", () => {
+    assert.equal(
+      isValidPermanentKitsuSeasonUrl(
+        "https://media.kitsu.io/anime/cover_images/818/original.jpg",
+        "818",
+      ),
+      true,
+    );
+    assert.equal(
+      isValidPermanentKitsuSeasonUrl(
+        "https://media.kitsu.app/anime/cover_images/818/original.jpg",
+        "818",
+      ),
+      true,
+    );
+    assert.equal(
+      isValidPermanentKitsuSeasonUrl(
+        "https://untrusted-cdn.com/anime/cover_images/818/original.jpg",
+        "818",
+      ),
+      false,
+    );
+  });
+
+  it("verifies season mapping when only MyAnimeList ID is mapped on Kitsu", () => {
+    // Caso de animes onde AniList não tem mapping direto no Kitsu mas MyAnimeList sim
+    assert.equal(
+      verifyBidirectionalSeasonMappings({
+        mappings: [
+          { externalSite: "myanimelist/anime", externalId: "50528" },
+        ],
+        anilistId: 143505,
+        malId: 50528,
+      }),
+      true,
+    );
+    // Caso de anime com AniList direto mas sem MAL no Kitsu
+    assert.equal(
+      verifyBidirectionalSeasonMappings({
+        mappings: [
+          { externalSite: "anilist/anime", externalId: "143505" },
+        ],
+        anilistId: 143505,
+        malId: 50528,
+      }),
+      true,
+    );
+  });
+
+  it("assigns appropriate initial object positions across aspect ratios", () => {
+    // Artes horizontais padrão (1.48..2.05, ex.: Gintama 2 em 1.483, 16:10, 16:9)
+    assert.equal(initialObjectPositionForAspect(1.483), "52% 20%");
+    assert.equal(initialObjectPositionForAspect(1.6), "52% 20%");
+    assert.equal(initialObjectPositionForAspect(1.777), "52% 20%");
+    assert.equal(initialObjectPositionForAspect(2.05), "52% 20%");
+
+    // Imagens com proporção inferior a 1.48 (< 1.48, ex.: 1.405, 4:3 1.33) recebem enquadramento equilibrado
+    assert.equal(initialObjectPositionForAspect(1.405), "50% 40%");
+    assert.equal(initialObjectPositionForAspect(1.333), "50% 40%");
+
+    // Panorâmicos (> 2.05)
+    assert.equal(initialObjectPositionForAspect(2.1), "50% 24%");
+    assert.equal(initialObjectPositionForAspect(3.25), "50% 24%");
+    assert.equal(initialObjectPositionForAspect(4.8), "50% 24%");
+
+    // Fallback para valores indefinidos
+    assert.equal(initialObjectPositionForAspect(undefined), "50% 24%");
+  });
+
+  it("verifies 1:1 season mapping when only AniList ID is provided and Kitsu has both mappings", () => {
+    assert.equal(
+      verifyBidirectionalSeasonMappings({
+        mappings: [
+          { externalSite: "myanimelist/anime", externalId: "33255" },
+          { externalSite: "anilist/anime", externalId: "21804" },
+        ],
+        anilistId: 21804,
+      }),
+      true,
+    );
+  });
 });
+
