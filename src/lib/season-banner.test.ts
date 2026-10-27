@@ -173,7 +173,7 @@ describe("season-banner validation & Admin priority", () => {
     assert.ok(focalRight >= 65 && focalRight <= 84, `Expected ~78%, got ${focalRight}%`);
   });
 
-  it("preserves Admin custom banner and unreleased season official banner without external calls", async () => {
+  it("preserves Admin custom banner and maintains safe season default fallback for unreleased seasons", async () => {
     const adminRes = await resolveSeasonMobileBanner({
       animeId: "176301",
       anilistId: 176301,
@@ -279,6 +279,13 @@ describe("season-banner validation & Admin priority", () => {
       }),
       true,
     );
+  });
+
+  it("validates Kizumonogatari 3 aspect ratio (1.405) within accepted mobile alternative bounds", () => {
+    const kizu3Aspect = 1280 / 911; // ~1.40505
+    assert.ok(kizu3Aspect >= 1.20, "Should be above MIN_HORIZONTAL_ASPECT (1.20)");
+    assert.ok(kizu3Aspect <= 2.05, "Should be within compact horizontal range");
+    assert.equal(initialObjectPositionForAspect(kizu3Aspect), "50% 40%");
   });
 });
 

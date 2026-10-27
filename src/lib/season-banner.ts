@@ -41,9 +41,9 @@ const FETCH_TIMEOUT_MS = 2500;
 const IMAGE_PROBE_TIMEOUT_MS = 3500;
 const PROVIDER_COOLDOWN_MS = 60 * 1000;
 
-const MIN_ALT_WIDTH = 1200;
-const MIN_ALT_HEIGHT = 440;
-const MIN_HORIZONTAL_ASPECT = 1.48;
+const MIN_ALT_WIDTH = 800;
+const MIN_ALT_HEIGHT = 400;
+const MIN_HORIZONTAL_ASPECT = 1.20;
 const MAX_STANDARD_HORIZONTAL_ASPECT = 2.05;
 const MAX_MOBILE_ALT_ASPECT = 3.25;
 
@@ -283,10 +283,10 @@ export function initialObjectPositionForAspect(aspect?: number): string {
   if (!aspect || !Number.isFinite(aspect)) {
     return "50% 24%";
   }
-  if (aspect >= MIN_HORIZONTAL_ASPECT && aspect <= MAX_STANDARD_HORIZONTAL_ASPECT) {
+  if (aspect >= 1.48 && aspect <= MAX_STANDARD_HORIZONTAL_ASPECT) {
     return "52% 20%";
   }
-  if (aspect < MIN_HORIZONTAL_ASPECT) {
+  if (aspect < 1.48) {
     return "50% 40%";
   }
   return "50% 24%";
@@ -506,16 +506,8 @@ export async function resolveSeasonMobileBanner(
     };
   }
 
-  // Temporadas ainda não lançadas que já possuem banner oficial no AniList
-  // não devem ser trocadas por uploads preliminares de terceiros.
-  if (input.status === "NOT_YET_RELEASED" && fallbackUrl) {
-    return {
-      url: fallbackUrl,
-      isAlternative: false,
-      source: "season-default",
-      initialObjectPosition: "50% 24%",
-    };
-  }
+  // Para temporadas NOT_YET_RELEASED ou em andamento, permite alternativa somente
+  // quando a arte e o mapeamento estiverem estritamente validados para a temporada exata.
 
   if (
     input.anilistId == null &&
@@ -807,8 +799,8 @@ export function computePanoramicFocalPercentFromColumns(
   }
 
   const meanWindow = totalWindowSum / windowCount;
-  // Se a textura for uniforme (ex.: padronagem repetitiva), mantém centralizado
-  if (bestSum < meanWindow * 1.18) {
+  // Se a energia for amplamente distribuída (elenco ou padronagem), mantém centralizado
+  if (bestSum < meanWindow * 1.24) {
     return 50;
   }
 
@@ -831,7 +823,7 @@ export function computePanoramicFocalPercentFromColumns(
   const rawPercent =
     ((uPeak * scaledRatio - targetScreenFrac) / (scaledRatio - 1)) * 100;
 
-  return Math.round(Math.max(16, Math.min(84, rawPercent)));
+  return Math.round(Math.max(22, Math.min(78, rawPercent)));
 }
 
 /**

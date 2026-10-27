@@ -1,0 +1,86 @@
+[
+  {
+    "id": "918",
+    "name": "Gintama-T1",
+    "mobile": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Gintama-T1-mobile.png"
+    },
+    "desktop": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Gintama-T1-desktop.png"
+    }
+  },
+  {
+    "id": "9969",
+    "name": "Gintama-T2",
+    "mobile": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Gintama-T2-mobile.png"
+    },
+    "desktop": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Gintama-T2-desktop.png"
+    }
+  },
+  {
+    "id": "98034",
+    "name": "Saiki-K-T2",
+    "mobile": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Saiki-K-T2-mobile.png"
+    },
+    "desktop": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Saiki-K-T2-desktop.png"
+    }
+  },
+  {
+    "id": "21399",
+    "name": "Kizumonogatari-2",
+    "mobile": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Kizumonogatari-2-mobile.png"
+    },
+    "desktop": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Kizumonogatari-2-desktop.png"
+    }
+  },
+  {
+    "id": "21400",
+    "name": "Kizumonogatari-3",
+    "mobile": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Kizumonogatari-3-mobile.png"
+    },
+    "desktop": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Kizumonogatari-3-desktop.png"
+    }
+  },
+  {
+    "id": "195604",
+    "name": "Black-Clover-S2",
+    "mobile": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Black-Clover-S2-mobile.png"
+    },
+    "desktop": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Black-Clover-S2-desktop.png"
+    }
+  },
+  {
+    "id": "5081",
+    "name": "Bakemonogatari",
+    "mobile": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Bakemonogatari-mobile.png"
+    },
+    "desktop": {
+      "found": false,
+      "screenshot": "screenshots/fixed-Bakemonogatari-desktop.png"
+    }
+  }
+]
