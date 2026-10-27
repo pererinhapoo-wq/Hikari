@@ -43,9 +43,9 @@ const PROVIDER_COOLDOWN_MS = 60 * 1000;
 
 const MIN_ALT_WIDTH = 800;
 const MIN_ALT_HEIGHT = 400;
-const MIN_HORIZONTAL_ASPECT = 1.20;
+const MIN_HORIZONTAL_ASPECT = 1.30;
 const MAX_STANDARD_HORIZONTAL_ASPECT = 2.05;
-const MAX_MOBILE_ALT_ASPECT = 3.25;
+const MAX_MOBILE_ALT_ASPECT = 2.05;
 
 const memoryCache = new Map<string, CacheEntry>();
 let kitsuCooldownUntil = 0;
@@ -383,68 +383,189 @@ async function fetchJsonWithTimeout<T>(
 }
 
 /**
+ * Analisa cabeçalhos binários de imagem (JPEG, PNG, WebP) em memória.
+ * Permite validação de dimensões em testes unitários e ambientes Node.js
+ * com precisão e sem depender do objeto DOM Image.
+ */
+export function parseImageDimensionsFromBuffer(
+  buf: Uint8Array,
+): ImageDimensions | null {
+  if (!buf || buf.length < 8) return null;
+
+  // PNG: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+  if (
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4E &&
+    buf[3] === 0x47
+  ) {
+    if (buf.length >= 24) {
+      const width =
+        ((buf[16] << 24) | (buf[17] << 16) | (buf[18] << 8) | buf[19]) >>> 0;
+      const height =
+        ((buf[20] << 24) | (buf[21] << 16) | (buf[22] << 8) | buf[23]) >>> 0;
+      if (width > 0 && height > 0) {
+        return { width, height, aspect: width / height };
+      }
+    }
+  }
+
+  // JPEG: [0xFF, 0xD8]
+  if (buf[0] === 0xFF && buf[1] === 0xD8) {
+    let offset = 2;
+    while (offset < buf.length - 8) {
+      while (offset < buf.length && buf[offset] !== 0xFF) offset++;
+      while (offset < buf.length && buf[offset] === 0xFF) offset++;
+      if (offset >= buf.length) break;
+      const marker = buf[offset++];
+      if (marker === 0xD9 || marker === 0xDA) break;
+      if (offset + 1 >= buf.length) break;
+      const len = (buf[offset] << 8) | buf[offset + 1];
+      if (marker === 0xC0 || marker === 0xC1 || marker === 0xC2) {
+        if (offset + 6 < buf.length) {
+          const height = (buf[offset + 3] << 8) | buf[offset + 4];
+          const width = (buf[offset + 5] << 8) | buf[offset + 6];
+          if (width > 0 && height > 0) {
+            return { width, height, aspect: width / height };
+          }
+        }
+      }
+      offset += len;
+    }
+  }
+
+  // WebP: RIFF ... WEBP
+  if (
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    const chunkType = String.fromCharCode(buf[12], buf[13], buf[14], buf[15]);
+    if (chunkType === "VP8 " && buf.length >= 30) {
+      const width = ((buf[27] << 8) | buf[26]) & 0x3fff;
+      const height = ((buf[29] << 8) | buf[28]) & 0x3fff;
+      if (width > 0 && height > 0) {
+        return { width, height, aspect: width / height };
+      }
+    } else if (chunkType === "VP8L" && buf.length >= 25) {
+      const b1 = buf[21];
+      const b2 = buf[22];
+      const b3 = buf[23];
+      const b4 = buf[24];
+      const width = 1 + (((b2 & 0x3f) << 8) | b1);
+      const height = 1 + (((b4 & 0xf) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6));
+      if (width > 0 && height > 0) {
+        return { width, height, aspect: width / height };
+      }
+    } else if (chunkType === "VP8X" && buf.length >= 30) {
+      const width = 1 + (buf[24] | (buf[25] << 8) | (buf[26] << 16));
+      const height = 1 + (buf[27] | (buf[28] << 8) | (buf[29] << 16));
+      if (width > 0 && height > 0) {
+        return { width, height, aspect: width / height };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Pré-carrega a imagem em memória sem crossOrigin para medir dimensões reais
  * e garantir que a URL esteja íntegra antes de exibi-la no DOM.
+ * Em ambiente de testes/Node.js onde Image não está disponível, utiliza fetch
+ * com parsing seguro de cabeçalhos binários.
  */
 export function probeImageDimensions(
   url: string,
   parentSignal?: AbortSignal,
 ): Promise<ImageDimensions | null> {
-  if (typeof Image === "undefined" || !url) {
+  if (!url) {
     return Promise.resolve(null);
   }
 
-  return new Promise((resolve) => {
-    if (parentSignal?.aborted) {
-      resolve(null);
-      return;
-    }
-
-    const img = new Image();
-    let settled = false;
-
-    const finish = (result: ImageDimensions | null) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      parentSignal?.removeEventListener("abort", onAbort);
-      img.onload = null;
-      img.onerror = null;
-      resolve(result);
-    };
-
-    const onAbort = () => {
-      img.src = "";
-      finish(null);
-    };
-
-    const timer = setTimeout(() => {
-      img.src = "";
-      finish(null);
-    }, IMAGE_PROBE_TIMEOUT_MS);
-
-    parentSignal?.addEventListener("abort", onAbort, { once: true });
-
-    img.onload = () => {
-      const width = img.naturalWidth;
-      const height = img.naturalHeight;
-      if (!width || !height) {
-        finish(null);
+  if (typeof Image !== "undefined") {
+    return new Promise((resolve) => {
+      if (parentSignal?.aborted) {
+        resolve(null);
         return;
       }
-      finish({
-        width,
-        height,
-        aspect: width / height,
-      });
-    };
 
-    img.onerror = () => {
-      finish(null);
-    };
+      const img = new Image();
+      let settled = false;
 
-    img.src = url;
-  });
+      const finish = (result: ImageDimensions | null) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        parentSignal?.removeEventListener("abort", onAbort);
+        img.onload = null;
+        img.onerror = null;
+        resolve(result);
+      };
+
+      const onAbort = () => {
+        img.src = "";
+        finish(null);
+      };
+
+      const timer = setTimeout(() => {
+        img.src = "";
+        finish(null);
+      }, IMAGE_PROBE_TIMEOUT_MS);
+
+      parentSignal?.addEventListener("abort", onAbort, { once: true });
+
+      img.onload = () => {
+        const width = img.naturalWidth;
+        const height = img.naturalHeight;
+        if (!width || !height) {
+          finish(null);
+          return;
+        }
+        finish({
+          width,
+          height,
+          aspect: width / height,
+        });
+      };
+
+      img.onerror = () => {
+        finish(null);
+      };
+
+      img.src = url;
+    });
+  }
+
+  return (async () => {
+    try {
+      const controller = new AbortController();
+      const onParentAbort = () => controller.abort();
+      parentSignal?.addEventListener("abort", onParentAbort, { once: true });
+
+      const timeoutId = setTimeout(() => controller.abort(), IMAGE_PROBE_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, {
+          method: "GET",
+          headers: { Accept: "image/*" },
+          signal: controller.signal,
+        });
+        if (!res.ok) return null;
+        const ab = await res.arrayBuffer();
+        return parseImageDimensionsFromBuffer(new Uint8Array(ab));
+      } finally {
+        clearTimeout(timeoutId);
+        parentSignal?.removeEventListener("abort", onParentAbort);
+      }
+    } catch {
+      return null;
+    }
+  })();
 }
 
 interface KitsuAnimeResource {
@@ -546,9 +667,17 @@ export async function resolveSeasonMobileBanner(
     ? probeImageDimensions(fallbackUrl, signal)
     : Promise.resolve(null);
 
-  const kitsuLookupPromise = (async (): Promise<
-    KitsuAnimeResource | undefined
-  > => {
+  const kitsuLookupPromise = (async (): Promise<KitsuAnimeResource[]> => {
+    const candidates: KitsuAnimeResource[] = [];
+    const seenIds = new Set<string>();
+
+    const addCandidate = (item?: KitsuAnimeResource | null) => {
+      if (item?.type === "anime" && item.id && !seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        candidates.push(item);
+      }
+    };
+
     if (input.anilistId != null) {
       const lookupUrl = `https://kitsu.io/api/edge/mappings?filter[externalSite]=anilist/anime&filter[externalId]=${encodeURIComponent(
         String(input.anilistId),
@@ -561,7 +690,7 @@ export async function resolveSeasonMobileBanner(
         (item) => item.type === "anime" && item.id,
       );
       if (animeCandidates.length === 1) {
-        return animeCandidates[0];
+        addCandidate(animeCandidates[0]);
       }
     }
 
@@ -577,7 +706,7 @@ export async function resolveSeasonMobileBanner(
         (item) => item.type === "anime" && item.id,
       );
       if (animeCandidates.length === 1) {
-        return animeCandidates[0];
+        addCandidate(animeCandidates[0]);
       }
     }
 
@@ -590,14 +719,14 @@ export async function resolveSeasonMobileBanner(
         signal,
       );
       if (res?.data?.type === "anime" && res.data.id) {
-        return res.data;
+        addCandidate(res.data);
       }
     }
 
-    return undefined;
+    return candidates;
   })();
 
-  const [currentDims, kitsuItem] = await Promise.all([
+  const [currentDims, kitsuCandidates] = await Promise.all([
     currentDimsPromise,
     kitsuLookupPromise,
   ]);
@@ -630,120 +759,92 @@ export async function resolveSeasonMobileBanner(
     };
   }
 
-  if (!kitsuItem?.id) {
-    writeCache(cacheKey, null);
-    return {
-      url: fallbackUrl,
-      isAlternative: false,
-      source: fallbackUrl ? "season-default" : "none",
-      initialObjectPosition: "50% 24%",
-    };
-  }
-
-  const kitsuIdStr = String(kitsuItem.id);
-  const candidateFormat = normalizeKitsuSubtype(kitsuItem.attributes?.subtype);
   const expectedYear = input.startYear ?? input.year ?? null;
 
-  // Validação de formato (TV vs MOVIE/OVA) e ano exato da temporada
-  if (
-    !areFormatsCompatible(input.format, candidateFormat) ||
-    !isSeasonYearConsistent(expectedYear, kitsuItem.attributes?.startDate)
-  ) {
-    writeCache(cacheKey, null);
+  for (const kitsuItem of kitsuCandidates) {
+    if (signal?.aborted) break;
+
+    const kitsuIdStr = String(kitsuItem.id);
+    const candidateFormat = normalizeKitsuSubtype(kitsuItem.attributes?.subtype);
+
+    // Validação de formato (TV vs MOVIE/OVA) e ano exato da temporada
+    if (
+      !areFormatsCompatible(input.format, candidateFormat) ||
+      !isSeasonYearConsistent(expectedYear, kitsuItem.attributes?.startDate)
+    ) {
+      continue;
+    }
+
+    const candidateUrl = kitsuItem.attributes?.coverImage?.original ?? null;
+    if (
+      !isValidPermanentKitsuSeasonUrl(
+        candidateUrl,
+        kitsuIdStr,
+        input.currentCover,
+      )
+    ) {
+      continue;
+    }
+
+    // Confirmação bidirecional dos mapeamentos externos em paralelo à medição real da imagem:
+    // Só aprova a arte se AMBOS (identidade 1:1 da temporada + resolução/proporção) forem válidos.
+    const [itemMappingsRes, candidateDims] = await Promise.all([
+      fetchJsonWithTimeout<KitsuItemMappingsResponse>(
+        `https://kitsu.io/api/edge/anime/${encodeURIComponent(kitsuIdStr)}/mappings`,
+        signal,
+      ),
+      probeImageDimensions(candidateUrl, signal),
+    ]);
+
+    if (signal?.aborted) break;
+
+    const rawMappings = (itemMappingsRes?.data ?? []).map((m) => ({
+      externalSite: m.attributes?.externalSite,
+      externalId: m.attributes?.externalId,
+    }));
+
+    if (
+      rawMappings.length === 0 ||
+      !verifyBidirectionalSeasonMappings({
+        mappings: rawMappings,
+        anilistId: input.anilistId,
+        malId: input.malId,
+      })
+    ) {
+      continue;
+    }
+
+    const passesQualityAndAspect =
+      candidateDims != null &&
+      candidateDims.width >= MIN_ALT_WIDTH &&
+      candidateDims.height >= MIN_ALT_HEIGHT &&
+      candidateDims.aspect >= MIN_HORIZONTAL_ASPECT &&
+      candidateDims.aspect <= MAX_MOBILE_ALT_ASPECT &&
+      (!currentDims ||
+        candidateDims.aspect < currentDims.aspect - 0.35 ||
+        (currentDims.aspect >= 2.1 &&
+          candidateDims.aspect <= MAX_STANDARD_HORIZONTAL_ASPECT));
+
+    if (!passesQualityAndAspect || !candidateDims) {
+      continue;
+    }
+
+    writeCache(cacheKey, candidateUrl, candidateDims.aspect);
     return {
-      url: fallbackUrl,
-      isAlternative: false,
-      source: fallbackUrl ? "season-default" : "none",
-      initialObjectPosition: "50% 24%",
+      url: candidateUrl,
+      isAlternative: true,
+      source: "kitsu-season",
+      initialObjectPosition: initialObjectPositionForAspect(candidateDims.aspect),
+      aspect: candidateDims.aspect,
     };
   }
 
-  const candidateUrl = kitsuItem.attributes?.coverImage?.original ?? null;
-  if (
-    !isValidPermanentKitsuSeasonUrl(
-      candidateUrl,
-      kitsuIdStr,
-      input.currentCover,
-    )
-  ) {
-    writeCache(cacheKey, null);
-    return {
-      url: fallbackUrl,
-      isAlternative: false,
-      source: fallbackUrl ? "season-default" : "none",
-      initialObjectPosition: "50% 24%",
-    };
-  }
-
-  // Confirmação bidirecional dos mapeamentos externos em paralelo à medição real da imagem:
-  // Só aprova a arte se AMBOS (identidade 1:1 da temporada + resolução/proporção) forem válidos.
-  const [itemMappingsRes, candidateDims] = await Promise.all([
-    fetchJsonWithTimeout<KitsuItemMappingsResponse>(
-      `https://kitsu.io/api/edge/anime/${encodeURIComponent(kitsuIdStr)}/mappings`,
-      signal,
-    ),
-    probeImageDimensions(candidateUrl, signal),
-  ]);
-
-  if (signal?.aborted) {
-    return {
-      url: fallbackUrl,
-      isAlternative: false,
-      source: fallbackUrl ? "season-default" : "none",
-      initialObjectPosition: "50% 24%",
-    };
-  }
-
-  const rawMappings = (itemMappingsRes?.data ?? []).map((m) => ({
-    externalSite: m.attributes?.externalSite,
-    externalId: m.attributes?.externalId,
-  }));
-
-  if (
-    rawMappings.length === 0 ||
-    !verifyBidirectionalSeasonMappings({
-      mappings: rawMappings,
-      anilistId: input.anilistId,
-      malId: input.malId,
-    })
-  ) {
-    writeCache(cacheKey, null);
-    return {
-      url: fallbackUrl,
-      isAlternative: false,
-      source: fallbackUrl ? "season-default" : "none",
-      initialObjectPosition: "50% 24%",
-    };
-  }
-
-  const passesQualityAndAspect =
-    candidateDims != null &&
-    candidateDims.width >= MIN_ALT_WIDTH &&
-    candidateDims.height >= MIN_ALT_HEIGHT &&
-    candidateDims.aspect >= MIN_HORIZONTAL_ASPECT &&
-    candidateDims.aspect <= MAX_MOBILE_ALT_ASPECT &&
-    (!currentDims ||
-      candidateDims.aspect < currentDims.aspect - 0.35 ||
-      (currentDims.aspect >= 2.1 &&
-        candidateDims.aspect <= MAX_STANDARD_HORIZONTAL_ASPECT));
-
-  if (!passesQualityAndAspect || !candidateDims) {
-    writeCache(cacheKey, null);
-    return {
-      url: fallbackUrl,
-      isAlternative: false,
-      source: fallbackUrl ? "season-default" : "none",
-      initialObjectPosition: "50% 24%",
-    };
-  }
-
-  writeCache(cacheKey, candidateUrl, candidateDims.aspect);
+  writeCache(cacheKey, null);
   return {
-    url: candidateUrl,
-    isAlternative: true,
-    source: "kitsu-season",
-    initialObjectPosition: initialObjectPositionForAspect(candidateDims.aspect),
-    aspect: candidateDims.aspect,
+    url: fallbackUrl,
+    isAlternative: false,
+    source: fallbackUrl ? "season-default" : "none",
+    initialObjectPosition: "50% 24%",
   };
 }
 

@@ -8,6 +8,8 @@ import {
   isSeasonYearConsistent,
   isValidPermanentKitsuSeasonUrl,
   normalizeBannerUrl,
+  parseImageDimensionsFromBuffer,
+  probeImageDimensions,
   resolveSeasonMobileBanner,
   verifyBidirectionalSeasonMappings,
 } from "./season-banner.ts";
@@ -281,11 +283,206 @@ describe("season-banner validation & Admin priority", () => {
     );
   });
 
-  it("validates Kizumonogatari 3 aspect ratio (1.405) within accepted mobile alternative bounds", () => {
+  it("validates Kizumonogatari 3 aspect ratio (1.405) within calibrated mobile bounds (1.30..2.05)", () => {
     const kizu3Aspect = 1280 / 911; // ~1.40505
-    assert.ok(kizu3Aspect >= 1.20, "Should be above MIN_HORIZONTAL_ASPECT (1.20)");
-    assert.ok(kizu3Aspect <= 2.05, "Should be within compact horizontal range");
+    // O limite mínimo anterior de 1.48 rejeitava imagens compactas como 1.405.
+    // O novo limite calibrado é 1.30, aceitando formatos horizontais compactos (4:3 a 7:5).
+    assert.ok(kizu3Aspect >= 1.30, "Deve ser aceito acima do MIN_HORIZONTAL_ASPECT calibrado (1.30)");
+    assert.ok(kizu3Aspect <= 2.05, "Deve estar dentro da faixa horizontal compacta/padrão (<= 2.05)");
     assert.equal(initialObjectPositionForAspect(kizu3Aspect), "50% 40%");
+
+    // Imagens quadradas ou quase quadradas (< 1.30) devem ser rejeitadas
+    assert.ok(1.20 < 1.30, "Proporção 1.20 (6:5) quase quadrada deve estar abaixo do limite mínimo");
+    assert.ok(1.25 < 1.30, "Proporção 1.25 (5:4) deve estar abaixo do limite mínimo");
+    assert.ok(1.0 < 1.30, "Proporção 1.0 (quadrada) deve estar abaixo do limite mínimo");
+    assert.ok(0.7 < 1.30, "Proporção vertical (pôster) deve estar abaixo do limite mínimo");
+  });
+
+  it("parses image dimensions accurately from binary buffer headers", () => {
+    // Simula cabeçalho de PNG 1280x911
+    const pngHeader = new Uint8Array(32);
+    pngHeader.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    // IHDR chunk: offset 16 width, offset 20 height (big-endian)
+    pngHeader[16] = 0x00;
+    pngHeader[17] = 0x00;
+    pngHeader[18] = 0x05;
+    pngHeader[19] = 0x00; // width 1280
+    pngHeader[20] = 0x00;
+    pngHeader[21] = 0x00;
+    pngHeader[22] = 0x03;
+    pngHeader[23] = 0x8f; // height 911
+
+    const pngParsed = parseImageDimensionsFromBuffer(pngHeader);
+    assert.ok(pngParsed);
+    assert.equal(pngParsed.width, 1280);
+    assert.equal(pngParsed.height, 911);
+    assert.ok(Math.abs(pngParsed.aspect - 1280 / 911) < 0.001);
+
+    // Buffers inválidos ou truncados retornam null com segurança
+    assert.equal(parseImageDimensionsFromBuffer(new Uint8Array(4)), null);
+    assert.equal(parseImageDimensionsFromBuffer(new Uint8Array(0)), null);
+  });
+
+  it("handles probeImageDimensions safely for invalid or empty URLs", async () => {
+    assert.equal(await probeImageDimensions(""), null);
+    const controller = new AbortController();
+    controller.abort();
+    assert.equal(await probeImageDimensions("https://example.com/aborted.jpg", controller.signal), null);
+  });
+
+  it("resolves Kizumonogatari 3 mobile alternative banner end-to-end", async () => {
+    const res = await resolveSeasonMobileBanner({
+      animeId: "21400",
+      anilistId: 21400,
+      malId: 31758,
+      year: 2017,
+      startYear: 2017,
+      format: "MOVIE",
+      status: "FINISHED",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21400-5zcYUeVBptdG.jpg",
+      currentCover: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21400-38ykNo3j4xXo.png",
+      isAdminCustomBanner: false,
+    });
+
+    assert.equal(res.isAlternative, true);
+    assert.equal(res.source, "kitsu-season");
+    assert.equal(
+      res.url,
+      "https://media.kitsu.app/anime/cover_images/11407/original.jpg",
+    );
+    assert.equal(res.initialObjectPosition, "50% 40%");
+    assert.ok(res.aspect != null && Math.abs(res.aspect - 1280 / 911) < 0.01);
+  });
+
+  it("rejects candidate when season format or year does not match", async () => {
+    // Ano inconsistente (2025 vs 2017 de Kizumonogatari 3) deve retornar fallback oficial
+    const yearMismatchRes = await resolveSeasonMobileBanner({
+      animeId: "21400",
+      anilistId: 21400,
+      malId: 31758,
+      year: 2025,
+      startYear: 2025,
+      format: "MOVIE",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21400-5zcYUeVBptdG.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(yearMismatchRes.isAlternative, false);
+    assert.equal(yearMismatchRes.source, "season-default");
+
+    // Formato incompatível (TV vs MOVIE de Kizumonogatari 3) deve retornar fallback oficial
+    const formatMismatchRes = await resolveSeasonMobileBanner({
+      animeId: "21400",
+      anilistId: 21400,
+      malId: 31758,
+      year: 2017,
+      startYear: 2017,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21400-5zcYUeVBptdG.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(formatMismatchRes.isAlternative, false);
+    assert.equal(formatMismatchRes.source, "season-default");
+  });
+
+  it("handles Bakemonogatari by safely rejecting excessively panoramic candidate (aspect 3.60 > 2.05) and falling back to official season banner", async () => {
+    const res = await resolveSeasonMobileBanner({
+      animeId: "5081",
+      anilistId: 5081,
+      malId: 5081,
+      year: 2009,
+      startYear: 2009,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/n5081-0Zcn5GOFYHMc.jpg",
+      currentCover: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx5081-42eNrnJ7bYgP.png",
+      isAdminCustomBanner: false,
+    });
+
+    // Kitsu 3919 possui dimensões 1278x355 (aspect 3.60), sendo panorâmica demais para mobile (> 2.05)
+    // Logo, deve ser seguramente rejeitada e manter o fallback oficial da temporada.
+    assert.equal(res.isAlternative, false);
+    assert.equal(res.source, "season-default");
+    assert.equal(
+      res.url,
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/n5081-0Zcn5GOFYHMc.jpg",
+    );
+  });
+
+  it("resolves Gintama (2006) mobile alternative banner to Kitsu 818", async () => {
+    const res = await resolveSeasonMobileBanner({
+      animeId: "918",
+      anilistId: 918,
+      malId: 918,
+      year: 2006,
+      startYear: 2006,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/918.jpg",
+      isAdminCustomBanner: false,
+    });
+
+    assert.equal(res.isAlternative, true);
+    assert.equal(res.source, "kitsu-season");
+    assert.equal(
+      res.url,
+      "https://media.kitsu.app/anime/cover_images/818/original.jpg",
+    );
+    assert.ok(res.aspect != null && Math.abs(res.aspect - 1.6) < 0.02);
+  });
+
+  it("resolves Gintama° (2015) mobile alternative banner to Kitsu 10083", async () => {
+    const res = await resolveSeasonMobileBanner({
+      animeId: "20996",
+      anilistId: 20996,
+      malId: 28977,
+      year: 2015,
+      startYear: 2015,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20996.jpg",
+      isAdminCustomBanner: false,
+    });
+
+    assert.equal(res.isAlternative, true);
+    assert.equal(res.source, "kitsu-season");
+    assert.equal(
+      res.url,
+      "https://media.kitsu.app/anime/cover_images/10083/original.jpg",
+    );
+    assert.ok(res.aspect != null && Math.abs(res.aspect - 1280 / 842) < 0.02);
+  });
+
+  it("resolves Nisemonogatari and Koyomimonogatari mobile alternative banners within aspect limits", async () => {
+    const niseRes = await resolveSeasonMobileBanner({
+      animeId: "11597",
+      anilistId: 11597,
+      malId: 11597,
+      year: 2012,
+      startYear: 2012,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/11597.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(niseRes.isAlternative, true);
+    assert.equal(
+      niseRes.url,
+      "https://media.kitsu.app/anime/cover_images/6546/original.png",
+    );
+
+    const koyomiRes = await resolveSeasonMobileBanner({
+      animeId: "21520",
+      anilistId: 21520,
+      malId: 32268,
+      year: 2016,
+      startYear: 2016,
+      format: "ONA",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21520.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(koyomiRes.isAlternative, true);
+    assert.equal(
+      koyomiRes.url,
+      "https://media.kitsu.app/anime/cover_images/11613/original.jpg",
+    );
   });
 });
+
+
 
