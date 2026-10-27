@@ -482,6 +482,191 @@ describe("season-banner validation & Admin priority", () => {
       "https://media.kitsu.app/anime/cover_images/11613/original.jpg",
     );
   });
+
+  it("resolves Gintama' (2011) and Gintama' Enchousen (2012) mobile alternative banners to validated Kitsu seasons", async () => {
+    const g2011 = await resolveSeasonMobileBanner({
+      animeId: "9969",
+      anilistId: 9969,
+      malId: 9969,
+      year: 2011,
+      startYear: 2011,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/9969.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(g2011.isAlternative, true);
+    assert.equal(g2011.source, "kitsu-season");
+    assert.equal(
+      g2011.url,
+      "https://media.kitsu.app/anime/cover_images/5971/original.jpg",
+    );
+    assert.equal(g2011.initialObjectPosition, "52% 20%");
+
+    const g2012 = await resolveSeasonMobileBanner({
+      animeId: "15417",
+      anilistId: 15417,
+      malId: 15417,
+      year: 2012,
+      startYear: 2012,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/15417.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(g2012.isAlternative, true);
+    assert.equal(g2012.source, "kitsu-season");
+    assert.equal(
+      g2012.url,
+      "https://media.kitsu.app/anime/cover_images/7253/original.jpg",
+    );
+    assert.equal(g2012.initialObjectPosition, "52% 20%");
+  });
+
+  it("resolves Gintama. (2017) mobile alternative banner to Kitsu 12553", async () => {
+    const g2017 = await resolveSeasonMobileBanner({
+      animeId: "97889",
+      anilistId: 97889,
+      malId: 34096,
+      year: 2017,
+      startYear: 2017,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/97889.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(g2017.isAlternative, true);
+    assert.equal(g2017.source, "kitsu-season");
+    assert.equal(
+      g2017.url,
+      "https://media.kitsu.app/anime/cover_images/12553/original.jpg",
+    );
+    assert.equal(g2017.initialObjectPosition, "52% 20%");
+  });
+
+  it("safely rejects excessively panoramic candidates for Gintama Porori-hen, Shirogane no Tamashii-hen and The Final", async () => {
+    const porori = await resolveSeasonMobileBanner({
+      animeId: "99712",
+      anilistId: 99712,
+      malId: 35843,
+      year: 2017,
+      startYear: 2017,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/99712.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(porori.isAlternative, false);
+    assert.equal(porori.source, "season-default");
+    assert.equal(
+      porori.url,
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/99712.jpg",
+    );
+
+    const shirogane = await resolveSeasonMobileBanner({
+      animeId: "100784",
+      anilistId: 100784,
+      malId: 36838,
+      year: 2018,
+      startYear: 2018,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/100784.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(shirogane.isAlternative, false);
+    assert.equal(shirogane.source, "season-default");
+    assert.equal(
+      shirogane.url,
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/100784.jpg",
+    );
+
+    const theFinal = await resolveSeasonMobileBanner({
+      animeId: "110710",
+      anilistId: 110710,
+      malId: 39486,
+      year: 2021,
+      startYear: 2021,
+      format: "MOVIE",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/110710.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(theFinal.isAlternative, false);
+    assert.equal(theFinal.source, "season-default");
+    assert.equal(
+      theFinal.url,
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/110710.jpg",
+    );
+  });
+
+  it("safely rejects excessively panoramic candidates for Monogatari Second Season, Owarimonogatari and Kizumonogatari I", async () => {
+    const monogatariS2 = await resolveSeasonMobileBanner({
+      animeId: "17074",
+      anilistId: 17074,
+      malId: 17074,
+      year: 2013,
+      startYear: 2013,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/17074.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(monogatariS2.isAlternative, false);
+    assert.equal(monogatariS2.source, "season-default");
+    assert.equal(
+      monogatariS2.url,
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/17074.jpg",
+    );
+
+    const owari = await resolveSeasonMobileBanner({
+      animeId: "21262",
+      anilistId: 21262,
+      malId: 31181,
+      year: 2015,
+      startYear: 2015,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21262.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(owari.isAlternative, false);
+    assert.equal(owari.source, "season-default");
+    assert.equal(
+      owari.url,
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21262.jpg",
+    );
+
+    const kizu1 = await resolveSeasonMobileBanner({
+      animeId: "9260",
+      anilistId: 9260,
+      malId: 9260,
+      year: 2016,
+      startYear: 2016,
+      format: "MOVIE",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/9260.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(kizu1.isAlternative, false);
+    assert.equal(kizu1.source, "season-default");
+    assert.equal(
+      kizu1.url,
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/9260.jpg",
+    );
+  });
+
+  it("resolves Kizumonogatari II (2016) mobile alternative banner to Kitsu 11406", async () => {
+    const kizu2 = await resolveSeasonMobileBanner({
+      animeId: "21399",
+      anilistId: 21399,
+      malId: 31757,
+      year: 2016,
+      startYear: 2016,
+      format: "MOVIE",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21399.jpg",
+      isAdminCustomBanner: false,
+    });
+    assert.equal(kizu2.isAlternative, true);
+    assert.equal(kizu2.source, "kitsu-season");
+    assert.equal(
+      kizu2.url,
+      "https://media.kitsu.app/anime/cover_images/11406/original.jpg",
+    );
+    assert.equal(kizu2.initialObjectPosition, "52% 20%");
+    assert.ok(kizu2.aspect != null && Math.abs(kizu2.aspect - 1500 / 880) < 0.02);
+  });
 });
 
 

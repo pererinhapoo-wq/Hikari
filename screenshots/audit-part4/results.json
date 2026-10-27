@@ -1,0 +1,273 @@
+[
+  {
+    "id": "918",
+    "name": "Gintama (2006)",
+    "mobile": {
+      "url": "https://media.kitsu.app/anime/cover_images/818/original.jpg",
+      "isAlternative": true,
+      "source": "kitsu-season",
+      "objectPosition": "52% 20%",
+      "dims": {
+        "width": 1920,
+        "height": 1200,
+        "aspect": 1.6
+      },
+      "aspect": "1.600",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/mobile-918.png"
+    },
+    "desktop": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/918-bljqHE1PFArH.jpg",
+      "dims": {
+        "width": 1900,
+        "height": 400,
+        "aspect": 4.75
+      },
+      "aspect": "4.750",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/desktop-918.png"
+    }
+  },
+  {
+    "id": "9969",
+    "name": "Gintama' (2011)",
+    "mobile": {
+      "url": "https://media.kitsu.app/anime/cover_images/5971/original.jpg",
+      "isAlternative": true,
+      "source": "kitsu-season",
+      "objectPosition": "52% 20%",
+      "dims": {
+        "width": 1280,
+        "height": 863,
+        "aspect": 1.4831981460023176
+      },
+      "aspect": "1.483",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/mobile-9969.png"
+    },
+    "desktop": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/9969-pxE6nSzGGyUB.jpg",
+      "dims": {
+        "width": 1900,
+        "height": 600,
+        "aspect": 3.1666666666666665
+      },
+      "aspect": "3.167",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/desktop-9969.png"
+    }
+  },
+  {
+    "id": "98034",
+    "name": "Saiki K. 2 (2018)",
+    "mobile": {
+      "url": "https://media.kitsu.app/anime/cover_images/13477/original.jpg",
+      "isAlternative": true,
+      "source": "kitsu-season",
+      "objectPosition": "52% 20%",
+      "dims": {
+        "width": 1920,
+        "height": 1080,
+        "aspect": 1.7777777777777777
+      },
+      "aspect": "1.778",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/mobile-98034.png"
+    },
+    "desktop": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/98034-PiUB6liaekfW.jpg",
+      "dims": {
+        "width": 1900,
+        "height": 400,
+        "aspect": 4.75
+      },
+      "aspect": "4.750",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/desktop-98034.png"
+    }
+  },
+  {
+    "id": "21399",
+    "name": "Kizumonogatari II (2016)",
+    "mobile": {
+      "url": "https://media.kitsu.app/anime/cover_images/11406/original.jpg",
+      "isAlternative": true,
+      "source": "kitsu-season",
+      "objectPosition": "52% 20%",
+      "dims": {
+        "width": 1800,
+        "height": 1056,
+        "aspect": 1.7045454545454546
+      },
+      "aspect": "1.705",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/mobile-21399.png"
+    },
+    "desktop": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21399-vCKFTNkrYLIz.jpg",
+      "dims": {
+        "width": 1900,
+        "height": 400,
+        "aspect": 4.75
+      },
+      "aspect": "4.750",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/desktop-21399.png"
+    }
+  },
+  {
+    "id": "21400",
+    "name": "Kizumonogatari III (2017)",
+    "mobile": {
+      "url": "https://media.kitsu.app/anime/cover_images/11407/original.jpg",
+      "isAlternative": true,
+      "source": "kitsu-season",
+      "objectPosition": "50% 40%",
+      "dims": {
+        "width": 1280,
+        "height": 911,
+        "aspect": 1.4050493962678376
+      },
+      "aspect": "1.405",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/mobile-21400.png"
+    },
+    "desktop": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21400-5zcYUeVBptdG.jpg",
+      "dims": {
+        "width": 1900,
+        "height": 400,
+        "aspect": 4.75
+      },
+      "aspect": "4.750",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/desktop-21400.png"
+    }
+  },
+  {
+    "id": "195604",
+    "name": "Black Clover 2nd Season (2026)",
+    "mobile": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/195604-lQpCzTziSA17.jpg",
+      "isAlternative": false,
+      "source": "season-default",
+      "objectPosition": "50% 24%",
+      "dims": {
+        "width": 1900,
+        "height": 400,
+        "aspect": 4.75
+      },
+      "aspect": "4.750",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/mobile-195604.png"
+    },
+    "desktop": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/195604-lQpCzTziSA17.jpg",
+      "dims": {
+        "width": 1900,
+        "height": 400,
+        "aspect": 4.75
+      },
+      "aspect": "4.750",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/desktop-195604.png"
+    }
+  },
+  {
+    "id": "5081",
+    "name": "Bakemonogatari (2009)",
+    "mobile": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/n5081-0Zcn5GOFYHMc.jpg",
+      "isAlternative": false,
+      "source": "season-default",
+      "objectPosition": "50% 24%",
+      "dims": {
+        "width": 1900,
+        "height": 550,
+        "aspect": 3.4545454545454546
+      },
+      "aspect": "3.455",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/mobile-5081.png"
+    },
+    "desktop": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/n5081-0Zcn5GOFYHMc.jpg",
+      "dims": {
+        "width": 1900,
+        "height": 550,
+        "aspect": 3.4545454545454546
+      },
+      "aspect": "3.455",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/desktop-5081.png"
+    }
+  },
+  {
+    "id": "99712",
+    "name": "Gintama. Porori-hen (2017)",
+    "mobile": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/99714-mPAF6Pk56mKc.jpg",
+      "isAlternative": false,
+      "source": "season-default",
+      "objectPosition": "50% 24%",
+      "dims": {
+        "width": 1900,
+        "height": 400,
+        "aspect": 4.75
+      },
+      "aspect": "4.750",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/mobile-99712.png"
+    },
+    "desktop": {
+      "url": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/99714-mPAF6Pk56mKc.jpg",
+      "dims": {
+        "width": 1900,
+        "height": 400,
+        "aspect": 4.75
+      },
+      "aspect": "4.750",
+      "loaded": true,
+      "errors": [],
+      "screenshot": "screenshots/audit-part4/desktop-99712.png"
+    }
+  },
+  {
+    "id": "admin-custom-priority",
+    "name": "Admin Custom Banner Priority (Gintama 918)",
+    "mobile": {
+      "url": "https://media.kitsu.app/anime/cover_images/818/original.jpg",
+      "isAlternative": false,
+      "source": "admin",
+      "matchesExpected": true
+    },
+    "desktop": {
+      "url": "https://media.kitsu.app/anime/cover_images/818/original.jpg",
+      "matchesExpected": true
+    }
+  },
+  {
+    "id": "viewport-switching-test",
+    "name": "Dynamic Viewport Switching (1280x800 <-> 390x844)",
+    "desktopSrc": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/918-bljqHE1PFArH.jpg",
+    "mobileSrc": "https://media.kitsu.app/anime/cover_images/818/original.jpg",
+    "mobilePos": "52% 20%",
+    "desktopBackSrc": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/918-bljqHE1PFArH.jpg",
+    "switchingClean": true
+  }
+]
