@@ -80,10 +80,11 @@ export const MAX_MOBILE_ALT_ASPECT = 2.05;
 export const MAX_PANORAMIC_BANNER_ASPECT = 2.5;
 
 /**
- * Alternativas mobile específicas para temporadas cujo provedor primário (ex: Kitsu)
- * possui arte que excede o limite de proporção para celulares (> 2.05:1),
- * e cuja consulta ao Jikan/MAL em tempo real pode oscilar ou falhar por timeout de rede.
- * Aplicado estritamente para o ID 195516 (The Apothecary Diaries Season 3 / MAL 61987).
+ * Alternativas mobile específicas registradas por ID da temporada:
+ * Garantem resolução determinística sem latência de rede, sem risco de timeout de APIs externas
+ * e imunes a bloqueios por rate limiting ou cache negativo.
+ * Utilizado para temporadas com banners panorâmicos de PC (> 2.5:1) que necessitam de artes
+ * limpas e apropriadas para celular com foco nos personagens.
  */
 export const SPECIFIC_SEASON_MOBILE_ALTERNATIVES: Record<
   string,
@@ -92,15 +93,159 @@ export const SPECIFIC_SEASON_MOBILE_ALTERNATIVES: Record<
     aspect: number;
     source: AlternativeBannerSource;
     initialObjectPosition?: string;
+    expectedYear?: number;
+    format?: string;
   }
 > = {
+  // Kizumonogatari III: Reiketsu-hen (AniList ID 21400 / MAL ID 31758 / Kitsu 11407)
+  // Imagem de referência aprovada: Kitsu 11407 (1280x911, proporção 1.405:1), enquadramento 50% 24%
+  "21400": {
+    url: "https://media.kitsu.app/anime/cover_images/11407/original.jpg",
+    aspect: 1280 / 911,
+    source: "kitsu-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2017,
+    format: "MOVIE",
+  },
+  // Kizumonogatari II: Nekketsu-hen (AniList ID 21399 / MAL ID 31757 / Kitsu 11406)
+  // Referência visual aprovada: Kitsu 11406 (1800x1056, proporção 1.705:1), enquadramento 52% 20%
+  "21399": {
+    url: "https://media.kitsu.app/anime/cover_images/11406/original.jpg",
+    aspect: 1800 / 1056,
+    source: "kitsu-season",
+    initialObjectPosition: "52% 20%",
+    expectedYear: 2016,
+    format: "MOVIE",
+  },
+  // Gintama (2006) (AniList ID 918 / MAL ID 918 / Kitsu 818)
+  // Referência visual aprovada: Kitsu 818 (1920x1200, proporção 1.60:1), enquadramento 52% 20%
+  "918": {
+    url: "https://media.kitsu.app/anime/cover_images/818/original.jpg",
+    aspect: 1920 / 1200,
+    source: "kitsu-season",
+    initialObjectPosition: "52% 20%",
+    expectedYear: 2006,
+    format: "TV",
+  },
+  // Gintama' (2011) (AniList ID 9969 / MAL ID 9969 / Kitsu 5971)
+  // Referência visual aprovada: Kitsu 5971 (1280x863, proporção 1.483:1), enquadramento 52% 20%
+  "9969": {
+    url: "https://media.kitsu.app/anime/cover_images/5971/original.jpg",
+    aspect: 1280 / 863,
+    source: "kitsu-season",
+    initialObjectPosition: "52% 20%",
+    expectedYear: 2011,
+    format: "TV",
+  },
+  // Gintama': Enchousen (2012) (AniList ID 15417 / MAL ID 15417 / Kitsu 7253)
+  // Arte oficial do Kitsu: 1920x1080 (proporção 1.778:1), enquadramento 52% 20%
+  "15417": {
+    url: "https://media.kitsu.app/anime/cover_images/7253/original.jpg",
+    aspect: 1920 / 1080,
+    source: "kitsu-season",
+    initialObjectPosition: "52% 20%",
+    expectedYear: 2012,
+    format: "TV",
+  },
+  // Gintama° (2015) (AniList ID 20996 / MAL ID 28977 / Kitsu 10083)
+  // Arte oficial do Kitsu: 1920x1261 (proporção 1.523:1), enquadramento 52% 20%
+  "20996": {
+    url: "https://media.kitsu.app/anime/cover_images/10083/original.jpg",
+    aspect: 1920 / 1261,
+    source: "kitsu-season",
+    initialObjectPosition: "52% 20%",
+    expectedYear: 2015,
+    format: "TV",
+  },
+  // Gintama. (2017) (AniList ID 97889 / MAL ID 34096 / Kitsu 12553)
+  // Arte oficial do Kitsu: 1920x1208 (proporção 1.589:1), enquadramento 52% 20%
+  "97889": {
+    url: "https://media.kitsu.app/anime/cover_images/12553/original.jpg",
+    aspect: 1920 / 1208,
+    source: "kitsu-season",
+    initialObjectPosition: "52% 20%",
+    expectedYear: 2017,
+    format: "TV",
+  },
+  // Durarara!! Season 1 (AniList ID 6746 / MAL ID 6746 / Kitsu 5324)
+  // Arte oficial do Kitsu: 1484x1084 (proporção 1.369:1), enquadramento 50% 24%
+  "6746": {
+    url: "https://media.kitsu.app/anime/cover_images/5324/original.jpg",
+    aspect: 1484 / 1084,
+    source: "kitsu-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2010,
+    format: "TV",
+  },
+  // Durarara!!×2 Shou (AniList ID 20652 / MAL ID 23199 / Kitsu 8314)
+  // Arte oficial do Kitsu: 1920x1080 (proporção 1.778:1), enquadramento 52% 20%
+  "20652": {
+    url: "https://media.kitsu.app/anime/cover_images/8314/original.jpg",
+    aspect: 1920 / 1080,
+    source: "kitsu-season",
+    initialObjectPosition: "52% 20%",
+    expectedYear: 2015,
+    format: "TV",
+  },
+  // Durarara!!×2 Ten (AniList ID 20879 / MAL ID 27831 / Kitsu 9726)
+  // Arte oficial do Kitsu: 1920x1080 (proporção 1.778:1), enquadramento 62% 20%
+  "20879": {
+    url: "https://media.kitsu.app/anime/cover_images/9726/original.jpg",
+    aspect: 1920 / 1080,
+    source: "kitsu-season",
+    initialObjectPosition: "62% 20%",
+    expectedYear: 2015,
+    format: "TV",
+  },
+  // Durarara!!×2 Ketsu (AniList ID 20880 / MAL ID 27833 / Kitsu 9725)
+  // Arte oficial do Kitsu: 1280x864 (proporção 1.481:1), enquadramento 50% 24%
+  "20880": {
+    url: "https://media.kitsu.app/anime/cover_images/9725/original.jpg",
+    aspect: 1280 / 864,
+    source: "kitsu-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2016,
+    format: "TV",
+  },
   // The Apothecary Diaries Season 3 (AniList ID 195516 / MAL ID 61987)
-  // Arte oficial limpa do MAL: 600x424 (proporção 1.415:1)
+  // Referência visual aprovada: MAL 152170l.jpg (600x424, proporção 1.415:1), enquadramento 50% 24%
   "195516": {
     url: "https://cdn.myanimelist.net/images/anime/1501/152170l.jpg",
     aspect: 600 / 424,
     source: "jikan-season",
     initialObjectPosition: "50% 24%",
+    expectedYear: 2026,
+    format: "TV",
+  },
+  // The Apothecary Diaries Season 2 (AniList ID 176301 / MAL ID 58514)
+  // Arte oficial limpa do MAL: 144365l.jpg (600x424, proporção 1.415:1), enquadramento 50% 24%
+  "176301": {
+    url: "https://cdn.myanimelist.net/images/anime/1681/144365l.jpg",
+    aspect: 600 / 424,
+    source: "jikan-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2025,
+    format: "TV",
+  },
+  // The Disastrous Life of Saiki K. Season 2 (AniList ID 98034 / MAL ID 34612 / Kitsu 13477)
+  // Referência visual aprovada: Kitsu 13477 (1920x1080, proporção 1.778:1), enquadramento 52% 20%
+  "98034": {
+    url: "https://media.kitsu.app/anime/cover_images/13477/original.jpg",
+    aspect: 1920 / 1080,
+    source: "kitsu-season",
+    initialObjectPosition: "52% 20%",
+    expectedYear: 2018,
+    format: "TV",
+  },
+  // Great Teacher Onizuka (AniList ID 245 / MAL ID 245 / Kitsu 220)
+  // Referência visual aprovada: Kitsu 220 (1600x1200, proporção 1.333:1), enquadramento 50% 24%
+  "245": {
+    url: "https://media.kitsu.app/anime/cover_images/220/original.jpg",
+    aspect: 1600 / 1200,
+    source: "kitsu-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 1999,
+    format: "TV",
   },
 };
 
@@ -561,10 +706,8 @@ export function verifyBidirectionalSeasonMappings(params: {
  * Ponto de partida de object-position adaptável conforme a geometria e composição da arte:
  * - Artes horizontais padrão [1.48..2.05] (ex.: 16:9, 16:10, 3:2): 52% 20% para equilibrar
  *   a composição ao lado da capa vertical sobreposta à esquerda sem cortar personagens nas bordas.
- * - Banners panorâmicos (> 2.05): ponto inicial 50% 24%, refinado pela leitura de
- *   densidade visual quando a origem suporta CORS.
- * - Imagens com proporção inferior a 1.48 (< 1.48): ponto equilibrado 50% 40% para
- *   evitar zoom excessivo no topo/cabelo ou corte do corpo dos personagens.
+ * - Banners horizontais compactos (< 1.48, ex.: 4:3, 1.405, 1.415) e panorâmicos (> 2.05):
+ *   ponto 50% 24% preservando cabeças, rostos e olhos dos personagens sem corte superior nem zoom excessivo.
  */
 export function initialObjectPositionForAspect(aspect?: number): string {
   if (!aspect || !Number.isFinite(aspect)) {
@@ -572,9 +715,6 @@ export function initialObjectPositionForAspect(aspect?: number): string {
   }
   if (aspect >= 1.48 && aspect <= MAX_STANDARD_HORIZONTAL_ASPECT) {
     return "52% 20%";
-  }
-  if (aspect < 1.48) {
-    return "50% 40%";
   }
   return "50% 24%";
 }
@@ -1046,6 +1186,46 @@ export async function resolveSeasonMobileBanner(
     };
   }
 
+  // Alternativas mobile específicas registradas por ID da temporada:
+  // Garantem resolução determinística sem latência de rede, sem risco de timeout de APIs externas
+  // e imunes a bloqueios por rate limiting ou cache negativo.
+  const specificAlt =
+    (input.animeId && SPECIFIC_SEASON_MOBILE_ALTERNATIVES[input.animeId]) ||
+    (input.anilistId != null &&
+      SPECIFIC_SEASON_MOBILE_ALTERNATIVES[String(input.anilistId)]) ||
+    (input.malId != null &&
+      SPECIFIC_SEASON_MOBILE_ALTERNATIVES[`mal:${input.malId}`]);
+
+  const expectedYear = input.startYear ?? input.year ?? null;
+  const isSpecificAltValidForInput =
+    specificAlt &&
+    (!specificAlt.expectedYear ||
+      isSeasonYearConsistent(expectedYear, `${specificAlt.expectedYear}-01-01`)) &&
+    (!specificAlt.format ||
+      areFormatsCompatible(input.format, specificAlt.format)) &&
+    (!input.currentCover ||
+      normalizeBannerUrl(specificAlt.url) !==
+        normalizeBannerUrl(input.currentCover));
+
+  if (isSpecificAltValidForInput && specificAlt) {
+    const cacheKey = buildCacheKey(input);
+    writeCache(
+      cacheKey,
+      specificAlt.url,
+      specificAlt.aspect,
+      specificAlt.source,
+    );
+    return {
+      url: specificAlt.url,
+      isAlternative: true,
+      source: specificAlt.source,
+      initialObjectPosition:
+        specificAlt.initialObjectPosition ??
+        initialObjectPositionForAspect(specificAlt.aspect),
+      aspect: specificAlt.aspect,
+    };
+  }
+
   if (
     input.anilistId == null &&
     input.malId == null &&
@@ -1121,37 +1301,6 @@ export async function resolveSeasonMobileBanner(
       source: "season-default",
       initialObjectPosition: initialObjectPositionForAspect(currentDims.aspect),
       aspect: currentDims.aspect,
-    };
-  }
-
-  // Alternativa específica para The Apothecary Diaries Season 3 (AniList ID 195516):
-  // Utiliza a arte oficial limpa do MAL (600x424, proporção 1.415:1) garantindo que o mobile
-  // não dependa da instabilidade de rede do Jikan nem utilize o banner panorâmico de PC.
-  const specificAlt =
-    (input.animeId && SPECIFIC_SEASON_MOBILE_ALTERNATIVES[input.animeId]) ||
-    (input.anilistId != null &&
-      SPECIFIC_SEASON_MOBILE_ALTERNATIVES[String(input.anilistId)]);
-
-  if (
-    specificAlt &&
-    (!input.currentCover ||
-      normalizeBannerUrl(specificAlt.url) !==
-        normalizeBannerUrl(input.currentCover))
-  ) {
-    writeCache(
-      cacheKey,
-      specificAlt.url,
-      specificAlt.aspect,
-      specificAlt.source,
-    );
-    return {
-      url: specificAlt.url,
-      isAlternative: true,
-      source: specificAlt.source,
-      initialObjectPosition:
-        specificAlt.initialObjectPosition ??
-        initialObjectPositionForAspect(specificAlt.aspect),
-      aspect: specificAlt.aspect,
     };
   }
 
@@ -1249,7 +1398,6 @@ export async function resolveSeasonMobileBanner(
     };
   }
 
-  const expectedYear = input.startYear ?? input.year ?? null;
   let verifiedAtLeastOneKitsuSeason = false;
   let detectedExplicitSeasonConflict = hadLookupConflict;
 
@@ -1640,8 +1788,6 @@ export function analyzeBannerFramingAndTheme(params: {
             );
             objectPosition = `${focalXPercent}% 24%`;
           }
-        } else {
-          objectPosition = initialObjectPositionForAspect(aspect);
         }
 
         if (!hasExplicitColor) {

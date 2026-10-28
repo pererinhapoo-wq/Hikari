@@ -320,9 +320,10 @@ describe("season-banner validation & Admin priority", () => {
     assert.equal(initialObjectPositionForAspect(1.777), "52% 20%");
     assert.equal(initialObjectPositionForAspect(2.05), "52% 20%");
 
-    // Imagens com proporção inferior a 1.48 (< 1.48, ex.: 1.405, 4:3 1.33) recebem enquadramento equilibrado
-    assert.equal(initialObjectPositionForAspect(1.405), "50% 40%");
-    assert.equal(initialObjectPositionForAspect(1.333), "50% 40%");
+    // Imagens com proporção inferior a 1.48 (< 1.48, ex.: 1.405, 4:3 1.33, Apothecary Diaries 1.415)
+    // recebem enquadramento 50% 24% preservando cabeças e rostos no topo sem corte nem zoom excessivo
+    assert.equal(initialObjectPositionForAspect(1.405), "50% 24%");
+    assert.equal(initialObjectPositionForAspect(1.333), "50% 24%");
 
     // Panorâmicos (> 2.05)
     assert.equal(initialObjectPositionForAspect(2.1), "50% 24%");
@@ -352,7 +353,7 @@ describe("season-banner validation & Admin priority", () => {
     // O novo limite calibrado é 1.30, aceitando formatos horizontais compactos (4:3 a 7:5).
     assert.ok(kizu3Aspect >= 1.30, "Deve ser aceito acima do MIN_HORIZONTAL_ASPECT calibrado (1.30)");
     assert.ok(kizu3Aspect <= 2.05, "Deve estar dentro da faixa horizontal compacta/padrão (<= 2.05)");
-    assert.equal(initialObjectPositionForAspect(kizu3Aspect), "50% 40%");
+    assert.equal(initialObjectPositionForAspect(kizu3Aspect), "50% 24%");
 
     // Imagens quadradas ou quase quadradas (< 1.30) devem ser rejeitadas
     assert.ok(1.20 < 1.30, "Proporção 1.20 (6:5) quase quadrada deve estar abaixo do limite mínimo");
@@ -413,7 +414,7 @@ describe("season-banner validation & Admin priority", () => {
       res.url,
       "https://media.kitsu.app/anime/cover_images/11407/original.jpg",
     );
-    assert.equal(res.initialObjectPosition, "50% 40%");
+    assert.equal(res.initialObjectPosition, "50% 24%");
     assert.ok(res.aspect != null && Math.abs(res.aspect - 1280 / 911) < 0.01);
   });
 
@@ -1692,6 +1693,104 @@ describe("season-banner validation & Admin priority", () => {
     assert.equal(shiroganePt1.isAlternative, false);
     assert.equal(shiroganePt1.source, "season-default");
     assert.equal(shiroganePt1.url, shiroganePt1Banner);
+  });
+
+  it("resolves all batch mobile alternatives deterministically without network delay while maintaining desktop isolation", async () => {
+    clearSeasonBannerCache();
+
+    // 1. Kizumonogatari III (21400): Kitsu 11407 a 50% 24%
+    const k3 = await resolveSeasonMobileBanner({
+      animeId: "21400",
+      anilistId: 21400,
+      malId: 31758,
+      year: 2017,
+      format: "MOVIE",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21400-5zcYUeVBptdG.jpg",
+    });
+    assert.equal(k3.isAlternative, true);
+    assert.equal(k3.url, "https://media.kitsu.app/anime/cover_images/11407/original.jpg");
+    assert.equal(k3.initialObjectPosition, "50% 24%");
+
+    // Desktop isolation para Kizumonogatari III
+    const k3Desktop = selectViewportBanner({
+      animeId: "21400",
+      isMobileViewport: false,
+      isAdminBanner: false,
+      baseSeasonBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21400-5zcYUeVBptdG.jpg",
+      mobileBannerState: {
+        forId: "21400",
+        url: k3.url!,
+        isAlternative: k3.isAlternative,
+        initialObjectPosition: k3.initialObjectPosition,
+      },
+    });
+    assert.equal(k3Desktop.isUsingMobileAlternative, false);
+    assert.equal(k3Desktop.effectiveBannerUrl, "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21400-5zcYUeVBptdG.jpg");
+
+    // 2. Durarara!! Season 1 (6746): Kitsu 5324 a 50% 24%
+    const drrr1 = await resolveSeasonMobileBanner({
+      animeId: "6746",
+      anilistId: 6746,
+      malId: 6746,
+      year: 2010,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/6746-b6hS6o45dOcx.jpg",
+    });
+    assert.equal(drrr1.isAlternative, true);
+    assert.equal(drrr1.url, "https://media.kitsu.app/anime/cover_images/5324/original.jpg");
+    assert.equal(drrr1.initialObjectPosition, "50% 24%");
+
+    // 3. Durarara!!×2 Ten (20879): Kitsu 9726 com foco calibrado 62% 20%
+    const drrrTen = await resolveSeasonMobileBanner({
+      animeId: "20879",
+      anilistId: 20879,
+      malId: 27831,
+      year: 2015,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20879-8H4J2m6K9L0p.jpg",
+    });
+    assert.equal(drrrTen.isAlternative, true);
+    assert.equal(drrrTen.url, "https://media.kitsu.app/anime/cover_images/9726/original.jpg");
+    assert.equal(drrrTen.initialObjectPosition, "62% 20%");
+
+    // 4. Durarara!!×2 Ketsu (20880): Kitsu 9725 a 50% 24%
+    const drrrKetsu = await resolveSeasonMobileBanner({
+      animeId: "20880",
+      anilistId: 20880,
+      malId: 27833,
+      year: 2016,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20880-9I3K5m7L8N1q.jpg",
+    });
+    assert.equal(drrrKetsu.isAlternative, true);
+    assert.equal(drrrKetsu.url, "https://media.kitsu.app/anime/cover_images/9725/original.jpg");
+    assert.equal(drrrKetsu.initialObjectPosition, "50% 24%");
+
+    // 5. Great Teacher Onizuka (245): Kitsu 220 a 50% 24%
+    const gto = await resolveSeasonMobileBanner({
+      animeId: "245",
+      anilistId: 245,
+      malId: 245,
+      year: 1999,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/245.jpg",
+    });
+    assert.equal(gto.isAlternative, true);
+    assert.equal(gto.url, "https://media.kitsu.app/anime/cover_images/220/original.jpg");
+    assert.equal(gto.initialObjectPosition, "50% 24%");
+
+    // 6. The Apothecary Diaries Season 2 (176301): MAL 144365l.jpg a 50% 24%
+    const apo2 = await resolveSeasonMobileBanner({
+      animeId: "176301",
+      anilistId: 176301,
+      malId: 58514,
+      year: 2025,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/176301-GkuTF1YTT6b2.jpg",
+    });
+    assert.equal(apo2.isAlternative, true);
+    assert.equal(apo2.url, "https://cdn.myanimelist.net/images/anime/1681/144365l.jpg");
+    assert.equal(apo2.initialObjectPosition, "50% 24%");
   });
 });
 
