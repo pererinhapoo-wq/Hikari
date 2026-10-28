@@ -19,6 +19,7 @@ import {
   fetchAnimeCredits,
   fetchAnimeDetail,
   fetchAnimePictures,
+  fetchJikanPictures,
 } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -39,6 +40,7 @@ import {
   analyzeBannerFramingAndTheme,
   hasAdminCustomBanner,
   resolveSeasonMobileBanner,
+  selectViewportBanner,
 } from "@/lib/season-banner";
 import { useHikariStore } from "@/lib/store";
 import {
@@ -270,6 +272,7 @@ function AnimePage() {
   const [mobileBannerState, setMobileBannerState] = useState<{
     forId: string;
     url: string;
+    isAlternative: boolean;
     initialObjectPosition: string;
   } | null>(null);
 
@@ -289,17 +292,7 @@ function AnimePage() {
       : animeBanner;
 
   useEffect(() => {
-    if (!animeId || isAdminBanner) {
-      return;
-    }
-
-    // Se estiver no Desktop e já tiver um banner base válido que não falhou,
-    // preserva o banner oficial widescreen de desktop sem necessidade de buscar alternativa.
-    if (
-      !isMobileViewport &&
-      baseSeasonBanner &&
-      !failedBannerUrls[baseSeasonBanner]
-    ) {
+    if (!animeId || isAdminBanner || !isMobileViewport) {
       return;
     }
 
@@ -336,14 +329,16 @@ function AnimePage() {
         currentBanner: animeBanner,
         currentCover: animeCover,
         isAdminCustomBanner: isAdminBanner,
+        fetchJikanPictures,
       },
       controller.signal,
     ).then((resolved) => {
       if (controller.signal.aborted) return;
-      if (resolved.isAlternative && resolved.url) {
+      if (resolved.url) {
         setMobileBannerState({
           forId: animeId,
           url: resolved.url,
+          isAlternative: resolved.isAlternative,
           initialObjectPosition: resolved.initialObjectPosition,
         });
       }
@@ -356,8 +351,6 @@ function AnimePage() {
     animeId,
     isMobileViewport,
     isAdminBanner,
-    baseSeasonBanner,
-    failedBannerUrls,
     animeAnilistId,
     animeMalId,
     animeKitsuId,
@@ -369,37 +362,14 @@ function AnimePage() {
     animeCover,
   ]);
 
-  const activeMobileAlt =
-    !isAdminBanner &&
-    isMobileViewport &&
-    animeId &&
-    mobileBannerState?.forId === animeId &&
-    !failedBannerUrls[mobileBannerState.url]
-      ? mobileBannerState
-      : null;
-
-  const fallbackResolvedBanner =
-    !isAdminBanner &&
-    animeId &&
-    mobileBannerState &&
-    mobileBannerState.forId === animeId &&
-    !failedBannerUrls[mobileBannerState.url]
-      ? mobileBannerState.url
-      : null;
-
-  const effectiveBannerUrl =
-    activeMobileAlt?.url ??
-    (baseSeasonBanner && !failedBannerUrls[baseSeasonBanner]
-      ? baseSeasonBanner
-      : fallbackResolvedBanner);
-
-  const defaultObjectPosition =
-    activeMobileAlt?.initialObjectPosition ??
-    (mobileBannerState &&
-    mobileBannerState.forId === animeId &&
-    effectiveBannerUrl === mobileBannerState.url
-      ? mobileBannerState.initialObjectPosition
-      : "50% 24%");
+  const { effectiveBannerUrl, defaultObjectPosition } = selectViewportBanner({
+    animeId,
+    isMobileViewport,
+    isAdminBanner,
+    baseSeasonBanner,
+    mobileBannerState,
+    failedBannerUrls,
+  });
 
   const [framedBannerPosition, setFramedBannerPosition] = useState<{
     forUrl: string;

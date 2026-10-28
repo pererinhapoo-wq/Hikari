@@ -498,15 +498,18 @@ async function jikanFetch<T>(
   attempt = 0,
 ): Promise<T> {
   try {
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    };
+
+    if (typeof window === "undefined") {
+      headers["User-Agent"] = "Hikari/1.0 (anime catalog)";
+    }
+
     const res = await fetch(
       `${JIKAN}${path}`,
       {
-        headers: {
-          Accept:
-            "application/json",
-          "User-Agent":
-            "Hikari/1.0 (anime catalog)",
-        },
+        headers,
         signal:
           AbortSignal.timeout(
             3500,
