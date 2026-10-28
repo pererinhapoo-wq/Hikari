@@ -77,6 +77,7 @@ export const MIN_JIKAN_HEIGHT = 400;
 export const MIN_HORIZONTAL_ASPECT = 1.30;
 const MAX_STANDARD_HORIZONTAL_ASPECT = 2.05;
 export const MAX_MOBILE_ALT_ASPECT = 2.05;
+export const MAX_KITSU_ALT_ASPECT = 3.35;
 export const MAX_PANORAMIC_BANNER_ASPECT = 2.5;
 
 /**
@@ -97,6 +98,16 @@ export const SPECIFIC_SEASON_MOBILE_ALTERNATIVES: Record<
     format?: string;
   }
 > = {
+  // The Fragrant Flower Blooms With Dignity (AniList ID 181444 / MAL ID 59845 / Kitsu 49205)
+  // Referência visual oficial do Kitsu: 1920x586 (proporção 3.276:1), enquadramento 50% 24%
+  "181444": {
+    url: "https://media.kitsu.app/anime/49205/cover_image/f430c372e17c02002329ebdad9f98f49.jpg",
+    aspect: 1920 / 586,
+    source: "kitsu-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2025,
+    format: "TV",
+  },
   // Kizumonogatari III: Reiketsu-hen (AniList ID 21400 / MAL ID 31758 / Kitsu 11407)
   // Imagem de referência aprovada: Kitsu 11407 (1280x911, proporção 1.405:1), enquadramento 50% 24%
   "21400": {
@@ -1130,6 +1141,7 @@ interface KitsuAnimeResource {
     subtype?: string | null;
     coverImage?: {
       original?: string | null;
+      large?: string | null;
     } | null;
   };
 }
@@ -1163,12 +1175,13 @@ interface KitsuItemMappingsResponse {
  * Resolve de forma isolada a arte promocional oficial, limpa e horizontal para o banner mobile
  * da temporada exata, sem utilizar trailers, miniaturas do YouTube ou cenas de episódios:
  * 1) Banner personalizado pelo administrador (prioridade absoluta).
- * 2) Banner atual limpo e adequado (1.30:1 a 2.5:1, mínimo 800x400, não oriundo de trailer/episódio).
- * 3) Kitsu: arte horizontal oficial da temporada exata (1.30:1 a 2.05:1, mínimo 800x400, mapeamento 1:1).
+ * 2) Alternativas registradas por ID da temporada (SPECIFIC_SEASON_MOBILE_ALTERNATIVES).
+ * 3) Kitsu: tentar primeiro obter arte horizontal oficial limpa da temporada exata
+ *    (1.30:1 a 3.35:1, mínimo 800x400, mapeamento 1:1, ano e formato validados).
  * 4) MyAnimeList/Jikan (`fetchJikanPictures(malId)`): arte promocional horizontal limpa da temporada
  *    (1.30:1 a 2.05:1, mínimo 580x400, rejeitando pôsteres verticais e capturas 16:9 de vídeo/PV).
  * 5) Fallback seguro: se nenhuma alternativa limpa e comprovadamente adequada for encontrada,
- *    mantém o banner original da temporada sem forçar substituição.
+ *    mantém o banner original do AniList da temporada.
  */
 export async function resolveSeasonMobileBanner(
   input: SeasonBannerInput,
@@ -1260,51 +1273,7 @@ export async function resolveSeasonMobileBanner(
     };
   }
 
-  const isCurrentBannerClean =
-    Boolean(fallbackUrl) && !isDisallowedMobileBannerUrl(fallbackUrl);
-
-  const isFallbackDistinctFromCover = !(
-    fallbackUrl &&
-    input.currentCover &&
-    normalizeBannerUrl(fallbackUrl) === normalizeBannerUrl(input.currentCover)
-  );
-
-  const currentDims =
-    fallbackUrl && isCurrentBannerClean && isFallbackDistinctFromCover
-      ? await probeImageDimensions(fallbackUrl, signal)
-      : null;
-
-  if (signal?.aborted) {
-    return {
-      url: fallbackUrl,
-      isAlternative: false,
-      source: fallbackUrl ? "season-default" : "none",
-      initialObjectPosition: "50% 24%",
-    };
-  }
-
-  // 2. Banner atual limpo e adequado: proporção entre 1.30:1 e 2.5:1 e resolução >= 800x400
-  if (
-    fallbackUrl &&
-    isCurrentBannerClean &&
-    isFallbackDistinctFromCover &&
-    currentDims &&
-    currentDims.width >= MIN_ALT_WIDTH &&
-    currentDims.height >= MIN_ALT_HEIGHT &&
-    currentDims.aspect >= MIN_HORIZONTAL_ASPECT &&
-    currentDims.aspect <= MAX_PANORAMIC_BANNER_ASPECT
-  ) {
-    writeCache(cacheKey, null, currentDims.aspect);
-    return {
-      url: fallbackUrl,
-      isAlternative: false,
-      source: "season-default",
-      initialObjectPosition: initialObjectPositionForAspect(currentDims.aspect),
-      aspect: currentDims.aspect,
-    };
-  }
-
-  // 3. Kitsu: arte horizontal oficial limpa da temporada exata (>= 800x400 e 1.30:1..2.05:1)
+  // 2. Kitsu: tentar primeiro obter a arte horizontal oficial limpa da temporada exata
   const { candidates: kitsuCandidates, hadLookupConflict } = await (async (): Promise<{
     candidates: KitsuAnimeResource[];
     hadLookupConflict: boolean;
@@ -1435,7 +1404,10 @@ export async function resolveSeasonMobileBanner(
       }
     }
 
-    const candidateUrl = kitsuItem.attributes?.coverImage?.original ?? null;
+    const candidateUrl =
+      kitsuItem.attributes?.coverImage?.original ||
+      kitsuItem.attributes?.coverImage?.large ||
+      null;
     const hasValidKitsuCoverUrl =
       isValidPermanentKitsuSeasonUrl(
         candidateUrl,
@@ -1501,13 +1473,7 @@ export async function resolveSeasonMobileBanner(
       candidateDims.width >= MIN_ALT_WIDTH &&
       candidateDims.height >= MIN_ALT_HEIGHT &&
       candidateDims.aspect >= MIN_HORIZONTAL_ASPECT &&
-      candidateDims.aspect <= MAX_MOBILE_ALT_ASPECT &&
-      (!currentDims ||
-        !isCurrentBannerClean ||
-        currentDims.aspect > MAX_PANORAMIC_BANNER_ASPECT ||
-        currentDims.aspect < MIN_HORIZONTAL_ASPECT ||
-        currentDims.width < MIN_ALT_WIDTH ||
-        currentDims.height < MIN_ALT_HEIGHT);
+      candidateDims.aspect <= MAX_KITSU_ALT_ASPECT;
 
     if (!passesQualityAndAspect || !candidateDims || !candidateUrl) {
       continue;
@@ -1602,7 +1568,21 @@ export async function resolveSeasonMobileBanner(
     };
   }
 
-  // 5. Fallback seguro: manter o banner original da temporada quando não houver alternativa limpa
+  // 4. Fallback seguro: manter o banner original do AniList da temporada quando não houver alternativa limpa
+  const isCurrentBannerClean =
+    Boolean(fallbackUrl) && !isDisallowedMobileBannerUrl(fallbackUrl);
+
+  const isFallbackDistinctFromCover = !(
+    fallbackUrl &&
+    input.currentCover &&
+    normalizeBannerUrl(fallbackUrl) === normalizeBannerUrl(input.currentCover)
+  );
+
+  const currentDims =
+    fallbackUrl && isCurrentBannerClean && isFallbackDistinctFromCover
+      ? await probeImageDimensions(fallbackUrl, signal)
+      : null;
+
   writeCache(cacheKey, null, currentDims?.aspect);
   return {
     url: fallbackUrl,
