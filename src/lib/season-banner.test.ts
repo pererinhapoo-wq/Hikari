@@ -1495,7 +1495,8 @@ describe("season-banner validation & Admin priority", () => {
     );
     assert.ok(s3.aspect != null && Math.abs(s3.aspect - 600 / 424) < 0.01);
 
-    // Quando o Jikan estiver indisponível na S3, preserva o banner original sem recorrer a trailers
+    // Para o ID 195516 (The Apothecary Diaries Season 3), garante que a alternativa mobile oficial limpa
+    // seja resolvida mesmo quando a consulta em tempo real ao Jikan estiver indisponível
     clearSeasonBannerCache();
     const s3WhenJikanUnavailable = await resolveSeasonMobileBanner({
       animeId: "195516",
@@ -1508,9 +1509,47 @@ describe("season-banner validation & Admin priority", () => {
       currentBanner: s3OriginalBanner,
       fetchJikanPictures: async () => [],
     });
-    assert.equal(s3WhenJikanUnavailable.isAlternative, false);
-    assert.equal(s3WhenJikanUnavailable.source, "season-default");
-    assert.equal(s3WhenJikanUnavailable.url, s3OriginalBanner);
+    assert.equal(s3WhenJikanUnavailable.isAlternative, true);
+    assert.equal(s3WhenJikanUnavailable.source, "jikan-season");
+    assert.equal(
+      s3WhenJikanUnavailable.url,
+      "https://cdn.myanimelist.net/images/anime/1501/152170l.jpg",
+    );
+
+    // Validação de isolamento: Desktop preserva o banner original e Mobile utiliza a alternativa
+    const desktopSelection = selectViewportBanner({
+      animeId: "195516",
+      isMobileViewport: false,
+      isAdminBanner: false,
+      baseSeasonBanner: s3OriginalBanner,
+      mobileBannerState: {
+        forId: "195516",
+        url: s3WhenJikanUnavailable.url,
+        isAlternative: s3WhenJikanUnavailable.isAlternative,
+        initialObjectPosition: s3WhenJikanUnavailable.initialObjectPosition,
+      },
+    });
+    assert.equal(desktopSelection.effectiveBannerUrl, s3OriginalBanner);
+    assert.equal(desktopSelection.isUsingMobileAlternative, false);
+    assert.equal(desktopSelection.defaultObjectPosition, "50% 24%");
+
+    const mobileSelection = selectViewportBanner({
+      animeId: "195516",
+      isMobileViewport: true,
+      isAdminBanner: false,
+      baseSeasonBanner: s3OriginalBanner,
+      mobileBannerState: {
+        forId: "195516",
+        url: s3WhenJikanUnavailable.url,
+        isAlternative: s3WhenJikanUnavailable.isAlternative,
+        initialObjectPosition: s3WhenJikanUnavailable.initialObjectPosition,
+      },
+    });
+    assert.equal(
+      mobileSelection.effectiveBannerUrl,
+      "https://cdn.myanimelist.net/images/anime/1501/152170l.jpg",
+    );
+    assert.equal(mobileSelection.isUsingMobileAlternative, true);
   });
 
   it("regression: preserves original clean banner for Black Clover 2nd Season (195604) when only vertical posters exist, while resolving clean MAL horizontal art for Solo Leveling S1 (151807)", async () => {

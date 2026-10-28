@@ -79,6 +79,31 @@ const MAX_STANDARD_HORIZONTAL_ASPECT = 2.05;
 export const MAX_MOBILE_ALT_ASPECT = 2.05;
 export const MAX_PANORAMIC_BANNER_ASPECT = 2.5;
 
+/**
+ * Alternativas mobile específicas para temporadas cujo provedor primário (ex: Kitsu)
+ * possui arte que excede o limite de proporção para celulares (> 2.05:1),
+ * e cuja consulta ao Jikan/MAL em tempo real pode oscilar ou falhar por timeout de rede.
+ * Aplicado estritamente para o ID 195516 (The Apothecary Diaries Season 3 / MAL 61987).
+ */
+export const SPECIFIC_SEASON_MOBILE_ALTERNATIVES: Record<
+  string,
+  {
+    url: string;
+    aspect: number;
+    source: AlternativeBannerSource;
+    initialObjectPosition?: string;
+  }
+> = {
+  // The Apothecary Diaries Season 3 (AniList ID 195516 / MAL ID 61987)
+  // Arte oficial limpa do MAL: 600x424 (proporção 1.415:1)
+  "195516": {
+    url: "https://cdn.myanimelist.net/images/anime/1501/152170l.jpg",
+    aspect: 600 / 424,
+    source: "jikan-season",
+    initialObjectPosition: "50% 24%",
+  },
+};
+
 const memoryCache = new Map<string, CacheEntry>();
 const jikanPicturesMemoryCache = new Map<
   number,
@@ -1096,6 +1121,37 @@ export async function resolveSeasonMobileBanner(
       source: "season-default",
       initialObjectPosition: initialObjectPositionForAspect(currentDims.aspect),
       aspect: currentDims.aspect,
+    };
+  }
+
+  // Alternativa específica para The Apothecary Diaries Season 3 (AniList ID 195516):
+  // Utiliza a arte oficial limpa do MAL (600x424, proporção 1.415:1) garantindo que o mobile
+  // não dependa da instabilidade de rede do Jikan nem utilize o banner panorâmico de PC.
+  const specificAlt =
+    (input.animeId && SPECIFIC_SEASON_MOBILE_ALTERNATIVES[input.animeId]) ||
+    (input.anilistId != null &&
+      SPECIFIC_SEASON_MOBILE_ALTERNATIVES[String(input.anilistId)]);
+
+  if (
+    specificAlt &&
+    (!input.currentCover ||
+      normalizeBannerUrl(specificAlt.url) !==
+        normalizeBannerUrl(input.currentCover))
+  ) {
+    writeCache(
+      cacheKey,
+      specificAlt.url,
+      specificAlt.aspect,
+      specificAlt.source,
+    );
+    return {
+      url: specificAlt.url,
+      isAlternative: true,
+      source: specificAlt.source,
+      initialObjectPosition:
+        specificAlt.initialObjectPosition ??
+        initialObjectPositionForAspect(specificAlt.aspect),
+      aspect: specificAlt.aspect,
     };
   }
 
