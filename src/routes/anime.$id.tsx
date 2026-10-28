@@ -536,10 +536,7 @@ function AnimePage() {
           from { opacity: 0; transform: translateY(4px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        @keyframes bannerSettle {
-          from { transform: scale(1.02); }
-          to { transform: scale(1); }
-        }
+        
         @keyframes bookmarkPop {
           0% { transform: scale(0.85); }
           50% { transform: scale(1.22); }
@@ -572,7 +569,7 @@ function AnimePage() {
                 );
               }}
               style={{ objectPosition: bannerObjectPosition }}
-              className="size-full object-cover sm:!object-center transition-[object-position,opacity] duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
+              className="size-full object-cover sm:!object-center transition-[object-position,opacity] duration-500"
             />
           ) : (
             <div className="size-full bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
@@ -1980,7 +1977,3 @@ function StaffCard({
         </div>
       </div>
     </div>
-  );
-}
-
-
