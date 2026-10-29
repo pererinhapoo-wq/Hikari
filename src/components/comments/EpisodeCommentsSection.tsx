@@ -1438,25 +1438,21 @@ export function EpisodeCommentsSection({
   /* EDITAR COMENTÁRIO                                      */
   /* ====================================================== */
 
-  const openEdit =
-    (comment: Comment) => {
-      setMenuOpenId(null);
-
-      setEditingComment(
-        comment,
-      );
-
-      setEditText(
-        comment.content,
-      );
-
-      setEditIsSpoiler(
-        comment.isSpoiler,
-      );
-
-      setError("");
-      setModerationSuccess("");
-    };
+  const openEdit = (comment: Comment) => {
+    if (!effectiveUserId) {
+      setCommentsLoginOpen(true);
+      return;
+    }
+    if (comment.userId !== effectiveUserId && !isAdmin) {
+      return;
+    }
+    setMenuOpenId(null);
+    setEditingComment(comment);
+    setEditText(comment.content);
+    setEditIsSpoiler(comment.isSpoiler);
+    setError("");
+    setModerationSuccess("");
+  };
 
   const handleEdit =
     async () => {
@@ -1472,6 +1468,12 @@ export function EpisodeCommentsSection({
         setEditSaving(true);
         setError("");
 
+        const bearer = getBearerToken();
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        };
+
         const response =
           await fetch(
             "/api/comments/edit",
@@ -1479,10 +1481,7 @@ export function EpisodeCommentsSection({
               method: "POST",
               credentials:
                 "include",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+              headers,
               body: JSON.stringify({
                 commentId:
                   editingComment.id,
@@ -1555,17 +1554,19 @@ export function EpisodeCommentsSection({
   /* EXCLUIR COMENTÁRIO                                     */
   /* ====================================================== */
 
-  const openDelete =
-    (comment: Comment) => {
-      setMenuOpenId(null);
-
-      setDeletingComment(
-        comment,
-      );
-
-      setError("");
-      setModerationSuccess("");
-    };
+  const openDelete = (comment: Comment) => {
+    if (!effectiveUserId) {
+      setCommentsLoginOpen(true);
+      return;
+    }
+    if (comment.userId !== effectiveUserId && !isAdmin) {
+      return;
+    }
+    setMenuOpenId(null);
+    setDeletingComment(comment);
+    setError("");
+    setModerationSuccess("");
+  };
 
   const handleDelete =
     async () => {
@@ -1580,6 +1581,12 @@ export function EpisodeCommentsSection({
         setDeleteSending(true);
         setError("");
 
+        const bearer = getBearerToken();
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        };
+
         const response =
           await fetch(
             "/api/comments/edit",
@@ -1587,10 +1594,7 @@ export function EpisodeCommentsSection({
               method: "POST",
               credentials:
                 "include",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+              headers,
               body: JSON.stringify({
                 commentId:
                   deletingComment.id,
@@ -1674,6 +1678,12 @@ export function EpisodeCommentsSection({
           setReportSending(true);
         }
 
+        const bearer = getBearerToken();
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        };
+
         const response =
           await fetch(
             "/api/comments/moderation",
@@ -1681,10 +1691,7 @@ export function EpisodeCommentsSection({
               method: "POST",
               credentials:
                 "include",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+              headers,
               body: JSON.stringify({
                 commentId,
                 action,
@@ -1774,20 +1781,20 @@ export function EpisodeCommentsSection({
   /* ABRIR DENÚNCIA                                         */
   /* ====================================================== */
 
-  const openReport =
-    (comment: Comment) => {
-      setMenuOpenId(null);
-
-      setReportingComment(
-        comment,
-      );
-
-      setReportReason("");
-
-      setError("");
-
-      setModerationSuccess("");
-    };
+  const openReport = (comment: Comment) => {
+    if (!effectiveUserId) {
+      setCommentsLoginOpen(true);
+      return;
+    }
+    if (comment.userId === effectiveUserId) {
+      return;
+    }
+    setMenuOpenId(null);
+    setReportingComment(comment);
+    setReportReason("");
+    setError("");
+    setModerationSuccess("");
+  };
 
   /* ====================================================== */
   /* DATA                                                    */
@@ -2682,16 +2689,20 @@ export function EpisodeCommentsSection({
                       comment.id,
                     );
 
-                  const canEdit =
-                    !sessionLoading &&
+                  const isAuthor =
                     Boolean(
-                      currentUserId &&
-                      (
-                        currentUserId ===
-                          comment.userId ||
-                        isAdmin
-                      ),
+                      effectiveUserId &&
+                      effectiveUserId === comment.userId,
                     );
+
+                  const canEdit =
+                    Boolean(
+                      effectiveUserId &&
+                      (isAuthor || isAdmin),
+                    );
+
+                  const canReport =
+                    Boolean(!isAuthor);
 
                   return (
                     <div
@@ -2770,6 +2781,7 @@ export function EpisodeCommentsSection({
                         onSpam={() => setSpamComment(comment)}
                         moderating={moderatingId === comment.id}
                         canEdit={canEdit}
+                        canReport={canReport}
                         highlighted={highlightedCommentId === comment.id}
                         onRequireLogin={() => setLoginOpen(true)}
                         showMedia={showMedia}
@@ -2780,12 +2792,18 @@ export function EpisodeCommentsSection({
                       {replies.length > 0 && (
                         <div className="mt-2.5 ml-3 sm:ml-7 border-l-2 border-white/10 hover:border-[#a855f7]/40 pl-3 sm:pl-4 space-y-2 transition-colors">
                           {replies.map((reply) => {
-                            const canEditReply =
-                              !sessionLoading &&
+                            const isReplyAuthor =
                               Boolean(
-                                currentUserId &&
-                                  (currentUserId === reply.userId || isAdmin),
+                                effectiveUserId &&
+                                effectiveUserId === reply.userId,
                               );
+                            const canEditReply =
+                              Boolean(
+                                effectiveUserId &&
+                                  (isReplyAuthor || isAdmin),
+                              );
+                            const canReportReply =
+                              Boolean(!isReplyAuthor);
                             const mentionMatch = reply.content.match(/^@([^\s:,]+)/);
                             const replyRecipient = mentionMatch
                               ? mentionMatch[1]
@@ -2841,6 +2859,7 @@ export function EpisodeCommentsSection({
                                 onSpam={() => setSpamComment(reply)}
                                 moderating={moderatingId === reply.id}
                                 canEdit={canEditReply}
+                                canReport={canReportReply}
                                 highlighted={highlightedCommentId === reply.id}
                                 onRequireLogin={() => setLoginOpen(true)}
                                 showMedia={showMedia}
@@ -3511,6 +3530,7 @@ function CommentCard({
   onSpam,
   moderating,
   canEdit,
+  canReport = true,
   highlighted = false,
   onRequireLogin: _onRequireLogin,
   showMedia = true,
@@ -3541,6 +3561,7 @@ function CommentCard({
   onSpam: () => void;
   moderating: boolean;
   canEdit: boolean;
+  canReport?: boolean;
   highlighted?: boolean;
   onRequireLogin?: () => void;
   showMedia?: boolean;
@@ -3672,7 +3693,7 @@ function CommentCard({
                 role="menu"
                 className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
               >
-                {canEdit ? (
+                {canEdit && (
                   <>
                     <button
                       type="button"
@@ -3702,7 +3723,9 @@ function CommentCard({
                       <span>Excluir comentário</span>
                     </button>
                   </>
-                ) : (
+                )}
+
+                {canReport && (
                   <>
                     <button
                       type="button"
@@ -3711,7 +3734,7 @@ function CommentCard({
                         onToggleMenu();
                         onMarkSpoiler();
                       }}
-                      disabled={moderating}
+                      disabled={comment.isSpoiler || moderating}
                       className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <AlertTriangle className="size-3.5 shrink-0 text-amber-400" />

@@ -97,6 +97,13 @@ export const Route = createFileRoute("/api/comments/moderation")({
           }
 
           if (action === "spam" || action === "report") {
+            if (action === "report" && String(commentRows[0].userId) === apiUser.id) {
+              return Response.json(
+                { error: "Não é permitido denunciar o próprio comentário." },
+                { status: 400 },
+              );
+            }
+
             const rawReason =
               typeof body?.reason === "string" ? body.reason.trim().toLowerCase() : "";
 

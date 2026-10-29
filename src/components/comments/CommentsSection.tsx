@@ -1024,6 +1024,13 @@ export function CommentsSection({
   /* ====================================================== */
 
   const openEdit = (comment: Comment) => {
+    if (!effectiveUserId) {
+      setCommentsLoginOpen(true);
+      return;
+    }
+    if (comment.userId !== effectiveUserId && !isAdmin) {
+      return;
+    }
     setMenuOpenId(null);
     setEditingComment(comment);
     setEditText(comment.content);
@@ -1041,12 +1048,16 @@ export function CommentsSection({
       setEditSaving(true);
       setError("");
 
+      const bearer = getBearerToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+      };
+
       const response = await fetch("/api/comments/edit", {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           commentId: editingComment.id,
           action: "edit",
@@ -1099,6 +1110,13 @@ export function CommentsSection({
   /* ====================================================== */
 
   const openDelete = (comment: Comment) => {
+    if (!effectiveUserId) {
+      setCommentsLoginOpen(true);
+      return;
+    }
+    if (comment.userId !== effectiveUserId && !isAdmin) {
+      return;
+    }
     setMenuOpenId(null);
     setDeletingComment(comment);
     setError("");
@@ -1114,12 +1132,16 @@ export function CommentsSection({
       setDeleteSending(true);
       setError("");
 
+      const bearer = getBearerToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+      };
+
       const response = await fetch("/api/comments/edit", {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           commentId: deletingComment.id,
           action: "delete",
@@ -1181,12 +1203,16 @@ export function CommentsSection({
         setReportSending(true);
       }
 
+      const bearer = getBearerToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+      };
+
       const response = await fetch("/api/comments/moderation", {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           commentId,
           action,
@@ -1244,6 +1270,13 @@ export function CommentsSection({
   };
 
   const openReport = (comment: Comment) => {
+    if (!effectiveUserId) {
+      setCommentsLoginOpen(true);
+      return;
+    }
+    if (comment.userId === effectiveUserId) {
+      return;
+    }
     setMenuOpenId(null);
     setReportingComment(comment);
     setReportReason("");
@@ -2166,7 +2199,8 @@ export function CommentsSection({
                       onReport={() => openReport(root)}
                       onSpam={() => void handleModeration(root.id, "spam")}
                       moderating={moderatingId === root.id}
-                      canEdit={effectiveUserId === root.userId || isAdmin}
+                      canEdit={Boolean(effectiveUserId && (effectiveUserId === root.userId || isAdmin))}
+                      canReport={Boolean(!effectiveUserId || effectiveUserId !== root.userId)}
                       highlighted={highlightedCommentId === root.id}
                       showMedia={showMedia}
                       isNew={newCommentId === root.id}
@@ -2216,9 +2250,8 @@ export function CommentsSection({
                               void handleModeration(reply.id, "spam")
                             }
                             moderating={moderatingId === reply.id}
-                            canEdit={
-                              effectiveUserId === reply.userId || isAdmin
-                            }
+                            canEdit={Boolean(effectiveUserId && (effectiveUserId === reply.userId || isAdmin))}
+                            canReport={Boolean(!effectiveUserId || effectiveUserId !== reply.userId)}
                             highlighted={highlightedCommentId === reply.id}
                             showMedia={showMedia}
                             isNew={newCommentId === reply.id}
@@ -2544,6 +2577,7 @@ export function CommentCard({
   onSpam,
   moderating,
   canEdit,
+  canReport = true,
   highlighted = false,
   showMedia = true,
   isNew = false,
@@ -2573,6 +2607,7 @@ export function CommentCard({
   onSpam: () => void;
   moderating: boolean;
   canEdit: boolean;
+  canReport?: boolean;
   highlighted?: boolean;
   showMedia?: boolean;
   isNew?: boolean;
@@ -2662,11 +2697,14 @@ export function CommentCard({
             <>
               <div className="fixed inset-0 z-30" onClick={onToggleMenu} />
               <div className="absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-white/10 bg-[#161324] p-1 shadow-2xl backdrop-blur-md">
-                {canEdit ? (
+                {canEdit && (
                   <>
                     <button
                       type="button"
-                      onClick={onEdit}
+                      onClick={() => {
+                        onToggleMenu();
+                        onEdit();
+                      }}
                       className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 cursor-pointer"
                     >
                       <Edit3 className="size-3.5 text-purple-400" />
@@ -2674,18 +2712,26 @@ export function CommentCard({
                     </button>
                     <button
                       type="button"
-                      onClick={onDelete}
+                      onClick={() => {
+                        onToggleMenu();
+                        onDelete();
+                      }}
                       className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/10 cursor-pointer"
                     >
                       <Trash2 className="size-3.5" />
                       <span>Excluir</span>
                     </button>
                   </>
-                ) : (
+                )}
+
+                {canReport && (
                   <>
                     <button
                       type="button"
-                      onClick={onMarkSpoiler}
+                      onClick={() => {
+                        onToggleMenu();
+                        onMarkSpoiler();
+                      }}
                       disabled={comment.isSpoiler || moderating}
                       className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 cursor-pointer disabled:opacity-50"
                     >
@@ -2694,7 +2740,10 @@ export function CommentCard({
                     </button>
                     <button
                       type="button"
-                      onClick={onSpam}
+                      onClick={() => {
+                        onToggleMenu();
+                        onSpam();
+                      }}
                       disabled={moderating}
                       className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 cursor-pointer"
                     >
@@ -2703,7 +2752,10 @@ export function CommentCard({
                     </button>
                     <button
                       type="button"
-                      onClick={onReport}
+                      onClick={() => {
+                        onToggleMenu();
+                        onReport();
+                      }}
                       disabled={moderating}
                       className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/10 cursor-pointer"
                     >
