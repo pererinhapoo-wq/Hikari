@@ -93,10 +93,7 @@ export function Hero({
       "
     >
       {/* =========================================================
-          MOBILE: BANNER COM ARTE CENTRALIZADA E FUNDO ESCURO UNIFORME
-          - Sem duplicar nem desfocar a capa do anime
-          - Fundo escuro uniforme com degradês laterais discretos
-          - Imagem original nítida e proporções 100% preservadas
+          MOBILE: BANNER COM ARTE CENTRALIZADA E TRANSIÇÃO SUAVE
           ========================================================= */}
       {visibleBackdrop ? (
         <div
@@ -106,75 +103,52 @@ export function Hero({
             h-56
             sm:h-72
             overflow-hidden
-            bg-[#0d0b18]
+            bg-transparent
             md:hidden
           "
         >
           {/* Brilho ambiente sutil no topo */}
-          <div className="pointer-events-none absolute -top-10 -right-10 size-40 rounded-full bg-purple-500/15 blur-3xl z-10" />
+          <div className="pointer-events-none absolute -top-10 -right-10 size-40 rounded-full bg-purple-500/10 blur-3xl z-10" />
 
-          {/* Degradês escuros discretos nas laterais */}
+          {/* Imagem do anime original, centralizada, com fade inferior suave e orgânico */}
           <div
-            className="
-              pointer-events-none
-              absolute
-              inset-y-0
-              left-0
-              w-12
-              sm:w-20
-              bg-gradient-to-r
-              from-[#0d0b18]
-              via-[#0d0b18]/80
-              to-transparent
-              z-20
-            "
-          />
-          <div
-            className="
-              pointer-events-none
-              absolute
-              inset-y-0
-              right-0
-              w-12
-              sm:w-20
-              bg-gradient-to-l
-              from-[#0d0b18]
-              via-[#0d0b18]/80
-              to-transparent
-              z-20
-            "
-          />
-
-          {/* Imagem do anime original, centralizada, nítida e com proporções 100% preservadas */}
-          <img
-            key={`mb-fg-${current.id}`}
-            src={mobileBackdrop}
-            alt={title}
-            loading="eager"
-            decoding="async"
             className="
               relative
               z-10
               size-full
-              object-contain
-              object-center
-              py-2.5
-              px-2
-              drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)]
+              [mask-image:linear-gradient(to_bottom,black_70%,transparent_100%)]
+              [-webkit-mask-image:linear-gradient(to_bottom,black_70%,transparent_100%)]
             "
-          />
+          >
+            <img
+              key={`mb-fg-${current.id}`}
+              src={mobileBackdrop}
+              alt={title}
+              loading="eager"
+              decoding="async"
+              className="
+                size-full
+                object-contain
+                object-center
+                py-2
+                px-3
+                drop-shadow-[0_8px_20px_rgba(0,0,0,0.6)]
+              "
+            />
+          </div>
 
-          {/* Gradiente de transição para o texto abaixo */}
+          {/* Gradiente sutil e difuso de transição para os textos abaixo */}
           <div
             className="
               pointer-events-none
               absolute
               inset-x-0
               bottom-0
-              h-24
+              h-16
+              sm:h-20
               bg-gradient-to-t
               from-[#0d0b18]
-              via-[#0d0b18]/80
+              via-[#0d0b18]/60
               to-transparent
               z-20
             "
@@ -184,7 +158,7 @@ export function Hero({
         <div
           className="
             h-56
-            bg-[#0d0b18]
+            bg-transparent
             sm:h-72
             md:hidden
           "
@@ -192,7 +166,7 @@ export function Hero({
       )}
 
       {/* =========================================================
-          DESKTOP: BANNER COM ARTE À DIREITA E FUSÃO SUAVE
+          DESKTOP: BANNER COM ARTE À DIREITA E FUSÃO GRADUAL CONTÍNUA
           ========================================================= */}
       {visibleBackdrop && (
         <div
@@ -206,11 +180,21 @@ export function Hero({
           "
         >
           {/* Luz ambiente roxa cinematográfica no desktop */}
-          <div className="absolute top-1/4 right-1/4 size-80 rounded-full bg-purple-600/20 blur-[100px]" />
-          <div className="absolute -bottom-10 right-10 size-72 rounded-full bg-purple-900/25 blur-[90px]" />
+          <div className="absolute top-1/4 right-1/4 size-80 rounded-full bg-purple-600/10 blur-[120px]" />
+          <div className="absolute -bottom-10 right-10 size-72 rounded-full bg-purple-900/15 blur-[100px]" />
 
-          {/* Arte do anime posicionada à direita */}
-          <div className="absolute inset-y-0 right-0 w-[64%] lg:w-[58%]">
+          {/* Arte do anime posicionada à direita com máscara gradual de entrada à esquerda */}
+          <div
+            className="
+              absolute
+              inset-y-0
+              right-0
+              w-[70%]
+              lg:w-[65%]
+              [mask-image:linear-gradient(to_right,transparent_0%,black_45%)]
+              [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_45%)]
+            "
+          >
             <img
               key={`d-${current.id}`}
               src={desktopBackdrop}
@@ -227,29 +211,32 @@ export function Hero({
             />
           </div>
 
-          {/* Gradiente da Esquerda para a Direita (legibilidade das informações) */}
+          {/* Gradiente contínuo e gradual da esquerda para a direita (legibilidade sem divisão marcada) */}
           <div
             className="
               absolute
               inset-0
               bg-gradient-to-r
-              from-[#110d24]
-              via-[#110d24]/90
-              via-30%
-              md:via-[#0c0a18]/75
+              from-[#0c0a18]
+              from-20%
+              via-[#0c0a18]/85
+              via-45%
+              via-[#0c0a18]/40
+              via-70%
               to-transparent
             "
           />
 
-          {/* Gradientes Inferior e Superior */}
+          {/* Gradientes Inferior e Superior suaves */}
           <div
             className="
               absolute
               inset-x-0
               bottom-0
-              h-32
+              h-28
               bg-gradient-to-t
               from-[#08070d]
+              via-[#08070d]/50
               to-transparent
             "
           />
@@ -259,9 +246,9 @@ export function Hero({
               absolute
               inset-x-0
               top-0
-              h-20
+              h-16
               bg-gradient-to-b
-              from-[#110d24]/80
+              from-[#0c0a18]/60
               to-transparent
             "
           />
