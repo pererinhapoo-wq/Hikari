@@ -11,6 +11,7 @@ import { overlayList } from "@/lib/overlay";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { RecentEpisodesSection } from "@/components/recent-episodes-section";
+import { SectionReveal } from "@/components/section-reveal";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { Button } from "@/components/ui/button";
 
@@ -127,16 +128,14 @@ function Home() {
         <HomePending />
       )}
 
-      {/* Seção 1: Selecionados */}
+      {/* Seção 1: Em Alta */}
       <AnimeRow
-        id="selecionados"
-        title="Selecionados"
+        title="Em Alta"
         eyebrow="TENDÊNCIAS & POPULARIDADE"
         iconType="flame"
         items={trendingAndPopular}
         showBookmark={false}
         showRank={false}
-        resetScrollOnReturn
       />
 
       {/* Seção 2: Últimos Episódios (publicados pelo administrador) */}

@@ -1,4 +1,4 @@
-import { Link, useRouter } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import {
   ChevronLeft,
   ChevronRight,
@@ -8,7 +8,7 @@ import {
   Trophy,
   Calendar,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 
 import {
   AnimeCard,
@@ -17,7 +17,6 @@ import {
 import type { SlimAnime } from "@/lib/types";
 
 export function AnimeRow({
-  id,
   title,
   eyebrow,
   tag,
@@ -27,9 +26,7 @@ export function AnimeRow({
   loading,
   showRank = false,
   showBookmark = true,
-  resetScrollOnReturn = false,
 }: {
-  id?: string;
   title: string;
   eyebrow?: string;
   tag?: string;
@@ -39,100 +36,8 @@ export function AnimeRow({
   loading?: boolean;
   showRank?: boolean;
   showBookmark?: boolean;
-  resetScrollOnReturn?: boolean;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-
-  const shouldReset = Boolean(
-    resetScrollOnReturn ||
-      title.toLowerCase().includes("selecionado") ||
-      id?.toLowerCase().includes("selecionado"),
-  );
-
-  useEffect(() => {
-    if (!shouldReset) return;
-
-    const resetToStart = () => {
-      const el = railRef.current;
-      if (!el) return;
-      const prevBehavior = el.style.scrollBehavior;
-      el.style.scrollBehavior = "auto";
-      el.scrollLeft = 0;
-      requestAnimationFrame(() => {
-        if (el) {
-          el.style.scrollBehavior = prevBehavior;
-        }
-      });
-    };
-
-    const cleanSessionStorage = () => {
-      try {
-        const raw = sessionStorage.getItem("tsr-scroll-restoration-v1_3");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          let changed = false;
-          for (const key of Object.keys(parsed)) {
-            if (parsed[key] && typeof parsed[key] === "object") {
-              for (const subKey of Object.keys(parsed[key])) {
-                if (subKey.includes("selecionados")) {
-                  delete parsed[key][subKey];
-                  changed = true;
-                }
-              }
-            }
-          }
-          if (changed) {
-            sessionStorage.setItem("tsr-scroll-restoration-v1_3", JSON.stringify(parsed));
-          }
-        }
-      } catch {}
-    };
-
-    // 1. Reseta no mount ao retornar à página
-    resetToStart();
-    cleanSessionStorage();
-
-    // 2. Garante após a conclusão de ciclos de layout/restauração do router
-    const rafId = requestAnimationFrame(() => {
-      resetToStart();
-    });
-
-    const timer = setTimeout(() => {
-      resetToStart();
-    }, 60);
-
-    // 3. Ao navegar de volta usando o TanStack Router
-    const unsubRendered = router.subscribe("onRendered", () => {
-      resetToStart();
-      requestAnimationFrame(resetToStart);
-    });
-
-    // 4. Ao navegar para fora, limpa do sessionStorage
-    const unsubBeforeLoad = router.subscribe("onBeforeLoad", () => {
-      cleanSessionStorage();
-    });
-
-    // 5. Histórico nativo do navegador (voltar / avançar)
-    const onPopState = () => {
-      resetToStart();
-      requestAnimationFrame(resetToStart);
-    };
-
-    window.addEventListener("popstate", onPopState);
-    window.addEventListener("pageshow", resetToStart);
-    window.addEventListener("pagehide", cleanSessionStorage);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      clearTimeout(timer);
-      unsubRendered();
-      unsubBeforeLoad();
-      window.removeEventListener("popstate", onPopState);
-      window.removeEventListener("pageshow", resetToStart);
-      window.removeEventListener("pagehide", cleanSessionStorage);
-    };
-  }, [shouldReset, router]);
 
   if (!loading && items.length === 0) return null;
 
@@ -280,9 +185,7 @@ export function AnimeRow({
 
       {/* Trilho de Cards */}
       <div
-        id={id ?? (shouldReset ? "selecionados-rail" : undefined)}
         ref={railRef}
-        data-scroll-restoration-id={shouldReset ? "selecionados-rail" : undefined}
         className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 gap-2.5 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"
       >
         {loading
