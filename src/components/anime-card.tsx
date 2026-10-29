@@ -19,15 +19,17 @@ export const AnimeCard = memo(function AnimeCard({
   size = "md",
   rank,
   showBookmark = true,
+  loadImage = true,
 }: {
   anime: SlimAnime;
   size?: "sm" | "md" | "lg";
   rank?: number;
   showBookmark?: boolean;
+  loadImage?: boolean;
 }) {
   const inList =
     useHikariStore((s) =>
-      s.myList.includes(anime.id),
+      showBookmark ? s.myList.includes(anime.id) : false,
     );
 
   const toggleList =
@@ -65,8 +67,9 @@ export const AnimeCard = memo(function AnimeCard({
           bg-[#100e1b]
           border
           border-purple-500/15
-          transition-all
-          duration-300
+          [contain:layout_paint_style]
+          motion-safe:transition-[border-color,box-shadow]
+          motion-safe:duration-300
           ease-[var(--ease-out)]
           [@media(hover:hover)]:hover:border-purple-400/50
           [@media(hover:hover)]:hover:shadow-[0_8px_20px_-4px_rgba(168,85,247,0.28)]
@@ -80,21 +83,25 @@ export const AnimeCard = memo(function AnimeCard({
       >
         <div className="relative aspect-[2/3] overflow-hidden bg-[#0d0c16]">
           {anime.cover ? (
-            <img
-              src={anime.cover}
-              alt=""
-              className="
-                size-full
-                object-cover
-                transition-transform
-                duration-500
-                ease-[var(--ease-out)]
-                [@media(hover:hover)]:group-hover:scale-[1.025]
-                group-active:scale-[1.015]
-              "
-              loading="lazy"
-              decoding="async"
-            />
+            loadImage ? (
+              <img
+                src={anime.cover}
+                alt=""
+                className="
+                  size-full
+                  object-cover
+                  motion-safe:transition-transform
+                  motion-safe:duration-500
+                  ease-[var(--ease-out)]
+                  [@media(hover:hover)]:group-hover:scale-[1.025]
+                  group-active:scale-[1.015]
+                "
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <div className="size-full bg-[#0d0c16]" />
+            )
           ) : (
             <div className="flex size-full items-center justify-center px-2 text-center font-display text-base text-subtle">
               {title.slice(0, 1)}
@@ -112,8 +119,7 @@ export const AnimeCard = memo(function AnimeCard({
                 bottom-1.5
                 left-1.5
                 rounded-md
-                bg-purple-950/90
-                backdrop-blur-md
+                bg-purple-950/95
                 border
                 border-purple-500/40
                 px-1.5
@@ -137,8 +143,7 @@ export const AnimeCard = memo(function AnimeCard({
                 top-1.5
                 left-1.5
                 rounded-md
-                bg-black/85
-                backdrop-blur-md
+                bg-black/90
                 border
                 border-purple-500/35
                 px-1.5
@@ -224,7 +229,7 @@ export const AnimeCard = memo(function AnimeCard({
             toggleList(anime);
           }}
           className={cn(
-            "absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-md bg-black/80 backdrop-blur-md border border-white/10 text-white transition-all duration-200 hover:border-purple-500/60 hover:bg-purple-950/80 hover:text-purple-300 shadow-md",
+            "absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-md bg-black/88 border border-white/10 text-white transition-[color,background-color,border-color,opacity] duration-200 [@media(hover:hover)]:hover:border-purple-500/60 [@media(hover:hover)]:hover:bg-purple-950/85 [@media(hover:hover)]:hover:text-purple-300 shadow-md",
             inList
               ? "opacity-100 text-purple-400 border-purple-500/40"
               : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100",

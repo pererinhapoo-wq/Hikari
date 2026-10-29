@@ -13,12 +13,15 @@ import {
   X,
 } from "lucide-react";
 import {
+  memo,
+  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type RefObject,
 } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
@@ -56,6 +59,7 @@ import {
   type Anime,
   type AnimeCharacter,
   type AnimeStaff,
+  type SlimAnime,
 } from "@/lib/types";
 import { cn, youtubeIdFrom } from "@/lib/utils";
 
@@ -127,7 +131,10 @@ function AnimePage() {
       EMPTY_WATCHED_EPISODES,
   );
 
-  const anime = mergeDetail(remote, id, locals);
+  const anime = useMemo(
+    () => mergeDetail(remote, id, locals),
+    [remote, id, locals],
+  );
 
   const [extraCredits, setExtraCredits] = useState<{
     forId: string;
@@ -194,11 +201,13 @@ function AnimePage() {
           res.staff.length > 0 ||
           res.studios.length > 0
         ) {
-          setExtraCredits({
-            forId: animeId,
-            studios: res.studios,
-            characters: res.characters,
-            staff: res.staff,
+          startTransition(() => {
+            setExtraCredits({
+              forId: animeId,
+              studios: res.studios,
+              characters: res.characters,
+              staff: res.staff,
+            });
           });
         }
       })
@@ -562,6 +571,20 @@ function AnimePage() {
     [currentEpisodes, currentSeason?.id],
   );
 
+  const watchedEpisodeSet = useMemo(
+    () => new Set(watchedEpisodes),
+    [watchedEpisodes],
+  );
+
+  const watchedCount = useMemo(
+    () =>
+      allEpisodes.reduce(
+        (acc, episode) => acc + (watchedEpisodeSet.has(episode.id) ? 1 : 0),
+        0,
+      ),
+    [allEpisodes, watchedEpisodeSet],
+  );
+
   if (!anime && !hydrated) {
     return null;
   }
@@ -591,11 +614,6 @@ function AnimePage() {
     currentEpisodes?.length ||
     anime.episodesCount ||
     0;
-
-  const watchedCount = allEpisodes.filter(
-    (episode) =>
-      watchedEpisodes.includes(episode.id),
-  ).length;
 
   /*
    * CONTINUAR
@@ -1004,7 +1022,7 @@ function AnimePage() {
             </h2>
           </div>
 
-          <div className="mt-4 aspect-video overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0d0b18] shadow-[0_8px_30px_rgba(0,0,0,0.6)]">
+          <div className="mt-4 aspect-video overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0d0b18] shadow-[0_8px_30px_rgba(0,0,0,0.6)] [contain:layout_paint]">
             <iframe
               title={`Trailer de ${title}`}
               src={`https://www.youtube-nocookie.com/embed/${yt}`}
@@ -1060,16 +1078,21 @@ function AnimePage() {
       )}
 
       {/* ELENCO */}
-      <ElencoSection characters={effectiveCharacters} />
+      <ElencoSection animeId={anime.id} characters={effectiveCharacters} />
 
       {/* DIREÇÃO E EQUIPE TÉCNICA */}
-      <DirecaoEquipeSection studios={effectiveStudios} staff={effectiveStaff} />
+      <DirecaoEquipeSection
+        animeId={anime.id}
+        studios={effectiveStudios}
+        staff={effectiveStaff}
+      />
 
       {/* INFORMAÇÕES ADICIONAIS */}
       <InformacoesAdicionaisSection anime={anime} />
 
       {/* IMAGENS */}
       <ImagensSection
+        animeId={anime.id}
         images={anime.images}
         title={title}
         bannerUrl={anime.banner}
@@ -1079,52 +1102,10 @@ function AnimePage() {
 
       {/* RELACIONADOS (SEM BOTÃO DE SALVAR) */}
       {anime.recommendations.length > 0 && (
-        <section className="mt-12 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              <span className="h-6 w-1 rounded-full bg-purple-500" />
-              <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                Relacionados
-              </h2>
-            </div>
-
-            {anime.recommendations.length > 3 && (
-              <div className="hidden sm:flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const rail = document.getElementById("related-anime-rail");
-                    rail?.scrollBy({ left: -320, behavior: "smooth" });
-                  }}
-                  aria-label="Rolar relacionados para a esquerda"
-                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
-                >
-                  <ChevronLeft className="size-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const rail = document.getElementById("related-anime-rail");
-                    rail?.scrollBy({ left: 320, behavior: "smooth" });
-                  }}
-                  aria-label="Rolar relacionados para a direita"
-                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div
-            id="related-anime-rail"
-            className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 scroll-smooth"
-          >
-            {anime.recommendations.map((r) => (
-              <AnimeCard key={r.id} anime={r} showBookmark={false} />
-            ))}
-          </div>
-        </section>
+        <RelatedSection
+          animeId={anime.id}
+          recommendations={anime.recommendations}
+        />
       )}
 
       {/* COMENTÁRIOS DO HIKARI (EM BREVE) */}
@@ -1533,25 +1514,307 @@ function SeasonSelector({
 }
 
 
-function EpisodeGrid({
+function useHorizontalRailImageLimit(
+  railRef: RefObject<HTMLDivElement | null>,
+  totalCount: number,
+  itemStridePx: number,
+  initialCount: number,
+  resetKey?: string,
+) {
+  const [limit, setLimit] = useState(() =>
+    Math.min(totalCount, initialCount),
+  );
+  const prevResetKeyRef = useRef(resetKey);
+
+  useEffect(() => {
+    if (prevResetKeyRef.current !== resetKey) {
+      prevResetKeyRef.current = resetKey;
+      if (railRef.current) {
+        railRef.current.scrollLeft = 0;
+      }
+      setLimit(Math.min(totalCount, initialCount));
+      return;
+    }
+    setLimit((prev) =>
+      Math.min(totalCount, Math.max(prev, initialCount)),
+    );
+  }, [railRef, resetKey, totalCount, initialCount]);
+
+  const advance = useCallback(
+    (extraPx = 0) => {
+      const el = railRef.current;
+      if (!el) {
+        startTransition(() => {
+          setLimit((prev) => Math.min(totalCount, prev + 8));
+        });
+        return;
+      }
+      const needed = Math.ceil(
+        (el.scrollLeft + el.clientWidth * 2.5 + extraPx) / itemStridePx,
+      );
+      startTransition(() => {
+        setLimit((prev) =>
+          needed > prev ? Math.min(totalCount, needed) : prev,
+        );
+      });
+    },
+    [railRef, totalCount, itemStridePx],
+  );
+
+  useEffect(() => {
+    if (limit >= totalCount) return;
+    const el = railRef.current;
+    if (!el) return;
+
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        advance(0);
+      });
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [railRef, limit, totalCount, advance]);
+
+  return { limit, advance };
+}
+
+function useVerticalBoxImageLimit(
+  boxRef: RefObject<HTMLDivElement | null>,
+  totalCount: number,
+  rowHeightPx: number,
+  initialCount: number,
+  resetKey?: string,
+) {
+  const [limit, setLimit] = useState(() =>
+    Math.min(totalCount, initialCount),
+  );
+  const prevResetKeyRef = useRef(resetKey);
+
+  useEffect(() => {
+    if (prevResetKeyRef.current !== resetKey) {
+      prevResetKeyRef.current = resetKey;
+      if (boxRef.current) {
+        boxRef.current.scrollTop = 0;
+      }
+      setLimit(Math.min(totalCount, initialCount));
+      return;
+    }
+    setLimit((prev) =>
+      Math.min(totalCount, Math.max(prev, initialCount)),
+    );
+  }, [boxRef, resetKey, totalCount, initialCount]);
+
+  useEffect(() => {
+    if (limit >= totalCount) return;
+    const el = boxRef.current;
+    if (!el) return;
+
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        const cols = window.innerWidth >= 640 ? 2 : 1;
+        const rowsNeeded = Math.ceil(
+          (el.scrollTop + el.clientHeight * 2.5) / rowHeightPx,
+        );
+        const itemsNeeded = rowsNeeded * cols;
+        startTransition(() => {
+          setLimit((prev) =>
+            itemsNeeded > prev ? Math.min(totalCount, itemsNeeded) : prev,
+          );
+        });
+      });
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [boxRef, limit, totalCount, rowHeightPx]);
+
+  return limit;
+}
+
+type EpisodeItemData = {
+  id: string;
+  number: number;
+  title: string;
+  thumbnail?: string;
+  duration?: string;
+};
+
+const EpisodeGridItem = memo(function EpisodeGridItem({
+  ep,
+  animeId,
+  cover,
+  watched,
+  isSelecting,
+  loadImage,
+  onSelect,
+}: {
+  ep: EpisodeItemData;
+  animeId: string;
+  cover: string;
+  watched: boolean;
+  isSelecting: boolean;
+  loadImage: boolean;
+  onSelect: (epId: string) => void;
+}) {
+  const imgSrc = ep.thumbnail || cover;
+
+  return (
+    <li>
+      <Link
+        to="/watch/$id"
+        params={{
+          id: animeId,
+        }}
+        search={{
+          ep: ep.id,
+        }}
+        preload="intent"
+        onClick={() => onSelect(ep.id)}
+        className={cn(
+          "group relative flex gap-3 rounded-xl border p-2.5 select-none touch-manipulation [-webkit-tap-highlight-color:transparent] [contain:layout_paint_style] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80",
+          "motion-safe:transition-[transform,border-color,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:transform-none",
+          "[@media(hover:hover)]:motion-safe:hover:-translate-y-0.5",
+          "motion-safe:active:scale-[0.982] active:border-purple-400/85 active:bg-[#1c1435]/95 active:ring-1 active:ring-purple-400/45 active:shadow-[0_0_24px_rgba(168,85,247,0.38)]",
+          watched
+            ? "border-purple-500/30 bg-[#141026]/90 [@media(hover:hover)]:hover:bg-[#1a1530] [@media(hover:hover)]:hover:border-purple-500/50"
+            : "border-purple-500/15 bg-[#0f0d18]/90 [@media(hover:hover)]:hover:border-purple-500/40 [@media(hover:hover)]:hover:bg-[#161326]",
+          "shadow-[0_2px_12px_rgba(0,0,0,0.3)] [@media(hover:hover)]:hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)]",
+          isSelecting &&
+            "!border-purple-400/85 !bg-[#1c1435]/95 ring-1 ring-purple-400/45 !shadow-[0_0_24px_rgba(168,85,247,0.4)] motion-safe:animate-[episodeTapPulse_220ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none",
+        )}
+      >
+        {/* Realce luminoso violeta ao selecionar */}
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/14 via-fuchsia-500/8 to-transparent opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-active:opacity-100",
+            isSelecting && "opacity-100",
+          )}
+        />
+
+        {/* THUMBNAIL */}
+        <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
+          {imgSrc && loadImage ? (
+            <img
+              src={imgSrc}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className={cn(
+                "size-full object-cover motion-safe:transition-transform motion-safe:duration-300 [@media(hover:hover)]:motion-safe:group-hover:scale-105 motion-reduce:transition-none",
+                watched && "opacity-75",
+              )}
+            />
+          ) : null}
+
+          <div className="absolute inset-0 bg-black/20 transition-colors motion-reduce:transition-none [@media(hover:hover)]:group-hover:bg-black/5" />
+
+          <div
+            className={cn(
+              "absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 motion-reduce:transition-none [@media(hover:hover)]:group-hover:opacity-100 group-active:opacity-100",
+              isSelecting && "opacity-100",
+            )}
+          >
+            <div
+              className={cn(
+                "flex size-9 items-center justify-center rounded-full bg-purple-600 text-white shadow-lg shadow-purple-950/60 ring-2 ring-white/20 motion-safe:transition-transform motion-safe:duration-200 motion-reduce:transition-none group-active:bg-purple-500 group-active:ring-purple-300/60",
+                isSelecting && "bg-purple-500 ring-purple-300/60 motion-safe:scale-105",
+              )}
+            >
+              <Play className="ml-0.5 size-4 fill-current" />
+            </div>
+          </div>
+
+          {watched && (
+            <div className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full border border-purple-500/40 bg-purple-950/90 text-purple-200 shadow-md">
+              <Check className="size-3.5" />
+            </div>
+          )}
+        </div>
+
+        {/* INFORMAÇÕES */}
+        <div className="relative z-10 min-w-0 flex-1 py-1">
+          <div className="flex items-center justify-between gap-2">
+            <p
+              className={cn(
+                "text-[11px] font-bold tracking-wider text-purple-400 uppercase transition-colors duration-150 motion-reduce:transition-none group-active:text-purple-300",
+                isSelecting && "text-purple-300",
+              )}
+            >
+              Episódio {ep.number}
+            </p>
+
+            {watched && (
+              <span className="shrink-0 rounded bg-purple-950/80 border border-purple-500/30 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-purple-300 uppercase">
+                Assistido
+              </span>
+            )}
+          </div>
+
+          <p
+            className={cn(
+              "mt-1 line-clamp-2 text-sm font-medium leading-snug text-zinc-100 [@media(hover:hover)]:group-hover:text-purple-200 group-active:text-white transition-colors motion-reduce:transition-none",
+              isSelecting && "text-white",
+            )}
+          >
+            {ep.title}
+          </p>
+
+          {ep.duration && (
+            <p className="mt-1.5 text-xs text-zinc-400">
+              {ep.duration}
+            </p>
+          )}
+        </div>
+      </Link>
+    </li>
+  );
+});
+
+const EpisodeGrid = memo(function EpisodeGrid({
   episodes,
   animeId,
   cover,
   watchedEpisodes,
 }: {
-  episodes: {
-    id: string;
-    number: number;
-    title: string;
-    thumbnail?: string;
-    duration?: string;
-  }[];
+  episodes: EpisodeItemData[];
   animeId: string;
   cover: string;
   watchedEpisodes: string[];
 }) {
   const [selectingId, setSelectingId] = useState<string | null>(null);
   const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollBoxRef = useRef<HTMLDivElement>(null);
+
+  const watchedSet = useMemo(
+    () => new Set(watchedEpisodes),
+    [watchedEpisodes],
+  );
+
+  const visibleImgLimit = useVerticalBoxImageLimit(
+    scrollBoxRef,
+    episodes.length,
+    108,
+    18,
+    animeId,
+  );
 
   useEffect(() => {
     return () => {
@@ -1573,6 +1836,7 @@ function EpisodeGrid({
 
   return (
     <div
+      ref={scrollBoxRef}
       className="
         max-h-[28rem]
         overflow-y-auto
@@ -1584,172 +1848,92 @@ function EpisodeGrid({
       "
     >
       <ol className="grid gap-3 p-0.5 sm:grid-cols-2">
-        {episodes.map((ep) => {
-          const watched = watchedEpisodes.includes(ep.id);
-          const isSelecting = selectingId === ep.id;
-
-          return (
-            <li key={ep.id}>
-              <Link
-                to="/watch/$id"
-                params={{
-                  id: animeId,
-                }}
-                search={{
-                  ep: ep.id,
-                }}
-                preload="intent"
-                onClick={() => handleEpisodeSelect(ep.id)}
-                className={cn(
-                  "group relative flex gap-3 rounded-xl border p-2.5 select-none touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80",
-                  "motion-safe:transition-[transform,border-color,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:transform-none",
-                  "[@media(hover:hover)]:motion-safe:hover:-translate-y-0.5",
-                  "motion-safe:active:scale-[0.982] active:border-purple-400/85 active:bg-[#1c1435]/95 active:ring-1 active:ring-purple-400/45 active:shadow-[0_0_24px_rgba(168,85,247,0.38)]",
-                  watched
-                    ? "border-purple-500/30 bg-[#141026]/90 hover:bg-[#1a1530] hover:border-purple-500/50"
-                    : "border-purple-500/15 bg-[#0f0d18]/90 hover:border-purple-500/40 hover:bg-[#161326]",
-                  "shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)]",
-                  isSelecting &&
-                    "!border-purple-400/85 !bg-[#1c1435]/95 ring-1 ring-purple-400/45 !shadow-[0_0_24px_rgba(168,85,247,0.4)] motion-safe:animate-[episodeTapPulse_220ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none",
-                )}
-              >
-                {/* Realce luminoso violeta ao selecionar */}
-                <div
-                  aria-hidden="true"
-                  className={cn(
-                    "pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/14 via-fuchsia-500/8 to-transparent opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-active:opacity-100",
-                    isSelecting && "opacity-100",
-                  )}
-                />
-
-                {/* THUMBNAIL */}
-                <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
-                  {ep.thumbnail || cover ? (
-                    <img
-                      src={ep.thumbnail || cover}
-                      alt=""
-                      className={cn(
-                        "size-full object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover:scale-105 motion-reduce:transition-none",
-                        watched && "opacity-75",
-                      )}
-                    />
-                  ) : null}
-
-                  <div className="absolute inset-0 bg-black/20 transition-colors motion-reduce:transition-none group-hover:bg-black/5" />
-
-                  <div
-                    className={cn(
-                      "absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 motion-reduce:transition-none group-hover:opacity-100 group-active:opacity-100",
-                      isSelecting && "opacity-100",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "flex size-9 items-center justify-center rounded-full bg-purple-600 text-white shadow-lg shadow-purple-950/60 ring-2 ring-white/20 motion-safe:transition-transform motion-safe:duration-200 motion-reduce:transition-none group-active:bg-purple-500 group-active:ring-purple-300/60",
-                        isSelecting && "bg-purple-500 ring-purple-300/60 motion-safe:scale-105",
-                      )}
-                    >
-                      <Play className="ml-0.5 size-4 fill-current" />
-                    </div>
-                  </div>
-
-                  {watched && (
-                    <div className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full border border-purple-500/40 bg-purple-950/90 text-purple-200 shadow-md">
-                      <Check className="size-3.5" />
-                    </div>
-                  )}
-                </div>
-
-                {/* INFORMAÇÕES */}
-                <div className="relative z-10 min-w-0 flex-1 py-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p
-                      className={cn(
-                        "text-[11px] font-bold tracking-wider text-purple-400 uppercase transition-colors duration-150 motion-reduce:transition-none group-active:text-purple-300",
-                        isSelecting && "text-purple-300",
-                      )}
-                    >
-                      Episódio {ep.number}
-                    </p>
-
-                    {watched && (
-                      <span className="shrink-0 rounded bg-purple-950/80 border border-purple-500/30 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-purple-300 uppercase">
-                        Assistido
-                      </span>
-                    )}
-                  </div>
-
-                  <p
-                    className={cn(
-                      "mt-1 line-clamp-2 text-sm font-medium leading-snug text-zinc-100 group-hover:text-purple-200 group-active:text-white transition-colors motion-reduce:transition-none",
-                      isSelecting && "text-white",
-                    )}
-                  >
-                    {ep.title}
-                  </p>
-
-                  {ep.duration && (
-                    <p className="mt-1.5 text-xs text-zinc-400">
-                      {ep.duration}
-                    </p>
-                  )}
-                </div>
-              </Link>
-            </li>
-          );
-        })}
+        {episodes.map((ep, index) => (
+          <EpisodeGridItem
+            key={ep.id}
+            ep={ep}
+            animeId={animeId}
+            cover={cover}
+            watched={watchedSet.has(ep.id)}
+            isSelecting={selectingId === ep.id}
+            loadImage={index < visibleImgLimit}
+            onSelect={handleEpisodeSelect}
+          />
+        ))}
       </ol>
     </div>
   );
-}
+});
 
-function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
+const InformacoesAdicionaisSection = memo(function InformacoesAdicionaisSection({
+  anime,
+}: {
+  anime: Anime;
+}) {
   const [expanded, setExpanded] = useState(false);
 
-  // Não repetimos informações do cabeçalho (formato, status, número de episódios, nota, ano, gêneros)
-  // E removemos expressamente "País de origem: Japão"
-  // Não duplicamos estúdios ou diretores (que já possuem sua seção própria)
-  const startDate = formatDateLabel(anime.startDate);
-  const endDate = formatDateLabel(anime.endDate);
-  const season = seasonLabel(anime.season, anime.year);
-  const duration = anime.duration ? `${anime.duration} min. por episódio` : "";
-  const source = sourceLabel(anime.originSource);
-  const rating = ratingLabel(
-    anime.rating,
-    (anime as unknown as { isAdult?: boolean }).isAdult ||
-      Boolean(anime.rating?.includes("18+")),
-  );
-  const broadcast = anime.broadcast ?? "";
-  const producers = (anime.producers ?? []).filter(Boolean);
-  const licensors = (anime.licensors ?? []).filter(Boolean);
+  const {
+    mainRows,
+    romajiTitle,
+    englishTitle,
+    synonyms,
+    tags,
+    hasSecondary,
+  } = useMemo(() => {
+    // Não repetimos informações do cabeçalho (formato, status, número de episódios, nota, ano, gêneros)
+    // E removemos expressamente "País de origem: Japão"
+    // Não duplicamos estúdios ou diretores (que já possuem sua seção própria)
+    const startDate = formatDateLabel(anime.startDate);
+    const endDate = formatDateLabel(anime.endDate);
+    const season = seasonLabel(anime.season, anime.year);
+    const duration = anime.duration ? `${anime.duration} min. por episódio` : "";
+    const source = sourceLabel(anime.originSource);
+    const rating = ratingLabel(
+      anime.rating,
+      (anime as unknown as { isAdult?: boolean }).isAdult ||
+        Boolean(anime.rating?.includes("18+")),
+    );
+    const broadcast = anime.broadcast ?? "";
+    const producers = (anime.producers ?? []).filter(Boolean);
+    const licensors = (anime.licensors ?? []).filter(Boolean);
 
-  const romajiTitle = anime.titles?.romaji;
-  const englishTitle =
-    anime.titles?.english && anime.titles?.english !== romajiTitle
-      ? anime.titles.english
-      : "";
-  const synonyms = (anime.synonyms ?? []).filter(
-    (s) => s !== romajiTitle && s !== englishTitle,
-  );
-  const tags = anime.tags ?? [];
+    const rTitle = anime.titles?.romaji;
+    const eTitle =
+      anime.titles?.english && anime.titles?.english !== rTitle
+        ? anime.titles.english
+        : "";
+    const syns = (anime.synonyms ?? []).filter(
+      (s) => s !== rTitle && s !== eTitle,
+    );
+    const animeTags = anime.tags ?? [];
 
-  const mainRows = [
-    { label: "Estreia completa", value: startDate },
-    { label: "Término da exibição", value: endDate },
-    { label: "Temporada de lançamento", value: season },
-    { label: "Duração média", value: duration },
-    { label: "Obra original", value: source },
-    { label: "Classificação indicativa", value: rating },
-    { label: "Transmissão", value: broadcast },
-    { label: "Produtores", value: producers.join(", ") },
-    { label: "Licenciadores", value: licensors.join(", ") },
-  ].filter((item) => Boolean(item.value));
+    const rows = [
+      { label: "Estreia completa", value: startDate },
+      { label: "Término da exibição", value: endDate },
+      { label: "Temporada de lançamento", value: season },
+      { label: "Duração média", value: duration },
+      { label: "Obra original", value: source },
+      { label: "Classificação indicativa", value: rating },
+      { label: "Transmissão", value: broadcast },
+      { label: "Produtores", value: producers.join(", ") },
+      { label: "Licenciadores", value: licensors.join(", ") },
+    ].filter((item) => Boolean(item.value));
 
-  const hasSecondary =
-    Boolean(romajiTitle) ||
-    Boolean(englishTitle) ||
-    synonyms.length > 0 ||
-    tags.length > 0;
+    const secondary =
+      Boolean(rTitle) ||
+      Boolean(eTitle) ||
+      syns.length > 0 ||
+      animeTags.length > 0;
+
+    return {
+      mainRows: rows,
+      romajiTitle: rTitle,
+      englishTitle: eTitle,
+      synonyms: syns,
+      tags: animeTags,
+      hasSecondary: secondary,
+    };
+  }, [anime]);
 
   if (mainRows.length === 0 && !hasSecondary) {
     return null;
@@ -1853,15 +2037,17 @@ function InformacoesAdicionaisSection({ anime }: { anime: Anime }) {
       </div>
     </section>
   );
-}
+});
 
-function ImagensSection({
+const ImagensSection = memo(function ImagensSection({
+  animeId,
   images,
   title,
   bannerUrl,
   coverUrl,
   malId,
 }: {
+  animeId: string;
   images?: string[];
   title: string;
   bannerUrl?: string;
@@ -1880,7 +2066,9 @@ function ImagensSection({
     fetchAnimePictures({ data: { malId } })
       .then((pics) => {
         if (isMounted && Array.isArray(pics) && pics.length > 0) {
-          setExtraPictures(pics);
+          startTransition(() => {
+            setExtraPictures(pics);
+          });
         }
       })
       .catch(() => {
@@ -1921,6 +2109,15 @@ function ImagensSection({
     }
     return result;
   }, [images, extraPictures, bannerUrl, coverUrl]);
+
+  const { limit: visibleImgLimit, advance: advanceImgLimit } =
+    useHorizontalRailImageLimit(
+      railRef,
+      validImages.length,
+      158,
+      10,
+      animeId,
+    );
 
   const closeModal = useCallback(() => {
     setSelectedImage((current) => {
@@ -1967,6 +2164,9 @@ function ImagensSection({
 
   const scroll = (direction: "left" | "right") => {
     if (!railRef.current) return;
+    if (direction === "right") {
+      advanceImgLimit(360);
+    }
     const offset = direction === "left" ? -320 : 320;
     railRef.current.scrollBy({ left: offset, behavior: "smooth" });
   };
@@ -1974,59 +2174,62 @@ function ImagensSection({
   return (
     <section className="mt-12 space-y-4">
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5">
-          <span className="h-6 w-1 rounded-full bg-purple-500" />
-          <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Imagens
-          </h2>
+          <div className="flex items-center gap-2.5">
+            <span className="h-6 w-1 rounded-full bg-purple-500" />
+            <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              Imagens
+            </h2>
+          </div>
+
+          {validImages.length > 2 && (
+            <div className="hidden sm:flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => scroll("left")}
+                aria-label="Rolar imagens para a esquerda"
+                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scroll("right")}
+                aria-label="Rolar imagens para a direita"
+                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+          )}
         </div>
 
-        {validImages.length > 2 && (
-          <div className="hidden sm:flex items-center gap-1.5">
+        <div
+          ref={railRef}
+          className="rail -mx-4 flex gap-3.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
+        >
+          {validImages.map((imgUrl, idx) => (
             <button
+              key={`${imgUrl}-${idx}`}
               type="button"
-              onClick={() => scroll("left")}
-              aria-label="Rolar imagens para a esquerda"
-              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
+              onClick={() => setSelectedImage(imgUrl)}
+              className="group relative h-52 sm:h-60 w-36 sm:w-44 shrink-0 overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0e0c1a] shadow-md [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/60 [@media(hover:hover)]:hover:shadow-[0_8px_30px_rgba(168,85,247,0.25)] cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 p-2 flex flex-col items-center justify-center"
             >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => scroll("right")}
-              aria-label="Rolar imagens para a direita"
-              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div
-        ref={railRef}
-        className="rail -mx-4 flex gap-3.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
-      >
-        {validImages.map((imgUrl, idx) => (
-          <button
-            key={`${imgUrl}-${idx}`}
-            type="button"
-            onClick={() => setSelectedImage(imgUrl)}
-            className="group relative h-52 sm:h-60 w-36 sm:w-44 shrink-0 overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0e0c1a] shadow-md transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/60 hover:shadow-[0_8px_30px_rgba(168,85,247,0.25)] cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 p-2 flex flex-col items-center justify-center"
-          >
-            <div className="relative size-full flex items-center justify-center overflow-hidden rounded-xl bg-[#07060d]">
-              <img
-                src={imgUrl}
-                alt={`Arte promocional de ${title} (${idx + 1})`}
-                className="size-full object-contain transition-transform duration-500 group-hover:scale-105"
-                loading="lazy"
-              />
-            </div>
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2.5 pointer-events-none">
-              <span className="text-[11px] font-semibold text-purple-200 drop-shadow">
-                Ampliar arte
-              </span>
-            </div>
+              <div className="relative size-full flex items-center justify-center overflow-hidden rounded-xl bg-[#07060d]">
+                {idx < visibleImgLimit ? (
+                  <img
+                    src={imgUrl}
+                    alt={`Arte promocional de ${title} (${idx + 1})`}
+                    className="size-full object-contain motion-safe:transition-transform motion-safe:duration-500 [@media(hover:hover)]:group-hover:scale-105"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : null}
+              </div>
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity flex items-end p-2.5 pointer-events-none">
+                <span className="text-[11px] font-semibold text-purple-200 drop-shadow">
+                  Ampliar arte
+                </span>
+              </div>
           </button>
         ))}
       </div>
@@ -2044,7 +2247,7 @@ function ImagensSection({
             type="button"
             onClick={closeModal}
             aria-label="Fechar visualização de imagem"
-            className="absolute right-3.5 top-3.5 sm:right-6 sm:top-6 z-10 flex size-10 sm:size-11 items-center justify-center rounded-full bg-[#18132d]/90 text-zinc-200 hover:text-white hover:bg-purple-600 transition-all cursor-pointer border border-purple-500/30 shadow-lg"
+            className="absolute right-3.5 top-3.5 sm:right-6 sm:top-6 z-10 flex size-10 sm:size-11 items-center justify-center rounded-full bg-[#18132d]/90 text-zinc-200 hover:text-white hover:bg-purple-600 transition-[color,background-color] cursor-pointer border border-purple-500/30 shadow-lg"
           >
             <X className="size-5 sm:size-6" />
           </button>
@@ -2057,6 +2260,7 @@ function ImagensSection({
             <img
               src={selectedImage}
               alt={`Visualização completa de ${title}`}
+              decoding="async"
               className="max-h-[88vh] max-w-[92vw] w-auto h-auto object-contain rounded-xl border border-purple-500/20 bg-[#090812] shadow-[0_20px_60px_rgba(0,0,0,0.85)]"
             />
           </div>
@@ -2064,11 +2268,13 @@ function ImagensSection({
       )}
     </section>
   );
-}
+});
 
-function ElencoSection({
+const ElencoSection = memo(function ElencoSection({
+  animeId,
   characters,
 }: {
+  animeId: string;
   characters?: AnimeCharacter[];
 }) {
   const [selectedLang, setSelectedLang] = useState<"ja" | "pt">("ja");
@@ -2101,12 +2307,24 @@ function ElencoSection({
 
   const activeLang: "ja" | "pt" = hasPortuguese ? selectedLang : "ja";
 
+  const { limit: visibleImgLimit, advance: advanceImgLimit } =
+    useHorizontalRailImageLimit(
+      railRef,
+      validCharacters.length,
+      128,
+      12,
+      animeId,
+    );
+
   if (validCharacters.length === 0) {
     return null;
   }
 
   const scroll = (direction: "left" | "right") => {
     if (!railRef.current) return;
+    if (direction === "right") {
+      advanceImgLimit(360);
+    }
     const offset = direction === "left" ? -320 : 320;
     railRef.current.scrollBy({ left: offset, behavior: "smooth" });
   };
@@ -2128,7 +2346,7 @@ function ElencoSection({
                 type="button"
                 onClick={() => setSelectedLang("ja")}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
                   activeLang === "ja"
                     ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
                     : "text-zinc-400 hover:text-zinc-200",
@@ -2142,7 +2360,7 @@ function ElencoSection({
                 type="button"
                 onClick={() => setSelectedLang("pt")}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
                   activeLang === "pt"
                     ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
                     : "text-zinc-400 hover:text-zinc-200",
@@ -2165,7 +2383,7 @@ function ElencoSection({
                 type="button"
                 onClick={() => scroll("left")}
                 aria-label="Rolar elenco para a esquerda"
-                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
+                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
               >
                 <ChevronLeft className="size-4" />
               </button>
@@ -2173,7 +2391,7 @@ function ElencoSection({
                 type="button"
                 onClick={() => scroll("right")}
                 aria-label="Rolar elenco para a direita"
-                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
+                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
               >
                 <ChevronRight className="size-4" />
               </button>
@@ -2184,26 +2402,29 @@ function ElencoSection({
 
       <div
         ref={railRef}
-        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
+        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
       >
         {validCharacters.map((char, index) => (
           <ElencoCard
             key={`${char.id || char.name.full || char.name.native}-${index}`}
             char={char}
             selectedLang={activeLang}
+            loadImage={index < visibleImgLimit}
           />
         ))}
       </div>
     </section>
   );
-}
+});
 
-function ElencoCard({
+const ElencoCard = memo(function ElencoCard({
   char,
   selectedLang,
+  loadImage,
 }: {
   char: AnimeCharacter;
   selectedLang: "ja" | "pt";
+  loadImage: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
 
@@ -2242,18 +2463,22 @@ function ElencoCard({
   const showImage = Boolean(char.image) && !imgError;
 
   return (
-    <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/45 hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
+    <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
       {/* Imagem retangular do personagem (elemento visual principal, nunca circular) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         {showImage ? (
-          <img
-            src={char.image}
-            alt={charName}
-            onError={() => setImgError(true)}
-            loading="lazy"
-            decoding="async"
-            className="size-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-105"
-          />
+          loadImage ? (
+            <img
+              src={char.image}
+              alt={charName}
+              onError={() => setImgError(true)}
+              loading="lazy"
+              decoding="async"
+              className="size-full object-cover object-top motion-safe:transition-transform motion-safe:duration-500 ease-out [@media(hover:hover)]:group-hover:scale-105"
+            />
+          ) : (
+            <div className="size-full bg-[#0d0c16]" />
+          )
         ) : (
           <div className="flex size-full items-center justify-center bg-gradient-to-b from-[#17132a] to-[#0d0b18] font-display text-xl sm:text-2xl font-bold text-purple-400/80">
             {charName.charAt(0)}
@@ -2265,10 +2490,10 @@ function ElencoCard({
         {/* Linha discreta para a função (Principal / Secundário) protegida contra overflow */}
         <span
           className={cn(
-            "absolute bottom-1.5 left-1.5 max-w-[calc(100%-12px)] truncate rounded px-1.5 py-0.5 text-[8px] sm:text-[8.5px] font-semibold tracking-wider uppercase backdrop-blur-md shadow-sm border",
+            "absolute bottom-1.5 left-1.5 max-w-[calc(100%-12px)] truncate rounded px-1.5 py-0.5 text-[8px] sm:text-[8.5px] font-semibold tracking-wider uppercase shadow-sm border",
             isMain
-              ? "bg-purple-950/85 text-purple-200 border-purple-500/40"
-              : "bg-black/75 text-zinc-300 border-white/10",
+              ? "bg-purple-950/92 text-purple-200 border-purple-500/40"
+              : "bg-zinc-950/90 text-zinc-300 border-white/10",
           )}
         >
           {roleLabel}
@@ -2280,7 +2505,7 @@ function ElencoCard({
         {/* Nome do personagem */}
         <p
           title={charName}
-          className="line-clamp-2 font-display text-[11px] sm:text-xs font-bold text-zinc-100 transition-colors group-hover:text-purple-300 min-w-0 break-words leading-snug"
+          className="line-clamp-2 font-display text-[11px] sm:text-xs font-bold text-zinc-100 transition-colors [@media(hover:hover)]:group-hover:text-purple-300 min-w-0 break-words leading-snug"
         >
           {charName}
         </p>
@@ -2309,37 +2534,44 @@ function ElencoCard({
       </div>
     </div>
   );
+});
+
+function getStaffRoleWeight(role: string): number {
+  const r = role.toLowerCase();
+  if (
+    r === "director" ||
+    r.startsWith("director") ||
+    r.includes("series director")
+  )
+    return 1;
+  if (r.includes("original creator") || r.includes("creator")) return 2;
+  if (r.includes("series composition")) return 3;
+  if (
+    r.includes("script") ||
+    r.includes("screenplay") ||
+    r.includes("writer")
+  )
+    return 4;
+  if (r.includes("character design")) return 5;
+  if (r.includes("music") || r.includes("composer")) return 6;
+  if (r.includes("sound director")) return 7;
+  if (r.includes("art director")) return 8;
+  if (r.includes("chief animation director")) return 9;
+  if (r.includes("animation director")) return 10;
+  if (r.includes("producer")) return 11;
+  return 20;
 }
 
-function DirecaoEquipeSection({
+const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
+  animeId,
   studios,
   staff,
 }: {
+  animeId: string;
   studios: string[];
   staff?: AnimeStaff[];
 }) {
   const railRef = useRef<HTMLDivElement>(null);
-
-  const getRoleWeight = (role: string): number => {
-    const r = role.toLowerCase();
-    if (r === "director" || r.startsWith("director") || r.includes("series director")) return 1;
-    if (r.includes("original creator") || r.includes("creator")) return 2;
-    if (r.includes("series composition")) return 3;
-    if (
-      r.includes("script") ||
-      r.includes("screenplay") ||
-      r.includes("writer")
-    )
-      return 4;
-    if (r.includes("character design")) return 5;
-    if (r.includes("music") || r.includes("composer")) return 6;
-    if (r.includes("sound director")) return 7;
-    if (r.includes("art director")) return 8;
-    if (r.includes("chief animation director")) return 9;
-    if (r.includes("animation director")) return 10;
-    if (r.includes("producer")) return 11;
-    return 20;
-  };
 
   const validStaff = useMemo(() => {
     return [...(staff ?? [])]
@@ -2349,7 +2581,7 @@ function DirecaoEquipeSection({
         name: s.name.trim(),
         role: s.role?.trim() || "Equipe técnica",
       }))
-      .sort((a, b) => getRoleWeight(a.role) - getRoleWeight(b.role));
+      .sort((a, b) => getStaffRoleWeight(a.role) - getStaffRoleWeight(b.role));
   }, [staff]);
 
   const studioItems = useMemo(() => {
@@ -2383,12 +2615,24 @@ function DirecaoEquipeSection({
     return [...studioItems, ...validStaff];
   }, [studioItems, validStaff]);
 
+  const { limit: visibleImgLimit, advance: advanceImgLimit } =
+    useHorizontalRailImageLimit(
+      railRef,
+      allItems.length,
+      128,
+      12,
+      animeId,
+    );
+
   if (allItems.length === 0) {
     return null;
   }
 
   const scroll = (direction: "left" | "right") => {
     if (!railRef.current) return;
+    if (direction === "right") {
+      advanceImgLimit(360);
+    }
     const offset = direction === "left" ? -320 : 320;
     railRef.current.scrollBy({ left: offset, behavior: "smooth" });
   };
@@ -2409,7 +2653,7 @@ function DirecaoEquipeSection({
               type="button"
               onClick={() => scroll("left")}
               aria-label="Rolar equipe para a esquerda"
-              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
+              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
             >
               <ChevronLeft className="size-4" />
             </button>
@@ -2417,7 +2661,7 @@ function DirecaoEquipeSection({
               type="button"
               onClick={() => scroll("right")}
               aria-label="Rolar equipe para a direita"
-              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 hover:border-purple-500/50 hover:bg-[#19142b] transition-all cursor-pointer"
+              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
             >
               <ChevronRight className="size-4" />
             </button>
@@ -2427,18 +2671,23 @@ function DirecaoEquipeSection({
 
       <div
         ref={railRef}
-        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 scroll-smooth"
+        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
       >
         {allItems.map((item, index) => (
-          <StaffCard key={`${item.role}-${item.name}-${index}`} item={item} />
+          <StaffCard
+            key={`${item.role}-${item.name}-${index}`}
+            item={item}
+            loadImage={index < visibleImgLimit}
+          />
         ))}
       </div>
     </section>
   );
-}
+});
 
-function StaffCard({
+const StaffCard = memo(function StaffCard({
   item,
+  loadImage,
 }: {
   item: {
     name: string;
@@ -2446,6 +2695,7 @@ function StaffCard({
     image?: string;
     isStudio?: boolean;
   };
+  loadImage: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
 
@@ -2457,26 +2707,35 @@ function StaffCard({
   const showImage = Boolean(item.image) && !imgError;
 
   return (
-    <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/45 hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
+    <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
       {/* Imagem retangular (logo real para estúdio, retrato real para profissional ou card tipográfico elegante) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         {item.isStudio && showImage ? (
           <div className="flex size-full items-center justify-center p-2.5 sm:p-3 bg-[#0d0c16]">
+            {loadImage ? (
+              <img
+                src={item.image}
+                alt={item.name}
+                onError={() => setImgError(true)}
+                loading="lazy"
+                decoding="async"
+                className="max-h-full max-w-full object-contain motion-safe:transition-transform motion-safe:duration-500 [@media(hover:hover)]:group-hover:scale-105"
+              />
+            ) : null}
+          </div>
+        ) : !item.isStudio && showImage ? (
+          loadImage ? (
             <img
               src={item.image}
               alt={item.name}
               onError={() => setImgError(true)}
-              className="max-h-full max-w-full object-contain filter drop-shadow transition-transform duration-500 group-hover:scale-105"
+              className="size-full object-cover object-top motion-safe:transition-transform motion-safe:duration-500 [@media(hover:hover)]:group-hover:scale-105"
+              loading="lazy"
+              decoding="async"
             />
-          </div>
-        ) : !item.isStudio && showImage ? (
-          <img
-            src={item.image}
-            alt={item.name}
-            onError={() => setImgError(true)}
-            className="size-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
-            loading="lazy"
-          />
+          ) : (
+            <div className="size-full bg-[#0d0c16]" />
+          )
         ) : (
           <div className="flex size-full flex-col items-center justify-center bg-gradient-to-b from-[#18132d] to-[#0c0a15] p-2.5 text-center">
             <span className="font-display text-xl sm:text-2xl font-black text-purple-400/80">
@@ -2502,7 +2761,7 @@ function StaffCard({
           </p>
           <p
             title={item.name}
-            className="mt-0.5 line-clamp-2 font-display text-[11px] sm:text-xs font-semibold text-zinc-100 transition-colors group-hover:text-purple-300 min-w-0 break-words leading-snug"
+            className="mt-0.5 line-clamp-2 font-display text-[11px] sm:text-xs font-semibold text-zinc-100 transition-colors [@media(hover:hover)]:group-hover:text-purple-300 min-w-0 break-words leading-snug"
           >
             {item.name}
           </p>
@@ -2510,4 +2769,85 @@ function StaffCard({
       </div>
     </div>
   );
-}
+});
+
+const RelatedSection = memo(function RelatedSection({
+  animeId,
+  recommendations,
+}: {
+  animeId: string;
+  recommendations: SlimAnime[];
+}) {
+  const railRef = useRef<HTMLDivElement>(null);
+
+  const { limit: visibleImgLimit, advance: advanceImgLimit } =
+    useHorizontalRailImageLimit(
+      railRef,
+      recommendations.length,
+      132,
+      12,
+      animeId,
+    );
+
+  if (recommendations.length === 0) {
+    return null;
+  }
+
+  const scroll = (direction: "left" | "right") => {
+    if (!railRef.current) return;
+    if (direction === "right") {
+      advanceImgLimit(360);
+    }
+    const offset = direction === "left" ? -320 : 320;
+    railRef.current.scrollBy({ left: offset, behavior: "smooth" });
+  };
+
+  return (
+    <section className="mt-12 space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2.5">
+          <span className="h-6 w-1 rounded-full bg-purple-500" />
+          <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            Relacionados
+          </h2>
+        </div>
+
+        {recommendations.length > 3 && (
+          <div className="hidden sm:flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => scroll("left")}
+              aria-label="Rolar relacionados para a esquerda"
+              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scroll("right")}
+              aria-label="Rolar relacionados para a direita"
+              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div
+        id="related-anime-rail"
+        ref={railRef}
+        className="rail -mx-4 px-4 sm:-mx-6 sm:px-6"
+      >
+        {recommendations.map((r, index) => (
+          <AnimeCard
+            key={r.id}
+            anime={r}
+            showBookmark={false}
+            loadImage={index < visibleImgLimit}
+          />
+        ))}
+      </div>
+    </section>
+  );
+});
