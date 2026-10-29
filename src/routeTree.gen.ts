@@ -16,19 +16,6 @@ import { Route as AdultRouteImport } from './routes/adult'
 import { Route as ApiAnilistRouteImport } from './routes/api-anilist'
 import { Route as EpisodesRouteImport } from './routes/episodes'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as MyListRouteImport } from './routes/my-list'
-import { Route as NewsRouteImport } from './routes/news'
-import { Route as NotificationsRouteImport } from './routes/notifications'
-import { Route as SearchRouteImport } from './routes/search'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as SettingsAboutRouteImport } from './routes/settings-about'
-import { Route as SettingsAccountRouteImport } from './routes/settings-account'
-import { Route as SettingsAppearanceRouteImport } from './routes/settings-appearance'
-import { Route as SettingsNotificationsRouteImport } from './routes/settings-notifications'
-import { Route as SettingsPlayerRouteImport } from './routes/settings-player'
-import { Route as SettingsPrivacyRouteImport } from './routes/settings-privacy'
-import { Route as SettingsProfileRouteImport } from './routes/settings-profile'
-import { Route as SettingsSecurityRouteImport } from './routes/settings-security'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminIdRouteImport } from './routes/admin.$id'
 import { Route as AdminHikariAiRouteImport } from './routes/admin.hikari-ai'
@@ -40,10 +27,6 @@ import { Route as AdultTagsRouteImport } from './routes/adult.tags'
 import { Route as AdultNewsRouteImport } from './routes/adult_.news'
 import { Route as AnimeIdRouteImport } from './routes/anime.$id'
 import { Route as BrowseSectionRouteImport } from './routes/browse.$section'
-import { Route as NewsIdRouteImport } from './routes/news_.$id'
-import { Route as NewsSearchRouteImport } from './routes/news_.search'
-import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
-import { Route as WatchIdRouteImport } from './routes/watch.$id'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
 
 const IndexRoute = IndexRouteImport.update({
@@ -79,71 +62,6 @@ const EpisodesRoute = EpisodesRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MyListRoute = MyListRouteImport.update({
-  id: '/my-list',
-  path: '/my-list',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NewsRoute = NewsRouteImport.update({
-  id: '/news',
-  path: '/news',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NotificationsRoute = NotificationsRouteImport.update({
-  id: '/notifications',
-  path: '/notifications',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SearchRoute = SearchRouteImport.update({
-  id: '/search',
-  path: '/search',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsAboutRoute = SettingsAboutRouteImport.update({
-  id: '/settings-about',
-  path: '/settings-about',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsAccountRoute = SettingsAccountRouteImport.update({
-  id: '/settings-account',
-  path: '/settings-account',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
-  id: '/settings-appearance',
-  path: '/settings-appearance',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsNotificationsRoute = SettingsNotificationsRouteImport.update({
-  id: '/settings-notifications',
-  path: '/settings-notifications',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsPlayerRoute = SettingsPlayerRouteImport.update({
-  id: '/settings-player',
-  path: '/settings-player',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsPrivacyRoute = SettingsPrivacyRouteImport.update({
-  id: '/settings-privacy',
-  path: '/settings-privacy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsProfileRoute = SettingsProfileRouteImport.update({
-  id: '/settings-profile',
-  path: '/settings-profile',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
-  id: '/settings-security',
-  path: '/settings-security',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -201,26 +119,6 @@ const BrowseSectionRoute = BrowseSectionRouteImport.update({
   path: '/browse/$section',
   getParentRoute: () => rootRouteImport,
 } as any)
-const NewsIdRoute = NewsIdRouteImport.update({
-  id: '/news_/$id',
-  path: '/news/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NewsSearchRoute = NewsSearchRouteImport.update({
-  id: '/news_/search',
-  path: '/news/search',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProfileNickRoute = ProfileNickRouteImport.update({
-  id: '/profile/$nick',
-  path: '/profile/$nick',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const WatchIdRoute = WatchIdRouteImport.update({
-  id: '/watch/$id',
-  path: '/watch/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
   id: '/api/admin/comment-reports',
   path: '/api/admin/comment-reports',
@@ -235,19 +133,6 @@ export interface FileRoutesByFullPath {
   '/api-anilist': typeof ApiAnilistRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
-  '/my-list': typeof MyListRoute
-  '/news': typeof NewsRoute
-  '/notifications': typeof NotificationsRoute
-  '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
-  '/settings-about': typeof SettingsAboutRoute
-  '/settings-account': typeof SettingsAccountRoute
-  '/settings-appearance': typeof SettingsAppearanceRoute
-  '/settings-notifications': typeof SettingsNotificationsRoute
-  '/settings-player': typeof SettingsPlayerRoute
-  '/settings-privacy': typeof SettingsPrivacyRoute
-  '/settings-profile': typeof SettingsProfileRoute
-  '/settings-security': typeof SettingsSecurityRoute
   '/admin/$id': typeof AdminIdRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
@@ -257,10 +142,6 @@ export interface FileRoutesByFullPath {
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/browse/$section': typeof BrowseSectionRoute
-  '/news/$id': typeof NewsIdRoute
-  '/news/search': typeof NewsSearchRoute
-  '/profile/$nick': typeof ProfileNickRoute
-  '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
@@ -271,19 +152,6 @@ export interface FileRoutesByTo {
   '/api-anilist': typeof ApiAnilistRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
-  '/my-list': typeof MyListRoute
-  '/news': typeof NewsRoute
-  '/notifications': typeof NotificationsRoute
-  '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
-  '/settings-about': typeof SettingsAboutRoute
-  '/settings-account': typeof SettingsAccountRoute
-  '/settings-appearance': typeof SettingsAppearanceRoute
-  '/settings-notifications': typeof SettingsNotificationsRoute
-  '/settings-player': typeof SettingsPlayerRoute
-  '/settings-privacy': typeof SettingsPrivacyRoute
-  '/settings-profile': typeof SettingsProfileRoute
-  '/settings-security': typeof SettingsSecurityRoute
   '/admin/$id': typeof AdminIdRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
@@ -293,10 +161,6 @@ export interface FileRoutesByTo {
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/browse/$section': typeof BrowseSectionRoute
-  '/news/$id': typeof NewsIdRoute
-  '/news/search': typeof NewsSearchRoute
-  '/profile/$nick': typeof ProfileNickRoute
-  '/watch/$id': typeof WatchIdRoute
   '/admin': typeof AdminIndexRoute
   '/adult': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
@@ -310,19 +174,6 @@ export interface FileRoutesById {
   '/api-anilist': typeof ApiAnilistRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
-  '/my-list': typeof MyListRoute
-  '/news': typeof NewsRoute
-  '/notifications': typeof NotificationsRoute
-  '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
-  '/settings-about': typeof SettingsAboutRoute
-  '/settings-account': typeof SettingsAccountRoute
-  '/settings-appearance': typeof SettingsAppearanceRoute
-  '/settings-notifications': typeof SettingsNotificationsRoute
-  '/settings-player': typeof SettingsPlayerRoute
-  '/settings-privacy': typeof SettingsPrivacyRoute
-  '/settings-profile': typeof SettingsProfileRoute
-  '/settings-security': typeof SettingsSecurityRoute
   '/admin/$id': typeof AdminIdRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
@@ -332,10 +183,6 @@ export interface FileRoutesById {
   '/adult_/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/browse/$section': typeof BrowseSectionRoute
-  '/news_/$id': typeof NewsIdRoute
-  '/news_/search': typeof NewsSearchRoute
-  '/profile/$nick': typeof ProfileNickRoute
-  '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
@@ -350,19 +197,6 @@ export interface FileRouteTypes {
     | '/api-anilist'
     | '/episodes'
     | '/login'
-    | '/my-list'
-    | '/news'
-    | '/notifications'
-    | '/search'
-    | '/settings'
-    | '/settings-about'
-    | '/settings-account'
-    | '/settings-appearance'
-    | '/settings-notifications'
-    | '/settings-player'
-    | '/settings-privacy'
-    | '/settings-profile'
-    | '/settings-security'
     | '/admin/$id'
     | '/admin/hikari-ai'
     | '/admin/moderation'
@@ -372,10 +206,6 @@ export interface FileRouteTypes {
     | '/adult/news'
     | '/anime/$id'
     | '/browse/$section'
-    | '/news/$id'
-    | '/news/search'
-    | '/profile/$nick'
-    | '/watch/$id'
     | '/admin/'
     | '/adult/'
     | '/api/admin/comment-reports'
@@ -386,19 +216,6 @@ export interface FileRouteTypes {
     | '/api-anilist'
     | '/episodes'
     | '/login'
-    | '/my-list'
-    | '/news'
-    | '/notifications'
-    | '/search'
-    | '/settings'
-    | '/settings-about'
-    | '/settings-account'
-    | '/settings-appearance'
-    | '/settings-notifications'
-    | '/settings-player'
-    | '/settings-privacy'
-    | '/settings-profile'
-    | '/settings-security'
     | '/admin/$id'
     | '/admin/hikari-ai'
     | '/admin/moderation'
@@ -408,10 +225,6 @@ export interface FileRouteTypes {
     | '/adult/news'
     | '/anime/$id'
     | '/browse/$section'
-    | '/news/$id'
-    | '/news/search'
-    | '/profile/$nick'
-    | '/watch/$id'
     | '/admin'
     | '/adult'
     | '/api/admin/comment-reports'
@@ -424,19 +237,6 @@ export interface FileRouteTypes {
     | '/api-anilist'
     | '/episodes'
     | '/login'
-    | '/my-list'
-    | '/news'
-    | '/notifications'
-    | '/search'
-    | '/settings'
-    | '/settings-about'
-    | '/settings-account'
-    | '/settings-appearance'
-    | '/settings-notifications'
-    | '/settings-player'
-    | '/settings-privacy'
-    | '/settings-profile'
-    | '/settings-security'
     | '/admin/$id'
     | '/admin/hikari-ai'
     | '/admin/moderation'
@@ -446,10 +246,6 @@ export interface FileRouteTypes {
     | '/adult_/news'
     | '/anime/$id'
     | '/browse/$section'
-    | '/news_/$id'
-    | '/news_/search'
-    | '/profile/$nick'
-    | '/watch/$id'
     | '/admin/'
     | '/adult/'
     | '/api/admin/comment-reports'
@@ -463,26 +259,9 @@ export interface RootRouteChildren {
   ApiAnilistRoute: typeof ApiAnilistRoute
   EpisodesRoute: typeof EpisodesRoute
   LoginRoute: typeof LoginRoute
-  MyListRoute: typeof MyListRoute
-  NewsRoute: typeof NewsRoute
-  NotificationsRoute: typeof NotificationsRoute
-  SearchRoute: typeof SearchRoute
-  SettingsRoute: typeof SettingsRoute
-  SettingsAboutRoute: typeof SettingsAboutRoute
-  SettingsAccountRoute: typeof SettingsAccountRoute
-  SettingsAppearanceRoute: typeof SettingsAppearanceRoute
-  SettingsNotificationsRoute: typeof SettingsNotificationsRoute
-  SettingsPlayerRoute: typeof SettingsPlayerRoute
-  SettingsPrivacyRoute: typeof SettingsPrivacyRoute
-  SettingsProfileRoute: typeof SettingsProfileRoute
-  SettingsSecurityRoute: typeof SettingsSecurityRoute
   AdultNewsRoute: typeof AdultNewsRoute
   AnimeIdRoute: typeof AnimeIdRoute
   BrowseSectionRoute: typeof BrowseSectionRoute
-  NewsIdRoute: typeof NewsIdRoute
-  NewsSearchRoute: typeof NewsSearchRoute
-  ProfileNickRoute: typeof ProfileNickRoute
-  WatchIdRoute: typeof WatchIdRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
 }
 
@@ -535,97 +314,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/my-list': {
-      id: '/my-list'
-      path: '/my-list'
-      fullPath: '/my-list'
-      preLoaderRoute: typeof MyListRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/news': {
-      id: '/news'
-      path: '/news'
-      fullPath: '/news'
-      preLoaderRoute: typeof NewsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/notifications': {
-      id: '/notifications'
-      path: '/notifications'
-      fullPath: '/notifications'
-      preLoaderRoute: typeof NotificationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/search': {
-      id: '/search'
-      path: '/search'
-      fullPath: '/search'
-      preLoaderRoute: typeof SearchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings-about': {
-      id: '/settings-about'
-      path: '/settings-about'
-      fullPath: '/settings-about'
-      preLoaderRoute: typeof SettingsAboutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings-account': {
-      id: '/settings-account'
-      path: '/settings-account'
-      fullPath: '/settings-account'
-      preLoaderRoute: typeof SettingsAccountRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings-appearance': {
-      id: '/settings-appearance'
-      path: '/settings-appearance'
-      fullPath: '/settings-appearance'
-      preLoaderRoute: typeof SettingsAppearanceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings-notifications': {
-      id: '/settings-notifications'
-      path: '/settings-notifications'
-      fullPath: '/settings-notifications'
-      preLoaderRoute: typeof SettingsNotificationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings-player': {
-      id: '/settings-player'
-      path: '/settings-player'
-      fullPath: '/settings-player'
-      preLoaderRoute: typeof SettingsPlayerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings-privacy': {
-      id: '/settings-privacy'
-      path: '/settings-privacy'
-      fullPath: '/settings-privacy'
-      preLoaderRoute: typeof SettingsPrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings-profile': {
-      id: '/settings-profile'
-      path: '/settings-profile'
-      fullPath: '/settings-profile'
-      preLoaderRoute: typeof SettingsProfileRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings-security': {
-      id: '/settings-security'
-      path: '/settings-security'
-      fullPath: '/settings-security'
-      preLoaderRoute: typeof SettingsSecurityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -705,34 +393,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BrowseSectionRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/news_/$id': {
-      id: '/news_/$id'
-      path: '/news/$id'
-      fullPath: '/news/$id'
-      preLoaderRoute: typeof NewsIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/news_/search': {
-      id: '/news_/search'
-      path: '/news/search'
-      fullPath: '/news/search'
-      preLoaderRoute: typeof NewsSearchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profile/$nick': {
-      id: '/profile/$nick'
-      path: '/profile/$nick'
-      fullPath: '/profile/$nick'
-      preLoaderRoute: typeof ProfileNickRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/watch/$id': {
-      id: '/watch/$id'
-      path: '/watch/$id'
-      fullPath: '/watch/$id'
-      preLoaderRoute: typeof WatchIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/admin/comment-reports': {
       id: '/api/admin/comment-reports'
       path: '/api/admin/comment-reports'
@@ -783,26 +443,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAnilistRoute: ApiAnilistRoute,
   EpisodesRoute: EpisodesRoute,
   LoginRoute: LoginRoute,
-  MyListRoute: MyListRoute,
-  NewsRoute: NewsRoute,
-  NotificationsRoute: NotificationsRoute,
-  SearchRoute: SearchRoute,
-  SettingsRoute: SettingsRoute,
-  SettingsAboutRoute: SettingsAboutRoute,
-  SettingsAccountRoute: SettingsAccountRoute,
-  SettingsAppearanceRoute: SettingsAppearanceRoute,
-  SettingsNotificationsRoute: SettingsNotificationsRoute,
-  SettingsPlayerRoute: SettingsPlayerRoute,
-  SettingsPrivacyRoute: SettingsPrivacyRoute,
-  SettingsProfileRoute: SettingsProfileRoute,
-  SettingsSecurityRoute: SettingsSecurityRoute,
   AdultNewsRoute: AdultNewsRoute,
   AnimeIdRoute: AnimeIdRoute,
   BrowseSectionRoute: BrowseSectionRoute,
-  NewsIdRoute: NewsIdRoute,
-  NewsSearchRoute: NewsSearchRoute,
-  ProfileNickRoute: ProfileNickRoute,
-  WatchIdRoute: WatchIdRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
 }
 export const routeTree = rootRouteImport

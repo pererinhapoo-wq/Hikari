@@ -1,95 +1,70 @@
-import { Readable } from "node:stream";
+import { defineConfig } from "vite";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
-import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
-import viteReact from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { nitro } from "nitro/vite";
-import { defineConfig, type Plugin } from "vite";
-import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
 import { grokPwaPlugin } from "./scripts/grok-pwa-plugin.mjs";
+import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
 
-function authPopupPlugin(): Plugin {
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function authPopupPlugin() {
   return {
-    name: "app-builder:auth-popup",
-    apply: "serve",
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        const rawUrl = req.url ?? "";
-        const pathOnly = rawUrl.split("?", 1)[0];
-        if (pathOnly !== "/auth/popup" || (req.method ?? "GET").toUpperCase() !== "GET") {
-          next();
+    name: "auth-popup",
+    configureServer(server: any) {
+      server.middlewares.use(async (req: any, res: any, next: any) => {
+        if (req.url && (req.url === "/auth/popup" || req.url.startsWith("/auth/popup?"))) {
+          try {
+            const { handleAuthPopupRequest } = await server.ssrLoadModule("/src/lib/auth/popup.server.ts");
+            const proto = req.headers["x-forwarded-proto"] || "http";
+            const host = req.headers.host || "localhost:3000";
+            const fullUrl = `${proto}://${host}${req.url}`;
+            const webReq = new Request(fullUrl, {
+              method: req.method,
+              headers: req.headers,
+            });
+            const response = await handleAuthPopupRequest(webReq);
+            res.statusCode = response.status;
+            response.headers.forEach((val: string, key: string) => res.setHeader(key, val));
+            const text = await response.text();
+            res.end(text);
+          } catch (e) {
+            next(e);
+          }
           return;
         }
-        try {
-          const mod = await server.ssrLoadModule("/src/lib/auth/popup.server.ts");
-          const proto = (req.headers["x-forwarded-proto"] as string) || "http";
-          const host =
-            (req.headers["x-forwarded-host"] as string) || req.headers.host || "localhost:3000";
-          const headers = new Headers();
-          for (const [k, v] of Object.entries(req.headers)) {
-            if (Array.isArray(v)) {
-              for (const item of v) headers.append(k, item);
-            } else if (typeof v === "string") {
-              headers.set(k, v);
-            }
-          }
-          const webReq = new Request(`${proto}://${host}${rawUrl}`, {
-            method: "GET",
-            headers,
-          });
-          const webRes: Response = await mod.handleAuthPopupRequest(webReq);
-          res.statusCode = webRes.status;
-          webRes.headers.forEach((value, key) => {
-            if (key.toLowerCase() !== "set-cookie") {
-              res.setHeader(key, value);
-            }
-          });
-          const setCookies = webRes.headers.getSetCookie?.() ?? [];
-          if (setCookies.length > 0) {
-            res.setHeader("set-cookie", setCookies);
-          }
-          if (webRes.body) {
-            Readable.fromWeb(webRes.body as never).pipe(res);
-          } else {
-            res.end();
-          }
-        } catch (err) {
-          next(err);
-        }
+        next();
       });
     },
   };
 }
 
-export default defineConfig(({ command, isPreview }) => {
-  const isBuildOrPreview = command === "build" || Boolean(isPreview);
-
-  return {
-    resolve: {
-      alias: {
-        "@": fileURLToPath(new URL("./src", import.meta.url)),
-      },
+export default defineConfig(({ command, isPreview }) => ({
+  plugins: [
+    tanstackStart(),
+    tailwindcss(),
+    grokPwaPlugin(),
+    appEnvPlugin(),
+    authPopupPlugin(),
+    (command === "build" || isPreview) &&
+      nitro({
+        preset: "vercel",
+        serverDir: "./server",
+      }),
+  ].filter(Boolean),
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
     },
-    server: {
-      host: "0.0.0.0",
-      port: 3000,
-      allowedHosts: true,
-    },
-    preview: {
-      host: "127.0.0.1",
-      port: 8081,
-      strictPort: true,
-    },
-    plugins: [
-      appEnvPlugin(),
-      grokPwaPlugin(),
-      authPopupPlugin(),
-      tailwindcss(),
-      tanstackStart(),
-      viteReact(),
-      ...(isBuildOrPreview && !process.env.CLOUDFLARE
-        ? [nitro({ preset: "vercel", serverDir: "./server" })]
-        : []),
-    ],
-  };
-});
+  },
+  server: {
+    host: "0.0.0.0",
+    port: 3000,
+  },
+  preview: {
+    host: "127.0.0.1",
+    port: 8081,
+  },
+}));
