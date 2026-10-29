@@ -133,12 +133,12 @@ type AniTitle = {
   native?: string | null;
 };
 
-type SeasonNavigationItem = {
+export type SeasonNavigationItem = {
   id: string;
   title?: string;
 };
 
-type SeasonNavigation = {
+export type SeasonNavigation = {
   items: SeasonNavigationItem[];
   previous?: SeasonNavigationItem;
   next?: SeasonNavigationItem;
@@ -2697,6 +2697,95 @@ async function buildSeasonNavigation(
   return fromCache<SeasonNavigation>(navKey) ?? toCache(navKey, fallbackResult);
 }
 
+function buildDirectSeasonNavigation(
+  media: AniMedia,
+): SeasonNavigation {
+  const rootEdges = (media.relations?.edges ?? []).filter(
+    Boolean,
+  ) as SeasonGraphEdge[];
+
+  const nodesById = new Map<number, SeasonGraphNode>();
+  nodesById.set(media.id, {
+    id: media.id,
+    type: "ANIME",
+    format: media.format,
+    status: media.status,
+    episodes: media.episodes,
+    seasonYear: media.seasonYear,
+    startDate: media.startDate,
+    title: media.title,
+    edges: rootEdges,
+  });
+
+  for (const edge of rootEdges) {
+    if (!isChronologicalAnimeEdge(edge)) continue;
+    const neighbor = edge.node;
+    if (!nodesById.has(neighbor.id)) {
+      nodesById.set(neighbor.id, {
+        id: neighbor.id,
+        type: neighbor.type ?? "ANIME",
+        format: neighbor.format,
+        status: neighbor.status,
+        episodes: neighbor.episodes,
+        seasonYear: neighbor.seasonYear,
+        startDate: neighbor.startDate,
+        title: neighbor.title,
+        edges: [],
+      });
+    }
+  }
+
+  const releasedNodes = Array.from(nodesById.values()).filter(
+    (node) =>
+      node.id === media.id ||
+      (node.status !== "NOT_YET_RELEASED" &&
+        node.status !== "CANCELLED" &&
+        node.format !== "MUSIC"),
+  );
+
+  const isRootSeries =
+    !media.format || SEASON_NAV_SERIES_FORMATS.has(media.format);
+  const seriesNodes = releasedNodes.filter(
+    (node) => !node.format || SEASON_NAV_SERIES_FORMATS.has(node.format),
+  );
+
+  let keptNodes: SeasonGraphNode[];
+  if (seriesNodes.length >= 2) {
+    keptNodes = isRootSeries
+      ? seriesNodes
+      : seriesNodes.some((n) => n.id === media.id)
+        ? seriesNodes
+        : [...seriesNodes, nodesById.get(media.id)!];
+  } else {
+    keptNodes = releasedNodes;
+  }
+
+  const orderedNodes = orderFranchiseSeasonNodes(nodesById, keptNodes);
+
+  const items: SeasonNavigationItem[] = orderedNodes.map((node) => ({
+    id: String(node.id),
+    title: node.title?.english ?? node.title?.romaji ?? undefined,
+  }));
+
+  const currentIdx = orderedNodes.findIndex((n) => n.id === media.id);
+  return {
+    items:
+      items.length > 0
+        ? items
+        : [
+            {
+              id: String(media.id),
+              title: media.title?.english ?? media.title?.romaji ?? undefined,
+            },
+          ],
+    previous: currentIdx > 0 ? items[currentIdx - 1] : undefined,
+    next:
+      currentIdx >= 0 && currentIdx < items.length - 1
+        ? items[currentIdx + 1]
+        : undefined,
+  };
+}
+
 function mapAniFull(
   media: AniMedia,
   seasons: Season[],
@@ -5085,7 +5174,8 @@ async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
     }),
   );
 
-  let [episodes, credits] = await Promise.all([episodesTask, creditsTask]);
+  const [fetchedEpisodes, credits] = await Promise.all([episodesTask, creditsTask]);
+  let episodes = fetchedEpisodes;
 
   if (episodes.length === 0 && slim.episodesCount) {
     episodes = Array.from(
@@ -5276,10 +5366,13 @@ export const fetchAnimeDetail =
               );
 
             if (aniMedia) {
+              toCache(`media:raw:${aniMedia.id}`, aniMedia);
+              toCache(`mal-ani:${malId}`, aniMedia);
+
+              const navKey = `season-nav:v3:${aniMedia.id}`;
+              const cachedNav = fromCache<SeasonNavigation>(navKey);
               const navigation =
-                await buildSeasonNavigation(
-                  aniMedia,
-                );
+                cachedNav ?? buildDirectSeasonNavigation(aniMedia);
 
               // A página MAL usa `mal-<id>` como URL
               // atual. Mantemos esse ID no item atual
@@ -5696,10 +5789,12 @@ export const fetchAnimeDetail =
             ];
           }
 
+          toCache(`media:raw:${media.id}`, media);
+
+          const navKey = `season-nav:v3:${media.id}`;
+          const cachedNav = fromCache<SeasonNavigation>(navKey);
           const seasonNavigation =
-            await buildSeasonNavigation(
-              media,
-            );
+            cachedNav ?? buildDirectSeasonNavigation(media);
 
           const mapped = mapAniFull(
             media,
@@ -5814,6 +5909,88 @@ export const fetchAnimeDetail =
         }
       },
     );
+
+export const fetchAnimeSeasonNavigation = createServerFn({
+  method: "GET",
+})
+  .validator(idSchema)
+  .handler(async ({ data }) => {
+    const { id } = data;
+    if (!id || id.startsWith("local-") || id.startsWith("kitsu-")) {
+      return null;
+    }
+
+    try {
+      if (id.startsWith("mal-")) {
+        const malId = Number(id.replace("mal-", ""));
+        if (!Number.isFinite(malId)) return null;
+
+        let aniMedia = fromCache<AniMedia>(`mal-ani:${malId}`);
+        if (!aniMedia) {
+          aniMedia = await fetchAniMediaByMalId(malId);
+        }
+        if (!aniMedia) return null;
+
+        toCache(`media:raw:${aniMedia.id}`, aniMedia);
+        toCache(`mal-ani:${malId}`, aniMedia);
+
+        const navKey = `season-nav:v3:${aniMedia.id}`;
+        const cached = fromCache<SeasonNavigation>(navKey);
+        const navigation = cached ?? (await buildSeasonNavigation(aniMedia));
+
+        const currentAniId = String(aniMedia.id);
+        return {
+          ...navigation,
+          items: navigation.items.map((item) =>
+            item.id === currentAniId
+              ? {
+                  ...item,
+                  id: `mal-${malId}`,
+                }
+              : item,
+          ),
+        };
+      }
+
+      const anilistId = Number(id);
+      if (!Number.isFinite(anilistId)) {
+        return null;
+      }
+
+      const navKey = `season-nav:v3:${anilistId}`;
+      const cached = fromCache<SeasonNavigation>(navKey);
+      if (cached) {
+        return cached;
+      }
+
+      let media = fromCache<AniMedia>(`media:raw:${anilistId}`);
+      if (!media) {
+        const nodes = await fetchAniSeasonNodesBatch([anilistId]);
+        const rootNode = nodes[0];
+        if (rootNode) {
+          media = {
+            id: rootNode.id,
+            format: rootNode.format,
+            status: rootNode.status,
+            episodes: rootNode.episodes,
+            seasonYear: rootNode.seasonYear,
+            startDate: rootNode.startDate,
+            title: rootNode.title,
+            relations: { edges: rootNode.edges },
+          };
+        }
+      }
+
+      if (!media) {
+        return null;
+      }
+
+      return await buildSeasonNavigation(media);
+    } catch (err) {
+      console.warn("[Hikari] Falha na busca complementar de temporadas:", err);
+      return null;
+    }
+  });
 
 export const fetchGenres = createServerFn({
   method: "GET",

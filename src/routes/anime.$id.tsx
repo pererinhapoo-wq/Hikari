@@ -29,6 +29,7 @@ import {
   fetchAnimeCredits,
   fetchAnimeDetail,
   fetchAnimePictures,
+  fetchAnimeSeasonNavigation,
   fetchJikanPictures,
 } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
@@ -487,6 +488,13 @@ function AnimePage() {
         ? activeMobileBannerState.url
         : null;
 
+  const initialDefaultBannerUrl =
+    validDesktopBannerUrl || validMobileSourceUrl || baseSeasonBanner || null;
+
+  const currentBannerSrc = isHydratedClient
+    ? (effectiveBannerUrl ?? initialDefaultBannerUrl ?? undefined)
+    : (initialDefaultBannerUrl ?? undefined);
+
   const shouldRenderPicture = isHydratedClient
     ? Boolean(effectiveBannerUrl)
     : Boolean(validMobileSourceUrl || validDesktopBannerUrl);
@@ -544,14 +552,77 @@ function AnimePage() {
   /*
    * TEMPORADAS
    */
-  const seasonNavigation =
-    (
-      remote as unknown as {
-        seasonNavigation?: {
-          items?: Array<{ id: string; label?: string; title?: string }>;
-        };
-      }
-    )?.seasonNavigation?.items ?? [];
+  const initialSeasonNavigation = useMemo(
+    () =>
+      (
+        remote as unknown as {
+          seasonNavigation?: {
+            items?: Array<{ id: string; label?: string; title?: string }>;
+          };
+        }
+      )?.seasonNavigation?.items ?? [],
+    [remote],
+  );
+
+  const [extraSeasonNavigation, setExtraSeasonNavigation] = useState<{
+    forId: string;
+    items: Array<{ id: string; label?: string; title?: string }>;
+  } | null>(null);
+
+  const requestedSeasonNavRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!id || id.startsWith("local-") || id.startsWith("kitsu-")) {
+      return;
+    }
+
+    if (requestedSeasonNavRef.current.has(id)) {
+      return;
+    }
+
+    let cancelled = false;
+    requestedSeasonNavRef.current.add(id);
+
+    fetchAnimeSeasonNavigation({
+      data: { id },
+    })
+      .then((res) => {
+        if (cancelled || !res?.items || res.items.length === 0) return;
+
+        const areSame =
+          initialSeasonNavigation.length === res.items.length &&
+          initialSeasonNavigation.every(
+            (item, index) => item.id === res.items[index]?.id,
+          );
+
+        if (areSame) return;
+
+        startTransition(() => {
+          setExtraSeasonNavigation({
+            forId: id,
+            items: res.items,
+          });
+        });
+      })
+      .catch(() => {
+        // Silencioso: mantém a página funcionando com os dados iniciais
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, initialSeasonNavigation]);
+
+  const seasonNavigation = useMemo(() => {
+    if (
+      extraSeasonNavigation &&
+      extraSeasonNavigation.forId === id &&
+      extraSeasonNavigation.items.length > 0
+    ) {
+      return extraSeasonNavigation.items;
+    }
+    return initialSeasonNavigation;
+  }, [extraSeasonNavigation, id, initialSeasonNavigation]);
 
   const seasons = anime?.seasons ?? [];
 
@@ -714,13 +785,16 @@ function AnimePage() {
                 />
               ) : null}
               <img
-                src={isHydratedClient ? (effectiveBannerUrl ?? undefined) : undefined}
+                src={currentBannerSrc}
                 alt=""
                 loading="eager"
+                fetchPriority="high"
                 decoding="async"
                 onError={(e) => {
                   const failedUrl =
-                    e.currentTarget.currentSrc || effectiveBannerUrl;
+                    e.currentTarget.currentSrc ||
+                    effectiveBannerUrl ||
+                    currentBannerSrc;
                   if (!failedUrl) return;
                   setFailedBannerUrls((prev) =>
                     prev[failedUrl] ? prev : { ...prev, [failedUrl]: true },
@@ -756,6 +830,9 @@ function AnimePage() {
                   <img
                     src={anime.cover}
                     alt={title}
+                    loading="eager"
+                    decoding="async"
+                    fetchPriority={shouldRenderPicture ? "auto" : "high"}
                     className="aspect-2/3 w-full object-cover"
                   />
                 ) : (
