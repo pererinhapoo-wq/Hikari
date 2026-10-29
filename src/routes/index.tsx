@@ -128,14 +128,15 @@ function Home() {
         <HomePending />
       )}
 
-      {/* Seção 1: Em Alta */}
+      {/* Seção 1: Selecionados */}
       <AnimeRow
-        title="Em Alta"
+        title="Selecionados"
         eyebrow="TENDÊNCIAS & POPULARIDADE"
         iconType="flame"
         items={trendingAndPopular}
         showBookmark={false}
         showRank={false}
+        resetScrollOnReturn
       />
 
       {/* Seção 2: Últimos Episódios (publicados pelo administrador) */}

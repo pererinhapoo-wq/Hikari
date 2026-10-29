@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   Bookmark,
   BookmarkCheck,
@@ -2057,6 +2057,23 @@ const ImagensSection = memo(function ImagensSection({
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [extraPictures, setExtraPictures] = useState<string[]>([]);
   const railRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (railRef.current) {
+      railRef.current.scrollLeft = 0;
+    }
+
+    const unsubscribe = router.subscribe("onRendered", () => {
+      requestAnimationFrame(() => {
+        if (railRef.current) {
+          railRef.current.scrollLeft = 0;
+        }
+      });
+    });
+
+    return unsubscribe;
+  }, [router]);
 
   // Busca em segundo plano na API Jikan (MyAnimeList) caso o anime possua poucas imagens carregadas
   useEffect(() => {

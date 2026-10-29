@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import {
   ChevronLeft,
   ChevronRight,
@@ -8,7 +8,7 @@ import {
   Trophy,
   Calendar,
 } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import {
   AnimeCard,
@@ -26,6 +26,7 @@ export function AnimeRow({
   loading,
   showRank = false,
   showBookmark = true,
+  resetScrollOnReturn = false,
 }: {
   title: string;
   eyebrow?: string;
@@ -36,8 +37,28 @@ export function AnimeRow({
   loading?: boolean;
   showRank?: boolean;
   showBookmark?: boolean;
+  resetScrollOnReturn?: boolean;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!resetScrollOnReturn) return;
+
+    if (railRef.current) {
+      railRef.current.scrollLeft = 0;
+    }
+
+    const unsubscribe = router.subscribe("onRendered", () => {
+      requestAnimationFrame(() => {
+        if (railRef.current) {
+          railRef.current.scrollLeft = 0;
+        }
+      });
+    });
+
+    return unsubscribe;
+  }, [resetScrollOnReturn, router]);
 
   if (!loading && items.length === 0) return null;
 
