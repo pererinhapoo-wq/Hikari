@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bookmark, BookmarkCheck, Play } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -43,20 +43,107 @@ export function Hero({
   const desktopBackdrop =
     current.banner || current.cover || "";
 
+  // Imagens do slide anterior para evitar tela vazia ou piscar durante a troca
+  const [prevMobileBackdrop, setPrevMobileBackdrop] = useState<string>("");
+  const [prevDesktopBackdrop, setPrevDesktopBackdrop] = useState<string>("");
+
+  // Cache em memória das URLs que já foram pré-carregadas pelo carrossel
+  const preloadedUrls = useRef<Set<string>>(new Set());
+
+  // Estados de carregamento da imagem do slide ativo
+  const [isMobileLoaded, setIsMobileLoaded] = useState<boolean>(true);
+  const [isDesktopLoaded, setIsDesktopLoaded] = useState<boolean>(true);
+
+  const prevIdRef = useRef<string | number>(current.id);
+  const prevMobileRef = useRef<string>(mobileBackdrop);
+  const prevDesktopRef = useRef<string>(desktopBackdrop);
+
+  // Identificação do próximo slide (trata wrap-around para o primeiro slide)
+  const nextIndex = animes.length > 1 ? (index + 1) % animes.length : -1;
+  const nextAnime = nextIndex >= 0 ? animes[nextIndex] : null;
+
+  const nextMobileBackdrop = nextAnime
+    ? nextAnime.cover || nextAnime.banner || ""
+    : "";
+  const nextDesktopBackdrop = nextAnime
+    ? nextAnime.banner || nextAnime.cover || ""
+    : "";
+
+  // Ao mudar de slide, armazena a imagem anterior como fundo para transição suave
+  useEffect(() => {
+    if (prevIdRef.current !== current.id) {
+      setPrevMobileBackdrop(prevMobileRef.current);
+      setPrevDesktopBackdrop(prevDesktopRef.current);
+
+      const mobileReady = preloadedUrls.current.has(mobileBackdrop);
+      const desktopReady = preloadedUrls.current.has(desktopBackdrop);
+
+      setIsMobileLoaded(mobileReady);
+      setIsDesktopLoaded(desktopReady);
+
+      prevIdRef.current = current.id;
+      prevMobileRef.current = mobileBackdrop;
+      prevDesktopRef.current = desktopBackdrop;
+    }
+  }, [current.id, mobileBackdrop, desktopBackdrop]);
+
+  // Pré-carregamento em segundo plano das imagens do próximo slide
+  useEffect(() => {
+    if (typeof window === "undefined" || animes.length < 2 || !nextAnime) return;
+
+    // Respeita a fonte de imagem para o viewport atual (desktop e mobile)
+    const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+    const primaryUrl = isDesktop ? nextDesktopBackdrop : nextMobileBackdrop;
+
+    const urlsToPreload = new Set<string>();
+    if (primaryUrl) urlsToPreload.add(primaryUrl);
+    if (nextMobileBackdrop) urlsToPreload.add(nextMobileBackdrop);
+    if (nextDesktopBackdrop) urlsToPreload.add(nextDesktopBackdrop);
+
+    if (urlsToPreload.size === 0) return;
+
+    const activePreloaders: HTMLImageElement[] = [];
+
+    urlsToPreload.forEach((url) => {
+      if (preloadedUrls.current.has(url)) return;
+
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => {
+        preloadedUrls.current.add(url);
+      };
+      img.onerror = () => {
+        preloadedUrls.current.add(url);
+      };
+      img.src = url;
+      activePreloaders.push(img);
+    });
+
+    return () => {
+      // Limpeza de referências para não acumular imagens antigas
+      activePreloaders.forEach((img) => {
+        img.onload = null;
+        img.onerror = null;
+      });
+      activePreloaders.length = 0;
+    };
+  }, [index, animes.length, nextDesktopBackdrop, nextMobileBackdrop]);
+
+  // Rotação automática dos slides
   useEffect(() => {
     if (animes.length < 2) return;
 
     const timer = window.setInterval(() => {
-      const nextIndex = (index + 1) % animes.length;
-      const nextAnime = animes[nextIndex];
+      const nextIdx = (index + 1) % animes.length;
+      const targetAnime = animes[nextIdx];
 
       const nextBackdrop =
-        nextAnime?.cover ||
-        nextAnime?.banner ||
+        targetAnime?.cover ||
+        targetAnime?.banner ||
         "";
 
       setVisibleBackdrop(nextBackdrop);
-      setIndex(nextIndex);
+      setIndex(nextIdx);
     }, 8000);
 
     return () => window.clearInterval(timer);
@@ -120,20 +207,46 @@ export function Hero({
               [-webkit-mask-image:linear-gradient(to_bottom,black_70%,transparent_100%)]
             "
           >
+            {/* Imagem anterior visível durante o carregamento da nova para evitar flash/espaço vazio */}
+            {prevMobileBackdrop &&
+              prevMobileBackdrop !== mobileBackdrop &&
+              !isMobileLoaded && (
+                <img
+                  src={prevMobileBackdrop}
+                  alt=""
+                  aria-hidden="true"
+                  className="
+                    absolute
+                    inset-0
+                    size-full
+                    object-contain
+                    object-center
+                    py-2
+                    px-3
+                    drop-shadow-[0_8px_20px_rgba(0,0,0,0.6)]
+                  "
+                />
+              )}
             <img
               key={`mb-fg-${current.id}`}
               src={mobileBackdrop}
               alt={title}
               loading="eager"
               decoding="async"
-              className="
+              fetchPriority="high"
+              onLoad={() => setIsMobileLoaded(true)}
+              onError={() => setIsMobileLoaded(true)}
+              className={`
                 size-full
                 object-contain
                 object-center
                 py-2
                 px-3
                 drop-shadow-[0_8px_20px_rgba(0,0,0,0.6)]
-              "
+                transition-opacity
+                duration-300
+                ${isMobileLoaded ? "opacity-100" : "opacity-0"}
+              `}
             />
           </div>
 
@@ -195,6 +308,24 @@ export function Hero({
               [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_45%)]
             "
           >
+            {/* Imagem anterior visível durante o carregamento da nova para evitar flash/espaço vazio */}
+            {prevDesktopBackdrop &&
+              prevDesktopBackdrop !== desktopBackdrop &&
+              !isDesktopLoaded && (
+                <img
+                  src={prevDesktopBackdrop}
+                  alt=""
+                  aria-hidden="true"
+                  className="
+                    absolute
+                    inset-0
+                    size-full
+                    object-cover
+                    object-center
+                    md:object-right-top
+                  "
+                />
+              )}
             <img
               key={`d-${current.id}`}
               src={desktopBackdrop}
@@ -202,12 +333,18 @@ export function Hero({
               aria-hidden="true"
               loading="eager"
               decoding="async"
-              className="
+              fetchPriority="high"
+              onLoad={() => setIsDesktopLoaded(true)}
+              onError={() => setIsDesktopLoaded(true)}
+              className={`
                 size-full
                 object-cover
                 object-center
                 md:object-right-top
-              "
+                transition-opacity
+                duration-300
+                ${isDesktopLoaded ? "opacity-100" : "opacity-0"}
+              `}
             />
           </div>
 

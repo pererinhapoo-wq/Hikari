@@ -45,6 +45,7 @@ import { Route as NewsSearchRouteImport } from './routes/news_.search'
 import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -226,6 +227,11 @@ const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
   path: '/api/admin/comment-reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -264,6 +270,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -300,6 +307,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/adult': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -339,6 +347,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -379,6 +388,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/adult/'
     | '/api/admin/comment-reports'
+    | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -415,6 +425,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/adult'
     | '/api/admin/comment-reports'
+    | '/api/auth/$'
   id:
     | '__root__'
     | '/'
@@ -453,6 +464,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/adult/'
     | '/api/admin/comment-reports'
+    | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -484,6 +496,7 @@ export interface RootRouteChildren {
   ProfileNickRoute: typeof ProfileNickRoute
   WatchIdRoute: typeof WatchIdRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -740,6 +753,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminCommentReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -804,6 +824,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileNickRoute: ProfileNickRoute,
   WatchIdRoute: WatchIdRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
