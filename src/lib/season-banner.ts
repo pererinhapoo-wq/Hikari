@@ -21,7 +21,10 @@ export interface SeasonBannerInput {
   fetchJikanPictures?: (malId: number) => Promise<string[]>;
 }
 
-export type AlternativeBannerSource = "kitsu-season" | "jikan-season";
+export type AlternativeBannerSource =
+  | "kitsu-season"
+  | "jikan-season"
+  | "livechart-season";
 
 export interface ResolvedSeasonBanner {
   url: string | null;
@@ -257,6 +260,46 @@ export const SPECIFIC_SEASON_MOBILE_ALTERNATIVES: Record<
     initialObjectPosition: "50% 24%",
     expectedYear: 1999,
     format: "TV",
+  },
+  // Blue Box Season 2 (AniList ID 189123 / MAL ID 61323)
+  // Imagem LiveChart na máxima resolução disponível: 708x1000 (proporção 708 / 1000)
+  "189123": {
+    url: "https://u.livechart.me/anime_visuals/local_version/18706/image/6db75602c765ece7e3d0b85e58d2b787.webp/large.jpg",
+    aspect: 708 / 1000,
+    source: "livechart-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2026,
+    format: "TV",
+  },
+  // Bakemonogatari (AniList ID 5081 / MAL ID 5081)
+  // Imagem LiveChart na máxima resolução disponível: 354x500 (proporção 354 / 500)
+  "5081": {
+    url: "https://u.livechart.me/anime/visual/872/image/3585d1feda07bf144a7c440e4c42f387.jpg/large.jpg",
+    aspect: 354 / 500,
+    source: "livechart-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2009,
+    format: "TV",
+  },
+  // STEEL BALL RUN JoJo's Bizarre Adventure 2nd - 3rd STAGE (AniList ID 210482 / MAL ID 61469)
+  // Imagem LiveChart na máxima resolução disponível: 709x1000 (proporção 709 / 1000)
+  "210482": {
+    url: "https://u.livechart.me/anime_visuals/local_version/15960/image/69eee67f236746a2b8fad109b6bb5835.webp/large.jpg",
+    aspect: 709 / 1000,
+    source: "livechart-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2026,
+    format: "ONA",
+  },
+  // Witch on the Holy Night (Mahoutsukai no Yoru) (AniList ID 143103 / MAL ID 50668)
+  // Imagem LiveChart na máxima resolução disponível: 800x1000 (proporção 800 / 1000)
+  "143103": {
+    url: "https://u.livechart.me/anime_visuals/local_version/18871/image/02caff14b683eab2a511d928841e55db.webp/large.jpg",
+    aspect: 800 / 1000,
+    source: "livechart-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2026,
+    format: "MOVIE",
   },
 };
 
