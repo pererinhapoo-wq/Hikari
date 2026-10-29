@@ -226,7 +226,23 @@ type AniMedia = {
       relationType?: string | null;
       node?: {
         id: number;
+        idMal?: number | null;
+        type?: string | null;
+        format?: string | null;
+        status?: string | null;
+        episodes?: number | null;
+        seasonYear?: number | null;
+        startDate?: {
+          year?: number | null;
+          month?: number | null;
+          day?: number | null;
+        } | null;
         title?: AniTitle | null;
+        coverImage?: {
+          extraLarge?: string | null;
+          large?: string | null;
+        } | null;
+        bannerImage?: string | null;
       } | null;
     }[] | null;
   } | null;
@@ -2170,6 +2186,17 @@ async function fetchAniMediaByMalId(
               relationType
               node {
                 id
+                idMal
+                type
+                format
+                status
+                episodes
+                seasonYear
+                startDate {
+                  year
+                  month
+                  day
+                }
                 title {
                   romaji
                   english
@@ -2191,70 +2218,483 @@ async function fetchAniMediaByMalId(
   return result.Media;
 }
 
+const SEASON_NAV_SERIES_FORMATS = new Set(["TV", "TV_SHORT", "ONA"]);
+
+type SeasonGraphEdge = {
+  relationType?: string | null;
+  node?: {
+    id: number;
+    idMal?: number | null;
+    type?: string | null;
+    format?: string | null;
+    status?: string | null;
+    episodes?: number | null;
+    seasonYear?: number | null;
+    startDate?: {
+      year?: number | null;
+      month?: number | null;
+      day?: number | null;
+    } | null;
+    title?: AniTitle | null;
+  } | null;
+};
+
+type SeasonGraphNode = {
+  id: number;
+  type?: string | null;
+  format?: string | null;
+  status?: string | null;
+  episodes?: number | null;
+  seasonYear?: number | null;
+  startDate?: {
+    year?: number | null;
+    month?: number | null;
+    day?: number | null;
+  } | null;
+  title?: AniTitle | null;
+  edges: SeasonGraphEdge[];
+};
+
+function isChronologicalAnimeEdge(
+  edge: SeasonGraphEdge | null | undefined,
+): edge is {
+  relationType: "PREQUEL" | "SEQUEL";
+  node: NonNullable<SeasonGraphEdge["node"]>;
+} {
+  if (!edge || !edge.node?.id || !Number.isFinite(edge.node.id)) {
+    return false;
+  }
+  if (edge.relationType !== "PREQUEL" && edge.relationType !== "SEQUEL") {
+    return false;
+  }
+  if (edge.node.type && edge.node.type !== "ANIME") {
+    return false;
+  }
+  return true;
+}
+
+function getSeasonNodeDateKey(node: SeasonGraphNode): number {
+  const year = node.startDate?.year ?? node.seasonYear ?? null;
+  if (!year || !Number.isFinite(year)) {
+    return 99999999;
+  }
+  const month =
+    node.startDate?.month &&
+    node.startDate.month >= 1 &&
+    node.startDate.month <= 12
+      ? node.startDate.month
+      : 13;
+  const day =
+    node.startDate?.day && node.startDate.day >= 1 && node.startDate.day <= 31
+      ? node.startDate.day
+      : 32;
+  return year * 10000 + month * 100 + day;
+}
+
+function edgeContradictsReleaseDate(
+  earlier: SeasonGraphNode,
+  later: SeasonGraphNode,
+): boolean {
+  const earlierYear = earlier.startDate?.year ?? earlier.seasonYear ?? null;
+  const laterYear = later.startDate?.year ?? later.seasonYear ?? null;
+  if (!earlierYear || !laterYear) return false;
+  if (earlierYear !== laterYear) return earlierYear > laterYear;
+
+  const earlierMonth = earlier.startDate?.month ?? null;
+  const laterMonth = later.startDate?.month ?? null;
+  if (!earlierMonth || !laterMonth) return false;
+  if (earlierMonth !== laterMonth) return earlierMonth > laterMonth;
+
+  const earlierDay = earlier.startDate?.day ?? null;
+  const laterDay = later.startDate?.day ?? null;
+  if (!earlierDay || !laterDay) return false;
+  return earlierDay > laterDay;
+}
+
+function canReachSeasonNode(
+  startId: number,
+  goalId: number,
+  adj: Map<number, Set<number>>,
+): boolean {
+  if (startId === goalId) return true;
+  const visited = new Set<number>([startId]);
+  const queue = [startId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const neighbors = adj.get(current);
+    if (!neighbors) continue;
+    for (const next of neighbors) {
+      if (next === goalId) return true;
+      if (!visited.has(next)) {
+        visited.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return false;
+}
+
+async function fetchAniSeasonNodesBatch(
+  ids: number[],
+): Promise<SeasonGraphNode[]> {
+  const validIds = Array.from(
+    new Set(ids.filter((id) => Number.isInteger(id) && id > 0)),
+  );
+  if (validIds.length === 0) return [];
+
+  const chunks: number[][] = [];
+  for (let i = 0; i < validIds.length; i += 10) {
+    chunks.push(validIds.slice(i, i + 10));
+  }
+
+  const collected: SeasonGraphNode[] = [];
+
+  for (const chunk of chunks) {
+    const selections = chunk
+      .map(
+        (id, idx) => `
+        m${idx}: Media(id: ${id}, type: ANIME) {
+          id
+          type
+          format
+          status
+          episodes
+          seasonYear
+          startDate {
+            year
+            month
+            day
+          }
+          title {
+            romaji
+            english
+          }
+          relations {
+            edges {
+              relationType
+              node {
+                id
+                type
+                format
+                status
+                episodes
+                seasonYear
+                startDate {
+                  year
+                  month
+                  day
+                }
+                title {
+                  romaji
+                  english
+                }
+              }
+            }
+          }
+        }`,
+      )
+      .join("\n");
+
+    const response = await anilistGraphQL<
+      Record<
+        string,
+        | {
+            id: number;
+            type?: string | null;
+            format?: string | null;
+            status?: string | null;
+            episodes?: number | null;
+            seasonYear?: number | null;
+            startDate?: {
+              year?: number | null;
+              month?: number | null;
+              day?: number | null;
+            } | null;
+            title?: AniTitle | null;
+            relations?: { edges?: SeasonGraphEdge[] | null } | null;
+          }
+        | null
+      >
+    >(`query SeasonGraphBatch {\n${selections}\n}`);
+
+    for (let idx = 0; idx < chunk.length; idx += 1) {
+      const entry = response[`m${idx}`];
+      if (!entry?.id) continue;
+      collected.push({
+        id: entry.id,
+        type: entry.type,
+        format: entry.format,
+        status: entry.status,
+        episodes: entry.episodes,
+        seasonYear: entry.seasonYear,
+        startDate: entry.startDate,
+        title: entry.title,
+        edges: (entry.relations?.edges ?? []).filter(Boolean) as SeasonGraphEdge[],
+      });
+    }
+  }
+
+  return collected;
+}
+
+function orderFranchiseSeasonNodes(
+  allNodes: Map<number, SeasonGraphNode>,
+  keptNodes: SeasonGraphNode[],
+): SeasonGraphNode[] {
+  if (keptNodes.length <= 1) return keptNodes;
+
+  const fullAdj = new Map<number, Set<number>>();
+  for (const id of allNodes.keys()) {
+    fullAdj.set(id, new Set());
+  }
+
+  const candidateEdges: Array<[number, number]> = [];
+  for (const source of allNodes.values()) {
+    for (const edge of source.edges) {
+      if (!isChronologicalAnimeEdge(edge)) continue;
+      const targetId = edge.node.id;
+      if (!allNodes.has(targetId) || targetId === source.id) continue;
+
+      if (edge.relationType === "SEQUEL") {
+        candidateEdges.push([source.id, targetId]);
+      } else {
+        candidateEdges.push([targetId, source.id]);
+      }
+    }
+  }
+
+  for (const [fromId, toId] of candidateEdges) {
+    const fromNode = allNodes.get(fromId);
+    const toNode = allNodes.get(toId);
+    if (!fromNode || !toNode) continue;
+    if (edgeContradictsReleaseDate(fromNode, toNode)) continue;
+    if (canReachSeasonNode(toId, fromId, fullAdj)) continue;
+    fullAdj.get(fromId)!.add(toId);
+  }
+
+  const keptIds = new Set(keptNodes.map((n) => n.id));
+  const keptAdj = new Map<number, Set<number>>();
+  const inDegree = new Map<number, number>();
+  for (const node of keptNodes) {
+    keptAdj.set(node.id, new Set());
+    inDegree.set(node.id, 0);
+  }
+
+  for (const node of keptNodes) {
+    const visited = new Set<number>([node.id]);
+    const queue = [node.id];
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      for (const next of fullAdj.get(curr) ?? []) {
+        if (visited.has(next)) continue;
+        visited.add(next);
+        queue.push(next);
+        if (keptIds.has(next) && next !== node.id) {
+          const neighbors = keptAdj.get(node.id)!;
+          if (!neighbors.has(next)) {
+            neighbors.add(next);
+            inDegree.set(next, (inDegree.get(next) ?? 0) + 1);
+          }
+        }
+      }
+    }
+  }
+
+  const compareNodes = (a: SeasonGraphNode, b: SeasonGraphNode) =>
+    getSeasonNodeDateKey(a) - getSeasonNodeDateKey(b) || a.id - b.id;
+
+  const ready = keptNodes
+    .filter((node) => (inDegree.get(node.id) ?? 0) === 0)
+    .sort(compareNodes);
+
+  const ordered: SeasonGraphNode[] = [];
+  const placed = new Set<number>();
+
+  while (ready.length > 0) {
+    const current = ready.shift()!;
+    if (placed.has(current.id)) continue;
+    placed.add(current.id);
+    ordered.push(current);
+
+    for (const neighborId of keptAdj.get(current.id) ?? []) {
+      const nextDeg = (inDegree.get(neighborId) ?? 0) - 1;
+      inDegree.set(neighborId, nextDeg);
+      if (nextDeg === 0 && !placed.has(neighborId)) {
+        const neighborNode = allNodes.get(neighborId);
+        if (neighborNode) {
+          ready.push(neighborNode);
+          ready.sort(compareNodes);
+        }
+      }
+    }
+  }
+
+  if (ordered.length < keptNodes.length) {
+    const remaining = keptNodes
+      .filter((node) => !placed.has(node.id))
+      .sort(compareNodes);
+    ordered.push(...remaining);
+  }
+
+  return ordered;
+}
+
 async function buildSeasonNavigation(
   media: AniMedia,
 ): Promise<SeasonNavigation> {
-  const navKey = `season-nav:v2:${media.id}`;
+  const navKey = `season-nav:v3:${media.id}`;
   const cached = fromCache<SeasonNavigation>(navKey);
   if (cached) {
     return cached;
   }
 
-  const current: SeasonNavigationItem = {
-    id: String(media.id),
-    title:
-      media.title?.english ??
-      media.title?.romaji ??
-      undefined,
+  const rootEdges = (media.relations?.edges ?? []).filter(
+    Boolean,
+  ) as SeasonGraphEdge[];
+
+  const nodesById = new Map<number, SeasonGraphNode>();
+  const fetchedIds = new Set<number>([media.id]);
+
+  nodesById.set(media.id, {
+    id: media.id,
+    type: "ANIME",
+    format: media.format,
+    status: media.status,
+    episodes: media.episodes,
+    seasonYear: media.seasonYear,
+    startDate: media.startDate,
+    title: media.title,
+    edges: rootEdges,
+  });
+
+  const enqueueNeighbors = (edges: SeasonGraphEdge[]): number[] => {
+    const nextIds: number[] = [];
+    for (const edge of edges) {
+      if (!isChronologicalAnimeEdge(edge)) continue;
+      const neighbor = edge.node;
+      if (!nodesById.has(neighbor.id)) {
+        nodesById.set(neighbor.id, {
+          id: neighbor.id,
+          type: neighbor.type ?? "ANIME",
+          format: neighbor.format,
+          status: neighbor.status,
+          episodes: neighbor.episodes,
+          seasonYear: neighbor.seasonYear,
+          startDate: neighbor.startDate,
+          title: neighbor.title,
+          edges: [],
+        });
+      }
+      if (
+        !fetchedIds.has(neighbor.id) &&
+        neighbor.status !== "NOT_YET_RELEASED" &&
+        neighbor.status !== "CANCELLED"
+      ) {
+        nextIds.push(neighbor.id);
+      }
+    }
+    return nextIds;
   };
 
-  const findRelation = (
-    source: AniMedia,
-    type: "PREQUEL" | "SEQUEL",
-  ) =>
-    (source.relations?.edges ?? []).find(
-      (relation) =>
-        relation.relationType === type &&
-        Boolean(relation.node?.id),
-    )?.node;
+  let frontier = Array.from(new Set(enqueueNeighbors(rootEdges)));
+  const MAX_ROUNDS = 12;
+  const MAX_NODES = 48;
 
-  const directPrequel = findRelation(media, "PREQUEL");
-  const directSequel = findRelation(media, "SEQUEL");
+  for (
+    let round = 0;
+    round < MAX_ROUNDS && frontier.length > 0 && fetchedIds.size < MAX_NODES;
+    round += 1
+  ) {
+    const remainingBudget = MAX_NODES - fetchedIds.size;
+    const toFetch = frontier.slice(0, remainingBudget);
+    for (const id of toFetch) {
+      fetchedIds.add(id);
+    }
 
-  const previous: SeasonNavigationItem[] = [];
-  const next: SeasonNavigationItem[] = [];
+    try {
+      const fetchedNodes = await fetchAniSeasonNodesBatch(toFetch);
+      const nextFrontierSet = new Set<number>();
 
-  if (directPrequel?.id) {
-    previous.push({
-      id: String(directPrequel.id),
-      title:
-        directPrequel.title?.english ??
-        directPrequel.title?.romaji ??
-        undefined,
+      for (const fetchedNode of fetchedNodes) {
+        nodesById.set(fetchedNode.id, fetchedNode);
+        for (const neighborId of enqueueNeighbors(fetchedNode.edges)) {
+          if (!fetchedIds.has(neighborId)) {
+            nextFrontierSet.add(neighborId);
+          }
+        }
+      }
+
+      frontier = Array.from(nextFrontierSet);
+    } catch {
+      break;
+    }
+  }
+
+  const releasedNodes = Array.from(nodesById.values()).filter(
+    (node) =>
+      node.id === media.id ||
+      (node.status !== "NOT_YET_RELEASED" &&
+        node.status !== "CANCELLED" &&
+        node.format !== "MUSIC"),
+  );
+
+  const isRootSeries =
+    !media.format || SEASON_NAV_SERIES_FORMATS.has(media.format);
+  const seriesNodes = releasedNodes.filter(
+    (node) => !node.format || SEASON_NAV_SERIES_FORMATS.has(node.format),
+  );
+
+  let keptNodes: SeasonGraphNode[];
+  if (seriesNodes.length >= 2) {
+    keptNodes = isRootSeries
+      ? seriesNodes
+      : seriesNodes.some((n) => n.id === media.id)
+        ? seriesNodes
+        : [...seriesNodes, nodesById.get(media.id)!];
+  } else {
+    keptNodes = releasedNodes;
+  }
+
+  const orderedNodes = orderFranchiseSeasonNodes(nodesById, keptNodes);
+
+  const items: SeasonNavigationItem[] = orderedNodes.map((node) => ({
+    id: String(node.id),
+    title: node.title?.english ?? node.title?.romaji ?? undefined,
+  }));
+
+  for (let i = 0; i < orderedNodes.length; i += 1) {
+    const targetNode = orderedNodes[i];
+    const targetIsSeries =
+      !targetNode.format || SEASON_NAV_SERIES_FORMATS.has(targetNode.format);
+    if (targetNode.id !== media.id && targetIsSeries !== isRootSeries) {
+      continue;
+    }
+    toCache(`season-nav:v3:${targetNode.id}`, {
+      items,
+      previous: i > 0 ? items[i - 1] : undefined,
+      next: i < items.length - 1 ? items[i + 1] : undefined,
     });
   }
 
-  if (directSequel?.id) {
-    next.push({
-      id: String(directSequel.id),
-      title:
-        directSequel.title?.english ??
-        directSequel.title?.romaji ??
-        undefined,
-    });
-  }
-
-  const result: SeasonNavigation = {
-    items: [
-      ...previous,
-      current,
-      ...next,
-    ],
-    previous: previous[0],
-    next: next[0],
+  const currentIdx = orderedNodes.findIndex((n) => n.id === media.id);
+  const fallbackResult: SeasonNavigation = {
+    items:
+      items.length > 0
+        ? items
+        : [
+            {
+              id: String(media.id),
+              title: media.title?.english ?? media.title?.romaji ?? undefined,
+            },
+          ],
+    previous: currentIdx > 0 ? items[currentIdx - 1] : undefined,
+    next:
+      currentIdx >= 0 && currentIdx < items.length - 1
+        ? items[currentIdx + 1]
+        : undefined,
   };
 
-  return toCache(navKey, result);
+  return fromCache<SeasonNavigation>(navKey) ?? toCache(navKey, fallbackResult);
 }
 
 function mapAniFull(
@@ -4709,7 +5149,7 @@ export const fetchAnimeDetail =
         }
 
         const key =
-          `detail:v4:${id}`;
+          `detail:v5:${id}`;
 
         const cached =
           fromCache<Anime>(
@@ -4999,6 +5439,17 @@ export const fetchAnimeDetail =
                       relationType
                       node {
                         id
+                        idMal
+                        type
+                        format
+                        status
+                        episodes
+                        seasonYear
+                        startDate {
+                          year
+                          month
+                          day
+                        }
                         title {
                           romaji
                           english

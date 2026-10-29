@@ -242,7 +242,6 @@ function AnimePage() {
       ? anime.studios
       : (activeExtraCredits?.studios ?? []);
 
-  const [seasonsOpen, setSeasonsOpen] = useState(false);
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [isListToggling, setIsListToggling] = useState(false);
   const [isWatchPressing, setIsWatchPressing] = useState(false);
@@ -662,6 +661,11 @@ function AnimePage() {
           50% { transform: scale(0.88); }
           100% { transform: scale(1); }
         }
+        @keyframes episodeTapPulse {
+          0% { transform: scale(1); }
+          45% { transform: scale(0.982); }
+          100% { transform: scale(1); }
+        }
       `}</style>
 
       {/* HERO */}
@@ -1014,57 +1018,10 @@ function AnimePage() {
 
       {/* TEMPORADAS */}
       {seasonNavigation.length > 1 && (
-        <section className="mt-8">
-          <div className="relative w-[240px] max-w-full">
-            <button
-              type="button"
-              onClick={() => setSeasonsOpen((open) => !open)}
-              className="flex w-full items-center justify-between rounded-xl border border-purple-500/25 bg-[#0f0d18] px-3.5 py-2.5 text-left shadow-sm transition-all hover:border-purple-500/50 hover:bg-[#161326] cursor-pointer"
-              aria-expanded={seasonsOpen}
-            >
-              <span className="font-display text-sm font-semibold tracking-tight text-zinc-100">
-                Temporadas
-              </span>
-
-              <ChevronDown
-                className={`size-4 text-purple-400 transition-transform duration-200 ${
-                  seasonsOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-
-            {seasonsOpen && (
-              <div className="absolute left-0 right-0 z-30 mt-1.5 overflow-hidden rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1.5 shadow-2xl backdrop-blur-md">
-                {seasonNavigation.map((season, index) => {
-                  const selected = season.id === anime.id;
-                  const seasonName =
-                    season.label ??
-                    season.title ??
-                    `Temporada ${index + 1}`;
-
-                  return (
-                    <Link
-                      key={season.id}
-                      to="/anime/$id"
-                      params={{ id: season.id }}
-                      onClick={() => setSeasonsOpen(false)}
-                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs leading-snug transition-colors ${
-                        selected
-                          ? "bg-purple-950/70 font-semibold text-purple-200 border border-purple-500/30"
-                          : "text-zinc-300 hover:bg-white/5 hover:text-white"
-                      }`}
-                    >
-                      <span>{seasonName}</span>
-                      {selected && (
-                        <Check className="ml-2 size-3.5 shrink-0 text-purple-400" />
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </section>
+        <SeasonSelector
+          seasons={seasonNavigation}
+          currentAnimeId={anime.id}
+        />
       )}
 
       {/* EPISÓDIOS (ACIMA DO ELENCO) */}
@@ -1202,6 +1159,380 @@ function AnimePage() {
   );
 }
 
+type SeasonNavItem = {
+  id: string;
+  label?: string;
+  title?: string;
+};
+
+function prefersReducedMotionNow(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function SeasonSelector({
+  seasons,
+  currentAnimeId,
+}: {
+  seasons: SeasonNavItem[];
+  currentAnimeId: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isRendered, setIsRendered] = useState(false);
+  const [isEntered, setIsEntered] = useState(false);
+  const [pendingSeasonId, setPendingSeasonId] = useState<string | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const openRafRef = useRef<number | null>(null);
+
+  const clearTimers = useCallback(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    if (openRafRef.current !== null) {
+      window.cancelAnimationFrame(openRafRef.current);
+      openRafRef.current = null;
+    }
+  }, []);
+
+  const openDropdown = useCallback(() => {
+    clearTimers();
+    setIsOpen(true);
+    setIsRendered(true);
+
+    if (prefersReducedMotionNow()) {
+      setIsEntered(true);
+      return;
+    }
+
+    openRafRef.current = window.requestAnimationFrame(() => {
+      openRafRef.current = window.requestAnimationFrame(() => {
+        setIsEntered(true);
+        openRafRef.current = null;
+      });
+    });
+  }, [clearTimers]);
+
+  const closeDropdown = useCallback(
+    (restoreFocus = false) => {
+      clearTimers();
+      setIsOpen(false);
+      setIsEntered(false);
+
+      if (restoreFocus) {
+        triggerRef.current?.focus();
+      }
+
+      if (prefersReducedMotionNow()) {
+        setIsRendered(false);
+        return;
+      }
+
+      closeTimerRef.current = window.setTimeout(() => {
+        setIsRendered(false);
+        closeTimerRef.current = null;
+      }, 155);
+    },
+    [clearTimers],
+  );
+
+  const toggleDropdown = useCallback(() => {
+    if (isOpen) {
+      closeDropdown();
+    } else {
+      openDropdown();
+    }
+  }, [isOpen, closeDropdown, openDropdown]);
+
+  useEffect(() => clearTimers, [clearTimers]);
+
+  useEffect(() => {
+    setPendingSeasonId(null);
+  }, [currentAnimeId]);
+
+  const activeSeasonId =
+    pendingSeasonId && seasons.some((s) => s.id === pendingSeasonId)
+      ? pendingSeasonId
+      : currentAnimeId;
+
+  const activeIndex = useMemo(() => {
+    const idx = seasons.findIndex((s) => s.id === activeSeasonId);
+    return idx >= 0 ? idx : 0;
+  }, [seasons, activeSeasonId]);
+
+  const activeSeason = seasons[activeIndex] ?? seasons[0];
+  const activeSeasonTitle =
+    activeSeason?.label ??
+    activeSeason?.title ??
+    `Temporada ${activeIndex + 1}`;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (
+        target &&
+        containerRef.current &&
+        !containerRef.current.contains(target)
+      ) {
+        closeDropdown();
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeDropdown(true);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, closeDropdown]);
+
+  useEffect(() => {
+    if (!isRendered) return;
+    const listEl = listRef.current;
+    if (!listEl) return;
+
+    const nodes = listEl.querySelectorAll<HTMLElement>("[data-season-option]");
+    let activeEl: HTMLElement | null = null;
+    for (let i = 0; i < nodes.length; i += 1) {
+      if (nodes[i].dataset.seasonOption === activeSeasonId) {
+        activeEl = nodes[i];
+        break;
+      }
+    }
+    if (!activeEl) return;
+
+    const itemTop = activeEl.offsetTop;
+    const itemBottom = itemTop + activeEl.offsetHeight;
+    const viewTop = listEl.scrollTop;
+    const viewBottom = viewTop + listEl.clientHeight;
+
+    if (itemTop < viewTop) {
+      listEl.scrollTop = Math.max(0, itemTop - 6);
+    } else if (itemBottom > viewBottom) {
+      listEl.scrollTop = itemBottom - listEl.clientHeight + 6;
+    }
+  }, [isRendered, activeSeasonId]);
+
+  return (
+    <section
+      aria-label="Seletor de temporadas"
+      className={cn(
+        "relative mt-8 w-full max-w-full sm:w-fit",
+        isRendered ? "z-30" : "z-10",
+      )}
+    >
+      <div
+        ref={containerRef}
+        className="relative w-full max-w-[22rem] sm:w-auto sm:min-w-[19.5rem] sm:max-w-[24rem]"
+      >
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={toggleDropdown}
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-controls="hikari-season-selector-menu"
+          className={cn(
+            "group/trigger flex w-full items-center gap-3 rounded-md border bg-gradient-to-b px-3.5 py-2.5 text-left select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80",
+            "motion-safe:transition-[border-color,box-shadow,background-color,transform] motion-safe:duration-200 motion-safe:ease-out motion-safe:active:scale-[0.99] motion-reduce:transition-none",
+            isOpen
+              ? "border-purple-400/55 from-[#19142d] to-[#100d1d] shadow-[0_10px_28px_rgba(0,0,0,0.58),0_0_20px_rgba(168,85,247,0.2)]"
+              : "border-purple-500/25 from-[#141124]/95 to-[#0d0b18]/95 shadow-[0_6px_20px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-purple-400/45 hover:from-[#18142b]/95 hover:to-[#100d1c]/95 hover:shadow-[0_8px_24px_rgba(0,0,0,0.5),0_0_16px_rgba(168,85,247,0.14)]",
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              "h-7 w-1 shrink-0 rounded-xs bg-gradient-to-b from-purple-400 to-purple-600 transition-shadow duration-200",
+              isOpen
+                ? "shadow-[0_0_12px_rgba(192,132,252,0.75)]"
+                : "shadow-[0_0_8px_rgba(168,85,247,0.45)]",
+            )}
+          />
+
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5 text-[11px] leading-none">
+              <span className="font-semibold tracking-wider text-purple-300/90 uppercase tabular-nums">
+                Temporada {activeIndex + 1}
+              </span>
+              <span aria-hidden="true" className="text-purple-400/40">
+                ·
+              </span>
+              <span className="font-medium tabular-nums text-zinc-400">
+                {seasons.length} disponíveis
+              </span>
+            </span>
+
+            <span
+              title={activeSeasonTitle}
+              className="mt-1 block truncate font-display text-sm sm:text-[15px] font-semibold leading-snug text-zinc-100 motion-safe:transition-colors motion-safe:duration-200 group-hover/trigger:text-white"
+            >
+              {activeSeasonTitle}
+            </span>
+          </span>
+
+          <span
+            aria-hidden="true"
+            className={cn(
+              "flex size-7 shrink-0 items-center justify-center rounded-sm border transition-colors duration-200 motion-reduce:transition-none",
+              isOpen
+                ? "border-purple-400/45 bg-purple-500/20 text-purple-200"
+                : "border-purple-500/20 bg-purple-950/35 text-purple-300/90 group-hover/trigger:border-purple-400/35 group-hover/trigger:bg-purple-900/35 group-hover/trigger:text-purple-200",
+            )}
+          >
+            <ChevronDown
+              className={cn(
+                "size-4 motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                isOpen && "rotate-180",
+              )}
+            />
+          </span>
+        </button>
+
+        {isRendered ? (
+          <div
+            id="hikari-season-selector-menu"
+            role="listbox"
+            aria-label="Lista de temporadas"
+            className={cn(
+              "absolute left-0 top-full z-40 mt-2 w-full min-w-[17rem] max-w-[min(24rem,calc(100vw-2rem))] origin-top rounded-md border border-purple-500/30 bg-[#100d1c]/98 p-1.5 shadow-[0_18px_44px_rgba(0,0,0,0.78),0_0_24px_rgba(168,85,247,0.14)] backdrop-blur-xl will-change-[opacity,transform]",
+              "motion-safe:transition-[opacity,transform] motion-reduce:transition-none",
+              isEntered
+                ? "pointer-events-auto translate-y-0 scale-100 opacity-100 motion-safe:duration-[170ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]"
+                : "pointer-events-none -translate-y-1.5 scale-[0.985] opacity-0 motion-safe:duration-[145ms] motion-safe:ease-out",
+            )}
+          >
+            <div className="mb-1 flex items-center justify-between border-b border-white/[0.06] px-2.5 pt-1 pb-1.5">
+              <span className="text-[10px] font-semibold tracking-wider text-zinc-400 uppercase">
+                Selecionar temporada
+              </span>
+              <span className="text-[10px] font-medium tabular-nums text-purple-300/80">
+                {seasons.length} temporadas
+              </span>
+            </div>
+
+            <div
+              ref={listRef}
+              className="max-h-72 space-y-1 overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar"
+            >
+              {seasons.map((season, index) => {
+                const selected = season.id === activeSeasonId;
+                const seasonName =
+                  season.label ??
+                  season.title ??
+                  `Temporada ${index + 1}`;
+                const hasCustomTitle = !/^temporada\s+\d+$/i.test(
+                  seasonName.trim(),
+                );
+
+                return (
+                  <Link
+                    key={season.id}
+                    data-season-option={season.id}
+                    role="option"
+                    aria-selected={selected}
+                    to="/anime/$id"
+                    params={{ id: season.id }}
+                    preload="intent"
+                    resetScroll={false}
+                    onClick={(e) => {
+                      if (
+                        e.metaKey ||
+                        e.altKey ||
+                        e.ctrlKey ||
+                        e.shiftKey ||
+                        e.button !== 0
+                      ) {
+                        return;
+                      }
+
+                      if (season.id === activeSeasonId) {
+                        e.preventDefault();
+                        closeDropdown();
+                        return;
+                      }
+
+                      setPendingSeasonId(season.id);
+                      closeDropdown();
+                    }}
+                    className={cn(
+                      "group/option relative flex w-full items-center gap-2.5 rounded-sm border px-2.5 py-2 text-left text-xs sm:text-[13px] select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/75",
+                      "motion-safe:transition-[background-color,border-color,color,box-shadow,transform] motion-safe:duration-200 motion-safe:ease-out motion-reduce:transition-none",
+                      selected
+                        ? "border-purple-400/40 bg-gradient-to-r from-purple-600/25 via-purple-500/15 to-purple-900/10 font-semibold text-white shadow-[0_0_14px_rgba(168,85,247,0.16),inset_0_1px_0_rgba(216,180,254,0.12)]"
+                        : "border-transparent bg-transparent font-medium text-zinc-300 hover:border-purple-500/20 hover:bg-white/[0.04] hover:text-white motion-safe:active:scale-[0.99]",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-flex size-5 shrink-0 items-center justify-center rounded-xs text-[11px] font-bold tabular-nums motion-safe:transition-[background-color,color,box-shadow] motion-safe:duration-200 motion-reduce:transition-none",
+                        selected
+                          ? "bg-purple-500 text-white shadow-[0_0_10px_rgba(168,85,247,0.5)]"
+                          : "bg-white/[0.06] text-zinc-400 group-hover/option:bg-purple-500/20 group-hover/option:text-purple-200",
+                      )}
+                    >
+                      {index + 1}
+                    </span>
+
+                    <span className="min-w-0 flex-1">
+                      <span
+                        title={seasonName}
+                        className="block truncate leading-snug"
+                      >
+                        {seasonName}
+                      </span>
+                      {hasCustomTitle ? (
+                        <span
+                          className={cn(
+                            "block text-[10px] leading-tight tabular-nums motion-safe:transition-colors motion-safe:duration-200",
+                            selected
+                              ? "font-medium text-purple-200/80"
+                              : "font-normal text-zinc-500 group-hover/option:text-zinc-400",
+                          )}
+                        >
+                          Temporada {index + 1}
+                        </span>
+                      ) : null}
+                    </span>
+
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "ml-auto flex size-5 shrink-0 items-center justify-center rounded-xs motion-safe:transition-[opacity,transform,background-color] motion-safe:duration-200 motion-safe:ease-out motion-reduce:transition-none",
+                        selected
+                          ? "scale-100 bg-purple-500/25 text-purple-200 opacity-100"
+                          : "scale-75 opacity-0",
+                      )}
+                    >
+                      <Check className="size-3.5 stroke-[2.5]" />
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+
 function EpisodeGrid({
   episodes,
   animeId,
@@ -1219,6 +1550,27 @@ function EpisodeGrid({
   cover: string;
   watchedEpisodes: string[];
 }) {
+  const [selectingId, setSelectingId] = useState<string | null>(null);
+  const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (selectTimerRef.current) {
+        clearTimeout(selectTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleEpisodeSelect = useCallback((epId: string) => {
+    setSelectingId(epId);
+    if (selectTimerRef.current) {
+      clearTimeout(selectTimerRef.current);
+    }
+    selectTimerRef.current = setTimeout(() => {
+      setSelectingId((current) => (current === epId ? null : current));
+    }, 320);
+  }, []);
+
   return (
     <div
       className="
@@ -1231,9 +1583,10 @@ function EpisodeGrid({
         sm:max-h-[34rem]
       "
     >
-      <ol className="grid gap-3 sm:grid-cols-2">
+      <ol className="grid gap-3 p-0.5 sm:grid-cols-2">
         {episodes.map((ep) => {
           const watched = watchedEpisodes.includes(ep.id);
+          const isSelecting = selectingId === ep.id;
 
           return (
             <li key={ep.id}>
@@ -1245,28 +1598,57 @@ function EpisodeGrid({
                 search={{
                   ep: ep.id,
                 }}
-                className={`group flex gap-3 rounded-xl border p-2.5 transition-all duration-200 hover:-translate-y-0.5 ${
+                preload="intent"
+                onClick={() => handleEpisodeSelect(ep.id)}
+                className={cn(
+                  "group relative flex gap-3 rounded-xl border p-2.5 select-none touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80",
+                  "motion-safe:transition-[transform,border-color,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                  "[@media(hover:hover)]:motion-safe:hover:-translate-y-0.5",
+                  "motion-safe:active:scale-[0.982] active:border-purple-400/85 active:bg-[#1c1435]/95 active:ring-1 active:ring-purple-400/45 active:shadow-[0_0_24px_rgba(168,85,247,0.38)]",
                   watched
                     ? "border-purple-500/30 bg-[#141026]/90 hover:bg-[#1a1530] hover:border-purple-500/50"
-                    : "border-purple-500/15 bg-[#0f0d18]/90 hover:border-purple-500/40 hover:bg-[#161326]"
-                } shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)]`}
+                    : "border-purple-500/15 bg-[#0f0d18]/90 hover:border-purple-500/40 hover:bg-[#161326]",
+                  "shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_20px_rgba(168,85,247,0.15)]",
+                  isSelecting &&
+                    "!border-purple-400/85 !bg-[#1c1435]/95 ring-1 ring-purple-400/45 !shadow-[0_0_24px_rgba(168,85,247,0.4)] motion-safe:animate-[episodeTapPulse_220ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none",
+                )}
               >
+                {/* Realce luminoso violeta ao selecionar */}
+                <div
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/14 via-fuchsia-500/8 to-transparent opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-active:opacity-100",
+                    isSelecting && "opacity-100",
+                  )}
+                />
+
                 {/* THUMBNAIL */}
                 <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
                   {ep.thumbnail || cover ? (
                     <img
                       src={ep.thumbnail || cover}
                       alt=""
-                      className={`size-full object-cover transition-transform duration-300 group-hover:scale-105 ${
-                        watched ? "opacity-75" : ""
-                      }`}
+                      className={cn(
+                        "size-full object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover:scale-105 motion-reduce:transition-none",
+                        watched && "opacity-75",
+                      )}
                     />
                   ) : null}
 
-                  <div className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/5" />
+                  <div className="absolute inset-0 bg-black/20 transition-colors motion-reduce:transition-none group-hover:bg-black/5" />
 
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                    <div className="flex size-9 items-center justify-center rounded-full bg-purple-600 text-white shadow-lg shadow-purple-950/60 ring-2 ring-white/20">
+                  <div
+                    className={cn(
+                      "absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 motion-reduce:transition-none group-hover:opacity-100 group-active:opacity-100",
+                      isSelecting && "opacity-100",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex size-9 items-center justify-center rounded-full bg-purple-600 text-white shadow-lg shadow-purple-950/60 ring-2 ring-white/20 motion-safe:transition-transform motion-safe:duration-200 motion-reduce:transition-none group-active:bg-purple-500 group-active:ring-purple-300/60",
+                        isSelecting && "bg-purple-500 ring-purple-300/60 motion-safe:scale-105",
+                      )}
+                    >
                       <Play className="ml-0.5 size-4 fill-current" />
                     </div>
                   </div>
@@ -1279,9 +1661,14 @@ function EpisodeGrid({
                 </div>
 
                 {/* INFORMAÇÕES */}
-                <div className="min-w-0 flex-1 py-1">
+                <div className="relative z-10 min-w-0 flex-1 py-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-bold tracking-wider text-purple-400 uppercase">
+                    <p
+                      className={cn(
+                        "text-[11px] font-bold tracking-wider text-purple-400 uppercase transition-colors duration-150 motion-reduce:transition-none group-active:text-purple-300",
+                        isSelecting && "text-purple-300",
+                      )}
+                    >
                       Episódio {ep.number}
                     </p>
 
@@ -1292,7 +1679,12 @@ function EpisodeGrid({
                     )}
                   </div>
 
-                  <p className="mt-1 line-clamp-2 text-sm font-medium leading-snug text-zinc-100 group-hover:text-purple-200 transition-colors">
+                  <p
+                    className={cn(
+                      "mt-1 line-clamp-2 text-sm font-medium leading-snug text-zinc-100 group-hover:text-purple-200 group-active:text-white transition-colors motion-reduce:transition-none",
+                      isSelecting && "text-white",
+                    )}
+                  >
                     {ep.title}
                   </p>
 
