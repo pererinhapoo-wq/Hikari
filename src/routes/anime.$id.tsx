@@ -40,6 +40,7 @@ import {
   analyzeBannerFramingAndTheme,
   hasAdminCustomBanner,
   resolveSeasonMobileBanner,
+  resolveSeasonMobileBannerSync,
   selectViewportBanner,
 } from "@/lib/season-banner";
 import { useHikariStore } from "@/lib/store";
@@ -259,7 +260,12 @@ function AnimePage() {
     [localRecord, remote],
   );
 
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.matchMedia("(max-width: 639px)").matches;
+    }
+    return false;
+  });
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 639px)");
@@ -268,13 +274,6 @@ function AnimePage() {
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
-
-  const [mobileBannerState, setMobileBannerState] = useState<{
-    forId: string;
-    url: string;
-    isAlternative: boolean;
-    initialObjectPosition: string;
-  } | null>(null);
 
   const [failedBannerUrls, setFailedBannerUrls] = useState<
     Record<string, true>
@@ -291,8 +290,82 @@ function AnimePage() {
       ? localRecord.banner.trim()
       : animeBanner;
 
+  const initialSyncBanner = useMemo(() => {
+    if (!animeId || isAdminBanner) return null;
+    const parsedAniId =
+      animeAnilistId ??
+      (/^\d+$/.test(animeId) ? Number(animeId) : undefined);
+    const parsedMalId =
+      animeMalId ??
+      (animeId.startsWith("mal-")
+        ? Number(animeId.replace("mal-", ""))
+        : undefined);
+    const parsedKitsuId =
+      animeKitsuId ??
+      (animeId.startsWith("kitsu-")
+        ? Number(animeId.replace("kitsu-", ""))
+        : undefined);
+
+    const syncResolved = resolveSeasonMobileBannerSync({
+      animeId,
+      anilistId:
+        parsedAniId && Number.isFinite(parsedAniId) ? parsedAniId : undefined,
+      malId:
+        parsedMalId && Number.isFinite(parsedMalId) ? parsedMalId : undefined,
+      kitsuId:
+        parsedKitsuId && Number.isFinite(parsedKitsuId)
+          ? parsedKitsuId
+          : undefined,
+      year: animeYear,
+      startYear: animeStartYear,
+      format: animeFormat,
+      status: animeStatus,
+      currentBanner: animeBanner,
+      currentCover: animeCover,
+      isAdminCustomBanner: isAdminBanner,
+    });
+
+    if (syncResolved?.url) {
+      return {
+        forId: animeId,
+        url: syncResolved.url,
+        isAlternative: syncResolved.isAlternative,
+        initialObjectPosition: syncResolved.initialObjectPosition,
+      };
+    }
+    return null;
+  }, [
+    animeId,
+    isAdminBanner,
+    animeAnilistId,
+    animeMalId,
+    animeKitsuId,
+    animeYear,
+    animeStartYear,
+    animeFormat,
+    animeStatus,
+    animeBanner,
+    animeCover,
+  ]);
+
+  const [mobileBannerState, setMobileBannerState] = useState<{
+    forId: string;
+    url: string;
+    isAlternative: boolean;
+    initialObjectPosition: string;
+  } | null>(() => initialSyncBanner);
+
+  const activeMobileBannerState =
+    mobileBannerState && mobileBannerState.forId === animeId
+      ? mobileBannerState
+      : initialSyncBanner;
+
   useEffect(() => {
     if (!animeId || isAdminBanner || !isMobileViewport) {
+      return;
+    }
+
+    if (activeMobileBannerState && activeMobileBannerState.forId === animeId && activeMobileBannerState.isAlternative) {
       return;
     }
 
@@ -351,6 +424,7 @@ function AnimePage() {
     animeId,
     isMobileViewport,
     isAdminBanner,
+    activeMobileBannerState,
     animeAnilistId,
     animeMalId,
     animeKitsuId,
@@ -367,7 +441,7 @@ function AnimePage() {
     isMobileViewport,
     isAdminBanner,
     baseSeasonBanner,
-    mobileBannerState,
+    mobileBannerState: activeMobileBannerState,
     failedBannerUrls,
   });
 
@@ -559,21 +633,31 @@ function AnimePage() {
           className="relative max-sm:h-[22rem] max-sm:min-[380px]:h-[24rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated"
         >
           {effectiveBannerUrl ? (
-            <img
-              src={effectiveBannerUrl}
-              alt=""
-              loading="eager"
-              decoding="async"
-              onError={() => {
-                setFailedBannerUrls((prev) =>
-                  prev[effectiveBannerUrl]
-                    ? prev
-                    : { ...prev, [effectiveBannerUrl]: true },
-                );
-              }}
-              style={{ objectPosition: bannerObjectPosition }}
-              className="size-full object-cover sm:!object-center transition-[object-position,opacity] duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
-            />
+            <picture className="block size-full">
+              {activeMobileBannerState?.url &&
+              !isAdminBanner &&
+              !failedBannerUrls[activeMobileBannerState.url] ? (
+                <source
+                  media="(max-width: 639px)"
+                  srcSet={activeMobileBannerState.url}
+                />
+              ) : null}
+              <img
+                src={effectiveBannerUrl}
+                alt=""
+                loading="eager"
+                decoding="async"
+                onError={() => {
+                  setFailedBannerUrls((prev) =>
+                    prev[effectiveBannerUrl]
+                      ? prev
+                      : { ...prev, [effectiveBannerUrl]: true },
+                  );
+                }}
+                style={{ objectPosition: bannerObjectPosition }}
+                className="size-full object-cover sm:!object-center transition-[object-position,opacity] duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
+              />
+            </picture>
           ) : (
             <div className="size-full bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
           )}

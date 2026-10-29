@@ -301,6 +301,24 @@ export const SPECIFIC_SEASON_MOBILE_ALTERNATIVES: Record<
     expectedYear: 2026,
     format: "MOVIE",
   },
+  // One Piece (AniList ID 21 / MAL ID 21 / Kitsu 12)
+  // Imagem LiveChart na máxima resolução disponível: 706x1000 (proporção 706 / 1000)
+  "21": {
+    url: "https://u.livechart.me/anime_visuals/local_version/15565/image/4fc1bf78ce8ec66cb2266427ff72a6ea.webp/large.jpg",
+    aspect: 706 / 1000,
+    source: "livechart-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 1999,
+    format: "TV",
+  },
+  "kitsu-12": {
+    url: "https://u.livechart.me/anime_visuals/local_version/15565/image/4fc1bf78ce8ec66cb2266427ff72a6ea.webp/large.jpg",
+    aspect: 706 / 1000,
+    source: "livechart-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 1999,
+    format: "TV",
+  },
 };
 
 const memoryCache = new Map<string, CacheEntry>();
@@ -1215,21 +1233,15 @@ interface KitsuItemMappingsResponse {
 }
 
 /**
- * Resolve de forma isolada a arte promocional oficial, limpa e horizontal para o banner mobile
- * da temporada exata, sem utilizar trailers, miniaturas do YouTube ou cenas de episódios:
+ * Tenta resolver sincronicamente o banner mobile sem latência de rede:
  * 1) Banner personalizado pelo administrador (prioridade absoluta).
  * 2) Alternativas registradas por ID da temporada (SPECIFIC_SEASON_MOBILE_ALTERNATIVES).
- * 3) Kitsu: tentar primeiro obter arte horizontal oficial limpa da temporada exata
- *    (1.30:1 a 3.35:1, mínimo 800x400, mapeamento 1:1, ano e formato validados).
- * 4) MyAnimeList/Jikan (`fetchJikanPictures(malId)`): arte promocional horizontal limpa da temporada
- *    (1.30:1 a 2.05:1, mínimo 580x400, rejeitando pôsteres verticais e capturas 16:9 de vídeo/PV).
- * 5) Fallback seguro: se nenhuma alternativa limpa e comprovadamente adequada for encontrada,
- *    mantém o banner original do AniList da temporada.
+ * 3) Cache síncrono em memória / sessionStorage.
+ * Retorna null se for necessária busca assíncrona (Kitsu/Jikan).
  */
-export async function resolveSeasonMobileBanner(
+export function resolveSeasonMobileBannerSync(
   input: SeasonBannerInput,
-  signal?: AbortSignal,
-): Promise<ResolvedSeasonBanner> {
+): ResolvedSeasonBanner | null {
   const fallbackUrl = input.currentBanner?.trim() || null;
 
   // 1. Banner personalizado pelo administrador: prioridade absoluta
@@ -1315,6 +1327,34 @@ export async function resolveSeasonMobileBanner(
       aspect: cached.aspect,
     };
   }
+
+  return null;
+}
+
+/**
+ * Resolve de forma isolada a arte promocional oficial, limpa e horizontal para o banner mobile
+ * da temporada exata, sem utilizar trailers, miniaturas do YouTube ou cenas de episódios:
+ * 1) Banner personalizado pelo administrador (prioridade absoluta).
+ * 2) Alternativas registradas por ID da temporada (SPECIFIC_SEASON_MOBILE_ALTERNATIVES).
+ * 3) Kitsu: tentar primeiro obter arte horizontal oficial limpa da temporada exata
+ *    (1.30:1 a 3.35:1, mínimo 800x400, mapeamento 1:1, ano e formato validados).
+ * 4) MyAnimeList/Jikan (`fetchJikanPictures(malId)`): arte promocional horizontal limpa da temporada
+ *    (1.30:1 a 2.05:1, mínimo 580x400, rejeitando pôsteres verticais e capturas 16:9 de vídeo/PV).
+ * 5) Fallback seguro: se nenhuma alternativa limpa e comprovadamente adequada for encontrada,
+ *    mantém o banner original do AniList da temporada.
+ */
+export async function resolveSeasonMobileBanner(
+  input: SeasonBannerInput,
+  signal?: AbortSignal,
+): Promise<ResolvedSeasonBanner> {
+  const syncResult = resolveSeasonMobileBannerSync(input);
+  if (syncResult) {
+    return syncResult;
+  }
+
+  const fallbackUrl = input.currentBanner?.trim() || null;
+  const expectedYear = input.startYear ?? input.year ?? null;
+  const cacheKey = buildCacheKey(input);
 
   // 2. Kitsu: tentar primeiro obter a arte horizontal oficial limpa da temporada exata
   const { candidates: kitsuCandidates, hadLookupConflict } = await (async (): Promise<{

@@ -22,6 +22,7 @@ import {
   parseImageDimensionsFromBuffer,
   probeImageDimensions,
   resolveSeasonMobileBanner,
+  resolveSeasonMobileBannerSync,
   selectViewportBanner,
   verifyBidirectionalSeasonMappings,
 } from "./season-banner.ts";
@@ -1791,6 +1792,74 @@ describe("season-banner validation & Admin priority", () => {
     assert.equal(apo2.isAlternative, true);
     assert.equal(apo2.url, "https://cdn.myanimelist.net/images/anime/1681/144365l.jpg");
     assert.equal(apo2.initialObjectPosition, "50% 24%");
+
+    // 7. One Piece (21): LiveChart visual em resolução máxima 706x1000 a 50% 24%
+    const opMobile = await resolveSeasonMobileBanner({
+      animeId: "21",
+      anilistId: 21,
+      malId: 21,
+      year: 1999,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZih.jpg",
+    });
+    assert.equal(opMobile.isAlternative, true);
+    assert.equal(
+      opMobile.url,
+      "https://u.livechart.me/anime_visuals/local_version/15565/image/4fc1bf78ce8ec66cb2266427ff72a6ea.webp/large.jpg",
+    );
+    assert.equal(opMobile.source, "livechart-season");
+    assert.equal(opMobile.initialObjectPosition, "50% 24%");
+
+    // Desktop isolation para One Piece (preserva banner oficial AniList no desktop)
+    const opDesktop = selectViewportBanner({
+      animeId: "21",
+      isMobileViewport: false,
+      isAdminBanner: false,
+      baseSeasonBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZih.jpg",
+      mobileBannerState: {
+        forId: "21",
+        url: opMobile.url!,
+        isAlternative: opMobile.isAlternative,
+        initialObjectPosition: opMobile.initialObjectPosition,
+      },
+    });
+    assert.equal(opDesktop.isUsingMobileAlternative, false);
+    assert.equal(
+      opDesktop.effectiveBannerUrl,
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZih.jpg",
+    );
+
+    // Prioridade de banner personalizado do Admin sobre o banner mobile
+    const opAdminCustom = selectViewportBanner({
+      animeId: "21",
+      isMobileViewport: true,
+      isAdminBanner: true,
+      baseSeasonBanner: "https://res.cloudinary.com/demo/image/upload/custom-onepiece-admin.jpg",
+      mobileBannerState: {
+        forId: "21",
+        url: opMobile.url!,
+        isAlternative: opMobile.isAlternative,
+        initialObjectPosition: opMobile.initialObjectPosition,
+      },
+    });
+    assert.equal(opAdminCustom.isUsingMobileAlternative, false);
+    // 8. Resolução síncrona imediata via resolveSeasonMobileBannerSync (elimina o flash inicial de zoom)
+    const opSync = resolveSeasonMobileBannerSync({
+      animeId: "21",
+      anilistId: 21,
+      malId: 21,
+      year: 1999,
+      format: "TV",
+      currentBanner: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZih.jpg",
+    });
+    assert.ok(opSync);
+    assert.equal(opSync.isAlternative, true);
+    assert.equal(
+      opSync.url,
+      "https://u.livechart.me/anime_visuals/local_version/15565/image/4fc1bf78ce8ec66cb2266427ff72a6ea.webp/large.jpg",
+    );
+    assert.equal(opSync.source, "livechart-season");
+    assert.equal(opSync.initialObjectPosition, "50% 24%");
   });
 });
 
