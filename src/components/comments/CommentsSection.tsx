@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
   Ban,
+  CheckCircle2,
   ChevronDown,
   Edit3,
   Eye,
@@ -281,6 +282,65 @@ export function CommentsSection({
   const [reportSending, setReportSending] = useState(false);
   const [spamComment, setSpamComment] = useState<Comment | null>(null);
   const [moderationSuccess, setModerationSuccess] = useState("");
+  const [moderationSuccessVisible, setModerationSuccessVisible] = useState(false);
+  const successTimerRef = useRef<number | null>(null);
+  const exitTimerRef = useRef<number | null>(null);
+
+  const clearModerationSuccess = useCallback(() => {
+    if (successTimerRef.current) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+    if (exitTimerRef.current) {
+      window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+    setModerationSuccessVisible(false);
+    setModerationSuccess("");
+  }, []);
+
+  const showModerationSuccess = useCallback((message: string) => {
+    if (successTimerRef.current) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+    if (exitTimerRef.current) {
+      window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+
+    setModerationSuccess(message);
+    setModerationSuccessVisible(false);
+
+    window.requestAnimationFrame(() => {
+      setModerationSuccessVisible(true);
+    });
+
+    successTimerRef.current = window.setTimeout(() => {
+      setModerationSuccessVisible(false);
+      exitTimerRef.current = window.setTimeout(() => {
+        setModerationSuccess("");
+      }, 350);
+    }, 4500);
+  }, []);
+
+  const handleDismissSuccess = useCallback(() => {
+    if (successTimerRef.current) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+    setModerationSuccessVisible(false);
+    exitTimerRef.current = window.setTimeout(() => {
+      setModerationSuccess("");
+    }, 350);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
+      if (exitTimerRef.current) window.clearTimeout(exitTimerRef.current);
+    };
+  }, []);
 
   /* ====================================================== */
   /* EDIÇÃO                                                  */
@@ -1036,7 +1096,7 @@ export function CommentsSection({
     setEditText(comment.content);
     setEditIsSpoiler(comment.isSpoiler);
     setError("");
-    setModerationSuccess("");
+    clearModerationSuccess();
   };
 
   const handleEdit = async () => {
@@ -1092,7 +1152,7 @@ export function CommentsSection({
       setEditingComment(null);
       setEditText("");
       setEditIsSpoiler(false);
-      setModerationSuccess("Comentário editado com sucesso.");
+      showModerationSuccess("Comentário editado com sucesso.");
     } catch (err) {
       console.error(err);
       setError(
@@ -1120,7 +1180,7 @@ export function CommentsSection({
     setMenuOpenId(null);
     setDeletingComment(comment);
     setError("");
-    setModerationSuccess("");
+    clearModerationSuccess();
   };
 
   const handleDelete = async () => {
@@ -1202,7 +1262,7 @@ export function CommentsSection({
     try {
       setModeratingId(commentId);
       setError("");
-      setModerationSuccess("");
+      clearModerationSuccess();
 
       if (action === "report") {
         setReportSending(true);
@@ -1244,15 +1304,15 @@ export function CommentsSection({
               : comment,
           ),
         );
-        setModerationSuccess("Comentário marcado como spoiler.");
+        showModerationSuccess("Comentário marcado como spoiler.");
       }
 
       if (action === "spam") {
-        setModerationSuccess("Comentário sinalizado como spam.");
+        showModerationSuccess("Comentário sinalizado como spam.");
       }
 
       if (action === "report") {
-        setModerationSuccess(
+        showModerationSuccess(
           "Denúncia enviada. Obrigado por ajudar a manter a comunidade do Hikari segura.",
         );
       }
@@ -1286,7 +1346,7 @@ export function CommentsSection({
     setReportingComment(comment);
     setReportReason("");
     setError("");
-    setModerationSuccess("");
+    clearModerationSuccess();
   };
 
   /* ====================================================== */
@@ -2109,12 +2169,29 @@ export function CommentsSection({
           )}
 
           {moderationSuccess && (
-            <div className="mt-3 rounded-xl border border-green-500/30 bg-green-950/40 p-2.5 text-xs text-green-200 flex items-center justify-between gap-2">
-              <span>{moderationSuccess}</span>
+            <div
+              role="status"
+              aria-live="polite"
+              className={cn(
+                "mt-3 flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-[#161224]/90 px-4 py-3 shadow-lg shadow-purple-950/25 backdrop-blur-md transition-all duration-300 ease-out",
+                moderationSuccessVisible
+                  ? "translate-y-0 opacity-100 scale-100"
+                  : "-translate-y-1 opacity-0 scale-[0.98] pointer-events-none",
+              )}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-purple-500/20 text-[#c084fc]">
+                  <CheckCircle2 className="size-3.5" />
+                </div>
+                <span className="text-xs sm:text-sm font-medium text-purple-100 leading-snug">
+                  {moderationSuccess}
+                </span>
+              </div>
               <button
                 type="button"
-                onClick={() => setModerationSuccess("")}
-                className="text-green-300 hover:text-white cursor-pointer"
+                onClick={handleDismissSuccess}
+                className="flex size-6 shrink-0 items-center justify-center rounded-lg text-purple-300/60 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                aria-label="Fechar notificação"
               >
                 <X className="size-3.5" />
               </button>

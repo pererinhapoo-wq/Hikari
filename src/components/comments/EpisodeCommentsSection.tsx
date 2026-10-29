@@ -10,6 +10,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
   Ban,
+  CheckCircle2,
   ChevronDown,
   Edit3,
   Eye,
@@ -221,22 +222,7 @@ export function EpisodeCommentsSection({
   const [gifOpen, setGifOpen] =
     useState(false);
 
-  useEffect(() => {
-    if (!gifOpen) {
-      return;
-    }
-
-    const previousOverflow =
-      document.body.style.overflow;
-
-    document.body.style.overflow =
-      "hidden";
-
-    return () => {
-      document.body.style.overflow =
-        previousOverflow;
-    };
-  }, [gifOpen]);
+  // Bloqueio e restauração da rolagem gerenciados de forma unificada abaixo para todas as janelas
 
   const [gifSearch, setGifSearch] =
     useState("");
@@ -336,22 +322,7 @@ export function EpisodeCommentsSection({
     };
   }, [authUser?.id, getProfileFn]);
 
-  // Tecla Escape para fechar os menus de login e de usuário
-  useEffect(() => {
-    if (!userMenuOpen && !loginOpen && !commentsLoginOpen) {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setUserMenuOpen(false);
-        setLoginOpen(false);
-        setCommentsLoginOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () =>
-      window.removeEventListener("keydown", handleKeyDown);
-  }, [userMenuOpen, loginOpen, commentsLoginOpen]);
+  // Tecla Escape gerenciada de forma unificada abaixo para menus e janelas
 
   const effectiveUserId =
     authUser?.id ?? currentUserId;
@@ -420,6 +391,66 @@ export function EpisodeCommentsSection({
 
   const [moderationSuccess, setModerationSuccess] =
     useState("");
+  const [moderationSuccessVisible, setModerationSuccessVisible] =
+    useState(false);
+  const successTimerRef = useRef<number | null>(null);
+  const exitTimerRef = useRef<number | null>(null);
+
+  const clearModerationSuccess = useCallback(() => {
+    if (successTimerRef.current) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+    if (exitTimerRef.current) {
+      window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+    setModerationSuccessVisible(false);
+    setModerationSuccess("");
+  }, []);
+
+  const showModerationSuccess = useCallback((message: string) => {
+    if (successTimerRef.current) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+    if (exitTimerRef.current) {
+      window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+
+    setModerationSuccess(message);
+    setModerationSuccessVisible(false);
+
+    window.requestAnimationFrame(() => {
+      setModerationSuccessVisible(true);
+    });
+
+    successTimerRef.current = window.setTimeout(() => {
+      setModerationSuccessVisible(false);
+      exitTimerRef.current = window.setTimeout(() => {
+        setModerationSuccess("");
+      }, 350);
+    }, 4500);
+  }, []);
+
+  const handleDismissSuccess = useCallback(() => {
+    if (successTimerRef.current) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+    setModerationSuccessVisible(false);
+    exitTimerRef.current = window.setTimeout(() => {
+      setModerationSuccess("");
+    }, 350);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
+      if (exitTimerRef.current) window.clearTimeout(exitTimerRef.current);
+    };
+  }, []);
 
   /* ====================================================== */
   /* EDIÇÃO                                                  */
@@ -446,6 +477,123 @@ export function EpisodeCommentsSection({
 
   const [deleteSending, setDeleteSending] =
     useState(false);
+
+  // Controla o bloqueio e restauração da rolagem da página quando qualquer janela estiver aberta
+  const isAnyModalOpen = Boolean(
+    gifOpen ||
+    editingComment ||
+    deletingComment ||
+    reportingComment ||
+    spamComment,
+  );
+
+  useEffect(() => {
+    if (!isAnyModalOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isAnyModalOpen]);
+
+  // Garante a restauração da rolagem caso o componente seja desmontado
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, []);
+
+  const handleCancelEdit = () => {
+    if (!editSaving) {
+      setEditingComment(null);
+      setEditText("");
+      setEditIsSpoiler(false);
+      setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    if (!deleteSending) {
+      setDeletingComment(null);
+      setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
+    }
+  };
+
+  const handleCancelReport = () => {
+    if (!reportSending) {
+      setReportingComment(null);
+      setReportReason("");
+      setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
+    }
+  };
+
+  const handleCancelSpam = () => {
+    if (!moderatingId) {
+      setSpamComment(null);
+      setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
+    }
+  };
+
+  // Tecla Escape para fechar menus, submenus e janelas de ações
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (!editSaving && editingComment) {
+          setEditingComment(null);
+          setEditText("");
+          setEditIsSpoiler(false);
+        }
+        if (!deleteSending && deletingComment) {
+          setDeletingComment(null);
+        }
+        if (!reportSending && reportingComment) {
+          setReportingComment(null);
+          setReportReason("");
+        }
+        if (!moderatingId && spamComment) {
+          setSpamComment(null);
+        }
+        if (gifOpen) {
+          setGifOpen(false);
+        }
+        setMenuOpenId(null);
+        setUserMenuOpen(false);
+        setLoginOpen(false);
+        setCommentsLoginOpen(false);
+        setSortDropdownOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () =>
+      window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    userMenuOpen,
+    loginOpen,
+    commentsLoginOpen,
+    sortDropdownOpen,
+    menuOpenId,
+    editingComment,
+    editSaving,
+    deletingComment,
+    deleteSending,
+    reportingComment,
+    reportSending,
+    spamComment,
+    moderatingId,
+    gifOpen,
+  ]);
 
   /* ====================================================== */
   /* LIMPAR PREVIEW QUANDO A IMAGEM MUDA                     */
@@ -715,6 +863,9 @@ export function EpisodeCommentsSection({
   const closeGifPicker = () => {
     setGifOpen(false);
     setGifError("");
+    setMenuOpenId(null);
+    setUserMenuOpen(false);
+    setSortDropdownOpen(false);
   };
 
   const handleSelectGif = (
@@ -1451,7 +1602,7 @@ export function EpisodeCommentsSection({
     setEditText(comment.content);
     setEditIsSpoiler(comment.isSpoiler);
     setError("");
-    setModerationSuccess("");
+    clearModerationSuccess();
   };
 
   const handleEdit =
@@ -1534,7 +1685,9 @@ export function EpisodeCommentsSection({
           false,
         );
 
-        setModerationSuccess(
+        setMenuOpenId(null);
+
+        showModerationSuccess(
           "Comentário editado com sucesso.",
         );
       } catch (err) {
@@ -1565,7 +1718,7 @@ export function EpisodeCommentsSection({
     setMenuOpenId(null);
     setDeletingComment(comment);
     setError("");
-    setModerationSuccess("");
+    clearModerationSuccess();
   };
 
   const handleDelete =
@@ -1636,6 +1789,7 @@ export function EpisodeCommentsSection({
         setDeletingComment(
           null,
         );
+        setMenuOpenId(null);
       } catch (err) {
         console.error(err);
 
@@ -1677,7 +1831,7 @@ export function EpisodeCommentsSection({
         );
 
         setError("");
-        setModerationSuccess("");
+        clearModerationSuccess();
 
         if (action === "report") {
           setReportSending(true);
@@ -1736,7 +1890,7 @@ export function EpisodeCommentsSection({
               ),
           );
 
-          setModerationSuccess(
+          showModerationSuccess(
             "Comentário marcado como spoiler.",
           );
         }
@@ -1745,7 +1899,7 @@ export function EpisodeCommentsSection({
           action ===
           "spam"
         ) {
-          setModerationSuccess(
+          showModerationSuccess(
             "Comentário sinalizado como spam.",
           );
         }
@@ -1754,7 +1908,7 @@ export function EpisodeCommentsSection({
           action ===
           "report"
         ) {
-          setModerationSuccess(
+          showModerationSuccess(
             "Denúncia enviada. Obrigado por ajudar a manter a comunidade do Hikari segura.",
           );
         }
@@ -1798,7 +1952,7 @@ export function EpisodeCommentsSection({
     setReportingComment(comment);
     setReportReason("");
     setError("");
-    setModerationSuccess("");
+    clearModerationSuccess();
   };
 
   /* ====================================================== */
@@ -2662,12 +2816,37 @@ export function EpisodeCommentsSection({
           </div>
 
           {/* =============================================== */}
-          {/* SUCESSO                                          */}
+          {/* SUCESSO DE DENÚNCIA / MODERAÇÃO                   */}
           {/* =============================================== */}
 
           {moderationSuccess && (
-            <div className="mt-4 rounded-xl border border-white/10 bg-[#141418] px-4 py-3 text-sm text-[#c084fc]">
-              {moderationSuccess}
+            <div
+              role="status"
+              aria-live="polite"
+              className={cn(
+                "mt-4 flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-[#161224]/90 px-4 py-3 shadow-lg shadow-purple-950/25 backdrop-blur-md transition-all duration-300 ease-out",
+                moderationSuccessVisible
+                  ? "translate-y-0 opacity-100 scale-100"
+                  : "-translate-y-1 opacity-0 scale-[0.98] pointer-events-none",
+              )}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-purple-500/20 text-[#c084fc]">
+                  <CheckCircle2 className="size-3.5" />
+                </div>
+                <p className="text-xs sm:text-sm font-medium text-purple-100 leading-snug">
+                  {moderationSuccess}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDismissSuccess}
+                className="flex size-6 shrink-0 items-center justify-center rounded-lg text-purple-300/60 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                aria-label="Fechar notificação"
+              >
+                <X className="size-3.5" />
+              </button>
             </div>
           )}
 
@@ -2767,6 +2946,7 @@ export function EpisodeCommentsSection({
                           setReplyingId(null);
                           setReplyText("");
                           setReplyIsSpoiler(false);
+                          setMenuOpenId(null);
                         }}
                         onSendReply={() => {
                           void handleReply(comment.id);
@@ -2845,6 +3025,7 @@ export function EpisodeCommentsSection({
                                   setReplyingId(null);
                                   setReplyText("");
                                   setReplyIsSpoiler(false);
+                                  setMenuOpenId(null);
                                 }}
                                 onSendReply={() => {
                                   void handleReply(comment.id);
@@ -2895,7 +3076,14 @@ export function EpisodeCommentsSection({
       {/* ================================================== */}
 
       {editingComment && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCancelEdit();
+            }
+          }}
+        >
 
           <div
             role="dialog"
@@ -2929,21 +3117,11 @@ export function EpisodeCommentsSection({
 
               <button
                 type="button"
-                onClick={() => {
-                  if (!editSaving) {
-                    setEditingComment(
-                      null,
-                    );
-                    setEditText("");
-                    setEditIsSpoiler(
-                      false,
-                    );
-                  }
-                }}
+                onClick={handleCancelEdit}
                 disabled={
                   editSaving
                 }
-                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg cursor-pointer"
                 aria-label="Fechar"
               >
                 <X className="size-5" />
@@ -3013,17 +3191,7 @@ export function EpisodeCommentsSection({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  if (!editSaving) {
-                    setEditingComment(
-                      null,
-                    );
-                    setEditText("");
-                    setEditIsSpoiler(
-                      false,
-                    );
-                  }
-                }}
+                onClick={handleCancelEdit}
                 disabled={
                   editSaving
                 }
@@ -3060,7 +3228,14 @@ export function EpisodeCommentsSection({
       {/* ================================================== */}
 
       {deletingComment && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCancelDelete();
+            }
+          }}
+        >
 
           <div
             role="dialog"
@@ -3094,17 +3269,11 @@ export function EpisodeCommentsSection({
 
               <button
                 type="button"
-                onClick={() => {
-                  if (!deleteSending) {
-                    setDeletingComment(
-                      null,
-                    );
-                  }
-                }}
+                onClick={handleCancelDelete}
                 disabled={
                   deleteSending
                 }
-                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg cursor-pointer"
                 aria-label="Fechar"
               >
                 <X className="size-5" />
@@ -3141,13 +3310,7 @@ export function EpisodeCommentsSection({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  if (!deleteSending) {
-                    setDeletingComment(
-                      null,
-                    );
-                  }
-                }}
+                onClick={handleCancelDelete}
                 disabled={
                   deleteSending
                 }
@@ -3183,7 +3346,14 @@ export function EpisodeCommentsSection({
       {/* ================================================== */}
 
       {reportingComment && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCancelReport();
+            }
+          }}
+        >
 
           <div
             role="dialog"
@@ -3217,17 +3387,8 @@ export function EpisodeCommentsSection({
 
               <button
                 type="button"
-                onClick={() => {
-                  if (!reportSending) {
-                    setReportingComment(
-                      null,
-                    );
-                    setReportReason(
-                      "",
-                    );
-                  }
-                }}
-                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
+                onClick={handleCancelReport}
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg cursor-pointer"
                 aria-label="Fechar"
                 disabled={
                   reportSending
@@ -3319,16 +3480,7 @@ export function EpisodeCommentsSection({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  if (!reportSending) {
-                    setReportingComment(
-                      null,
-                    );
-                    setReportReason(
-                      "",
-                    );
-                  }
-                }}
+                onClick={handleCancelReport}
                 disabled={
                   reportSending
                 }
@@ -3381,7 +3533,14 @@ export function EpisodeCommentsSection({
       {/* ================================================== */}
 
       {spamComment && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCancelSpam();
+            }
+          }}
+        >
 
           <div
             role="dialog"
@@ -3412,6 +3571,16 @@ export function EpisodeCommentsSection({
                 </p>
 
               </div>
+
+              <button
+                type="button"
+                onClick={handleCancelSpam}
+                disabled={Boolean(moderatingId)}
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg cursor-pointer"
+                aria-label="Fechar"
+              >
+                <X className="size-5" />
+              </button>
 
             </div>
 
@@ -3444,13 +3613,7 @@ export function EpisodeCommentsSection({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  if (!moderatingId) {
-                    setSpamComment(
-                      null,
-                    );
-                  }
-                }}
+                onClick={handleCancelSpam}
                 disabled={
                   Boolean(
                     moderatingId,
