@@ -1861,7 +1861,75 @@ describe("season-banner validation & Admin priority", () => {
     assert.equal(opSync.source, "livechart-season");
     assert.equal(opSync.initialObjectPosition, "50% 24%");
   });
+
+  it("globally prevents provisional desktop banner flash on mobile while async resolution is pending", () => {
+    clearSeasonBannerCache();
+    const desktopPanoramic =
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/16498-8jpFCOcDmneX.jpg";
+
+    // Mobile sem cache/estado resolvido: nunca deve exibir o banner desktop provisoriamente
+    const pendingMobile = selectViewportBanner({
+      animeId: "16498",
+      isMobileViewport: true,
+      isAdminBanner: false,
+      baseSeasonBanner: desktopPanoramic,
+      mobileBannerState: null,
+    });
+    assert.equal(pendingMobile.effectiveBannerUrl, null);
+    assert.equal(pendingMobile.isUsingMobileAlternative, false);
+
+    // Transição SPA mobile: estado ainda pertence ao anime anterior -> mantém neutro (null)
+    const staleMobile = selectViewportBanner({
+      animeId: "101348",
+      isMobileViewport: true,
+      isAdminBanner: false,
+      baseSeasonBanner:
+        "https://s4.anilist.co/file/anilistcdn/media/anime/banner/101348-desktop.jpg",
+      mobileBannerState: {
+        forId: "16498",
+        url: "https://media.kitsu.app/anime/cover_images/7442/original.png",
+        isAlternative: true,
+        initialObjectPosition: "52% 20%",
+      },
+    });
+    assert.equal(staleMobile.effectiveBannerUrl, null);
+
+    // Após confirmação assíncrona sem alternativa válida (season-default): libera o banner confirmado
+    const confirmedDefaultMobile = selectViewportBanner({
+      animeId: "154587",
+      isMobileViewport: true,
+      isAdminBanner: false,
+      baseSeasonBanner:
+        "https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-ivXNJ23SM1xB.jpg",
+      mobileBannerState: {
+        forId: "154587",
+        url: "https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-ivXNJ23SM1xB.jpg",
+        isAlternative: false,
+        initialObjectPosition: "50% 24%",
+      },
+    });
+    assert.equal(
+      confirmedDefaultMobile.effectiveBannerUrl,
+      "https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-ivXNJ23SM1xB.jpg",
+    );
+    assert.equal(confirmedDefaultMobile.isUsingMobileAlternative, false);
+
+    // skipClientCache garante paridade entre SSR e primeira passagem de hidratação
+    const uncachedSync = resolveSeasonMobileBannerSync(
+      {
+        animeId: "16498",
+        anilistId: 16498,
+        malId: 16498,
+        year: 2013,
+        format: "TV",
+        currentBanner: desktopPanoramic,
+      },
+      { skipClientCache: true },
+    );
+    assert.equal(uncachedSync, null);
+  });
 });
+
 
 
 

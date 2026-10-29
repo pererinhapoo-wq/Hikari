@@ -45,7 +45,7 @@ export interface ViewportBannerSelectionParams {
   baseSeasonBanner?: string | null;
   mobileBannerState?: {
     forId: string;
-    url: string;
+    url: string | null;
     isAlternative: boolean;
     initialObjectPosition: string;
   } | null;
@@ -606,44 +606,71 @@ export function isCleanMalHorizontalArtworkDims(
  * Garante isolamento estrito entre mobile e desktop na seleção final do banner:
  * - No desktop (`isMobileViewport === false`), preserva integralmente `baseSeasonBanner` e `"50% 24%"`.
  * - Quando há banner personalizado pelo Admin (`isAdminBanner === true`), preserva sempre `baseSeasonBanner`.
- * - No mobile, aplica a alternativa validada da temporada somente quando disponível e sem erro de carregamento.
+ * - No mobile, nunca usa `baseSeasonBanner` provisoriamente enquanto a resolução mobile estiver pendente
+ *   (`mobileBannerState == null` ou de outro `animeId`), retornando `null` (estado neutro) até a conclusão.
+ * - Concluída a resolução mobile, usa a alternativa validada da temporada (ou o banner da temporada quando
+ *   confirmado sem alternativa / em caso de falha de carregamento da imagem alternativa).
  */
 export function selectViewportBanner(
   params: ViewportBannerSelectionParams,
 ): ViewportBannerSelectionResult {
   const failed = params.failedBannerUrls ?? {};
+  const validBaseBanner =
+    params.baseSeasonBanner && !failed[params.baseSeasonBanner]
+      ? params.baseSeasonBanner
+      : null;
+
+  if (!params.isMobileViewport || params.isAdminBanner) {
+    return {
+      effectiveBannerUrl: validBaseBanner,
+      defaultObjectPosition: "50% 24%",
+      isUsingMobileAlternative: false,
+    };
+  }
+
   const mobileState = params.mobileBannerState;
-  const activeMobileAlt =
-    !params.isAdminBanner &&
-    params.isMobileViewport &&
+  const resolvedMobileState =
     Boolean(params.animeId) &&
     mobileState != null &&
-    mobileState.forId === params.animeId &&
-    mobileState.isAlternative &&
-    !failed[mobileState.url]
+    mobileState.forId === params.animeId
       ? mobileState
       : null;
 
-  const effectiveBannerUrl =
-    activeMobileAlt?.url ??
-    (params.baseSeasonBanner && !failed[params.baseSeasonBanner]
-      ? params.baseSeasonBanner
-      : null);
+  if (!resolvedMobileState) {
+    return {
+      effectiveBannerUrl: null,
+      defaultObjectPosition: "50% 24%",
+      isUsingMobileAlternative: false,
+    };
+  }
 
-  const defaultObjectPosition =
-    activeMobileAlt?.initialObjectPosition ??
-    (!params.isAdminBanner &&
-    params.isMobileViewport &&
-    mobileState != null &&
-    mobileState.forId === params.animeId &&
-    effectiveBannerUrl === mobileState.url
-      ? mobileState.initialObjectPosition
-      : "50% 24%");
+  if (resolvedMobileState.isAlternative) {
+    if (resolvedMobileState.url && !failed[resolvedMobileState.url]) {
+      return {
+        effectiveBannerUrl: resolvedMobileState.url,
+        defaultObjectPosition: resolvedMobileState.initialObjectPosition,
+        isUsingMobileAlternative: true,
+      };
+    }
+
+    return {
+      effectiveBannerUrl: validBaseBanner,
+      defaultObjectPosition: "50% 24%",
+      isUsingMobileAlternative: false,
+    };
+  }
+
+  const confirmedDefaultUrl =
+    resolvedMobileState.url && !failed[resolvedMobileState.url]
+      ? resolvedMobileState.url
+      : validBaseBanner;
 
   return {
-    effectiveBannerUrl,
-    defaultObjectPosition,
-    isUsingMobileAlternative: activeMobileAlt != null,
+    effectiveBannerUrl: confirmedDefaultUrl,
+    defaultObjectPosition: confirmedDefaultUrl
+      ? resolvedMobileState.initialObjectPosition
+      : "50% 24%",
+    isUsingMobileAlternative: false,
   };
 }
 
@@ -1241,6 +1268,7 @@ interface KitsuItemMappingsResponse {
  */
 export function resolveSeasonMobileBannerSync(
   input: SeasonBannerInput,
+  options?: { skipClientCache?: boolean },
 ): ResolvedSeasonBanner | null {
   const fallbackUrl = input.currentBanner?.trim() || null;
 
@@ -1276,13 +1304,15 @@ export function resolveSeasonMobileBannerSync(
         normalizeBannerUrl(input.currentCover));
 
   if (isSpecificAltValidForInput && specificAlt) {
-    const cacheKey = buildCacheKey(input);
-    writeCache(
-      cacheKey,
-      specificAlt.url,
-      specificAlt.aspect,
-      specificAlt.source,
-    );
+    if (!options?.skipClientCache) {
+      const cacheKey = buildCacheKey(input);
+      writeCache(
+        cacheKey,
+        specificAlt.url,
+        specificAlt.aspect,
+        specificAlt.source,
+      );
+    }
     return {
       url: specificAlt.url,
       isAlternative: true,
@@ -1305,6 +1335,10 @@ export function resolveSeasonMobileBannerSync(
       source: fallbackUrl ? "season-default" : "none",
       initialObjectPosition: "50% 24%",
     };
+  }
+
+  if (options?.skipClientCache) {
+    return null;
   }
 
   const cacheKey = buildCacheKey(input);

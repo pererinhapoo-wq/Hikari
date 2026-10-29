@@ -12,7 +12,14 @@ import {
   Share2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { AnimeCard } from "@/components/anime-card";
 import {
@@ -53,6 +60,12 @@ import {
 import { cn, youtubeIdFrom } from "@/lib/utils";
 
 const EMPTY_WATCHED_EPISODES: string[] = [];
+const MOBILE_BANNER_MEDIA_QUERY = "(max-width: 639.98px)";
+const DESKTOP_BANNER_MEDIA_QUERY = "(min-width: 640px)";
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+let clientAppHydrated = false;
 
 export const Route = createFileRoute("/anime/$id")({
   staleTime: 1000 * 60 * 5,
@@ -260,15 +273,21 @@ function AnimePage() {
     [localRecord, remote],
   );
 
+  const [isHydratedClient, setIsHydratedClient] = useState(
+    () => clientAppHydrated,
+  );
+
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
-    if (typeof window !== "undefined") {
-      return window.matchMedia("(max-width: 639px)").matches;
+    if (clientAppHydrated && typeof window !== "undefined") {
+      return window.matchMedia(MOBILE_BANNER_MEDIA_QUERY).matches;
     }
     return false;
   });
 
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 639px)");
+  useIsomorphicLayoutEffect(() => {
+    clientAppHydrated = true;
+    setIsHydratedClient(true);
+    const mq = window.matchMedia(MOBILE_BANNER_MEDIA_QUERY);
     const update = () => setIsMobileViewport(mq.matches);
     update();
     mq.addEventListener("change", update);
@@ -306,26 +325,29 @@ function AnimePage() {
         ? Number(animeId.replace("kitsu-", ""))
         : undefined);
 
-    const syncResolved = resolveSeasonMobileBannerSync({
-      animeId,
-      anilistId:
-        parsedAniId && Number.isFinite(parsedAniId) ? parsedAniId : undefined,
-      malId:
-        parsedMalId && Number.isFinite(parsedMalId) ? parsedMalId : undefined,
-      kitsuId:
-        parsedKitsuId && Number.isFinite(parsedKitsuId)
-          ? parsedKitsuId
-          : undefined,
-      year: animeYear,
-      startYear: animeStartYear,
-      format: animeFormat,
-      status: animeStatus,
-      currentBanner: animeBanner,
-      currentCover: animeCover,
-      isAdminCustomBanner: isAdminBanner,
-    });
+    const syncResolved = resolveSeasonMobileBannerSync(
+      {
+        animeId,
+        anilistId:
+          parsedAniId && Number.isFinite(parsedAniId) ? parsedAniId : undefined,
+        malId:
+          parsedMalId && Number.isFinite(parsedMalId) ? parsedMalId : undefined,
+        kitsuId:
+          parsedKitsuId && Number.isFinite(parsedKitsuId)
+            ? parsedKitsuId
+            : undefined,
+        year: animeYear,
+        startYear: animeStartYear,
+        format: animeFormat,
+        status: animeStatus,
+        currentBanner: animeBanner,
+        currentCover: animeCover,
+        isAdminCustomBanner: isAdminBanner,
+      },
+      { skipClientCache: !isHydratedClient },
+    );
 
-    if (syncResolved?.url) {
+    if (syncResolved) {
       return {
         forId: animeId,
         url: syncResolved.url,
@@ -337,6 +359,7 @@ function AnimePage() {
   }, [
     animeId,
     isAdminBanner,
+    isHydratedClient,
     animeAnilistId,
     animeMalId,
     animeKitsuId,
@@ -350,7 +373,7 @@ function AnimePage() {
 
   const [mobileBannerState, setMobileBannerState] = useState<{
     forId: string;
-    url: string;
+    url: string | null;
     isAlternative: boolean;
     initialObjectPosition: string;
   } | null>(() => initialSyncBanner);
@@ -365,7 +388,7 @@ function AnimePage() {
       return;
     }
 
-    if (activeMobileBannerState && activeMobileBannerState.forId === animeId && activeMobileBannerState.isAlternative) {
+    if (activeMobileBannerState && activeMobileBannerState.forId === animeId) {
       return;
     }
 
@@ -407,14 +430,12 @@ function AnimePage() {
       controller.signal,
     ).then((resolved) => {
       if (controller.signal.aborted) return;
-      if (resolved.url) {
-        setMobileBannerState({
-          forId: animeId,
-          url: resolved.url,
-          isAlternative: resolved.isAlternative,
-          initialObjectPosition: resolved.initialObjectPosition,
-        });
-      }
+      setMobileBannerState({
+        forId: animeId,
+        url: resolved.url,
+        isAlternative: resolved.isAlternative,
+        initialObjectPosition: resolved.initialObjectPosition,
+      });
     });
 
     return () => {
@@ -444,6 +465,23 @@ function AnimePage() {
     mobileBannerState: activeMobileBannerState,
     failedBannerUrls,
   });
+
+  const validDesktopBannerUrl =
+    baseSeasonBanner && !failedBannerUrls[baseSeasonBanner]
+      ? baseSeasonBanner
+      : null;
+
+  const validMobileSourceUrl =
+    isAdminBanner
+      ? validDesktopBannerUrl
+      : activeMobileBannerState?.url &&
+          !failedBannerUrls[activeMobileBannerState.url]
+        ? activeMobileBannerState.url
+        : null;
+
+  const shouldRenderPicture = isHydratedClient
+    ? Boolean(effectiveBannerUrl)
+    : Boolean(validMobileSourceUrl || validDesktopBannerUrl);
 
   const [framedBannerPosition, setFramedBannerPosition] = useState<{
     forUrl: string;
@@ -632,35 +670,50 @@ function AnimePage() {
           key={`banner-${anime.id}`}
           className="relative max-sm:h-[22rem] max-sm:min-[380px]:h-[24rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated"
         >
-          {effectiveBannerUrl ? (
-            <picture className="block size-full">
-              {activeMobileBannerState?.url &&
-              !isAdminBanner &&
-              !failedBannerUrls[activeMobileBannerState.url] ? (
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
+
+          {shouldRenderPicture ? (
+            <picture
+              className={cn(
+                "relative block size-full",
+                !isHydratedClient && !validMobileSourceUrl && "max-sm:hidden",
+              )}
+            >
+              {validMobileSourceUrl ? (
                 <source
-                  media="(max-width: 639px)"
-                  srcSet={activeMobileBannerState.url}
+                  media={MOBILE_BANNER_MEDIA_QUERY}
+                  srcSet={validMobileSourceUrl}
+                />
+              ) : null}
+              {validDesktopBannerUrl ? (
+                <source
+                  media={DESKTOP_BANNER_MEDIA_QUERY}
+                  srcSet={validDesktopBannerUrl}
                 />
               ) : null}
               <img
-                src={effectiveBannerUrl}
+                src={isHydratedClient ? (effectiveBannerUrl ?? undefined) : undefined}
                 alt=""
                 loading="eager"
                 decoding="async"
-                onError={() => {
+                onError={(e) => {
+                  const failedUrl =
+                    e.currentTarget.currentSrc || effectiveBannerUrl;
+                  if (!failedUrl) return;
                   setFailedBannerUrls((prev) =>
-                    prev[effectiveBannerUrl]
-                      ? prev
-                      : { ...prev, [effectiveBannerUrl]: true },
+                    prev[failedUrl] ? prev : { ...prev, [failedUrl]: true },
                   );
                 }}
-                style={{ objectPosition: bannerObjectPosition }}
+                style={{
+                  objectPosition: isHydratedClient
+                    ? bannerObjectPosition
+                    : (activeMobileBannerState?.initialObjectPosition ??
+                      "50% 24%"),
+                }}
                 className="size-full object-cover sm:!object-center transition-[object-position,opacity] duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
               />
             </picture>
-          ) : (
-            <div className="size-full bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
-          )}
+          ) : null}
 
           {/* Sombra superior suave para contraste */}
           <div className="pointer-events-none absolute inset-x-0 top-0 max-sm:h-20 sm:h-28 bg-gradient-to-b from-black/60 via-black/20 to-transparent sm:from-black/50 sm:via-black/15" />
