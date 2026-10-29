@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { resolveApiUser } from "@/lib/auth/api-session";
+import { isHikariAdmin } from "@/lib/auth/admin";
 
 const ALLOWED_REPORT_REASONS = new Set([
   "spam",
@@ -78,21 +79,36 @@ export const Route = createFileRoute("/api/comments/moderation")({
           }
 
           if (action === "spoiler") {
-            // Marca o comentário como spoiler
+            const isAdmin = Boolean(apiUser.email && isHikariAdmin(apiUser.email));
+            if (!isAdmin) {
+              return Response.json(
+                {
+                  error:
+                    "Apenas administradores do Hikari podem marcar ou desmarcar comentários como spoiler.",
+                },
+                { status: 403 },
+              );
+            }
+
+            const targetSpoilerState =
+              typeof body?.isSpoiler === "boolean" ? body.isSpoiler : true;
+
+            // Altera o estado de spoiler do comentário (somente admin)
             await sql.query(
               `
                 update "comment"
                 set
-                  "isSpoiler" = true,
+                  "isSpoiler" = $1,
                   "updatedAt" = CURRENT_TIMESTAMP
-                where "id" = $1
+                where "id" = $2
               `,
-              [commentId],
+              [targetSpoilerState, commentId],
             );
 
             return Response.json({
               success: true,
               action: "spoiler",
+              isSpoiler: targetSpoilerState,
             });
           }
 

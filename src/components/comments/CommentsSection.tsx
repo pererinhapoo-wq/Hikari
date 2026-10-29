@@ -1194,6 +1194,11 @@ export function CommentsSection({
   ) => {
     if (moderatingId) return;
 
+    if (action === "spoiler" && !isAdmin) {
+      setError("Apenas o administrador do Hikari pode marcar comentários como spoiler.");
+      return;
+    }
+
     try {
       setModeratingId(commentId);
       setError("");
@@ -2201,6 +2206,7 @@ export function CommentsSection({
                       moderating={moderatingId === root.id}
                       canEdit={Boolean(effectiveUserId && (effectiveUserId === root.userId || isAdmin))}
                       canReport={Boolean(!effectiveUserId || effectiveUserId !== root.userId)}
+                      isAdmin={isAdmin}
                       highlighted={highlightedCommentId === root.id}
                       showMedia={showMedia}
                       isNew={newCommentId === root.id}
@@ -2252,6 +2258,7 @@ export function CommentsSection({
                             moderating={moderatingId === reply.id}
                             canEdit={Boolean(effectiveUserId && (effectiveUserId === reply.userId || isAdmin))}
                             canReport={Boolean(!effectiveUserId || effectiveUserId !== reply.userId)}
+                            isAdmin={isAdmin}
                             highlighted={highlightedCommentId === reply.id}
                             showMedia={showMedia}
                             isNew={newCommentId === reply.id}
@@ -2578,6 +2585,7 @@ export function CommentCard({
   moderating,
   canEdit,
   canReport = true,
+  isAdmin = false,
   highlighted = false,
   showMedia = true,
   isNew = false,
@@ -2608,6 +2616,7 @@ export function CommentCard({
   moderating: boolean;
   canEdit: boolean;
   canReport?: boolean;
+  isAdmin?: boolean;
   highlighted?: boolean;
   showMedia?: boolean;
   isNew?: boolean;
@@ -2724,20 +2733,23 @@ export function CommentCard({
                   </>
                 )}
 
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onToggleMenu();
+                      onMarkSpoiler();
+                    }}
+                    disabled={comment.isSpoiler || moderating}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 cursor-pointer disabled:opacity-50"
+                  >
+                    <EyeOff className="size-3.5 text-amber-400" />
+                    <span>Marcar como spoiler</span>
+                  </button>
+                )}
+
                 {canReport && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onToggleMenu();
-                        onMarkSpoiler();
-                      }}
-                      disabled={comment.isSpoiler || moderating}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 cursor-pointer disabled:opacity-50"
-                    >
-                      <EyeOff className="size-3.5 text-amber-400" />
-                      <span>Sinalizar spoiler</span>
-                    </button>
                     <button
                       type="button"
                       onClick={() => {

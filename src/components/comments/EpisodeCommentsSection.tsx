@@ -1666,6 +1666,11 @@ export function EpisodeCommentsSection({
         return;
       }
 
+      if (action === "spoiler" && !isAdmin) {
+        setError("Apenas o administrador do Hikari pode marcar comentários como spoiler.");
+        return;
+      }
+
       try {
         setModeratingId(
           commentId,
@@ -2782,6 +2787,7 @@ export function EpisodeCommentsSection({
                         moderating={moderatingId === comment.id}
                         canEdit={canEdit}
                         canReport={canReport}
+                        isAdmin={isAdmin}
                         highlighted={highlightedCommentId === comment.id}
                         onRequireLogin={() => setLoginOpen(true)}
                         showMedia={showMedia}
@@ -2860,6 +2866,7 @@ export function EpisodeCommentsSection({
                                 moderating={moderatingId === reply.id}
                                 canEdit={canEditReply}
                                 canReport={canReportReply}
+                                isAdmin={isAdmin}
                                 highlighted={highlightedCommentId === reply.id}
                                 onRequireLogin={() => setLoginOpen(true)}
                                 showMedia={showMedia}
@@ -3527,10 +3534,11 @@ function CommentCard({
   onDelete,
   onMarkSpoiler,
   onReport,
-  onSpam,
+  onSpam: _onSpam,
   moderating,
   canEdit,
   canReport = true,
+  isAdmin = false,
   highlighted = false,
   onRequireLogin: _onRequireLogin,
   showMedia = true,
@@ -3558,10 +3566,11 @@ function CommentCard({
   onDelete: () => void;
   onMarkSpoiler: () => void;
   onReport: () => void;
-  onSpam: () => void;
+  onSpam?: () => void;
   moderating: boolean;
   canEdit: boolean;
   canReport?: boolean;
+  isAdmin?: boolean;
   highlighted?: boolean;
   onRequireLogin?: () => void;
   showMedia?: boolean;
@@ -3725,52 +3734,38 @@ function CommentCard({
                   </>
                 )}
 
+                {isAdmin && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      onToggleMenu();
+                      onMarkSpoiler();
+                    }}
+                    disabled={comment.isSpoiler || moderating}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <AlertTriangle className="size-3.5 shrink-0 text-amber-400" />
+                    <span>
+                      {moderating ? "Enviando..." : "Marcar como spoiler"}
+                    </span>
+                  </button>
+                )}
+
                 {canReport && (
-                  <>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        onToggleMenu();
-                        onMarkSpoiler();
-                      }}
-                      disabled={comment.isSpoiler || moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <AlertTriangle className="size-3.5 shrink-0 text-amber-400" />
-                      <span>
-                        {moderating ? "Enviando..." : "Marcar como spoiler"}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        onToggleMenu();
-                        onReport();
-                      }}
-                      disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <Flag className="size-3.5 shrink-0 text-purple-400" />
-                      <span>Denunciar comentário</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        onToggleMenu();
-                        onSpam();
-                      }}
-                      disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <Ban className="size-3.5 shrink-0 text-red-400" />
-                      <span>Marcar como spam</span>
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      onToggleMenu();
+                      onReport();
+                    }}
+                    disabled={moderating}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <Flag className="size-3.5 shrink-0 text-purple-400" />
+                    <span>Denunciar comentário</span>
+                  </button>
                 )}
               </div>
             </>
