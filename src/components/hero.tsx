@@ -4,6 +4,7 @@ import { ChevronRight, Info, Play } from "lucide-react";
 
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
+import { getAnimeLogo } from "@/lib/anime-logos";
 
 interface HeroSlideProps {
   anime: SlimAnime;
@@ -16,6 +17,13 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
     anime.titles?.native?.trim() ||
     anime.titles?.english?.trim() ||
     displayTitle(anime);
+
+  const logoConfig = getAnimeLogo(anime);
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [anime.id]);
 
   const mobileBackdrop = anime.cover || anime.banner || "";
   const desktopBackdrop = anime.banner || anime.cover || "";
@@ -112,26 +120,52 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
           sm:space-y-3.5
         "
       >
-        {/* Título Principal no Idioma Original */}
-        <div className="w-full max-w-xl">
-          <h1
-            title={originalTitle}
-            className="
-              font-display
-              text-xl
-              sm:text-2xl
-              md:text-3xl
-              lg:text-4xl
-              font-bold
-              tracking-tight
-              text-white
-              leading-snug
-              drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]
-              line-clamp-2
-            "
-          >
-            {originalTitle}
-          </h1>
+        {/* Título Principal: Logotipo Oficial ou Fallback Tipográfico */}
+        <div className="w-full max-w-xl flex flex-col items-center justify-center min-h-[50px] sm:min-h-[64px] md:min-h-[76px]">
+          {logoConfig && !logoFailed ? (
+            <div className="flex items-center justify-center w-full px-2">
+              <h1 className="sr-only">{originalTitle}</h1>
+              <img
+                src={logoConfig.src}
+                alt={logoConfig.alt || originalTitle}
+                title={originalTitle}
+                loading={priority ? "eager" : "lazy"}
+                decoding="async"
+                fetchPriority={priority ? "high" : "auto"}
+                onError={() => setLogoFailed(true)}
+                className={`
+                  w-auto
+                  object-contain
+                  select-none
+                  pointer-events-none
+                  drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)]
+                  filter
+                  transition-all
+                  duration-200
+                  ${logoConfig.sizeClasses}
+                `}
+              />
+            </div>
+          ) : (
+            <h1
+              title={originalTitle}
+              className="
+                font-display
+                text-xl
+                sm:text-2xl
+                md:text-3xl
+                lg:text-4xl
+                font-bold
+                tracking-tight
+                text-white
+                leading-snug
+                drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]
+                line-clamp-2
+              "
+            >
+              {originalTitle}
+            </h1>
+          )}
         </div>
 
         {/* Linha Equilibrada: Nota ★ · Temporada · Quantidade de Episódios */}
