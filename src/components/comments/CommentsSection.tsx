@@ -104,6 +104,90 @@ export interface CommentsSectionProps {
   isAnimeGeneral?: boolean;
 }
 
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function usePresence(open: boolean, exitMs = 140) {
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      if (prefersReducedMotion()) {
+        setVisible(true);
+        return;
+      }
+      let raf2 = 0;
+      const raf1 = window.requestAnimationFrame(() => {
+        raf2 = window.requestAnimationFrame(() => {
+          setVisible(true);
+        });
+      });
+      return () => {
+        window.cancelAnimationFrame(raf1);
+        if (raf2) window.cancelAnimationFrame(raf2);
+      };
+    }
+
+    setVisible(false);
+    if (prefersReducedMotion()) {
+      setMounted(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setMounted(false);
+    }, exitMs);
+    return () => window.clearTimeout(timer);
+  }, [open, exitMs]);
+
+  return { mounted, visible, closing: mounted && !open };
+}
+
+function useModalPresence<T>(value: T | null, exitMs = 150) {
+  const [retained, setRetained] = useState<T | null>(value);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (value !== null) {
+      setRetained(value);
+      if (prefersReducedMotion()) {
+        setVisible(true);
+        return;
+      }
+      let raf2 = 0;
+      const raf1 = window.requestAnimationFrame(() => {
+        raf2 = window.requestAnimationFrame(() => {
+          setVisible(true);
+        });
+      });
+      return () => {
+        window.cancelAnimationFrame(raf1);
+        if (raf2) window.cancelAnimationFrame(raf2);
+      };
+    }
+
+    setVisible(false);
+    if (prefersReducedMotion()) {
+      setRetained(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setRetained(null);
+    }, exitMs);
+    return () => window.clearTimeout(timer);
+  }, [value, exitMs]);
+
+  return {
+    data: value ?? retained,
+    mounted: value !== null || retained !== null,
+    visible,
+    closing: value === null && retained !== null,
+  };
+}
+
 export function CommentsSection({
   animeId,
   episodeId: rawEpisodeId,
@@ -349,6 +433,17 @@ export function CommentsSection({
     reportingComment ||
     spamComment,
   );
+
+  const sortMenu = usePresence(sortDropdownOpen, 135);
+  const commentsLoginMenu = usePresence(commentsLoginOpen, 135);
+  const userDropdownMenu = usePresence(userMenuOpen, 135);
+  const gifModal = usePresence(gifOpen, 150);
+  const editModal = useModalPresence(editingComment, 150);
+  const deleteModal = useModalPresence(deletingComment, 150);
+  const reportModal = useModalPresence(reportingComment, 150);
+  const activeEditingComment = editingComment ?? editModal.data;
+  const activeDeletingComment = deletingComment ?? deleteModal.data;
+  const activeReportingComment = reportingComment ?? reportModal.data;
 
   useEffect(() => {
     if (!isAnyModalOpen) {
@@ -1607,7 +1702,7 @@ export function CommentsSection({
                     <button
                       type="button"
                       onClick={() => setSortDropdownOpen((prev) => !prev)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-purple-500/25 bg-purple-950/30 text-purple-200 hover:bg-purple-950/60 hover:border-purple-500/40 transition-all cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-purple-500/25 bg-purple-950/30 text-purple-200 hover:bg-purple-950/60 hover:border-purple-500/40 active:[transform:scale(0.96)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
                       aria-expanded={sortDropdownOpen}
                       aria-haspopup="menu"
                     >
@@ -1620,21 +1715,29 @@ export function CommentsSection({
                       </span>
                       <ChevronDown
                         className={cn(
-                          "size-3.5 text-purple-400 transition-transform duration-200",
-                          sortDropdownOpen && "rotate-180",
+                          "size-3.5 text-purple-400 transition-transform duration-150 motion-reduce:transition-none motion-reduce:transform-none",
+                          sortDropdownOpen && "[transform:rotate(180deg)]",
                         )}
                       />
                     </button>
 
-                    {sortDropdownOpen && (
+                    {sortMenu.mounted && (
                       <>
-                        <div
-                          className="fixed inset-0 z-40"
-                          onClick={() => setSortDropdownOpen(false)}
-                        />
+                        {sortDropdownOpen && (
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setSortDropdownOpen(false)}
+                          />
+                        )}
                         <div
                           role="menu"
-                          className="absolute left-0 sm:left-auto sm:right-0 top-[calc(100%+6px)] z-50 min-w-[140px] overflow-hidden rounded-xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                          className={cn(
+                            "absolute left-0 sm:left-auto sm:right-0 top-[calc(100%+6px)] z-50 min-w-[140px] overflow-hidden rounded-xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-1 shadow-2xl origin-top-left sm:origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                            sortMenu.visible
+                              ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                              : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                            sortMenu.closing && "pointer-events-none",
+                          )}
                         >
                           {[
                             { value: "recent" as const, label: "Mais recentes" },
@@ -1650,10 +1753,10 @@ export function CommentsSection({
                                 setSortDropdownOpen(false);
                               }}
                               className={cn(
-                                "flex w-full items-center justify-between px-3 py-1.5 text-xs rounded-lg text-left transition-colors cursor-pointer",
+                                "flex w-full items-center justify-between px-3 py-1.5 text-xs rounded-lg text-left active:[transform:scale(0.985)] touch-manipulation transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer",
                                 sortBy === opt.value
                                   ? "bg-purple-600/30 font-semibold text-purple-200"
-                                  : "text-zinc-300 hover:bg-white/5 hover:text-white",
+                                  : "text-zinc-300 hover:bg-white/5 hover:text-white active:bg-white/10",
                               )}
                             >
                               <span>{opt.label}</span>
@@ -1673,7 +1776,7 @@ export function CommentsSection({
                           setCommentsLoginOpen((prev) => !prev);
                           setCommentsLoginWarning(null);
                         }}
-                        className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-purple-500/35 bg-purple-950/40 px-3 py-1 text-xs sm:text-sm font-semibold text-purple-300 hover:bg-purple-950/70 hover:text-white hover:border-purple-500/55 active:scale-95 transition-all shadow-sm cursor-pointer"
+                        className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-purple-500/35 bg-purple-950/40 px-3 py-1 text-xs sm:text-sm font-semibold text-purple-300 hover:bg-purple-950/70 hover:text-white hover:border-purple-500/55 active:[transform:scale(0.96)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none shadow-sm cursor-pointer"
                         aria-expanded={commentsLoginOpen}
                         aria-haspopup="dialog"
                       >
@@ -1681,19 +1784,27 @@ export function CommentsSection({
                         <span>Entrar</span>
                       </button>
 
-                      {commentsLoginOpen && (
+                      {commentsLoginMenu.mounted && (
                         <>
-                          <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => {
-                              setCommentsLoginOpen(false);
-                              setCommentsLoginWarning(null);
-                            }}
-                          />
+                          {commentsLoginOpen && (
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => {
+                                setCommentsLoginOpen(false);
+                                setCommentsLoginWarning(null);
+                              }}
+                            />
+                          )}
                           <div
                             role="dialog"
                             aria-label="Opções de login"
-                            className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-purple-500/30 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                            className={cn(
+                              "absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-purple-500/30 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                              commentsLoginMenu.visible
+                                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                                : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                              commentsLoginMenu.closing && "pointer-events-none",
+                            )}
                           >
                             <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
                               <span className="text-xs font-bold text-white tracking-tight">
@@ -1705,7 +1816,7 @@ export function CommentsSection({
                                   setCommentsLoginOpen(false);
                                   setCommentsLoginWarning(null);
                                 }}
-                                className="text-white/40 hover:text-white text-xs transition-colors p-1 cursor-pointer"
+                                className="rounded-md text-white/40 hover:text-white hover:bg-white/10 active:[transform:scale(0.94)] text-xs transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none p-1 cursor-pointer"
                                 aria-label="Fechar"
                               >
                                 <X className="size-3.5" />
@@ -1780,7 +1891,9 @@ export function CommentsSection({
                       <button
                         type="button"
                         onClick={() => setUserMenuOpen((prev) => !prev)}
-                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1.5 pr-2.5 text-xs text-white hover:bg-white/[0.08] hover:border-purple-500/40 transition-all cursor-pointer"
+                        aria-expanded={userMenuOpen}
+                        aria-haspopup="menu"
+                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1.5 pr-2.5 text-xs text-white hover:bg-white/[0.08] hover:border-purple-500/40 active:[transform:scale(0.97)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
                       >
                         <div className="size-6 rounded-full overflow-hidden bg-purple-950/60 ring-1 ring-purple-500/30 flex items-center justify-center text-[10px] font-bold text-purple-200">
                           {effectiveUserImage ? (
@@ -1796,22 +1909,39 @@ export function CommentsSection({
                         <span className="font-semibold max-w-[100px] truncate">
                           {effectiveUserName}
                         </span>
-                        <ChevronDown className="size-3 text-white/50" />
+                        <ChevronDown
+                          className={cn(
+                            "size-3 text-white/50 transition-transform duration-150 motion-reduce:transition-none motion-reduce:transform-none",
+                            userMenuOpen && "[transform:rotate(180deg)]",
+                          )}
+                        />
                       </button>
 
-                      {userMenuOpen && (
+                      {userDropdownMenu.mounted && (
                         <>
+                          {userMenuOpen && (
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => setUserMenuOpen(false)}
+                            />
+                          )}
                           <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => setUserMenuOpen(false)}
-                          />
-                          <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#141419] p-1.5 shadow-2xl backdrop-blur-md">
+                            role="menu"
+                            className={cn(
+                              "absolute right-0 top-[calc(100%+8px)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#141419]/95 p-1.5 shadow-2xl backdrop-blur-xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                              userDropdownMenu.visible
+                                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                                : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                              userDropdownMenu.closing && "pointer-events-none",
+                            )}
+                          >
                             {userNick && (
                               <Link
                                 to="/profile/$nick"
                                 params={{ nick: userNick }}
+                                role="menuitem"
                                 onClick={() => setUserMenuOpen(false)}
-                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
+                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
                               >
                                 <UserCircle className="size-4 text-purple-400" />
                                 <span>Meu Perfil</span>
@@ -1819,14 +1949,16 @@ export function CommentsSection({
                             )}
                             <Link
                               to="/settings"
+                              role="menuitem"
                               onClick={() => setUserMenuOpen(false)}
-                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
+                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
                             >
                               <Settings2 className="size-4 text-purple-400" />
                               <span>Configurações</span>
                             </Link>
                             <button
                               type="button"
+                              role="menuitem"
                               onClick={async () => {
                                 setUserMenuOpen(false);
                                 try {
@@ -1836,7 +1968,7 @@ export function CommentsSection({
                                   /* ignore signout error */
                                 }
                               }}
-                              className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                              className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 active:bg-red-500/20 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
                             >
                               <LogOut className="size-4" />
                               <span>Sair da conta</span>
@@ -1880,7 +2012,7 @@ export function CommentsSection({
                     <button
                       type="button"
                       onClick={() => setSortDropdownOpen((prev) => !prev)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-purple-500/25 bg-purple-950/30 text-purple-200 hover:bg-purple-950/60 hover:border-purple-500/40 transition-all cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-purple-500/25 bg-purple-950/30 text-purple-200 hover:bg-purple-950/60 hover:border-purple-500/40 active:[transform:scale(0.96)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
                       aria-expanded={sortDropdownOpen}
                       aria-haspopup="menu"
                     >
@@ -1893,21 +2025,29 @@ export function CommentsSection({
                       </span>
                       <ChevronDown
                         className={cn(
-                          "size-3.5 text-purple-400 transition-transform duration-200",
-                          sortDropdownOpen && "rotate-180",
+                          "size-3.5 text-purple-400 transition-transform duration-150 motion-reduce:transition-none motion-reduce:transform-none",
+                          sortDropdownOpen && "[transform:rotate(180deg)]",
                         )}
                       />
                     </button>
 
-                    {sortDropdownOpen && (
+                    {sortMenu.mounted && (
                       <>
-                        <div
-                          className="fixed inset-0 z-40"
-                          onClick={() => setSortDropdownOpen(false)}
-                        />
+                        {sortDropdownOpen && (
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setSortDropdownOpen(false)}
+                          />
+                        )}
                         <div
                           role="menu"
-                          className="absolute left-0 sm:left-auto sm:right-0 top-[calc(100%+6px)] z-50 min-w-[140px] overflow-hidden rounded-xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                          className={cn(
+                            "absolute left-0 sm:left-auto sm:right-0 top-[calc(100%+6px)] z-50 min-w-[140px] overflow-hidden rounded-xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-1 shadow-2xl origin-top-left sm:origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                            sortMenu.visible
+                              ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                              : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                            sortMenu.closing && "pointer-events-none",
+                          )}
                         >
                           {[
                             { value: "recent" as const, label: "Mais recentes" },
@@ -1923,10 +2063,10 @@ export function CommentsSection({
                                 setSortDropdownOpen(false);
                               }}
                               className={cn(
-                                "flex w-full items-center justify-between px-3 py-1.5 text-xs rounded-lg text-left transition-colors cursor-pointer",
+                                "flex w-full items-center justify-between px-3 py-1.5 text-xs rounded-lg text-left active:[transform:scale(0.985)] touch-manipulation transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer",
                                 sortBy === opt.value
                                   ? "bg-purple-600/30 font-semibold text-purple-200"
-                                  : "text-zinc-300 hover:bg-white/5 hover:text-white",
+                                  : "text-zinc-300 hover:bg-white/5 hover:text-white active:bg-white/10",
                               )}
                             >
                               <span>{opt.label}</span>
@@ -1946,7 +2086,7 @@ export function CommentsSection({
                           setCommentsLoginOpen((prev) => !prev);
                           setCommentsLoginWarning(null);
                         }}
-                        className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-purple-500/35 bg-purple-950/40 px-3 py-1 text-xs sm:text-sm font-semibold text-purple-300 hover:bg-purple-950/70 hover:text-white hover:border-purple-500/55 active:scale-95 transition-all shadow-sm cursor-pointer"
+                        className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-purple-500/35 bg-purple-950/40 px-3 py-1 text-xs sm:text-sm font-semibold text-purple-300 hover:bg-purple-950/70 hover:text-white hover:border-purple-500/55 active:[transform:scale(0.96)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none shadow-sm cursor-pointer"
                         aria-expanded={commentsLoginOpen}
                         aria-haspopup="dialog"
                       >
@@ -1954,19 +2094,27 @@ export function CommentsSection({
                         <span>Entrar</span>
                       </button>
 
-                      {commentsLoginOpen && (
+                      {commentsLoginMenu.mounted && (
                         <>
-                          <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => {
-                              setCommentsLoginOpen(false);
-                              setCommentsLoginWarning(null);
-                            }}
-                          />
+                          {commentsLoginOpen && (
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => {
+                                setCommentsLoginOpen(false);
+                                setCommentsLoginWarning(null);
+                              }}
+                            />
+                          )}
                           <div
                             role="dialog"
                             aria-label="Opções de login"
-                            className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-purple-500/30 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                            className={cn(
+                              "absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-purple-500/30 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                              commentsLoginMenu.visible
+                                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                                : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                              commentsLoginMenu.closing && "pointer-events-none",
+                            )}
                           >
                             <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
                               <span className="text-xs font-bold text-white tracking-tight">
@@ -1978,7 +2126,7 @@ export function CommentsSection({
                                   setCommentsLoginOpen(false);
                                   setCommentsLoginWarning(null);
                                 }}
-                                className="text-white/40 hover:text-white text-xs transition-colors p-1 cursor-pointer"
+                                className="rounded-md text-white/40 hover:text-white hover:bg-white/10 active:[transform:scale(0.94)] text-xs transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none p-1 cursor-pointer"
                                 aria-label="Fechar"
                               >
                                 <X className="size-3.5" />
@@ -2053,7 +2201,9 @@ export function CommentsSection({
                       <button
                         type="button"
                         onClick={() => setUserMenuOpen((prev) => !prev)}
-                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1.5 pr-2.5 text-xs text-white hover:bg-white/[0.08] hover:border-purple-500/40 transition-all cursor-pointer"
+                        aria-expanded={userMenuOpen}
+                        aria-haspopup="menu"
+                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1.5 pr-2.5 text-xs text-white hover:bg-white/[0.08] hover:border-purple-500/40 active:[transform:scale(0.97)] touch-manipulation transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
                       >
                         <div className="size-6 rounded-full overflow-hidden bg-purple-950/60 ring-1 ring-purple-500/30 flex items-center justify-center text-[10px] font-bold text-purple-200">
                           {effectiveUserImage ? (
@@ -2069,22 +2219,39 @@ export function CommentsSection({
                         <span className="font-semibold max-w-[100px] truncate">
                           {effectiveUserName}
                         </span>
-                        <ChevronDown className="size-3 text-white/50" />
+                        <ChevronDown
+                          className={cn(
+                            "size-3 text-white/50 transition-transform duration-150 motion-reduce:transition-none motion-reduce:transform-none",
+                            userMenuOpen && "[transform:rotate(180deg)]",
+                          )}
+                        />
                       </button>
 
-                      {userMenuOpen && (
+                      {userDropdownMenu.mounted && (
                         <>
+                          {userMenuOpen && (
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => setUserMenuOpen(false)}
+                            />
+                          )}
                           <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => setUserMenuOpen(false)}
-                          />
-                          <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#141419] p-1.5 shadow-2xl backdrop-blur-md">
+                            role="menu"
+                            className={cn(
+                              "absolute right-0 top-[calc(100%+8px)] z-50 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#141419]/95 p-1.5 shadow-2xl backdrop-blur-xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                              userDropdownMenu.visible
+                                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                                : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                              userDropdownMenu.closing && "pointer-events-none",
+                            )}
+                          >
                             {userNick && (
                               <Link
                                 to="/profile/$nick"
                                 params={{ nick: userNick }}
+                                role="menuitem"
                                 onClick={() => setUserMenuOpen(false)}
-                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
+                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
                               >
                                 <UserCircle className="size-4 text-purple-400" />
                                 <span>Meu Perfil</span>
@@ -2092,14 +2259,16 @@ export function CommentsSection({
                             )}
                             <Link
                               to="/settings"
+                              role="menuitem"
                               onClick={() => setUserMenuOpen(false)}
-                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 transition-colors"
+                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
                             >
                               <Settings2 className="size-4 text-purple-400" />
                               <span>Configurações</span>
                             </Link>
                             <button
                               type="button"
+                              role="menuitem"
                               onClick={async () => {
                                 setUserMenuOpen(false);
                                 try {
@@ -2109,7 +2278,7 @@ export function CommentsSection({
                                   /* ignore signout error */
                                 }
                               }}
-                              className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                              className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 active:bg-red-500/20 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
                             >
                               <LogOut className="size-4" />
                               <span>Sair da conta</span>
@@ -2285,10 +2454,10 @@ export function CommentsSection({
               role="status"
               aria-live="polite"
               className={cn(
-                "mt-3 flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-[#161224]/90 px-4 py-3 shadow-lg shadow-purple-950/25 backdrop-blur-md transition-all duration-300 ease-out motion-reduce:transition-opacity motion-reduce:transform-none",
+                "mt-3 flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-[#161224]/90 px-4 py-3 shadow-lg shadow-purple-950/25 backdrop-blur-md transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none",
                 moderationSuccessVisible
-                  ? "translate-y-0 opacity-100 scale-100"
-                  : "-translate-y-1 opacity-0 scale-[0.98] pointer-events-none",
+                  ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                  : "opacity-0 [transform:translateY(-4px)_scale(0.98)] pointer-events-none",
               )}
             >
               <div className="flex items-center gap-2.5 min-w-0">
@@ -2302,7 +2471,7 @@ export function CommentsSection({
               <button
                 type="button"
                 onClick={handleDismissSuccess}
-                className="flex size-6 shrink-0 items-center justify-center rounded-lg text-purple-300/60 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                className="flex size-6 shrink-0 items-center justify-center rounded-lg text-purple-300/60 hover:text-white hover:bg-white/10 active:[transform:scale(0.92)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
                 aria-label="Fechar notificação"
               >
                 <X className="size-3.5" />
@@ -2497,15 +2666,37 @@ export function CommentsSection({
       </div>
 
       {/* Modal de GIF */}
-      {gifOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl border border-purple-500/30 bg-[#121020] p-4 shadow-2xl flex flex-col max-h-[85vh]">
+      {gifModal.mounted && (
+        <div
+          className={cn(
+            "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+            gifModal.visible ? "opacity-100" : "opacity-0",
+            gifModal.closing && "pointer-events-none",
+          )}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeGifPicker();
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Escolher GIF"
+            className={cn(
+              "w-full max-w-lg rounded-2xl border border-purple-500/30 bg-[#121020] p-4 shadow-2xl flex flex-col max-h-[85vh] transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+              gifModal.visible
+                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                : "opacity-0 [transform:translateY(6px)_scale(0.97)]",
+            )}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-purple-500/20">
               <h3 className="text-sm font-bold text-white">Escolher GIF</h3>
               <button
                 type="button"
                 onClick={closeGifPicker}
-                className="text-white/50 hover:text-white cursor-pointer"
+                aria-label="Fechar"
+                className="rounded-lg p-1 text-white/50 hover:bg-white/10 hover:text-white active:[transform:scale(0.94)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
               >
                 <X className="size-4" />
               </button>
@@ -2522,7 +2713,7 @@ export function CommentsSection({
                     void searchGifs(e.target.value);
                   }}
                   placeholder="Buscar no GIPHY..."
-                  className="w-full rounded-xl border border-white/10 bg-[#0c0a18] pl-9 pr-3 py-2 text-xs text-white outline-none focus:border-purple-500"
+                  className="w-full rounded-xl border border-white/10 bg-[#0c0a18] pl-9 pr-3 py-2 text-xs text-white outline-none focus:border-purple-500 transition-colors motion-reduce:transition-none"
                 />
               </div>
 
@@ -2564,7 +2755,7 @@ export function CommentsSection({
                     key={gif.id}
                     type="button"
                     onClick={() => handleSelectGif(gif.url)}
-                    className="relative aspect-video rounded-lg overflow-hidden border border-white/10 hover:border-purple-500 focus:outline-none transition-all cursor-pointer"
+                    className="relative aspect-video rounded-lg overflow-hidden border border-white/10 hover:border-purple-500 active:[transform:scale(0.98)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 transition-[border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
                   >
                     <img
                       src={gif.preview}
@@ -2584,9 +2775,13 @@ export function CommentsSection({
       {/* MODAL DE EDIÇÃO                                    */}
       {/* ================================================== */}
 
-      {editingComment && (
+      {activeEditingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 motion-safe:animate-in motion-safe:fade-in motion-reduce:transition-none overscroll-contain"
+          className={cn(
+            "fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+            editModal.visible ? "opacity-100" : "opacity-0",
+            editModal.closing && "pointer-events-none",
+          )}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelEdit();
@@ -2600,7 +2795,12 @@ export function CommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-dialog-title"
-            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:transition-none transition-all text-left"
+            className={cn(
+              "w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transform-none motion-reduce:transition-none text-left",
+              editModal.visible
+                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                : "opacity-0 [transform:translateY(6px)_scale(0.97)]",
+            )}
           >
             {/* Cabeçalho */}
             <div className="flex items-start justify-between gap-3">
@@ -2625,7 +2825,7 @@ export function CommentsSection({
                 type="button"
                 onClick={handleCancelEdit}
                 disabled={editSaving}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:[transform:scale(0.95)] transition-[color,background-color,transform] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
                 <X className="size-4 sm:size-5" />
@@ -2635,29 +2835,33 @@ export function CommentsSection({
             {/* Campo de texto com contador */}
             <div className="mt-4">
               <textarea
-                value={editText}
+                value={
+                  editModal.closing
+                    ? editText || activeEditingComment.content
+                    : editText
+                }
                 onChange={(e) => setEditText(e.target.value)}
                 rows={5}
                 maxLength={2000}
                 disabled={editSaving}
                 placeholder="Escreva seu comentário..."
-                className="w-full resize-none rounded-xl border border-white/10 bg-[#090714] p-3.5 sm:p-4 text-xs sm:text-sm text-white placeholder:text-zinc-500 outline-none focus:border-[#a855f7]/60 focus:ring-1 focus:ring-[#a855f7]/40 transition-all duration-150 disabled:opacity-60 shadow-inner"
+                className="w-full resize-none rounded-xl border border-white/10 bg-[#090714] p-3.5 sm:p-4 text-xs sm:text-sm text-white placeholder:text-zinc-500 outline-none focus:border-[#a855f7]/60 focus:ring-1 focus:ring-[#a855f7]/40 transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none disabled:opacity-60 shadow-inner"
               />
 
               <div className="mt-2.5 flex items-center justify-between text-xs text-zinc-500">
                 <div>
                   {isAdmin ? (
-                    <label className="flex cursor-pointer items-center gap-2 text-zinc-300 hover:text-white transition-colors select-none">
+                    <label className="flex cursor-pointer items-center gap-2 text-zinc-300 hover:text-white transition-colors motion-reduce:transition-none select-none">
                       <input
                         type="checkbox"
                         checked={editIsSpoiler}
                         onChange={(e) => setEditIsSpoiler(e.target.checked)}
                         disabled={editSaving}
-                        className="size-4 rounded accent-purple-600 transition-transform cursor-pointer"
+                        className="size-4 rounded accent-purple-600 cursor-pointer"
                       />
                       <span className="font-medium">Marcar como spoiler</span>
                     </label>
-                  ) : editingComment.isSpoiler ? (
+                  ) : activeEditingComment.isSpoiler ? (
                     <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300">
                       <AlertTriangle className="size-3.5 shrink-0" />
                       <span>Comentário sinalizado como spoiler</span>
@@ -2665,8 +2869,12 @@ export function CommentsSection({
                   ) : null}
                 </div>
 
-                <span className="font-mono text-[11px] sm:text-xs">
-                  {editText.length} / 2000
+                <span className="font-mono text-[11px] sm:text-xs tabular-nums">
+                  {(editModal.closing
+                    ? editText || activeEditingComment.content
+                    : editText
+                  ).length}{" "}
+                  / 2000
                 </span>
               </div>
             </div>
@@ -2678,7 +2886,7 @@ export function CommentsSection({
                 variant="outline"
                 onClick={handleCancelEdit}
                 disabled={editSaving}
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:[transform:scale(0.96)] transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -2687,7 +2895,7 @@ export function CommentsSection({
                 type="button"
                 onClick={() => void handleEdit()}
                 disabled={!editText.trim() || editSaving}
-                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:[transform:scale(0.96)] transition-[color,background-color,box-shadow,transform,opacity] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
               >
                 <Edit3 className="size-4" />
                 {editSaving ? "Salvando..." : "Salvar alterações"}
@@ -2701,9 +2909,13 @@ export function CommentsSection({
       {/* MODAL DE EXCLUSÃO                                  */}
       {/* ================================================== */}
 
-      {deletingComment && (
+      {activeDeletingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 motion-safe:animate-in motion-safe:fade-in motion-reduce:transition-none overscroll-contain"
+          className={cn(
+            "fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+            deleteModal.visible ? "opacity-100" : "opacity-0",
+            deleteModal.closing && "pointer-events-none",
+          )}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelDelete();
@@ -2717,7 +2929,12 @@ export function CommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-dialog-title"
-            className="w-full max-w-md rounded-2xl sm:rounded-3xl border border-red-500/35 bg-gradient-to-b from-[#1c1017] via-[#120a10] to-[#0a060a] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(239,68,68,0.15)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:transition-none transition-all text-left"
+            className={cn(
+              "w-full max-w-md rounded-2xl sm:rounded-3xl border border-red-500/35 bg-gradient-to-b from-[#1c1017] via-[#120a10] to-[#0a060a] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(239,68,68,0.15)] transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transform-none motion-reduce:transition-none text-left",
+              deleteModal.visible
+                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                : "opacity-0 [transform:translateY(6px)_scale(0.97)]",
+            )}
           >
             {/* Cabeçalho de Perigo */}
             <div className="flex items-start justify-between gap-3">
@@ -2742,7 +2959,7 @@ export function CommentsSection({
                 type="button"
                 onClick={handleCancelDelete}
                 disabled={deleteSending}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 cursor-pointer disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:[transform:scale(0.95)] transition-[color,background-color,transform] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
                 <X className="size-4 sm:size-5" />
@@ -2755,11 +2972,11 @@ export function CommentsSection({
                 Conteúdo a ser removido:
               </p>
               <p className="line-clamp-4 whitespace-pre-wrap text-xs sm:text-sm text-zinc-200 italic">
-                "{deletingComment.content}"
+                "{activeDeletingComment.content}"
               </p>
-              {deletingComment.imageUrl && (
+              {activeDeletingComment.imageUrl && (
                 <img
-                  src={deletingComment.imageUrl}
+                  src={activeDeletingComment.imageUrl}
                   alt=""
                   className="mt-2.5 max-h-32 rounded-lg border border-white/10 object-contain"
                 />
@@ -2773,7 +2990,7 @@ export function CommentsSection({
                 variant="outline"
                 onClick={handleCancelDelete}
                 disabled={deleteSending}
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 cursor-pointer"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:[transform:scale(0.96)] transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -2782,7 +2999,7 @@ export function CommentsSection({
                 type="button"
                 onClick={() => void handleDelete()}
                 disabled={deleteSending}
-                className="rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                className="rounded-xl bg-red-600 hover:bg-red-500 active:[transform:scale(0.96)] transition-[color,background-color,box-shadow,transform,opacity] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
               >
                 <Trash2 className="size-4" />
                 {deleteSending ? "Excluindo..." : "Excluir comentário"}
@@ -2796,9 +3013,13 @@ export function CommentsSection({
       {/* MODAL DE DENÚNCIA                                  */}
       {/* ================================================== */}
 
-      {reportingComment && (
+      {activeReportingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 motion-safe:animate-in motion-safe:fade-in motion-reduce:transition-none overscroll-contain"
+          className={cn(
+            "fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+            reportModal.visible ? "opacity-100" : "opacity-0",
+            reportModal.closing && "pointer-events-none",
+          )}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelReport();
@@ -2812,7 +3033,12 @@ export function CommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="report-dialog-title"
-            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:transition-none transition-all text-left"
+            className={cn(
+              "w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transform-none motion-reduce:transition-none text-left",
+              reportModal.visible
+                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                : "opacity-0 [transform:translateY(6px)_scale(0.97)]",
+            )}
           >
             {/* Cabeçalho */}
             <div className="flex items-start justify-between gap-3">
@@ -2837,7 +3063,7 @@ export function CommentsSection({
                 type="button"
                 onClick={handleCancelReport}
                 disabled={reportSending}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:[transform:scale(0.95)] transition-[color,background-color,transform] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
                 <X className="size-4 sm:size-5" />
@@ -2883,7 +3109,7 @@ export function CommentsSection({
                   <label
                     key={r.id}
                     className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-all duration-150 select-none active:scale-[0.985] motion-reduce:transform-none motion-reduce:transition-none focus-within:ring-2 focus-within:ring-[#a855f7]/60",
+                      "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-[color,background-color,border-color,box-shadow,transform] duration-150 select-none active:[transform:scale(0.985)] motion-reduce:transform-none motion-reduce:transition-none focus-within:ring-2 focus-within:ring-[#a855f7]/60",
                       isSelected
                         ? "border-[#a855f7] bg-[#a855f7]/15 text-white ring-1 ring-[#a855f7]/50 shadow-[0_0_15px_rgba(168,85,247,0.2)]"
                         : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-[#a855f7]/30 hover:bg-white/[0.06] hover:text-white active:bg-white/[0.08]",
@@ -2895,7 +3121,7 @@ export function CommentsSection({
                       value={r.id}
                       checked={isSelected}
                       onChange={() => setReportReason(r.id as ReportReason)}
-                      className="mt-0.5 size-4 shrink-0 accent-purple-600 transition-transform cursor-pointer"
+                      className="mt-0.5 size-4 shrink-0 accent-purple-600 cursor-pointer"
                     />
                     <div className="min-w-0 flex-1">
                       <span className="block text-xs sm:text-sm font-semibold tracking-wide text-white">
@@ -2921,7 +3147,7 @@ export function CommentsSection({
                 variant="outline"
                 onClick={handleCancelReport}
                 disabled={reportSending}
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:[transform:scale(0.96)] transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -2938,7 +3164,7 @@ export function CommentsSection({
                   )
                 }
                 disabled={!reportReason || reportSending}
-                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:[transform:scale(0.96)] transition-[color,background-color,box-shadow,transform,opacity] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
               >
                 <Flag className="size-4" />
                 {reportSending ? "Enviando..." : "Enviar denúncia"}
@@ -3030,14 +3256,6 @@ function parseCommentSpoilers(
 function SpoilerText({ content }: { content: string }) {
   const [revealed, setRevealed] = useState(false);
 
-  if (revealed) {
-    return (
-      <span className="text-zinc-100 transition-colors duration-150 motion-reduce:transition-none [overflow-wrap:anywhere]">
-        {content}
-      </span>
-    );
-  }
-
   const lines = content.split("\n");
   const isShort = content.trim().length <= 4;
 
@@ -3046,34 +3264,48 @@ function SpoilerText({ content }: { content: string }) {
       | ReactMouseEvent<HTMLSpanElement>
       | ReactKeyboardEvent<HTMLSpanElement>,
   ) => {
+    if (revealed) return;
     event.stopPropagation();
     setRevealed(true);
   };
 
   return (
     <span
-      role="button"
-      tabIndex={0}
-      aria-expanded={false}
-      aria-label="Trecho com spoiler oculto. Toque para revelar"
-      title="Spoiler — toque para revelar"
-      onClick={handleReveal}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          handleReveal(event);
-        }
-      }}
-      className="group/spoiler inline cursor-pointer touch-manipulation select-none rounded-[5px] [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc] [-webkit-tap-highlight-color:transparent]"
+      role={revealed ? undefined : "button"}
+      tabIndex={revealed ? undefined : 0}
+      aria-expanded={revealed ? undefined : false}
+      aria-label={
+        revealed ? undefined : "Trecho com spoiler oculto. Toque para revelar"
+      }
+      title={revealed ? undefined : "Spoiler — toque para revelar"}
+      onClick={revealed ? undefined : handleReveal}
+      onKeyDown={
+        revealed
+          ? undefined
+          : (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleReveal(event);
+              }
+            }
+      }
+      className={cn(
+        "inline rounded-[5px] [overflow-wrap:anywhere] [-webkit-tap-highlight-color:transparent]",
+        !revealed &&
+          "group/spoiler cursor-pointer touch-manipulation select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+      )}
     >
-      <span aria-hidden="true">
+      <span aria-hidden={revealed ? undefined : true}>
         {lines.map((line, idx) => (
           <Fragment key={idx}>
             {line.trim().length > 0 ? (
               <span
                 className={cn(
-                  "box-decoration-clone [-webkit-box-decoration-break:clone] rounded-[5px] bg-[#341b54]/95 ring-1 ring-inset ring-[#a855f7]/40 py-[1.5px] text-transparent [text-shadow:0_0_10px_rgba(216,180,254,0.24)] transition-all duration-150 motion-reduce:transition-none group-hover/spoiler:bg-[#402168] group-hover/spoiler:ring-[#c084fc]/60 group-active/spoiler:bg-[#4b277a]",
-                  isShort ? "px-2" : "px-1.5",
+                  "box-decoration-clone [-webkit-box-decoration-break:clone] rounded-[5px] py-[1.5px] ring-1 ring-inset transition-[color,background-color,box-shadow,text-shadow] duration-150 ease-out motion-reduce:transition-none",
+                  isShort ? "px-1.5 -mx-0.5" : "px-1 -mx-0.5",
+                  revealed
+                    ? "bg-transparent ring-transparent text-zinc-100 [text-shadow:0_0_0px_rgba(216,180,254,0)]"
+                    : "bg-[#341b54]/95 ring-[#a855f7]/40 text-transparent [text-shadow:0_0_10px_rgba(216,180,254,0.24)] group-hover/spoiler:bg-[#402168] group-hover/spoiler:ring-[#c084fc]/60 group-active/spoiler:bg-[#4b277a] group-active/spoiler:ring-[#d8b4fe]/70",
                 )}
               >
                 {line}
@@ -3153,8 +3385,12 @@ export function CommentCard({
   isNew?: boolean;
 }) {
   const isReplying = replyingId === comment.id;
+  const cardMenu = usePresence(menuOpen, 130);
   const [localMediaRevealed, setLocalMediaRevealed] = useState(false);
   const [mediaSpoilerRevealed, setMediaSpoilerRevealed] = useState(false);
+  const isMediaSpoilerHidden = Boolean(
+    comment.isSpoiler && !mediaSpoilerRevealed,
+  );
   const formattedDate = formatDate(comment.createdAt);
   const cleanReplyToName = replyToName?.replace(/^@+/, "").trim();
   const authorName = comment.userName || "Usuário";
@@ -3171,11 +3407,11 @@ export function CommentCard({
     <article
       id={`comment-${comment.id}`}
       className={cn(
-        "group/comment relative transition-colors",
+        "group/comment relative motion-reduce:transition-none",
         highlighted &&
-          "rounded-xl bg-purple-500/10 p-2.5 border border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]",
+          "rounded-xl bg-purple-500/10 p-2.5 border border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-colors duration-300 ease-out",
         isNew
-          ? "rounded-xl bg-purple-500/15 border border-purple-500/40 p-2.5 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-colors duration-1000 ease-out motion-safe:animate-in motion-safe:fade-in-50"
+          ? "rounded-xl bg-purple-500/15 border border-purple-500/40 p-2.5 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-colors duration-700 ease-out"
           : !highlighted &&
               "border border-transparent transition-colors duration-500 ease-out",
       )}
@@ -3270,37 +3506,67 @@ export function CommentCard({
             <div className="relative shrink-0 -mr-1.5 -mt-1">
               <button
                 type="button"
-                onClick={onToggleMenu}
-                className="flex size-8 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleMenu();
+                }}
+                disabled={moderating}
                 aria-label="Opções do comentário"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/10 active:bg-purple-500/15 active:text-purple-200 touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500 motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer",
+                  menuOpen && "bg-white/10 text-white",
+                )}
               >
                 <MoreVertical className="size-4" />
               </button>
 
-              {menuOpen && (
+              {cardMenu.mounted && (
                 <>
-                  <div className="fixed inset-0 z-30" onClick={onToggleMenu} />
-                  <div className="absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-white/10 bg-[#161324]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right transition-all">
+                  {menuOpen && (
+                    <div
+                      className="fixed inset-0 z-30"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleMenu();
+                      }}
+                    />
+                  )}
+                  <div
+                    role="menu"
+                    className={cn(
+                      "absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-white/10 bg-[#161324]/95 backdrop-blur-xl p-1 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                      cardMenu.visible
+                        ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                        : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                      cardMenu.closing && "pointer-events-none",
+                    )}
+                  >
                     {canEdit && (
                       <>
                         <button
                           type="button"
+                          role="menuitem"
                           onClick={() => {
                             onToggleMenu();
                             onEdit();
                           }}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-purple-500/15 active:scale-[0.98] transition-all duration-150 cursor-pointer"
+                          disabled={moderating}
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-purple-500/15 active:bg-purple-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
                           <Edit3 className="size-3.5 text-purple-400" />
                           <span>Editar</span>
                         </button>
                         <button
                           type="button"
+                          role="menuitem"
                           onClick={() => {
                             onToggleMenu();
                             onDelete();
                           }}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/15 active:scale-[0.98] transition-all duration-150 cursor-pointer"
+                          disabled={moderating}
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/15 active:bg-red-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
                           <Trash2 className="size-3.5" />
                           <span>Excluir</span>
@@ -3311,12 +3577,13 @@ export function CommentCard({
                     {isAdmin && (
                       <button
                         type="button"
+                        role="menuitem"
                         onClick={() => {
                           onToggleMenu();
                           onMarkSpoiler();
                         }}
                         disabled={comment.isSpoiler || moderating}
-                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-500/15 active:scale-[0.98] transition-all duration-150 cursor-pointer disabled:opacity-50"
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-500/15 active:bg-amber-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none cursor-pointer disabled:opacity-50"
                       >
                         <EyeOff className="size-3.5 text-amber-400" />
                         <span>Marcar como spoiler</span>
@@ -3327,24 +3594,26 @@ export function CommentCard({
                       <>
                         <button
                           type="button"
+                          role="menuitem"
                           onClick={() => {
                             onToggleMenu();
                             onSpam();
                           }}
                           disabled={moderating}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 active:scale-[0.98] transition-all duration-150 cursor-pointer"
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 active:bg-white/15 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
                           <Ban className="size-3.5 text-orange-400" />
                           <span>Sinalizar spam</span>
                         </button>
                         <button
                           type="button"
+                          role="menuitem"
                           onClick={() => {
                             onToggleMenu();
                             onReport();
                           }}
                           disabled={moderating}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/15 active:scale-[0.98] transition-all duration-150 cursor-pointer"
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/15 active:bg-red-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
                           <Flag className="size-3.5" />
                           <span>Denunciar</span>
@@ -3377,53 +3646,58 @@ export function CommentCard({
             {/* Imagem / GIF do comentário */}
             {comment.imageUrl &&
               (showMedia || localMediaRevealed ? (
-                comment.isSpoiler && !mediaSpoilerRevealed ? (
-                  <div className={cn(textSegments.length > 0 ? "mt-2" : "mt-1")}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMediaSpoilerRevealed(true);
-                      }}
-                      aria-label="Imagem com spoiler oculto. Toque para revelar"
-                      className="group/imgspoiler relative block w-fit max-w-sm overflow-hidden rounded-xl border border-[#a855f7]/30 bg-[#140d22] cursor-pointer touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc] [-webkit-tap-highlight-color:transparent]"
-                    >
-                      <img
-                        src={comment.imageUrl}
-                        alt=""
-                        aria-hidden="true"
-                        className="max-h-64 w-auto rounded-xl object-contain blur-2xl scale-110 brightness-50 saturate-75 select-none pointer-events-none"
-                        loading="lazy"
-                      />
-                      <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#26143d]/65 group-hover/imgspoiler:bg-[#311a4f]/60 transition-colors duration-150 motion-reduce:transition-none">
-                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#a855f7]/35 bg-[#160d26]/85 px-2.5 py-1 text-[11px] font-medium text-[#e9d5ff] backdrop-blur-sm">
-                          <EyeOff className="size-3 shrink-0 text-[#c084fc]" />
-                          <span>Spoiler</span>
-                        </span>
-                      </span>
-                    </button>
-                  </div>
-                ) : (
+                <div className={cn(textSegments.length > 0 ? "mt-2" : "mt-1")}>
                   <div
                     className={cn(
-                      "max-w-sm rounded-xl overflow-hidden border border-white/10 bg-black/40",
-                      textSegments.length > 0 ? "mt-2" : "mt-1",
+                      "relative w-fit max-w-sm rounded-xl overflow-hidden border transition-colors duration-200 motion-reduce:transition-none",
+                      isMediaSpoilerHidden
+                        ? "border-[#a855f7]/30 bg-[#140d22]"
+                        : "border-white/10 bg-black/40",
                     )}
                   >
                     <img
                       src={comment.imageUrl}
-                      alt="Imagem anexada"
-                      className="max-h-64 w-auto rounded-xl object-contain"
+                      alt={isMediaSpoilerHidden ? "" : "Imagem anexada"}
+                      aria-hidden={isMediaSpoilerHidden ? true : undefined}
+                      className={cn(
+                        "block max-h-64 w-auto rounded-xl object-contain transition-[filter,transform] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none",
+                        isMediaSpoilerHidden
+                          ? "blur-2xl [transform:scale(1.08)] brightness-50 saturate-75 select-none pointer-events-none"
+                          : "blur-0 [transform:scale(1)] brightness-100 saturate-100",
+                      )}
                       loading="lazy"
                     />
+                    {comment.isSpoiler && (
+                      <button
+                        type="button"
+                        tabIndex={isMediaSpoilerHidden ? 0 : -1}
+                        aria-hidden={!isMediaSpoilerHidden ? true : undefined}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMediaSpoilerRevealed(true);
+                        }}
+                        aria-label="Imagem com spoiler oculto. Toque para revelar"
+                        className={cn(
+                          "group/imgspoiler absolute inset-0 flex items-center justify-center bg-[#26143d]/65 hover:bg-[#311a4f]/60 active:bg-[#3a1f5e]/65 active:!transform-none transition-[opacity,background-color] duration-150 ease-out motion-reduce:transition-none touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#c084fc] [-webkit-tap-highlight-color:transparent]",
+                          isMediaSpoilerHidden
+                            ? "opacity-100 cursor-pointer"
+                            : "opacity-0 pointer-events-none",
+                        )}
+                      >
+                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#a855f7]/35 bg-[#160d26]/85 px-2.5 py-1 text-[11px] font-medium text-[#e9d5ff] backdrop-blur-sm transition-transform duration-150 ease-out group-active/imgspoiler:[transform:scale(0.95)] motion-reduce:transition-none motion-reduce:transform-none">
+                          <EyeOff className="size-3 shrink-0 text-[#c084fc]" />
+                          <span>Spoiler</span>
+                        </span>
+                      </button>
+                    )}
                   </div>
-                )
+                </div>
               ) : (
                 <div className={cn(textSegments.length > 0 ? "mt-2" : "mt-1")}>
                   <button
                     type="button"
                     onClick={() => setLocalMediaRevealed(true)}
-                    className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 underline cursor-pointer"
+                    className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 underline motion-reduce:transition-none cursor-pointer"
                   >
                     <Eye className="size-3.5" />
                     <span>Ver imagem anexada</span>
@@ -3439,23 +3713,25 @@ export function CommentCard({
               onClick={() => onReaction(comment.id, "like")}
               disabled={isPendingReaction}
               className={cn(
-                "group/like inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 transition-all cursor-pointer",
+                "group/like inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500 motion-reduce:transition-none motion-reduce:transform-none",
                 comment.liked
-                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
-                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
+                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/45 shadow-[0_0_12px_rgba(168,85,247,0.22)] active:bg-purple-500/30"
+                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-purple-500/15 active:text-purple-200",
                 isPendingReaction && "opacity-60 pointer-events-none",
               )}
               aria-label={comment.liked ? "Remover curtida" : "Curtir comentário"}
             >
               <ThumbsUp
                 className={cn(
-                  "size-3.5 shrink-0 transition-transform duration-200",
+                  "size-3.5 shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none",
                   comment.liked
-                    ? "fill-current scale-110"
-                    : "group-hover/like:scale-110 active:scale-90",
+                    ? "fill-current [transform:scale(1.06)]"
+                    : "group-hover/like:[transform:scale(1.06)]",
                 )}
               />
-              <span className="font-semibold tabular-nums">{comment.likes}</span>
+              <span className="font-semibold tabular-nums transition-colors duration-150 motion-reduce:transition-none">
+                {comment.likes}
+              </span>
             </button>
 
             <button
@@ -3463,10 +3739,10 @@ export function CommentCard({
               onClick={() => onReaction(comment.id, "dislike")}
               disabled={isPendingReaction}
               className={cn(
-                "group/dislike inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 transition-all cursor-pointer",
+                "group/dislike inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500 motion-reduce:transition-none motion-reduce:transform-none",
                 comment.disliked
-                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
-                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
+                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/45 shadow-[0_0_12px_rgba(168,85,247,0.22)] active:bg-purple-500/30"
+                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-purple-500/15 active:text-purple-200",
                 isPendingReaction && "opacity-60 pointer-events-none",
               )}
               aria-label={
@@ -3475,13 +3751,13 @@ export function CommentCard({
             >
               <ThumbsDown
                 className={cn(
-                  "size-3.5 shrink-0 transition-transform duration-200",
+                  "size-3.5 shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none",
                   comment.disliked
-                    ? "fill-current scale-110"
-                    : "group-hover/dislike:scale-110 active:scale-90",
+                    ? "fill-current [transform:scale(1.06)]"
+                    : "group-hover/dislike:[transform:scale(1.06)]",
                 )}
               />
-              <span className="font-semibold tabular-nums">
+              <span className="font-semibold tabular-nums transition-colors duration-150 motion-reduce:transition-none">
                 {comment.dislikes}
               </span>
             </button>
@@ -3489,7 +3765,12 @@ export function CommentCard({
             <button
               type="button"
               onClick={onStartReply}
-              className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-white/50 hover:text-white hover:bg-white/[0.06] active:scale-95 transition-all cursor-pointer"
+              className={cn(
+                "inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500 motion-reduce:transition-none motion-reduce:transform-none",
+                isReplying
+                  ? "bg-purple-500/15 text-purple-200 active:bg-purple-500/25"
+                  : "text-white/50 hover:text-white hover:bg-white/[0.06] active:bg-purple-500/15 active:text-purple-200",
+              )}
             >
               <MessageCircle className="size-3.5 shrink-0" />
               <span>Responder</span>
@@ -3542,7 +3823,7 @@ export function CommentCard({
                     size="sm"
                     onClick={onSendReply}
                     disabled={!replyText.trim() || replySending}
-                    className="h-7 px-3 text-xs font-semibold rounded-lg bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_10px_rgba(168,85,247,0.25)] active:scale-95 transition-all inline-flex items-center gap-1 cursor-pointer"
+                    className="h-7 px-3 text-xs font-semibold rounded-lg bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_10px_rgba(168,85,247,0.25)] motion-reduce:transition-none motion-reduce:transform-none inline-flex items-center gap-1 cursor-pointer"
                   >
                     <Send className="size-3 shrink-0" />
                     <span>{replySending ? "Enviando..." : "Responder"}</span>

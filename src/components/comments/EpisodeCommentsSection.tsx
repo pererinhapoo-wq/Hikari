@@ -89,6 +89,95 @@ export interface EpisodeCommentsSectionProps {
 }
 
 /* ========================================================= */
+/* TRANSIÇÕES DISCRETAS COM SUPORTE A REDUCED MOTION         */
+/* ========================================================= */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+function usePresence(open: boolean, exitMs = 135) {
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      if (prefersReducedMotion()) {
+        setVisible(true);
+        return;
+      }
+      let raf2 = 0;
+      const raf1 = window.requestAnimationFrame(() => {
+        raf2 = window.requestAnimationFrame(() => {
+          setVisible(true);
+        });
+      });
+      return () => {
+        window.cancelAnimationFrame(raf1);
+        if (raf2) window.cancelAnimationFrame(raf2);
+      };
+    }
+
+    setVisible(false);
+    if (prefersReducedMotion()) {
+      setMounted(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setMounted(false), exitMs);
+    return () => window.clearTimeout(timer);
+  }, [open, exitMs]);
+
+  return {
+    mounted: open || mounted,
+    visible: open && visible,
+    closing: !open && mounted,
+  };
+}
+
+function useModalPresence<T>(value: T | null, exitMs = 150) {
+  const [cachedItem, setCachedItem] = useState<T | null>(value);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (value !== null) {
+      setCachedItem(value);
+      if (prefersReducedMotion()) {
+        setVisible(true);
+        return;
+      }
+      let raf2 = 0;
+      const raf1 = window.requestAnimationFrame(() => {
+        raf2 = window.requestAnimationFrame(() => {
+          setVisible(true);
+        });
+      });
+      return () => {
+        window.cancelAnimationFrame(raf1);
+        if (raf2) window.cancelAnimationFrame(raf2);
+      };
+    }
+
+    setVisible(false);
+    if (prefersReducedMotion()) {
+      setCachedItem(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setCachedItem(null), exitMs);
+    return () => window.clearTimeout(timer);
+  }, [value, exitMs]);
+
+  return {
+    item: value ?? cachedItem,
+    visible: value !== null && visible,
+    closing: value === null && cachedItem !== null,
+  };
+}
+
+/* ========================================================= */
 /* TELA DE CARREGAMENTO DOS COMENTÁRIOS COM ELIZABETH (HIKARI) */
 /* ========================================================= */
 export function ElizabethCommentsLoading() {
@@ -489,6 +578,18 @@ export function EpisodeCommentsSection({
     reportingComment ||
     spamComment,
   );
+
+  const commentsLoginMenu = usePresence(commentsLoginOpen, 135);
+  const userDropdownMenu = usePresence(userMenuOpen, 135);
+  const gifModal = usePresence(gifOpen, 150);
+  const editModal = useModalPresence(editingComment, 150);
+  const deleteModal = useModalPresence(deletingComment, 150);
+  const reportModal = useModalPresence(reportingComment, 150);
+  const spamModal = useModalPresence(spamComment, 150);
+  const activeEditingComment = editModal.item;
+  const activeDeletingComment = deleteModal.item;
+  const activeReportingComment = reportModal.item;
+  const activeSpamComment = spamModal.item;
 
   useEffect(() => {
     if (!isAnyModalOpen) {
@@ -2195,7 +2296,7 @@ export function EpisodeCommentsSection({
                       setCommentsLoginOpen((prev) => !prev);
                       setCommentsLoginWarning(null);
                     }}
-                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-xl border border-[#a855f7]/35 bg-[#a855f7]/10 px-3 py-1 text-xs sm:text-sm font-semibold text-[#c084fc] hover:bg-[#a855f7]/20 hover:text-white hover:border-[#a855f7]/55 active:scale-95 transition-all shadow-sm cursor-pointer"
+                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-xl border border-[#a855f7]/35 bg-[#a855f7]/10 px-3 py-1 text-xs sm:text-sm font-semibold text-[#c084fc] hover:bg-[#a855f7]/20 hover:text-white hover:border-[#a855f7]/55 active:bg-[#a855f7]/25 active:[transform:scale(0.97)] transition-[color,background-color,border-color,transform] duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none touch-manipulation shadow-sm cursor-pointer"
                     aria-expanded={commentsLoginOpen}
                     aria-haspopup="dialog"
                   >
@@ -2203,10 +2304,13 @@ export function EpisodeCommentsSection({
                     <span>Entrar</span>
                   </button>
 
-                  {commentsLoginOpen && (
+                  {commentsLoginMenu.mounted && (
                     <>
                       <div
-                        className="fixed inset-0 z-40"
+                        className={cn(
+                          "fixed inset-0 z-40",
+                          commentsLoginMenu.closing && "pointer-events-none",
+                        )}
                         onClick={() => {
                           setCommentsLoginOpen(false);
                           setCommentsLoginWarning(null);
@@ -2215,7 +2319,13 @@ export function EpisodeCommentsSection({
                       <div
                         role="dialog"
                         aria-label="Opções de login"
-                        className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/10 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                        className={cn(
+                          "absolute right-0 top-[calc(100%+8px)] z-50 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/10 bg-[#141419]/95 backdrop-blur-xl p-3.5 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                          commentsLoginMenu.visible
+                            ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                            : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                          commentsLoginMenu.closing && "pointer-events-none",
+                        )}
                       >
                         <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
                           <span className="text-xs font-bold text-white tracking-tight">
@@ -2330,7 +2440,7 @@ export function EpisodeCommentsSection({
                   <button
                     type="button"
                     onClick={() => setUserMenuOpen((prev) => !prev)}
-                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-2 rounded-xl border border-white/10 bg-[#16161b] px-2.5 py-1 text-xs sm:text-sm font-medium text-white/90 hover:border-[#a855f7]/40 hover:bg-white/[0.06] active:scale-95 transition-all shadow-sm max-w-[180px] sm:max-w-[240px]"
+                    className="inline-flex min-h-8 sm:min-h-9 items-center gap-2 rounded-xl border border-white/10 bg-[#16161b] px-2.5 py-1 text-xs sm:text-sm font-medium text-white/90 hover:border-[#a855f7]/40 hover:bg-white/[0.06] active:bg-white/[0.09] active:[transform:scale(0.97)] transition-[color,background-color,border-color,transform] duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none touch-manipulation shadow-sm max-w-[180px] sm:max-w-[240px]"
                     aria-expanded={userMenuOpen}
                     aria-haspopup="menu"
                   >
@@ -2352,22 +2462,31 @@ export function EpisodeCommentsSection({
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-3 text-white/50 shrink-0 transition-transform duration-200",
+                        "size-3 text-white/50 shrink-0 transition-transform duration-150 motion-reduce:transition-none",
                         userMenuOpen && "rotate-180 text-[#c084fc]"
                       )}
                     />
                   </button>
 
                   {/* Menu da pessoa autenticada */}
-                  {userMenuOpen && (
+                  {userDropdownMenu.mounted && (
                     <>
                       <div
-                        className="fixed inset-0 z-40"
+                        className={cn(
+                          "fixed inset-0 z-40",
+                          userDropdownMenu.closing && "pointer-events-none",
+                        )}
                         onClick={() => setUserMenuOpen(false)}
                       />
                       <div
                         role="menu"
-                        className="absolute right-0 top-[calc(100%+8px)] z-50 w-56 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/10 bg-[#141419]/95 backdrop-blur-xl p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                        className={cn(
+                          "absolute right-0 top-[calc(100%+8px)] z-50 w-56 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-white/10 bg-[#141419]/95 backdrop-blur-xl p-1.5 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                          userDropdownMenu.visible
+                            ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                            : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                          userDropdownMenu.closing && "pointer-events-none",
+                        )}
                       >
                         {/* Header do Menu com Nome e Email */}
                         <div className="px-3 py-2 border-b border-white/[0.08] mb-1">
@@ -2517,9 +2636,13 @@ export function EpisodeCommentsSection({
 
 
 
-            {gifOpen && (
+            {gifModal.mounted && (
               <div
-                className="fixed inset-0 z-[110] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+                className={cn(
+                  "fixed inset-0 z-[110] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5 backdrop-blur-sm transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+                  gifModal.visible ? "opacity-100" : "opacity-0",
+                  gifModal.closing && "pointer-events-none",
+                )}
                 onMouseDown={(event) => {
                   if (event.target === event.currentTarget) {
                     closeGifPicker();
@@ -2530,7 +2653,12 @@ export function EpisodeCommentsSection({
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="gif-dialog-title"
-                  className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#17171a] shadow-2xl"
+                  className={cn(
+                    "flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#17171a] shadow-2xl transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                    gifModal.visible
+                      ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                      : "opacity-0 [transform:translateY(6px)_scale(0.97)]",
+                  )}
                 >
                   <div className="flex items-center gap-3 border-b border-white/10 p-4">
                     <div className="min-w-0 flex-1">
@@ -2849,10 +2977,10 @@ export function EpisodeCommentsSection({
               role="status"
               aria-live="polite"
               className={cn(
-                "mt-4 flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-[#161224]/90 px-4 py-3 shadow-lg shadow-purple-950/25 backdrop-blur-md transition-all duration-300 ease-out motion-reduce:transition-opacity motion-reduce:transform-none",
+                "mt-4 flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-[#161224]/90 px-4 py-3 shadow-lg shadow-purple-950/25 backdrop-blur-md transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none",
                 moderationSuccessVisible
-                  ? "translate-y-0 opacity-100 scale-100"
-                  : "-translate-y-1 opacity-0 scale-[0.98] pointer-events-none",
+                  ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                  : "opacity-0 [transform:translateY(-4px)_scale(0.98)] pointer-events-none",
               )}
             >
               <div className="flex items-center gap-2.5 min-w-0">
@@ -3110,9 +3238,13 @@ export function EpisodeCommentsSection({
       {/* MODAL DE EDIÇÃO                                    */}
       {/* ================================================== */}
 
-      {editingComment && (
+      {activeEditingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 motion-safe:animate-in motion-safe:fade-in motion-reduce:transition-none overscroll-contain"
+          className={cn(
+            "fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+            editModal.visible ? "opacity-100" : "opacity-0",
+            editModal.closing && "pointer-events-none",
+          )}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelEdit();
@@ -3126,7 +3258,12 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-dialog-title"
-            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:transition-none transition-all text-left"
+            className={cn(
+              "w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transform-none motion-reduce:transition-none text-left",
+              editModal.visible
+                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                : "opacity-0 [transform:translateY(6px)_scale(0.97)]",
+            )}
           >
             {/* Cabeçalho */}
             <div className="flex items-start justify-between gap-3">
@@ -3161,13 +3298,17 @@ export function EpisodeCommentsSection({
             {/* Campo de texto com contador */}
             <div className="mt-4">
               <textarea
-                value={editText}
+                value={
+                  editModal.closing
+                    ? editText || activeEditingComment.content
+                    : editText
+                }
                 onChange={(event) => setEditText(event.target.value)}
                 rows={5}
                 maxLength={2000}
                 disabled={editSaving}
                 placeholder="Escreva seu comentário..."
-                className="w-full resize-none rounded-xl border border-white/10 bg-[#090714] p-3.5 sm:p-4 text-xs sm:text-sm text-white placeholder:text-zinc-500 outline-none focus:border-[#a855f7]/60 focus:ring-1 focus:ring-[#a855f7]/40 transition-all duration-150 disabled:opacity-60 shadow-inner"
+                className="w-full resize-none rounded-xl border border-white/10 bg-[#090714] p-3.5 sm:p-4 text-xs sm:text-sm text-white placeholder:text-zinc-500 outline-none focus:border-[#a855f7]/60 focus:ring-1 focus:ring-[#a855f7]/40 transition-colors duration-150 motion-reduce:transition-none disabled:opacity-60 shadow-inner"
               />
 
               <div className="mt-2.5 flex items-center justify-between text-xs text-zinc-500">
@@ -3179,11 +3320,11 @@ export function EpisodeCommentsSection({
                         checked={editIsSpoiler}
                         onChange={(event) => setEditIsSpoiler(event.target.checked)}
                         disabled={editSaving}
-                        className="size-4 rounded accent-purple-600 transition-transform cursor-pointer"
+                        className="size-4 rounded accent-purple-600 cursor-pointer"
                       />
                       <span className="font-medium">Marcar como spoiler</span>
                     </label>
-                  ) : editingComment.isSpoiler ? (
+                  ) : activeEditingComment.isSpoiler ? (
                     <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300">
                       <AlertTriangle className="size-3.5 shrink-0" />
                       <span>Comentário sinalizado como spoiler</span>
@@ -3192,7 +3333,10 @@ export function EpisodeCommentsSection({
                 </div>
 
                 <span className="font-mono text-[11px] sm:text-xs">
-                  {editText.length} / 2000
+                  {(editModal.closing
+                    ? editText || activeEditingComment.content
+                    : editText
+                  ).length} / 2000
                 </span>
               </div>
             </div>
@@ -3234,9 +3378,13 @@ export function EpisodeCommentsSection({
       {/* MODAL DE EXCLUSÃO                                  */}
       {/* ================================================== */}
 
-      {deletingComment && (
+      {activeDeletingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 motion-safe:animate-in motion-safe:fade-in motion-reduce:transition-none overscroll-contain"
+          className={cn(
+            "fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+            deleteModal.visible ? "opacity-100" : "opacity-0",
+            deleteModal.closing && "pointer-events-none",
+          )}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelDelete();
@@ -3250,7 +3398,12 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-dialog-title"
-            className="w-full max-w-md rounded-2xl sm:rounded-3xl border border-red-500/35 bg-gradient-to-b from-[#1c1017] via-[#120a10] to-[#0a060a] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(239,68,68,0.15)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:transition-none transition-all text-left"
+            className={cn(
+              "w-full max-w-md rounded-2xl sm:rounded-3xl border border-red-500/35 bg-gradient-to-b from-[#1c1017] via-[#120a10] to-[#0a060a] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(239,68,68,0.15)] transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transform-none motion-reduce:transition-none text-left",
+              deleteModal.visible
+                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                : "opacity-0 [transform:translateY(6px)_scale(0.97)]",
+            )}
           >
             {/* Cabeçalho de Perigo */}
             <div className="flex items-start justify-between gap-3">
@@ -3288,11 +3441,11 @@ export function EpisodeCommentsSection({
                 Conteúdo a ser removido:
               </p>
               <p className="line-clamp-4 whitespace-pre-wrap text-xs sm:text-sm text-zinc-200 italic">
-                "{deletingComment.content}"
+                "{activeDeletingComment.content}"
               </p>
-              {deletingComment.imageUrl && (
+              {activeDeletingComment.imageUrl && (
                 <img
-                  src={deletingComment.imageUrl}
+                  src={activeDeletingComment.imageUrl}
                   alt=""
                   className="mt-2.5 max-h-32 rounded-lg border border-white/10 object-contain"
                 />
@@ -3336,9 +3489,13 @@ export function EpisodeCommentsSection({
       {/* MODAL DE DENÚNCIA                                  */}
       {/* ================================================== */}
 
-      {reportingComment && (
+      {activeReportingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 motion-safe:animate-in motion-safe:fade-in motion-reduce:transition-none overscroll-contain"
+          className={cn(
+            "fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+            reportModal.visible ? "opacity-100" : "opacity-0",
+            reportModal.closing && "pointer-events-none",
+          )}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelReport();
@@ -3352,7 +3509,12 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="report-dialog-title"
-            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:transition-none transition-all text-left"
+            className={cn(
+              "w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transform-none motion-reduce:transition-none text-left",
+              reportModal.visible
+                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                : "opacity-0 [transform:translateY(6px)_scale(0.97)]",
+            )}
           >
             {/* Cabeçalho */}
             <div className="flex items-start justify-between gap-3">
@@ -3423,7 +3585,7 @@ export function EpisodeCommentsSection({
                   <label
                     key={item.value}
                     className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-all duration-150 select-none active:scale-[0.985] motion-reduce:transform-none motion-reduce:transition-none focus-within:ring-2 focus-within:ring-[#a855f7]/60",
+                      "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-[color,background-color,border-color,box-shadow,transform] duration-150 select-none active:[transform:scale(0.985)] motion-reduce:transform-none motion-reduce:transition-none focus-within:ring-2 focus-within:ring-[#a855f7]/60",
                       isSelected
                         ? "border-[#a855f7] bg-[#a855f7]/15 text-white ring-1 ring-[#a855f7]/50 shadow-[0_0_15px_rgba(168,85,247,0.2)]"
                         : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-[#a855f7]/30 hover:bg-white/[0.06] hover:text-white active:bg-white/[0.08]",
@@ -3435,7 +3597,7 @@ export function EpisodeCommentsSection({
                       value={item.value}
                       checked={isSelected}
                       onChange={() => setReportReason(item.value)}
-                      className="mt-0.5 size-4 shrink-0 accent-purple-600 transition-transform cursor-pointer"
+                      className="mt-0.5 size-4 shrink-0 accent-purple-600 cursor-pointer"
                     />
                     <div className="min-w-0 flex-1">
                       <span className="block text-xs sm:text-sm font-semibold tracking-wide text-white">
@@ -3468,7 +3630,7 @@ export function EpisodeCommentsSection({
                 variant="outline"
                 onClick={handleCancelReport}
                 disabled={reportSending}
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:[transform:scale(0.96)] transition-[color,background-color,border-color,transform] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -3489,7 +3651,7 @@ export function EpisodeCommentsSection({
                   reportSending ||
                   Boolean(moderatingId)
                 }
-                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:[transform:scale(0.96)] transition-[color,background-color,box-shadow,transform,opacity] duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
               >
                 <Flag className="size-4" />
                 {reportSending ? "Enviando..." : "Enviar denúncia"}
@@ -3503,9 +3665,13 @@ export function EpisodeCommentsSection({
       {/* MODAL DE SPAM                                      */}
       {/* ================================================== */}
 
-      {spamComment && (
+      {activeSpamComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+          className={cn(
+            "fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+            spamModal.visible ? "opacity-100" : "opacity-0",
+            spamModal.closing && "pointer-events-none",
+          )}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelSpam();
@@ -3517,7 +3683,12 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="spam-dialog-title"
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl"
+            className={cn(
+              "w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transform-none motion-reduce:transition-none",
+              spamModal.visible
+                ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                : "opacity-0 [transform:translateY(6px)_scale(0.97)]",
+            )}
           >
 
             <div className="flex items-start gap-3">
@@ -3547,7 +3718,7 @@ export function EpisodeCommentsSection({
                 type="button"
                 onClick={handleCancelSpam}
                 disabled={Boolean(moderatingId)}
-                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg cursor-pointer"
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg transition-colors duration-150 motion-reduce:transition-none cursor-pointer"
                 aria-label="Fechar"
               >
                 <X className="size-5" />
@@ -3558,13 +3729,13 @@ export function EpisodeCommentsSection({
             <div className="mt-4 rounded-lg border border-white/5 bg-surface p-3">
 
               <p className="line-clamp-4 whitespace-pre-wrap text-sm text-muted">
-                {spamComment.content}
+                {activeSpamComment.content}
               </p>
 
-              {spamComment.imageUrl && (
+              {activeSpamComment.imageUrl && (
                 <img
                   src={
-                    spamComment.imageUrl
+                    activeSpamComment.imageUrl
                   }
                   alt=""
                   className="mt-3 max-h-40 rounded-lg object-contain"
@@ -3597,10 +3768,12 @@ export function EpisodeCommentsSection({
               <Button
                 type="button"
                 onClick={() => {
-                  void handleModeration(
-                    spamComment.id,
-                    "spam",
-                  );
+                  if (spamComment) {
+                    void handleModeration(
+                      spamComment.id,
+                      "spam",
+                    );
+                  }
                 }}
                 disabled={
                   Boolean(
@@ -3611,7 +3784,7 @@ export function EpisodeCommentsSection({
                 <Ban className="size-4" />
 
                 {moderatingId ===
-                spamComment.id
+                activeSpamComment.id
                   ? "Enviando..."
                   : "Marcar como spam"}
               </Button>
@@ -3709,14 +3882,6 @@ function parseCommentSpoilers(
 function SpoilerText({ content }: { content: string }) {
   const [revealed, setRevealed] = useState(false);
 
-  if (revealed) {
-    return (
-      <span className="text-white/90 transition-colors duration-150 motion-reduce:transition-none [overflow-wrap:anywhere]">
-        {content}
-      </span>
-    );
-  }
-
   const lines = content.split("\n");
   const isShort = content.trim().length <= 4;
 
@@ -3725,34 +3890,48 @@ function SpoilerText({ content }: { content: string }) {
       | React.MouseEvent<HTMLSpanElement>
       | React.KeyboardEvent<HTMLSpanElement>,
   ) => {
+    if (revealed) return;
     event.stopPropagation();
     setRevealed(true);
   };
 
   return (
     <span
-      role="button"
-      tabIndex={0}
-      aria-expanded={false}
-      aria-label="Trecho com spoiler oculto. Toque para revelar"
-      title="Spoiler — toque para revelar"
-      onClick={handleReveal}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          handleReveal(event);
-        }
-      }}
-      className="group/spoiler inline cursor-pointer touch-manipulation select-none rounded-[5px] [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc] [-webkit-tap-highlight-color:transparent]"
+      role={revealed ? undefined : "button"}
+      tabIndex={revealed ? undefined : 0}
+      aria-expanded={revealed ? undefined : false}
+      aria-label={
+        revealed ? undefined : "Trecho com spoiler oculto. Toque para revelar"
+      }
+      title={revealed ? undefined : "Spoiler — toque para revelar"}
+      onClick={revealed ? undefined : handleReveal}
+      onKeyDown={
+        revealed
+          ? undefined
+          : (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleReveal(event);
+              }
+            }
+      }
+      className={cn(
+        "inline rounded-[5px] [overflow-wrap:anywhere] [-webkit-tap-highlight-color:transparent]",
+        !revealed &&
+          "group/spoiler cursor-pointer touch-manipulation select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+      )}
     >
-      <span aria-hidden="true">
+      <span aria-hidden={revealed ? undefined : true}>
         {lines.map((line, idx) => (
           <React.Fragment key={idx}>
             {line.trim().length > 0 ? (
               <span
                 className={cn(
-                  "box-decoration-clone [-webkit-box-decoration-break:clone] rounded-[5px] bg-[#341b54]/95 ring-1 ring-inset ring-[#a855f7]/40 py-[1.5px] text-transparent [text-shadow:0_0_10px_rgba(216,180,254,0.24)] transition-all duration-150 motion-reduce:transition-none group-hover/spoiler:bg-[#402168] group-hover/spoiler:ring-[#c084fc]/60 group-active/spoiler:bg-[#4b277a]",
-                  isShort ? "px-2" : "px-1.5",
+                  "box-decoration-clone [-webkit-box-decoration-break:clone] rounded-[5px] py-[1.5px] ring-1 ring-inset transition-[color,background-color,box-shadow,text-shadow] duration-150 ease-out motion-reduce:transition-none",
+                  isShort ? "px-1.5 -mx-0.5" : "px-1 -mx-0.5",
+                  revealed
+                    ? "bg-transparent ring-transparent text-white/90 [text-shadow:0_0_0px_rgba(216,180,254,0)]"
+                    : "bg-[#341b54]/95 ring-[#a855f7]/40 text-transparent [text-shadow:0_0_10px_rgba(216,180,254,0.24)] group-hover/spoiler:bg-[#402168] group-hover/spoiler:ring-[#c084fc]/60 group-active/spoiler:bg-[#4b277a] group-active/spoiler:ring-[#d8b4fe]/70",
                 )}
               >
                 {line}
@@ -3834,8 +4013,12 @@ function CommentCard({
   isNew?: boolean;
 }) {
   const isReplying = replyingId === comment.id;
+  const cardMenu = usePresence(menuOpen, 130);
   const [localMediaRevealed, setLocalMediaRevealed] = useState(false);
   const [mediaSpoilerRevealed, setMediaSpoilerRevealed] = useState(false);
+  const isMediaSpoilerHidden = Boolean(
+    comment.isSpoiler && !mediaSpoilerRevealed,
+  );
   const formattedDate = formatDate(comment.createdAt);
   const cleanReplyToName = replyToName?.replace(/^@+/, "").trim();
   const authorName = comment.userName || "Usuário";
@@ -3852,11 +4035,11 @@ function CommentCard({
     <article
       id={`comment-${comment.id}`}
       className={cn(
-        "group/comment relative transition-colors",
+        "group/comment relative motion-reduce:transition-none",
         highlighted &&
-          "rounded-xl bg-[#a855f7]/10 p-2.5 border border-[#a855f7]/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]",
+          "rounded-xl bg-[#a855f7]/10 p-2.5 border border-[#a855f7]/40 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-colors duration-300 ease-out",
         isNew
-          ? "rounded-xl bg-[#a855f7]/15 border border-[#a855f7]/40 p-2.5 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-colors duration-1000 ease-out motion-safe:animate-in motion-safe:fade-in-50"
+          ? "rounded-xl bg-[#a855f7]/15 border border-[#a855f7]/40 p-2.5 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-colors duration-700 ease-out"
           : !highlighted &&
               "border border-transparent transition-colors duration-500 ease-out",
       )}
@@ -3959,23 +4142,34 @@ function CommentCard({
                 aria-label="Opções do comentário"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
-                className="flex size-8 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:bg-[#a855f7]/15 active:text-[#e9d5ff] touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7] motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer",
+                  menuOpen && "bg-white/[0.08] text-white",
+                )}
               >
                 <MoreVertical className="size-4" />
               </button>
 
-              {menuOpen && (
+              {cardMenu.mounted && (
                 <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleMenu();
-                    }}
-                  />
+                  {menuOpen && (
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleMenu();
+                      }}
+                    />
+                  )}
                   <div
                     role="menu"
-                    className="absolute right-0 top-[calc(100%+4px)] z-50 w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right transition-all"
+                    className={cn(
+                      "absolute right-0 top-[calc(100%+4px)] z-50 w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                      cardMenu.visible
+                        ? "opacity-100 [transform:translateY(0)_scale(1)]"
+                        : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
+                      cardMenu.closing && "pointer-events-none",
+                    )}
                   >
                     {canEdit && (
                       <>
@@ -3987,7 +4181,7 @@ function CommentCard({
                             onEdit();
                           }}
                           disabled={moderating}
-                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:bg-[#a855f7]/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
                           <Edit3 className="size-3.5 shrink-0 text-[#c084fc]" />
                           <span>Editar comentário</span>
@@ -4001,7 +4195,7 @@ function CommentCard({
                             onDelete();
                           }}
                           disabled={moderating}
-                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 active:bg-red-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
                           <Trash2 className="size-3.5 shrink-0 text-red-400" />
                           <span>Excluir comentário</span>
@@ -4018,7 +4212,7 @@ function CommentCard({
                           onMarkSpoiler();
                         }}
                         disabled={comment.isSpoiler || moderating}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-amber-300 hover:bg-amber-500/15 hover:text-amber-200 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-amber-300 hover:bg-amber-500/15 hover:text-amber-200 active:bg-amber-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                       >
                         <AlertTriangle className="size-3.5 shrink-0 text-amber-400" />
                         <span>
@@ -4036,7 +4230,7 @@ function CommentCard({
                           onReport();
                         }}
                         disabled={moderating}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:bg-[#a855f7]/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                       >
                         <Flag className="size-3.5 shrink-0 text-purple-400" />
                         <span>Denunciar comentário</span>
@@ -4084,52 +4278,70 @@ function CommentCard({
                       Exibir
                     </button>
                   </div>
-                ) : comment.isSpoiler && !mediaSpoilerRevealed ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMediaSpoilerRevealed(true);
-                    }}
-                    aria-label="Imagem com spoiler oculto. Toque para revelar"
-                    className="group/imgspoiler relative block w-fit max-w-full overflow-hidden rounded-xl border border-[#a855f7]/30 bg-[#140d22] cursor-pointer touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc] [-webkit-tap-highlight-color:transparent]"
-                  >
-                    <img
-                      src={comment.imageUrl}
-                      alt=""
-                      aria-hidden="true"
-                      loading="lazy"
-                      className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain blur-2xl scale-110 brightness-50 saturate-75 select-none pointer-events-none"
-                    />
-                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#26143d]/65 group-hover/imgspoiler:bg-[#311a4f]/60 transition-colors duration-150 motion-reduce:transition-none">
-                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#a855f7]/35 bg-[#160d26]/85 px-2.5 py-1 text-[11px] font-medium text-[#e9d5ff] backdrop-blur-sm">
-                        <EyeOff className="size-3 shrink-0 text-[#c084fc]" />
-                        <span>Spoiler</span>
-                      </span>
-                    </span>
-                  </button>
                 ) : (
-                  <div className="w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0e]">
+                  <div
+                    className={cn(
+                      "relative w-fit max-w-full overflow-hidden rounded-xl border transition-colors duration-200 motion-reduce:transition-none",
+                      isMediaSpoilerHidden
+                        ? "border-[#a855f7]/30 bg-[#140d22]"
+                        : "border-white/10 bg-[#0a0a0e]",
+                    )}
+                  >
                     <a
                       href={comment.imageUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="block w-fit max-w-full cursor-zoom-in"
+                      tabIndex={isMediaSpoilerHidden ? -1 : undefined}
+                      aria-hidden={isMediaSpoilerHidden ? true : undefined}
+                      className={cn(
+                        "block w-fit max-w-full",
+                        isMediaSpoilerHidden
+                          ? "pointer-events-none select-none"
+                          : "cursor-zoom-in",
+                      )}
                       aria-label="Abrir imagem em tamanho maior"
                     >
                       <img
                         src={comment.imageUrl}
-                        alt="Imagem anexada"
+                        alt={isMediaSpoilerHidden ? "" : "Imagem anexada"}
                         loading="lazy"
-                        className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg"
+                        className={cn(
+                          "block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg transition-[filter,transform] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none",
+                          isMediaSpoilerHidden
+                            ? "blur-2xl [transform:scale(1.08)] brightness-50 saturate-75 select-none pointer-events-none"
+                            : "blur-0 [transform:scale(1)] brightness-100 saturate-100",
+                        )}
                       />
                     </a>
-                    {!showMedia && localMediaRevealed && (
+                    {comment.isSpoiler && (
+                      <button
+                        type="button"
+                        tabIndex={isMediaSpoilerHidden ? 0 : -1}
+                        aria-hidden={!isMediaSpoilerHidden ? true : undefined}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMediaSpoilerRevealed(true);
+                        }}
+                        aria-label="Imagem com spoiler oculto. Toque para revelar"
+                        className={cn(
+                          "group/imgspoiler absolute inset-0 flex items-center justify-center bg-[#26143d]/65 hover:bg-[#311a4f]/60 active:bg-[#3a1f5e]/65 active:!transform-none transition-[opacity,background-color] duration-150 ease-out motion-reduce:transition-none touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#c084fc] [-webkit-tap-highlight-color:transparent]",
+                          isMediaSpoilerHidden
+                            ? "opacity-100 cursor-pointer"
+                            : "opacity-0 pointer-events-none",
+                        )}
+                      >
+                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#a855f7]/35 bg-[#160d26]/85 px-2.5 py-1 text-[11px] font-medium text-[#e9d5ff] backdrop-blur-sm transition-transform duration-150 ease-out group-active/imgspoiler:[transform:scale(0.95)] motion-reduce:transition-none motion-reduce:transform-none">
+                          <EyeOff className="size-3 shrink-0 text-[#c084fc]" />
+                          <span>Spoiler</span>
+                        </span>
+                      </button>
+                    )}
+                    {!isMediaSpoilerHidden && !showMedia && localMediaRevealed && (
                       <div className="border-t border-white/10 bg-[#0e0e14] px-2.5 py-1 text-right">
                         <button
                           type="button"
                           onClick={() => setLocalMediaRevealed(false)}
-                          className="text-[11px] text-white/50 hover:text-white transition-colors cursor-pointer"
+                          className="text-[11px] text-white/50 hover:text-white transition-colors motion-reduce:transition-none cursor-pointer"
                         >
                           Ocultar mídia
                         </button>
@@ -4146,45 +4358,45 @@ function CommentCard({
           {/* =================================================== */}
 
           <div className="mt-1 -ml-1.5 flex flex-wrap items-center gap-1 text-xs">
-            {/* Botão CURTIR (ThumbsUp) com transição fluida */}
+            {/* Botão CURTIR (ThumbsUp) com feedback discreto */}
             <button
               type="button"
               onClick={() => onReaction(comment.id, "like")}
               disabled={isPendingReaction}
               className={cn(
-                "group/like inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-all select-none cursor-pointer duration-200 motion-reduce:transition-none",
+                "group/like inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] motion-reduce:transition-none motion-reduce:transform-none",
                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
                 comment.liked
-                  ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
-                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
+                  ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)] active:bg-[#a855f7]/30"
+                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-[#a855f7]/15 active:text-[#e9d5ff]",
                 isPendingReaction && "opacity-60 pointer-events-none",
               )}
               aria-label={comment.liked ? "Remover curtida" : "Curtir comentário"}
             >
               <ThumbsUp
                 className={cn(
-                  "size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none motion-reduce:transform-none ease-out",
+                  "size-3.5 shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none",
                   comment.liked
-                    ? "fill-current scale-110"
-                    : "group-hover/like:scale-110 active:scale-90",
+                    ? "fill-current [transform:scale(1.06)]"
+                    : "group-hover/like:[transform:scale(1.06)]",
                 )}
               />
-              <span className="font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none">
+              <span className="font-semibold tabular-nums transition-colors duration-150 motion-reduce:transition-none">
                 {comment.likes}
               </span>
             </button>
 
-            {/* Botão NÃO CURTIR (ThumbsDown) com transição fluida */}
+            {/* Botão NÃO CURTIR (ThumbsDown) com feedback discreto */}
             <button
               type="button"
               onClick={() => onReaction(comment.id, "dislike")}
               disabled={isPendingReaction}
               className={cn(
-                "group/dislike inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-all select-none cursor-pointer duration-200 motion-reduce:transition-none",
+                "group/dislike inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] motion-reduce:transition-none motion-reduce:transform-none",
                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
                 comment.disliked
-                  ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
-                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
+                  ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)] active:bg-[#a855f7]/30"
+                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-[#a855f7]/15 active:text-[#e9d5ff]",
                 isPendingReaction && "opacity-60 pointer-events-none",
               )}
               aria-label={
@@ -4193,22 +4405,27 @@ function CommentCard({
             >
               <ThumbsDown
                 className={cn(
-                  "size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none motion-reduce:transform-none ease-out",
+                  "size-3.5 shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none",
                   comment.disliked
-                    ? "fill-current scale-110"
-                    : "group-hover/dislike:scale-110 active:scale-90",
+                    ? "fill-current [transform:scale(1.06)]"
+                    : "group-hover/dislike:[transform:scale(1.06)]",
                 )}
               />
-              <span className="font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none">
+              <span className="font-semibold tabular-nums transition-colors duration-150 motion-reduce:transition-none">
                 {comment.dislikes}
               </span>
             </button>
 
-            {/* Botão RESPONDER */}
+            {/* Botão RESPONDER com feedback discreto */}
             <button
               type="button"
               onClick={onStartReply}
-              className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-white/50 hover:text-white hover:bg-white/[0.06] active:scale-95 transition-all cursor-pointer"
+              className={cn(
+                "inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7] motion-reduce:transition-none motion-reduce:transform-none",
+                isReplying
+                  ? "bg-[#a855f7]/15 text-[#d8b4fe] active:bg-[#a855f7]/25"
+                  : "text-white/50 hover:text-white hover:bg-white/[0.06] active:bg-[#a855f7]/15 active:text-[#e9d5ff]",
+              )}
             >
               <MessageCircle className="size-3.5 shrink-0" />
               <span>Responder</span>
@@ -4266,7 +4483,7 @@ function CommentCard({
                     size="sm"
                     onClick={onSendReply}
                     disabled={!replyText.trim() || replySending}
-                    className="h-7 px-3 text-xs font-semibold rounded-lg bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_10px_rgba(168,85,247,0.25)] active:scale-95 transition-all inline-flex items-center gap-1"
+                    className="h-7 px-3 text-xs font-semibold rounded-lg bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_10px_rgba(168,85,247,0.25)] motion-reduce:transition-none motion-reduce:transform-none inline-flex items-center gap-1"
                   >
                     <Send className="size-3 shrink-0" />
                     <span>{replySending ? "Enviando..." : "Responder"}</span>
