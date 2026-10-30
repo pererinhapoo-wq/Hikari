@@ -80,9 +80,9 @@ const LOGO_DEFINITIONS: Record<
     sizeClasses:
       "max-h-13 sm:max-h-16 md:max-h-20 max-w-[240px] sm:max-w-[310px] md:max-w-[370px]",
     aspectRatioHint: "wide",
-    aniListIds: [97940, 157252],
+    aniListIds: [97940, 157252, 195604],
     malIds: [34572, 48849],
-    titlePatterns: [/\bblack\s+clover\b/i],
+    titlePatterns: [/\bblack\s+clover\b/i, /ブラッククローバー/],
   },
   "cyberpunk-edgerunners": {
     src: "/assets/anime-logos/cyberpunk-edgerunners.png",
@@ -205,6 +205,7 @@ const LOGO_DEFINITIONS: Record<
     titlePatterns: [
       /\bsteel\s*ball\s*run\b/i,
       /ジョジョの奇妙な冒険\s*スティール・ボール・ラン/,
+      /\bjojo.*steel\s*ball\s*run\b/i,
     ],
   },
   "the-ramparts-of-ice": {
@@ -235,12 +236,73 @@ const LOGO_DEFINITIONS: Record<
       /薬屋のひとりごと/,
     ],
   },
+  "firefly-wedding": {
+    src: "/assets/anime-logos/firefly-wedding.png",
+    alt: "Firefly Wedding",
+    sizeClasses:
+      "max-h-13 sm:max-h-16 md:max-h-20 max-w-[240px] sm:max-w-[310px] md:max-w-[380px]",
+    aspectRatioHint: "balanced",
+    aniListIds: [205909],
+    malIds: [63293],
+    titlePatterns: [
+      /\bfirefly\s*wedding\b/i,
+      /\bhotaru\s*no\s*yomeiri\b/i,
+      /ホタルの嫁入り/,
+    ],
+  },
+  "tokyo-revengers": {
+    src: "/assets/anime-logos/tokyo-revengers.svg",
+    alt: "Tokyo Revengers / 東京リベンジャーズ",
+    sizeClasses:
+      "max-h-12 sm:max-h-15 md:max-h-18 max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
+    aspectRatioHint: "wide",
+    aniListIds: [129201, 145139, 178083],
+    malIds: [42249, 49535, 59088],
+    titlePatterns: [
+      /\btokyo\s+revengers\b/i,
+      /\btoukyou\s+revengers\b/i,
+      /東京リベンジャーズ/,
+    ],
+  },
 };
+
+/**
+ * Normaliza o título para extrair a raiz da franquia, permitindo que sequências,
+ * temporadas (Season 2, Season 3, 2nd Season, Part 2, etc.) e arcos dinâmicos
+ * herdem com precisão o logotipo oficial da franquia.
+ */
+function normalizeFranchiseTitle(title: string): string {
+  if (!title) return "";
+  let clean = title.trim();
+
+  // Remove parênteses como "(TV)", "(TV 2)", "(Movie)", etc.
+  clean = clean.replace(/\s*\((?:TV|Movie|OVA|ONA|Season|Part|\d+)[^)]*\)/gi, "");
+
+  // Remove sufixos de temporada específicos em inglês e japonês
+  clean = clean.replace(
+    /\s*[:\-\uff5e\u301c]\s*(?:Season\b|\d+(?:st|nd|rd|th)\s+Season|Part\b|Cour\b|Stage\b|Arc\b|Hen\b|Movie\b|The\s+Final|S\d+\b|Final\s+Season|2nd\s*&\s*3rd\s*STAGE).*/gi,
+    ""
+  );
+
+  clean = clean.replace(/\s+(?:Season|\bS)\s*\d+.*$/gi, "");
+  clean = clean.replace(/\s+\d+(?:st|nd|rd|th)\s+Season.*$/gi, "");
+  clean = clean.replace(/\s*-\s*\d+.*STAGE.*$/gi, "");
+  clean = clean.replace(/\s*(?:第[0-9一二三四五六七八九十]+期|シーズン[0-9]+|完結編).*$/g, "");
+
+  // Remove subtítulos de arcos após ":" preservando o nome da franquia principal
+  const colonIdx = clean.indexOf(":");
+  if (colonIdx > 3) {
+    const prefix = clean.substring(0, colonIdx).trim();
+    if (prefix.length >= 3) return prefix;
+  }
+
+  return clean.trim();
+}
 
 /**
  * Obtém a configuração de logo para um anime, verificando IDs, títulos e fontes.
  * Prioriza logotipos oficiais em inglês com fundo transparente.
- * Retorna null se não houver arquivo oficial verificado.
+ * Retorna null se não houver arquivo oficial verificado, acionando o fallback tipográfico.
  */
 export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
   if (!anime) return null;
@@ -276,8 +338,8 @@ export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
     if (Number.isInteger(parsed)) kitsuId = parsed;
   }
 
-  // Títulos para correspondência por padrão (priorizando inglês)
-  const titles = [
+  // Títulos originais (priorizando inglês, romaji e nativo)
+  const rawTitles = [
     anime.titles?.english,
     anime.titles?.romaji,
     anime.titles?.native,
@@ -285,7 +347,7 @@ export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
     .map((t) => t?.trim())
     .filter(Boolean) as string[];
 
-  // 2. Busca por ID direto
+  // 2. Busca prioritária por ID direto
   for (const def of Object.values(LOGO_DEFINITIONS)) {
     if (anilistId && def.aniListIds.includes(anilistId)) {
       return {
@@ -305,9 +367,9 @@ export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
     }
   }
 
-  // 3. Busca por padrões de título
+  // 3. Busca por padrões de título exato
   for (const def of Object.values(LOGO_DEFINITIONS)) {
-    for (const title of titles) {
+    for (const title of rawTitles) {
       for (const pattern of def.titlePatterns) {
         if (pattern.test(title)) {
           return {
@@ -321,5 +383,26 @@ export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
     }
   }
 
+  // 4. Busca resiliente pela raiz normalizada da franquia (para sequências e novas temporadas dinâmicas)
+  const normalizedTitles = rawTitles
+    .map(normalizeFranchiseTitle)
+    .filter((t) => t.length > 0 && !rawTitles.includes(t));
+
+  for (const def of Object.values(LOGO_DEFINITIONS)) {
+    for (const title of normalizedTitles) {
+      for (const pattern of def.titlePatterns) {
+        if (pattern.test(title)) {
+          return {
+            src: def.src,
+            alt: def.alt,
+            sizeClasses: def.sizeClasses,
+            aspectRatioHint: def.aspectRatioHint,
+          };
+        }
+      }
+    }
+  }
+
+  // Sem logo oficial verificado disponível -> ativa fallback tipográfico sem exibir imagem de outro anime
   return null;
 }
