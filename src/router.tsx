@@ -8,5 +8,6 @@ export function getRouter() {
   return createRouter({
     routeTree,
     defaultErrorComponent: AppErrorComponent,
+    scrollToTopSelectors: [".rail"],
   });
 }

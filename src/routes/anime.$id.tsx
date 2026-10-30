@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Bookmark,
   BookmarkCheck,
@@ -73,6 +73,15 @@ const useIsomorphicLayoutEffect =
 const clientHydrationState = { hydrated: false };
 const MAX_WARMED_BANNERS = 12;
 const warmedBannerElements = new Map<string, HTMLImageElement>();
+const clientCreditsCache = new Map<
+  string,
+  {
+    studios: string[];
+    characters: AnimeCharacter[];
+    staff: AnimeStaff[];
+  }
+>();
+const clientPicturesCache = new Map<number, string[]>();
 
 function warmBannerImage(url: string | null | undefined): void {
   if (typeof window === "undefined") return;
@@ -328,7 +337,10 @@ function AnimePage() {
     studios: string[];
     characters: AnimeCharacter[];
     staff: AnimeStaff[];
-  } | null>(null);
+  } | null>(() => {
+    const cached = id ? clientCreditsCache.get(id) : null;
+    return cached ? { forId: id, ...cached } : null;
+  });
 
   const animeId = anime?.id;
   const animeAnilistId = anime?.anilistId;
@@ -346,6 +358,17 @@ function AnimePage() {
   useEffect(() => {
     if (!animeId) return;
     if (hasCharacters && hasStaff && hasStudios) return;
+
+    const cached = clientCreditsCache.get(animeId);
+    if (cached) {
+      setExtraCredits({
+        forId: animeId,
+        studios: cached.studios,
+        characters: cached.characters,
+        staff: cached.staff,
+      });
+      return;
+    }
 
     let cancelled = false;
 
@@ -388,6 +411,11 @@ function AnimePage() {
           res.staff.length > 0 ||
           res.studios.length > 0
         ) {
+          clientCreditsCache.set(animeId, {
+            studios: res.studios,
+            characters: res.characters,
+            staff: res.staff,
+          });
           startTransition(() => {
             setExtraCredits({
               forId: animeId,
@@ -1341,10 +1369,15 @@ function AnimePage() {
       )}
 
       {/* ELENCO */}
-      <ElencoSection animeId={anime.id} characters={effectiveCharacters} />
+      <ElencoSection
+        key={`elenco-${anime.id}`}
+        animeId={anime.id}
+        characters={effectiveCharacters}
+      />
 
       {/* DIREÇÃO E EQUIPE TÉCNICA */}
       <DirecaoEquipeSection
+        key={`staff-${anime.id}`}
         animeId={anime.id}
         studios={effectiveStudios}
         staff={effectiveStaff}
@@ -1355,6 +1388,7 @@ function AnimePage() {
 
       {/* IMAGENS */}
       <ImagensSection
+        key={`imagens-${anime.id}`}
         animeId={anime.id}
         images={anime.images}
         title={title}
@@ -1366,6 +1400,7 @@ function AnimePage() {
       {/* RELACIONADOS (SEM BOTÃO DE SALVAR) */}
       {anime.recommendations.length > 0 && (
         <RelatedSection
+          key={`related-${anime.id}`}
           animeId={anime.id}
           recommendations={anime.recommendations}
         />
@@ -1768,19 +1803,19 @@ function useHorizontalRailImageLimit(
   );
   const prevResetKeyRef = useRef(resetKey);
 
-  useEffect(() => {
-    if (prevResetKeyRef.current !== resetKey) {
-      prevResetKeyRef.current = resetKey;
-      if (railRef.current) {
-        railRef.current.scrollLeft = 0;
-      }
-      setLimit(Math.min(totalCount, initialCount));
-      return;
+  if (prevResetKeyRef.current !== resetKey) {
+    prevResetKeyRef.current = resetKey;
+    setLimit(Math.min(totalCount, initialCount));
+  }
+
+  // Garante que o limite visível seja imediato assim que os dados chegarem, sem atrasar imagens
+  const effectiveLimit = Math.max(limit, Math.min(totalCount, initialCount));
+
+  useIsomorphicLayoutEffect(() => {
+    if (railRef.current && railRef.current.scrollLeft !== 0) {
+      railRef.current.scrollTo({ left: 0, top: 0, behavior: "instant" });
     }
-    setLimit((prev) =>
-      Math.min(totalCount, Math.max(prev, initialCount)),
-    );
-  }, [railRef, resetKey, totalCount, initialCount]);
+  }, [railRef, resetKey]);
 
   const advance = useCallback(
     (extraPx = 0) => {
@@ -1804,7 +1839,7 @@ function useHorizontalRailImageLimit(
   );
 
   useEffect(() => {
-    if (limit >= totalCount) return;
+    if (effectiveLimit >= totalCount) return;
     const el = railRef.current;
     if (!el) return;
 
@@ -1824,9 +1859,9 @@ function useHorizontalRailImageLimit(
         window.cancelAnimationFrame(rafId);
       }
     };
-  }, [railRef, limit, totalCount, advance]);
+  }, [railRef, effectiveLimit, totalCount, advance]);
 
-  return { limit, advance };
+  return { limit: effectiveLimit, advance };
 }
 
 function useVerticalBoxImageLimit(
@@ -2297,34 +2332,27 @@ const ImagensSection = memo(function ImagensSection({
   malId?: number | null;
 }) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [extraPictures, setExtraPictures] = useState<string[]>([]);
+  const [extraPictures, setExtraPictures] = useState<string[]>(() => {
+    return malId ? clientPicturesCache.get(malId) ?? [] : [];
+  });
   const railRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    if (railRef.current) {
-      railRef.current.scrollLeft = 0;
-    }
-
-    const unsubscribe = router.subscribe("onRendered", () => {
-      requestAnimationFrame(() => {
-        if (railRef.current) {
-          railRef.current.scrollLeft = 0;
-        }
-      });
-    });
-
-    return unsubscribe;
-  }, [router]);
 
   // Busca em segundo plano na API Jikan (MyAnimeList) caso o anime possua poucas imagens carregadas
   useEffect(() => {
     if (!malId || (images && images.length >= 3)) return;
+
+    const cached = clientPicturesCache.get(malId);
+    if (cached && cached.length > 0) {
+      setExtraPictures(cached);
+      return;
+    }
+
     let isMounted = true;
 
     fetchAnimePictures({ data: { malId } })
       .then((pics) => {
         if (isMounted && Array.isArray(pics) && pics.length > 0) {
+          clientPicturesCache.set(malId, pics);
           startTransition(() => {
             setExtraPictures(pics);
           });
@@ -3044,7 +3072,7 @@ const RelatedSection = memo(function RelatedSection({
       railRef,
       recommendations.length,
       132,
-      12,
+      Math.max(16, recommendations.length),
       animeId,
     );
 
@@ -3094,7 +3122,6 @@ const RelatedSection = memo(function RelatedSection({
       </div>
 
       <div
-        id="related-anime-rail"
         ref={railRef}
         className="rail -mx-4 px-4 sm:-mx-6 sm:px-6"
       >
