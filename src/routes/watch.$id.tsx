@@ -2,6 +2,9 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ChevronLeft,
   ChevronRight,
+  EyeOff,
+  HeartHandshake,
+  ShieldAlert,
 } from "lucide-react";
 import {
   useCallback,
@@ -863,6 +866,57 @@ function parseDurationToSeconds(raw?: string | number | null): number {
             </Button>
           )}
         </div>
+
+        {/* ================================================== */}
+        {/* AVISO ANTES DOS COMENTÁRIOS                        */}
+        {/* ================================================== */}
+
+        <aside
+          aria-label="Aviso antes de comentar"
+          className="relative mt-4 overflow-hidden rounded-2xl border border-[#a855f7]/25 bg-gradient-to-b from-[#151124]/95 to-[#0f0d18]/95 px-3.5 py-3 sm:px-4 sm:py-3.5 shadow-[0_8px_28px_rgba(0,0,0,0.35)] backdrop-blur-md"
+        >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#a855f7]/50 to-transparent"
+          />
+
+          <div className="flex items-center gap-2">
+            <ShieldAlert
+              className="size-4 shrink-0 text-[#c084fc]"
+              aria-hidden="true"
+            />
+            <h2 className="text-xs sm:text-sm font-bold tracking-tight text-white">
+              Antes de comentar, atenção!
+            </h2>
+          </div>
+
+          <p className="mt-2 flex items-start gap-2 text-xs sm:text-[13px] font-medium leading-relaxed text-[#f3e8ff]">
+            <EyeOff
+              className="mt-[3px] size-3.5 shrink-0 text-[#c084fc]"
+              aria-hidden="true"
+            />
+            <span>
+              Os comentários podem conter{" "}
+              <strong className="font-semibold text-[#d8b4fe]">
+                spoilers deste episódio
+              </strong>
+              . Se ainda não terminou de assistir, leia com cuidado!
+            </span>
+          </p>
+
+          <div className="mt-2.5 space-y-1.5 border-t border-[#a855f7]/15 pt-2.5 text-xs leading-relaxed text-zinc-300/90">
+            <p>
+              Respeite a opinião dos outros, seja gentil com a comunidade e evite ofensas, provocações e discussões desnecessárias.
+            </p>
+            <p className="flex items-start gap-1.5 font-medium text-[#d8b4fe]/90">
+              <HeartHandshake
+                className="mt-[3px] size-3.5 shrink-0 text-[#c084fc]"
+                aria-hidden="true"
+              />
+              <span>Vamos manter o Hikari um espaço agradável para todos!</span>
+            </p>
+          </div>
+        </aside>
 
         {/* ================================================== */}
         {/* COMENTÁRIOS */}
