@@ -221,38 +221,69 @@ const LOGO_DEFINITIONS: Record<
       /氷の城壁/,
     ],
   },
+  "the-apothecary-diaries": {
+    src: "/assets/anime-logos/the-apothecary-diaries.png",
+    alt: "The Apothecary Diaries",
+    sizeClasses:
+      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+    aspectRatioHint: "wide",
+    aniListIds: [161645, 176583, 195516],
+    malIds: [54492, 58514, 61987],
+    titlePatterns: [
+      /\b(?:the\s+)?apothecary\s+diaries\b/i,
+      /\bkusuriya\s+no\s+hitorigoto\b/i,
+      /薬屋のひとりごと/,
+    ],
+  },
 };
 
 /**
  * Obtém a configuração de logo para um anime, verificando IDs, títulos e fontes.
+ * Prioriza logotipos oficiais em inglês com fundo transparente.
  * Retorna null se não houver arquivo oficial verificado.
  */
 export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
   if (!anime) return null;
 
   // 1. Se o objeto de anime já possui um campo de logo oficial direto
-  const directLogo = (anime as unknown as { logo?: string }).logo;
+  const directLogo =
+    (anime as unknown as { logo?: string; clearlogo?: string; titleLogo?: string }).logo ||
+    (anime as unknown as { logo?: string; clearlogo?: string; titleLogo?: string }).clearlogo ||
+    (anime as unknown as { logo?: string; clearlogo?: string; titleLogo?: string }).titleLogo;
+
   if (typeof directLogo === "string" && directLogo.trim().length > 0) {
     return {
       src: directLogo.trim(),
-      alt: anime.titles?.romaji || anime.titles?.english || "Logo",
+      alt: anime.titles?.english?.trim() || anime.titles?.romaji?.trim() || "Logo",
       sizeClasses:
         "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[400px]",
       aspectRatioHint: "balanced",
     };
   }
 
-  // Identificadores numéricos
-  const anilistId =
-    anime.anilistId || (Number.isInteger(Number(anime.id)) ? Number(anime.id) : undefined);
-  const malId = anime.malId;
+  // Identificadores numéricos normalizados
+  let anilistId = anime.anilistId;
+  let malId = anime.malId;
+  let kitsuId = anime.kitsuId;
 
-  // Títulos para correspondência por padrão
+  if (!anilistId && Number.isInteger(Number(anime.id))) {
+    anilistId = Number(anime.id);
+  } else if (!malId && typeof anime.id === "string" && anime.id.startsWith("mal-")) {
+    const parsed = Number(anime.id.replace("mal-", ""));
+    if (Number.isInteger(parsed)) malId = parsed;
+  } else if (!kitsuId && typeof anime.id === "string" && anime.id.startsWith("kitsu-")) {
+    const parsed = Number(anime.id.replace("kitsu-", ""));
+    if (Number.isInteger(parsed)) kitsuId = parsed;
+  }
+
+  // Títulos para correspondência por padrão (priorizando inglês)
   const titles = [
-    anime.titles?.romaji,
     anime.titles?.english,
+    anime.titles?.romaji,
     anime.titles?.native,
-  ].filter(Boolean) as string[];
+  ]
+    .map((t) => t?.trim())
+    .filter(Boolean) as string[];
 
   // 2. Busca por ID direto
   for (const def of Object.values(LOGO_DEFINITIONS)) {

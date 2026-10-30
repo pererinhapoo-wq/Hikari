@@ -12,10 +12,10 @@ interface HeroSlideProps {
 }
 
 function HeroSlide({ anime, priority = false }: HeroSlideProps) {
-  const originalTitle =
+  const preferredTitle =
+    anime.titles?.english?.trim() ||
     anime.titles?.romaji?.trim() ||
     anime.titles?.native?.trim() ||
-    anime.titles?.english?.trim() ||
     displayTitle(anime);
 
   const logoConfig = getAnimeLogo(anime);
@@ -61,7 +61,7 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
         <div className="relative size-full md:hidden">
           <img
             src={mobileBackdrop}
-            alt={originalTitle}
+            alt={preferredTitle}
             loading={priority ? "eager" : "lazy"}
             decoding="async"
             fetchPriority={priority ? "high" : "auto"}
@@ -73,7 +73,7 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
         <div className="hidden md:block relative size-full">
           <img
             src={desktopBackdrop}
-            alt={originalTitle}
+            alt={preferredTitle}
             loading={priority ? "eager" : "lazy"}
             decoding="async"
             fetchPriority={priority ? "high" : "auto"}
@@ -124,11 +124,11 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
         <div className="w-full max-w-xl flex flex-col items-center justify-center min-h-[50px] sm:min-h-[64px] md:min-h-[76px]">
           {logoConfig && !logoFailed ? (
             <div className="flex items-center justify-center w-full px-2">
-              <h1 className="sr-only">{originalTitle}</h1>
+              <h1 className="sr-only">{preferredTitle}</h1>
               <img
                 src={logoConfig.src}
-                alt={logoConfig.alt || originalTitle}
-                title={originalTitle}
+                alt={logoConfig.alt || preferredTitle}
+                title={preferredTitle}
                 loading={priority ? "eager" : "lazy"}
                 decoding="async"
                 fetchPriority={priority ? "high" : "auto"}
@@ -148,7 +148,7 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
             </div>
           ) : (
             <h1
-              title={originalTitle}
+              title={preferredTitle}
               className="
                 font-display
                 text-xl
@@ -163,7 +163,7 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                 line-clamp-2
               "
             >
-              {originalTitle}
+              {preferredTitle}
             </h1>
           )}
         </div>
