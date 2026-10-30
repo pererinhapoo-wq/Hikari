@@ -24,6 +24,7 @@ import {
 
 import { Logo } from "@/components/logo";
 import { isHikariAdmin } from "@/lib/auth/admin";
+import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { searchCatalog } from "@/lib/api";
 import { getProfile } from "@/lib/profile.functions";
@@ -594,9 +595,17 @@ export function Shell() {
     const loadNotifications =
       async () => {
         try {
+          const bearer = getBearerToken();
           const response =
             await fetch(
               "/api/notifications",
+              {
+                method: "GET",
+                credentials: "include",
+                headers: bearer
+                  ? { Authorization: `Bearer ${bearer}` }
+                  : undefined,
+              },
             );
 
           if (!response.ok) {
@@ -635,11 +644,34 @@ export function Shell() {
         30000,
       );
 
+    const handleVisibilityOrSync = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+      void loadNotifications();
+    };
+
+    window.addEventListener("focus", handleVisibilityOrSync);
+    document.addEventListener("visibilitychange", handleVisibilityOrSync);
+    window.addEventListener(
+      "hikari:notifications-updated",
+      handleVisibilityOrSync,
+    );
+
     return () => {
       cancelled = true;
 
       window.clearInterval(
         interval,
+      );
+      window.removeEventListener("focus", handleVisibilityOrSync);
+      document.removeEventListener("visibilitychange", handleVisibilityOrSync);
+      window.removeEventListener(
+        "hikari:notifications-updated",
+        handleVisibilityOrSync,
       );
     };
   }, [user?.id]);
@@ -677,14 +709,19 @@ export function Shell() {
       );
 
       try {
+        const bearer = getBearerToken();
         const response =
           await fetch(
             "/api/notifications",
             {
               method: "PATCH",
+              credentials: "include",
               headers: {
                 "Content-Type":
                   "application/json",
+                ...(bearer
+                  ? { Authorization: `Bearer ${bearer}` }
+                  : {}),
               },
               body: JSON.stringify({
                 id,
@@ -706,6 +743,10 @@ export function Shell() {
             data.unreadCount ?? 0,
           ),
         );
+
+        window.dispatchEvent(
+          new CustomEvent("hikari:notifications-updated"),
+        );
       } catch {
         // Mantém a alteração visual.
       }
@@ -726,9 +767,17 @@ export function Shell() {
       );
 
       try {
+        const bearer = getBearerToken();
         const response =
           await fetch(
             "/api/notifications",
+            {
+              method: "GET",
+              credentials: "include",
+              headers: bearer
+                ? { Authorization: `Bearer ${bearer}` }
+                : undefined,
+            },
           );
 
         if (!response.ok) {
@@ -1116,7 +1165,40 @@ export function Shell() {
                         notification.episodeId !== "anime",
                       );
 
-                    const hasTarget = hasEpisodeTarget;
+                    const hasAnimeTarget =
+                      Boolean(
+                        notification.animeId &&
+                        (!notification.episodeId ||
+                          notification.episodeId === "anime"),
+                      );
+
+                    const hasTarget =
+                      hasEpisodeTarget || hasAnimeTarget;
+
+                    const matchedLocal =
+                      notification.animeId
+                        ? localAnimes.find(
+                            (a) =>
+                              a.id === notification.animeId ||
+                              (Number(notification.animeId) > 0 &&
+                                (a.anilistId === Number(notification.animeId) ||
+                                  a.malId === Number(notification.animeId))),
+                          )
+                        : undefined;
+
+                    const resolvedAnimeTitle =
+                      notification.animeTitle ||
+                      (matchedLocal
+                        ? matchedLocal.titleEnglish?.trim() ||
+                          matchedLocal.titleRomaji?.trim() ||
+                          matchedLocal.titleNative?.trim() ||
+                          null
+                        : null);
+
+                    const resolvedAnimeCover =
+                      notification.animeCover ||
+                      matchedLocal?.cover ||
+                      null;
 
                     const isLikeNotification =
                       notification.type ===
@@ -1258,14 +1340,14 @@ export function Shell() {
                                 </div>
                               )}
 
-                              {(notification.animeCover ||
-                                notification.animeTitle) && (
+                              {(resolvedAnimeCover ||
+                                resolvedAnimeTitle) && (
                                 <div className="mt-3 flex items-center gap-3">
 
-                                  {notification.animeCover ? (
+                                  {resolvedAnimeCover ? (
                                     <img
                                       src={
-                                        notification.animeCover
+                                        resolvedAnimeCover
                                       }
                                       alt=""
                                       className="h-16 w-11 shrink-0 rounded-md object-cover"
@@ -1274,10 +1356,10 @@ export function Shell() {
 
                                   <div className="min-w-0 flex-1">
 
-                                    {notification.animeTitle && (
+                                    {resolvedAnimeTitle && (
                                       <p className="truncate text-sm font-medium text-fg">
                                         {
-                                          notification.animeTitle
+                                          resolvedAnimeTitle
                                         }
                                       </p>
                                     )}
@@ -1288,7 +1370,9 @@ export function Shell() {
                                         <p className="mt-1 text-xs font-medium text-muted">
                                           {notification.commentId
                                             ? "Ver comentário"
-                                            : "Ver episódio"}
+                                            : hasAnimeTarget
+                                              ? "Ver anime"
+                                              : "Ver episódio"}
                                         </p>
                                       )}
 
@@ -1299,13 +1383,15 @@ export function Shell() {
                               {hasTarget &&
                                 (isLikeNotification ||
                                   isReplyNotification) &&
-                                !notification.animeCover &&
-                                !notification.animeTitle && (
+                                !resolvedAnimeCover &&
+                                !resolvedAnimeTitle && (
                                   <div className="mt-2">
                                     <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
                                       {notification.commentId
                                         ? "Ver comentário"
-                                        : "Ver episódio"}
+                                        : hasAnimeTarget
+                                          ? "Ver anime"
+                                          : "Ver episódio"}
                                     </span>
                                   </div>
                                 )}
@@ -1349,6 +1435,42 @@ export function Shell() {
                           search={{
                             ep:
                               notification.episodeId!,
+                            comment:
+                              notification.commentId ??
+                              undefined,
+                          }}
+                          onClick={() => {
+                            void markNotificationAsRead(
+                              notification.id,
+                            );
+
+                            setNotificationsOpen(
+                              false,
+                            );
+                          }}
+                          className="block transition-colors hover:bg-elevated/70"
+                        >
+                          {
+                            notificationContent
+                          }
+                        </Link>
+                      );
+                    }
+
+                    if (
+                      hasAnimeTarget
+                    ) {
+                      return (
+                        <Link
+                          key={
+                            notification.id
+                          }
+                          to="/anime/$id"
+                          params={{
+                            id:
+                              notification.animeId!,
+                          }}
+                          search={{
                             comment:
                               notification.commentId ??
                               undefined,

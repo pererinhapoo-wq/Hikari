@@ -30,7 +30,11 @@ export const Route = createFileRoute("/api/comments/like")({
           const commentId =
             typeof body?.commentId === "string" ? body.commentId.trim() : "";
           const reaction =
-            typeof body?.reaction === "string" ? body.reaction.trim().toLowerCase() : "";
+            body?.reaction === undefined
+              ? "like"
+              : typeof body?.reaction === "string"
+                ? body.reaction.trim().toLowerCase()
+                : "";
 
           if (!commentId) {
             return Response.json(
@@ -46,10 +50,10 @@ export const Route = createFileRoute("/api/comments/like")({
             );
           }
 
-          // Verifica se o comentário existe
+          // Verifica se o comentário existe e obtém autor e contexto de destino
           const commentCheck = await sql.query(
             `
-              select "id"
+              select "id", "userId", "animeId", "episodeId"
               from "comment"
               where "id" = $1
               limit 1
@@ -68,6 +72,17 @@ export const Route = createFileRoute("/api/comments/like")({
             );
           }
 
+          const targetComment = commentRows[0];
+          const commentAuthorId = targetComment?.userId
+            ? String(targetComment.userId)
+            : "";
+          const targetAnimeId = targetComment?.animeId
+            ? String(targetComment.animeId)
+            : null;
+          const targetEpisodeId = targetComment?.episodeId
+            ? String(targetComment.episodeId)
+            : null;
+
           // Busca reação existente do usuário
           const existingReactionCheck = await sql.query(
             `
@@ -84,6 +99,9 @@ export const Route = createFileRoute("/api/comments/like")({
             : (existingReactionCheck as any)?.rows ?? [];
 
           const existing = existingRows[0];
+          const wasLikedBefore = Boolean(
+            existing && (existing.type === "like" || !existing.type),
+          );
 
           if (existing) {
             const currentType = existing.type || "like";
@@ -159,6 +177,205 @@ export const Route = createFileRoute("/api/comments/like")({
             counts.userReaction === "like" || counts.userReaction === "dislike"
               ? counts.userReaction
               : null;
+
+          // Sincroniza notificação de curtida para o autor do comentário (nunca auto-notificação)
+          if (commentAuthorId && commentAuthorId !== apiUser.id) {
+            try {
+              if (userReaction === "like") {
+                const actorResult = await sql.query(
+                  `
+                    select coalesce(
+                      nullif(trim(p."nick"), ''),
+                      nullif(trim(u."name"), ''),
+                      $2
+                    ) as "actorName"
+                    from "user" u
+                    left join "profile" p
+                      on p."userId" = u."id"
+                    where u."id" = $1
+                    limit 1
+                  `,
+                  [apiUser.id, apiUser.name || "Usuário"],
+                );
+                const actorRows: any[] = Array.isArray(actorResult)
+                  ? actorResult
+                  : (actorResult as any)?.rows ?? [];
+                const actorName = String(
+                  actorRows[0]?.actorName || apiUser.name || "Usuário",
+                );
+                const likeMessage = `${actorName} curtiu seu comentário.`;
+
+                const existingNotifResult = await sql.query(
+                  `
+                    select "id", "actorId"
+                    from "notification"
+                    where "userId" = $1
+                      and "type" = 'comment_like'
+                      and "commentId" = $2
+                    order by "createdAt" desc
+                    limit 1
+                  `,
+                  [commentAuthorId, commentId],
+                );
+                const existingNotifRows: any[] = Array.isArray(existingNotifResult)
+                  ? existingNotifResult
+                  : (existingNotifResult as any)?.rows ?? [];
+                const existingNotif = existingNotifRows[0];
+
+                if (existingNotif?.id) {
+                  const keepId = String(existingNotif.id);
+                  await sql.query(
+                    `
+                      delete from "notification"
+                      where "userId" = $1
+                        and "type" = 'comment_like'
+                        and "commentId" = $2
+                        and "id" <> $3
+                    `,
+                    [commentAuthorId, commentId, keepId],
+                  );
+
+                  if (String(existingNotif.actorId ?? "") !== apiUser.id) {
+                    await sql.query(
+                      `
+                        update "notification"
+                        set
+                          "actorId" = $1,
+                          "message" = $2,
+                          "read" = false,
+                          "createdAt" = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+                          "animeId" = $3,
+                          "episodeId" = $4
+                        where "id" = $5
+                      `,
+                      [
+                        apiUser.id,
+                        likeMessage,
+                        targetAnimeId,
+                        targetEpisodeId,
+                        keepId,
+                      ],
+                    );
+                  } else {
+                    await sql.query(
+                      `
+                        update "notification"
+                        set
+                          "message" = $1,
+                          "animeId" = $2,
+                          "episodeId" = $3
+                        where "id" = $4
+                      `,
+                      [likeMessage, targetAnimeId, targetEpisodeId, keepId],
+                    );
+                  }
+                } else {
+                  const notificationId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+                  await sql.query(
+                    `
+                      insert into "notification" (
+                        "id",
+                        "userId",
+                        "actorId",
+                        "type",
+                        "message",
+                        "read",
+                        "createdAt",
+                        "commentId",
+                        "animeId",
+                        "episodeId"
+                      )
+                      values (
+                        $1,
+                        $2,
+                        $3,
+                        'comment_like',
+                        $4,
+                        false,
+                        (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+                        $5,
+                        $6,
+                        $7
+                      )
+                    `,
+                    [
+                      notificationId,
+                      commentAuthorId,
+                      apiUser.id,
+                      likeMessage,
+                      commentId,
+                      targetAnimeId,
+                      targetEpisodeId,
+                    ],
+                  );
+                }
+              } else if (wasLikedBefore) {
+                // O usuário removeu sua curtida (ou trocou para dislike): atualiza ou remove se não restar nenhuma curtida externa
+                const remainingLikerResult = await sql.query(
+                  `
+                    select
+                      cl."userId",
+                      coalesce(
+                        nullif(trim(p."nick"), ''),
+                        nullif(trim(u."name"), ''),
+                        'Usuário'
+                      ) as "actorName"
+                    from "comment_like" cl
+                    inner join "user" u
+                      on u."id" = cl."userId"
+                    left join "profile" p
+                      on p."userId" = u."id"
+                    where cl."commentId" = $1
+                      and (cl."type" = 'like' or cl."type" is null)
+                      and cl."userId" <> $2
+                    order by cl."createdAt" desc
+                    limit 1
+                  `,
+                  [commentId, commentAuthorId],
+                );
+                const remainingRows: any[] = Array.isArray(remainingLikerResult)
+                  ? remainingLikerResult
+                  : (remainingLikerResult as any)?.rows ?? [];
+                const remainingLiker = remainingRows[0];
+
+                if (remainingLiker?.userId) {
+                  const remainingMessage = `${String(remainingLiker.actorName || "Usuário")} curtiu seu comentário.`;
+                  await sql.query(
+                    `
+                      update "notification"
+                      set
+                        "actorId" = $1,
+                        "message" = $2
+                      where "userId" = $3
+                        and "type" = 'comment_like'
+                        and "commentId" = $4
+                    `,
+                    [
+                      String(remainingLiker.userId),
+                      remainingMessage,
+                      commentAuthorId,
+                      commentId,
+                    ],
+                  );
+                } else {
+                  await sql.query(
+                    `
+                      delete from "notification"
+                      where "userId" = $1
+                        and "type" = 'comment_like'
+                        and "commentId" = $2
+                    `,
+                    [commentAuthorId, commentId],
+                  );
+                }
+              }
+            } catch (notifError) {
+              console.error(
+                "[api/comments/like] Erro ao sincronizar notificação de curtida:",
+                notifError,
+              );
+            }
+          }
 
           return Response.json({
             likes: Number(counts.likes) || 0,

@@ -14,6 +14,9 @@ import {
   useState,
 } from "react";
 
+import { getBearerToken } from "@/lib/auth/client";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 type NotificationItem = {
@@ -50,6 +53,12 @@ export const Route = createFileRoute(
 });
 
 function NotificationsPage() {
+  const { user, isPending } =
+    useCurrentUserState();
+
+  const localAnimes =
+    useHikariStore((s) => s.animes);
+
   const [
     notifications,
     setNotifications,
@@ -63,14 +72,36 @@ function NotificationsPage() {
   ] = useState(true);
 
   useEffect(() => {
+    if (isPending) {
+      return;
+    }
+
+    if (!user) {
+      setNotifications([]);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     const loadNotifications =
-      async () => {
+      async (showSpinner = false) => {
+        if (showSpinner) {
+          setLoading(true);
+        }
+
         try {
+          const bearer = getBearerToken();
           const response =
             await fetch(
               "/api/notifications",
+              {
+                method: "GET",
+                credentials: "include",
+                headers: bearer
+                  ? { Authorization: `Bearer ${bearer}` }
+                  : undefined,
+              },
             );
 
           if (!response.ok) {
@@ -90,7 +121,7 @@ function NotificationsPage() {
             data.notifications ?? [],
           );
         } catch {
-          if (!cancelled) {
+          if (!cancelled && showSpinner) {
             setNotifications([]);
           }
         } finally {
@@ -100,16 +131,40 @@ function NotificationsPage() {
         }
       };
 
-    void loadNotifications();
+    void loadNotifications(true);
+
+    const handleSync = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+      void loadNotifications(false);
+    };
+
+    window.addEventListener("focus", handleSync);
+    document.addEventListener("visibilitychange", handleSync);
+    window.addEventListener("hikari:notifications-updated", handleSync);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", handleSync);
+      document.removeEventListener("visibilitychange", handleSync);
+      window.removeEventListener("hikari:notifications-updated", handleSync);
     };
-  }, []);
+  }, [user?.id, isPending]);
 
   async function markNotificationAsRead(
     id: string,
   ) {
+    const target = notifications.find(
+      (notification) => notification.id === id,
+    );
+    if (!target || target.read) {
+      return;
+    }
+
     setNotifications(
       (current) =>
         current.map(
@@ -124,19 +179,30 @@ function NotificationsPage() {
     );
 
     try {
-      await fetch(
+      const bearer = getBearerToken();
+      const response = await fetch(
         "/api/notifications",
         {
           method: "PATCH",
+          credentials: "include",
           headers: {
             "Content-Type":
               "application/json",
+            ...(bearer
+              ? { Authorization: `Bearer ${bearer}` }
+              : {}),
           },
           body: JSON.stringify({
             id,
           }),
         },
       );
+
+      if (response.ok) {
+        window.dispatchEvent(
+          new CustomEvent("hikari:notifications-updated"),
+        );
+      }
     } catch {
       // A alteração visual permanece.
     }
@@ -209,7 +275,40 @@ function NotificationsPage() {
                     notification.episodeId !== "anime",
                   );
 
-                const hasTarget = hasEpisodeTarget;
+                const hasAnimeTarget =
+                  Boolean(
+                    notification.animeId &&
+                    (!notification.episodeId ||
+                      notification.episodeId === "anime"),
+                  );
+
+                const hasTarget =
+                  hasEpisodeTarget || hasAnimeTarget;
+
+                const matchedLocal =
+                  notification.animeId
+                    ? localAnimes.find(
+                        (a) =>
+                          a.id === notification.animeId ||
+                          (Number(notification.animeId) > 0 &&
+                            (a.anilistId === Number(notification.animeId) ||
+                              a.malId === Number(notification.animeId))),
+                      )
+                    : undefined;
+
+                const resolvedAnimeTitle =
+                  notification.animeTitle ||
+                  (matchedLocal
+                    ? matchedLocal.titleEnglish?.trim() ||
+                      matchedLocal.titleRomaji?.trim() ||
+                      matchedLocal.titleNative?.trim() ||
+                      null
+                    : null);
+
+                const resolvedAnimeCover =
+                  notification.animeCover ||
+                  matchedLocal?.cover ||
+                  null;
 
                 const isLikeNotification =
                   notification.type ===
@@ -356,14 +455,14 @@ function NotificationsPage() {
                           </div>
                         )}
 
-                        {(notification.animeCover ||
-                          notification.animeTitle) && (
+                        {(resolvedAnimeCover ||
+                          resolvedAnimeTitle) && (
                           <div className="mt-2 flex items-center gap-3">
 
-                            {notification.animeCover ? (
+                            {resolvedAnimeCover ? (
                               <img
                                 src={
-                                  notification.animeCover
+                                  resolvedAnimeCover
                                 }
                                 alt=""
                                 className="h-16 w-12 shrink-0 rounded-md object-cover"
@@ -372,10 +471,10 @@ function NotificationsPage() {
 
                             <div className="min-w-0 flex-1">
 
-                              {notification.animeTitle && (
+                              {resolvedAnimeTitle && (
                                 <p className="truncate text-sm font-medium text-fg">
                                   {
-                                    notification.animeTitle
+                                    resolvedAnimeTitle
                                   }
                                 </p>
                               )}
@@ -386,7 +485,9 @@ function NotificationsPage() {
                                   <p className="mt-1 text-xs font-medium text-muted">
                                     {notification.commentId
                                       ? "Ver comentário"
-                                      : "Ver episódio"}
+                                      : hasAnimeTarget
+                                        ? "Ver anime"
+                                        : "Ver episódio"}
                                   </p>
                                 )}
 
@@ -397,13 +498,15 @@ function NotificationsPage() {
                         {hasTarget &&
                           (isLikeNotification ||
                             isReplyNotification) &&
-                          !notification.animeCover &&
-                          !notification.animeTitle && (
+                          !resolvedAnimeCover &&
+                          !resolvedAnimeTitle && (
                             <div className="mt-2">
                               <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
                                 {notification.commentId
                                   ? "Ver comentário"
-                                  : "Ver episódio"}
+                                  : hasAnimeTarget
+                                    ? "Ver anime"
+                                    : "Ver episódio"}
                               </span>
                             </div>
                           )}
@@ -443,6 +546,36 @@ function NotificationsPage() {
                       search={{
                         ep:
                           notification.episodeId!,
+                        comment:
+                          notification.commentId ??
+                          undefined,
+                      }}
+                      onClick={() => {
+                        void markNotificationAsRead(
+                          notification.id,
+                        );
+                      }}
+                      className="block transition-colors hover:bg-elevated/70"
+                    >
+                      {content}
+                    </Link>
+                  );
+                }
+
+                if (
+                  hasAnimeTarget
+                ) {
+                  return (
+                    <Link
+                      key={
+                        notification.id
+                      }
+                      to="/anime/$id"
+                      params={{
+                        id:
+                          notification.animeId!,
+                      }}
+                      search={{
                         comment:
                           notification.commentId ??
                           undefined,

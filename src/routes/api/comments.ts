@@ -221,10 +221,11 @@ export const Route = createFileRoute("/api/comments")({
           }
 
           // Validação do comentário pai se for uma resposta
+          let parentAuthorId: string | null = null;
           if (parentId) {
             const parentCheck = await sql.query(
               `
-                select "id", "animeId", "episodeId"
+                select "id", "userId", "animeId", "episodeId"
                 from "comment"
                 where "id" = $1
                 limit 1
@@ -256,6 +257,8 @@ export const Route = createFileRoute("/api/comments")({
                 { status: 400 },
               );
             }
+
+            parentAuthorId = parent.userId ? String(parent.userId) : null;
           }
 
           const commentId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -301,8 +304,61 @@ export const Route = createFileRoute("/api/comments")({
             ? profileCheck
             : (profileCheck as any)?.rows ?? [];
           const userNick = profileRows[0]?.nick
-            ? String(profileRows[0].nick)
+            ? String(profileRows[0].nick).trim() || null
             : null;
+
+          const resolvedAuthorName = userNick || apiUser.name || "Usuário";
+
+          // Gera notificação para o autor do comentário respondido (nunca auto-notificação)
+          if (parentId && parentAuthorId && parentAuthorId !== apiUser.id) {
+            try {
+              const notificationId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+              const replyMessage = `${resolvedAuthorName} respondeu ao seu comentário.`;
+
+              await sql.query(
+                `
+                  insert into "notification" (
+                    "id",
+                    "userId",
+                    "actorId",
+                    "type",
+                    "message",
+                    "read",
+                    "createdAt",
+                    "commentId",
+                    "animeId",
+                    "episodeId"
+                  )
+                  values (
+                    $1,
+                    $2,
+                    $3,
+                    'comment_reply',
+                    $4,
+                    false,
+                    (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+                    $5,
+                    $6,
+                    $7
+                  )
+                `,
+                [
+                  notificationId,
+                  parentAuthorId,
+                  apiUser.id,
+                  replyMessage,
+                  commentId,
+                  animeId,
+                  episodeId,
+                ],
+              );
+            } catch (notifError) {
+              console.error(
+                "[api/comments] Erro ao criar notificação de resposta:",
+                notifError,
+              );
+            }
+          }
 
           const nowIso = new Date().toISOString();
 
@@ -317,7 +373,7 @@ export const Route = createFileRoute("/api/comments")({
             createdAt: nowIso,
             updatedAt: nowIso,
             userId: apiUser.id,
-            userName: userNick || apiUser.name || "Usuário",
+            userName: resolvedAuthorName,
             userImage: apiUser.image ?? null,
             userNick,
             likes: 0,
