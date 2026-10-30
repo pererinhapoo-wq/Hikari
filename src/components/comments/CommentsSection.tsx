@@ -9,13 +9,13 @@ import {
   Eye,
   EyeOff,
   Flag,
+  Forward,
   Image as ImageIcon,
   Loader2,
   LogIn,
   LogOut,
   MessageCircle,
   MoreVertical,
-  Reply,
   Search,
   Send,
   Settings2,
@@ -3696,7 +3696,7 @@ export function CommentCard({
                     className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-[#a855f7]/30 bg-[#a855f7]/15 px-1.5 py-[2px] text-[11px] font-medium leading-tight text-[#d8b4fe]"
                     title={`Em resposta a ${cleanReplyToName}`}
                   >
-                    <Reply className="size-3 shrink-0 text-[#c084fc]" />
+                    <Forward className="size-3 shrink-0 text-[#c084fc]" />
                     <span className="min-w-0 truncate max-w-[135px] sm:max-w-[200px]">
                       {cleanReplyToName}
                     </span>
