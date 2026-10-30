@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, Info, Play } from "lucide-react";
+import { ChevronRight, Info, Play } from "lucide-react";
 
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
@@ -142,6 +142,12 @@ export function Hero({
         : "Em lançamento";
 
   const statusText = statusLabel(current.status);
+  const isAiring =
+    current.status === "RELEASING" ||
+    current.status?.toLowerCase() === "airing" ||
+    current.status?.toLowerCase() === "currently_airing" ||
+    Boolean(statusText?.toLowerCase().includes("exibi")) ||
+    Boolean(statusText?.toLowerCase().includes("lança"));
 
   return (
     <section
@@ -284,15 +290,15 @@ export function Hero({
             title={originalTitle}
             className="
               font-display
-              text-2xl
-              sm:text-3xl
-              md:text-4xl
-              lg:text-5xl
+              text-xl
+              sm:text-2xl
+              md:text-3xl
+              lg:text-4xl
               font-bold
               tracking-tight
               text-white
-              leading-tight
-              drop-shadow-[0_3px_12px_rgba(0,0,0,0.95)]
+              leading-snug
+              drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]
               line-clamp-2
             "
           >
@@ -301,16 +307,16 @@ export function Hero({
         </div>
 
         {/* Linha Equilibrada: Nota ★ · Temporada · Quantidade de Episódios */}
-        <div className="flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm font-semibold text-zinc-300 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
+        <div className="flex flex-wrap items-center justify-center gap-2 text-xs sm:text-[13px] font-medium text-zinc-300 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">
           {scoreValue && (
-            <span className="inline-flex items-center gap-1 text-amber-300">
-              <span className="text-amber-400">★</span>
-              <span className="tabular-nums font-bold">{scoreValue}</span>
+            <span className="inline-flex items-center gap-1 text-amber-300 font-semibold">
+              <span className="text-amber-400 text-xs sm:text-[13px]">★</span>
+              <span className="tabular-nums">{scoreValue}</span>
             </span>
           )}
 
           {scoreValue && (seasonValue || episodesValue) && (
-            <span className="size-1 rounded-full bg-zinc-400/60" aria-hidden="true" />
+            <span className="size-1 rounded-full bg-white/25 shrink-0" aria-hidden="true" />
           )}
 
           {seasonValue && (
@@ -318,11 +324,11 @@ export function Hero({
           )}
 
           {seasonValue && episodesValue && (
-            <span className="size-1 rounded-full bg-zinc-400/60" aria-hidden="true" />
+            <span className="size-1 rounded-full bg-white/25 shrink-0" aria-hidden="true" />
           )}
 
           {episodesValue && (
-            <span className="text-zinc-300 font-medium">{episodesValue}</span>
+            <span className="text-zinc-300/90">{episodesValue}</span>
           )}
         </div>
 
@@ -334,23 +340,30 @@ export function Hero({
                 inline-flex
                 items-center
                 gap-1.5
-                rounded-lg
+                rounded-md
                 border
-                border-emerald-500/35
-                bg-emerald-950/50
+                border-white/10
+                bg-black/40
                 px-2.5
-                py-1
-                text-[10.5px]
-                sm:text-xs
-                font-bold
+                py-0.5
+                text-[10px]
+                sm:text-[11px]
+                font-semibold
                 tracking-wider
                 uppercase
-                text-emerald-300
-                shadow-sm
+                text-zinc-200
                 backdrop-blur-md
+                shadow-xs
               "
             >
-              <Check className="size-3 text-emerald-400 stroke-[2.5] shrink-0" />
+              {isAiring && (
+                <span
+                  className="relative flex size-2 items-center justify-center shrink-0"
+                  aria-hidden="true"
+                >
+                  <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] motion-safe:animate-pulse motion-reduce:animate-none" />
+                </span>
+              )}
               <span>{statusText}</span>
             </span>
           </div>
@@ -363,17 +376,17 @@ export function Hero({
               <span
                 key={genre}
                 className="
-                  rounded-lg
+                  rounded-md
                   border
                   border-white/10
-                  bg-black/50
-                  px-2.5
+                  bg-black/35
+                  px-2
                   py-0.5
                   text-[10px]
                   sm:text-[11px]
-                  font-semibold
+                  font-medium
                   uppercase
-                  tracking-wider
+                  tracking-wide
                   text-zinc-300
                   backdrop-blur-md
                   shadow-xs
