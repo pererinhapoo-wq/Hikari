@@ -70,7 +70,123 @@ const DESKTOP_BANNER_MEDIA_QUERY = "(min-width: 640px)";
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-let clientAppHydrated = false;
+const clientHydrationState = { hydrated: false };
+const MAX_WARMED_BANNERS = 12;
+const warmedBannerElements = new Map<string, HTMLImageElement>();
+
+function warmBannerImage(url: string | null | undefined): void {
+  if (typeof window === "undefined") return;
+  const clean = url?.trim();
+  if (!clean || warmedBannerElements.has(clean)) return;
+
+  if (warmedBannerElements.size >= MAX_WARMED_BANNERS) {
+    const oldestKey = warmedBannerElements.keys().next().value;
+    if (oldestKey) {
+      warmedBannerElements.delete(oldestKey);
+    }
+  }
+
+  const img = new Image();
+  img.decoding = "async";
+  img.fetchPriority = "high";
+  img.src = clean;
+  warmedBannerElements.set(clean, img);
+}
+
+function buildSeasonBannerInputFromAnime(
+  animeId: string,
+  anime: Pick<
+    Anime,
+    | "anilistId"
+    | "malId"
+    | "kitsuId"
+    | "year"
+    | "startDate"
+    | "format"
+    | "status"
+    | "banner"
+    | "cover"
+    | "images"
+  >,
+  isAdminCustomBanner: boolean,
+) {
+  const parsedAniId =
+    anime.anilistId ?? (/^\d+$/.test(animeId) ? Number(animeId) : undefined);
+  const parsedMalId =
+    anime.malId ??
+    (animeId.startsWith("mal-")
+      ? Number(animeId.replace("mal-", ""))
+      : undefined);
+  const parsedKitsuId =
+    anime.kitsuId ??
+    (animeId.startsWith("kitsu-")
+      ? Number(animeId.replace("kitsu-", ""))
+      : undefined);
+
+  return {
+    animeId,
+    anilistId:
+      parsedAniId && Number.isFinite(parsedAniId) ? parsedAniId : undefined,
+    malId:
+      parsedMalId && Number.isFinite(parsedMalId) ? parsedMalId : undefined,
+    kitsuId:
+      parsedKitsuId && Number.isFinite(parsedKitsuId)
+        ? parsedKitsuId
+        : undefined,
+    year: anime.year ?? null,
+    startYear: anime.startDate?.year ?? null,
+    format: anime.format ?? null,
+    status: anime.status ?? null,
+    currentBanner: anime.banner ?? null,
+    currentCover: anime.cover ?? null,
+    isAdminCustomBanner,
+    preloadedMalPictures: anime.images,
+    fetchJikanPictures,
+  };
+}
+
+function warmAnimeBannerOnClient(animeId: string, remote: Anime | null): void {
+  if (typeof window === "undefined" || !animeId) return;
+
+  const locals = useHikariStore.getState().animes;
+  const merged = mergeDetail(remote, animeId, locals);
+  if (!merged) return;
+
+  const localRecord = locals.find(
+    (a) =>
+      a.id === merged.id ||
+      (merged.anilistId != null && a.anilistId === merged.anilistId),
+  );
+  const adminBanner = hasAdminCustomBanner(localRecord, remote);
+  const baseBanner =
+    adminBanner && localRecord?.banner?.trim()
+      ? localRecord.banner.trim()
+      : (merged.banner?.trim() || null);
+
+  const isMobile = window.matchMedia(MOBILE_BANNER_MEDIA_QUERY).matches;
+  if (adminBanner || !isMobile) {
+    warmBannerImage(baseBanner);
+    return;
+  }
+
+  const seasonInput = buildSeasonBannerInputFromAnime(
+    merged.id,
+    merged,
+    false,
+  );
+  const sync = resolveSeasonMobileBannerSync(seasonInput);
+  if (sync) {
+    warmBannerImage(sync.url ?? baseBanner);
+    return;
+  }
+
+  warmBannerImage(baseBanner);
+  void resolveSeasonMobileBanner(seasonInput).then((resolved) => {
+    if (resolved.isAlternative && resolved.url) {
+      warmBannerImage(resolved.url);
+    }
+  });
+}
 
 export const Route = createFileRoute("/anime/$id")({
   validateSearch: (
@@ -87,6 +203,7 @@ export const Route = createFileRoute("/anime/$id")({
   gcTime: 1000 * 60 * 15,
   loader: async ({ params }) => {
     if (params.id.startsWith("local-")) {
+      warmAnimeBannerOnClient(params.id, null);
       return { remote: null };
     }
 
@@ -94,7 +211,64 @@ export const Route = createFileRoute("/anime/$id")({
       data: { id: params.id },
     });
 
+    warmAnimeBannerOnClient(params.id, remote);
+
     return { remote };
+  },
+  head: ({ loaderData, params }) => {
+    const remote = loaderData?.remote ?? null;
+    if (!remote) {
+      return {};
+    }
+
+    const animeId = remote.id || params.id;
+    const desktopBanner = remote.banner?.trim() || null;
+    const syncMobile = animeId
+      ? resolveSeasonMobileBannerSync(
+          buildSeasonBannerInputFromAnime(animeId, remote, false),
+          { skipClientCache: !clientHydrationState.hydrated },
+        )
+      : null;
+
+    if (syncMobile?.isAlternative && syncMobile.url) {
+      return {
+        links: [
+          {
+            rel: "preload",
+            as: "image",
+            href: syncMobile.url,
+            media: MOBILE_BANNER_MEDIA_QUERY,
+            fetchPriority: "high" as const,
+          },
+          ...(desktopBanner
+            ? [
+                {
+                  rel: "preload",
+                  as: "image",
+                  href: desktopBanner,
+                  media: DESKTOP_BANNER_MEDIA_QUERY,
+                  fetchPriority: "high" as const,
+                },
+              ]
+            : []),
+        ],
+      };
+    }
+
+    if (desktopBanner) {
+      return {
+        links: [
+          {
+            rel: "preload",
+            as: "image",
+            href: desktopBanner,
+            fetchPriority: "high" as const,
+          },
+        ],
+      };
+    }
+
+    return {};
   },
 
   pendingComponent: () => (
@@ -295,18 +469,18 @@ function AnimePage() {
   );
 
   const [isHydratedClient, setIsHydratedClient] = useState(
-    () => clientAppHydrated,
+    () => clientHydrationState.hydrated,
   );
 
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
-    if (clientAppHydrated && typeof window !== "undefined") {
+    if (clientHydrationState.hydrated && typeof window !== "undefined") {
       return window.matchMedia(MOBILE_BANNER_MEDIA_QUERY).matches;
     }
     return false;
   });
 
   useIsomorphicLayoutEffect(() => {
-    clientAppHydrated = true;
+    clientHydrationState.hydrated = true;
     setIsHydratedClient(true);
     const mq = window.matchMedia(MOBILE_BANNER_MEDIA_QUERY);
     const update = () => setIsMobileViewport(mq.matches);
@@ -446,11 +620,15 @@ function AnimePage() {
         currentBanner: animeBanner,
         currentCover: animeCover,
         isAdminCustomBanner: isAdminBanner,
+        preloadedMalPictures: anime?.images,
         fetchJikanPictures,
       },
       controller.signal,
     ).then((resolved) => {
       if (controller.signal.aborted) return;
+      if (resolved.isAlternative && resolved.url) {
+        warmBannerImage(resolved.url);
+      }
       setMobileBannerState({
         forId: animeId,
         url: resolved.url,
@@ -476,6 +654,7 @@ function AnimePage() {
     animeStatus,
     animeBanner,
     animeCover,
+    anime?.images,
   ]);
 
   const { effectiveBannerUrl, defaultObjectPosition } = selectViewportBanner({
@@ -493,36 +672,36 @@ function AnimePage() {
       : null;
 
   const validMobileSourceUrl =
-    isAdminBanner
-      ? validDesktopBannerUrl
-      : activeMobileBannerState?.url &&
-          !failedBannerUrls[activeMobileBannerState.url]
-        ? activeMobileBannerState.url
-        : null;
+    !isAdminBanner &&
+    activeMobileBannerState?.isAlternative &&
+    activeMobileBannerState.url &&
+    !failedBannerUrls[activeMobileBannerState.url]
+      ? activeMobileBannerState.url
+      : null;
 
-  const initialDefaultBannerUrl =
-    validDesktopBannerUrl || validMobileSourceUrl || baseSeasonBanner || null;
+  const pendingMobileFallbackUrl =
+    isMobileViewport && !isAdminBanner && !activeMobileBannerState
+      ? validDesktopBannerUrl
+      : null;
+
+  const resolvedClientBannerUrl =
+    effectiveBannerUrl ?? pendingMobileFallbackUrl;
+
+  const ssrFallbackBannerUrl =
+    validDesktopBannerUrl || validMobileSourceUrl || null;
 
   const currentBannerSrc = isHydratedClient
-    ? (effectiveBannerUrl ?? initialDefaultBannerUrl ?? undefined)
-    : (initialDefaultBannerUrl ?? undefined);
+    ? (resolvedClientBannerUrl ?? undefined)
+    : (ssrFallbackBannerUrl ?? undefined);
 
   const shouldRenderPicture = isHydratedClient
-    ? Boolean(effectiveBannerUrl)
+    ? Boolean(resolvedClientBannerUrl)
     : Boolean(validMobileSourceUrl || validDesktopBannerUrl);
 
-  const [framedBannerPosition, setFramedBannerPosition] = useState<{
-    forUrl: string;
-    objectPosition: string;
-  } | null>(null);
-
-  const bannerObjectPosition =
-    effectiveBannerUrl && framedBannerPosition?.forUrl === effectiveBannerUrl
-      ? framedBannerPosition.objectPosition
-      : defaultObjectPosition;
+  const bannerObjectPosition = defaultObjectPosition;
 
   /*
-   * COR DA ABA DO NAVEGADOR & ENQUADRAMENTO ADAPTÁVEL DO BANNER
+   * COR DA ABA DO NAVEGADOR
    */
   useEffect(() => {
     const defaultColor = "#09090b";
@@ -539,27 +718,22 @@ function AnimePage() {
 
     meta.content = animeColor || defaultColor;
 
-    if (!effectiveBannerUrl) {
+    if (animeColor || !currentBannerSrc) {
       return;
     }
 
     return analyzeBannerFramingAndTheme({
-      bannerUrl: effectiveBannerUrl,
-      hasExplicitColor: Boolean(animeColor),
+      bannerUrl: currentBannerSrc,
+      hasExplicitColor: false,
+      computeFraming: false,
       defaultThemeColor: defaultColor,
-      onResult: ({ objectPosition, themeColor }) => {
-        if (objectPosition) {
-          setFramedBannerPosition({
-            forUrl: effectiveBannerUrl,
-            objectPosition,
-          });
-        }
-        if (themeColor && !animeColor && meta) {
+      onResult: ({ themeColor }) => {
+        if (themeColor && meta) {
           meta.content = themeColor;
         }
       },
     });
-  }, [animeId, effectiveBannerUrl, animeColor]);
+  }, [animeId, currentBannerSrc, animeColor]);
 
   /*
    * TEMPORADAS
@@ -781,7 +955,7 @@ function AnimePage() {
             <picture
               className={cn(
                 "relative block size-full",
-                !isHydratedClient && !validMobileSourceUrl && "max-sm:hidden",
+                !isHydratedClient && !validDesktopBannerUrl && "sm:hidden",
               )}
             >
               {validMobileSourceUrl ? (
@@ -801,7 +975,7 @@ function AnimePage() {
                 alt=""
                 loading="eager"
                 fetchPriority="high"
-                decoding="async"
+                decoding="sync"
                 onError={(e) => {
                   const failedUrl =
                     e.currentTarget.currentSrc ||
@@ -818,7 +992,7 @@ function AnimePage() {
                     : (activeMobileBannerState?.initialObjectPosition ??
                       "50% 24%"),
                 }}
-                className="size-full object-cover sm:!object-center transition-[object-position,opacity] duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
+                className="size-full object-cover sm:!object-center transition-opacity duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
               />
             </picture>
           ) : null}

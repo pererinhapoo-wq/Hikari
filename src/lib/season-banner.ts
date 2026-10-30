@@ -18,6 +18,7 @@ export interface SeasonBannerInput {
   currentBanner?: string | null;
   currentCover?: string | null;
   isAdminCustomBanner?: boolean;
+  preloadedMalPictures?: string[];
   fetchJikanPictures?: (malId: number) => Promise<string[]>;
 }
 
@@ -322,6 +323,7 @@ export const SPECIFIC_SEASON_MOBILE_ALTERNATIVES: Record<
 };
 
 const memoryCache = new Map<string, CacheEntry>();
+const inFlightResolutions = new Map<string, Promise<ResolvedSeasonBanner>>();
 const jikanPicturesMemoryCache = new Map<
   number,
   { urls: string[]; expiresAt: number }
@@ -333,6 +335,7 @@ let jikanCooldownForFetch: typeof fetch | null = null;
 
 export function clearSeasonBannerCache(): void {
   memoryCache.clear();
+  inFlightResolutions.clear();
   jikanPicturesMemoryCache.clear();
 }
 
@@ -667,9 +670,7 @@ export function selectViewportBanner(
 
   return {
     effectiveBannerUrl: confirmedDefaultUrl,
-    defaultObjectPosition: confirmedDefaultUrl
-      ? resolvedMobileState.initialObjectPosition
-      : "50% 24%",
+    defaultObjectPosition: "50% 24%",
     isUsingMobileAlternative: false,
   };
 }
@@ -1387,93 +1388,147 @@ export async function resolveSeasonMobileBanner(
   }
 
   const fallbackUrl = input.currentBanner?.trim() || null;
-  const expectedYear = input.startYear ?? input.year ?? null;
-  const cacheKey = buildCacheKey(input);
-
-  // 2. Kitsu: tentar primeiro obter a arte horizontal oficial limpa da temporada exata
-  const { candidates: kitsuCandidates, hadLookupConflict } = await (async (): Promise<{
-    candidates: KitsuAnimeResource[];
-    hadLookupConflict: boolean;
-  }> => {
-    const candidates: KitsuAnimeResource[] = [];
-    const seenIds = new Set<string>();
-    let aniResolvedId: string | null = null;
-    let malResolvedId: string | null = null;
-
-    const addCandidate = (item?: KitsuAnimeResource | null) => {
-      if (item?.type === "anime" && item.id && !seenIds.has(item.id)) {
-        seenIds.add(item.id);
-        candidates.push(item);
-      }
+  if (signal?.aborted) {
+    return {
+      url: fallbackUrl,
+      isAlternative: false,
+      source: fallbackUrl ? "season-default" : "none",
+      initialObjectPosition: "50% 24%",
     };
+  }
 
-    if (input.anilistId != null) {
-      const lookupUrl = `https://kitsu.io/api/edge/mappings?filter[externalSite]=anilist/anime&filter[externalId]=${encodeURIComponent(
-        String(input.anilistId),
-      )}&include=item`;
-      const res = await fetchJsonWithTimeout<KitsuMappingsLookupResponse>(
-        lookupUrl,
-        signal,
-      );
-      const animeCandidates = (res?.included ?? []).filter(
-        (item) => item.type === "anime" && item.id,
-      );
-      if (animeCandidates.length > 1) {
-        return { candidates: [], hadLookupConflict: true };
-      }
-      if (animeCandidates.length === 1) {
-        aniResolvedId = String(animeCandidates[0].id);
-        addCandidate(animeCandidates[0]);
-      }
+  const cacheKey = buildCacheKey(input);
+  const existingFlight = inFlightResolutions.get(cacheKey);
+  if (existingFlight) {
+    if (!signal) {
+      return existingFlight;
     }
-
-    if (input.malId != null) {
-      const lookupUrl = `https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=${encodeURIComponent(
-        String(input.malId),
-      )}&include=item`;
-      const res = await fetchJsonWithTimeout<KitsuMappingsLookupResponse>(
-        lookupUrl,
-        signal,
-      );
-      const animeCandidates = (res?.included ?? []).filter(
-        (item) => item.type === "anime" && item.id,
-      );
-      if (animeCandidates.length > 1) {
-        return { candidates: [], hadLookupConflict: true };
+    return new Promise<ResolvedSeasonBanner>((resolve) => {
+      const onAbort = () => {
+        resolve({
+          url: fallbackUrl,
+          isAlternative: false,
+          source: fallbackUrl ? "season-default" : "none",
+          initialObjectPosition: "50% 24%",
+        });
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
       }
-      if (animeCandidates.length === 1) {
-        malResolvedId = String(animeCandidates[0].id);
-        if (aniResolvedId && aniResolvedId !== malResolvedId) {
+      signal.addEventListener("abort", onAbort, { once: true });
+      existingFlight.then(
+        (res) => {
+          signal.removeEventListener("abort", onAbort);
+          if (!signal.aborted) resolve(res);
+        },
+        () => {
+          signal.removeEventListener("abort", onAbort);
+          if (!signal.aborted) {
+            resolve({
+              url: fallbackUrl,
+              isAlternative: false,
+              source: fallbackUrl ? "season-default" : "none",
+              initialObjectPosition: "50% 24%",
+            });
+          }
+        },
+      );
+    });
+  }
+
+  const runResolution = async (): Promise<ResolvedSeasonBanner> => {
+    const expectedYear = input.startYear ?? input.year ?? null;
+
+    // 2. Kitsu: buscar mapeamentos AniList e MAL em paralelo para reduzir latência
+    const { candidates: kitsuCandidates, hadLookupConflict } = await (async (): Promise<{
+      candidates: KitsuAnimeResource[];
+      hadLookupConflict: boolean;
+    }> => {
+      const candidates: KitsuAnimeResource[] = [];
+      const seenIds = new Set<string>();
+      let aniResolvedId: string | null = null;
+      let malResolvedId: string | null = null;
+
+      const addCandidate = (item?: KitsuAnimeResource | null) => {
+        if (item?.type === "anime" && item.id && !seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          candidates.push(item);
+        }
+      };
+
+      const [aniLookupRes, malLookupRes] = await Promise.all([
+        input.anilistId != null
+          ? fetchJsonWithTimeout<KitsuMappingsLookupResponse>(
+              `https://kitsu.io/api/edge/mappings?filter[externalSite]=anilist/anime&filter[externalId]=${encodeURIComponent(
+                String(input.anilistId),
+              )}&include=item`,
+              signal,
+            )
+          : Promise.resolve(null),
+        input.malId != null
+          ? fetchJsonWithTimeout<KitsuMappingsLookupResponse>(
+              `https://kitsu.io/api/edge/mappings?filter[externalSite]=myanimelist/anime&filter[externalId]=${encodeURIComponent(
+                String(input.malId),
+              )}&include=item`,
+              signal,
+            )
+          : Promise.resolve(null),
+      ]);
+
+      if (input.anilistId != null) {
+        const animeCandidates = (aniLookupRes?.included ?? []).filter(
+          (item) => item.type === "anime" && item.id,
+        );
+        if (animeCandidates.length > 1) {
           return { candidates: [], hadLookupConflict: true };
         }
-        addCandidate(animeCandidates[0]);
-      }
-    }
-
-    if (input.kitsuId != null) {
-      const kitsuIdKey = String(input.kitsuId);
-      if (
-        (aniResolvedId && aniResolvedId !== kitsuIdKey) ||
-        (malResolvedId && malResolvedId !== kitsuIdKey)
-      ) {
-        return { candidates: [], hadLookupConflict: true };
-      }
-      if (!seenIds.has(kitsuIdKey)) {
-        const lookupUrl = `https://kitsu.io/api/edge/anime/${encodeURIComponent(
-          kitsuIdKey,
-        )}`;
-        const res = await fetchJsonWithTimeout<KitsuSingleAnimeResponse>(
-          lookupUrl,
-          signal,
-        );
-        if (res?.data?.type === "anime" && res.data.id) {
-          addCandidate(res.data);
+        if (animeCandidates.length === 1) {
+          aniResolvedId = String(animeCandidates[0].id);
+          addCandidate(animeCandidates[0]);
         }
       }
-    }
 
-    return { candidates, hadLookupConflict: false };
-  })();
+      if (input.malId != null) {
+        const animeCandidates = (malLookupRes?.included ?? []).filter(
+          (item) => item.type === "anime" && item.id,
+        );
+        if (animeCandidates.length > 1) {
+          return { candidates: [], hadLookupConflict: true };
+        }
+        if (animeCandidates.length === 1) {
+          malResolvedId = String(animeCandidates[0].id);
+          if (aniResolvedId && aniResolvedId !== malResolvedId) {
+            return { candidates: [], hadLookupConflict: true };
+          }
+          addCandidate(animeCandidates[0]);
+        }
+      }
+
+      if (input.kitsuId != null) {
+        const kitsuIdKey = String(input.kitsuId);
+        if (
+          (aniResolvedId && aniResolvedId !== kitsuIdKey) ||
+          (malResolvedId && malResolvedId !== kitsuIdKey)
+        ) {
+          return { candidates: [], hadLookupConflict: true };
+        }
+        if (!seenIds.has(kitsuIdKey)) {
+          const lookupUrl = `https://kitsu.io/api/edge/anime/${encodeURIComponent(
+            kitsuIdKey,
+          )}`;
+          const res = await fetchJsonWithTimeout<KitsuSingleAnimeResponse>(
+            lookupUrl,
+            signal,
+          );
+          if (res?.data?.type === "anime" && res.data.id) {
+            addCandidate(res.data);
+          }
+        }
+      }
+
+      return { candidates, hadLookupConflict: false };
+    })();
 
   if (signal?.aborted) {
     return {
@@ -1618,36 +1673,45 @@ export async function resolveSeasonMobileBanner(
   const hasSeasonIdentityConflict =
     detectedExplicitSeasonConflict && !verifiedAtLeastOneKitsuSeason;
 
-  // 4. MyAnimeList / Jikan: consultar fetchJikanPictures(malId) e aceitar somente artes promocionais
-  //    horizontais limpas (>= 580x400 e 1.30:1..2.05:1, rejeitando capturas 16:9 de vídeo/episódio)
+  // 4. MyAnimeList / Jikan: reutilizar URLs já carregadas da temporada quando disponíveis,
+  //    ou consultar fetchJikanPictures(malId), aceitando somente artes promocionais horizontais limpas
   if (
     !hasSeasonIdentityConflict &&
     input.malId != null &&
     Number.isFinite(input.malId) &&
     input.malId > 0
   ) {
-    let malPictures: string[] = [];
-    try {
-      malPictures = input.fetchJikanPictures
-        ? await input.fetchJikanPictures(input.malId)
-        : await defaultFetchJikanPictures(input.malId, signal);
-    } catch {
-      malPictures = [];
-    }
-
-    if (signal?.aborted) {
-      return {
-        url: fallbackUrl,
-        isAlternative: false,
-        source: fallbackUrl ? "season-default" : "none",
-        initialObjectPosition: "50% 24%",
-      };
-    }
-
-    const candidateMalUrls = (Array.isArray(malPictures) ? malPictures : []).filter(
+    const preloadedCandidates = (input.preloadedMalPictures ?? []).filter(
       (picUrl) =>
         isValidMalSeasonPictureUrl(picUrl, input.currentCover, fallbackUrl),
     );
+
+    let candidateMalUrls = preloadedCandidates;
+
+    if (candidateMalUrls.length === 0) {
+      let malPictures: string[] = [];
+      try {
+        malPictures = input.fetchJikanPictures
+          ? await input.fetchJikanPictures(input.malId)
+          : await defaultFetchJikanPictures(input.malId, signal);
+      } catch {
+        malPictures = [];
+      }
+
+      if (signal?.aborted) {
+        return {
+          url: fallbackUrl,
+          isAlternative: false,
+          source: fallbackUrl ? "season-default" : "none",
+          initialObjectPosition: "50% 24%",
+        };
+      }
+
+      candidateMalUrls = (Array.isArray(malPictures) ? malPictures : []).filter(
+        (picUrl) =>
+          isValidMalSeasonPictureUrl(picUrl, input.currentCover, fallbackUrl),
+      );
+    }
 
     const BATCH_SIZE = 4;
     for (let i = 0; i < candidateMalUrls.length; i += BATCH_SIZE) {
@@ -1685,29 +1749,25 @@ export async function resolveSeasonMobileBanner(
     };
   }
 
-  // 4. Fallback seguro: manter o banner original do AniList da temporada quando não houver alternativa limpa
-  const isCurrentBannerClean =
-    Boolean(fallbackUrl) && !isDisallowedMobileBannerUrl(fallbackUrl);
-
-  const isFallbackDistinctFromCover = !(
-    fallbackUrl &&
-    input.currentCover &&
-    normalizeBannerUrl(fallbackUrl) === normalizeBannerUrl(input.currentCover)
-  );
-
-  const currentDims =
-    fallbackUrl && isCurrentBannerClean && isFallbackDistinctFromCover
-      ? await probeImageDimensions(fallbackUrl, signal)
-      : null;
-
-  writeCache(cacheKey, null, currentDims?.aspect);
+  // 5. Fallback seguro: manter o banner original do AniList da temporada sem sondagem extra nem alteração de object-position
+  writeCache(cacheKey, null);
   return {
     url: fallbackUrl,
     isAlternative: false,
     source: fallbackUrl ? "season-default" : "none",
-    initialObjectPosition: initialObjectPositionForAspect(currentDims?.aspect),
-    aspect: currentDims?.aspect,
+    initialObjectPosition: "50% 24%",
   };
+  };
+
+  if (!signal) {
+    const flight = runResolution().finally(() => {
+      inFlightResolutions.delete(cacheKey);
+    });
+    inFlightResolutions.set(cacheKey, flight);
+    return flight;
+  }
+
+  return runResolution();
 }
 
 /**
@@ -1799,11 +1859,22 @@ export function analyzeBannerFramingAndTheme(params: {
   bannerUrl: string;
   hasExplicitColor: boolean;
   defaultThemeColor: string;
+  computeFraming?: boolean;
   onResult: (result: { objectPosition?: string; themeColor?: string }) => void;
 }): () => void {
-  const { bannerUrl, hasExplicitColor, defaultThemeColor, onResult } = params;
+  const {
+    bannerUrl,
+    hasExplicitColor,
+    defaultThemeColor,
+    computeFraming = false,
+    onResult,
+  } = params;
 
   if (typeof window === "undefined" || !bannerUrl) {
+    return () => {};
+  }
+
+  if (hasExplicitColor && !computeFraming) {
     return () => {};
   }
 
@@ -1832,7 +1903,7 @@ export function analyzeBannerFramingAndTheme(params: {
         let objectPosition: string | undefined;
         let themeColor: string | undefined;
 
-        if (aspect >= 2.2) {
+        if (computeFraming && aspect >= 2.2) {
           const scanCanvas = document.createElement("canvas");
           const scanCtx = scanCanvas.getContext("2d", {
             willReadFrequently: true,

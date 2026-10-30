@@ -40,6 +40,7 @@ import { Route as AdultTagsRouteImport } from './routes/adult.tags'
 import { Route as AdultNewsRouteImport } from './routes/adult_.news'
 import { Route as AnimeIdRouteImport } from './routes/anime.$id'
 import { Route as ApiCommentsRouteImport } from './routes/api/comments'
+import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
 import { Route as BrowseSectionRouteImport } from './routes/browse.$section'
 import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
@@ -206,6 +207,11 @@ const ApiCommentsRoute = ApiCommentsRouteImport.update({
   path: '/api/comments',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiNotificationsRoute = ApiNotificationsRouteImport.update({
+  id: '/api/notifications',
+  path: '/api/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrowseSectionRoute = BrowseSectionRouteImport.update({
   id: '/browse/$section',
   path: '/browse/$section',
@@ -287,6 +293,7 @@ export interface FileRoutesByFullPath {
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
+  '/api/notifications': typeof ApiNotificationsRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -328,6 +335,7 @@ export interface FileRoutesByTo {
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
+  '/api/notifications': typeof ApiNotificationsRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -372,6 +380,7 @@ export interface FileRoutesById {
   '/adult_/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
+  '/api/notifications': typeof ApiNotificationsRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news_/$id': typeof NewsIdRoute
   '/news_/search': typeof NewsSearchRoute
@@ -417,6 +426,7 @@ export interface FileRouteTypes {
     | '/adult/news'
     | '/anime/$id'
     | '/api/comments'
+    | '/api/notifications'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -458,6 +468,7 @@ export interface FileRouteTypes {
     | '/adult/news'
     | '/anime/$id'
     | '/api/comments'
+    | '/api/notifications'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -501,6 +512,7 @@ export interface FileRouteTypes {
     | '/adult_/news'
     | '/anime/$id'
     | '/api/comments'
+    | '/api/notifications'
     | '/browse/$section'
     | '/news_/$id'
     | '/news_/search'
@@ -539,6 +551,7 @@ export interface RootRouteChildren {
   AdultNewsRoute: typeof AdultNewsRoute
   AnimeIdRoute: typeof AnimeIdRoute
   ApiCommentsRoute: typeof ApiCommentsRouteWithChildren
+  ApiNotificationsRoute: typeof ApiNotificationsRoute
   BrowseSectionRoute: typeof BrowseSectionRoute
   NewsIdRoute: typeof NewsIdRoute
   NewsSearchRoute: typeof NewsSearchRoute
@@ -767,6 +780,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCommentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/notifications': {
+      id: '/api/notifications'
+      path: '/api/notifications'
+      fullPath: '/api/notifications'
+      preLoaderRoute: typeof ApiNotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/browse/$section': {
       id: '/browse/$section'
       path: '/browse/$section'
@@ -912,6 +932,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdultNewsRoute: AdultNewsRoute,
   AnimeIdRoute: AnimeIdRoute,
   ApiCommentsRoute: ApiCommentsRouteWithChildren,
+  ApiNotificationsRoute: ApiNotificationsRoute,
   BrowseSectionRoute: BrowseSectionRoute,
   NewsIdRoute: NewsIdRoute,
   NewsSearchRoute: NewsSearchRoute,
