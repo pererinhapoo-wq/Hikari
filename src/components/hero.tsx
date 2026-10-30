@@ -350,20 +350,21 @@ export function Hero({
   const total = items.length;
 
   const [index, setIndex] = useState(0);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [transitionState, setTransitionState] = useState<
-    "idle" | "to-next" | "to-prev" | "cancelling"
-  >("idle");
+  const [transitioning, setTransitioning] = useState<{
+    fromIndex: number;
+    toIndex: number;
+    direction: "next" | "prev";
+  } | null>(null);
 
   const containerRef = useRef<HTMLElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<number | null>(null);
 
   const pointerState = useRef<{
     active: boolean;
     pointerId: number | null;
     startX: number;
     startY: number;
+    currentX: number;
     startTime: number;
     isLockedHorizontal: boolean;
     isLockedVertical: boolean;
@@ -373,15 +374,14 @@ export function Hero({
     pointerId: null,
     startX: 0,
     startY: 0,
+    currentX: 0,
     startTime: 0,
     isLockedHorizontal: false,
     isLockedVertical: false,
     hasMoved: false,
   });
 
-  const timerRef = useRef<number | null>(null);
-
-  // Pré-carregamento das imagens em background para transições instantâneas
+  // Pré-carregamento imediato das imagens e logos de todos os 8 animes para transição sem atrasos
   useEffect(() => {
     if (typeof window === "undefined" || items.length === 0) return;
     const isDesktop = window.matchMedia("(min-width: 768px)").matches;
@@ -404,38 +404,43 @@ export function Hero({
         img.decoding = "async";
         img.src = secondaryUrl;
       }
+
+      const logoConfig = getAnimeLogo(item);
+      if (logoConfig?.src) {
+        const logoImg = new Image();
+        logoImg.decoding = "async";
+        logoImg.src = logoConfig.src;
+      }
     });
   }, [items]);
 
+  // Disparo da transição suave com crossfade e sobreposição
   const triggerTransition = useCallback(
-    (target: "to-next" | "to-prev" | "cancelling") => {
+    (direction: "next" | "prev") => {
+      if (total < 2 || transitioning !== null) return;
+
+      const targetIndex =
+        direction === "next" ? (index + 1) % total : (index - 1 + total) % total;
+
       const prefersReduced =
         typeof window !== "undefined" &&
         window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       if (prefersReduced) {
-        if (target === "to-next") {
-          setIndex((prev) => (prev + 1) % total);
-        } else if (target === "to-prev") {
-          setIndex((prev) => (prev - 1 + total) % total);
-        }
-        setTransitionState("idle");
-        setDragOffset(0);
-        setIsDragging(false);
-        if (trackRef.current) {
-          trackRef.current.style.transition = "none";
-          trackRef.current.style.transform = "translate3d(-100%, 0, 0)";
-        }
+        setIndex(targetIndex);
         return;
       }
 
-      setIsDragging(false);
-      setTransitionState(target);
+      setTransitioning({
+        fromIndex: index,
+        toIndex: targetIndex,
+        direction,
+      });
     },
-    [total]
+    [total, index, transitioning]
   );
 
-  // Reinicia o temporizador automático de 8 segundos
+  // Reinicia o temporizador automático de aproximadamente 8 segundos
   const resetAutoTimer = useCallback(() => {
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
@@ -444,13 +449,18 @@ export function Hero({
     if (total < 2) return;
 
     timerRef.current = window.setInterval(() => {
-      if (!pointerState.current.active) {
-        triggerTransition("to-next");
+      if (
+        document.hidden ||
+        pointerState.current.active ||
+        transitioning !== null
+      ) {
+        return;
       }
+      triggerTransition("next");
     }, 8000);
-  }, [total, triggerTransition]);
+  }, [total, triggerTransition, transitioning]);
 
-  // Efeito do temporizador automático: reinicia sempre que o índice muda
+  // Efeito do temporizador automático: reinicia após cada mudança de anime ou transição
   useEffect(() => {
     resetAutoTimer();
     return () => {
@@ -461,38 +471,29 @@ export function Hero({
     };
   }, [resetAutoTimer, index]);
 
-  // Timeout de segurança para garantir a resolução da transição mesmo com abas inativas
+  // Conclui a animação após exatamente 1000ms (~900-1100ms) com aceleração e desaceleração naturais
   useEffect(() => {
-    if (transitionState === "idle") return;
+    if (!transitioning) return;
 
-    const timeoutMs = transitionState === "cancelling" ? 550 : 1050;
-    const safetyTimer = window.setTimeout(() => {
-      if (transitionState === "to-next") {
-        setIndex((prev) => (prev + 1) % total);
-      } else if (transitionState === "to-prev") {
-        setIndex((prev) => (prev - 1 + total) % total);
-      }
-      setTransitionState("idle");
-      setDragOffset(0);
-      setIsDragging(false);
-      if (trackRef.current) {
-        trackRef.current.style.transition = "none";
-        trackRef.current.style.transform = "translate3d(-100%, 0, 0)";
-      }
-    }, timeoutMs);
+    const timeout = window.setTimeout(() => {
+      setIndex(transitioning.toIndex);
+      setTransitioning(null);
+    }, 1000);
 
-    return () => window.clearTimeout(safetyTimer);
-  }, [transitionState, total]);
+    return () => window.clearTimeout(timeout);
+  }, [transitioning]);
 
-  // Manipulação de eventos de ponteiro para arrastar com os dedos ou mouse
+  // Manipulação de gestos de toque/ponteiro
+  // O gesto apenas detecta a intenção de navegação (sem arrastar a imagem diretamente como galeria)
   const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
-    if (total < 2 || e.button !== 0 || transitionState !== "idle") return;
+    if (total < 2 || e.button !== 0 || transitioning !== null) return;
 
     pointerState.current = {
       active: true,
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
+      currentX: e.clientX,
       startTime: Date.now(),
       isLockedHorizontal: false,
       isLockedVertical: false,
@@ -510,14 +511,13 @@ export function Hero({
     const dy = e.clientY - state.startY;
 
     if (!state.isLockedHorizontal) {
-      if (Math.hypot(dx, dy) > 7) {
+      if (Math.hypot(dx, dy) > 8) {
         if (Math.abs(dy) > Math.abs(dx)) {
           state.isLockedVertical = true;
           return;
         }
         state.isLockedHorizontal = true;
         state.hasMoved = true;
-        setIsDragging(true);
 
         try {
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -528,7 +528,7 @@ export function Hero({
     }
 
     if (state.isLockedHorizontal) {
-      setDragOffset(dx);
+      state.currentX = e.clientX;
     }
   };
 
@@ -549,82 +549,30 @@ export function Hero({
 
     if (state.isLockedHorizontal) {
       const containerWidth = containerRef.current?.offsetWidth || 390;
-      const threshold = Math.max(45, containerWidth * 0.15);
+      const threshold = Math.max(40, containerWidth * 0.12);
+      const dx = state.currentX - state.startX;
       const elapsed = Date.now() - state.startTime;
-      const isQuickSwipe = elapsed < 280 && Math.abs(dragOffset) > 25;
+      const isQuickSwipe = elapsed < 350 && Math.abs(dx) > 30;
 
-      if (dragOffset < -threshold || (isQuickSwipe && dragOffset < 0)) {
-        triggerTransition("to-next");
-      } else if (dragOffset > threshold || (isQuickSwipe && dragOffset > 0)) {
-        triggerTransition("to-prev");
-      } else {
-        triggerTransition("cancelling");
+      if (dx < -threshold || (isQuickSwipe && dx < 0)) {
+        // Deslizar para esquerda avança para o próximo anime com a mesma transição suave
+        triggerTransition("next");
+      } else if (dx > threshold || (isQuickSwipe && dx > 0)) {
+        // Deslizar para direita retorna para o anime anterior com a mesma transição suave
+        triggerTransition("prev");
       }
-    } else {
-      setIsDragging(false);
-      setDragOffset(0);
     }
 
     resetAutoTimer();
   };
 
-  // Previne clique inadvertido em links ou botões após arrastar
+  // Previne clique inadvertido em links ou botões se o usuário fez um gesto de deslizar
   const handleClickCapture = (e: React.MouseEvent) => {
     if (pointerState.current.hasMoved) {
       e.preventDefault();
       e.stopPropagation();
       pointerState.current.hasMoved = false;
     }
-  };
-
-  const handleTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
-    if (e.target !== trackRef.current || e.propertyName !== "transform") return;
-
-    if (transitionState === "to-next") {
-      setIndex((prev) => (prev + 1) % total);
-    } else if (transitionState === "to-prev") {
-      setIndex((prev) => (prev - 1 + total) % total);
-    }
-
-    if (trackRef.current) {
-      trackRef.current.style.transition = "none";
-      trackRef.current.style.transform = "translate3d(-100%, 0, 0)";
-    }
-
-    setTransitionState("idle");
-    setDragOffset(0);
-    setIsDragging(false);
-  };
-
-  // Cálculo da posição da esteira (track)
-  const getTrackTransform = () => {
-    if (isDragging) {
-      return `translate3d(calc(-100% + ${dragOffset}px), 0, 0)`;
-    }
-    if (transitionState === "to-next") {
-      return "translate3d(-200%, 0, 0)";
-    }
-    if (transitionState === "to-prev") {
-      return "translate3d(0%, 0, 0)";
-    }
-    if (transitionState === "cancelling") {
-      return "translate3d(-100%, 0, 0)";
-    }
-    return "translate3d(-100%, 0, 0)";
-  };
-
-  // Duração fluida de 900ms com curva natural de desaceleração (easeOutQuart)
-  const getTrackTransition = () => {
-    if (isDragging) {
-      return "none";
-    }
-    if (transitionState === "to-next" || transitionState === "to-prev") {
-      return "transform 900ms cubic-bezier(0.25, 1, 0.5, 1)";
-    }
-    if (transitionState === "cancelling") {
-      return "transform 450ms cubic-bezier(0.25, 1, 0.5, 1)";
-    }
-    return "none";
   };
 
   if (total <= 1) {
@@ -659,9 +607,6 @@ export function Hero({
     );
   }
 
-  const prevIndex = (index - 1 + total) % total;
-  const nextIndex = (index + 1) % total;
-
   return (
     <section
       aria-label="Destaque principal"
@@ -672,7 +617,7 @@ export function Hero({
       onPointerCancel={handlePointerUpOrCancel}
       onClickCapture={handleClickCapture}
       style={{ touchAction: "pan-y" }}
-      className={`
+      className="
         relative
         -mx-4
         overflow-hidden
@@ -695,22 +640,136 @@ export function Hero({
         justify-end
         select-none
         touch-pan-y
-        ${isDragging ? "cursor-grabbing" : "cursor-grab"}
-      `}
+        cursor-default
+      "
     >
-      <div
-        ref={trackRef}
-        className="flex size-full will-change-transform"
-        style={{
-          transform: getTrackTransform(),
-          transition: getTrackTransition(),
-        }}
-        onTransitionEnd={handleTransitionEnd}
-      >
-        <HeroSlide key={`prev-${items[prevIndex].id}`} anime={items[prevIndex]} />
-        <HeroSlide key={`curr-${items[index].id}`} anime={items[index]} priority />
-        <HeroSlide key={`next-${items[nextIndex].id}`} anime={items[nextIndex]} />
-      </div>
+      <style>{`
+        @keyframes heroCrossfadeOutNext {
+          0% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+            filter: brightness(1);
+          }
+          20% {
+            opacity: 0.96;
+            transform: translate3d(-5px, 0, 0);
+            filter: brightness(0.72);
+          }
+          50% {
+            opacity: 0.65;
+            transform: translate3d(-14px, 0, 0);
+            filter: brightness(0.62);
+          }
+          100% {
+            opacity: 0;
+            transform: translate3d(-28px, 0, 0);
+            filter: brightness(0.5);
+          }
+        }
+
+        @keyframes heroCrossfadeInNext {
+          0% {
+            opacity: 0;
+            transform: translate3d(28px, 0, 0);
+          }
+          16% {
+            opacity: 0.06;
+            transform: translate3d(24px, 0, 0);
+          }
+          50% {
+            opacity: 0.72;
+            transform: translate3d(12px, 0, 0);
+          }
+          82% {
+            opacity: 0.95;
+            transform: translate3d(4px, 0, 0);
+          }
+          100% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+
+        @keyframes heroCrossfadeOutPrev {
+          0% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+            filter: brightness(1);
+          }
+          20% {
+            opacity: 0.96;
+            transform: translate3d(5px, 0, 0);
+            filter: brightness(0.72);
+          }
+          50% {
+            opacity: 0.65;
+            transform: translate3d(14px, 0, 0);
+            filter: brightness(0.62);
+          }
+          100% {
+            opacity: 0;
+            transform: translate3d(28px, 0, 0);
+            filter: brightness(0.5);
+          }
+        }
+
+        @keyframes heroCrossfadeInPrev {
+          0% {
+            opacity: 0;
+            transform: translate3d(-28px, 0, 0);
+          }
+          16% {
+            opacity: 0.06;
+            transform: translate3d(-24px, 0, 0);
+          }
+          50% {
+            opacity: 0.72;
+            transform: translate3d(-12px, 0, 0);
+          }
+          82% {
+            opacity: 0.95;
+            transform: translate3d(-4px, 0, 0);
+          }
+          100% {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+      `}</style>
+
+      {/* Camadas da transição ou anime ativo */}
+      {transitioning ? (
+        <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">
+          {/* Camada inferior: Anime saindo com leve escurecimento inicial e deslocamento sutil de profundidade */}
+          <div
+            key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
+            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[transform,opacity,filter]"
+            style={{
+              animation: `${transitioning.direction === "next" ? "heroCrossfadeOutNext" : "heroCrossfadeOutPrev"} 1000ms cubic-bezier(0.25, 1, 0.5, 1) forwards`,
+            }}
+          >
+            <HeroSlide anime={items[transitioning.fromIndex]} />
+          </div>
+
+          {/* Camada superior: Próximo anime surgindo gradualmente por cima com crossfade e sincronização completa */}
+          <div
+            key={`incoming-${transitioning.toIndex}-${items[transitioning.toIndex].id}`}
+            className="relative size-full overflow-hidden z-20 will-change-[transform,opacity]"
+            style={{
+              animation: `${transitioning.direction === "next" ? "heroCrossfadeInNext" : "heroCrossfadeInPrev"} 1000ms cubic-bezier(0.25, 1, 0.5, 1) forwards`,
+            }}
+          >
+            <HeroSlide anime={items[transitioning.toIndex]} priority />
+          </div>
+        </div>
+      ) : (
+        <div
+          key={`active-${index}-${items[index].id}`}
+          className="relative size-full overflow-hidden z-10"
+        >
+          <HeroSlide anime={items[index]} priority />
+        </div>
+      )}
     </section>
   );
 }
