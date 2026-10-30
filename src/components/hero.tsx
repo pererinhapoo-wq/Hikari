@@ -1,249 +1,79 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, Info, Play } from "lucide-react";
 
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
 
-export function Hero({
-  anime,
-  animes = [anime],
-}: {
+interface HeroSlideProps {
   anime: SlimAnime;
-  animes?: SlimAnime[];
-}) {
-  const [index, setIndex] = useState(0);
+  priority?: boolean;
+}
 
-  const current = animes[index] ?? anime;
-
-  // Título no idioma original (romaji prioritário, sem traduzir ou substituir)
+function HeroSlide({ anime, priority = false }: HeroSlideProps) {
   const originalTitle =
-    current.titles?.romaji?.trim() ||
-    current.titles?.native?.trim() ||
-    current.titles?.english?.trim() ||
-    displayTitle(current);
+    anime.titles?.romaji?.trim() ||
+    anime.titles?.native?.trim() ||
+    anime.titles?.english?.trim() ||
+    displayTitle(anime);
 
-  /*
-   * Resolução de imagens de fundo:
-   * No mobile, prioriza capa vertical em alta resolução com enquadramento superior natural.
-   * No desktop, prioriza banner horizontal amplo.
-   */
-  const mobileBackdrop = current.cover || current.banner || "";
-  const desktopBackdrop = current.banner || current.cover || "";
+  const mobileBackdrop = anime.cover || anime.banner || "";
+  const desktopBackdrop = anime.banner || anime.cover || "";
 
-  // Imagens do slide anterior para transição suave sem flicker
-  const [prevMobileBackdrop, setPrevMobileBackdrop] = useState<string>("");
-  const [prevDesktopBackdrop, setPrevDesktopBackdrop] = useState<string>("");
-
-  const preloadedUrls = useRef<Set<string>>(new Set());
-  const [isMobileLoaded, setIsMobileLoaded] = useState<boolean>(true);
-  const [isDesktopLoaded, setIsDesktopLoaded] = useState<boolean>(true);
-
-  const prevIdRef = useRef<string | number>(current.id);
-  const prevMobileRef = useRef<string>(mobileBackdrop);
-  const prevDesktopRef = useRef<string>(desktopBackdrop);
-
-  const nextIndex = animes.length > 1 ? (index + 1) % animes.length : -1;
-  const nextAnime = nextIndex >= 0 ? animes[nextIndex] : null;
-
-  const nextMobileBackdrop = nextAnime
-    ? nextAnime.cover || nextAnime.banner || ""
-    : "";
-  const nextDesktopBackdrop = nextAnime
-    ? nextAnime.banner || nextAnime.cover || ""
-    : "";
-
-  useEffect(() => {
-    if (prevIdRef.current !== current.id) {
-      setPrevMobileBackdrop(prevMobileRef.current);
-      setPrevDesktopBackdrop(prevDesktopRef.current);
-
-      const mobileReady = preloadedUrls.current.has(mobileBackdrop);
-      const desktopReady = preloadedUrls.current.has(desktopBackdrop);
-
-      setIsMobileLoaded(mobileReady);
-      setIsDesktopLoaded(desktopReady);
-
-      prevIdRef.current = current.id;
-      prevMobileRef.current = mobileBackdrop;
-      prevDesktopRef.current = desktopBackdrop;
-    }
-  }, [current.id, mobileBackdrop, desktopBackdrop]);
-
-  // Pré-carregamento do próximo slide em background
-  useEffect(() => {
-    if (typeof window === "undefined" || animes.length < 2 || !nextAnime) return;
-
-    const isDesktop = window.matchMedia("(min-width: 768px)").matches;
-    const primaryUrl = isDesktop ? nextDesktopBackdrop : nextMobileBackdrop;
-
-    const urlsToPreload = new Set<string>();
-    if (primaryUrl) urlsToPreload.add(primaryUrl);
-    if (nextMobileBackdrop) urlsToPreload.add(nextMobileBackdrop);
-    if (nextDesktopBackdrop) urlsToPreload.add(nextDesktopBackdrop);
-
-    if (urlsToPreload.size === 0) return;
-
-    const activePreloaders: HTMLImageElement[] = [];
-
-    urlsToPreload.forEach((url) => {
-      if (preloadedUrls.current.has(url)) return;
-
-      const img = new Image();
-      img.decoding = "async";
-      img.onload = () => {
-        preloadedUrls.current.add(url);
-      };
-      img.onerror = () => {
-        preloadedUrls.current.add(url);
-      };
-      img.src = url;
-      activePreloaders.push(img);
-    });
-
-    return () => {
-      activePreloaders.forEach((img) => {
-        img.onload = null;
-        img.onerror = null;
-      });
-      activePreloaders.length = 0;
-    };
-  }, [index, animes.length, nextDesktopBackdrop, nextMobileBackdrop, nextAnime]);
-
-  // Rotação automática dos slides (8 segundos)
-  useEffect(() => {
-    if (animes.length < 2) return;
-
-    const timer = window.setInterval(() => {
-      const nextIdx = (index + 1) % animes.length;
-      setIndex(nextIdx);
-    }, 8000);
-
-    return () => window.clearInterval(timer);
-  }, [animes.length, index]);
-
-  // Dados reais formatados para o anime atual
-  const scoreValue = current.score != null ? scoreLabel(current.score) : null;
-
+  const scoreValue = anime.score != null ? scoreLabel(anime.score) : null;
   const seasonValue =
-    current.format === "MOVIE"
+    anime.format === "MOVIE"
       ? "Filme"
-      : current.season
-        ? seasonLabel(current.season, current.year)
-        : current.year
-          ? `Temporada ${current.year}`
+      : anime.season
+        ? seasonLabel(anime.season, anime.year)
+        : anime.year
+          ? `Temporada ${anime.year}`
           : "T1";
 
   const episodesValue =
-    current.episodesCount != null
-      ? `${current.episodesCount} ${current.episodesCount === 1 ? "Episódio" : "Episódios"}`
-      : current.format === "MOVIE"
+    anime.episodesCount != null
+      ? `${anime.episodesCount} ${anime.episodesCount === 1 ? "Episódio" : "Episódios"}`
+      : anime.format === "MOVIE"
         ? "Filme único"
         : "Em lançamento";
 
-  const statusText = statusLabel(current.status);
+  const statusText = statusLabel(anime.status);
   const isAiring =
-    current.status === "RELEASING" ||
-    current.status?.toLowerCase() === "airing" ||
-    current.status?.toLowerCase() === "currently_airing" ||
+    anime.status === "RELEASING" ||
+    anime.status?.toLowerCase() === "airing" ||
+    anime.status?.toLowerCase() === "currently_airing" ||
     Boolean(statusText?.toLowerCase().includes("exibi")) ||
     Boolean(statusText?.toLowerCase().includes("lança"));
 
   return (
-    <section
-      aria-label="Destaque principal"
-      className="
-        relative
-        -mx-4
-        overflow-hidden
-        bg-black
-        border-b
-        border-white/5
-        shadow-[0_12px_40px_rgba(0,0,0,0.85)]
-        sm:-mx-6
-        md:mx-0
-        md:rounded-3xl
-        md:border
-        md:border-white/10
-        md:shadow-[0_20px_50px_rgba(0,0,0,0.7)]
-        min-h-[560px]
-        sm:min-h-[620px]
-        md:min-h-[560px]
-        lg:min-h-[600px]
-        flex
-        flex-col
-        justify-end
-      "
-    >
-      {/* =========================================================
-          CAMADA DE IMAGEM AMPLA EM BACKGROUND (CORES E LUZ NATURAIS)
-          ========================================================= */}
+    <div className="relative size-full min-w-full shrink-0 flex flex-col justify-end select-none overflow-hidden min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px]">
+      {/* CAMADA DE IMAGEM AMPLA EM BACKGROUND (CORES E LUZ NATURAIS) */}
       <div className="absolute inset-0 size-full pointer-events-none overflow-hidden select-none">
         {/* MOBILE: Imagem ampla ocupando a tela com enquadramento focado nos personagens e cores originais */}
         <div className="relative size-full md:hidden">
-          {prevMobileBackdrop &&
-            prevMobileBackdrop !== mobileBackdrop &&
-            !isMobileLoaded && (
-              <img
-                src={prevMobileBackdrop}
-                alt=""
-                aria-hidden="true"
-                className="absolute inset-0 size-full object-cover object-top"
-              />
-            )}
           <img
-            key={`m-hero-${current.id}`}
             src={mobileBackdrop}
             alt={originalTitle}
-            loading="eager"
+            loading={priority ? "eager" : "lazy"}
             decoding="async"
-            fetchPriority="high"
-            onLoad={() => setIsMobileLoaded(true)}
-            onError={() => setIsMobileLoaded(true)}
-            className={`
-              size-full
-              object-cover
-              object-top
-              transition-opacity
-              duration-500
-              ${isMobileLoaded ? "opacity-100" : "opacity-0"}
-            `}
+            fetchPriority={priority ? "high" : "auto"}
+            className="size-full object-cover object-top"
           />
         </div>
 
         {/* DESKTOP: Banner horizontal em alta definição */}
         <div className="hidden md:block relative size-full">
-          {prevDesktopBackdrop &&
-            prevDesktopBackdrop !== desktopBackdrop &&
-            !isDesktopLoaded && (
-              <img
-                src={prevDesktopBackdrop}
-                alt=""
-                aria-hidden="true"
-                className="absolute inset-0 size-full object-cover object-center"
-              />
-            )}
           <img
-            key={`d-hero-${current.id}`}
             src={desktopBackdrop}
             alt={originalTitle}
-            loading="eager"
+            loading={priority ? "eager" : "lazy"}
             decoding="async"
-            fetchPriority="high"
-            onLoad={() => setIsDesktopLoaded(true)}
-            onError={() => setIsDesktopLoaded(true)}
-            className={`
-              size-full
-              object-cover
-              object-center
-              transition-opacity
-              duration-500
-              ${isDesktopLoaded ? "opacity-100" : "opacity-0"}
-            `}
+            fetchPriority={priority ? "high" : "auto"}
+            className="size-full object-cover object-center"
           />
         </div>
 
-        {/* GRADIENTE INFERIOR NEUTRO: Limitado estritamente à região dos textos (preto e transparente), sem coloração ou névoa sobre a imagem */}
+        {/* GRADIENTE INFERIOR NEUTRO: Limitado estritamente à região dos textos */}
         <div
           className="
             absolute
@@ -261,9 +91,7 @@ export function Hero({
         />
       </div>
 
-      {/* =========================================================
-          CONTEÚDO CENTRALIZADO E ELEGANTE
-          ========================================================= */}
+      {/* CONTEÚDO CENTRALIZADO E ELEGANTE */}
       <div
         className="
           relative
@@ -273,9 +101,9 @@ export function Hero({
           mx-auto
           px-4
           pt-28
-          pb-6
+          pb-8
           sm:px-6
-          sm:pb-8
+          sm:pb-10
           flex
           flex-col
           items-center
@@ -284,7 +112,7 @@ export function Hero({
           sm:space-y-3.5
         "
       >
-        {/* Título Principal no Idioma Original (sem subtítulo em japonês) */}
+        {/* Título Principal no Idioma Original */}
         <div className="w-full max-w-xl">
           <h1
             title={originalTitle}
@@ -370,9 +198,9 @@ export function Hero({
         )}
 
         {/* Gêneros */}
-        {current.genres.length > 0 && (
+        {anime.genres.length > 0 && (
           <div className="flex flex-wrap items-center justify-center gap-1.5 pt-0.5 max-w-lg">
-            {current.genres.slice(0, 4).map((genre) => (
+            {anime.genres.slice(0, 4).map((genre) => (
               <span
                 key={genre}
                 className="
@@ -398,12 +226,12 @@ export function Hero({
           </div>
         )}
 
-        {/* Controles de Ação: Botão Assistir compacto com fundo claro & Controle Detalhes discreto sem fundo sólido */}
+        {/* Controles de Ação */}
         <div className="mt-2 flex items-center justify-center gap-2.5 sm:gap-3 w-auto pt-1">
-          {/* Botão Assistir (compacto, fundo claro, texto escuro, cantos suaves e ícone discreto) */}
+          {/* Botão Assistir */}
           <Link
             to="/watch/$id"
-            params={{ id: current.id }}
+            params={{ id: anime.id }}
             preload="intent"
             className="
               inline-flex
@@ -436,10 +264,10 @@ export function Hero({
             <span>Assistir</span>
           </Link>
 
-          {/* Controle Detalhes (sem fundo sólido, texto claro, ícone discreto e pequena seta à direita) */}
+          {/* Controle Detalhes */}
           <Link
             to="/anime/$id"
-            params={{ id: current.id }}
+            params={{ id: anime.id }}
             className="
               group
               inline-flex
@@ -472,35 +300,382 @@ export function Hero({
             <ChevronRight className="size-3.5 text-zinc-400 group-hover:text-white group-hover:translate-x-0.5 transition-transform shrink-0" />
           </Link>
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* Indicadores de Slides com Navegação Funcional */}
-        {animes.length > 1 && (
-          <div
-            className="mt-3 flex items-center justify-center gap-2 pt-1 pb-0.5"
-            aria-label="Indicadores de destaques"
-          >
-            {animes.map((item, i) => (
-              <button
-                key={item.id}
-                type="button"
-                aria-label={`Mostrar destaque ${i + 1}`}
-                onClick={() => setIndex(i)}
-                className={`
-                  h-1.5
-                  rounded-full
-                  transition-all
-                  duration-300
-                  cursor-pointer
-                  ${
-                    i === index
-                      ? "w-7 bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.9)]"
-                      : "w-1.5 bg-zinc-700/80 hover:bg-zinc-500"
-                  }
-                `}
-              />
-            ))}
-          </div>
-        )}
+export function Hero({
+  anime,
+  animes = [anime],
+}: {
+  anime: SlimAnime;
+  animes?: SlimAnime[];
+}) {
+  const items = (animes.length > 0 ? animes : [anime]).slice(0, 8);
+  const total = items.length;
+
+  const [index, setIndex] = useState(0);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [transitionState, setTransitionState] = useState<
+    "idle" | "to-next" | "to-prev" | "cancelling"
+  >("idle");
+
+  const containerRef = useRef<HTMLElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  const pointerState = useRef<{
+    active: boolean;
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    startTime: number;
+    isLockedHorizontal: boolean;
+    isLockedVertical: boolean;
+    hasMoved: boolean;
+  }>({
+    active: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+    isLockedHorizontal: false,
+    isLockedVertical: false,
+    hasMoved: false,
+  });
+
+  const timerRef = useRef<number | null>(null);
+
+  // Pré-carregamento das imagens em background para transições instantâneas
+  useEffect(() => {
+    if (typeof window === "undefined" || items.length === 0) return;
+    const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+
+    items.forEach((item) => {
+      const primaryUrl = isDesktop
+        ? item.banner || item.cover
+        : item.cover || item.banner;
+      const secondaryUrl = isDesktop
+        ? item.cover || item.banner
+        : item.banner || item.cover;
+
+      if (primaryUrl) {
+        const img = new Image();
+        img.decoding = "async";
+        img.src = primaryUrl;
+      }
+      if (secondaryUrl && secondaryUrl !== primaryUrl) {
+        const img = new Image();
+        img.decoding = "async";
+        img.src = secondaryUrl;
+      }
+    });
+  }, [items]);
+
+  const triggerTransition = useCallback(
+    (target: "to-next" | "to-prev" | "cancelling") => {
+      const prefersReduced =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (prefersReduced) {
+        if (target === "to-next") {
+          setIndex((prev) => (prev + 1) % total);
+        } else if (target === "to-prev") {
+          setIndex((prev) => (prev - 1 + total) % total);
+        }
+        setTransitionState("idle");
+        setDragOffset(0);
+        setIsDragging(false);
+        if (trackRef.current) {
+          trackRef.current.style.transition = "none";
+          trackRef.current.style.transform = "translate3d(-100%, 0, 0)";
+        }
+        return;
+      }
+
+      setIsDragging(false);
+      setTransitionState(target);
+    },
+    [total]
+  );
+
+  // Reinicia o temporizador automático de 8 segundos
+  const resetAutoTimer = useCallback(() => {
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (total < 2) return;
+
+    timerRef.current = window.setInterval(() => {
+      if (!pointerState.current.active) {
+        triggerTransition("to-next");
+      }
+    }, 8000);
+  }, [total, triggerTransition]);
+
+  // Efeito do temporizador automático: reinicia sempre que o índice muda
+  useEffect(() => {
+    resetAutoTimer();
+    return () => {
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [resetAutoTimer, index]);
+
+  // Timeout de segurança para garantir a resolução da transição mesmo com abas inativas
+  useEffect(() => {
+    if (transitionState === "idle") return;
+
+    const timeoutMs = transitionState === "cancelling" ? 550 : 1050;
+    const safetyTimer = window.setTimeout(() => {
+      if (transitionState === "to-next") {
+        setIndex((prev) => (prev + 1) % total);
+      } else if (transitionState === "to-prev") {
+        setIndex((prev) => (prev - 1 + total) % total);
+      }
+      setTransitionState("idle");
+      setDragOffset(0);
+      setIsDragging(false);
+      if (trackRef.current) {
+        trackRef.current.style.transition = "none";
+        trackRef.current.style.transform = "translate3d(-100%, 0, 0)";
+      }
+    }, timeoutMs);
+
+    return () => window.clearTimeout(safetyTimer);
+  }, [transitionState, total]);
+
+  // Manipulação de eventos de ponteiro para arrastar com os dedos ou mouse
+  const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (total < 2 || e.button !== 0 || transitionState !== "idle") return;
+
+    pointerState.current = {
+      active: true,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTime: Date.now(),
+      isLockedHorizontal: false,
+      isLockedVertical: false,
+      hasMoved: false,
+    };
+
+    resetAutoTimer();
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const state = pointerState.current;
+    if (!state.active || state.pointerId !== e.pointerId || state.isLockedVertical) return;
+
+    const dx = e.clientX - state.startX;
+    const dy = e.clientY - state.startY;
+
+    if (!state.isLockedHorizontal) {
+      if (Math.hypot(dx, dy) > 7) {
+        if (Math.abs(dy) > Math.abs(dx)) {
+          state.isLockedVertical = true;
+          return;
+        }
+        state.isLockedHorizontal = true;
+        state.hasMoved = true;
+        setIsDragging(true);
+
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (state.isLockedHorizontal) {
+      setDragOffset(dx);
+    }
+  };
+
+  const handlePointerUpOrCancel = (e: React.PointerEvent<HTMLElement>) => {
+    const state = pointerState.current;
+    if (!state.active || state.pointerId !== e.pointerId) return;
+
+    state.active = false;
+    state.pointerId = null;
+
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // ignore
+    }
+
+    if (state.isLockedHorizontal) {
+      const containerWidth = containerRef.current?.offsetWidth || 390;
+      const threshold = Math.max(45, containerWidth * 0.15);
+      const elapsed = Date.now() - state.startTime;
+      const isQuickSwipe = elapsed < 280 && Math.abs(dragOffset) > 25;
+
+      if (dragOffset < -threshold || (isQuickSwipe && dragOffset < 0)) {
+        triggerTransition("to-next");
+      } else if (dragOffset > threshold || (isQuickSwipe && dragOffset > 0)) {
+        triggerTransition("to-prev");
+      } else {
+        triggerTransition("cancelling");
+      }
+    } else {
+      setIsDragging(false);
+      setDragOffset(0);
+    }
+
+    resetAutoTimer();
+  };
+
+  // Previne clique inadvertido em links ou botões após arrastar
+  const handleClickCapture = (e: React.MouseEvent) => {
+    if (pointerState.current.hasMoved) {
+      e.preventDefault();
+      e.stopPropagation();
+      pointerState.current.hasMoved = false;
+    }
+  };
+
+  const handleTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
+    if (e.target !== trackRef.current || e.propertyName !== "transform") return;
+
+    if (transitionState === "to-next") {
+      setIndex((prev) => (prev + 1) % total);
+    } else if (transitionState === "to-prev") {
+      setIndex((prev) => (prev - 1 + total) % total);
+    }
+
+    if (trackRef.current) {
+      trackRef.current.style.transition = "none";
+      trackRef.current.style.transform = "translate3d(-100%, 0, 0)";
+    }
+
+    setTransitionState("idle");
+    setDragOffset(0);
+    setIsDragging(false);
+  };
+
+  // Cálculo da posição da esteira (track)
+  const getTrackTransform = () => {
+    if (isDragging) {
+      return `translate3d(calc(-100% + ${dragOffset}px), 0, 0)`;
+    }
+    if (transitionState === "to-next") {
+      return "translate3d(-200%, 0, 0)";
+    }
+    if (transitionState === "to-prev") {
+      return "translate3d(0%, 0, 0)";
+    }
+    if (transitionState === "cancelling") {
+      return "translate3d(-100%, 0, 0)";
+    }
+    return "translate3d(-100%, 0, 0)";
+  };
+
+  // Duração fluida de 900ms com curva natural de desaceleração (easeOutQuart)
+  const getTrackTransition = () => {
+    if (isDragging) {
+      return "none";
+    }
+    if (transitionState === "to-next" || transitionState === "to-prev") {
+      return "transform 900ms cubic-bezier(0.25, 1, 0.5, 1)";
+    }
+    if (transitionState === "cancelling") {
+      return "transform 450ms cubic-bezier(0.25, 1, 0.5, 1)";
+    }
+    return "none";
+  };
+
+  if (total <= 1) {
+    return (
+      <section
+        aria-label="Destaque principal"
+        className="
+          relative
+          -mx-4
+          overflow-hidden
+          bg-black
+          border-b
+          border-white/5
+          shadow-[0_12px_40px_rgba(0,0,0,0.85)]
+          sm:-mx-6
+          md:mx-0
+          md:rounded-3xl
+          md:border
+          md:border-white/10
+          md:shadow-[0_20px_50px_rgba(0,0,0,0.7)]
+          min-h-[560px]
+          sm:min-h-[620px]
+          md:min-h-[560px]
+          lg:min-h-[600px]
+          flex
+          flex-col
+          justify-end
+        "
+      >
+        <HeroSlide anime={items[0]} priority />
+      </section>
+    );
+  }
+
+  const prevIndex = (index - 1 + total) % total;
+  const nextIndex = (index + 1) % total;
+
+  return (
+    <section
+      aria-label="Destaque principal"
+      ref={containerRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUpOrCancel}
+      onPointerCancel={handlePointerUpOrCancel}
+      onClickCapture={handleClickCapture}
+      style={{ touchAction: "pan-y" }}
+      className={`
+        relative
+        -mx-4
+        overflow-hidden
+        bg-black
+        border-b
+        border-white/5
+        shadow-[0_12px_40px_rgba(0,0,0,0.85)]
+        sm:-mx-6
+        md:mx-0
+        md:rounded-3xl
+        md:border
+        md:border-white/10
+        md:shadow-[0_20px_50px_rgba(0,0,0,0.7)]
+        min-h-[560px]
+        sm:min-h-[620px]
+        md:min-h-[560px]
+        lg:min-h-[600px]
+        flex
+        flex-col
+        justify-end
+        select-none
+        touch-pan-y
+        ${isDragging ? "cursor-grabbing" : "cursor-grab"}
+      `}
+    >
+      <div
+        ref={trackRef}
+        className="flex size-full will-change-transform"
+        style={{
+          transform: getTrackTransform(),
+          transition: getTrackTransition(),
+        }}
+        onTransitionEnd={handleTransitionEnd}
+      >
+        <HeroSlide key={`prev-${items[prevIndex].id}`} anime={items[prevIndex]} />
+        <HeroSlide key={`curr-${items[index].id}`} anime={items[index]} priority />
+        <HeroSlide key={`next-${items[nextIndex].id}`} anime={items[nextIndex]} />
       </div>
     </section>
   );

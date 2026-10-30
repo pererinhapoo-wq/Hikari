@@ -115,7 +115,7 @@ function Home() {
     ...popular.filter(
       (a) => !trending.some((t) => t.id === a.id),
     ),
-  ].slice(0, 6);
+  ].slice(0, 8);
 
   return (
     <div className="space-y-8 pb-12 sm:space-y-11 md:space-y-14">
