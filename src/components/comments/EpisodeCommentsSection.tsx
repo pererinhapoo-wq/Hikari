@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Edit3,
-  Eye,
   EyeOff,
   Flag,
   Image as ImageIcon,
@@ -21,6 +20,7 @@ import {
   LogOut,
   MessageCircle,
   MoreVertical,
+  Reply,
   Search,
   Send,
   Settings2,
@@ -1779,16 +1779,24 @@ export function EpisodeCommentsSection({
           );
         }
 
-        setComments(
-          (current) =>
-            current.filter(
-              (comment) =>
-                comment.id !==
-                  deletingComment.id &&
-                comment.parentId !==
-                  deletingComment.id,
-            ),
-        );
+        setComments((current) => {
+          const toRemove = new Set<string>([deletingComment.id]);
+          let added = true;
+          while (added) {
+            added = false;
+            for (const item of current) {
+              if (
+                item.parentId &&
+                toRemove.has(item.parentId) &&
+                !toRemove.has(item.id)
+              ) {
+                toRemove.add(item.id);
+                added = true;
+              }
+            }
+          }
+          return current.filter((comment) => !toRemove.has(comment.id));
+        });
 
         if (
           replyingId ===
@@ -2871,7 +2879,7 @@ export function EpisodeCommentsSection({
           {/* LISTA DE COMENTÁRIOS REDESENHADA (SEM CARTÕES PESADOS) */}
           {/* =============================================== */}
 
-          <div className="mt-6 divide-y divide-white/[0.06] border-y border-white/[0.06]">
+          <div className="mt-4 divide-y divide-white/[0.06] border-y border-white/[0.06]">
 
             {loading ? (
               <ElizabethCommentsLoading />
@@ -2885,11 +2893,6 @@ export function EpisodeCommentsSection({
             ) : (
               displayedRootComments.map(
                 (comment) => {
-                  const replies =
-                    repliesFor(
-                      comment.id,
-                    );
-
                   const isAuthor =
                     Boolean(
                       effectiveUserId &&
@@ -2905,20 +2908,117 @@ export function EpisodeCommentsSection({
                   const canReport =
                     Boolean(!isAuthor);
 
+                  const renderThreadReplies = (
+                    parentComment: Comment,
+                    depth = 1,
+                  ): React.ReactNode => {
+                    const childReplies = repliesFor(parentComment.id);
+                    if (childReplies.length === 0) return null;
+
+                    return (
+                      <div
+                        className={cn(
+                          "mt-1.5 border-l border-[#a855f7]/20 hover:border-[#a855f7]/40 space-y-2 transition-colors",
+                          depth === 1
+                            ? "ml-3 sm:ml-4 pl-2.5 sm:pl-3"
+                            : depth <= 3
+                              ? "ml-2.5 sm:ml-3.5 pl-2.5 sm:pl-3"
+                              : "ml-1 sm:ml-2 pl-2 sm:pl-2.5",
+                        )}
+                      >
+                        {childReplies.map((reply) => {
+                          const isReplyAuthor = Boolean(
+                            effectiveUserId &&
+                              effectiveUserId === reply.userId,
+                          );
+                          const canEditReply = Boolean(
+                            effectiveUserId && (isReplyAuthor || isAdmin),
+                          );
+                          const canReportReply = Boolean(!isReplyAuthor);
+                          const mentionMatch =
+                            depth === 1
+                              ? reply.content.match(/^@([^\s:,]+)/)
+                              : null;
+                          const replyRecipient = mentionMatch
+                            ? mentionMatch[1]
+                            : parentComment.userName || "Usuário";
+
+                          return (
+                            <div key={reply.id}>
+                              <CommentCard
+                                comment={reply}
+                                replyToName={replyRecipient}
+                                isPendingReaction={Boolean(
+                                  pendingReactionIds[reply.id],
+                                )}
+                                replyingId={replyingId}
+                                replyText={replyText}
+                                replyIsSpoiler={replyIsSpoiler}
+                                replySending={replySending}
+                                formatDate={formatCommentDate}
+                                onReaction={handleReaction}
+                                onReplyChange={setReplyText}
+                                onReplySpoilerChange={setReplyIsSpoiler}
+                                onStartReply={() => {
+                                  if (!effectiveUserId) {
+                                    setLoginOpen(true);
+                                    return;
+                                  }
+                                  setReplyingId(reply.id);
+                                  setReplyText("");
+                                  setReplyIsSpoiler(false);
+                                }}
+                                onCancelReply={() => {
+                                  setReplyingId(null);
+                                  setReplyText("");
+                                  setReplyIsSpoiler(false);
+                                  setMenuOpenId(null);
+                                }}
+                                onSendReply={() => {
+                                  void handleReply(reply.id);
+                                }}
+                                isReply
+                                menuOpen={menuOpenId === reply.id}
+                                onToggleMenu={() => {
+                                  setMenuOpenId((current) =>
+                                    current === reply.id ? null : reply.id,
+                                  );
+                                }}
+                                onEdit={() => openEdit(reply)}
+                                onDelete={() => openDelete(reply)}
+                                onMarkSpoiler={() => {
+                                  void handleModeration(reply.id, "spoiler");
+                                }}
+                                onReport={() => openReport(reply)}
+                                onSpam={() => setSpamComment(reply)}
+                                moderating={moderatingId === reply.id}
+                                canEdit={canEditReply}
+                                canReport={canReportReply}
+                                isAdmin={isAdmin}
+                                highlighted={highlightedCommentId === reply.id}
+                                onRequireLogin={() => setLoginOpen(true)}
+                                showMedia={showMedia}
+                                isNew={newCommentId === reply.id}
+                              />
+                              {renderThreadReplies(reply, depth + 1)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  };
+
                   return (
                     <div
                       key={
                         comment.id
                       }
-                      className="py-3 sm:py-4 transition-colors"
+                      className="py-2.5 sm:py-3 transition-colors"
                     >
 
                       <CommentCard
                         comment={
                           comment
-                        }
-                        replyCount={
-                          replies.length
                         }
                         replyToName={
                           undefined
@@ -2991,89 +3091,7 @@ export function EpisodeCommentsSection({
                         isNew={newCommentId === comment.id}
                       />
 
-                      {/* Respostas com recuo progressivo e linha vertical discreta */}
-                      {replies.length > 0 && (
-                        <div className="mt-2.5 ml-3 sm:ml-7 border-l-2 border-white/10 hover:border-[#a855f7]/40 pl-3 sm:pl-4 space-y-2 transition-colors">
-                          {replies.map((reply) => {
-                            const isReplyAuthor =
-                              Boolean(
-                                effectiveUserId &&
-                                effectiveUserId === reply.userId,
-                              );
-                            const canEditReply =
-                              Boolean(
-                                effectiveUserId &&
-                                  (isReplyAuthor || isAdmin),
-                              );
-                            const canReportReply =
-                              Boolean(!isReplyAuthor);
-                            const mentionMatch = reply.content.match(/^@([^\s:,]+)/);
-                            const replyRecipient = mentionMatch
-                              ? mentionMatch[1]
-                              : (comment.userName || "Usuário");
-
-                            return (
-                              <CommentCard
-                                key={reply.id}
-                                comment={reply}
-                                replyCount={0}
-                                replyToName={replyRecipient}
-                                isPendingReaction={
-                                  Boolean(pendingReactionIds[reply.id])
-                                }
-                                replyingId={replyingId}
-                                replyText={replyText}
-                                replyIsSpoiler={replyIsSpoiler}
-                                replySending={replySending}
-                                formatDate={formatCommentDate}
-                                onReaction={handleReaction}
-                                onReplyChange={setReplyText}
-                                onReplySpoilerChange={setReplyIsSpoiler}
-                                onStartReply={() => {
-                                  if (!effectiveUserId) {
-                                    setLoginOpen(true);
-                                    return;
-                                  }
-                                  setReplyingId(reply.id);
-                                  setReplyText(`@${reply.userName || "Usuário"} `);
-                                  setReplyIsSpoiler(false);
-                                }}
-                                onCancelReply={() => {
-                                  setReplyingId(null);
-                                  setReplyText("");
-                                  setReplyIsSpoiler(false);
-                                  setMenuOpenId(null);
-                                }}
-                                onSendReply={() => {
-                                  void handleReply(comment.id);
-                                }}
-                                isReply
-                                menuOpen={menuOpenId === reply.id}
-                                onToggleMenu={() => {
-                                  setMenuOpenId((current) =>
-                                    current === reply.id ? null : reply.id,
-                                  );
-                                }}
-                                onEdit={() => openEdit(reply)}
-                                onDelete={() => openDelete(reply)}
-                                onMarkSpoiler={() => {
-                                  void handleModeration(reply.id, "spoiler");
-                                }}
-                                onReport={() => openReport(reply)}
-                                onSpam={() => setSpamComment(reply)}
-                                moderating={moderatingId === reply.id}
-                                canEdit={canEditReply}
-                                canReport={canReportReply}
-                                isAdmin={isAdmin}
-                                highlighted={highlightedCommentId === reply.id}
-                                onRequireLogin={() => setLoginOpen(true)}
-                                showMedia={showMedia}
-                                isNew={newCommentId === reply.id}
-                              />
-                            );
-                          })}
-                        </div>
-                      )}
+                      {renderThreadReplies(comment, 1)}
 
                     </div>
                   );
@@ -3627,9 +3645,132 @@ export function EpisodeCommentsSection({
 /* CARD DO COMENTÁRIO REDESENHADO (LEVE E MODERNO)          */
 /* ========================================================= */
 
+type CommentTextSegment =
+  | { type: "text"; content: string }
+  | { type: "spoiler"; content: string };
+
+const EPISODE_INLINE_SPOILER_SOURCE =
+  "\\|\\|([\\s\\S]+?)\\|\\||<spoiler>([\\s\\S]+?)<\\/spoiler>|\\[spoiler\\]([\\s\\S]+?)\\[\\/spoiler\\]|>!([\\s\\S]+?)!<|~!([\\s\\S]+?)!~";
+
+function parseCommentSpoilers(
+  content: string,
+  isWholeSpoiler: boolean,
+): CommentTextSegment[] {
+  if (!content) return [];
+
+  const segments: CommentTextSegment[] = [];
+  const regex = new RegExp(EPISODE_INLINE_SPOILER_SOURCE, "gi");
+  let hasInlineSpoiler = false;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    const spoilerBody =
+      match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? "";
+
+    if (!spoilerBody.trim()) {
+      continue;
+    }
+
+    hasInlineSpoiler = true;
+
+    if (match.index > lastIndex) {
+      segments.push({
+        type: "text",
+        content: content.slice(lastIndex, match.index),
+      });
+    }
+
+    segments.push({
+      type: "spoiler",
+      content: spoilerBody,
+    });
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (hasInlineSpoiler) {
+    if (lastIndex < content.length) {
+      segments.push({
+        type: "text",
+        content: content.slice(lastIndex),
+      });
+    }
+    return segments;
+  }
+
+  if (isWholeSpoiler) {
+    return [{ type: "spoiler", content }];
+  }
+
+  return [{ type: "text", content }];
+}
+
+function SpoilerText({ content }: { content: string }) {
+  const [revealed, setRevealed] = useState(false);
+
+  if (revealed) {
+    return (
+      <span className="text-white/90 transition-colors duration-150 motion-reduce:transition-none [overflow-wrap:anywhere]">
+        {content}
+      </span>
+    );
+  }
+
+  const lines = content.split("\n");
+  const isShort = content.trim().length <= 4;
+
+  const handleReveal = (
+    event:
+      | React.MouseEvent<HTMLSpanElement>
+      | React.KeyboardEvent<HTMLSpanElement>,
+  ) => {
+    event.stopPropagation();
+    setRevealed(true);
+  };
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      aria-expanded={false}
+      aria-label="Trecho com spoiler oculto. Toque para revelar"
+      title="Spoiler — toque para revelar"
+      onClick={handleReveal}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleReveal(event);
+        }
+      }}
+      className="group/spoiler inline cursor-pointer touch-manipulation select-none rounded-[5px] [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc] [-webkit-tap-highlight-color:transparent]"
+    >
+      <span aria-hidden="true">
+        {lines.map((line, idx) => (
+          <React.Fragment key={idx}>
+            {line.trim().length > 0 ? (
+              <span
+                className={cn(
+                  "box-decoration-clone [-webkit-box-decoration-break:clone] rounded-[5px] bg-[#341b54]/95 ring-1 ring-inset ring-[#a855f7]/40 py-[1.5px] text-transparent [text-shadow:0_0_10px_rgba(216,180,254,0.24)] transition-all duration-150 motion-reduce:transition-none group-hover/spoiler:bg-[#402168] group-hover/spoiler:ring-[#c084fc]/60 group-active/spoiler:bg-[#4b277a]",
+                  isShort ? "px-2" : "px-1.5",
+                )}
+              >
+                {line}
+              </span>
+            ) : (
+              line
+            )}
+            {idx < lines.length - 1 && <br />}
+          </React.Fragment>
+        ))}
+      </span>
+    </span>
+  );
+}
+
 function CommentCard({
   comment,
-  replyCount,
+  replyCount: _replyCount,
   replyToName,
   isPendingReaction,
   replyingId,
@@ -3661,7 +3802,7 @@ function CommentCard({
   isNew = false,
 }: {
   comment: Comment;
-  replyCount: number;
+  replyCount?: number;
   replyToName?: string;
   isPendingReaction: boolean;
   replyingId: string | null;
@@ -3694,315 +3835,242 @@ function CommentCard({
 }) {
   const isReplying = replyingId === comment.id;
   const [localMediaRevealed, setLocalMediaRevealed] = useState(false);
-  const [spoilerRevealed, setSpoilerRevealed] = useState(false);
+  const [mediaSpoilerRevealed, setMediaSpoilerRevealed] = useState(false);
   const formattedDate = formatDate(comment.createdAt);
+  const cleanReplyToName = replyToName?.replace(/^@+/, "").trim();
+  const authorName = comment.userName || "Usuário";
+  const textSegments = useMemo(
+    () => parseCommentSpoilers(comment.content, comment.isSpoiler),
+    [comment.content, comment.isSpoiler],
+  );
+
+  useEffect(() => {
+    setMediaSpoilerRevealed(false);
+  }, [comment.id, comment.isSpoiler, comment.imageUrl]);
 
   return (
     <article
       id={`comment-${comment.id}`}
       className={cn(
-        "group/comment relative py-2.5 transition-colors",
+        "group/comment relative transition-colors",
         highlighted &&
-          "rounded-xl bg-[#a855f7]/10 p-3 border border-[#a855f7]/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]",
+          "rounded-xl bg-[#a855f7]/10 p-2.5 border border-[#a855f7]/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]",
         isNew
-          ? "rounded-xl bg-[#a855f7]/15 border border-[#a855f7]/40 p-3 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-colors duration-1000 ease-out motion-safe:animate-in motion-safe:fade-in-50"
-          : "border border-transparent transition-colors duration-500 ease-out",
+          ? "rounded-xl bg-[#a855f7]/15 border border-[#a855f7]/40 p-2.5 shadow-[0_0_15px_rgba(168,85,247,0.15)] transition-colors duration-1000 ease-out motion-safe:animate-in motion-safe:fade-in-50"
+          : !highlighted &&
+              "border border-transparent transition-colors duration-500 ease-out",
       )}
     >
-      {/* =================================================== */}
-      {/* TOPO: AVATAR, NOME, DATA E MENU DE OPÇÕES           */}
-      {/* =================================================== */}
-
-      <div className="flex items-center justify-between gap-2.5">
-        <div className="flex items-center gap-2.5 min-w-0">
-          {comment.userNick ? (
-            <Link
-              to="/profile/$nick"
-              params={{ nick: comment.userNick }}
-              className="flex items-center gap-2.5 min-w-0 group/author hover:opacity-90 transition-opacity"
-            >
-              {/* Avatar compacto com borda interativa */}
-              <div className="relative flex size-7 sm:size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90 group-hover/author:ring-[#a855f7]/50 transition-all">
-                {comment.userImage ? (
-                  <img
-                    src={comment.userImage}
-                    alt=""
-                    className="size-full object-cover"
-                  />
-                ) : (
-                  <span className="text-[#c084fc] font-bold">
-                    {(comment.userName || "U").charAt(0).toUpperCase()}
-                  </span>
-                )}
-              </div>
-
-              {/* Nome do autor com hover sutil */}
-              <span className="text-xs sm:text-sm font-bold text-white group-hover/author:text-[#c084fc] truncate transition-colors">
-                {comment.userName || "Usuário"}
-              </span>
-            </Link>
-          ) : (
-            <div className="flex items-center gap-2.5 min-w-0">
-              {/* Avatar compacto */}
-              <div className="relative flex size-7 sm:size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90">
-                {comment.userImage ? (
-                  <img
-                    src={comment.userImage}
-                    alt=""
-                    className="size-full object-cover"
-                  />
-                ) : (
-                  <span className="text-[#c084fc] font-bold">
-                    {(comment.userName || "U").charAt(0).toUpperCase()}
-                  </span>
-                )}
-              </div>
-
-              {/* Nome do autor estático */}
-              <span className="text-xs sm:text-sm font-bold text-white truncate">
-                {comment.userName || "Usuário"}
-              </span>
-            </div>
-          )}
-
-          {/* Em respostas: Usuário que responde → @Usuário mencionado e Data */}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-            {isReply && replyToName && (
-              <span className="inline-flex items-center gap-1.5 text-xs">
-                <span className="text-[#c084fc]/70 font-semibold">→</span>
-                <span className="text-[#c084fc] font-medium">@{replyToName}</span>
+      <div className="flex items-start gap-2 sm:gap-2.5">
+        {/* Avatar alinhado ao topo */}
+        {comment.userNick ? (
+          <Link
+            to="/profile/$nick"
+            params={{ nick: comment.userNick }}
+            className={cn(
+              "relative mt-0.5 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90 hover:ring-[#a855f7]/50 transition-all",
+              isReply ? "size-6 sm:size-7" : "size-7 sm:size-8",
+            )}
+          >
+            {comment.userImage ? (
+              <img
+                src={comment.userImage}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <span className="text-[#c084fc] font-bold">
+                {authorName.charAt(0).toUpperCase()}
               </span>
             )}
-
-            {formattedDate.date && (
-              <span className="text-[11px] font-medium text-[#c084fc]/80">
-                · {formattedDate.date}
-              </span>
+          </Link>
+        ) : (
+          <div
+            className={cn(
+              "relative mt-0.5 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90",
+              isReply ? "size-6 sm:size-7" : "size-7 sm:size-8",
             )}
-
-            {formattedDate.time && (
-              <span className="text-[11px] text-white/40">
-                {formattedDate.time}
+          >
+            {comment.userImage ? (
+              <img
+                src={comment.userImage}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <span className="text-[#c084fc] font-bold">
+                {authorName.charAt(0).toUpperCase()}
               </span>
             )}
           </div>
-        </div>
+        )}
 
-        {/* Menu de opções no topo direito */}
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleMenu();
-            }}
-            disabled={moderating}
-            aria-label="Opções do comentário"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            className="flex size-7 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
-          >
-            <MoreVertical className="size-4" />
-          </button>
+        {/* Coluna principal: Cabeçalho, Conteúdo, Ações e Resposta */}
+        <div className="min-w-0 flex-1">
+          {/* Topo: Nome priorizado + etiqueta roxa de resposta na linha 1; data/hora na linha 2 */}
+          <div className="flex items-start justify-between gap-1.5">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 min-w-0">
+                {comment.userNick ? (
+                  <Link
+                    to="/profile/$nick"
+                    params={{ nick: comment.userNick }}
+                    className="text-[13px] sm:text-sm font-bold text-white hover:text-[#c084fc] leading-tight [overflow-wrap:anywhere] transition-colors"
+                  >
+                    {authorName}
+                  </Link>
+                ) : (
+                  <span className="text-[13px] sm:text-sm font-bold text-white leading-tight [overflow-wrap:anywhere]">
+                    {authorName}
+                  </span>
+                )}
 
-          {menuOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
+                {isReply && cleanReplyToName && (
+                  <span
+                    className="inline-flex max-w-full items-center gap-1 rounded-md border border-[#a855f7]/30 bg-[#a855f7]/15 px-1.5 py-0.5 text-[11px] font-medium leading-none text-[#d8b4fe]"
+                    title={`Em resposta a ${cleanReplyToName}`}
+                  >
+                    <Reply className="size-3 shrink-0 text-[#c084fc]" />
+                    <span className="truncate max-w-[140px] sm:max-w-[200px]">
+                      {cleanReplyToName}
+                    </span>
+                  </span>
+                )}
+              </div>
+
+              {(formattedDate.date || formattedDate.time) && (
+                <p className="mt-0.5 text-[11px] leading-tight text-white/45 tabular-nums">
+                  {formattedDate.date}
+                  {formattedDate.date && formattedDate.time ? " " : ""}
+                  {formattedDate.time}
+                </p>
+              )}
+            </div>
+
+            {/* Menu de opções no topo direito */}
+            <div className="relative shrink-0 -mr-1.5 -mt-1">
+              <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleMenu();
                 }}
-              />
-              <div
-                role="menu"
-                className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right transition-all"
+                disabled={moderating}
+                aria-label="Opções do comentário"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                className="flex size-8 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/[0.08] active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
               >
-                {canEdit && (
-                  <>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        onToggleMenu();
-                        onEdit();
-                      }}
-                      disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
-                    >
-                      <Edit3 className="size-3.5 shrink-0 text-[#c084fc]" />
-                      <span>Editar comentário</span>
-                    </button>
+                <MoreVertical className="size-4" />
+              </button>
 
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        onToggleMenu();
-                        onDelete();
-                      }}
-                      disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
-                    >
-                      <Trash2 className="size-3.5 shrink-0 text-red-400" />
-                      <span>Excluir comentário</span>
-                    </button>
-                  </>
-                )}
-
-                {isAdmin && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
+              {menuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onToggleMenu();
-                      onMarkSpoiler();
                     }}
-                    disabled={comment.isSpoiler || moderating}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-amber-300 hover:bg-amber-500/15 hover:text-amber-200 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
+                  />
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-[calc(100%+4px)] z-50 w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right transition-all"
                   >
-                    <AlertTriangle className="size-3.5 shrink-0 text-amber-400" />
-                    <span>
-                      {moderating ? "Enviando..." : "Marcar como spoiler"}
-                    </span>
-                  </button>
-                )}
+                    {canEdit && (
+                      <>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            onToggleMenu();
+                            onEdit();
+                          }}
+                          disabled={moderating}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
+                        >
+                          <Edit3 className="size-3.5 shrink-0 text-[#c084fc]" />
+                          <span>Editar comentário</span>
+                        </button>
 
-                {canReport && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      onToggleMenu();
-                      onReport();
-                    }}
-                    disabled={moderating}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
-                  >
-                    <Flag className="size-3.5 shrink-0 text-purple-400" />
-                    <span>Denunciar comentário</span>
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            onToggleMenu();
+                            onDelete();
+                          }}
+                          disabled={moderating}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
+                        >
+                          <Trash2 className="size-3.5 shrink-0 text-red-400" />
+                          <span>Excluir comentário</span>
+                        </button>
+                      </>
+                    )}
 
-      {/* =================================================== */}
-      {/* CONTEÚDO (LOGO ABAIXO DO CABEÇALHO) COM SPOILER     */}
-      {/* =================================================== */}
-
-      <div className="mt-2 text-xs sm:text-sm text-white/85 leading-relaxed break-words">
-        {comment.isSpoiler ? (
-          !spoilerRevealed ? (
-            /* Aviso elegante de spoiler antes de revelar */
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3 transition-all">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                <div className="flex items-start sm:items-center gap-2.5 min-w-0">
-                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400">
-                    <EyeOff className="size-3.5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-amber-300/90 tracking-tight">
-                      Spoiler deste episódio
-                    </p>
-                    <p className="text-[11px] text-white/50 leading-tight">
-                      Este comentário pode conter revelações sobre o enredo.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setSpoilerRevealed(true)}
-                  className="inline-flex self-start sm:self-center items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/20 px-2.5 py-1 text-xs font-medium text-amber-200 hover:bg-amber-500/30 active:scale-95 transition-all cursor-pointer shrink-0"
-                >
-                  <Eye className="size-3" />
-                  <span>Revelar spoiler</span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* Conteúdo revelado com botão de ocultar novamente */
-            <div className="rounded-xl border border-white/10 bg-[#0c0c11] p-3 transition-all motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-              <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-white/[0.06]">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-400/90">
-                  <Eye className="size-3 text-amber-400" />
-                  <span>Spoiler deste episódio</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSpoilerRevealed(false)}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-white/50 hover:text-white transition-colors cursor-pointer"
-                >
-                  <EyeOff className="size-3" />
-                  <span>Ocultar spoiler</span>
-                </button>
-              </div>
-
-              <p className="whitespace-pre-wrap text-white/90 text-xs sm:text-sm leading-relaxed">
-                {comment.content}
-              </p>
-
-              {/* Mídia dentro do spoiler */}
-              {comment.imageUrl && (
-                <div className="mt-2.5">
-                  {!showMedia && !localMediaRevealed ? (
-                    <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#0e0e14] px-3 py-2 text-xs text-white/60">
-                      <ImageIcon className="size-3.5 text-[#c084fc] shrink-0" />
-                      <span>Mídia oculta</span>
-                      <span className="text-white/30">·</span>
+                    {isAdmin && (
                       <button
                         type="button"
-                        onClick={() => setLocalMediaRevealed(true)}
-                        className="font-medium text-[#c084fc] hover:text-white hover:underline transition-colors cursor-pointer"
+                        role="menuitem"
+                        onClick={() => {
+                          onToggleMenu();
+                          onMarkSpoiler();
+                        }}
+                        disabled={comment.isSpoiler || moderating}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-amber-300 hover:bg-amber-500/15 hover:text-amber-200 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
                       >
-                        Exibir
+                        <AlertTriangle className="size-3.5 shrink-0 text-amber-400" />
+                        <span>
+                          {moderating ? "Enviando..." : "Marcar como spoiler"}
+                        </span>
                       </button>
-                    </div>
-                  ) : (
-                    <div className="w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0e]">
-                      <a
-                        href={comment.imageUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block w-fit max-w-full cursor-zoom-in"
-                        aria-label="Abrir imagem em tamanho maior"
+                    )}
+
+                    {canReport && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          onToggleMenu();
+                          onReport();
+                        }}
+                        disabled={moderating}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
                       >
-                        <img
-                          src={comment.imageUrl}
-                          alt="Imagem anexada"
-                          loading="lazy"
-                          className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg"
-                        />
-                      </a>
-                      {!showMedia && localMediaRevealed && (
-                        <div className="border-t border-white/10 bg-[#0e0e14] px-2.5 py-1 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setLocalMediaRevealed(false)}
-                            className="text-[11px] text-white/50 hover:text-white transition-colors cursor-pointer"
-                          >
-                            Ocultar mídia
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                        <Flag className="size-3.5 shrink-0 text-purple-400" />
+                        <span>Denunciar comentário</span>
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
-          )
-        ) : (
-          <>
-            <p className="whitespace-pre-wrap text-white/85">
-              {comment.content}
-            </p>
+          </div>
 
-            {/* Anexo de Imagem ou GIF com suporte a exibição/ocultação */}
+          {/* =================================================== */}
+          {/* CONTEÚDO (LOGO ABAIXO DO CABEÇALHO) COM SPOILER     */}
+          {/* =================================================== */}
+
+          <div className="mt-1 text-xs sm:text-sm text-white/85 leading-[1.55] break-words">
+            {textSegments.length > 0 && (
+              <p className="whitespace-pre-wrap break-words text-white/85">
+                {textSegments.map((segment, idx) =>
+                  segment.type === "spoiler" ? (
+                    <SpoilerText
+                      key={`${comment.id}-${comment.isSpoiler}-${idx}-${segment.content}`}
+                      content={segment.content}
+                    />
+                  ) : (
+                    <React.Fragment key={idx}>{segment.content}</React.Fragment>
+                  ),
+                )}
+              </p>
+            )}
+
+            {/* Anexo de Imagem ou GIF com suporte a exibição/ocultação e proteção de spoiler */}
             {comment.imageUrl && (
-              <div className="mt-2.5">
+              <div className={cn(textSegments.length > 0 ? "mt-2" : "mt-1")}>
                 {!showMedia && !localMediaRevealed ? (
                   <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#0e0e14] px-3 py-2 text-xs text-white/60">
                     <ImageIcon className="size-3.5 text-[#c084fc] shrink-0" />
@@ -4016,6 +4084,30 @@ function CommentCard({
                       Exibir
                     </button>
                   </div>
+                ) : comment.isSpoiler && !mediaSpoilerRevealed ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMediaSpoilerRevealed(true);
+                    }}
+                    aria-label="Imagem com spoiler oculto. Toque para revelar"
+                    className="group/imgspoiler relative block w-fit max-w-full overflow-hidden rounded-xl border border-[#a855f7]/30 bg-[#140d22] cursor-pointer touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc] [-webkit-tap-highlight-color:transparent]"
+                  >
+                    <img
+                      src={comment.imageUrl}
+                      alt=""
+                      aria-hidden="true"
+                      loading="lazy"
+                      className="block max-h-72 sm:max-h-80 w-auto max-w-full object-contain blur-2xl scale-110 brightness-50 saturate-75 select-none pointer-events-none"
+                    />
+                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#26143d]/65 group-hover/imgspoiler:bg-[#311a4f]/60 transition-colors duration-150 motion-reduce:transition-none">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#a855f7]/35 bg-[#160d26]/85 px-2.5 py-1 text-[11px] font-medium text-[#e9d5ff] backdrop-blur-sm">
+                        <EyeOff className="size-3 shrink-0 text-[#c084fc]" />
+                        <span>Spoiler</span>
+                      </span>
+                    </span>
+                  </button>
                 ) : (
                   <div className="w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0e]">
                     <a
@@ -4047,155 +4139,144 @@ function CommentCard({
                 )}
               </div>
             )}
-          </>
-        )}
-      </div>
-
-      {/* =================================================== */}
-      {/* AÇÕES (LIKE, DISLIKE, RESPONDER)                   */}
-      {/* =================================================== */}
-
-      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
-        {/* Botão CURTIR (ThumbsUp) com transição fluida */}
-        <button
-          type="button"
-          onClick={() => onReaction(comment.id, "like")}
-          disabled={isPendingReaction}
-          className={cn(
-            "group/like inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all select-none cursor-pointer duration-200 motion-reduce:transition-none",
-            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
-            comment.liked
-              ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
-              : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
-            isPendingReaction && "opacity-60 pointer-events-none",
-          )}
-          aria-label={comment.liked ? "Remover curtida" : "Curtir comentário"}
-        >
-          <ThumbsUp
-            className={cn(
-              "size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none motion-reduce:transform-none ease-out",
-              comment.liked
-                ? "fill-current scale-110"
-                : "group-hover/like:scale-110 active:scale-90",
-            )}
-          />
-          <span className="font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none">
-            {comment.likes}
-          </span>
-        </button>
-
-        {/* Botão NÃO CURTIR (ThumbsDown) com transição fluida */}
-        <button
-          type="button"
-          onClick={() => onReaction(comment.id, "dislike")}
-          disabled={isPendingReaction}
-          className={cn(
-            "group/dislike inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all select-none cursor-pointer duration-200 motion-reduce:transition-none",
-            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
-            comment.disliked
-              ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
-              : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
-            isPendingReaction && "opacity-60 pointer-events-none",
-          )}
-          aria-label={
-            comment.disliked ? "Remover descurtida" : "Não curtir comentário"
-          }
-        >
-          <ThumbsDown
-            className={cn(
-              "size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none motion-reduce:transform-none ease-out",
-              comment.disliked
-                ? "fill-current scale-110"
-                : "group-hover/dislike:scale-110 active:scale-90",
-            )}
-          />
-          <span className="font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none">
-            {comment.dislikes}
-          </span>
-        </button>
-
-        {/* Botão RESPONDER */}
-        <button
-          type="button"
-          onClick={onStartReply}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-white/50 hover:text-white hover:bg-white/[0.06] active:scale-95 transition-all cursor-pointer"
-        >
-          <MessageCircle className="size-3.5 shrink-0" />
-          <span>Responder</span>
-        </button>
-
-        {/* Contador de respostas para comentário raiz */}
-        {!isReply && replyCount > 0 && (
-          <span className="text-[11px] text-white/40 ml-0.5">
-            · {replyCount} {replyCount === 1 ? "resposta" : "respostas"}
-          </span>
-        )}
-      </div>
-
-      {/* =================================================== */}
-      {/* FORMULÁRIO DE RESPOSTA INLINE                       */}
-      {/* =================================================== */}
-
-      {isReplying && (
-        <div className="mt-3 rounded-xl border border-white/10 bg-[#121217] p-3 shadow-lg focus-within:border-[#a855f7]/50 focus-within:ring-1 focus-within:ring-[#a855f7]/20 transition-all">
-          <textarea
-            value={replyText}
-            onChange={(event) => onReplyChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                onSendReply();
-              }
-            }}
-            rows={2}
-            maxLength={2000}
-            placeholder={
-              replyToName
-                ? `Responder para @${replyToName}...`
-                : "Escreva sua resposta..."
-            }
-            className="w-full resize-none rounded-lg border border-white/10 bg-[#0c0c10] px-3 py-2 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-[#a855f7]/40 transition-colors"
-          />
-
-          <div className="mt-2.5 flex items-center justify-between gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">
-              <input
-                type="checkbox"
-                checked={replyIsSpoiler}
-                onChange={(event) =>
-                  onReplySpoilerChange(event.target.checked)
-                }
-                className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-[#a855f7] accent-[#a855f7]"
-              />
-              <span>Spoiler</span>
-            </label>
-
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={onCancelReply}
-                disabled={replySending}
-                className="h-7 px-2.5 text-xs rounded-lg border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
-              >
-                Cancelar
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                onClick={onSendReply}
-                disabled={!replyText.trim() || replySending}
-                className="h-7 px-3 text-xs font-semibold rounded-lg bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_10px_rgba(168,85,247,0.25)] active:scale-95 transition-all inline-flex items-center gap-1"
-              >
-                <Send className="size-3 shrink-0" />
-                <span>{replySending ? "Enviando..." : "Responder"}</span>
-              </Button>
-            </div>
           </div>
+
+          {/* =================================================== */}
+          {/* AÇÕES (LIKE, DISLIKE, RESPONDER)                   */}
+          {/* =================================================== */}
+
+          <div className="mt-1 -ml-1.5 flex flex-wrap items-center gap-1 text-xs">
+            {/* Botão CURTIR (ThumbsUp) com transição fluida */}
+            <button
+              type="button"
+              onClick={() => onReaction(comment.id, "like")}
+              disabled={isPendingReaction}
+              className={cn(
+                "group/like inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-all select-none cursor-pointer duration-200 motion-reduce:transition-none",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
+                comment.liked
+                  ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
+                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
+                isPendingReaction && "opacity-60 pointer-events-none",
+              )}
+              aria-label={comment.liked ? "Remover curtida" : "Curtir comentário"}
+            >
+              <ThumbsUp
+                className={cn(
+                  "size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none motion-reduce:transform-none ease-out",
+                  comment.liked
+                    ? "fill-current scale-110"
+                    : "group-hover/like:scale-110 active:scale-90",
+                )}
+              />
+              <span className="font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none">
+                {comment.likes}
+              </span>
+            </button>
+
+            {/* Botão NÃO CURTIR (ThumbsDown) com transição fluida */}
+            <button
+              type="button"
+              onClick={() => onReaction(comment.id, "dislike")}
+              disabled={isPendingReaction}
+              className={cn(
+                "group/dislike inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-all select-none cursor-pointer duration-200 motion-reduce:transition-none",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
+                comment.disliked
+                  ? "bg-[#a855f7]/20 text-[#c084fc] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.22)]"
+                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-white/[0.08]",
+                isPendingReaction && "opacity-60 pointer-events-none",
+              )}
+              aria-label={
+                comment.disliked ? "Remover descurtida" : "Não curtir comentário"
+              }
+            >
+              <ThumbsDown
+                className={cn(
+                  "size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none motion-reduce:transform-none ease-out",
+                  comment.disliked
+                    ? "fill-current scale-110"
+                    : "group-hover/dislike:scale-110 active:scale-90",
+                )}
+              />
+              <span className="font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none">
+                {comment.dislikes}
+              </span>
+            </button>
+
+            {/* Botão RESPONDER */}
+            <button
+              type="button"
+              onClick={onStartReply}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-white/50 hover:text-white hover:bg-white/[0.06] active:scale-95 transition-all cursor-pointer"
+            >
+              <MessageCircle className="size-3.5 shrink-0" />
+              <span>Responder</span>
+            </button>
+          </div>
+
+          {/* =================================================== */}
+          {/* FORMULÁRIO DE RESPOSTA INLINE                       */}
+          {/* =================================================== */}
+
+          {isReplying && (
+            <div className="mt-2 rounded-xl border border-white/10 bg-[#121217] p-2.5 shadow-lg focus-within:border-[#a855f7]/50 focus-within:ring-1 focus-within:ring-[#a855f7]/20 transition-all">
+              <textarea
+                value={replyText}
+                onChange={(event) => onReplyChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    onSendReply();
+                  }
+                }}
+                rows={2}
+                maxLength={2000}
+                placeholder={`Responder para @${authorName}...`}
+                className="w-full resize-none rounded-lg border border-white/10 bg-[#0c0c10] px-3 py-2 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-[#a855f7]/40 transition-colors"
+              />
+
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">
+                  <input
+                    type="checkbox"
+                    checked={replyIsSpoiler}
+                    onChange={(event) =>
+                      onReplySpoilerChange(event.target.checked)
+                    }
+                    className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-[#a855f7] accent-[#a855f7]"
+                  />
+                  <span>Spoiler</span>
+                </label>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={onCancelReply}
+                    disabled={replySending}
+                    className="h-7 px-2.5 text-xs rounded-lg border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white"
+                  >
+                    Cancelar
+                  </Button>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={onSendReply}
+                    disabled={!replyText.trim() || replySending}
+                    className="h-7 px-3 text-xs font-semibold rounded-lg bg-[#a855f7] hover:bg-[#9333ea] text-white shadow-[0_0_10px_rgba(168,85,247,0.25)] active:scale-95 transition-all inline-flex items-center gap-1"
+                  >
+                    <Send className="size-3 shrink-0" />
+                    <span>{replySending ? "Enviando..." : "Responder"}</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </article>
   );
 }
