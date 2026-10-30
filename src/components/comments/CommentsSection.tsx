@@ -2532,10 +2532,13 @@ export function CommentsSection({
         </div>
       )}
 
-      {/* Modal de Edição */}
+      {/* ================================================== */}
+      {/* MODAL DE EDIÇÃO                                    */}
+      {/* ================================================== */}
+
       {editingComment && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 overscroll-contain"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md animate-in fade-in duration-200 overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelEdit();
@@ -2549,72 +2552,110 @@ export function CommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-dialog-title"
-            className="w-full max-w-md rounded-2xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 transition-all"
+            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] animate-in fade-in zoom-in-95 duration-200 transition-all text-left"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-purple-500/20">
-              <h3 id="edit-dialog-title" className="text-sm font-bold text-white">Editar comentário</h3>
+            {/* Cabeçalho */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="flex size-10 sm:size-11 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+                  <Edit3 className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3
+                    id="edit-dialog-title"
+                    className="font-display text-base sm:text-lg font-bold text-white tracking-tight"
+                  >
+                    Editar comentário
+                  </h3>
+                  <p className="mt-0.5 text-xs sm:text-sm text-zinc-400">
+                    Faça as alterações desejadas no texto da sua publicação.
+                  </p>
+                </div>
+              </div>
+
               <button
                 type="button"
                 onClick={handleCancelEdit}
                 disabled={editSaving}
-                className="flex size-8 items-center justify-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
-                <X className="size-4" />
+                <X className="size-4 sm:size-5" />
               </button>
             </div>
 
-            <textarea
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              rows={3}
-              maxLength={2000}
-              disabled={editSaving}
-              className="mt-3 w-full rounded-xl border border-white/10 bg-[#0c0a18] p-3 text-xs sm:text-sm text-white outline-none focus:border-purple-500 transition-colors"
-            />
+            {/* Campo de texto com contador */}
+            <div className="mt-4">
+              <textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                rows={5}
+                maxLength={2000}
+                disabled={editSaving}
+                placeholder="Escreva seu comentário..."
+                className="w-full resize-none rounded-xl border border-white/10 bg-[#090714] p-3.5 sm:p-4 text-xs sm:text-sm text-white placeholder:text-zinc-500 outline-none focus:border-[#a855f7]/60 focus:ring-1 focus:ring-[#a855f7]/40 transition-all duration-150 disabled:opacity-60 shadow-inner"
+              />
 
-            <div className="mt-3 flex items-center justify-between">
-              <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/70 hover:text-white transition-colors select-none">
-                <input
-                  type="checkbox"
-                  checked={editIsSpoiler}
-                  onChange={(e) => setEditIsSpoiler(e.target.checked)}
-                  disabled={editSaving}
-                  className="size-3.5 rounded accent-purple-600 transition-transform"
-                />
-                <span>Spoiler</span>
-              </label>
+              <div className="mt-2.5 flex items-center justify-between text-xs text-zinc-500">
+                <div>
+                  {isAdmin ? (
+                    <label className="flex cursor-pointer items-center gap-2 text-zinc-300 hover:text-white transition-colors select-none">
+                      <input
+                        type="checkbox"
+                        checked={editIsSpoiler}
+                        onChange={(e) => setEditIsSpoiler(e.target.checked)}
+                        disabled={editSaving}
+                        className="size-4 rounded accent-purple-600 transition-transform cursor-pointer"
+                      />
+                      <span className="font-medium">Marcar como spoiler</span>
+                    </label>
+                  ) : editingComment.isSpoiler ? (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300">
+                      <AlertTriangle className="size-3.5 shrink-0" />
+                      <span>Comentário sinalizado como spoiler</span>
+                    </div>
+                  ) : null}
+                </div>
 
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCancelEdit}
-                  disabled={editSaving}
-                  className="rounded-xl border border-white/15 bg-white/5 text-xs text-white/80 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => void handleEdit()}
-                  disabled={!editText.trim() || editSaving}
-                  className="rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-xs font-semibold text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50"
-                >
-                  {editSaving ? "Salvando..." : "Salvar"}
-                </Button>
+                <span className="font-mono text-[11px] sm:text-xs">
+                  {editText.length} / 2000
+                </span>
               </div>
+            </div>
+
+            {/* Ações */}
+            <div className="mt-5 sm:mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCancelEdit}
+                disabled={editSaving}
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
+              >
+                Cancelar
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() => void handleEdit()}
+                disabled={!editText.trim() || editSaving}
+                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                <Edit3 className="size-4" />
+                {editSaving ? "Salvando..." : "Salvar alterações"}
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal de Exclusão Padronizado */}
+      {/* ================================================== */}
+      {/* MODAL DE EXCLUSÃO                                  */}
+      {/* ================================================== */}
+
       {deletingComment && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 overscroll-contain"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md animate-in fade-in duration-200 overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelDelete();
@@ -2628,60 +2669,88 @@ export function CommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-dialog-title"
-            className="w-full max-w-md rounded-2xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 transition-all text-left"
+            className="w-full max-w-md rounded-2xl sm:rounded-3xl border border-red-500/35 bg-gradient-to-b from-[#1c1017] via-[#120a10] to-[#0a060a] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(239,68,68,0.15)] animate-in fade-in zoom-in-95 duration-200 transition-all text-left"
           >
-            <div className="flex items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-950/70 border border-red-500/40 text-red-300">
-                <Trash2 className="size-5" />
+            {/* Cabeçalho de Perigo */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="flex size-10 sm:size-11 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl bg-red-500/15 border border-red-500/35 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.25)]">
+                  <Trash2 className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3
+                    id="delete-dialog-title"
+                    className="font-display text-base sm:text-lg font-bold text-white tracking-tight"
+                  >
+                    Excluir comentário?
+                  </h3>
+                  <p className="mt-0.5 text-xs sm:text-sm text-zinc-400">
+                    Esta ação é permanente e não poderá ser desfeita.
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <h3 id="delete-dialog-title" className="text-base font-bold text-white">
-                  Excluir comentário?
-                </h3>
-                <p className="mt-1 text-xs text-zinc-300">
-                  Esta ação é permanente e removerá o comentário e todas as respostas associadas.
-                </p>
-              </div>
+
               <button
                 type="button"
                 onClick={handleCancelDelete}
                 disabled={deleteSending}
-                className="flex size-8 items-center justify-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
-                <X className="size-4" />
+                <X className="size-4 sm:size-5" />
               </button>
             </div>
 
-            <div className="mt-5 flex gap-2 justify-end">
+            {/* Pré-visualização do comentário */}
+            <div className="mt-4 rounded-xl border border-red-500/20 bg-black/40 p-3 sm:p-4">
+              <p className="text-[11px] sm:text-xs text-zinc-400 mb-1 font-medium">
+                Conteúdo a ser removido:
+              </p>
+              <p className="line-clamp-4 whitespace-pre-wrap text-xs sm:text-sm text-zinc-200 italic">
+                "{deletingComment.content}"
+              </p>
+              {deletingComment.imageUrl && (
+                <img
+                  src={deletingComment.imageUrl}
+                  alt=""
+                  className="mt-2.5 max-h-32 rounded-lg border border-white/10 object-contain"
+                />
+              )}
+            </div>
+
+            {/* Ações */}
+            <div className="mt-5 sm:mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 onClick={handleCancelDelete}
                 disabled={deleteSending}
-                className="rounded-xl border border-white/15 bg-white/5 text-xs text-white/80 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
               >
                 Cancelar
               </Button>
+
               <Button
                 type="button"
-                size="sm"
                 onClick={() => void handleDelete()}
                 disabled={deleteSending}
-                className="rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-xs font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50"
+                className="rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] transition-all duration-150 cursor-pointer disabled:opacity-50 flex items-center gap-2"
               >
-                {deleteSending ? "Excluindo..." : "Excluir"}
+                <Trash2 className="size-4" />
+                {deleteSending ? "Excluindo..." : "Excluir comentário"}
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal de Denúncia */}
+      {/* ================================================== */}
+      {/* MODAL DE DENÚNCIA                                  */}
+      {/* ================================================== */}
+
       {reportingComment && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 overscroll-contain"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md animate-in fade-in duration-200 overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelReport();
@@ -2695,70 +2764,122 @@ export function CommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="report-dialog-title"
-            className="w-full max-w-sm rounded-2xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 transition-all text-left"
+            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] animate-in fade-in zoom-in-95 duration-200 transition-all text-left"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-purple-500/20">
-              <h3 id="report-dialog-title" className="text-sm font-bold text-white">Denunciar comentário</h3>
+            {/* Cabeçalho */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="flex size-10 sm:size-11 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+                  <Flag className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3
+                    id="report-dialog-title"
+                    className="font-display text-base sm:text-lg font-bold text-white tracking-tight"
+                  >
+                    Denunciar comentário
+                  </h3>
+                  <p className="mt-0.5 text-xs sm:text-sm text-zinc-400">
+                    Selecione o motivo que melhor descreve o problema com esta publicação.
+                  </p>
+                </div>
+              </div>
+
               <button
                 type="button"
                 onClick={handleCancelReport}
                 disabled={reportSending}
-                className="flex size-8 items-center justify-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
-                <X className="size-4" />
+                <X className="size-4 sm:size-5" />
               </button>
             </div>
 
-            <p className="mt-3 text-xs text-zinc-300 mb-2">
-              Selecione o motivo da denúncia:
-            </p>
-
-            <div className="space-y-1.5 text-xs text-white">
+            {/* Lista estruturada de motivos */}
+            <div className="mt-4 space-y-2 max-h-[48vh] sm:max-h-[50vh] overflow-y-auto pr-1">
               {[
-                { id: "spam", label: "Spam ou divulgação" },
-                { id: "hate", label: "Discurso de ódio ou ofensa" },
-                { id: "spoiler", label: "Spoiler não sinalizado" },
-                { id: "sexual", label: "Conteúdo sexual explícito" },
-                { id: "harassment", label: "Assédio ou perseguição" },
-                { id: "other", label: "Outro motivo" },
-              ].map((r) => (
-                <label
-                  key={r.id}
-                  className={cn(
-                    "flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all duration-150 active:scale-[0.99] select-none",
-                    reportReason === r.id
-                      ? "border-purple-500/60 bg-purple-500/15 text-white ring-1 ring-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.18)]"
-                      : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.08] hover:border-purple-500/30 hover:text-white"
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="reportReason"
-                    value={r.id}
-                    checked={reportReason === r.id}
-                    onChange={() => setReportReason(r.id as ReportReason)}
-                    className="size-3.5 accent-purple-600 transition-transform"
-                  />
-                  <span className="text-xs font-medium">{r.label}</span>
-                </label>
-              ))}
+                {
+                  id: "spam" as const,
+                  label: "Spam ou propaganda",
+                  description: "Mensagens repetitivas, links suspeitos ou promoções não autorizadas.",
+                },
+                {
+                  id: "hate" as const,
+                  label: "Discurso de ódio ou ofensa",
+                  description: "Conteúdo discriminatório, preconceituoso ou agressivo.",
+                },
+                {
+                  id: "spoiler" as const,
+                  label: "Spoiler não marcado",
+                  description: "Revelação de enredo ou acontecimentos cruciais sem aviso prévio.",
+                },
+                {
+                  id: "sexual" as const,
+                  label: "Conteúdo sexual ou impróprio",
+                  description: "Imagens ou textos com teor explícito e inadequado para a plataforma.",
+                },
+                {
+                  id: "harassment" as const,
+                  label: "Assédio ou ameaça",
+                  description: "Perseguição, intimidação, bullying ou ameaças direcionadas.",
+                },
+                {
+                  id: "other" as const,
+                  label: "Outro motivo",
+                  description: "Outra violação das diretrizes de convivência da comunidade.",
+                },
+              ].map((r) => {
+                const isSelected = reportReason === r.id;
+                return (
+                  <label
+                    key={r.id}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-all duration-150 select-none active:scale-[0.99]",
+                      isSelected
+                        ? "border-[#a855f7] bg-[#a855f7]/15 text-white ring-1 ring-[#a855f7]/50 shadow-[0_0_15px_rgba(168,85,247,0.2)]"
+                        : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-[#a855f7]/30 hover:bg-white/[0.06] hover:text-white",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="reportReason"
+                      value={r.id}
+                      checked={isSelected}
+                      onChange={() => setReportReason(r.id as ReportReason)}
+                      className="mt-0.5 size-4 shrink-0 accent-purple-600 transition-transform cursor-pointer"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="block text-xs sm:text-sm font-semibold tracking-wide text-white">
+                        {r.label}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] sm:text-xs text-zinc-400 leading-normal">
+                        {r.description}
+                      </span>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
 
-            <div className="mt-4 flex gap-2 justify-end">
+            <p className="mt-3 text-[11px] sm:text-xs text-zinc-400 leading-relaxed">
+              As denúncias são confidenciais e avaliadas pela moderação para manter a comunidade do Hikari segura.
+            </p>
+
+            {/* Ações */}
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 onClick={handleCancelReport}
                 disabled={reportSending}
-                className="rounded-xl border border-white/15 bg-white/5 text-xs text-white/80 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
               >
                 Cancelar
               </Button>
+
               <Button
                 type="button"
-                size="sm"
                 onClick={() =>
                   reportingComment &&
                   reportReason &&
@@ -2769,8 +2890,9 @@ export function CommentsSection({
                   )
                 }
                 disabled={!reportReason || reportSending}
-                className="rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-xs font-semibold text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50"
+                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50 flex items-center gap-2"
               >
+                <Flag className="size-4" />
                 {reportSending ? "Enviando..." : "Enviar denúncia"}
               </Button>
             </div>
