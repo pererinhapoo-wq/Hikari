@@ -35,13 +35,13 @@ const LOGO_DEFINITIONS: Record<
     titlePatterns: [/\bbleach\b/i],
   },
   "one-piece": {
-    src: "/assets/anime-logos/one-piece.svg",
+    src: "/assets/anime-logos/one-piece.png",
     alt: "ONE PIECE",
     sizeClasses:
       "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
     aspectRatioHint: "wide",
-    aniListIds: [21],
-    malIds: [21],
+    aniListIds: [21, 171630, 459, 19123],
+    malIds: [21, 57557, 459, 19123],
     titlePatterns: [/\bone\s*piece\b/i],
   },
   "attack-on-titan": {
@@ -193,6 +193,33 @@ const LOGO_DEFINITIONS: Record<
     aniListIds: [9253, 100469],
     malIds: [9253, 30484],
     titlePatterns: [/\bsteins[;:]?\s*gate\b/i],
+  },
+  "steel-ball-run": {
+    src: "/assets/anime-logos/steel-ball-run.png",
+    alt: "STEEL BALL RUN JoJo's Bizarre Adventure",
+    sizeClasses:
+      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+    aspectRatioHint: "wide",
+    aniListIds: [210482, 190327],
+    malIds: [61469],
+    titlePatterns: [
+      /\bsteel\s*ball\s*run\b/i,
+      /ジョジョの奇妙な冒険\s*スティール・ボール・ラン/,
+    ],
+  },
+  "the-ramparts-of-ice": {
+    src: "/assets/anime-logos/the-ramparts-of-ice.png",
+    alt: "The Ramparts of Ice / 氷の城壁",
+    sizeClasses:
+      "max-h-14 sm:max-h-17 md:max-h-21 max-w-[240px] sm:max-w-[310px] md:max-w-[380px]",
+    aspectRatioHint: "wide",
+    aniListIds: [213805, 186497],
+    malIds: [64534, 60852],
+    titlePatterns: [
+      /\b(?:the\s+)?ramparts\s+of\s+ice\b/i,
+      /\bkoori\s+no\s+jouheki\b/i,
+      /氷の城壁/,
+    ],
   },
 };
 
