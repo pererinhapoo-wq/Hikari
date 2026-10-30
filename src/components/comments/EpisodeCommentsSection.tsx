@@ -178,6 +178,202 @@ function useModalPresence<T>(value: T | null, exitMs = 150) {
 }
 
 /* ========================================================= */
+/* TEMPO RELATIVO AUTOMÁTICO (SEM TIMERS DUPLICADOS)         */
+/* ========================================================= */
+function parseCommentDate(value: string): Date | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const hasExplicitTimezone = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i.test(trimmed);
+  const normalized =
+    !hasExplicitTimezone &&
+    /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(trimmed)
+      ? `${trimmed.replace(" ", "T")}Z`
+      : trimmed;
+
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatRelativeCommentTime(value: string, nowMs: number): string {
+  const date = parseCommentDate(value);
+  if (!date) return "";
+
+  const publishedMs = date.getTime();
+  const diffMs = nowMs - publishedMs;
+
+  if (diffMs < 60_000) {
+    return "Agora";
+  }
+
+  const diffMinutes = Math.floor(diffMs / 60_000);
+  if (diffMinutes < 60) {
+    return diffMinutes === 1 ? "1 minuto" : `${diffMinutes} minutos`;
+  }
+
+  const diffHours = Math.floor(diffMs / 3_600_000);
+  if (diffHours < 24) {
+    return diffHours === 1 ? "1 hora" : `${diffHours} horas`;
+  }
+
+  const nowDate = new Date(nowMs);
+  let totalMonths =
+    (nowDate.getFullYear() - date.getFullYear()) * 12 +
+    (nowDate.getMonth() - date.getMonth());
+
+  if (totalMonths > 0) {
+    const maxDayInNowMonth = new Date(
+      nowDate.getFullYear(),
+      nowDate.getMonth() + 1,
+      0,
+    ).getDate();
+    const targetDay = Math.min(date.getDate(), maxDayInNowMonth);
+    const anniversaryInCurrentMonth = new Date(
+      nowDate.getFullYear(),
+      nowDate.getMonth(),
+      targetDay,
+      date.getHours(),
+      date.getMinutes(),
+      date.getSeconds(),
+      date.getMilliseconds(),
+    ).getTime();
+
+    if (nowMs < anniversaryInCurrentMonth) {
+      totalMonths -= 1;
+    }
+  }
+
+  if (totalMonths >= 12) {
+    const years = Math.floor(totalMonths / 12);
+    return years === 1 ? "1 ano" : `${years} anos`;
+  }
+
+  if (totalMonths >= 1) {
+    return totalMonths === 1 ? "1 mês" : `${totalMonths} meses`;
+  }
+
+  const days = Math.max(1, Math.floor(diffMs / 86_400_000));
+  return days === 1 ? "1 dia" : `${days} dias`;
+}
+
+function getNextRelativeTickDelayMs(
+  items: ReadonlyArray<{ createdAt: string }>,
+  nowMs: number,
+): number | null {
+  if (items.length === 0) return null;
+
+  let minDelayMs = 300_000;
+
+  for (const item of items) {
+    const date = parseCommentDate(item.createdAt);
+    if (!date) continue;
+
+    const elapsedMs = nowMs - date.getTime();
+    let delayMs: number;
+
+    if (elapsedMs < 0) {
+      delayMs = 60_000 - elapsedMs;
+    } else if (elapsedMs < 3_600_000) {
+      delayMs = 60_000 - (elapsedMs % 60_000);
+    } else if (elapsedMs < 86_400_000) {
+      delayMs = 3_600_000 - (elapsedMs % 3_600_000);
+    } else {
+      delayMs = 86_400_000 - (elapsedMs % 86_400_000);
+    }
+
+    if (delayMs < minDelayMs) {
+      minDelayMs = delayMs;
+    }
+  }
+
+  return Math.max(1_000, minDelayMs + 80);
+}
+
+function useRelativeTimeNow(
+  items: ReadonlyArray<{ createdAt: string }>,
+): number {
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const nowMsRef = useRef(nowMs);
+  nowMsRef.current = nowMs;
+
+  useEffect(() => {
+    if (typeof window === "undefined" || items.length === 0) {
+      return;
+    }
+
+    let timerId: number | null = null;
+
+    const clearTimer = () => {
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+        timerId = null;
+      }
+    };
+
+    const syncIfChanged = (forceFreshOnStale = false) => {
+      const currentNow = Date.now();
+      const prevNow = nowMsRef.current;
+      const changed =
+        (forceFreshOnStale && currentNow - prevNow > 5_000) ||
+        items.some(
+          (item) =>
+            formatRelativeCommentTime(item.createdAt, prevNow) !==
+            formatRelativeCommentTime(item.createdAt, currentNow),
+        );
+      if (changed) {
+        nowMsRef.current = currentNow;
+        setNowMs(currentNow);
+      }
+      return currentNow;
+    };
+
+    const scheduleNext = (referenceNow: number) => {
+      clearTimer();
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+      const delay = getNextRelativeTickDelayMs(items, referenceNow);
+      if (delay === null) return;
+
+      timerId = window.setTimeout(() => {
+        const updatedNow = syncIfChanged(false);
+        scheduleNext(updatedNow);
+      }, delay);
+    };
+
+    const initialNow = syncIfChanged(true);
+    scheduleNext(initialNow);
+
+    const handleVisibilityOrFocus = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        clearTimer();
+        return;
+      }
+      const updatedNow = syncIfChanged();
+      scheduleNext(updatedNow);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    window.addEventListener("focus", handleVisibilityOrFocus);
+
+    return () => {
+      clearTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+    };
+  }, [items]);
+
+  return nowMs;
+}
+
+/* ========================================================= */
 /* TELA DE CARREGAMENTO DOS COMENTÁRIOS COM ELIZABETH (HIKARI) */
 /* ========================================================= */
 export function ElizabethCommentsLoading() {
@@ -2085,11 +2281,12 @@ export function EpisodeCommentsSection({
   /* DATA                                                    */
   /* ====================================================== */
 
-  const formatCommentDate = (value: string) => {
-    if (!value) return { date: "", time: "" };
-    const date = new Date(value);
+  const relativeNowMs = useRelativeTimeNow(comments);
 
-    if (Number.isNaN(date.getTime())) {
+  const formatCommentDate = (value: string) => {
+    const date = parseCommentDate(value);
+
+    if (!date) {
       return { date: "", time: "" };
     }
 
@@ -3084,6 +3281,7 @@ export function EpisodeCommentsSection({
                                 replyIsSpoiler={replyIsSpoiler}
                                 replySending={replySending}
                                 formatDate={formatCommentDate}
+                                nowMs={relativeNowMs}
                                 onReaction={handleReaction}
                                 onReplyChange={setReplyText}
                                 onReplySpoilerChange={setReplyIsSpoiler}
@@ -3168,6 +3366,9 @@ export function EpisodeCommentsSection({
                         }
                         formatDate={
                           formatCommentDate
+                        }
+                        nowMs={
+                          relativeNowMs
                         }
                         onReaction={
                           handleReaction
@@ -3957,6 +4158,7 @@ function CommentCard({
   replyIsSpoiler,
   replySending,
   formatDate,
+  nowMs,
   onReaction,
   onReplyChange,
   onReplySpoilerChange,
@@ -3988,7 +4190,8 @@ function CommentCard({
   replyText: string;
   replyIsSpoiler: boolean;
   replySending: boolean;
-  formatDate: (value: string) => { date: string; time: string };
+  formatDate?: (value: string) => { date: string; time: string };
+  nowMs?: number;
   onReaction: (id: string, reaction: "like" | "dislike") => void;
   onReplyChange: (value: string) => void;
   onReplySpoilerChange: (value: boolean) => void;
@@ -4019,7 +4222,17 @@ function CommentCard({
   const isMediaSpoilerHidden = Boolean(
     comment.isSpoiler && !mediaSpoilerRevealed,
   );
-  const formattedDate = formatDate(comment.createdAt);
+  const parsedCreatedDate = parseCommentDate(comment.createdAt);
+  const relativeTime = formatRelativeCommentTime(
+    comment.createdAt,
+    nowMs ?? Date.now(),
+  );
+  const formattedDate = formatDate
+    ? formatDate(comment.createdAt)
+    : { date: "", time: "" };
+  const fullDateTitle = [formattedDate.date, formattedDate.time]
+    .filter(Boolean)
+    .join(" ");
   const cleanReplyToName = replyToName?.replace(/^@+/, "").trim();
   const authorName = comment.userName || "Usuário";
   const textSegments = useMemo(
@@ -4121,11 +4334,18 @@ function CommentCard({
                 )}
               </div>
 
-              {(formattedDate.date || formattedDate.time) && (
+              {relativeTime && (
                 <p className="mt-0.5 text-[11px] leading-tight text-white/50 tabular-nums">
-                  {formattedDate.date}
-                  {formattedDate.date && formattedDate.time ? " " : ""}
-                  {formattedDate.time}
+                  <time
+                    dateTime={
+                      parsedCreatedDate
+                        ? parsedCreatedDate.toISOString()
+                        : undefined
+                    }
+                    title={fullDateTitle || undefined}
+                  >
+                    {relativeTime}
+                  </time>
                 </p>
               )}
             </div>
@@ -4357,46 +4577,46 @@ function CommentCard({
           {/* AÇÕES (LIKE, DISLIKE, RESPONDER)                   */}
           {/* =================================================== */}
 
-          <div className="mt-1 -ml-1 flex flex-wrap items-center gap-1 text-xs">
-            {/* Botão CURTIR (ThumbsUp) com feedback discreto */}
+          <div className="mt-1 -ml-1 flex flex-wrap items-center gap-1.5 text-xs">
+            {/* Botão CURTIR compacto com área de toque confortável */}
             <button
               type="button"
               onClick={() => onReaction(comment.id, "like")}
               disabled={isPendingReaction}
               className={cn(
-                "group/like inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] motion-reduce:transition-none motion-reduce:transform-none",
+                "group/like relative inline-flex items-center gap-1 rounded-md px-1.5 py-[3px] text-[11px] sm:text-xs font-medium leading-none select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] motion-reduce:transition-none motion-reduce:transform-none after:content-[''] after:absolute after:-inset-y-[7px] after:-inset-x-[3px]",
                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
                 comment.liked
-                  ? "bg-[#a855f7]/20 text-[#d8b4fe] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.2)] active:bg-[#a855f7]/30"
-                  : "text-white/55 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-[#a855f7]/15 active:text-[#e9d5ff]",
+                  ? "bg-[#a855f7]/[0.10] text-[#d8b4fe] border border-[#a855f7]/25 hover:bg-[#a855f7]/[0.15] active:bg-[#a855f7]/20"
+                  : "text-white/55 hover:text-white/90 hover:bg-white/[0.05] border border-transparent active:bg-[#a855f7]/10 active:text-[#e9d5ff]",
                 isPendingReaction && "opacity-60 pointer-events-none",
               )}
               aria-label={comment.liked ? "Remover curtida" : "Curtir comentário"}
             >
               <ThumbsUp
                 className={cn(
-                  "size-3.5 shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none",
+                  "size-3 sm:size-[13px] shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none",
                   comment.liked
-                    ? "fill-current [transform:scale(1.06)]"
+                    ? "fill-current text-[#c084fc] [transform:scale(1.06)]"
                     : "group-hover/like:[transform:scale(1.06)]",
                 )}
               />
-              <span className="font-semibold tabular-nums transition-colors duration-150 motion-reduce:transition-none">
+              <span className="font-semibold tabular-nums leading-none transition-colors duration-150 motion-reduce:transition-none">
                 {comment.likes}
               </span>
             </button>
 
-            {/* Botão NÃO CURTIR (ThumbsDown) com feedback discreto */}
+            {/* Botão NÃO CURTIR compacto com área de toque confortável */}
             <button
               type="button"
               onClick={() => onReaction(comment.id, "dislike")}
               disabled={isPendingReaction}
               className={cn(
-                "group/dislike inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] motion-reduce:transition-none motion-reduce:transform-none",
+                "group/dislike relative inline-flex items-center gap-1 rounded-md px-1.5 py-[3px] text-[11px] sm:text-xs font-medium leading-none select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] motion-reduce:transition-none motion-reduce:transform-none after:content-[''] after:absolute after:-inset-y-[7px] after:-inset-x-[3px]",
                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]",
                 comment.disliked
-                  ? "bg-[#a855f7]/20 text-[#d8b4fe] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.2)] active:bg-[#a855f7]/30"
-                  : "text-white/55 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-[#a855f7]/15 active:text-[#e9d5ff]",
+                  ? "bg-[#a855f7]/[0.10] text-[#d8b4fe] border border-[#a855f7]/25 hover:bg-[#a855f7]/[0.15] active:bg-[#a855f7]/20"
+                  : "text-white/55 hover:text-white/90 hover:bg-white/[0.05] border border-transparent active:bg-[#a855f7]/10 active:text-[#e9d5ff]",
                 isPendingReaction && "opacity-60 pointer-events-none",
               )}
               aria-label={
@@ -4405,13 +4625,13 @@ function CommentCard({
             >
               <ThumbsDown
                 className={cn(
-                  "size-3.5 shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none",
+                  "size-3 sm:size-[13px] shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none motion-reduce:transform-none",
                   comment.disliked
-                    ? "fill-current [transform:scale(1.06)]"
+                    ? "fill-current text-[#c084fc] [transform:scale(1.06)]"
                     : "group-hover/dislike:[transform:scale(1.06)]",
                 )}
               />
-              <span className="font-semibold tabular-nums transition-colors duration-150 motion-reduce:transition-none">
+              <span className="font-semibold tabular-nums leading-none transition-colors duration-150 motion-reduce:transition-none">
                 {comment.dislikes}
               </span>
             </button>
