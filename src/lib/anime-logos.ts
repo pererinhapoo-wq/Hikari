@@ -146,7 +146,7 @@ const LOGO_DEFINITIONS: Record<
   },
   "dragon-ball-super": {
     src: "/assets/anime-logos/dragon-ball-super.png",
-    alt: "Dragon Ball Super",
+    alt: "Dragon Ball Super: Beerus",
     sizeClasses:
       "max-h-14 sm:max-h-18 md:max-h-22 max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
     aspectRatioHint: "wide",
