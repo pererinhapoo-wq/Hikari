@@ -567,6 +567,21 @@ textarea:focus {
   .elizabeth-spinner {
     animation-duration: 4s !important;
   }
+
+  /* Desativa animações de escala e zoom mantendo feedback instantâneo */
+  [role="dialog"],
+  [role="menu"],
+  [role="status"],
+  button,
+  a,
+  input,
+  label {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transform: none !important;
+  }
 }
+
 
 

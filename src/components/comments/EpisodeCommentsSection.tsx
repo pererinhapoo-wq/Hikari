@@ -2841,7 +2841,7 @@ export function EpisodeCommentsSection({
               role="status"
               aria-live="polite"
               className={cn(
-                "mt-4 flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-[#161224]/90 px-4 py-3 shadow-lg shadow-purple-950/25 backdrop-blur-md transition-all duration-300 ease-out",
+                "mt-4 flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-[#161224]/90 px-4 py-3 shadow-lg shadow-purple-950/25 backdrop-blur-md transition-all duration-300 ease-out motion-reduce:transition-opacity motion-reduce:transform-none",
                 moderationSuccessVisible
                   ? "translate-y-0 opacity-100 scale-100"
                   : "-translate-y-1 opacity-0 scale-[0.98] pointer-events-none",
@@ -3094,7 +3094,7 @@ export function EpisodeCommentsSection({
 
       {editingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md animate-in fade-in duration-200 overscroll-contain"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 motion-safe:animate-in motion-safe:fade-in motion-reduce:transition-none overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelEdit();
@@ -3108,7 +3108,7 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-dialog-title"
-            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] animate-in fade-in zoom-in-95 duration-200 transition-all text-left"
+            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:transition-none transition-all text-left"
           >
             {/* Cabeçalho */}
             <div className="flex items-start justify-between gap-3">
@@ -3133,7 +3133,7 @@ export function EpisodeCommentsSection({
                 type="button"
                 onClick={handleCancelEdit}
                 disabled={editSaving}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
                 <X className="size-4 sm:size-5" />
@@ -3193,7 +3193,7 @@ export function EpisodeCommentsSection({
                 variant="outline"
                 onClick={handleCancelEdit}
                 disabled={editSaving}
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -3202,7 +3202,7 @@ export function EpisodeCommentsSection({
                 type="button"
                 onClick={() => void handleEdit()}
                 disabled={!editText.trim() || editSaving}
-                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
               >
                 <Edit3 className="size-4" />
                 {editSaving ? "Salvando..." : "Salvar alterações"}
@@ -3218,7 +3218,7 @@ export function EpisodeCommentsSection({
 
       {deletingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md animate-in fade-in duration-200 overscroll-contain"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 motion-safe:animate-in motion-safe:fade-in motion-reduce:transition-none overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelDelete();
@@ -3232,7 +3232,7 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-dialog-title"
-            className="w-full max-w-md rounded-2xl sm:rounded-3xl border border-red-500/35 bg-gradient-to-b from-[#1c1017] via-[#120a10] to-[#0a060a] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(239,68,68,0.15)] animate-in fade-in zoom-in-95 duration-200 transition-all text-left"
+            className="w-full max-w-md rounded-2xl sm:rounded-3xl border border-red-500/35 bg-gradient-to-b from-[#1c1017] via-[#120a10] to-[#0a060a] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(239,68,68,0.15)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:transition-none transition-all text-left"
           >
             {/* Cabeçalho de Perigo */}
             <div className="flex items-start justify-between gap-3">
@@ -3257,7 +3257,7 @@ export function EpisodeCommentsSection({
                 type="button"
                 onClick={handleCancelDelete}
                 disabled={deleteSending}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
                 <X className="size-4 sm:size-5" />
@@ -3295,7 +3295,7 @@ export function EpisodeCommentsSection({
                 variant="outline"
                 onClick={handleCancelDelete}
                 disabled={deleteSending}
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -3304,7 +3304,7 @@ export function EpisodeCommentsSection({
                 type="button"
                 onClick={() => void handleDelete()}
                 disabled={deleteSending}
-                className="rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] transition-all duration-150 cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                className="rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
               >
                 <Trash2 className="size-4" />
                 {deleteSending ? "Excluindo..." : "Excluir comentário"}
@@ -3320,7 +3320,7 @@ export function EpisodeCommentsSection({
 
       {reportingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md animate-in fade-in duration-200 overscroll-contain"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 backdrop-blur-md transition-opacity duration-150 motion-safe:animate-in motion-safe:fade-in motion-reduce:transition-none overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelReport();
@@ -3334,7 +3334,7 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="report-dialog-title"
-            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] animate-in fade-in zoom-in-95 duration-200 transition-all text-left"
+            className="w-full max-w-lg rounded-2xl sm:rounded-3xl border border-[#a855f7]/30 bg-gradient-to-b from-[#18142a] via-[#110e1f] to-[#0a0814] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.15)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:transition-none transition-all text-left"
           >
             {/* Cabeçalho */}
             <div className="flex items-start justify-between gap-3">
@@ -3359,7 +3359,7 @@ export function EpisodeCommentsSection({
                 type="button"
                 onClick={handleCancelReport}
                 disabled={reportSending}
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
                 <X className="size-4 sm:size-5" />
@@ -3405,10 +3405,10 @@ export function EpisodeCommentsSection({
                   <label
                     key={item.value}
                     className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-all duration-150 select-none active:scale-[0.99]",
+                      "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-all duration-150 select-none active:scale-[0.985] motion-reduce:transform-none motion-reduce:transition-none focus-within:ring-2 focus-within:ring-[#a855f7]/60",
                       isSelected
                         ? "border-[#a855f7] bg-[#a855f7]/15 text-white ring-1 ring-[#a855f7]/50 shadow-[0_0_15px_rgba(168,85,247,0.2)]"
-                        : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-[#a855f7]/30 hover:bg-white/[0.06] hover:text-white",
+                        : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-[#a855f7]/30 hover:bg-white/[0.06] hover:text-white active:bg-white/[0.08]",
                     )}
                   >
                     <input
@@ -3450,7 +3450,7 @@ export function EpisodeCommentsSection({
                 variant="outline"
                 onClick={handleCancelReport}
                 disabled={reportSending}
-                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-zinc-300 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -3471,7 +3471,7 @@ export function EpisodeCommentsSection({
                   reportSending ||
                   Boolean(moderatingId)
                 }
-                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 transition-all duration-150 motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]/60 px-5 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] cursor-pointer disabled:opacity-50 flex items-center gap-2"
               >
                 <Flag className="size-4" />
                 {reportSending ? "Enviando..." : "Enviar denúncia"}
