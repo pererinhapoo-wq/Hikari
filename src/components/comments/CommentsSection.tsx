@@ -2522,7 +2522,7 @@ export function CommentsSection({
               </p>
             </div>
           ) : (
-            <div className="mt-3 divide-y divide-purple-500/15 border-y border-purple-500/15">
+            <div className="mt-3 divide-y divide-[#a855f7]/15 border-y border-[#a855f7]/15">
               {displayedRootComments.map((root) => {
                 const renderThreadReplies = (
                   parentComment: Comment,
@@ -2534,12 +2534,12 @@ export function CommentsSection({
                   return (
                     <div
                       className={cn(
-                        "mt-1.5 border-l border-[#a855f7]/20 hover:border-[#a855f7]/40 space-y-2 transition-colors",
+                        "mt-2 border-l border-[#a855f7]/25 hover:border-[#a855f7]/45 space-y-2.5 transition-colors",
                         depth === 1
-                          ? "ml-3 sm:ml-4 pl-2.5 sm:pl-3"
+                          ? "ml-3.5 sm:ml-4 pl-2.5 sm:pl-3.5"
                           : depth <= 3
-                            ? "ml-2.5 sm:ml-3.5 pl-2.5 sm:pl-3"
-                            : "ml-1 sm:ml-2 pl-2 sm:pl-2.5",
+                            ? "ml-3 sm:ml-3.5 pl-2.5 sm:pl-3"
+                            : "ml-1.5 sm:ml-2.5 pl-2 sm:pl-2.5",
                       )}
                     >
                       {childReplies.map((reply) => {
@@ -3423,7 +3423,7 @@ export function CommentCard({
             to="/profile/$nick"
             params={{ nick: comment.userNick }}
             className={cn(
-              "relative mt-0.5 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90 hover:ring-purple-500/50 transition-all",
+              "relative mt-0.5 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#171326] ring-1 ring-[#a855f7]/25 text-xs font-semibold text-white/90 hover:ring-[#a855f7]/55 transition-colors",
               isReply ? "size-6 sm:size-7" : "size-7 sm:size-8",
             )}
           >
@@ -3434,7 +3434,7 @@ export function CommentCard({
                 className="size-full object-cover"
               />
             ) : (
-              <span className="text-purple-300 font-bold">
+              <span className="text-[#c084fc] font-bold">
                 {authorName.charAt(0).toUpperCase()}
               </span>
             )}
@@ -3442,7 +3442,7 @@ export function CommentCard({
         ) : (
           <div
             className={cn(
-              "relative mt-0.5 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] ring-1 ring-white/10 text-xs font-semibold text-white/90",
+              "relative mt-0.5 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#171326] ring-1 ring-[#a855f7]/25 text-xs font-semibold text-white/90",
               isReply ? "size-6 sm:size-7" : "size-7 sm:size-8",
             )}
           >
@@ -3453,7 +3453,7 @@ export function CommentCard({
                 className="size-full object-cover"
               />
             ) : (
-              <span className="text-purple-300 font-bold">
+              <span className="text-[#c084fc] font-bold">
                 {authorName.charAt(0).toUpperCase()}
               </span>
             )}
@@ -3470,23 +3470,23 @@ export function CommentCard({
                   <Link
                     to="/profile/$nick"
                     params={{ nick: comment.userNick }}
-                    className="text-[13px] sm:text-sm font-bold text-white hover:text-purple-300 leading-tight [overflow-wrap:anywhere] transition-colors"
+                    className="min-w-0 max-w-full text-[13px] sm:text-sm font-bold text-white hover:text-[#c084fc] leading-tight [overflow-wrap:anywhere] transition-colors"
                   >
                     {authorName}
                   </Link>
                 ) : (
-                  <span className="text-[13px] sm:text-sm font-bold text-white leading-tight [overflow-wrap:anywhere]">
+                  <span className="min-w-0 max-w-full text-[13px] sm:text-sm font-bold text-white leading-tight [overflow-wrap:anywhere]">
                     {authorName}
                   </span>
                 )}
 
                 {isReply && cleanReplyToName && (
                   <span
-                    className="inline-flex max-w-full items-center gap-1 rounded-md border border-[#a855f7]/30 bg-[#a855f7]/15 px-1.5 py-0.5 text-[11px] font-medium leading-none text-[#d8b4fe]"
+                    className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-[#a855f7]/30 bg-[#a855f7]/15 px-1.5 py-[2px] text-[11px] font-medium leading-tight text-[#d8b4fe]"
                     title={`Em resposta a ${cleanReplyToName}`}
                   >
                     <Reply className="size-3 shrink-0 text-[#c084fc]" />
-                    <span className="truncate max-w-[140px] sm:max-w-[200px]">
+                    <span className="min-w-0 truncate max-w-[135px] sm:max-w-[200px]">
                       {cleanReplyToName}
                     </span>
                   </span>
@@ -3494,7 +3494,7 @@ export function CommentCard({
               </div>
 
               {(formattedDate.date || formattedDate.time) && (
-                <p className="mt-0.5 text-[11px] leading-tight text-white/45 tabular-nums">
+                <p className="mt-0.5 text-[11px] leading-tight text-white/50 tabular-nums">
                   {formattedDate.date}
                   {formattedDate.date && formattedDate.time ? " " : ""}
                   {formattedDate.time}
@@ -3503,7 +3503,7 @@ export function CommentCard({
             </div>
 
             {/* Menu 3 Pontos */}
-            <div className="relative shrink-0 -mr-1.5 -mt-1">
+            <div className="relative shrink-0 -mt-0.5 -mr-1 sm:mr-0">
               <button
                 type="button"
                 onClick={(e) => {
@@ -3515,8 +3515,8 @@ export function CommentCard({
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 className={cn(
-                  "flex size-8 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/10 active:bg-purple-500/15 active:text-purple-200 touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500 motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer",
-                  menuOpen && "bg-white/10 text-white",
+                  "flex size-8 items-center justify-center rounded-lg text-white/45 hover:text-white hover:bg-white/[0.08] active:bg-[#a855f7]/15 active:text-[#e9d5ff] touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7] motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer",
+                  menuOpen && "bg-[#a855f7]/15 text-[#e9d5ff]",
                 )}
               >
                 <MoreVertical className="size-4" />
@@ -3536,7 +3536,7 @@ export function CommentCard({
                   <div
                     role="menu"
                     className={cn(
-                      "absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-white/10 bg-[#161324]/95 backdrop-blur-xl p-1 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+                      "absolute right-0 top-[calc(100%+4px)] z-40 w-48 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-[#a855f7]/25 bg-[#151221]/95 backdrop-blur-xl p-1 shadow-2xl origin-top-right transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
                       cardMenu.visible
                         ? "opacity-100 [transform:translateY(0)_scale(1)]"
                         : "opacity-0 [transform:translateY(-4px)_scale(0.97)]",
@@ -3553,9 +3553,9 @@ export function CommentCard({
                             onEdit();
                           }}
                           disabled={moderating}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-purple-500/15 active:bg-purple-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/85 hover:bg-[#a855f7]/15 hover:text-white active:bg-[#a855f7]/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
-                          <Edit3 className="size-3.5 text-purple-400" />
+                          <Edit3 className="size-3.5 shrink-0 text-[#c084fc]" />
                           <span>Editar</span>
                         </button>
                         <button
@@ -3566,9 +3566,9 @@ export function CommentCard({
                             onDelete();
                           }}
                           disabled={moderating}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/15 active:bg-red-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 active:bg-red-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
-                          <Trash2 className="size-3.5" />
+                          <Trash2 className="size-3.5 shrink-0 text-red-400" />
                           <span>Excluir</span>
                         </button>
                       </>
@@ -3583,9 +3583,9 @@ export function CommentCard({
                           onMarkSpoiler();
                         }}
                         disabled={comment.isSpoiler || moderating}
-                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-500/15 active:bg-amber-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none cursor-pointer disabled:opacity-50"
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-amber-300 hover:bg-amber-500/15 hover:text-amber-200 active:bg-amber-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none cursor-pointer disabled:opacity-50"
                       >
-                        <EyeOff className="size-3.5 text-amber-400" />
+                        <EyeOff className="size-3.5 shrink-0 text-amber-400" />
                         <span>Marcar como spoiler</span>
                       </button>
                     )}
@@ -3600,9 +3600,9 @@ export function CommentCard({
                             onSpam();
                           }}
                           disabled={moderating}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 active:bg-white/15 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/85 hover:bg-white/10 hover:text-white active:bg-white/15 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
-                          <Ban className="size-3.5 text-orange-400" />
+                          <Ban className="size-3.5 shrink-0 text-orange-400" />
                           <span>Sinalizar spam</span>
                         </button>
                         <button
@@ -3613,9 +3613,9 @@ export function CommentCard({
                             onReport();
                           }}
                           disabled={moderating}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/15 active:bg-red-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 active:bg-red-500/25 active:![transform:scale(0.985)] touch-manipulation motion-reduce:transition-none motion-reduce:transform-none disabled:opacity-50 cursor-pointer"
                         >
-                          <Flag className="size-3.5" />
+                          <Flag className="size-3.5 shrink-0 text-red-400" />
                           <span>Denunciar</span>
                         </button>
                       </>
@@ -3627,9 +3627,9 @@ export function CommentCard({
           </div>
 
           {/* Conteúdo do Comentário com spoiler compacto roxo */}
-          <div className="mt-1 text-xs sm:text-sm text-zinc-200 leading-[1.55] break-words">
+          <div className="mt-1 text-xs sm:text-sm text-zinc-100/90 leading-[1.55] [overflow-wrap:anywhere]">
             {textSegments.length > 0 && (
-              <p className="whitespace-pre-wrap break-words">
+              <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-zinc-100/90">
                 {textSegments.map((segment, idx) =>
                   segment.type === "spoiler" ? (
                     <SpoilerText
@@ -3707,16 +3707,16 @@ export function CommentCard({
           </div>
 
           {/* Botões de Reação (Like, Dislike, Responder) */}
-          <div className="mt-1 -ml-1.5 flex flex-wrap items-center gap-1 text-xs">
+          <div className="mt-1 -ml-1 flex flex-wrap items-center gap-1 text-xs">
             <button
               type="button"
               onClick={() => onReaction(comment.id, "like")}
               disabled={isPendingReaction}
               className={cn(
-                "group/like inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500 motion-reduce:transition-none motion-reduce:transform-none",
+                "group/like inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7] motion-reduce:transition-none motion-reduce:transform-none",
                 comment.liked
-                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/45 shadow-[0_0_12px_rgba(168,85,247,0.22)] active:bg-purple-500/30"
-                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-purple-500/15 active:text-purple-200",
+                  ? "bg-[#a855f7]/20 text-[#d8b4fe] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.2)] active:bg-[#a855f7]/30"
+                  : "text-white/55 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-[#a855f7]/15 active:text-[#e9d5ff]",
                 isPendingReaction && "opacity-60 pointer-events-none",
               )}
               aria-label={comment.liked ? "Remover curtida" : "Curtir comentário"}
@@ -3739,10 +3739,10 @@ export function CommentCard({
               onClick={() => onReaction(comment.id, "dislike")}
               disabled={isPendingReaction}
               className={cn(
-                "group/dislike inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500 motion-reduce:transition-none motion-reduce:transform-none",
+                "group/dislike inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7] motion-reduce:transition-none motion-reduce:transform-none",
                 comment.disliked
-                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/45 shadow-[0_0_12px_rgba(168,85,247,0.22)] active:bg-purple-500/30"
-                  : "text-white/50 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-purple-500/15 active:text-purple-200",
+                  ? "bg-[#a855f7]/20 text-[#d8b4fe] border border-[#a855f7]/45 shadow-[0_0_12px_rgba(168,85,247,0.2)] active:bg-[#a855f7]/30"
+                  : "text-white/55 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-[#a855f7]/15 active:text-[#e9d5ff]",
                 isPendingReaction && "opacity-60 pointer-events-none",
               )}
               aria-label={
@@ -3766,10 +3766,10 @@ export function CommentCard({
               type="button"
               onClick={onStartReply}
               className={cn(
-                "inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500 motion-reduce:transition-none motion-reduce:transform-none",
+                "inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 sm:px-2 py-1 text-xs font-medium select-none cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7] motion-reduce:transition-none motion-reduce:transform-none",
                 isReplying
-                  ? "bg-purple-500/15 text-purple-200 active:bg-purple-500/25"
-                  : "text-white/50 hover:text-white hover:bg-white/[0.06] active:bg-purple-500/15 active:text-purple-200",
+                  ? "bg-[#a855f7]/15 text-[#d8b4fe] border border-[#a855f7]/30 active:bg-[#a855f7]/25"
+                  : "text-white/55 hover:text-white hover:bg-white/[0.06] border border-transparent active:bg-[#a855f7]/15 active:text-[#e9d5ff]",
               )}
             >
               <MessageCircle className="size-3.5 shrink-0" />
@@ -3779,7 +3779,7 @@ export function CommentCard({
 
           {/* Formulário de Resposta Inline */}
           {isReplying && (
-            <div className="mt-2 rounded-xl border border-purple-500/25 bg-[#121217] p-2.5 shadow-lg focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
+            <div className="mt-2 rounded-xl border border-[#a855f7]/25 bg-[#120f1d] p-2.5 shadow-lg focus-within:border-[#a855f7]/50 focus-within:ring-1 focus-within:ring-[#a855f7]/20 transition-colors">
               <textarea
                 value={replyText}
                 onChange={(e) => onReplyChange(e.target.value)}
@@ -3792,7 +3792,7 @@ export function CommentCard({
                 rows={2}
                 maxLength={2000}
                 placeholder={`Responder para @${authorName}...`}
-                className="w-full resize-none rounded-lg border border-white/10 bg-[#0c0c10] px-3 py-2 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-purple-500/40 transition-colors"
+                className="w-full resize-none rounded-lg border border-white/10 bg-[#0b0914] px-3 py-2 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-[#a855f7]/45 transition-colors"
               />
 
               <div className="mt-2 flex items-center justify-between gap-2">
