@@ -1,12 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkCheck, Play } from "lucide-react";
+import { Check, ChevronRight, Info, Play } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { displayTitle, type SlimAnime } from "@/lib/types";
-import { genreLabel, scoreLabel } from "@/lib/labels";
-import { useHikariStore } from "@/lib/store";
+import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
 
 export function Hero({
   anime,
@@ -17,40 +14,28 @@ export function Hero({
 }) {
   const [index, setIndex] = useState(0);
 
-  const [visibleBackdrop, setVisibleBackdrop] = useState(
-    anime.cover || anime.banner || "",
-  );
-
   const current = animes[index] ?? anime;
-  const title = displayTitle(current);
 
-  const inList = useHikariStore((s) =>
-    s.myList.includes(current.id),
-  );
-
-  const toggleList = useHikariStore((s) => s.toggleList);
+  // Título no idioma original (romaji prioritário, sem traduzir ou substituir)
+  const originalTitle =
+    current.titles?.romaji?.trim() ||
+    current.titles?.native?.trim() ||
+    current.titles?.english?.trim() ||
+    displayTitle(current);
 
   /*
-   * MOBILE:
-   * mantém a capa vertical como prioridade.
-   *
-   * DESKTOP:
-   * usa o banner horizontal quando o anime possuir um banner.
+   * Resolução de imagens de fundo:
+   * No mobile, prioriza capa vertical em alta resolução com enquadramento superior natural.
+   * No desktop, prioriza banner horizontal amplo.
    */
-  const mobileBackdrop =
-    current.cover || current.banner || "";
+  const mobileBackdrop = current.cover || current.banner || "";
+  const desktopBackdrop = current.banner || current.cover || "";
 
-  const desktopBackdrop =
-    current.banner || current.cover || "";
-
-  // Imagens do slide anterior para evitar tela vazia ou piscar durante a troca
+  // Imagens do slide anterior para transição suave sem flicker
   const [prevMobileBackdrop, setPrevMobileBackdrop] = useState<string>("");
   const [prevDesktopBackdrop, setPrevDesktopBackdrop] = useState<string>("");
 
-  // Cache em memória das URLs que já foram pré-carregadas pelo carrossel
   const preloadedUrls = useRef<Set<string>>(new Set());
-
-  // Estados de carregamento da imagem do slide ativo
   const [isMobileLoaded, setIsMobileLoaded] = useState<boolean>(true);
   const [isDesktopLoaded, setIsDesktopLoaded] = useState<boolean>(true);
 
@@ -58,7 +43,6 @@ export function Hero({
   const prevMobileRef = useRef<string>(mobileBackdrop);
   const prevDesktopRef = useRef<string>(desktopBackdrop);
 
-  // Identificação do próximo slide (trata wrap-around para o primeiro slide)
   const nextIndex = animes.length > 1 ? (index + 1) % animes.length : -1;
   const nextAnime = nextIndex >= 0 ? animes[nextIndex] : null;
 
@@ -69,7 +53,6 @@ export function Hero({
     ? nextAnime.banner || nextAnime.cover || ""
     : "";
 
-  // Ao mudar de slide, armazena a imagem anterior como fundo para transição suave
   useEffect(() => {
     if (prevIdRef.current !== current.id) {
       setPrevMobileBackdrop(prevMobileRef.current);
@@ -87,11 +70,10 @@ export function Hero({
     }
   }, [current.id, mobileBackdrop, desktopBackdrop]);
 
-  // Pré-carregamento em segundo plano das imagens do próximo slide
+  // Pré-carregamento do próximo slide em background
   useEffect(() => {
     if (typeof window === "undefined" || animes.length < 2 || !nextAnime) return;
 
-    // Respeita a fonte de imagem para o viewport atual (desktop e mobile)
     const isDesktop = window.matchMedia("(min-width: 768px)").matches;
     const primaryUrl = isDesktop ? nextDesktopBackdrop : nextMobileBackdrop;
 
@@ -120,549 +102,386 @@ export function Hero({
     });
 
     return () => {
-      // Limpeza de referências para não acumular imagens antigas
       activePreloaders.forEach((img) => {
         img.onload = null;
         img.onerror = null;
       });
       activePreloaders.length = 0;
     };
-  }, [index, animes.length, nextDesktopBackdrop, nextMobileBackdrop]);
+  }, [index, animes.length, nextDesktopBackdrop, nextMobileBackdrop, nextAnime]);
 
-  // Rotação automática dos slides
+  // Rotação automática dos slides (8 segundos)
   useEffect(() => {
     if (animes.length < 2) return;
 
     const timer = window.setInterval(() => {
       const nextIdx = (index + 1) % animes.length;
-      const targetAnime = animes[nextIdx];
-
-      const nextBackdrop =
-        targetAnime?.cover ||
-        targetAnime?.banner ||
-        "";
-
-      setVisibleBackdrop(nextBackdrop);
       setIndex(nextIdx);
     }, 8000);
 
     return () => window.clearInterval(timer);
-  }, [animes, index]);
+  }, [animes.length, index]);
+
+  // Dados reais formatados para o anime atual
+  const scoreValue = current.score != null ? scoreLabel(current.score) : null;
+
+  const seasonValue =
+    current.format === "MOVIE"
+      ? "Filme"
+      : current.season
+        ? seasonLabel(current.season, current.year)
+        : current.year
+          ? `Temporada ${current.year}`
+          : "T1";
+
+  const episodesValue =
+    current.episodesCount != null
+      ? `${current.episodesCount} ${current.episodesCount === 1 ? "Episódio" : "Episódios"}`
+      : current.format === "MOVIE"
+        ? "Filme único"
+        : "Em lançamento";
+
+  const statusText = statusLabel(current.status);
 
   return (
     <section
+      aria-label="Destaque principal"
       className="
         relative
         -mx-4
         overflow-hidden
+        bg-black
         border-b
-        border-purple-500/20
-        bg-gradient-to-b
-        from-[#141026]
-        via-[#0d0b18]
-        to-[#08070d]
-        shadow-[0_12px_36px_rgba(0,0,0,0.8)]
+        border-white/5
+        shadow-[0_12px_40px_rgba(0,0,0,0.85)]
         sm:-mx-6
-        sm:border-b-0
         md:mx-0
         md:rounded-3xl
         md:border
-        md:border-purple-500/20
-        md:bg-gradient-to-r
-        md:from-[#110d24]
-        md:via-[#0c0a18]
-        md:to-[#08070d]
-        md:shadow-[0_20px_50px_rgba(0,0,0,0.7),0_0_40px_rgba(168,85,247,0.12)]
-        md:h-[480px]
-        lg:h-[520px]
-        md:flex
-        md:items-center
+        md:border-white/10
+        md:shadow-[0_20px_50px_rgba(0,0,0,0.7)]
+        min-h-[560px]
+        sm:min-h-[620px]
+        md:min-h-[560px]
+        lg:min-h-[600px]
+        flex
+        flex-col
+        justify-end
       "
     >
       {/* =========================================================
-          MOBILE: BANNER COM ARTE CENTRALIZADA E TRANSIÇÃO SUAVE
+          CAMADA DE IMAGEM AMPLA EM BACKGROUND (CORES E LUZ NATURAIS)
           ========================================================= */}
-      {visibleBackdrop ? (
-        <div
-          className="
-            relative
-            w-full
-            h-56
-            sm:h-72
-            overflow-hidden
-            bg-transparent
-            md:hidden
-          "
-        >
-          {/* Brilho ambiente sutil no topo */}
-          <div className="pointer-events-none absolute -top-10 -right-10 size-40 rounded-full bg-purple-500/10 blur-3xl z-10" />
-
-          {/* Imagem do anime original, centralizada, com fade inferior suave e orgânico */}
-          <div
-            className="
-              relative
-              z-10
+      <div className="absolute inset-0 size-full pointer-events-none overflow-hidden select-none">
+        {/* MOBILE: Imagem ampla ocupando a tela com enquadramento focado nos personagens e cores originais */}
+        <div className="relative size-full md:hidden">
+          {prevMobileBackdrop &&
+            prevMobileBackdrop !== mobileBackdrop &&
+            !isMobileLoaded && (
+              <img
+                src={prevMobileBackdrop}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 size-full object-cover object-top"
+              />
+            )}
+          <img
+            key={`m-hero-${current.id}`}
+            src={mobileBackdrop}
+            alt={originalTitle}
+            loading="eager"
+            decoding="async"
+            fetchPriority="high"
+            onLoad={() => setIsMobileLoaded(true)}
+            onError={() => setIsMobileLoaded(true)}
+            className={`
               size-full
-              [mask-image:linear-gradient(to_bottom,black_70%,transparent_100%)]
-              [-webkit-mask-image:linear-gradient(to_bottom,black_70%,transparent_100%)]
-            "
-          >
-            {/* Imagem anterior visível durante o carregamento da nova para evitar flash/espaço vazio */}
-            {prevMobileBackdrop &&
-              prevMobileBackdrop !== mobileBackdrop &&
-              !isMobileLoaded && (
-                <img
-                  src={prevMobileBackdrop}
-                  alt=""
-                  aria-hidden="true"
-                  className="
-                    absolute
-                    inset-0
-                    size-full
-                    object-contain
-                    object-center
-                    py-2
-                    px-3
-                    drop-shadow-[0_8px_20px_rgba(0,0,0,0.6)]
-                  "
-                />
-              )}
-            <img
-              key={`mb-fg-${current.id}`}
-              src={mobileBackdrop}
-              alt={title}
-              loading="eager"
-              decoding="async"
-              fetchPriority="high"
-              onLoad={() => setIsMobileLoaded(true)}
-              onError={() => setIsMobileLoaded(true)}
-              className={`
-                size-full
-                object-contain
-                object-center
-                py-2
-                px-3
-                drop-shadow-[0_8px_20px_rgba(0,0,0,0.6)]
-                transition-opacity
-                duration-300
-                ${isMobileLoaded ? "opacity-100" : "opacity-0"}
-              `}
-            />
-          </div>
-
-          {/* Gradiente sutil e difuso de transição para os textos abaixo */}
-          <div
-            className="
-              pointer-events-none
-              absolute
-              inset-x-0
-              bottom-0
-              h-16
-              sm:h-20
-              bg-gradient-to-t
-              from-[#0d0b18]
-              via-[#0d0b18]/60
-              to-transparent
-              z-20
-            "
+              object-cover
+              object-top
+              transition-opacity
+              duration-500
+              ${isMobileLoaded ? "opacity-100" : "opacity-0"}
+            `}
           />
         </div>
-      ) : (
+
+        {/* DESKTOP: Banner horizontal em alta definição */}
+        <div className="hidden md:block relative size-full">
+          {prevDesktopBackdrop &&
+            prevDesktopBackdrop !== desktopBackdrop &&
+            !isDesktopLoaded && (
+              <img
+                src={prevDesktopBackdrop}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 size-full object-cover object-center"
+              />
+            )}
+          <img
+            key={`d-hero-${current.id}`}
+            src={desktopBackdrop}
+            alt={originalTitle}
+            loading="eager"
+            decoding="async"
+            fetchPriority="high"
+            onLoad={() => setIsDesktopLoaded(true)}
+            onError={() => setIsDesktopLoaded(true)}
+            className={`
+              size-full
+              object-cover
+              object-center
+              transition-opacity
+              duration-500
+              ${isDesktopLoaded ? "opacity-100" : "opacity-0"}
+            `}
+          />
+        </div>
+
+        {/* GRADIENTE INFERIOR NEUTRO: Limitado estritamente à região dos textos (preto e transparente), sem coloração ou névoa sobre a imagem */}
         <div
           className="
-            h-56
-            bg-transparent
-            sm:h-72
-            md:hidden
+            absolute
+            inset-x-0
+            bottom-0
+            h-[38%]
+            sm:h-[35%]
+            md:h-[32%]
+            bg-gradient-to-t
+            from-black
+            via-black/50
+            via-40%
+            to-transparent
           "
         />
-      )}
+      </div>
 
       {/* =========================================================
-          DESKTOP: BANNER COM ARTE À DIREITA E FUSÃO GRADUAL CONTÍNUA
-          ========================================================= */}
-      {visibleBackdrop && (
-        <div
-          className="
-            hidden
-            md:block
-            absolute
-            inset-0
-            pointer-events-none
-            overflow-hidden
-          "
-        >
-          {/* Luz ambiente roxa cinematográfica no desktop */}
-          <div className="absolute top-1/4 right-1/4 size-80 rounded-full bg-purple-600/10 blur-[120px]" />
-          <div className="absolute -bottom-10 right-10 size-72 rounded-full bg-purple-900/15 blur-[100px]" />
-
-          {/* Arte do anime posicionada à direita com máscara gradual de entrada à esquerda */}
-          <div
-            className="
-              absolute
-              inset-y-0
-              right-0
-              w-[70%]
-              lg:w-[65%]
-              [mask-image:linear-gradient(to_right,transparent_0%,black_45%)]
-              [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_45%)]
-            "
-          >
-            {/* Imagem anterior visível durante o carregamento da nova para evitar flash/espaço vazio */}
-            {prevDesktopBackdrop &&
-              prevDesktopBackdrop !== desktopBackdrop &&
-              !isDesktopLoaded && (
-                <img
-                  src={prevDesktopBackdrop}
-                  alt=""
-                  aria-hidden="true"
-                  className="
-                    absolute
-                    inset-0
-                    size-full
-                    object-cover
-                    object-center
-                    md:object-right-top
-                  "
-                />
-              )}
-            <img
-              key={`d-${current.id}`}
-              src={desktopBackdrop}
-              alt=""
-              aria-hidden="true"
-              loading="eager"
-              decoding="async"
-              fetchPriority="high"
-              onLoad={() => setIsDesktopLoaded(true)}
-              onError={() => setIsDesktopLoaded(true)}
-              className={`
-                size-full
-                object-cover
-                object-center
-                md:object-right-top
-                transition-opacity
-                duration-300
-                ${isDesktopLoaded ? "opacity-100" : "opacity-0"}
-              `}
-            />
-          </div>
-
-          {/* Gradiente contínuo e gradual da esquerda para a direita (legibilidade sem divisão marcada) */}
-          <div
-            className="
-              absolute
-              inset-0
-              bg-gradient-to-r
-              from-[#0c0a18]
-              from-20%
-              via-[#0c0a18]/85
-              via-45%
-              via-[#0c0a18]/40
-              via-70%
-              to-transparent
-            "
-          />
-
-          {/* Gradientes Inferior e Superior suaves */}
-          <div
-            className="
-              absolute
-              inset-x-0
-              bottom-0
-              h-28
-              bg-gradient-to-t
-              from-[#08070d]
-              via-[#08070d]/50
-              to-transparent
-            "
-          />
-
-          <div
-            className="
-              absolute
-              inset-x-0
-              top-0
-              h-16
-              bg-gradient-to-b
-              from-[#0c0a18]/60
-              to-transparent
-            "
-          />
-        </div>
-      )}
-
-      {/* =========================================================
-          INFORMAÇÕES DO ANIME
-          (No mobile: fluxo com espaçamento harmônico abaixo do banner.
-           No desktop: sobreposto elegantemente à esquerda)
+          CONTEÚDO CENTRALIZADO E ELEGANTE
           ========================================================= */}
       <div
         className="
           relative
           z-20
+          w-full
+          max-w-2xl
+          mx-auto
           px-4
-          pt-2
-          pb-5
+          pt-28
+          pb-6
           sm:px-6
-          sm:pb-7
-          md:max-w-xl
-          lg:max-w-2xl
-          md:px-10
-          lg:px-12
-          md:pt-24
-          md:pb-12
+          sm:pb-8
+          flex
+          flex-col
+          items-center
+          text-center
+          space-y-3
+          sm:space-y-3.5
         "
       >
-        {/* Bloco de Informações */}
-        <div className="min-w-0">
-          {/* Eyebrow em formato de chip sutil com ponto pulsante */}
-          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-purple-950/70 border border-purple-500/30 text-purple-300 text-[10px] sm:text-xs font-semibold tracking-wider uppercase mb-2 w-fit shadow-[0_0_12px_rgba(168,85,247,0.15)]">
-            <span className="size-1.5 rounded-full bg-purple-400 animate-pulse shadow-[0_0_8px_#c084fc]" />
-            <span>Em Destaque</span>
-          </div>
-
-          {/* Título Principal */}
+        {/* Título Principal no Idioma Original (sem subtítulo em japonês) */}
+        <div className="w-full max-w-xl">
           <h1
+            title={originalTitle}
             className="
               font-display
               text-2xl
-              leading-tight
+              sm:text-3xl
+              md:text-4xl
+              lg:text-5xl
+              font-bold
               tracking-tight
               text-white
-              drop-shadow-md
-              sm:text-4xl
-              md:text-5xl
-              font-bold
+              leading-tight
+              drop-shadow-[0_3px_12px_rgba(0,0,0,0.95)]
               line-clamp-2
             "
           >
-            {title}
+            {originalTitle}
           </h1>
+        </div>
 
-          {/* Título nativo */}
-          {current.titles.native &&
-            current.titles.native !== title && (
-              <p className="mt-0.5 text-xs text-purple-300/60 drop-shadow sm:text-sm" style={{ fontFamily: '"Noto Sans JP", "Noto Serif JP", sans-serif' }}>
-                {current.titles.native}
-              </p>
-            )}
+        {/* Linha Equilibrada: Nota ★ · Temporada · Quantidade de Episódios */}
+        <div className="flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm font-semibold text-zinc-300 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
+          {scoreValue && (
+            <span className="inline-flex items-center gap-1 text-amber-300">
+              <span className="text-amber-400">★</span>
+              <span className="tabular-nums font-bold">{scoreValue}</span>
+            </span>
+          )}
 
-          {/* Metadados: Nota, Ano, Gêneros */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 sm:mt-3 sm:gap-2">
-            {current.score != null && (
-              <span
-                className="
-                  inline-flex
-                  items-center
-                  gap-1
-                  rounded-md
-                  bg-purple-950/80
-                  border
-                  border-purple-500/35
-                  px-2
-                  py-0.5
-                  text-xs
-                  font-bold
-                  tabular-nums
-                  text-purple-200
-                  shadow-[0_0_10px_rgba(168,85,247,0.15)]
-                "
-              >
-                ★ {scoreLabel(current.score)}
-              </span>
-            )}
+          {scoreValue && (seasonValue || episodesValue) && (
+            <span className="size-1 rounded-full bg-zinc-400/60" aria-hidden="true" />
+          )}
 
-            {current.year && (
-              <span
-                className="
-                  inline-flex
-                  items-center
-                  rounded-md
-                  bg-white/5
-                  border
-                  border-white/10
-                  px-2
-                  py-0.5
-                  text-xs
-                  font-medium
-                  text-zinc-300
-                "
-              >
-                {current.year}
-              </span>
-            )}
+          {seasonValue && (
+            <span className="text-zinc-200">{seasonValue}</span>
+          )}
 
-            {current.genres.slice(0, 3).map((genre) => (
+          {seasonValue && episodesValue && (
+            <span className="size-1 rounded-full bg-zinc-400/60" aria-hidden="true" />
+          )}
+
+          {episodesValue && (
+            <span className="text-zinc-300 font-medium">{episodesValue}</span>
+          )}
+        </div>
+
+        {/* Status da Transmissão */}
+        {statusText && (
+          <div className="flex items-center justify-center pt-0.5">
+            <span
+              className="
+                inline-flex
+                items-center
+                gap-1.5
+                rounded-lg
+                border
+                border-emerald-500/35
+                bg-emerald-950/50
+                px-2.5
+                py-1
+                text-[10.5px]
+                sm:text-xs
+                font-bold
+                tracking-wider
+                uppercase
+                text-emerald-300
+                shadow-sm
+                backdrop-blur-md
+              "
+            >
+              <Check className="size-3 text-emerald-400 stroke-[2.5] shrink-0" />
+              <span>{statusText}</span>
+            </span>
+          </div>
+        )}
+
+        {/* Gêneros */}
+        {current.genres.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-1.5 pt-0.5 max-w-lg">
+            {current.genres.slice(0, 4).map((genre) => (
               <span
                 key={genre}
                 className="
-                  inline-flex
-                  items-center
-                  rounded-md
-                  bg-white/5
+                  rounded-lg
                   border
-                  border-purple-500/20
-                  px-2
+                  border-white/10
+                  bg-black/50
+                  px-2.5
                   py-0.5
                   text-[10px]
-                  sm:text-xs
-                  font-medium
+                  sm:text-[11px]
+                  font-semibold
+                  uppercase
+                  tracking-wider
                   text-zinc-300
-                  transition-colors
-                  hover:border-purple-500/50
+                  backdrop-blur-md
+                  shadow-xs
                 "
               >
                 {genreLabel(genre)}
               </span>
             ))}
           </div>
+        )}
 
-          {/* Sinopse */}
-          {current.synopsis && (
-            <p
-              className="
-                mt-2.5
-                max-w-xl
-                line-clamp-2
-                sm:line-clamp-3
-                text-xs
-                sm:text-sm
-                leading-relaxed
-                text-zinc-300/85
-                drop-shadow
-              "
-            >
-              {current.synopsis}
-            </p>
-          )}
+        {/* Controles de Ação: Botão Assistir compacto com fundo claro & Controle Detalhes discreto sem fundo sólido */}
+        <div className="mt-2 flex items-center justify-center gap-2.5 sm:gap-3 w-auto pt-1">
+          {/* Botão Assistir (compacto, fundo claro, texto escuro, cantos suaves e ícone discreto) */}
+          <Link
+            to="/watch/$id"
+            params={{ id: current.id }}
+            preload="intent"
+            className="
+              inline-flex
+              items-center
+              justify-center
+              gap-2
+              h-9
+              sm:h-9.5
+              px-4
+              sm:px-5
+              rounded-lg
+              sm:rounded-xl
+              bg-white
+              hover:bg-zinc-200
+              active:bg-zinc-300
+              text-zinc-950
+              font-semibold
+              text-xs
+              sm:text-sm
+              tracking-wide
+              shadow-sm
+              transition-all
+              duration-150
+              cursor-pointer
+              active:scale-[0.98]
+              select-none
+            "
+          >
+            <Play className="size-3.5 fill-zinc-950 text-zinc-950 shrink-0" />
+            <span>Assistir</span>
+          </Link>
 
-          {/* Botões de Ação */}
-          <div className="mt-4 flex flex-wrap items-center gap-2.5 sm:mt-5 sm:gap-3">
-            <Button
-              asChild
-              size="sm"
-              className="
-                h-9
-                sm:h-10
-                px-4
-                sm:px-5
-                rounded-xl
-                bg-white
-                text-zinc-950
-                font-semibold
-                hover:bg-purple-100
-                hover:shadow-[0_0_20px_rgba(168,85,247,0.4)]
-                transition-colors
-                duration-150
-                transform-none
-                hover:scale-100
-                active:scale-100
-              "
-            >
-              <Link
-                to="/watch/$id"
-                params={{ id: current.id }}
-                preload="intent"
-              >
-                <Play className="size-3.5 sm:size-4 fill-current" />
-                Assistir
-              </Link>
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => toggleList(current)}
-              className="
-                h-9
-                sm:h-10
-                px-3.5
-                sm:px-4
-                rounded-xl
-                bg-zinc-900/80
-                border-purple-500/30
-                hover:border-purple-500/60
-                hover:bg-zinc-800
-                hover:shadow-[0_0_14px_rgba(168,85,247,0.2)]
-                text-white
-                transition-all
-                hover:scale-[1.02]
-                active:scale-[0.98]
-              "
-            >
-              {inList ? (
-                <BookmarkCheck className="size-3.5 sm:size-4 text-purple-400" />
-              ) : (
-                <Bookmark className="size-3.5 sm:size-4" />
-              )}
-
-              <span>
-                {inList ? "Na lista" : "Minha Lista"}
-              </span>
-            </Button>
-
-            <Button
-              asChild
-              variant="ghost"
-              size="sm"
-              className="
-                h-9
-                sm:h-10
-                px-3.5
-                sm:px-4
-                rounded-xl
-                text-zinc-300
-                hover:text-white
-                hover:bg-white/5
-                transition-all
-              "
-            >
-              <Link
-                to="/anime/$id"
-                params={{ id: current.id }}
-              >
-                Detalhes
-              </Link>
-            </Button>
-          </div>
+          {/* Controle Detalhes (sem fundo sólido, texto claro, ícone discreto e pequena seta à direita) */}
+          <Link
+            to="/anime/$id"
+            params={{ id: current.id }}
+            className="
+              group
+              inline-flex
+              items-center
+              justify-center
+              gap-1.5
+              h-9
+              sm:h-9.5
+              px-3
+              sm:px-3.5
+              rounded-lg
+              sm:rounded-xl
+              bg-transparent
+              hover:bg-white/10
+              active:bg-white/15
+              text-zinc-200
+              hover:text-white
+              font-medium
+              text-xs
+              sm:text-sm
+              transition-all
+              duration-150
+              cursor-pointer
+              active:scale-[0.98]
+              select-none
+            "
+          >
+            <Info className="size-3.5 text-zinc-400 group-hover:text-zinc-200 shrink-0" />
+            <span>Detalhes</span>
+            <ChevronRight className="size-3.5 text-zinc-400 group-hover:text-white group-hover:translate-x-0.5 transition-transform shrink-0" />
+          </Link>
         </div>
 
-        {/* Indicadores de slides */}
+        {/* Indicadores de Slides com Navegação Funcional */}
         {animes.length > 1 && (
           <div
-            className="
-              mt-4
-              flex
-              items-center
-              gap-2
-            "
-            aria-label="Destaques"
+            className="mt-3 flex items-center justify-center gap-2 pt-1 pb-0.5"
+            aria-label="Indicadores de destaques"
           >
             {animes.map((item, i) => (
               <button
                 key={item.id}
                 type="button"
                 aria-label={`Mostrar destaque ${i + 1}`}
-                onClick={() => {
-                  if (i === index) return;
-                  const nextBackdrop =
-                    item.banner ||
-                    item.cover ||
-                    "";
-                  setVisibleBackdrop(nextBackdrop);
-                  setIndex(i);
-                }}
+                onClick={() => setIndex(i)}
                 className={`
                   h-1.5
                   rounded-full
                   transition-all
                   duration-300
+                  cursor-pointer
                   ${
                     i === index
-                      ? "w-6 bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.85)]"
-                      : "w-1.5 bg-zinc-700 hover:bg-zinc-500"
+                      ? "w-7 bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.9)]"
+                      : "w-1.5 bg-zinc-700/80 hover:bg-zinc-500"
                   }
                 `}
               />
