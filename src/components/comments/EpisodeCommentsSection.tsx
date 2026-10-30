@@ -367,6 +367,9 @@ export function EpisodeCommentsSection({
   const [sortBy, setSortBy] =
     useState<SortBy>("highlight");
 
+  const [sortDropdownOpen, setSortDropdownOpen] =
+    useState(false);
+
   /* ====================================================== */
   /* MODERAÇÃO                                               */
   /* ====================================================== */
@@ -493,10 +496,17 @@ export function EpisodeCommentsSection({
     }
 
     const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
     document.body.style.overflow = "hidden";
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
     };
   }, [isAnyModalOpen]);
 
@@ -504,6 +514,7 @@ export function EpisodeCommentsSection({
   useEffect(() => {
     return () => {
       document.body.style.overflow = "";
+      document.body.style.paddingRight = "";
     };
   }, []);
 
@@ -1686,6 +1697,8 @@ export function EpisodeCommentsSection({
         );
 
         setMenuOpenId(null);
+        setUserMenuOpen(false);
+        setSortDropdownOpen(false);
 
         showModerationSuccess(
           "Comentário editado com sucesso.",
@@ -1790,6 +1803,8 @@ export function EpisodeCommentsSection({
           null,
         );
         setMenuOpenId(null);
+        setUserMenuOpen(false);
+        setSortDropdownOpen(false);
       } catch (err) {
         console.error(err);
 
@@ -1914,6 +1929,8 @@ export function EpisodeCommentsSection({
         }
 
         setMenuOpenId(null);
+        setUserMenuOpen(false);
+        setSortDropdownOpen(false);
         setSpamComment(null);
         setReportingComment(null);
         setReportReason("");
@@ -3077,11 +3094,14 @@ export function EpisodeCommentsSection({
 
       {editingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5 backdrop-blur-sm animate-in fade-in duration-150 overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelEdit();
             }
+          }}
+          onTouchMove={(e) => {
+            if (e.target === e.currentTarget) e.preventDefault();
           }}
         >
 
@@ -3089,14 +3109,14 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-dialog-title"
-            className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl"
+            className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#17171a]/95 backdrop-blur-xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 transition-all"
           >
 
             <div className="flex items-start gap-3">
 
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated">
 
-                <Edit3 className="size-5" />
+                <Edit3 className="size-5 text-[#c084fc]" />
 
               </div>
 
@@ -3121,7 +3141,7 @@ export function EpisodeCommentsSection({
                 disabled={
                   editSaving
                 }
-                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg cursor-pointer"
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
                 <X className="size-5" />
@@ -3143,7 +3163,7 @@ export function EpisodeCommentsSection({
               disabled={
                 editSaving
               }
-              className="mt-5 w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-white/15 disabled:opacity-60"
+              className="mt-5 w-full resize-none rounded-lg border border-white/5 bg-bg px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle focus:border-[#a855f7]/40 transition-colors disabled:opacity-60"
             />
 
             <div className="mt-2 flex justify-end">
@@ -3154,7 +3174,7 @@ export function EpisodeCommentsSection({
 
             </div>
 
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted select-none">
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-muted hover:text-fg transition-colors select-none">
 
               <input
                 type="checkbox"
@@ -3171,7 +3191,7 @@ export function EpisodeCommentsSection({
                 disabled={
                   editSaving
                 }
-                className="size-4 accent-current"
+                className="size-4 accent-purple-600 transition-transform"
               />
 
               <span>
@@ -3195,6 +3215,7 @@ export function EpisodeCommentsSection({
                 disabled={
                   editSaving
                 }
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -3208,6 +3229,7 @@ export function EpisodeCommentsSection({
                   !editText.trim() ||
                   editSaving
                 }
+                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50"
               >
                 <Edit3 className="size-4" />
 
@@ -3229,11 +3251,14 @@ export function EpisodeCommentsSection({
 
       {deletingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5 backdrop-blur-sm animate-in fade-in duration-150 overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelDelete();
             }
+          }}
+          onTouchMove={(e) => {
+            if (e.target === e.currentTarget) e.preventDefault();
           }}
         >
 
@@ -3241,12 +3266,12 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-dialog-title"
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a]/95 backdrop-blur-xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 transition-all text-left"
           >
 
             <div className="flex items-start gap-3">
 
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-950/70 border border-red-500/40 text-red-300">
 
                 <Trash2 className="size-5" />
 
@@ -3273,7 +3298,7 @@ export function EpisodeCommentsSection({
                 disabled={
                   deleteSending
                 }
-                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg cursor-pointer"
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
               >
                 <X className="size-5" />
@@ -3314,6 +3339,7 @@ export function EpisodeCommentsSection({
                 disabled={
                   deleteSending
                 }
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -3326,6 +3352,7 @@ export function EpisodeCommentsSection({
                 disabled={
                   deleteSending
                 }
+                className="rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(239,68,68,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50"
               >
                 <Trash2 className="size-4" />
 
@@ -3347,11 +3374,14 @@ export function EpisodeCommentsSection({
 
       {reportingComment && (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5 backdrop-blur-sm animate-in fade-in duration-150 overscroll-contain"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelReport();
             }
+          }}
+          onTouchMove={(e) => {
+            if (e.target === e.currentTarget) e.preventDefault();
           }}
         >
 
@@ -3359,14 +3389,14 @@ export function EpisodeCommentsSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="report-dialog-title"
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl"
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a]/95 backdrop-blur-xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 transition-all text-left"
           >
 
             <div className="flex items-start gap-3">
 
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated">
 
-                <Flag className="size-5" />
+                <Flag className="size-5 text-[#c084fc]" />
 
               </div>
 
@@ -3388,7 +3418,7 @@ export function EpisodeCommentsSection({
               <button
                 type="button"
                 onClick={handleCancelReport}
-                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg cursor-pointer"
+                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
                 aria-label="Fechar"
                 disabled={
                   reportSending
@@ -3433,11 +3463,11 @@ export function EpisodeCommentsSection({
                       item.value
                     }
                     className={cn(
-                      "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 text-sm transition-colors",
+                      "flex cursor-pointer items-center gap-3 rounded-xl border p-2.5 sm:p-3 text-xs sm:text-sm transition-all duration-150 select-none active:scale-[0.99]",
                       reportReason ===
                         item.value
-                        ? "border-white/20 bg-elevated text-fg"
-                        : "border-white/5 bg-surface text-muted hover:border-white/10 hover:text-fg",
+                        ? "border-[#a855f7]/60 bg-[#a855f7]/15 text-white ring-1 ring-[#a855f7]/40 shadow-[0_0_12px_rgba(168,85,247,0.18)]"
+                        : "border-white/10 bg-white/[0.03] text-white/70 hover:border-[#a855f7]/30 hover:bg-white/[0.07] hover:text-white",
                     )}
                   >
 
@@ -3456,7 +3486,7 @@ export function EpisodeCommentsSection({
                           item.value,
                         )
                       }
-                      className="size-4 accent-current"
+                      className="size-4 accent-purple-600 transition-transform"
                     />
 
                     <span>
@@ -3484,6 +3514,7 @@ export function EpisodeCommentsSection({
                 disabled={
                   reportSending
                 }
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs sm:text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -3509,6 +3540,7 @@ export function EpisodeCommentsSection({
                     moderatingId,
                   )
                 }
+                className="rounded-xl bg-[#a855f7] hover:bg-[#9333ea] active:scale-95 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50"
               >
                 <Flag className="size-4" />
 
@@ -3863,7 +3895,7 @@ function CommentCard({
               />
               <div
                 role="menu"
-                className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/10 bg-[#16161c]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right transition-all"
               >
                 {canEdit && (
                   <>
@@ -3875,7 +3907,7 @@ function CommentCard({
                         onEdit();
                       }}
                       disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
                     >
                       <Edit3 className="size-3.5 shrink-0 text-[#c084fc]" />
                       <span>Editar comentário</span>
@@ -3889,7 +3921,7 @@ function CommentCard({
                         onDelete();
                       }}
                       disabled={moderating}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 transition-colors disabled:opacity-50 cursor-pointer"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
                     >
                       <Trash2 className="size-3.5 shrink-0 text-red-400" />
                       <span>Excluir comentário</span>
@@ -3906,7 +3938,7 @@ function CommentCard({
                       onMarkSpoiler();
                     }}
                     disabled={comment.isSpoiler || moderating}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-amber-300 hover:bg-amber-500/15 hover:text-amber-200 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
                   >
                     <AlertTriangle className="size-3.5 shrink-0 text-amber-400" />
                     <span>
@@ -3924,7 +3956,7 @@ function CommentCard({
                       onReport();
                     }}
                     disabled={moderating}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white active:scale-[0.98] transition-all duration-150 disabled:opacity-50 cursor-pointer"
                   >
                     <Flag className="size-3.5 shrink-0 text-purple-400" />
                     <span>Denunciar comentário</span>

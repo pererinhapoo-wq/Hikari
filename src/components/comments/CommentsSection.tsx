@@ -157,15 +157,6 @@ export function CommentsSection({
 
   const [gifOpen, setGifOpen] = useState(false);
 
-  useEffect(() => {
-    if (!gifOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [gifOpen]);
-
   const [gifSearch, setGifSearch] = useState("");
   const [gifResults, setGifResults] = useState<
     Array<{
@@ -235,19 +226,7 @@ export function CommentsSection({
     };
   }, [authUser?.id, getProfileFn]);
 
-  useEffect(() => {
-    if (!userMenuOpen && !loginOpen && !commentsLoginOpen && !sortDropdownOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setUserMenuOpen(false);
-        setLoginOpen(false);
-        setCommentsLoginOpen(false);
-        setSortDropdownOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [userMenuOpen, loginOpen, commentsLoginOpen, sortDropdownOpen]);
+
 
   const effectiveUserId = authUser?.id ?? currentUserId;
   const effectiveUserEmail = authUser?.primaryEmail ?? currentUserEmail;
@@ -357,6 +336,116 @@ export function CommentsSection({
 
   const [deletingComment, setDeletingComment] = useState<Comment | null>(null);
   const [deleteSending, setDeleteSending] = useState(false);
+
+  // Controla o bloqueio e restauração da rolagem da página quando qualquer janela estiver aberta
+  const isAnyModalOpen = Boolean(
+    gifOpen ||
+    editingComment ||
+    deletingComment ||
+    reportingComment ||
+    spamComment,
+  );
+
+  useEffect(() => {
+    if (!isAnyModalOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+    };
+  }, [isAnyModalOpen]);
+
+  // Garante a restauração da rolagem caso o componente seja desmontado
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.paddingRight = "";
+    };
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    if (!editSaving) {
+      setEditingComment(null);
+      setEditText("");
+      setEditIsSpoiler(false);
+      setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
+    }
+  }, [editSaving]);
+
+  const handleCancelDelete = useCallback(() => {
+    if (!deleteSending) {
+      setDeletingComment(null);
+      setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
+    }
+  }, [deleteSending]);
+
+  const handleCancelReport = useCallback(() => {
+    if (!reportSending) {
+      setReportingComment(null);
+      setReportReason("");
+      setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
+    }
+  }, [reportSending]);
+
+  // Tecla Escape para fechar menus, submenus e janelas de ações
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (!editSaving && editingComment) {
+          handleCancelEdit();
+        }
+        if (!deleteSending && deletingComment) {
+          handleCancelDelete();
+        }
+        if (!reportSending && reportingComment) {
+          handleCancelReport();
+        }
+        if (gifOpen) {
+          setGifOpen(false);
+        }
+        setMenuOpenId(null);
+        setUserMenuOpen(false);
+        setLoginOpen(false);
+        setCommentsLoginOpen(false);
+        setSortDropdownOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    userMenuOpen,
+    loginOpen,
+    commentsLoginOpen,
+    sortDropdownOpen,
+    menuOpenId,
+    editingComment,
+    editSaving,
+    deletingComment,
+    deleteSending,
+    reportingComment,
+    reportSending,
+    gifOpen,
+    handleCancelEdit,
+    handleCancelDelete,
+    handleCancelReport,
+  ]);
 
   /* ====================================================== */
   /* LIMPAR PREVIEW QUANDO A IMAGEM MUDA                     */
@@ -1152,6 +1241,9 @@ export function CommentsSection({
       setEditingComment(null);
       setEditText("");
       setEditIsSpoiler(false);
+      setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
       showModerationSuccess("Comentário editado com sucesso.");
     } catch (err) {
       console.error(err);
@@ -1231,6 +1323,9 @@ export function CommentsSection({
       }
 
       setDeletingComment(null);
+      setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
     } catch (err) {
       console.error(err);
       setError(
@@ -1318,6 +1413,8 @@ export function CommentsSection({
       }
 
       setMenuOpenId(null);
+      setUserMenuOpen(false);
+      setSortDropdownOpen(false);
       setSpamComment(null);
       setReportingComment(null);
       setReportReason("");
@@ -2437,14 +2534,31 @@ export function CommentsSection({
 
       {/* Modal de Edição */}
       {editingComment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-purple-500/30 bg-[#121020] p-4 shadow-2xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 overscroll-contain"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCancelEdit();
+            }
+          }}
+          onTouchMove={(e) => {
+            if (e.target === e.currentTarget) e.preventDefault();
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-dialog-title"
+            className="w-full max-w-md rounded-2xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 transition-all"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-purple-500/20">
-              <h3 className="text-sm font-bold text-white">Editar comentário</h3>
+              <h3 id="edit-dialog-title" className="text-sm font-bold text-white">Editar comentário</h3>
               <button
                 type="button"
-                onClick={() => setEditingComment(null)}
-                className="text-white/50 hover:text-white cursor-pointer"
+                onClick={handleCancelEdit}
+                disabled={editSaving}
+                className="flex size-8 items-center justify-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                aria-label="Fechar"
               >
                 <X className="size-4" />
               </button>
@@ -2455,16 +2569,18 @@ export function CommentsSection({
               onChange={(e) => setEditText(e.target.value)}
               rows={3}
               maxLength={2000}
-              className="mt-3 w-full rounded-xl border border-white/10 bg-[#0c0a18] p-3 text-xs sm:text-sm text-white outline-none focus:border-purple-500"
+              disabled={editSaving}
+              className="mt-3 w-full rounded-xl border border-white/10 bg-[#0c0a18] p-3 text-xs sm:text-sm text-white outline-none focus:border-purple-500 transition-colors"
             />
 
             <div className="mt-3 flex items-center justify-between">
-              <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/70 hover:text-white transition-colors select-none">
                 <input
                   type="checkbox"
                   checked={editIsSpoiler}
                   onChange={(e) => setEditIsSpoiler(e.target.checked)}
-                  className="size-3.5 rounded accent-purple-600"
+                  disabled={editSaving}
+                  className="size-3.5 rounded accent-purple-600 transition-transform"
                 />
                 <span>Spoiler</span>
               </label>
@@ -2474,8 +2590,9 @@ export function CommentsSection({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setEditingComment(null)}
-                  className="rounded-xl text-xs"
+                  onClick={handleCancelEdit}
+                  disabled={editSaving}
+                  className="rounded-xl border border-white/15 bg-white/5 text-xs text-white/80 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
                 >
                   Cancelar
                 </Button>
@@ -2484,7 +2601,7 @@ export function CommentsSection({
                   size="sm"
                   onClick={() => void handleEdit()}
                   disabled={!editText.trim() || editSaving}
-                  className="rounded-xl bg-purple-600 text-xs font-semibold text-white"
+                  className="rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-xs font-semibold text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50"
                 >
                   {editSaving ? "Salvando..." : "Salvar"}
                 </Button>
@@ -2495,61 +2612,99 @@ export function CommentsSection({
       )}
 
       {/* Modal de Exclusão Padronizado */}
-      <Dialog
-        open={Boolean(deletingComment)}
-        onOpenChange={(open) => {
-          if (!open && !deleteSending) setDeletingComment(null);
-        }}
-      >
-        <DialogContent className="border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl sm:max-w-md text-left shadow-2xl">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-950/70 border border-red-500/40 text-red-300">
-              <Trash2 className="size-5" />
+      {deletingComment && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 overscroll-contain"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCancelDelete();
+            }
+          }}
+          onTouchMove={(e) => {
+            if (e.target === e.currentTarget) e.preventDefault();
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+            className="w-full max-w-md rounded-2xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 transition-all text-left"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-950/70 border border-red-500/40 text-red-300">
+                <Trash2 className="size-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 id="delete-dialog-title" className="text-base font-bold text-white">
+                  Excluir comentário?
+                </h3>
+                <p className="mt-1 text-xs text-zinc-300">
+                  Esta ação é permanente e removerá o comentário e todas as respostas associadas.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelDelete}
+                disabled={deleteSending}
+                className="flex size-8 items-center justify-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                aria-label="Fechar"
+              >
+                <X className="size-4" />
+              </button>
             </div>
-            <div>
-              <DialogTitle className="text-base font-bold text-white">
-                Excluir comentário?
-              </DialogTitle>
-              <DialogDescription className="mt-1 text-xs text-zinc-300">
-                Esta ação é permanente e removerá o comentário e todas as respostas associadas.
-              </DialogDescription>
-            </div>
-          </div>
 
-          <div className="mt-5 flex gap-2 justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setDeletingComment(null)}
-              disabled={deleteSending}
-              className="rounded-xl border border-white/10 bg-white/5 text-xs text-white/80 hover:bg-white/10 hover:text-white transition-all cursor-pointer"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => void handleDelete()}
-              disabled={deleteSending}
-              className="rounded-xl bg-red-600 hover:bg-red-500 text-xs font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-all cursor-pointer"
-            >
-              {deleteSending ? "Excluindo..." : "Excluir"}
-            </Button>
+            <div className="mt-5 flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCancelDelete}
+                disabled={deleteSending}
+                className="rounded-xl border border-white/15 bg-white/5 text-xs text-white/80 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleDelete()}
+                disabled={deleteSending}
+                className="rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-xs font-semibold text-white shadow-[0_0_15px_rgba(239,68,68,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50"
+              >
+                {deleteSending ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
 
       {/* Modal de Denúncia */}
       {reportingComment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-purple-500/30 bg-[#121020] p-4 shadow-2xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 overscroll-contain"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCancelReport();
+            }
+          }}
+          onTouchMove={(e) => {
+            if (e.target === e.currentTarget) e.preventDefault();
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="report-dialog-title"
+            className="w-full max-w-sm rounded-2xl border border-purple-500/30 bg-[#121020]/95 backdrop-blur-xl p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 transition-all text-left"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-purple-500/20">
-              <h3 className="text-sm font-bold text-white">Denunciar comentário</h3>
+              <h3 id="report-dialog-title" className="text-sm font-bold text-white">Denunciar comentário</h3>
               <button
                 type="button"
-                onClick={() => setReportingComment(null)}
-                className="text-white/50 hover:text-white cursor-pointer"
+                onClick={handleCancelReport}
+                disabled={reportSending}
+                className="flex size-8 items-center justify-center rounded-lg text-white/50 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                aria-label="Fechar"
               >
                 <X className="size-4" />
               </button>
@@ -2570,7 +2725,12 @@ export function CommentsSection({
               ].map((r) => (
                 <label
                   key={r.id}
-                  className="flex items-center gap-2 p-2 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer"
+                  className={cn(
+                    "flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all duration-150 active:scale-[0.99] select-none",
+                    reportReason === r.id
+                      ? "border-purple-500/60 bg-purple-500/15 text-white ring-1 ring-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.18)]"
+                      : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.08] hover:border-purple-500/30 hover:text-white"
+                  )}
                 >
                   <input
                     type="radio"
@@ -2578,9 +2738,9 @@ export function CommentsSection({
                     value={r.id}
                     checked={reportReason === r.id}
                     onChange={() => setReportReason(r.id as ReportReason)}
-                    className="accent-purple-600"
+                    className="size-3.5 accent-purple-600 transition-transform"
                   />
-                  <span>{r.label}</span>
+                  <span className="text-xs font-medium">{r.label}</span>
                 </label>
               ))}
             </div>
@@ -2590,8 +2750,9 @@ export function CommentsSection({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setReportingComment(null)}
-                className="rounded-xl text-xs"
+                onClick={handleCancelReport}
+                disabled={reportSending}
+                className="rounded-xl border border-white/15 bg-white/5 text-xs text-white/80 hover:bg-white/10 hover:text-white active:scale-95 transition-all duration-150 cursor-pointer"
               >
                 Cancelar
               </Button>
@@ -2608,7 +2769,7 @@ export function CommentsSection({
                   )
                 }
                 disabled={!reportReason || reportSending}
-                className="rounded-xl bg-purple-600 text-xs font-semibold text-white"
+                className="rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-xs font-semibold text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] transition-all duration-150 cursor-pointer disabled:opacity-50"
               >
                 {reportSending ? "Enviando..." : "Enviar denúncia"}
               </Button>
@@ -2773,7 +2934,7 @@ export function CommentCard({
           <button
             type="button"
             onClick={onToggleMenu}
-            className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="flex size-7 items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/10 active:scale-95 transition-all duration-150 cursor-pointer"
             aria-label="Opções do comentário"
           >
             <MoreVertical className="size-4" />
@@ -2782,7 +2943,7 @@ export function CommentCard({
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-30" onClick={onToggleMenu} />
-              <div className="absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-white/10 bg-[#161324] p-1 shadow-2xl backdrop-blur-md">
+              <div className="absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-white/10 bg-[#161324]/95 backdrop-blur-xl p-1 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right transition-all">
                 {canEdit && (
                   <>
                     <button
@@ -2791,7 +2952,7 @@ export function CommentCard({
                         onToggleMenu();
                         onEdit();
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 cursor-pointer"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-purple-500/15 active:scale-[0.98] transition-all duration-150 cursor-pointer"
                     >
                       <Edit3 className="size-3.5 text-purple-400" />
                       <span>Editar</span>
@@ -2802,7 +2963,7 @@ export function CommentCard({
                         onToggleMenu();
                         onDelete();
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/10 cursor-pointer"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/15 active:scale-[0.98] transition-all duration-150 cursor-pointer"
                     >
                       <Trash2 className="size-3.5" />
                       <span>Excluir</span>
@@ -2818,7 +2979,7 @@ export function CommentCard({
                       onMarkSpoiler();
                     }}
                     disabled={comment.isSpoiler || moderating}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 cursor-pointer disabled:opacity-50"
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-500/15 active:scale-[0.98] transition-all duration-150 cursor-pointer disabled:opacity-50"
                   >
                     <EyeOff className="size-3.5 text-amber-400" />
                     <span>Marcar como spoiler</span>
@@ -2834,7 +2995,7 @@ export function CommentCard({
                         onSpam();
                       }}
                       disabled={moderating}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 cursor-pointer"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10 active:scale-[0.98] transition-all duration-150 cursor-pointer"
                     >
                       <Ban className="size-3.5 text-orange-400" />
                       <span>Sinalizar spam</span>
@@ -2846,7 +3007,7 @@ export function CommentCard({
                         onReport();
                       }}
                       disabled={moderating}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/10 cursor-pointer"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/15 active:scale-[0.98] transition-all duration-150 cursor-pointer"
                     >
                       <Flag className="size-3.5" />
                       <span>Denunciar</span>

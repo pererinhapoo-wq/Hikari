@@ -39,6 +39,7 @@ import { Route as AdultRecentRouteImport } from './routes/adult.recent'
 import { Route as AdultTagsRouteImport } from './routes/adult.tags'
 import { Route as AdultNewsRouteImport } from './routes/adult_.news'
 import { Route as AnimeIdRouteImport } from './routes/anime.$id'
+import { Route as ApiCommentsRouteImport } from './routes/api/comments'
 import { Route as BrowseSectionRouteImport } from './routes/browse.$section'
 import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
@@ -46,6 +47,9 @@ import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiCommentsEditRouteImport } from './routes/api/comments.edit'
+import { Route as ApiCommentsLikeRouteImport } from './routes/api/comments.like'
+import { Route as ApiCommentsModerationRouteImport } from './routes/api/comments.moderation'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -197,6 +201,11 @@ const AnimeIdRoute = AnimeIdRouteImport.update({
   path: '/anime/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCommentsRoute = ApiCommentsRouteImport.update({
+  id: '/api/comments',
+  path: '/api/comments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrowseSectionRoute = BrowseSectionRouteImport.update({
   id: '/browse/$section',
   path: '/browse/$section',
@@ -232,6 +241,21 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCommentsEditRoute = ApiCommentsEditRouteImport.update({
+  id: '/edit',
+  path: '/edit',
+  getParentRoute: () => ApiCommentsRoute,
+} as any)
+const ApiCommentsLikeRoute = ApiCommentsLikeRouteImport.update({
+  id: '/like',
+  path: '/like',
+  getParentRoute: () => ApiCommentsRoute,
+} as any)
+const ApiCommentsModerationRoute = ApiCommentsModerationRouteImport.update({
+  id: '/moderation',
+  path: '/moderation',
+  getParentRoute: () => ApiCommentsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -262,6 +286,7 @@ export interface FileRoutesByFullPath {
   '/adult/tags': typeof AdultTagsRoute
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
+  '/api/comments': typeof ApiCommentsRouteWithChildren
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -271,6 +296,9 @@ export interface FileRoutesByFullPath {
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/comments/edit': typeof ApiCommentsEditRoute
+  '/api/comments/like': typeof ApiCommentsLikeRoute
+  '/api/comments/moderation': typeof ApiCommentsModerationRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -299,6 +327,7 @@ export interface FileRoutesByTo {
   '/adult/tags': typeof AdultTagsRoute
   '/adult/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
+  '/api/comments': typeof ApiCommentsRouteWithChildren
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -308,6 +337,9 @@ export interface FileRoutesByTo {
   '/adult': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/comments/edit': typeof ApiCommentsEditRoute
+  '/api/comments/like': typeof ApiCommentsLikeRoute
+  '/api/comments/moderation': typeof ApiCommentsModerationRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -339,6 +371,7 @@ export interface FileRoutesById {
   '/adult/tags': typeof AdultTagsRoute
   '/adult_/news': typeof AdultNewsRoute
   '/anime/$id': typeof AnimeIdRoute
+  '/api/comments': typeof ApiCommentsRouteWithChildren
   '/browse/$section': typeof BrowseSectionRoute
   '/news_/$id': typeof NewsIdRoute
   '/news_/search': typeof NewsSearchRoute
@@ -348,6 +381,9 @@ export interface FileRoutesById {
   '/adult/': typeof AdultIndexRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/comments/edit': typeof ApiCommentsEditRoute
+  '/api/comments/like': typeof ApiCommentsLikeRoute
+  '/api/comments/moderation': typeof ApiCommentsModerationRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -380,6 +416,7 @@ export interface FileRouteTypes {
     | '/adult/tags'
     | '/adult/news'
     | '/anime/$id'
+    | '/api/comments'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -389,6 +426,9 @@ export interface FileRouteTypes {
     | '/adult/'
     | '/api/admin/comment-reports'
     | '/api/auth/$'
+    | '/api/comments/edit'
+    | '/api/comments/like'
+    | '/api/comments/moderation'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -417,6 +457,7 @@ export interface FileRouteTypes {
     | '/adult/tags'
     | '/adult/news'
     | '/anime/$id'
+    | '/api/comments'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -426,6 +467,9 @@ export interface FileRouteTypes {
     | '/adult'
     | '/api/admin/comment-reports'
     | '/api/auth/$'
+    | '/api/comments/edit'
+    | '/api/comments/like'
+    | '/api/comments/moderation'
   id:
     | '__root__'
     | '/'
@@ -456,6 +500,7 @@ export interface FileRouteTypes {
     | '/adult/tags'
     | '/adult_/news'
     | '/anime/$id'
+    | '/api/comments'
     | '/browse/$section'
     | '/news_/$id'
     | '/news_/search'
@@ -465,6 +510,9 @@ export interface FileRouteTypes {
     | '/adult/'
     | '/api/admin/comment-reports'
     | '/api/auth/$'
+    | '/api/comments/edit'
+    | '/api/comments/like'
+    | '/api/comments/moderation'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -490,6 +538,7 @@ export interface RootRouteChildren {
   SettingsSecurityRoute: typeof SettingsSecurityRoute
   AdultNewsRoute: typeof AdultNewsRoute
   AnimeIdRoute: typeof AnimeIdRoute
+  ApiCommentsRoute: typeof ApiCommentsRouteWithChildren
   BrowseSectionRoute: typeof BrowseSectionRoute
   NewsIdRoute: typeof NewsIdRoute
   NewsSearchRoute: typeof NewsSearchRoute
@@ -711,6 +760,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AnimeIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/comments': {
+      id: '/api/comments'
+      path: '/api/comments'
+      fullPath: '/api/comments'
+      preLoaderRoute: typeof ApiCommentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/browse/$section': {
       id: '/browse/$section'
       path: '/browse/$section'
@@ -760,6 +816,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/comments/edit': {
+      id: '/api/comments/edit'
+      path: '/edit'
+      fullPath: '/api/comments/edit'
+      preLoaderRoute: typeof ApiCommentsEditRouteImport
+      parentRoute: typeof ApiCommentsRoute
+    }
+    '/api/comments/like': {
+      id: '/api/comments/like'
+      path: '/like'
+      fullPath: '/api/comments/like'
+      preLoaderRoute: typeof ApiCommentsLikeRouteImport
+      parentRoute: typeof ApiCommentsRoute
+    }
+    '/api/comments/moderation': {
+      id: '/api/comments/moderation'
+      path: '/moderation'
+      fullPath: '/api/comments/moderation'
+      preLoaderRoute: typeof ApiCommentsModerationRouteImport
+      parentRoute: typeof ApiCommentsRoute
+    }
   }
 }
 
@@ -795,6 +872,22 @@ const AdultRouteChildren: AdultRouteChildren = {
 
 const AdultRouteWithChildren = AdultRoute._addFileChildren(AdultRouteChildren)
 
+interface ApiCommentsRouteChildren {
+  ApiCommentsEditRoute: typeof ApiCommentsEditRoute
+  ApiCommentsLikeRoute: typeof ApiCommentsLikeRoute
+  ApiCommentsModerationRoute: typeof ApiCommentsModerationRoute
+}
+
+const ApiCommentsRouteChildren: ApiCommentsRouteChildren = {
+  ApiCommentsEditRoute: ApiCommentsEditRoute,
+  ApiCommentsLikeRoute: ApiCommentsLikeRoute,
+  ApiCommentsModerationRoute: ApiCommentsModerationRoute,
+}
+
+const ApiCommentsRouteWithChildren = ApiCommentsRoute._addFileChildren(
+  ApiCommentsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountRoute: AccountRoute,
@@ -818,6 +911,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsSecurityRoute: SettingsSecurityRoute,
   AdultNewsRoute: AdultNewsRoute,
   AnimeIdRoute: AnimeIdRoute,
+  ApiCommentsRoute: ApiCommentsRouteWithChildren,
   BrowseSectionRoute: BrowseSectionRoute,
   NewsIdRoute: NewsIdRoute,
   NewsSearchRoute: NewsSearchRoute,
