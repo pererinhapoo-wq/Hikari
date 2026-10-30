@@ -144,14 +144,27 @@ const LOGO_DEFINITIONS: Record<
     malIds: [20, 1735],
     titlePatterns: [/\bnaruto\b/i],
   },
+  "dragon-ball-super": {
+    src: "/assets/anime-logos/dragon-ball-super.png",
+    alt: "Dragon Ball Super",
+    sizeClasses:
+      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+    aspectRatioHint: "wide",
+    aniListIds: [206814, 21175, 133898, 101302, 206812],
+    malIds: [63367, 30694, 48903, 36946, 63368],
+    titlePatterns: [
+      /\bdragon\s*ball\s*super\b/i,
+      /ドラゴンボール超/,
+    ],
+  },
   "dragon-ball": {
     src: "/assets/anime-logos/dragon-ball-z.svg",
     alt: "Dragon Ball Z",
     sizeClasses:
       "max-h-13 sm:max-h-16 md:max-h-20 max-w-[240px] sm:max-w-[300px] md:max-w-[360px]",
     aspectRatioHint: "wide",
-    aniListIds: [813, 21175, 223],
-    malIds: [813, 30694, 223],
+    aniListIds: [813, 223],
+    malIds: [813, 223],
     titlePatterns: [/\bdragon\s*ball\b/i],
   },
   "fullmetal-alchemist": {
@@ -264,6 +277,61 @@ const LOGO_DEFINITIONS: Record<
       /東京リベンジャーズ/,
     ],
   },
+  "tougen-anki": {
+    src: "/assets/anime-logos/tougen-anki.png",
+    alt: "TOUGEN ANKI / 桃源暗鬼",
+    sizeClasses:
+      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+    aspectRatioHint: "wide",
+    aniListIds: [204650, 177474, 194835],
+    malIds: [63181, 58811, 61891],
+    titlePatterns: [
+      /\btougen\s*anki\b/i,
+      /桃源暗鬼/,
+    ],
+  },
+  "the-exiled-heavy-knight": {
+    src: "/assets/anime-logos/the-exiled-heavy-knight.png",
+    alt: "The Exiled Heavy Knight Knows How to Game the System / 追放された転生重騎士はゲーム知識で無双する",
+    sizeClasses:
+      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+    aspectRatioHint: "wide",
+    aniListIds: [180136],
+    malIds: [59741],
+    titlePatterns: [
+      /\b(?:the\s+)?exiled\s+heavy\s+knight\b/i,
+      /\btsuihou.*(?:tensei\s+)?juukishi\b/i,
+      /追放された転生重騎士/,
+    ],
+  },
+  "blue-box": {
+    src: "/assets/anime-logos/blue-box.png",
+    alt: "Blue Box Season 2 / Ao no Hako / アオのハコ",
+    sizeClasses:
+      "max-h-13 sm:max-h-17 md:max-h-21 max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
+    aspectRatioHint: "wide",
+    aniListIds: [189123, 170942],
+    malIds: [61323, 57181],
+    titlePatterns: [
+      /\bblue\s*box\b/i,
+      /\bao\s+no\s+hako\b/i,
+      /アオのハコ/,
+    ],
+  },
+  "even-the-student-council-has-its-holes": {
+    src: "/assets/anime-logos/even-the-student-council-has-its-holes.png",
+    alt: "Even the Student Council Has Its Holes / 生徒会にも穴はある！",
+    sizeClasses:
+      "max-h-15 sm:max-h-19 md:max-h-23 max-w-[210px] sm:max-w-[270px] md:max-w-[330px]",
+    aspectRatioHint: "balanced",
+    aniListIds: [191656, 179207],
+    malIds: [61578, 59276],
+    titlePatterns: [
+      /\b(?:even\s+the\s+)?student\s+council\s+has\s+its\s+holes\b/i,
+      /\bseitokai\s+ni\s*mo\s+ana\s+wa\s+aru\b/i,
+      /生徒会にも穴はある/,
+    ],
+  },
 };
 
 /**
@@ -289,8 +357,8 @@ function normalizeFranchiseTitle(title: string): string {
   clean = clean.replace(/\s*-\s*\d+.*STAGE.*$/gi, "");
   clean = clean.replace(/\s*(?:第[0-9一二三四五六七八九十]+期|シーズン[0-9]+|完結編).*$/g, "");
 
-  // Remove subtítulos de arcos após ":" preservando o nome da franquia principal
-  const colonIdx = clean.indexOf(":");
+  // Remove subtítulos de arcos após ":" ou "：" preservando o nome da franquia principal
+  const colonIdx = clean.search(/[:：]/);
   if (colonIdx > 3) {
     const prefix = clean.substring(0, colonIdx).trim();
     if (prefix.length >= 3) return prefix;
