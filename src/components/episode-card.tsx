@@ -1,6 +1,6 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Play, Film } from "lucide-react";
+import { Film } from "lucide-react";
 import { cleanEpisodeDisplay, type PublishedEpisode } from "@/lib/published-episodes";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { cn } from "@/lib/utils";
@@ -13,26 +13,6 @@ export const EpisodeCard = memo(function EpisodeCard({
   const [thumbFailed, setThumbFailed] = useState(false);
   const [failedOptimizedFor, setFailedOptimizedFor] = useState<string | null>(null);
   const [fallbackFailed, setFallbackFailed] = useState(false);
-  const [isSelecting, setIsSelecting] = useState(false);
-  const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (selectTimerRef.current) {
-        clearTimeout(selectTimerRef.current);
-      }
-    };
-  }, []);
-
-  const handleSelect = useCallback(() => {
-    setIsSelecting(true);
-    if (selectTimerRef.current) {
-      clearTimeout(selectTimerRef.current);
-    }
-    selectTimerRef.current = setTimeout(() => {
-      setIsSelecting(false);
-    }, 300);
-  }, []);
 
   const fallbackImage = episode.animeBanner || episode.animeCover;
   const fallbackAttrs = getResponsiveCoverAttrs(fallbackImage, "card-md");
@@ -55,6 +35,34 @@ export const EpisodeCard = memo(function EpisodeCard({
     episode.animeTitle,
   ]);
 
+  // Selos de áudio confiáveis (DUB em verde, LEG em vermelho) apenas quando houver dados verificáveis
+  const audioInfo = useMemo(() => {
+    const texts: string[] = [
+      episode.episodeTitle,
+      episode.seasonTitle,
+      episode.animeTitle,
+      ...(episode.animeAltTitles || []),
+      (episode as unknown as { audio?: string }).audio || "",
+      (episode as unknown as { audioVersion?: string }).audioVersion || "",
+    ].filter(Boolean);
+
+    const combined = texts.join(" ").toLowerCase();
+
+    // Detecção segura sem presumir idiomas ou criar falsos positivos
+    const dubRegex = /\b(dub|dublado|dublada|dublagem|pt-br\s*dub|dub\s*pt-br)\b/i;
+    const legRegex = /\b(leg|legendado|legendada|legendas|pt-br\s*leg|leg\s*pt-br|sub|subbed)\b/i;
+
+    return {
+      isDub: dubRegex.test(combined),
+      isLeg: legRegex.test(combined),
+    };
+  }, [
+    episode.episodeTitle,
+    episode.seasonTitle,
+    episode.animeTitle,
+    episode.animeAltTitles,
+  ]);
+
   return (
     <article className="group relative w-full">
       <Link
@@ -63,24 +71,21 @@ export const EpisodeCard = memo(function EpisodeCard({
         search={{ ep: episode.episodeId }}
         preload="intent"
         resetScroll={true}
-        onClick={handleSelect}
         className={cn(
           "block group select-none touch-manipulation [-webkit-tap-highlight-color:transparent] focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80 rounded-lg sm:rounded-xl",
-          "motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none",
-          isSelecting && "motion-safe:scale-[0.982]",
+          "motion-safe:transition-transform motion-safe:duration-150 motion-safe:active:scale-[0.985] motion-reduce:transition-none motion-reduce:transform-none",
         )}
       >
         {/* Contêiner da Imagem Horizontal (Proporção 16:9 de Vídeo) */}
         <div
           className={cn(
-            "relative aspect-video w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#0f0d1a] border border-purple-500/15 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [@media(hover:hover)]:group-hover:border-purple-400/50 [@media(hover:hover)]:group-hover:shadow-[0_8px_20px_-4px_rgba(168,85,247,0.25)]",
-            "group-active:border-purple-400/85 group-active:ring-1 group-active:ring-purple-400/45 group-active:shadow-[0_0_22px_rgba(168,85,247,0.38)]",
-            isSelecting &&
-              "!border-purple-400/85 ring-1 ring-purple-400/45 !shadow-[0_0_22px_rgba(168,85,247,0.4)]",
+            "relative aspect-video w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#0f0d1a] border border-purple-500/15 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none",
+            "[@media(hover:hover)]:group-hover:border-purple-400/50 [@media(hover:hover)]:group-hover:shadow-[0_8px_20px_-4px_rgba(168,85,247,0.25)]",
+            "group-active:border-purple-400/80",
           )}
         >
           {hasValidThumbnail ? (
-            /* Imagem real correspondente ao vídeo do episódio com dimensões intrínsecas e estável sem zoom */
+            /* Imagem real correspondente ao vídeo do episódio */
             <img
               src={episode.thumbnail}
               alt=""
@@ -112,7 +117,7 @@ export const EpisodeCard = memo(function EpisodeCard({
               className="size-full object-cover opacity-90 transition-opacity duration-200 motion-reduce:transition-none"
             />
           ) : (
-            /* Tratamento gracioso caso nenhuma imagem esteja acessível, sem deixar espaços quebrados */
+            /* Tratamento gracioso caso nenhuma imagem esteja acessível */
             <div className="relative flex size-full flex-col items-center justify-center bg-gradient-to-br from-[#17122a] via-[#0f0d19] to-[#09080e] p-2 sm:p-3 text-center">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.12)_0%,transparent_70%)]" />
               <div className="relative flex size-7 sm:size-9 items-center justify-center rounded-full bg-purple-950/80 border border-purple-500/30 text-purple-300 shadow-md">
@@ -124,14 +129,21 @@ export const EpisodeCard = memo(function EpisodeCard({
           {/* Sombra interna com gradiente escuro */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60" />
 
-          {/* Realce violeta breve ao tocar/clicar */}
-          <div
-            aria-hidden="true"
-            className={cn(
-              "pointer-events-none absolute inset-0 bg-purple-500/14 opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-active:opacity-100",
-              isSelecting && "opacity-100",
-            )}
-          />
+          {/* Selos de áudio discretos sobre a miniatura (DUB em verde, LEG em vermelho) */}
+          {(audioInfo.isDub || audioInfo.isLeg) && (
+            <div className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex items-center gap-1 z-10 select-none pointer-events-none">
+              {audioInfo.isDub && (
+                <span className="rounded bg-emerald-600/90 border border-emerald-400/30 px-1 sm:px-1.5 py-0.5 text-[7.5px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm">
+                  DUB
+                </span>
+              )}
+              {audioInfo.isLeg && (
+                <span className="rounded bg-rose-600/90 border border-rose-400/30 px-1 sm:px-1.5 py-0.5 text-[7.5px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm">
+                  LEG
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Duração se disponível */}
           {episode.duration ? (
@@ -139,23 +151,6 @@ export const EpisodeCard = memo(function EpisodeCard({
               {episode.duration}
             </div>
           ) : null}
-
-          {/* Overlay de Play ao passar o mouse ou selecionar */}
-          <div
-            className={cn(
-              "pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 motion-reduce:transition-none [@media(hover:hover)]:group-hover:opacity-100 group-active:opacity-100",
-              isSelecting && "opacity-100",
-            )}
-          >
-            <div
-              className={cn(
-                "flex size-8 sm:size-11 items-center justify-center rounded-full bg-purple-600/90 text-white shadow-[0_0_20px_rgba(168,85,247,0.7)] motion-safe:transition-transform motion-safe:duration-200 motion-reduce:transition-none [@media(hover:hover)]:motion-safe:group-hover:scale-105",
-                isSelecting && "bg-purple-500 motion-safe:scale-105",
-              )}
-            >
-              <Play className="size-3.5 sm:size-5 fill-current ml-0.5" />
-            </div>
-          </div>
         </div>
 
         {/* Informações de Texto: Título do Anime e Número do Episódio em linha separada */}
@@ -163,10 +158,7 @@ export const EpisodeCard = memo(function EpisodeCard({
           {/* Título do Anime abaixo da miniatura */}
           <h4
             title={episode.animeTitle}
-            className={cn(
-              "text-xs sm:text-[13px] md:text-sm font-semibold text-zinc-200 transition-colors motion-reduce:transition-none [@media(hover:hover)]:group-hover:text-purple-300 group-active:text-purple-200 truncate",
-              isSelecting && "text-purple-200",
-            )}
+            className="text-xs sm:text-[13px] md:text-sm font-semibold text-zinc-200 transition-colors motion-reduce:transition-none [@media(hover:hover)]:group-hover:text-purple-300 group-active:text-purple-200 truncate"
           >
             {episode.animeTitle}
           </h4>

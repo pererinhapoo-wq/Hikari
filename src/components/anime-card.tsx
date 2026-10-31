@@ -20,12 +20,14 @@ export const AnimeCard = memo(function AnimeCard({
   rank: _rank,
   showBookmark = true,
   loadImage = true,
+  showGenre = true,
 }: {
   anime: SlimAnime;
   size?: "sm" | "md" | "lg";
   rank?: number;
   showBookmark?: boolean;
   loadImage?: boolean;
+  showGenre?: boolean;
 }) {
   const [failedOptimizedFor, setFailedOptimizedFor] = useState<string | null>(
     null,
@@ -159,7 +161,7 @@ export const AnimeCard = memo(function AnimeCard({
           {/* Ano e tipo imediatamente abaixo do título, com espaçamento sutilmente aproximado e alinhamento linear uniforme */}
           <div className="mt-px sm:mt-0.5 flex items-center gap-1 text-[9.5px] sm:text-[10px] font-medium text-zinc-400 truncate">
             {anime.year && <span className="shrink-0">{anime.year}</span>}
-            {anime.year && (anime.format || anime.genres?.[0]) && (
+            {anime.year && (anime.format || (showGenre && anime.genres?.[0])) && (
               <span className="text-purple-400/80 font-bold select-none px-0.5">·</span>
             )}
             <span className="truncate">
@@ -173,7 +175,7 @@ export const AnimeCard = memo(function AnimeCard({
                       ? "ONA"
                       : anime.format === "SPECIAL"
                         ? "Especial"
-                        : anime.genres?.[0]
+                        : showGenre && anime.genres?.[0]
                           ? anime.genres[0]
                           : ""}
             </span>
