@@ -4,17 +4,13 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 
-import { useServerFn } from "@tanstack/react-start";
-
 import {
   Bell,
   Bookmark,
   CalendarDays,
-  ChevronDown,
   Clapperboard,
   House,
   Menu,
-  Newspaper,
   Search,
   Settings2,
   Tags,
@@ -27,7 +23,6 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { searchCatalog } from "@/lib/api";
-import { getProfile } from "@/lib/profile.functions";
 import {
   displayTitle,
   type SlimAnime,
@@ -98,13 +93,6 @@ const BASE_NAV = [
       p.startsWith("/browse/genres"),
   },
   {
-    to: "/news",
-    label: "Notícias",
-    icon: Newspaper,
-    match: (p: string) =>
-      p.startsWith("/news"),
-  },
-  {
     to: "/account",
     label: "Conta",
     icon: UserCircle,
@@ -113,13 +101,6 @@ const BASE_NAV = [
       p.startsWith("/login"),
   },
 ] as const;
-
-const ADULT_NAV = {
-  to: "/adult",
-  label: "🔞 +18",
-  match: (p: string) =>
-    p.startsWith("/adult"),
-} as const;
 
 const ShellMain = memo(function ShellMain({
   isBannerPage,
@@ -272,16 +253,7 @@ export function Shell() {
   const { user } =
     useCurrentUserState();
 
-  const getProfileFn =
-    useServerFn(getProfile);
-
-  const [profileNick, setProfileNick] =
-    useState("");
-
   const [menuOpen, setMenuOpen] =
-    useState(false);
-
-  const [adultMenuOpen, setAdultMenuOpen] =
     useState(false);
 
   const [
@@ -344,34 +316,7 @@ export function Shell() {
     };
   }, [menuOpen]);
 
-  /* =========================================================
-     PERFIL PÚBLICO
-  ========================================================== */
 
-  useEffect(() => {
-    if (!user?.id) {
-      setProfileNick("");
-      return;
-    }
-
-    let active = true;
-
-    void getProfileFn()
-      .then((profile) => {
-        if (!active) return;
-
-        setProfileNick(profile.nick);
-      })
-      .catch(() => {
-        if (!active) return;
-
-        setProfileNick("");
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id]);
 
   /* =========================================================
      BUSCA
@@ -1686,195 +1631,7 @@ export function Shell() {
                 </div>
               </div>
 
-              {/* =================================================
-                  NOTÍCIAS
-              ================================================== */}
-              <div className="mt-6">
-                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
-                  Notícias
-                </p>
 
-                <div className="space-y-1">
-
-                  <Link
-                    to="/news"
-                    onClick={() =>
-                      setMenuOpen(false)
-                    }
-                    className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      pathname.startsWith(
-                        "/news",
-                      )
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
-                    )}
-                  >
-                    <Newspaper className="size-5" />
-
-                    <span>
-                      Notícias
-                    </span>
-                  </Link>
-
-                </div>
-              </div>
-
-              {/* =================================================
-                  PERFIL
-              ================================================== */}
-              <div className="mt-6">
-                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
-                  Perfil
-                </p>
-
-                <div className="space-y-1">
-
-                  {user &&
-                    profileNick && (
-                      <Link
-                        to="/profile/$nick"
-                        params={{
-                          nick: profileNick,
-                        }}
-                        onClick={() =>
-                          setMenuOpen(
-                            false,
-                          )
-                        }
-                        className={cn(
-                          "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                          pathname ===
-                            `/profile/${profileNick}`
-                            ? "bg-elevated text-fg"
-                            : "text-muted hover:bg-elevated hover:text-fg",
-                        )}
-                      >
-                        <UserCircle className="size-5" />
-
-                        <span>
-                          Meu perfil público
-                        </span>
-                      </Link>
-                    )}
-
-                  <Link
-                    to="/settings"
-                    onClick={() =>
-                      setMenuOpen(
-                        false,
-                      )
-                    }
-                    className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      pathname.startsWith(
-                        "/settings",
-                      )
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
-                    )}
-                  >
-                    <Settings2 className="size-5" />
-
-                    <span>
-                      Configurações
-                    </span>
-                  </Link>
-
-                </div>
-              </div>
-
-              {/* =================================================
-                  OUTROS
-              ================================================== */}
-              <div className="mt-6">
-                <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
-                  Outros
-                </p>
-
-                <div className="space-y-1">
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAdultMenuOpen(
-                        (value) => !value,
-                      )
-                    }
-                    className={cn(
-                      "flex w-full items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      ADULT_NAV.match(
-                        pathname,
-                      )
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
-                    )}
-                    aria-expanded={
-                      adultMenuOpen
-                    }
-                  >
-                    <span className="flex size-5 items-center justify-center text-base">
-                      🔞
-                    </span>
-
-                    <span className="flex-1 text-left">
-                      +18
-                    </span>
-
-                    <ChevronDown
-                      className={cn(
-                        "size-5 transition-transform",
-                        adultMenuOpen &&
-                          "rotate-180",
-                      )}
-                    />
-                  </button>
-
-                  {adultMenuOpen && (
-                    <div className="ml-9 space-y-1 border-l border-border pl-3">
-                      <Link
-                        to={ADULT_NAV.to}
-                        onClick={() =>
-                          setMenuOpen(
-                            false,
-                          )
-                        }
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors",
-                          pathname === "/adult"
-                            ? "bg-elevated text-fg"
-                            : "text-muted hover:bg-elevated hover:text-fg",
-                        )}
-                      >
-                        <span>Início</span>
-                      </Link>
-
-                      <Link
-                        to="/adult/news"
-                        onClick={() =>
-                          setMenuOpen(false)
-                        }
-                        className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
-                      >
-                        <span>Notícias +18</span>
-                      </Link>
-
-                      <Link
-                        to="/adult/tags"
-                        onClick={() =>
-                          setMenuOpen(false)
-                        }
-                        className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-muted transition hover:bg-elevated hover:text-fg"
-                      >
-                        <Tags className="size-5" />
-                        <span>Tags</span>
-                      </Link>
-
-                    </div>
-                  )}
-
-                </div>
-              </div>
 
             </nav>
           </aside>
