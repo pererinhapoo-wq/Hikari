@@ -1,7 +1,21 @@
 import React, { useRef, useEffect, useCallback, useMemo, useState } from 'react';
-import Hls from 'hls.js';
-import videojs from 'video.js';
+import type Hls from 'hls.js';
 import { VideoPlayer, Video, VideoSkin } from '@videojs/react/video';
+
+function isMediaSourceSupported(): boolean {
+  if (typeof window === 'undefined') return false;
+  const mediaSource =
+    window.MediaSource ||
+    (window as unknown as { WebKitMediaSource?: typeof MediaSource }).WebKitMediaSource;
+  if (!mediaSource || typeof mediaSource.isTypeSupported !== 'function') {
+    return false;
+  }
+  return (
+    mediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E,mp4a.40.2"') ||
+    mediaSource.isTypeSupported('video/mp4; codecs="avc1.4d401f,mp4a.40.2"') ||
+    mediaSource.isTypeSupported('video/mp4')
+  );
+}
 import { Info, X } from 'lucide-react';
 import {
   VideoItem,
@@ -117,6 +131,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   // Determina síncronamente se a URL é HLS para evitar oscilações de src no DOM
   const isHls = useMemo(() => isHlsUrl(effectiveVideoUrl), [effectiveVideoUrl, isHlsUrl]);
 
+  // Determina síncronamente se o navegador suporta MediaSource para HLS
+  const hasMseSupport = useMemo(() => isMediaSourceSupported(), []);
+
   // Aplicação segura do tempo inicial (retomada de progresso) somente quando o elemento de mídia está pronto
   const applyInitialTime = useCallback(() => {
     const el = videoRef.current;
@@ -164,10 +181,12 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     }
   }, [autoPlay]);
 
-  // Estratégia de reprodução explícita: hls.js único para HLS, direto para MP4/WebM
+  // Estratégia de reprodução explícita: hls.js sob demanda para HLS, direto para MP4/WebM
   useEffect(() => {
     const videoEl = videoRef.current;
     if (!videoEl || !effectiveVideoUrl) return;
+
+    let isCancelled = false;
 
     // Destrói instância HLS anterior se existente
     if (hlsRef.current) {
@@ -178,51 +197,79 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     initialTimeAppliedRef.current = false;
     setVideoError(null);
 
-    if (isHls && Hls.isSupported()) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false,
-        backBufferLength: 60,
-        capLevelToPlayerSize: false,
-        ...(initialTimeRef.current && initialTimeRef.current > 0 ? { startPosition: initialTimeRef.current } : {}),
-      });
-      hlsRef.current = hls;
-      hls.loadSource(effectiveVideoUrl);
-      hls.attachMedia(videoEl);
+    if (isHls && hasMseSupport) {
+      import('hls.js')
+        .then(({ default: HlsClass }) => {
+          if (isCancelled) return;
 
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        applyInitialTime();
-        playSafely(videoEl);
-      });
-
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
-              break;
-            default:
-              hls.destroy();
-              hlsRef.current = null;
-              const msg = 'Não foi possível carregar a transmissão HLS.';
-              setVideoError(msg);
-              onErrorRef.current?.(msg);
-              break;
+          if (!HlsClass.isSupported()) {
+            if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+              videoEl.src = effectiveVideoUrl;
+              playSafely(videoEl);
+            }
+            return;
           }
-        }
-      });
 
-      return () => {
-        if (hlsRef.current) {
-          hlsRef.current.destroy();
-          hlsRef.current = null;
-        }
-      };
+          if (hlsRef.current) {
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+          }
+
+          const hls = new HlsClass({
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 60,
+            capLevelToPlayerSize: false,
+            ...(initialTimeRef.current && initialTimeRef.current > 0
+              ? { startPosition: initialTimeRef.current }
+              : {}),
+          });
+          hlsRef.current = hls;
+          hls.loadSource(effectiveVideoUrl);
+          hls.attachMedia(videoEl);
+
+          hls.on(HlsClass.Events.MANIFEST_PARSED, () => {
+            if (isCancelled) return;
+            applyInitialTime();
+            playSafely(videoEl);
+          });
+
+          hls.on(HlsClass.Events.ERROR, (_event, data) => {
+            if (isCancelled) return;
+            if (data.fatal) {
+              switch (data.type) {
+                case HlsClass.ErrorTypes.NETWORK_ERROR:
+                  hls.startLoad();
+                  break;
+                case HlsClass.ErrorTypes.MEDIA_ERROR:
+                  hls.recoverMediaError();
+                  break;
+                default: {
+                  hls.destroy();
+                  hlsRef.current = null;
+                  const msg = 'Não foi possível carregar a transmissão HLS.';
+                  setVideoError(msg);
+                  onErrorRef.current?.(msg);
+                  break;
+                }
+              }
+            }
+          });
+        })
+        .catch((err) => {
+          if (isCancelled) return;
+          console.error('Erro ao carregar hls.js sob demanda:', err);
+          if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+            videoEl.src = effectiveVideoUrl;
+            playSafely(videoEl);
+          } else {
+            const msg = 'Não foi possível carregar a transmissão HLS.';
+            setVideoError(msg);
+            onErrorRef.current?.(msg);
+          }
+        });
     } else if (isHls && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-      // Suporte nativo ao HLS (ex: Safari iOS / macOS)
+      // Suporte nativo ao HLS (ex: Safari iOS / macOS sem MSE)
       videoEl.src = effectiveVideoUrl;
       playSafely(videoEl);
     } else {
@@ -244,6 +291,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     }
 
     return () => {
+      isCancelled = true;
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -258,7 +306,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         }
       }
     };
-  }, [effectiveVideoUrl, isHls, autoPlay, playSafely, applyInitialTime]);
+  }, [effectiveVideoUrl, isHls, hasMseSupport, autoPlay, playSafely, applyInitialTime]);
 
   // Manipulador de carregamento de metadados
   const handleLoadedMetadata = useCallback(() => {
@@ -355,7 +403,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         >
           <Video
             ref={videoRef}
-            src={isHls && Hls.isSupported() ? undefined : effectiveVideoUrl}
+            src={isHls && hasMseSupport ? undefined : effectiveVideoUrl}
             poster={effectivePosterUrl}
             playsInline
             autoPlay={autoPlay}
@@ -410,5 +458,4 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   );
 };
 
-export { videojs };
 export default CustomVideoPlayer;

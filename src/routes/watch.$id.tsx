@@ -7,6 +7,8 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -15,12 +17,21 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
-import { EpisodeCommentsSection } from "@/components/comments/EpisodeCommentsSection";
 import { Logo } from "@/components/logo";
-import {
-  CustomVideoPlayer,
-  type VideoItem,
-} from "@/components/player/CustomVideoPlayer";
+
+const EpisodeCommentsSection = lazy(() =>
+  import("@/components/comments/EpisodeCommentsSection").then((mod) => ({
+    default: mod.EpisodeCommentsSection ?? mod.default,
+  })),
+);
+
+import type { VideoItem } from "@/types/video";
+
+const CustomVideoPlayer = lazy(() =>
+  import("@/components/player/CustomVideoPlayer").then((mod) => ({
+    default: mod.CustomVideoPlayer ?? mod.default,
+  })),
+);
 import { fetchAnimeDetail } from "@/lib/api";
 import { mergeDetail } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
@@ -694,27 +705,24 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* ================================================== */}
 
         {file && selectedPlayer && current ? (
-          <CustomVideoPlayer
-            key={`${anime.id}-${current.id}-${selectedPlayer.id}-${file}`}
-            video={_currentVideoItem}
-            autoPlay={userAutoplay}
-            initialTime={effectiveInitialTime}
-            onTimeUpdate={handleTimeUpdate}
-            onPause={handlePause}
-            onRestored={handleRestored}
-            onEnded={handleEnded}
-            onError={handlePlayerError}
-          />
-        ) : yt ? (
-          <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
-            <iframe
-              title={`${title} — trailer`}
-              src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&rel=0`}
-              className="size-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
+          <Suspense fallback={<PlayerLoadingFallback />}>
+            <CustomVideoPlayer
+              key={`${anime.id}-${current.id}-${selectedPlayer.id}-${file}`}
+              video={_currentVideoItem}
+              autoPlay={userAutoplay}
+              initialTime={effectiveInitialTime}
+              onTimeUpdate={handleTimeUpdate}
+              onPause={handlePause}
+              onRestored={handleRestored}
+              onEnded={handleEnded}
+              onError={handlePlayerError}
             />
-          </div>
+          </Suspense>
+        ) : yt ? (
+          <YouTubeTrailer
+            yt={yt}
+            title={title}
+          />
         ) : (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
             <div className="flex size-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -933,14 +941,16 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* ================================================== */}
 
         {current?.id ? (
-          <EpisodeCommentsSection
-            key={`${anime.id}-${current.id}`}
-            animeId={anime.id}
-            episodeId={current.id}
-            animeTitle={title}
-            episodeNumber={current.number ?? 1}
-            targetCommentId={commentQuery}
-          />
+          <Suspense fallback={<CommentsLoadingFallback />}>
+            <EpisodeCommentsSection
+              key={`${anime.id}-${current.id}`}
+              animeId={anime.id}
+              episodeId={current.id}
+              animeTitle={title}
+              episodeNumber={current.number ?? 1}
+              targetCommentId={commentQuery}
+            />
+          </Suspense>
         ) : (
           <div className="mt-10 border-t border-purple-500/20 pt-8 text-center text-sm text-zinc-500">
             Selecione um episódio para carregar os comentários.
@@ -949,6 +959,85 @@ function parseDurationToSeconds(raw?: string | number | null): number {
 
       </main>
     </div>
+  );
+}
+
+function YouTubeTrailer({ yt, title }: { yt: string; title: string }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  return (
+    <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
+      {mounted ? (
+        <iframe
+          title={`${title} — trailer`}
+          src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&rel=0`}
+          className="size-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function PlayerLoadingFallback() {
+  return (
+    <div
+      aria-label="Carregando reprodutor"
+      className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)] flex items-center justify-center"
+    >
+      <div
+        className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]"
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
+
+function CommentsLoadingFallback() {
+  return (
+    <section
+      aria-label="Carregando comentários"
+      className="mt-10 border-t border-[#a855f7]/20 pt-8 sm:pt-10"
+    >
+      <div
+        role="status"
+        aria-live="polite"
+        className="elizabeth-loading-container relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24]/90 via-[#0c0a15]/95 to-[#08070d] p-8 sm:p-14 text-center shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] backdrop-blur-md"
+      >
+        <div
+          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-44 bg-[#a855f7]/15 rounded-full blur-3xl"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col items-center justify-center">
+          <div className="elizabeth-sway-anim inline-flex items-center justify-center select-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)]">
+            <img
+              src="/assets/hikari-elizabeth-character.png"
+              alt="Elizabeth"
+              className="w-44 sm:w-52 md:w-56 h-auto object-contain pointer-events-none"
+              loading="eager"
+              decoding="async"
+              draggable={false}
+            />
+          </div>
+
+          <div className="mt-5 flex items-center justify-center gap-2.5">
+            <div
+              className="elizabeth-spinner size-5 rounded-full border-2 border-[#a855f7]/25 border-t-[#c084fc] animate-spin shadow-[0_0_12px_rgba(168,85,247,0.45)] shrink-0"
+              aria-hidden="true"
+            />
+            <p className="text-sm font-medium tracking-wide text-white/85 select-none">
+              Carregando os comentários...
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
