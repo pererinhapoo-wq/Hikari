@@ -4328,6 +4328,7 @@ function CommentCard({
           <Link
             to="/profile/$nick"
             params={{ nick: comment.userNick }}
+            aria-label={`Perfil de ${authorName}`}
             className={cn(
               "relative mt-0.5 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#171326] ring-1 ring-[#a855f7]/25 text-xs font-semibold text-white/90 hover:ring-[#a855f7]/55 transition-colors",
               isReply ? "size-6 sm:size-7" : "size-7 sm:size-8",

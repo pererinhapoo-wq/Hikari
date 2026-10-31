@@ -639,7 +639,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
 
   if (!hydrated) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-bg text-fg">
+      <main className="flex min-h-dvh items-center justify-center bg-bg text-fg">
         <div className="flex flex-col items-center justify-center gap-3">
           <div
             className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]"
@@ -649,13 +649,13 @@ function parseDurationToSeconds(raw?: string | number | null): number {
             Carregando...
           </span>
         </div>
-      </div>
+      </main>
     );
   }
 
   if (!anime) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-bg text-fg">
+      <main className="flex min-h-dvh items-center justify-center bg-bg text-fg">
         <div className="flex flex-col items-center justify-center gap-3">
           <div
             className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]"
@@ -665,7 +665,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
             Carregando...
           </span>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -685,7 +685,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         <Logo />
       </header>
 
-      <div className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 sm:px-5">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-3 pb-12 sm:px-5">
 
 
 
@@ -947,7 +947,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
           </div>
         )}
 
-      </div>
+      </main>
     </div>
   );
 }
