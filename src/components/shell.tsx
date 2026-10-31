@@ -7,6 +7,7 @@ import {
 import {
   Bell,
   Bookmark,
+  Calendar,
   CalendarDays,
   Clapperboard,
   House,
@@ -77,6 +78,13 @@ const BASE_NAV = [
     icon: Bookmark,
     match: (p: string) =>
       p.startsWith("/my-list"),
+  },
+  {
+    to: "/calendar",
+    label: "Calendário",
+    icon: Calendar,
+    match: (p: string) =>
+      p.startsWith("/calendar"),
   },
   {
     to: "/browse/season",
@@ -1583,6 +1591,27 @@ export function Shell() {
                 </p>
 
                 <div className="space-y-1">
+
+                  <Link
+                    to="/calendar"
+                    onClick={() =>
+                      setMenuOpen(false)
+                    }
+                    className={cn(
+                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
+                      pathname.startsWith(
+                        "/calendar",
+                      )
+                        ? "bg-elevated text-fg"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <Calendar className="size-5" />
+
+                    <span>
+                      Calendário
+                    </span>
+                  </Link>
 
                   <Link
                     to="/browse/$section"

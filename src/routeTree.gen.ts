@@ -14,6 +14,7 @@ import { Route as AccountRouteImport } from './routes/account'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AdultRouteImport } from './routes/adult'
 import { Route as ApiAnilistRouteImport } from './routes/api-anilist'
+import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as EpisodesRouteImport } from './routes/episodes'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MyListRouteImport } from './routes/my-list'
@@ -75,6 +76,11 @@ const AdultRoute = AdultRouteImport.update({
 const ApiAnilistRoute = ApiAnilistRouteImport.update({
   id: '/api-anilist',
   path: '/api-anilist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EpisodesRoute = EpisodesRouteImport.update({
@@ -269,6 +275,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/adult': typeof AdultRouteWithChildren
   '/api-anilist': typeof ApiAnilistRoute
+  '/calendar': typeof CalendarRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
@@ -311,6 +318,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
   '/api-anilist': typeof ApiAnilistRoute
+  '/calendar': typeof CalendarRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
@@ -356,6 +364,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/adult': typeof AdultRouteWithChildren
   '/api-anilist': typeof ApiAnilistRoute
+  '/calendar': typeof CalendarRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
@@ -402,6 +411,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/adult'
     | '/api-anilist'
+    | '/calendar'
     | '/episodes'
     | '/login'
     | '/my-list'
@@ -444,6 +454,7 @@ export interface FileRouteTypes {
     | '/'
     | '/account'
     | '/api-anilist'
+    | '/calendar'
     | '/episodes'
     | '/login'
     | '/my-list'
@@ -488,6 +499,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/adult'
     | '/api-anilist'
+    | '/calendar'
     | '/episodes'
     | '/login'
     | '/my-list'
@@ -533,6 +545,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   AdultRoute: typeof AdultRouteWithChildren
   ApiAnilistRoute: typeof ApiAnilistRoute
+  CalendarRoute: typeof CalendarRoute
   EpisodesRoute: typeof EpisodesRoute
   LoginRoute: typeof LoginRoute
   MyListRoute: typeof MyListRoute
@@ -596,6 +609,13 @@ declare module '@tanstack/react-router' {
       path: '/api-anilist'
       fullPath: '/api-anilist'
       preLoaderRoute: typeof ApiAnilistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/episodes': {
@@ -914,6 +934,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   AdultRoute: AdultRouteWithChildren,
   ApiAnilistRoute: ApiAnilistRoute,
+  CalendarRoute: CalendarRoute,
   EpisodesRoute: EpisodesRoute,
   LoginRoute: LoginRoute,
   MyListRoute: MyListRoute,
