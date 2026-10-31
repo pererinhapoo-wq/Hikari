@@ -6,6 +6,437 @@ import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
 import { getAnimeLogo } from "@/lib/anime-logos";
 
+/**
+ * Determina o total de temporadas confirmadas para o anime em formato compacto (ex.: "S1–S3").
+ * Representa o total de temporadas confirmadas da franquia, não apenas a temporada atual exibida.
+ * Omite para filmes, OVAs ou quando não for possível confirmar com segurança.
+ */
+function getConfirmedSeasonsSpan(anime: SlimAnime): string | null {
+  if (!anime) return null;
+
+  // Filmes e especiais nunca exibem contagem de temporadas
+  if (
+    anime.format === "MOVIE" ||
+    anime.format === "SPECIAL" ||
+    anime.format === "OVA" ||
+    anime.format === "ONA"
+  ) {
+    return null;
+  }
+
+  const titleStr = [
+    anime.titles?.english,
+    anime.titles?.romaji,
+    anime.titles?.native,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  // Se o título indicar explicitamente um filme
+  if (/\b(?:movie|the movie|gekijouban|film)\b/i.test(titleStr)) {
+    return null;
+  }
+
+  const anilistId =
+    anime.anilistId ||
+    (Number.isInteger(Number(anime.id)) ? Number(anime.id) : undefined);
+  const malId = anime.malId;
+
+  // Franquias longas/contínuas sem temporadas tradicionais
+  if (
+    /\bone\s*piece\b/i.test(titleStr) ||
+    anilistId === 21 ||
+    malId === 21 ||
+    /\bdragon\s*ball\b/i.test(titleStr) ||
+    anilistId === 813 ||
+    anilistId === 223 ||
+    anilistId === 206814 ||
+    /\bnaruto\b/i.test(titleStr) ||
+    anilistId === 20 ||
+    anilistId === 1735
+  ) {
+    return null;
+  }
+
+  // Franquias conhecidas do catálogo com total de temporadas confirmadas
+  // The Apothecary Diaries / Kusuriya no Hitorigoto: 3 temporadas confirmadas
+  if (
+    /\b(?:the\s+)?apothecary\s+diaries\b/i.test(titleStr) ||
+    /\bkusuriya\s+no\s+hitorigoto\b/i.test(titleStr) ||
+    titleStr.includes("薬屋のひとりごと") ||
+    anilistId === 195516 ||
+    anilistId === 176583 ||
+    anilistId === 161645
+  ) {
+    return "S1–S3";
+  }
+
+  // Demon Slayer / Kimetsu no Yaiba: 4 temporadas de TV confirmadas
+  if (
+    /\bdemon\s+slayer\b/i.test(titleStr) ||
+    /\bkimetsu\s+no\s+yaiba\b/i.test(titleStr) ||
+    titleStr.includes("鬼滅の刃") ||
+    anilistId === 101922 ||
+    anilistId === 129874 ||
+    anilistId === 145139 ||
+    anilistId === 166240
+  ) {
+    return "S1–S4";
+  }
+
+  // Attack on Titan / Shingeki no Kyojin: 4 temporadas
+  if (
+    /\battack\s+on\s+titan\b/i.test(titleStr) ||
+    /\bshingeki\s+no\s+kyojin\b/i.test(titleStr) ||
+    titleStr.includes("進撃の巨人") ||
+    anilistId === 16498 ||
+    anilistId === 20958 ||
+    anilistId === 99147 ||
+    anilistId === 104578 ||
+    anilistId === 110277
+  ) {
+    return "S1–S4";
+  }
+
+  // My Hero Academia / Boku no Hero Academia: 8 temporadas confirmadas
+  if (
+    /\bmy\s+hero\s+academia\b/i.test(titleStr) ||
+    /\bboku\s+no\s+hero\s+academia\b/i.test(titleStr) ||
+    titleStr.includes("僕のヒーローアカデミア") ||
+    anilistId === 21459 ||
+    anilistId === 98659 ||
+    anilistId === 100166 ||
+    anilistId === 114440 ||
+    anilistId === 131881 ||
+    anilistId === 158569 ||
+    anilistId === 178229
+  ) {
+    return "S1–S8";
+  }
+
+  // Jujutsu Kaisen: 3 temporadas confirmadas
+  if (
+    /\bjujutsu\s+kaisen\b/i.test(titleStr) ||
+    titleStr.includes("呪術廻戦") ||
+    anilistId === 113415 ||
+    anilistId === 145064 ||
+    anilistId === 169052
+  ) {
+    return "S1–S3";
+  }
+
+  // Spy x Family: 3 temporadas confirmadas
+  if (
+    /\bspy\s*[x×]?\s*family\b/i.test(titleStr) ||
+    anilistId === 140960 ||
+    anilistId === 158870 ||
+    anilistId === 170881
+  ) {
+    return "S1–S3";
+  }
+
+  // Tokyo Revengers: 4 temporadas confirmadas
+  if (
+    /\btokyo\s+revengers\b/i.test(titleStr) ||
+    /\btoukyou\s+revengers\b/i.test(titleStr) ||
+    titleStr.includes("東京リベンジャーズ") ||
+    anilistId === 129201 ||
+    anilistId === 145139 ||
+    anilistId === 178083
+  ) {
+    return "S1–S4";
+  }
+
+  // Dr. STONE: 4 temporadas confirmadas
+  if (
+    /\bdr\.\s*stone\b/i.test(titleStr) ||
+    anilistId === 105333 ||
+    anilistId === 113936 ||
+    anilistId === 131518 ||
+    anilistId === 169935
+  ) {
+    return "S1–S4";
+  }
+
+  // Overlord: 4 temporadas confirmadas
+  if (
+    /\boverlord\b/i.test(titleStr) ||
+    anilistId === 20832 ||
+    anilistId === 98437 ||
+    anilistId === 101478 ||
+    anilistId === 133844
+  ) {
+    return "S1–S4";
+  }
+
+  // Haikyuu!!: 4 temporadas de TV confirmadas
+  if (
+    /\bhaikyuu\b/i.test(titleStr) ||
+    anilistId === 20464 ||
+    anilistId === 20992 ||
+    anilistId === 21856 ||
+    anilistId === 106625
+  ) {
+    return "S1–S4";
+  }
+
+  // Classroom of the Elite / Youkoso Jitsuryoku: 4 temporadas confirmadas
+  if (
+    /\bclassroom\s+of\s+the\s+elite\b/i.test(titleStr) ||
+    /\byoukoso\s+jitsuryoku\b/i.test(titleStr) ||
+    anilistId === 98659 ||
+    anilistId === 145545 ||
+    anilistId === 165545
+  ) {
+    return "S1–S4";
+  }
+
+  // Re:Zero: 3 temporadas confirmadas
+  if (
+    /\bre:?zero\b/i.test(titleStr) ||
+    anilistId === 21355 ||
+    anilistId === 108632 ||
+    anilistId === 163134
+  ) {
+    return "S1–S3";
+  }
+
+  // Mushoku Tensei: 3 temporadas confirmadas
+  if (
+    /\bmushoku\s+tensei\b/i.test(titleStr) ||
+    anilistId === 108465 ||
+    anilistId === 146065 ||
+    anilistId === 178711
+  ) {
+    return "S1–S3";
+  }
+
+  // Oshi no Ko: 3 temporadas confirmadas
+  if (
+    /\boshi\s+no\s+ko\b/i.test(titleStr) ||
+    titleStr.includes("【推しの子】") ||
+    anilistId === 150672 ||
+    anilistId === 166531 ||
+    anilistId === 180015
+  ) {
+    return "S1–S3";
+  }
+
+  // KonoSuba: 3 temporadas confirmadas
+  if (
+    /\bkonosuba\b/i.test(titleStr) ||
+    /\bkono\s+subarashii\b/i.test(titleStr) ||
+    anilistId === 21202 ||
+    anilistId === 21699 ||
+    anilistId === 146984
+  ) {
+    return "S1–S3";
+  }
+
+  // That Time I Got Reincarnated as a Slime / Tensei shitara Slime Datta Ken: 4 temporadas confirmadas
+  if (
+    /\btensei\s+shitara\s+slime\b/i.test(titleStr) ||
+    /\breincarnated\s+as\s+a\s+slime\b/i.test(titleStr) ||
+    anilistId === 101280 ||
+    anilistId === 108511 ||
+    anilistId === 156822
+  ) {
+    return "S1–S4";
+  }
+
+  // One-Punch Man: 3 temporadas confirmadas
+  if (
+    /\bone[- ]?punch\s+man\b/i.test(titleStr) ||
+    anilistId === 21087 ||
+    anilistId === 101348 ||
+    anilistId === 152795
+  ) {
+    return "S1–S3";
+  }
+
+  // Blue Box / Ao no Hako: 2 temporadas confirmadas
+  if (
+    /\bblue\s*box\b/i.test(titleStr) ||
+    /\bao\s+no\s+hako\b/i.test(titleStr) ||
+    titleStr.includes("アオのハコ") ||
+    anilistId === 189123 ||
+    anilistId === 170942
+  ) {
+    return "S1–S2";
+  }
+
+  // Frieren / Sousou no Frieren: 2 temporadas confirmadas
+  if (
+    /\bfrieren\b/i.test(titleStr) ||
+    /\bsousou\s+no\s+frieren\b/i.test(titleStr) ||
+    titleStr.includes("葬送のフリーレン") ||
+    anilistId === 154587 ||
+    anilistId === 181973
+  ) {
+    return "S1–S2";
+  }
+
+  // Solo Leveling: 2 temporadas confirmadas
+  if (
+    /\bsolo\s+leveling\b/i.test(titleStr) ||
+    /\bore\s+dake\s+level\s+up\b/i.test(titleStr) ||
+    anilistId === 151807 ||
+    anilistId === 175841
+  ) {
+    return "S1–S2";
+  }
+
+  // Bleach: 2 temporadas principais
+  if (
+    /\bbleach\b/i.test(titleStr) ||
+    anilistId === 269 ||
+    anilistId === 185874 ||
+    anilistId === 159322 ||
+    anilistId === 144665
+  ) {
+    return "S1–S2";
+  }
+
+  // Steins;Gate: 2 temporadas
+  if (
+    /\bsteins[;:]?\s*gate\b/i.test(titleStr) ||
+    anilistId === 9253 ||
+    anilistId === 100469
+  ) {
+    return "S1–S2";
+  }
+
+  // Black Clover: 2 temporadas
+  if (
+    /\bblack\s+clover\b/i.test(titleStr) ||
+    anilistId === 97940 ||
+    anilistId === 157252 ||
+    anilistId === 195604
+  ) {
+    return "S1–S2";
+  }
+
+  // Vinland Saga: 2 temporadas
+  if (
+    /\bvinland\s+saga\b/i.test(titleStr) ||
+    anilistId === 101348 ||
+    anilistId === 136430
+  ) {
+    return "S1–S2";
+  }
+
+  // Steel Ball Run: 1 temporada confirmada
+  if (
+    /\bsteel\s*ball\s*run\b/i.test(titleStr) ||
+    anilistId === 210482 ||
+    anilistId === 190327
+  ) {
+    return "S1";
+  }
+
+  // The Ramparts of Ice / Koori no Jouheki: 1 temporada
+  if (
+    /\b(?:the\s+)?ramparts\s+of\s+ice\b/i.test(titleStr) ||
+    /\bkoori\s+no\s+jouheki\b/i.test(titleStr) ||
+    anilistId === 213805 ||
+    anilistId === 186497
+  ) {
+    return "S1";
+  }
+
+  // Tougen Anki: 1 temporada
+  if (
+    /\btougen\s*anki\b/i.test(titleStr) ||
+    anilistId === 204650 ||
+    anilistId === 177474 ||
+    anilistId === 194835
+  ) {
+    return "S1";
+  }
+
+  // The Exiled Heavy Knight: 1 temporada
+  if (
+    /\b(?:the\s+)?exiled\s+heavy\s+knight\b/i.test(titleStr) ||
+    /\btsuihou.*juukishi\b/i.test(titleStr) ||
+    anilistId === 180136
+  ) {
+    return "S1";
+  }
+
+  // Even the Student Council Has Its Holes: 1 temporada
+  if (
+    /\b(?:even\s+the\s+)?student\s+council\s+has\s+its\s+holes\b/i.test(titleStr) ||
+    /\bseitokai\s+ni\s*mo\s+ana\s+wa\s+aru\b/i.test(titleStr) ||
+    anilistId === 191656 ||
+    anilistId === 179207
+  ) {
+    return "S1";
+  }
+
+  // Firefly Wedding / Hotaru no Yomeiri: 1 temporada
+  if (
+    /\bfirefly\s*wedding\b/i.test(titleStr) ||
+    /\bhotaru\s*no\s*yomeiri\b/i.test(titleStr) ||
+    anilistId === 205909
+  ) {
+    return "S1";
+  }
+
+  // Cyberpunk: Edgerunners: 1 temporada
+  if (
+    /\bcyberpunk\b.*\bedgerunners\b/i.test(titleStr) ||
+    anilistId === 120516 ||
+    anilistId === 195539
+  ) {
+    return "S1";
+  }
+
+  // Death Note: 1 temporada
+  if (
+    /\bdeath\s+note\b/i.test(titleStr) ||
+    anilistId === 1535
+  ) {
+    return "S1";
+  }
+
+  // Se o título contiver indicativo numérico explícito de temporada N
+  const seasonMatch =
+    titleStr.match(/\b(?:season\s*|s)(\d+)\b/i) ||
+    titleStr.match(/\b(\d+)(?:st|nd|rd|th)\s+season\b/i);
+  if (seasonMatch && seasonMatch[1]) {
+    const num = parseInt(seasonMatch[1], 10);
+    if (num > 1 && num <= 12) {
+      return `S1–S${num}`;
+    }
+    if (num === 1) {
+      return "S1";
+    }
+  }
+
+  // Se o objeto anime possuir temporadas estruturadas
+  const customSeasons = (anime as unknown as { seasons?: Array<{ number: number }> }).seasons;
+  if (Array.isArray(customSeasons) && customSeasons.length > 0) {
+    const seasonNumbers = customSeasons
+      .map((s) => s.number)
+      .filter((n) => typeof n === "number" && n > 0);
+    if (seasonNumbers.length > 1) {
+      const maxSeason = Math.max(...seasonNumbers);
+      return `S1–S${maxSeason}`;
+    }
+    if (seasonNumbers.length === 1) {
+      return "S1";
+    }
+  }
+
+  // Caso padrão para produções de TV sem confirmação de múltiplas temporadas
+  if (anime.format === "TV" && anime.year) {
+    return "S1";
+  }
+
+  return null;
+}
+
 interface HeroSlideProps {
   anime: SlimAnime;
   priority?: boolean;
@@ -29,6 +460,7 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
   const desktopBackdrop = anime.banner || anime.cover || "";
 
   const scoreValue = anime.score != null ? scoreLabel(anime.score) : null;
+  const seasonsSpan = getConfirmedSeasonsSpan(anime);
   const seasonValue =
     anime.format === "MOVIE"
       ? "Filme"
@@ -50,8 +482,7 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
     anime.status === "RELEASING" ||
     anime.status?.toLowerCase() === "airing" ||
     anime.status?.toLowerCase() === "currently_airing" ||
-    Boolean(statusText?.toLowerCase().includes("exibi")) ||
-    Boolean(statusText?.toLowerCase().includes("lança"));
+    statusText?.toLowerCase() === "em exibição";
 
   return (
     <div className="relative size-full min-w-full shrink-0 flex flex-col justify-end select-none overflow-hidden min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px]">
@@ -168,29 +599,37 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
           )}
         </div>
 
-        {/* Linha Equilibrada: Nota ★ · Temporada · Quantidade de Episódios */}
-        <div className="flex flex-wrap items-center justify-center gap-2 text-xs sm:text-[13px] font-medium text-zinc-300 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]">
+        {/* Linha Compacta de Informações: Nota ★ · Total Temporadas · Temporada de Lançamento · Episódios */}
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:text-[12.5px] font-semibold text-zinc-100 drop-shadow-[0_2px_5px_rgba(0,0,0,0.95)]">
           {scoreValue && (
-            <span className="inline-flex items-center gap-1 text-amber-300 font-semibold">
-              <span className="text-amber-400 text-xs sm:text-[13px]">★</span>
-              <span className="tabular-nums">{scoreValue}</span>
+            <span className="inline-flex items-center gap-1 text-amber-300 font-bold tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+              <span className="text-amber-400 text-xs sm:text-[13px] drop-shadow-[0_1px_2px_rgba(0,0,0,1)]">★</span>
+              <span className="tabular-nums text-amber-200 font-bold">{scoreValue}</span>
             </span>
           )}
 
-          {scoreValue && (seasonValue || episodesValue) && (
-            <span className="size-1 rounded-full bg-white/25 shrink-0" aria-hidden="true" />
+          {scoreValue && (seasonsSpan || seasonValue || episodesValue) && (
+            <span className="size-1 rounded-full bg-white/40 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
+          )}
+
+          {seasonsSpan && (
+            <span className="font-bold text-white tracking-wide drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{seasonsSpan}</span>
+          )}
+
+          {seasonsSpan && (seasonValue || episodesValue) && (
+            <span className="size-1 rounded-full bg-white/40 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
           )}
 
           {seasonValue && (
-            <span className="text-zinc-200">{seasonValue}</span>
+            <span className="text-zinc-100 font-medium drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{seasonValue}</span>
           )}
 
           {seasonValue && episodesValue && (
-            <span className="size-1 rounded-full bg-white/25 shrink-0" aria-hidden="true" />
+            <span className="size-1 rounded-full bg-white/40 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
           )}
 
           {episodesValue && (
-            <span className="text-zinc-300/90">{episodesValue}</span>
+            <span className="text-zinc-200 font-medium drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{episodesValue}</span>
           )}
         </div>
 
@@ -204,8 +643,8 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                 gap-1.5
                 rounded-md
                 border
-                border-white/10
-                bg-black/40
+                border-white/15
+                bg-black/60
                 px-2.5
                 py-0.5
                 text-[10px]
@@ -213,7 +652,7 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                 font-semibold
                 tracking-wider
                 uppercase
-                text-zinc-200
+                text-zinc-100
                 backdrop-blur-md
                 shadow-xs
               "
@@ -223,33 +662,33 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                   className="relative flex size-2 items-center justify-center shrink-0"
                   aria-hidden="true"
                 >
-                  <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] motion-safe:animate-pulse motion-reduce:animate-none" />
+                  <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)] motion-safe:animate-pulse motion-reduce:animate-none" />
                 </span>
               )}
-              <span>{statusText}</span>
+              <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{statusText}</span>
             </span>
           </div>
         )}
 
-        {/* Gêneros */}
+        {/* Gêneros / Categorias: Cápsulas compactas translúcidas com contraste aprimorado */}
         {anime.genres.length > 0 && (
           <div className="flex flex-wrap items-center justify-center gap-1.5 pt-0.5 max-w-lg">
             {anime.genres.slice(0, 4).map((genre) => (
               <span
                 key={genre}
                 className="
-                  rounded-md
+                  rounded-full
                   border
-                  border-white/10
-                  bg-black/35
-                  px-2
+                  border-white/20
+                  bg-black/65
+                  px-2.5
                   py-0.5
-                  text-[10px]
-                  sm:text-[11px]
-                  font-medium
+                  text-[9.5px]
+                  sm:text-[10.5px]
+                  font-semibold
                   uppercase
-                  tracking-wide
-                  text-zinc-300
+                  tracking-wider
+                  text-zinc-100
                   backdrop-blur-md
                   shadow-xs
                 "
@@ -261,8 +700,8 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
         )}
 
         {/* Controles de Ação */}
-        <div className="mt-2 flex items-center justify-center gap-2.5 sm:gap-3 w-auto pt-1">
-          {/* Botão Assistir */}
+        <div className="mt-2 flex items-center justify-center gap-2 sm:gap-2.5 w-auto pt-0.5">
+          {/* Botão Assistir: Contraste discreto com fundo suave elegante e texto/ícone pretos nítidos */}
           <Link
             to="/watch/$id"
             params={{ id: anime.id }}
@@ -271,22 +710,25 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
               inline-flex
               items-center
               justify-center
-              gap-2
-              h-9
-              sm:h-9.5
-              px-4
-              sm:px-5
+              gap-1.5
+              h-8
+              sm:h-8.5
+              px-3.5
+              sm:px-4
               rounded-lg
               sm:rounded-xl
-              bg-white
-              hover:bg-zinc-200
-              active:bg-zinc-300
-              text-zinc-950
-              font-semibold
+              bg-white/95
+              hover:bg-white
+              active:bg-white/90
+              text-black
+              font-bold
               text-xs
-              sm:text-sm
-              tracking-wide
-              shadow-sm
+              sm:text-[13px]
+              tracking-normal
+              border
+              border-white/40
+              backdrop-blur-md
+              shadow-[0_2px_12px_rgba(0,0,0,0.4)]
               transition-all
               duration-150
               cursor-pointer
@@ -294,11 +736,11 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
               select-none
             "
           >
-            <Play className="size-3.5 fill-zinc-950 text-zinc-950 shrink-0" />
+            <Play className="size-3 sm:size-3.5 fill-black text-black shrink-0" />
             <span>Assistir</span>
           </Link>
 
-          {/* Controle Detalhes */}
+          {/* Controle Detalhes: Ação secundária em vidro escuro translúcido com texto, ícone, seta e contorno nítidos */}
           <Link
             to="/anime/$id"
             params={{ id: anime.id }}
@@ -308,20 +750,24 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
               items-center
               justify-center
               gap-1.5
-              h-9
-              sm:h-9.5
+              h-8
+              sm:h-8.5
               px-3
               sm:px-3.5
               rounded-lg
               sm:rounded-xl
-              bg-transparent
-              hover:bg-white/10
-              active:bg-white/15
-              text-zinc-200
-              hover:text-white
-              font-medium
+              bg-black/50
+              hover:bg-black/65
+              active:bg-black/75
+              border
+              border-white/30
+              hover:border-white/45
+              text-white
+              font-semibold
               text-xs
-              sm:text-sm
+              sm:text-[13px]
+              backdrop-blur-md
+              shadow-xs
               transition-all
               duration-150
               cursor-pointer
@@ -329,9 +775,9 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
               select-none
             "
           >
-            <Info className="size-3.5 text-zinc-400 group-hover:text-zinc-200 shrink-0" />
-            <span>Detalhes</span>
-            <ChevronRight className="size-3.5 text-zinc-400 group-hover:text-white group-hover:translate-x-0.5 transition-transform shrink-0" />
+            <Info className="size-3 sm:size-3.5 text-zinc-200 group-hover:text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] shrink-0" />
+            <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">Detalhes</span>
+            <ChevronRight className="size-3 sm:size-3.5 text-zinc-200 group-hover:text-white group-hover:translate-x-0.5 transition-transform drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] shrink-0" />
           </Link>
         </div>
       </div>
