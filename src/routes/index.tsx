@@ -13,6 +13,7 @@ import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
 import { AnimeCardSkeleton } from "@/components/anime-card";
+import { HomeFooter } from "@/components/home-footer";
 
 const LazyRecentEpisodesSection = lazy(() =>
   import("@/components/recent-episodes-section").then((m) => ({
@@ -222,8 +223,6 @@ function Home() {
       {/* 3. Em Alta */}
       <AnimeRow
         title="Em Alta"
-        eyebrow="POPULARES NO MOMENTO"
-        iconType="flame"
         href="/browse/trending"
         items={emAltaItems}
         showBookmark={false}
@@ -233,8 +232,6 @@ function Home() {
       {/* 4. Animes Recém-Adicionados */}
       <AnimeRow
         title="Animes Recém-Adicionados"
-        eyebrow="NOVOS NO CATÁLOGO"
-        iconType="sparkles"
         items={recentlyAddedAnimes}
         loading={!hydrated}
         showBookmark={false}
@@ -250,33 +247,15 @@ function Home() {
       {/* 5. Animes da Temporada */}
       <AnimeRow
         title="Animes da Temporada"
-        eyebrow="SIMULCAST SEMANAL"
         tag={`${data.seasonName} ${data.seasonYear}`}
-        iconType="calendar"
         href="/browse/season"
         items={season}
         showBookmark={false}
         showRank={false}
       />
 
-      {/* Rodapé Elegante com indicação de catálogo */}
-      <div className="pt-6 pb-2 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full bg-white/5 border border-purple-500/20 px-4 py-1.5 text-xs text-zinc-400 shadow-sm">
-          <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
-          <span>
-            Catálogo atualizado via{" "}
-            <strong className="text-zinc-200 font-semibold">
-              {data.source === "anilist"
-                ? "AniList"
-                : data.source === "kitsu"
-                  ? "Kitsu"
-                  : data.source === "jikan"
-                    ? "MyAnimeList"
-                    : "Servidor Seguro"}
-            </strong>
-          </span>
-        </div>
-      </div>
+      {/* Rodapé institucional */}
+      <HomeFooter />
     </div>
   );
 }

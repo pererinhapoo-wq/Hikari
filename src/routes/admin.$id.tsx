@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Trash2, Camera, Loader2, AlertCircle, CheckCircle2, Film } from "lucide-react";
+import { Plus, Trash2, Camera, Loader2, AlertCircle, CheckCircle2, Film, Copy } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
@@ -148,10 +148,12 @@ function AdminEditor() {
 
     const locals = useHikariStore.getState().animes;
     const existing =
-      locals.find((a) => a.id === id) ||
-      (remote?.anilistId
-        ? locals.find((a) => a.anilistId === remote.anilistId)
-        : undefined);
+      id === "new"
+        ? undefined
+        : locals.find((a) => a.id === id) ||
+          (remote?.anilistId
+            ? locals.find((a) => a.anilistId === remote.anilistId)
+            : undefined);
 
     const next = existing ?? (remote ? animeToLocal(remote) : emptyLocal());
 
@@ -167,6 +169,55 @@ function AdminEditor() {
 
   function set<K extends keyof LocalAnime>(key: K, value: LocalAnime[K]) {
     setForm((f) => (f ? { ...f, [key]: value } : f));
+  }
+
+  function duplicateAsDubbed() {
+    const newId = `local-${crypto.randomUUID()}`;
+    const baseTitleRomaji = current.titleRomaji ? `${current.titleRomaji} Dublado` : "";
+    const baseTitleEnglish = current.titleEnglish ? `${current.titleEnglish} Dublado` : "";
+
+    const clonedSeasons: Season[] = current.seasons.map((s) => ({
+      id: `s-${crypto.randomUUID()}`,
+      number: s.number,
+      title: s.title,
+      episodes: s.episodes.map((e) => ({
+        id: `e-${crypto.randomUUID()}`,
+        number: e.number,
+        title: e.title,
+        duration: e.duration,
+        thumbnail: e.thumbnail,
+        synopsis: e.synopsis,
+        videoUrl: "",
+        videoUrl2: "",
+        videoUrl3: "",
+        videoUrl4: "",
+        videoUrl5: "",
+      })),
+    }));
+
+    const duplicated: LocalAnime = {
+      ...current,
+      id: newId,
+      titleRomaji: baseTitleRomaji || current.titleRomaji,
+      titleEnglish: baseTitleEnglish || current.titleEnglish,
+      seasons:
+        clonedSeasons.length > 0
+          ? clonedSeasons
+          : [
+              {
+                id: `s-${crypto.randomUUID()}`,
+                number: 1,
+                title: "Temporada 1",
+                episodes: [],
+              },
+            ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    upsertAnime(duplicated);
+    toast.success("Cadastro independente criado para a versão dublada!");
+    void navigate({ to: "/admin/$id", params: { id: newId } });
   }
 
   function save() {
@@ -321,7 +372,19 @@ function AdminEditor() {
           </h1>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {id !== "new" && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={duplicateAsDubbed}
+              title="Cria um cadastro independente para a versão dublada"
+            >
+              <Copy className="mr-1.5 size-4" />
+              Duplicar como dublado
+            </Button>
+          )}
+
           {id !== "new" &&
             stored.some((a) => a.id === current.id) && (
               <Button

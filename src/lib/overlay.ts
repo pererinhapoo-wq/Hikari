@@ -18,11 +18,24 @@ function filterPublishedSeasons(seasons: Season[]): Season[] {
 
 export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime[]): Anime | null {
   const numericId = Number(id);
-  const byId = locals.find(
-    (a) =>
-      a.id === id ||
-      (!isNaN(numericId) && numericId > 0 && (a.anilistId === numericId || a.malId === numericId)),
-  );
+  const isDubbedTitle = (a: LocalAnime) =>
+    /\b(dub|dublado|dublada)\b/i.test(`${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`);
+
+  // 1. Direct exact match by local ID takes priority (e.g. /anime/local-xxx)
+  let byId = locals.find((a) => a.id === id);
+
+  // 2. If id is numeric and not exact match, search by AniList/MAL ID preferring the original/subbed version
+  if (!byId && !isNaN(numericId) && numericId > 0) {
+    byId =
+      locals.find(
+        (a) =>
+          (a.anilistId === numericId || a.malId === numericId) &&
+          !isDubbedTitle(a),
+      ) ||
+      locals.find(
+        (a) => a.anilistId === numericId || a.malId === numericId,
+      );
+  }
   if (byId) {
     const local = localToAnime(byId);
     const publishedSeasons = filterPublishedSeasons(local.seasons);
@@ -79,7 +92,8 @@ export function mergeDetail(remote: Anime | null, id: string, locals: LocalAnime
   if (!remote) return null;
 
   const byAni = remote.anilistId
-    ? locals.find((a) => a.anilistId === remote.anilistId)
+    ? locals.find((a) => a.anilistId === remote.anilistId && !isDubbedTitle(a)) ||
+      locals.find((a) => a.anilistId === remote.anilistId)
     : undefined;
 
   if (byAni) {

@@ -73,7 +73,7 @@ export const EpisodeCard = memo(function EpisodeCard({
         resetScroll={true}
         className={cn(
           "block group select-none touch-manipulation [-webkit-tap-highlight-color:transparent] focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80 rounded-lg sm:rounded-xl",
-          "motion-safe:transition-transform motion-safe:duration-150 motion-safe:active:scale-[0.985] motion-reduce:transition-none motion-reduce:transform-none",
+          "motion-safe:transition-[transform,opacity] motion-safe:duration-150 motion-safe:active:scale-[0.98] motion-safe:active:opacity-85 motion-reduce:transition-none motion-reduce:transform-none",
         )}
       >
         {/* Contêiner da Imagem Horizontal (Proporção 16:9 de Vídeo) */}
@@ -133,12 +133,12 @@ export const EpisodeCard = memo(function EpisodeCard({
           {(audioInfo.isDub || audioInfo.isLeg) && (
             <div className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex items-center gap-1 z-10 select-none pointer-events-none">
               {audioInfo.isDub && (
-                <span className="rounded bg-emerald-600/90 border border-emerald-400/30 px-1 sm:px-1.5 py-0.5 text-[7.5px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm">
+                <span className="inline-flex items-center justify-center h-4 sm:h-[18px] px-1 sm:px-1.5 rounded bg-emerald-600/90 border border-emerald-400/30 text-[7.5px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm leading-none">
                   DUB
                 </span>
               )}
               {audioInfo.isLeg && (
-                <span className="rounded bg-rose-600/90 border border-rose-400/30 px-1 sm:px-1.5 py-0.5 text-[7.5px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm">
+                <span className="inline-flex items-center justify-center h-4 sm:h-[18px] px-1 sm:px-1.5 rounded bg-red-600/90 border border-red-400/30 text-[7.5px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm leading-none">
                   LEG
                 </span>
               )}

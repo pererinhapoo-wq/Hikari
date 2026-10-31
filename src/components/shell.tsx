@@ -499,12 +499,17 @@ export function Shell() {
           }
 
           const title =
-            `${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
+            `${anime.titles?.romaji || ""} ${anime.titles?.english || ""} ${anime.titles?.native || ""}`
               .normalize("NFD")
               .replace(/[\u0300-\u036f]/g, "")
               .toLowerCase();
 
-          return title.includes(normalized);
+          const matchesDirect = title.includes(normalized);
+          const matchesWords = normalized
+            .split(/\s+/)
+            .every((word) => title.includes(word));
+
+          return matchesDirect || matchesWords;
         });
 
         const remote = overlayList(
@@ -1478,19 +1483,21 @@ export function Shell() {
       <ShellMain isBannerPage={isBannerPage} />
 
       {/* =========================================================
-          FOOTER
+          FOOTER (páginas internas; página inicial possui rodapé próprio)
       ========================================================== */}
-      <footer className="mx-auto hidden max-w-6xl items-center justify-between px-6 py-8 text-xs text-subtle md:flex">
-        <p>
-          Hikari 光 — catálogo via AniList, com MyAnimeList como reserva.
-        </p>
+      {pathname !== "/" && (
+        <footer className="mx-auto hidden max-w-6xl items-center justify-between px-6 py-8 text-xs text-subtle md:flex">
+          <p>
+            Hikari 光 — catálogo via AniList, com MyAnimeList como reserva.
+          </p>
 
-        <p className="inline-flex items-center gap-1.5">
-          <Clapperboard className="size-3.5" />
+          <p className="inline-flex items-center gap-1.5">
+            <Clapperboard className="size-3.5" />
 
-          Trailers e episódios com URL própria
-        </p>
-      </footer>
+            Trailers e episódios com URL própria
+          </p>
+        </footer>
+      )}
 
     </div>
   );

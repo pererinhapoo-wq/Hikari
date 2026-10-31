@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Bot,
+  Copy,
   Download,
   Plus,
   Search,
@@ -80,17 +81,69 @@ function AdminIndex() {
     }
   }
 
-  function importHit(hit: SlimAnime) {
-    const existing = animes.find(
-      (a) => a.anilistId === hit.anilistId,
-    );
+  function importHit(hit: SlimAnime, asNew = false) {
+    const existing = asNew
+      ? undefined
+      : animes.find((a) => a.id === hit.id || a.anilistId === hit.anilistId);
 
     const local = animeToLocal(hit, existing);
 
     upsertAnime(local);
 
     toast.success(
-      `${displayTitle(hit)} importado. Abra para editar episódios.`,
+      asNew
+        ? `${displayTitle(hit)} importado como novo cadastro independente!`
+        : `${displayTitle(hit)} importado. Abra para editar episódios.`,
+    );
+  }
+
+  function duplicateAsDubbed(target: (typeof animes)[number]) {
+    const newId = `local-${crypto.randomUUID()}`;
+    const baseTitleRomaji = target.titleRomaji ? `${target.titleRomaji} Dublado` : "";
+    const baseTitleEnglish = target.titleEnglish ? `${target.titleEnglish} Dublado` : "";
+
+    const clonedSeasons = target.seasons.map((s) => ({
+      id: `s-${crypto.randomUUID()}`,
+      number: s.number,
+      title: s.title,
+      episodes: s.episodes.map((e) => ({
+        id: `e-${crypto.randomUUID()}`,
+        number: e.number,
+        title: e.title,
+        duration: e.duration,
+        thumbnail: e.thumbnail,
+        synopsis: e.synopsis,
+        videoUrl: "",
+        videoUrl2: "",
+        videoUrl3: "",
+        videoUrl4: "",
+        videoUrl5: "",
+      })),
+    }));
+
+    const duplicated = {
+      ...target,
+      id: newId,
+      titleRomaji: baseTitleRomaji || target.titleRomaji,
+      titleEnglish: baseTitleEnglish || target.titleEnglish,
+      seasons:
+        clonedSeasons.length > 0
+          ? clonedSeasons
+          : [
+              {
+                id: `s-${crypto.randomUUID()}`,
+                number: 1,
+                title: "Temporada 1",
+                episodes: [],
+              },
+            ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    upsertAnime(duplicated);
+    toast.success(
+      `Versão dublada criada como cadastro independente!`,
     );
   }
 
@@ -298,14 +351,30 @@ function AdminIndex() {
                   </p>
                 </div>
 
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => importHit(hit)}
-                >
-                  Importar
-                </Button>
+                <div className="flex shrink-0 gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => importHit(hit)}
+                  >
+                    {animes.some((a) => a.anilistId === hit.anilistId)
+                      ? "Atualizar"
+                      : "Importar"}
+                  </Button>
+
+                  {animes.some((a) => a.anilistId === hit.anilistId) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => importHit(hit, true)}
+                      title="Importar como novo cadastro independente (ex: versão dublada)"
+                    >
+                      Novo cadastro
+                    </Button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -404,12 +473,12 @@ function AdminIndex() {
                   </div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button
                     asChild
                     size="sm"
                     variant="outline"
-                    className="w-full"
+                    className="flex-1 min-w-24"
                   >
                     <Link
                       to="/admin/$id"
@@ -417,6 +486,17 @@ function AdminIndex() {
                     >
                       Editar
                     </Link>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => duplicateAsDubbed(a)}
+                    title="Criar cadastro independente para a versão dublada deste anime"
+                  >
+                    <Copy className="mr-1.5 size-3.5" />
+                    Versão Dublada
                   </Button>
 
                   <Button

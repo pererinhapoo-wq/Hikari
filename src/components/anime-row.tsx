@@ -98,8 +98,8 @@ export function AnimeRow({
   return (
     <section className="space-y-3.5 sm:space-y-4 [content-visibility:auto] [contain-intrinsic-size:auto_260px]">
       {/* Cabeçalho da Seção: Título e Botão Ver Tudo alinhados na mesma linha */}
-      <div className="flex items-end justify-between gap-3 px-0.5">
-        <div className="min-w-0 flex-1 space-y-1">
+      <div className={`flex ${eyebrow ? "items-end" : "items-center"} justify-between gap-3 px-0.5`}>
+        <div className={`min-w-0 flex-1 ${eyebrow ? "space-y-1" : ""}`}>
           {/* Eyebrow / Tag Temática */}
           {eyebrow && (
             <div className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold tracking-widest text-purple-400 uppercase">
@@ -120,12 +120,14 @@ export function AnimeRow({
 
           {/* Título com Tipografia Cinzel Elegante */}
           <div className="flex items-center gap-2 min-w-0">
-            {!eyebrow && (
-              <span className="inline-block size-2 shrink-0 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
-            )}
             <h2 className="font-section text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-sm truncate">
               {title}
             </h2>
+            {tag && !eyebrow && (
+              <span className="hidden sm:inline-flex shrink-0 rounded-full bg-purple-950/50 border border-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300/80">
+                {tag}
+              </span>
+            )}
             {items.length > 0 && (
               <span className="hidden sm:inline-flex shrink-0 rounded-full bg-purple-950/50 border border-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300/80">
                 {items.length} {items.length === 1 ? "título" : "títulos"}
@@ -135,7 +137,7 @@ export function AnimeRow({
         </div>
 
         {/* Controles: Setas de rolagem no desktop e botão Ver Tudo discreto e elegante */}
-        <div className="flex shrink-0 items-center gap-2 mb-0.5">
+        <div className={`flex shrink-0 items-center gap-2 ${eyebrow ? "mb-0.5" : ""}`}>
           {/* Controles de Navegação por trilho no Desktop */}
           {(loading || items.length > 0) && (
             <div className="hidden md:flex items-center gap-1.5">

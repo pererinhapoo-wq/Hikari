@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Bookmark,
@@ -46,6 +46,26 @@ export const AnimeCard = memo(function AnimeCard({
   const title =
     displayTitle(anime);
 
+  // Selos de áudio confiáveis (DUB em verde, LEG em vermelho) apenas se houver metadados verificáveis
+  const audioInfo = useMemo(() => {
+    const texts: string[] = [
+      anime.titles?.english,
+      anime.titles?.romaji,
+      anime.titles?.native,
+      (anime as unknown as { audio?: string }).audio || "",
+      (anime as unknown as { audioVersion?: string }).audioVersion || "",
+    ].filter(Boolean);
+
+    const combined = texts.join(" ").toLowerCase();
+    const dubRegex = /\b(dub|dublado|dublada|dublagem|pt-br\s*dub|dub\s*pt-br)\b/i;
+    const legRegex = /\b(leg|legendado|legendada|legendas|pt-br\s*leg|leg\s*pt-br|sub|subbed)\b/i;
+
+    return {
+      isDub: dubRegex.test(combined),
+      isLeg: legRegex.test(combined),
+    };
+  }, [anime.titles]);
+
   const width =
     size === "sm"
       ? "w-24 sm:w-28"
@@ -79,17 +99,20 @@ export const AnimeCard = memo(function AnimeCard({
           border
           border-purple-500/15
           [contain:layout_paint_style]
-          motion-safe:transition-[border-color,box-shadow]
-          motion-safe:duration-300
+          motion-safe:transition-[border-color,box-shadow,transform,opacity]
+          motion-safe:duration-150
           ease-[var(--ease-out)]
           [@media(hover:hover)]:hover:border-purple-400/50
           [@media(hover:hover)]:hover:shadow-[0_8px_20px_-4px_rgba(168,85,247,0.28)]
+          motion-safe:active:scale-[0.98]
+          motion-safe:active:opacity-85
           active:border-purple-400/40
-          active:shadow-[0_4px_14px_rgba(168,85,247,0.2)]
           focus-visible:outline-none
           focus-visible:ring-2
           focus-visible:ring-purple-400/50
           -webkit-tap-highlight-color-transparent
+          motion-reduce:transition-none
+          motion-reduce:transform-none
         "
       >
         <div className="relative aspect-[2/3] overflow-hidden bg-[#0d0c16]">
@@ -130,6 +153,22 @@ export const AnimeCard = memo(function AnimeCard({
 
           {/* Sombra sutil interna com gradiente escuro */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/25 opacity-40 transition-opacity duration-300 [@media(hover:hover)]:group-hover:opacity-60 group-active:opacity-60" />
+
+          {/* Selos de áudio discretos sobre a miniatura (DUB em verde, LEG em vermelho) */}
+          {(audioInfo.isDub || audioInfo.isLeg) && (
+            <div className="absolute top-1.5 left-1.5 flex items-center gap-1 z-10 select-none pointer-events-none">
+              {audioInfo.isDub && (
+                <span className="inline-flex items-center justify-center h-4 sm:h-[18px] px-1 sm:px-1.5 rounded bg-emerald-600/90 border border-emerald-400/30 text-[7.5px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm leading-none">
+                  DUB
+                </span>
+              )}
+              {audioInfo.isLeg && (
+                <span className="inline-flex items-center justify-center h-4 sm:h-[18px] px-1 sm:px-1.5 rounded bg-red-600/90 border border-red-400/30 text-[7.5px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm leading-none">
+                  LEG
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Bloco de informações com alinhamento uniforme e espaçamento compacto */}
@@ -158,27 +197,35 @@ export const AnimeCard = memo(function AnimeCard({
             </h3>
           </div>
 
-          {/* Ano e tipo imediatamente abaixo do título, com espaçamento sutilmente aproximado e alinhamento linear uniforme */}
+          {/* Linha de informações: em Episódios de Hoje exibe o episódio; nas demais linhas exibe ano e tipo sem categorias/gêneros */}
           <div className="mt-px sm:mt-0.5 flex items-center gap-1 text-[9.5px] sm:text-[10px] font-medium text-zinc-400 truncate">
-            {anime.year && <span className="shrink-0">{anime.year}</span>}
-            {anime.year && (anime.format || (showGenre && anime.genres?.[0])) && (
-              <span className="text-purple-400/80 font-bold select-none px-0.5">·</span>
+            {anime.todayEpisode?.number ? (
+              <span className="font-semibold text-purple-400 truncate">
+                Episódio {anime.todayEpisode.number}
+              </span>
+            ) : (
+              <>
+                {anime.year && <span className="shrink-0">{anime.year}</span>}
+                {anime.year && Boolean(anime.format || (showGenre && anime.genres?.[0])) && (
+                  <span className="text-purple-400/80 font-bold select-none px-0.5">·</span>
+                )}
+                <span className="truncate">
+                  {anime.format === "TV"
+                    ? "Série"
+                    : anime.format === "MOVIE"
+                      ? "Filme"
+                      : anime.format === "OVA"
+                        ? "OVA"
+                        : anime.format === "ONA"
+                          ? "ONA"
+                          : anime.format === "SPECIAL"
+                            ? "Especial"
+                            : showGenre && anime.genres?.[0]
+                              ? anime.genres[0]
+                              : ""}
+                </span>
+              </>
             )}
-            <span className="truncate">
-              {anime.format === "TV"
-                ? "Série"
-                : anime.format === "MOVIE"
-                  ? "Filme"
-                  : anime.format === "OVA"
-                    ? "OVA"
-                    : anime.format === "ONA"
-                      ? "ONA"
-                      : anime.format === "SPECIAL"
-                        ? "Especial"
-                        : showGenre && anime.genres?.[0]
-                          ? anime.genres[0]
-                          : ""}
-            </span>
           </div>
         </div>
       </Link>

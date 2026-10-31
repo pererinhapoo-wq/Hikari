@@ -23,13 +23,8 @@ export function RecentEpisodesSection() {
   return (
     <section className="space-y-3 sm:space-y-4 [content-visibility:auto] [contain-intrinsic-size:auto_600px]">
       {/* Cabeçalho da Seção com Botão Ver todos alinhado à direita */}
-      <div className="flex items-end justify-between gap-3 px-0.5">
-        <div className="min-w-0 flex-1 space-y-0.5 sm:space-y-1">
-          {/* Eyebrow sem ícone ou emoji */}
-          <div className="text-[10px] sm:text-[11px] font-bold tracking-widest text-purple-400 uppercase">
-            LANÇAMENTOS NO HIKARI
-          </div>
-
+      <div className="flex items-center justify-between gap-3 px-0.5">
+        <div className="min-w-0 flex-1">
           {/* Título da Seção */}
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="font-section text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-sm truncate">
@@ -42,7 +37,7 @@ export function RecentEpisodesSection() {
         </div>
 
         {/* Botão Ver todos discreto e elegante */}
-        <div className="flex shrink-0 items-center gap-2 mb-0.5">
+        <div className="flex shrink-0 items-center gap-2">
           <Link
             to="/episodes"
             className="

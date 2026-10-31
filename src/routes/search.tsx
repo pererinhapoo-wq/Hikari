@@ -459,13 +459,25 @@ function SearchPage() {
                   return false;
                 }
 
-                if (
-                  q &&
-                  !`${anime.titles.romaji} ${anime.titles.english} ${anime.titles.native}`
-                    .toLowerCase()
-                    .includes(q)
-                ) {
-                  return false;
+                if (q) {
+                  const titleStr =
+                    `${anime.titles?.romaji || ""} ${anime.titles?.english || ""} ${anime.titles?.native || ""}`
+                      .normalize("NFD")
+                      .replace(/[\u0300-\u036f]/g, "")
+                      .toLowerCase();
+                  const normalizedQ = q
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .toLowerCase();
+
+                  const matchesDirect = titleStr.includes(normalizedQ);
+                  const matchesWords = normalizedQ
+                    .split(/\s+/)
+                    .every((word) => titleStr.includes(word));
+
+                  if (!matchesDirect && !matchesWords) {
+                    return false;
+                  }
                 }
 
                 if (

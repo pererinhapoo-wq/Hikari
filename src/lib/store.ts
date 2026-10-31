@@ -74,10 +74,7 @@ export const useHikariStore = create<HikariState>()(
       upsertAnime: (anime) =>
         set((s) => {
           const idx = s.animes.findIndex(
-            (a) =>
-              a.id === anime.id ||
-              (anime.anilistId &&
-                a.anilistId === anime.anilistId),
+            (a) => a.id === anime.id,
           );
 
           if (idx === -1) {
@@ -302,70 +299,68 @@ export function overlaySlim<
 ): T[] {
   const hiddenAnilist = new Set(
     locals
-      .filter(
-        (a) =>
-          a.hidden &&
-          a.anilistId,
-      )
-      .map(
-        (a) =>
-          a.anilistId as number,
-      ),
+      .filter((a) => a.hidden && a.anilistId)
+      .map((a) => a.anilistId as number),
+  );
+  const hiddenIds = new Set(
+    locals.filter((a) => a.hidden).map((a) => a.id),
   );
 
-  const override =
-    new Map<number, LocalAnime>();
+  const isDubbed = (a: LocalAnime) =>
+    /\b(dub|dublado|dublada)\b/i.test(`${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`);
 
-  for (const a of locals) {
-    if (
-      a.anilistId &&
-      !a.hidden
-    ) {
-      override.set(
-        a.anilistId,
-        a,
-      );
-    }
-  }
+  const usedLocalIds = new Set<string>();
 
   const mapped = remote
     .filter(
       (r) =>
-        !r.anilistId ||
-        !hiddenAnilist.has(
-          r.anilistId,
-        ),
+        !hiddenIds.has(r.id) &&
+        (!r.anilistId || !hiddenAnilist.has(r.anilistId)),
     )
     .map((r) => {
-      if (
-        r.anilistId &&
-        override.has(r.anilistId)
-      ) {
-        return toLocalItem(
-          override.get(
-            r.anilistId,
-          )!,
-        );
+      // 1. Direct ID match
+      const direct = locals.find((a) => !a.hidden && a.id === r.id);
+      if (direct) {
+        usedLocalIds.add(direct.id);
+        return toLocalItem(direct);
+      }
+
+      // 2. AniList ID match: prefer original/non-dubbed local anime to replace the canonical remote entry
+      if (r.anilistId) {
+        const aniLocal =
+          locals.find(
+            (a) =>
+              !a.hidden &&
+              !usedLocalIds.has(a.id) &&
+              a.anilistId === r.anilistId &&
+              !isDubbed(a),
+          ) ||
+          locals.find(
+            (a) =>
+              !a.hidden &&
+              !usedLocalIds.has(a.id) &&
+              a.anilistId === r.anilistId,
+          );
+
+        if (aniLocal) {
+          usedLocalIds.add(aniLocal.id);
+          return toLocalItem(aniLocal);
+        }
       }
 
       return r;
     });
 
-  const remoteIds = new Set(
-    mapped.map((m) => m.id),
-  );
+  const remoteIds = new Set(mapped.map((m) => m.id));
 
   const extras = locals
     .filter(
       (a) =>
         !a.hidden &&
-        !a.anilistId &&
+        !usedLocalIds.has(a.id) &&
         !remoteIds.has(a.id),
     )
     .map(toLocalItem);
 
-  return [
-    ...extras,
-    ...mapped,
-  ];
-            }
+  return [...extras, ...mapped];
+}
