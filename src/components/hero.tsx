@@ -528,29 +528,35 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
       `}</style>
       {/* CAMADA DE IMAGEM AMPLA EM BACKGROUND (CORES E LUZ NATURAIS) */}
       <div className="absolute inset-0 size-full pointer-events-none overflow-hidden select-none">
-        {/* MOBILE: Imagem ampla ocupando a tela com enquadramento focado nos personagens e cores originais */}
-        <div className="relative size-full md:hidden">
+        {/* MOBILE / DESKTOP: Elemento único <picture> para priorizar apenas a imagem LCP real do viewport ativo */}
+        <picture className="relative block size-full">
+          {desktopBackdrop ? (
+            <source
+              media="(min-width: 768px)"
+              srcSet={desktopBackdrop}
+              width={1900}
+              height={400}
+            />
+          ) : null}
+          {mobileBackdrop ? (
+            <source
+              media="(max-width: 767.98px)"
+              srcSet={mobileBackdrop}
+              width={460}
+              height={690}
+            />
+          ) : null}
           <img
-            src={mobileBackdrop}
+            src={mobileBackdrop || desktopBackdrop}
             alt={preferredTitle}
+            width={460}
+            height={690}
             loading={priority ? "eager" : "lazy"}
-            decoding="async"
+            decoding={priority ? "sync" : "async"}
             fetchPriority={priority ? "high" : "auto"}
-            className="size-full object-cover object-top"
+            className="size-full object-cover object-top md:object-center"
           />
-        </div>
-
-        {/* DESKTOP: Banner horizontal em alta definição */}
-        <div className="hidden md:block relative size-full">
-          <img
-            src={desktopBackdrop}
-            alt={preferredTitle}
-            loading={priority ? "eager" : "lazy"}
-            decoding="async"
-            fetchPriority={priority ? "high" : "auto"}
-            className="size-full object-cover object-center"
-          />
-        </div>
+        </picture>
 
         {/* GRADIENTE INFERIOR NEUTRO: Limitado estritamente à região dos textos */}
         <div
@@ -596,24 +602,34 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
           {logoConfig && !logoFailed ? (
             <div className="flex items-center justify-center w-full px-2">
               <h1 className="sr-only">{preferredTitle}</h1>
-              <img
-                src={logoConfig.src}
-                alt={logoConfig.alt || preferredTitle}
-                title={preferredTitle}
-                loading={priority ? "eager" : "lazy"}
-                decoding="async"
-                fetchPriority={priority ? "high" : "auto"}
-                onError={() => setLogoFailed(true)}
-                className={`
-                  w-auto
-                  object-contain
-                  select-none
-                  pointer-events-none
-                  drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)]
-                  filter
-                  ${logoConfig.sizeClasses}
-                `}
-              />
+              <picture className="contents">
+                {logoConfig.webpSrcSet ? (
+                  <source
+                    type="image/webp"
+                    srcSet={logoConfig.webpSrcSet}
+                    sizes={logoConfig.sizes}
+                  />
+                ) : null}
+                <img
+                  src={logoConfig.src}
+                  alt={logoConfig.alt || preferredTitle}
+                  title={preferredTitle}
+                  width={logoConfig.width ?? 360}
+                  height={logoConfig.height ?? 176}
+                  loading={priority ? "eager" : "lazy"}
+                  decoding="async"
+                  fetchPriority="auto"
+                  onError={() => setLogoFailed(true)}
+                  className={`
+                    object-contain
+                    select-none
+                    pointer-events-none
+                    drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)]
+                    filter
+                    ${logoConfig.sizeClasses}
+                  `}
+                />
+              </picture>
             </div>
           ) : (
             <h1
@@ -879,38 +895,59 @@ export function Hero({
     hasMoved: false,
   });
 
-  // Pré-carregamento imediato das imagens e logos de todos os 8 animes para transição sem atrasos
+  // Pré-carrega apenas o próximo slide após o carregamento inicial estar ocioso, sem competir com o LCP
   useEffect(() => {
-    if (typeof window === "undefined" || items.length === 0) return;
-    const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+    if (typeof window === "undefined" || items.length < 2) return;
 
-    items.forEach((item) => {
-      const primaryUrl = isDesktop
-        ? item.banner || item.cover
-        : item.cover || item.banner;
-      const secondaryUrl = isDesktop
-        ? item.cover || item.banner
-        : item.banner || item.cover;
+    let cancelled = false;
+    let delayTimer: number | null = null;
 
-      if (primaryUrl) {
+    const preloadNextSlide = () => {
+      if (cancelled) return;
+      const nextItem = items[(index + 1) % items.length];
+      if (!nextItem) return;
+
+      const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+      const backdropUrl = isDesktop
+        ? nextItem.banner || nextItem.cover
+        : nextItem.cover || nextItem.banner;
+
+      if (backdropUrl) {
         const img = new Image();
         img.decoding = "async";
-        img.src = primaryUrl;
-      }
-      if (secondaryUrl && secondaryUrl !== primaryUrl) {
-        const img = new Image();
-        img.decoding = "async";
-        img.src = secondaryUrl;
+        img.src = backdropUrl;
       }
 
-      const logoConfig = getAnimeLogo(item);
-      if (logoConfig?.src) {
+      const nextLogo = getAnimeLogo(nextItem);
+      if (nextLogo) {
         const logoImg = new Image();
         logoImg.decoding = "async";
-        logoImg.src = logoConfig.src;
+        if (nextLogo.webpSrcSet) {
+          logoImg.sizes = nextLogo.sizes || "160px";
+          logoImg.srcset = nextLogo.webpSrcSet;
+        }
+        logoImg.src = nextLogo.src;
       }
-    });
-  }, [items]);
+    };
+
+    const scheduleAfterLoad = () => {
+      delayTimer = window.setTimeout(preloadNextSlide, 3500);
+    };
+
+    if (document.readyState === "complete") {
+      scheduleAfterLoad();
+    } else {
+      window.addEventListener("load", scheduleAfterLoad, { once: true });
+    }
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("load", scheduleAfterLoad);
+      if (delayTimer !== null) {
+        window.clearTimeout(delayTimer);
+      }
+    };
+  }, [items, index]);
 
   // Disparo da transição suave com crossfade e sobreposição
   const triggerTransition = useCallback(

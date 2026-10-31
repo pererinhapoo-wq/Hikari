@@ -5,6 +5,10 @@ export interface AnimeLogoConfig {
   alt: string;
   sizeClasses: string;
   aspectRatioHint: "wide" | "tall" | "balanced";
+  width?: number;
+  height?: number;
+  webpSrcSet?: string;
+  sizes?: string;
 }
 
 /**
@@ -19,6 +23,10 @@ const LOGO_DEFINITIONS: Record<
     alt: string;
     sizeClasses: string;
     aspectRatioHint: "wide" | "tall" | "balanced";
+    width: number;
+    height: number;
+    webpSrcSet?: string;
+    sizes?: string;
     aniListIds: number[];
     malIds: number[];
     titlePatterns: RegExp[];
@@ -28,8 +36,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/bleach.png",
     alt: "BLEACH",
     sizeClasses:
-      "max-h-12 sm:max-h-15 md:max-h-18 max-w-[230px] sm:max-w-[290px] md:max-w-[350px]",
+      "h-12 sm:h-15 md:h-18 w-auto max-w-[230px] sm:max-w-[290px] md:max-w-[350px]",
     aspectRatioHint: "balanced",
+    width: 658,
+    height: 144,
+    webpSrcSet:
+      "/assets/anime-logos/bleach-sm.webp 428w, /assets/anime-logos/bleach.webp 658w",
+    sizes: "(min-width: 768px) 329px, (min-width: 640px) 274px, 219px",
     aniListIds: [269, 185874, 159322, 144665, 114444],
     malIds: [269, 41467, 56784, 60636],
     titlePatterns: [/\bbleach\b/i],
@@ -38,8 +51,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/one-piece.png",
     alt: "ONE PIECE",
     sizeClasses:
-      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
     aspectRatioHint: "wide",
+    width: 514,
+    height: 176,
+    webpSrcSet:
+      "/assets/anime-logos/one-piece-sm.webp 319w, /assets/anime-logos/one-piece.webp 514w",
+    sizes: "(min-width: 768px) 257px, (min-width: 640px) 210px, 164px",
     aniListIds: [21, 171630, 459, 19123],
     malIds: [21, 57557, 459, 19123],
     titlePatterns: [/\bone\s*piece\b/i],
@@ -48,8 +66,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/attack-on-titan.svg",
     alt: "Shingeki no Kyojin / Attack on Titan",
     sizeClasses:
-      "max-h-13 sm:max-h-17 md:max-h-20 max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
+      "h-13 sm:h-17 md:h-20 w-auto max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
     aspectRatioHint: "wide",
+    width: 718,
+    height: 209,
     aniListIds: [16498, 20958, 99147, 104578, 110277, 145064],
     malIds: [16498, 25777, 35760, 38524, 40028, 48583],
     titlePatterns: [/\battack\s+on\s+titan\b/i, /\bshingeki\s+no\s+kyojin\b/i],
@@ -58,8 +78,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/jujutsu-kaisen.svg",
     alt: "Jujutsu Kaisen",
     sizeClasses:
-      "max-h-16 sm:max-h-20 md:max-h-24 max-w-[190px] sm:max-w-[240px] md:max-w-[280px]",
+      "h-16 sm:h-20 md:h-24 w-auto max-w-[190px] sm:max-w-[240px] md:max-w-[280px]",
     aspectRatioHint: "tall",
+    width: 654,
+    height: 236,
     aniListIds: [113415, 145064, 169052],
     malIds: [40748, 51009, 56064],
     titlePatterns: [/\bjujutsu\s+kaisen\b/i],
@@ -68,8 +90,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/demon-slayer.svg",
     alt: "Kimetsu no Yaiba / Demon Slayer",
     sizeClasses:
-      "max-h-16 sm:max-h-20 md:max-h-24 max-w-[200px] sm:max-w-[250px] md:max-w-[290px]",
+      "h-16 sm:h-20 md:h-24 w-auto max-w-[200px] sm:max-w-[250px] md:max-w-[290px]",
     aspectRatioHint: "tall",
+    width: 1038,
+    height: 852,
     aniListIds: [101922, 129874, 145139, 166240],
     malIds: [38000, 47778, 51019, 55701],
     titlePatterns: [/\bkimetsu\s+no\s+yaiba\b/i, /\bdemon\s+slayer\b/i],
@@ -78,8 +102,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/black-clover.png",
     alt: "Black Clover",
     sizeClasses:
-      "max-h-13 sm:max-h-16 md:max-h-20 max-w-[240px] sm:max-w-[310px] md:max-w-[370px]",
+      "h-13 sm:h-16 md:h-20 w-auto max-w-[240px] sm:max-w-[310px] md:max-w-[370px]",
     aspectRatioHint: "wide",
+    width: 451,
+    height: 160,
+    webpSrcSet:
+      "/assets/anime-logos/black-clover-sm.webp 286w, /assets/anime-logos/black-clover.webp 451w",
+    sizes: "(min-width: 768px) 225px, (min-width: 640px) 180px, 147px",
     aniListIds: [97940, 157252, 195604],
     malIds: [34572, 48849],
     titlePatterns: [/\bblack\s+clover\b/i, /ブラッククローバー/],
@@ -88,8 +117,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/cyberpunk-edgerunners.png",
     alt: "Cyberpunk: Edgerunners",
     sizeClasses:
-      "max-h-11 sm:max-h-14 md:max-h-17 max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+      "h-11 sm:h-14 md:h-17 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
     aspectRatioHint: "wide",
+    width: 554,
+    height: 136,
+    webpSrcSet:
+      "/assets/anime-logos/cyberpunk-edgerunners-sm.webp 349w, /assets/anime-logos/cyberpunk-edgerunners.webp 554w",
+    sizes: "(min-width: 768px) 277px, (min-width: 640px) 228px, 179px",
     aniListIds: [120516, 195539],
     malIds: [42364, 61990],
     titlePatterns: [/\bcyberpunk\b.*\bedgerunners\b/i],
@@ -98,8 +132,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/solo-leveling.svg",
     alt: "Solo Leveling",
     sizeClasses:
-      "max-h-12 sm:max-h-15 md:max-h-18 max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
+      "h-12 sm:h-15 md:h-18 w-auto max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
     aspectRatioHint: "wide",
+    width: 400,
+    height: 262,
     aniListIds: [151807, 175841],
     malIds: [52299, 58567],
     titlePatterns: [/\bsolo\s+leveling\b/i, /\bore\s+dake\s+level\s+up\b/i],
@@ -108,8 +144,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/frieren.png",
     alt: "Sousou no Frieren",
     sizeClasses:
-      "max-h-14 sm:max-h-17 md:max-h-21 max-w-[230px] sm:max-w-[290px] md:max-w-[350px]",
+      "h-14 sm:h-17 md:h-21 w-auto max-w-[230px] sm:max-w-[290px] md:max-w-[350px]",
     aspectRatioHint: "balanced",
+    width: 394,
+    height: 168,
+    webpSrcSet:
+      "/assets/anime-logos/frieren-sm.webp 256w, /assets/anime-logos/frieren.webp 394w",
+    sizes: "(min-width: 768px) 197px, (min-width: 640px) 159px, 131px",
     aniListIds: [154587],
     malIds: [52991],
     titlePatterns: [/\bfrieren\b/i, /\bsousou\s+no\s+frieren\b/i],
@@ -118,8 +159,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/death-note.svg",
     alt: "DEATH NOTE",
     sizeClasses:
-      "max-h-12 sm:max-h-15 md:max-h-18 max-w-[240px] sm:max-w-[300px] md:max-w-[360px]",
+      "h-12 sm:h-15 md:h-18 w-auto max-w-[240px] sm:max-w-[300px] md:max-w-[360px]",
     aspectRatioHint: "wide",
+    width: 800,
+    height: 170,
     aniListIds: [1535],
     malIds: [1535],
     titlePatterns: [/\bdeath\s+note\b/i],
@@ -128,8 +171,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/my-hero-academia.png",
     alt: "My Hero Academia",
     sizeClasses:
-      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[220px] sm:max-w-[280px] md:max-w-[340px]",
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[220px] sm:max-w-[280px] md:max-w-[340px]",
     aspectRatioHint: "balanced",
+    width: 435,
+    height: 176,
+    webpSrcSet:
+      "/assets/anime-logos/my-hero-academia-sm.webp 270w, /assets/anime-logos/my-hero-academia.webp 435w",
+    sizes: "(min-width: 768px) 217px, (min-width: 640px) 178px, 138px",
     aniListIds: [21459, 98659, 100166, 114440, 131881, 158569, 178229],
     malIds: [31964, 35247, 36456, 38408, 41587, 49918, 54789],
     titlePatterns: [/\bmy\s+hero\s+academia\b/i, /\bboku\s+no\s+hero\s+academia\b/i],
@@ -138,8 +186,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/naruto-shippuden.svg",
     alt: "Naruto Shippuden",
     sizeClasses:
-      "max-h-13 sm:max-h-16 md:max-h-20 max-w-[230px] sm:max-w-[290px] md:max-w-[350px]",
+      "h-13 sm:h-16 md:h-20 w-auto max-w-[230px] sm:max-w-[290px] md:max-w-[350px]",
     aspectRatioHint: "balanced",
+    width: 871,
+    height: 452,
     aniListIds: [20, 1735],
     malIds: [20, 1735],
     titlePatterns: [/\bnaruto\b/i],
@@ -148,8 +198,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/dragon-ball-super.png",
     alt: "Dragon Ball Super: Beerus",
     sizeClasses:
-      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
     aspectRatioHint: "wide",
+    width: 384,
+    height: 176,
+    webpSrcSet:
+      "/assets/anime-logos/dragon-ball-super-sm.webp 238w, /assets/anime-logos/dragon-ball-super.webp 384w",
+    sizes: "(min-width: 768px) 192px, (min-width: 640px) 157px, 122px",
     aniListIds: [206814, 21175, 133898, 101302, 206812],
     malIds: [63367, 30694, 48903, 36946, 63368],
     titlePatterns: [
@@ -161,8 +216,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/dragon-ball-z.svg",
     alt: "Dragon Ball Z",
     sizeClasses:
-      "max-h-13 sm:max-h-16 md:max-h-20 max-w-[240px] sm:max-w-[300px] md:max-w-[360px]",
+      "h-13 sm:h-16 md:h-20 w-auto max-w-[240px] sm:max-w-[300px] md:max-w-[360px]",
     aspectRatioHint: "wide",
+    width: 1000,
+    height: 255,
     aniListIds: [813, 223],
     malIds: [813, 223],
     titlePatterns: [/\bdragon\s*ball\b/i],
@@ -171,8 +228,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/fullmetal-alchemist.svg",
     alt: "Fullmetal Alchemist",
     sizeClasses:
-      "max-h-13 sm:max-h-16 md:max-h-20 max-w-[240px] sm:max-w-[310px] md:max-w-[370px]",
+      "h-13 sm:h-16 md:h-20 w-auto max-w-[240px] sm:max-w-[310px] md:max-w-[370px]",
     aspectRatioHint: "wide",
+    width: 720,
+    height: 227,
     aniListIds: [5114, 121],
     malIds: [5114, 121],
     titlePatterns: [/\bfullmetal\s+alchemist\b/i, /\bhagane\s+no\s+renkinjutsushi\b/i],
@@ -181,8 +240,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/one-punch-man.svg",
     alt: "One-Punch Man",
     sizeClasses:
-      "max-h-13 sm:max-h-16 md:max-h-19 max-w-[240px] sm:max-w-[300px] md:max-w-[360px]",
+      "h-13 sm:h-16 md:h-19 w-auto max-w-[240px] sm:max-w-[300px] md:max-w-[360px]",
     aspectRatioHint: "wide",
+    width: 549,
+    height: 154,
     aniListIds: [21087, 101348],
     malIds: [30276, 34134],
     titlePatterns: [/\bone[- ]?punch\s+man\b/i],
@@ -191,8 +252,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/spy-x-family.svg",
     alt: "SPY×FAMILY",
     sizeClasses:
-      "max-h-13 sm:max-h-16 md:max-h-20 max-w-[230px] sm:max-w-[290px] md:max-w-[350px]",
+      "h-13 sm:h-16 md:h-20 w-auto max-w-[230px] sm:max-w-[290px] md:max-w-[350px]",
     aspectRatioHint: "wide",
+    width: 1037,
+    height: 461,
     aniListIds: [140960, 158870, 170881],
     malIds: [50273, 53887, 57790],
     titlePatterns: [/\bspy\s*[x×]?\s*family\b/i],
@@ -201,8 +264,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/steins-gate.svg",
     alt: "Steins;Gate",
     sizeClasses:
-      "max-h-12 sm:max-h-15 md:max-h-18 max-w-[240px] sm:max-w-[300px] md:max-w-[360px]",
+      "h-12 sm:h-15 md:h-18 w-auto max-w-[240px] sm:max-w-[300px] md:max-w-[360px]",
     aspectRatioHint: "wide",
+    width: 740,
+    height: 200,
     aniListIds: [9253, 100469],
     malIds: [9253, 30484],
     titlePatterns: [/\bsteins[;:]?\s*gate\b/i],
@@ -211,8 +276,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/steel-ball-run.png",
     alt: "STEEL BALL RUN JoJo's Bizarre Adventure",
     sizeClasses:
-      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[270px] sm:max-w-[350px] md:max-w-[430px]",
     aspectRatioHint: "wide",
+    width: 301,
+    height: 176,
+    webpSrcSet:
+      "/assets/anime-logos/steel-ball-run-sm.webp 187w, /assets/anime-logos/steel-ball-run.webp 301w",
+    sizes: "(min-width: 768px) 151px, (min-width: 640px) 123px, 96px",
     aniListIds: [210482, 190327],
     malIds: [61469],
     titlePatterns: [
@@ -225,8 +295,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/the-ramparts-of-ice.png",
     alt: "The Ramparts of Ice / 氷の城壁",
     sizeClasses:
-      "max-h-14 sm:max-h-17 md:max-h-21 max-w-[240px] sm:max-w-[310px] md:max-w-[380px]",
+      "h-14 sm:h-17 md:h-21 w-auto max-w-[240px] sm:max-w-[310px] md:max-w-[380px]",
     aspectRatioHint: "wide",
+    width: 437,
+    height: 168,
+    webpSrcSet:
+      "/assets/anime-logos/the-ramparts-of-ice-sm.webp 284w, /assets/anime-logos/the-ramparts-of-ice.webp 437w",
+    sizes: "(min-width: 768px) 219px, (min-width: 640px) 177px, 146px",
     aniListIds: [213805, 186497],
     malIds: [64534, 60852],
     titlePatterns: [
@@ -239,8 +314,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/the-apothecary-diaries.png",
     alt: "The Apothecary Diaries",
     sizeClasses:
-      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
     aspectRatioHint: "wide",
+    width: 314,
+    height: 176,
+    webpSrcSet:
+      "/assets/anime-logos/the-apothecary-diaries-sm.webp 195w, /assets/anime-logos/the-apothecary-diaries.webp 314w",
+    sizes: "(min-width: 768px) 157px, (min-width: 640px) 128px, 100px",
     aniListIds: [161645, 176583, 195516],
     malIds: [54492, 58514, 61987],
     titlePatterns: [
@@ -253,8 +333,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/firefly-wedding.png",
     alt: "Firefly Wedding",
     sizeClasses:
-      "max-h-13 sm:max-h-16 md:max-h-20 max-w-[240px] sm:max-w-[310px] md:max-w-[380px]",
+      "h-13 sm:h-16 md:h-20 w-auto max-w-[240px] sm:max-w-[310px] md:max-w-[380px]",
     aspectRatioHint: "balanced",
+    width: 268,
+    height: 160,
+    webpSrcSet:
+      "/assets/anime-logos/firefly-wedding-sm.webp 170w, /assets/anime-logos/firefly-wedding.webp 268w",
+    sizes: "(min-width: 768px) 134px, (min-width: 640px) 107px, 87px",
     aniListIds: [205909],
     malIds: [63293],
     titlePatterns: [
@@ -267,8 +352,10 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/tokyo-revengers.svg",
     alt: "Tokyo Revengers / 東京リベンジャーズ",
     sizeClasses:
-      "max-h-12 sm:max-h-15 md:max-h-18 max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
+      "h-12 sm:h-15 md:h-18 w-auto max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
     aspectRatioHint: "wide",
+    width: 576,
+    height: 125,
     aniListIds: [129201, 145139, 178083],
     malIds: [42249, 49535, 59088],
     titlePatterns: [
@@ -281,8 +368,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/tougen-anki.png",
     alt: "TOUGEN ANKI / 桃源暗鬼",
     sizeClasses:
-      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+      "w-[260px] sm:w-[340px] md:w-[420px] h-auto max-h-14 sm:max-h-18 md:max-h-22 max-w-full",
     aspectRatioHint: "wide",
+    width: 840,
+    height: 117,
+    webpSrcSet:
+      "/assets/anime-logos/tougen-anki-sm.webp 507w, /assets/anime-logos/tougen-anki.webp 840w",
+    sizes: "(min-width: 768px) 420px, (min-width: 640px) 340px, 260px",
     aniListIds: [204650, 177474, 194835],
     malIds: [63181, 58811, 61891],
     titlePatterns: [
@@ -294,8 +386,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/the-exiled-heavy-knight.png",
     alt: "The Exiled Heavy Knight Knows How to Game the System / 追放された転生重騎士はゲーム知識で無双する",
     sizeClasses:
-      "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
+      "h-14 sm:h-18 md:h-22 w-auto max-w-[260px] sm:max-w-[340px] md:max-w-[420px]",
     aspectRatioHint: "wide",
+    width: 360,
+    height: 176,
+    webpSrcSet:
+      "/assets/anime-logos/the-exiled-heavy-knight-sm.webp 223w, /assets/anime-logos/the-exiled-heavy-knight.webp 360w",
+    sizes: "(min-width: 768px) 180px, (min-width: 640px) 147px, 115px",
     aniListIds: [180136],
     malIds: [59741],
     titlePatterns: [
@@ -308,8 +405,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/blue-box.png",
     alt: "Blue Box Season 2 / Ao no Hako / アオのハコ",
     sizeClasses:
-      "max-h-13 sm:max-h-17 md:max-h-21 max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
+      "h-13 sm:h-17 md:h-21 w-auto max-w-[250px] sm:max-w-[320px] md:max-w-[390px]",
     aspectRatioHint: "wide",
+    width: 683,
+    height: 168,
+    webpSrcSet:
+      "/assets/anime-logos/blue-box-sm.webp 412w, /assets/anime-logos/blue-box.webp 683w",
+    sizes: "(min-width: 768px) 342px, (min-width: 640px) 276px, 211px",
     aniListIds: [189123, 170942],
     malIds: [61323, 57181],
     titlePatterns: [
@@ -322,8 +424,13 @@ const LOGO_DEFINITIONS: Record<
     src: "/assets/anime-logos/even-the-student-council-has-its-holes.png",
     alt: "Even the Student Council Has Its Holes / 生徒会にも穴はある！",
     sizeClasses:
-      "max-h-15 sm:max-h-19 md:max-h-23 max-w-[210px] sm:max-w-[270px] md:max-w-[330px]",
+      "h-15 sm:h-19 md:h-23 w-auto max-w-[210px] sm:max-w-[270px] md:max-w-[330px]",
     aspectRatioHint: "balanced",
+    width: 393,
+    height: 184,
+    webpSrcSet:
+      "/assets/anime-logos/even-the-student-council-has-its-holes-sm.webp 250w, /assets/anime-logos/even-the-student-council-has-its-holes.webp 393w",
+    sizes: "(min-width: 768px) 196px, (min-width: 640px) 162px, 128px",
     aniListIds: [191656, 179207],
     malIds: [61578, 59276],
     titlePatterns: [
@@ -333,6 +440,21 @@ const LOGO_DEFINITIONS: Record<
     ],
   },
 };
+
+function toAnimeLogoConfig(
+  def: (typeof LOGO_DEFINITIONS)[string],
+): AnimeLogoConfig {
+  return {
+    src: def.src,
+    alt: def.alt,
+    sizeClasses: def.sizeClasses,
+    aspectRatioHint: def.aspectRatioHint,
+    width: def.width,
+    height: def.height,
+    webpSrcSet: def.webpSrcSet,
+    sizes: def.sizes,
+  };
+}
 
 /**
  * Normaliza o título para extrair a raiz da franquia, permitindo que sequências,
@@ -386,8 +508,10 @@ export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
       src: directLogo.trim(),
       alt: anime.titles?.english?.trim() || anime.titles?.romaji?.trim() || "Logo",
       sizeClasses:
-        "max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[400px]",
+        "h-auto w-auto max-h-14 sm:max-h-18 md:max-h-22 max-w-[260px] sm:max-w-[340px] md:max-w-[400px]",
       aspectRatioHint: "balanced",
+      width: 400,
+      height: 176,
     };
   }
 
@@ -418,20 +542,10 @@ export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
   // 2. Busca prioritária por ID direto
   for (const def of Object.values(LOGO_DEFINITIONS)) {
     if (anilistId && def.aniListIds.includes(anilistId)) {
-      return {
-        src: def.src,
-        alt: def.alt,
-        sizeClasses: def.sizeClasses,
-        aspectRatioHint: def.aspectRatioHint,
-      };
+      return toAnimeLogoConfig(def);
     }
     if (malId && def.malIds.includes(malId)) {
-      return {
-        src: def.src,
-        alt: def.alt,
-        sizeClasses: def.sizeClasses,
-        aspectRatioHint: def.aspectRatioHint,
-      };
+      return toAnimeLogoConfig(def);
     }
   }
 
@@ -440,12 +554,7 @@ export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
     for (const title of rawTitles) {
       for (const pattern of def.titlePatterns) {
         if (pattern.test(title)) {
-          return {
-            src: def.src,
-            alt: def.alt,
-            sizeClasses: def.sizeClasses,
-            aspectRatioHint: def.aspectRatioHint,
-          };
+          return toAnimeLogoConfig(def);
         }
       }
     }
@@ -460,12 +569,7 @@ export function getAnimeLogo(anime: SlimAnime): AnimeLogoConfig | null {
     for (const title of normalizedTitles) {
       for (const pattern of def.titlePatterns) {
         if (pattern.test(title)) {
-          return {
-            src: def.src,
-            alt: def.alt,
-            sizeClasses: def.sizeClasses,
-            aspectRatioHint: def.aspectRatioHint,
-          };
+          return toAnimeLogoConfig(def);
         }
       }
     }

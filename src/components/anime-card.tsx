@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Bookmark,
@@ -9,6 +9,7 @@ import {
   displayTitle,
   type SlimAnime,
 } from "@/lib/types";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 
 import { cn } from "@/lib/utils";
 import { useHikariStore } from "@/lib/store";
@@ -26,6 +27,10 @@ export const AnimeCard = memo(function AnimeCard({
   showBookmark?: boolean;
   loadImage?: boolean;
 }) {
+  const [failedOptimizedFor, setFailedOptimizedFor] = useState<string | null>(
+    null,
+  );
+
   const inList =
     useHikariStore((s) =>
       showBookmark ? s.myList.includes(anime.id) : false,
@@ -45,6 +50,11 @@ export const AnimeCard = memo(function AnimeCard({
       : size === "lg"
         ? "w-full sm:w-full"
         : "w-[6.6rem] sm:w-[7.85rem] md:w-[8.85rem] lg:w-[9.35rem]";
+
+  const coverVariant =
+    size === "sm" ? "card-sm" : size === "lg" ? "card-lg" : "card-md";
+  const coverAttrs = getResponsiveCoverAttrs(anime.cover, coverVariant);
+  const useOriginalFallback = failedOptimizedFor === anime.cover;
 
   return (
     <article
@@ -84,8 +94,17 @@ export const AnimeCard = memo(function AnimeCard({
           {anime.cover ? (
             loadImage ? (
               <img
-                src={anime.cover}
+                src={useOriginalFallback ? anime.cover : coverAttrs.src}
+                srcSet={useOriginalFallback ? undefined : coverAttrs.srcSet}
+                sizes={useOriginalFallback ? undefined : coverAttrs.sizes}
                 alt=""
+                width={230}
+                height={345}
+                onError={() => {
+                  if (!useOriginalFallback && coverAttrs.fallbackSrc) {
+                    setFailedOptimizedFor(anime.cover);
+                  }
+                }}
                 className="
                   size-full
                   object-cover

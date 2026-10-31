@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Play, Film } from "lucide-react";
 import { cleanEpisodeDisplay, type PublishedEpisode } from "@/lib/published-episodes";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { cn } from "@/lib/utils";
 
 export const EpisodeCard = memo(function EpisodeCard({
@@ -10,6 +11,7 @@ export const EpisodeCard = memo(function EpisodeCard({
   episode: PublishedEpisode;
 }) {
   const [thumbFailed, setThumbFailed] = useState(false);
+  const [failedOptimizedFor, setFailedOptimizedFor] = useState<string | null>(null);
   const [fallbackFailed, setFallbackFailed] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -33,6 +35,8 @@ export const EpisodeCard = memo(function EpisodeCard({
   }, []);
 
   const fallbackImage = episode.animeBanner || episode.animeCover;
+  const fallbackAttrs = getResponsiveCoverAttrs(fallbackImage, "card-md");
+  const fallbackOptimizedFailed = Boolean(fallbackImage && failedOptimizedFor === fallbackImage);
   const hasValidThumbnail = Boolean(episode.thumbnail && !thumbFailed);
   const showFallback = !hasValidThumbnail && Boolean(fallbackImage && !fallbackFailed);
 
@@ -90,13 +94,21 @@ export const EpisodeCard = memo(function EpisodeCard({
           ) : showFallback ? (
             /* Imagem alternativa adequada (banner/capa oficial do anime em 16:9) */
             <img
-              src={fallbackImage}
+              src={fallbackOptimizedFailed ? fallbackImage : fallbackAttrs.src}
+              srcSet={fallbackOptimizedFailed ? undefined : fallbackAttrs.srcSet}
+              sizes={fallbackOptimizedFailed ? undefined : fallbackAttrs.sizes}
               alt=""
               width={320}
               height={180}
               loading="lazy"
               decoding="async"
-              onError={() => setFallbackFailed(true)}
+              onError={() => {
+                if (!fallbackOptimizedFailed && fallbackAttrs.fallbackSrc && fallbackImage) {
+                  setFailedOptimizedFor(fallbackImage);
+                } else {
+                  setFallbackFailed(true);
+                }
+              }}
               className="size-full object-cover opacity-90 transition-opacity duration-200 motion-reduce:transition-none"
             />
           ) : (
