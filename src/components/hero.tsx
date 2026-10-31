@@ -647,22 +647,18 @@ export function Hero({
         @keyframes heroCrossfadeOutNext {
           0% {
             opacity: 1;
-            transform: translate3d(0, 0, 0);
             filter: brightness(1);
           }
           20% {
             opacity: 0.96;
-            transform: translate3d(-5px, 0, 0);
             filter: brightness(0.72);
           }
           50% {
             opacity: 0.65;
-            transform: translate3d(-14px, 0, 0);
             filter: brightness(0.62);
           }
           100% {
             opacity: 0;
-            transform: translate3d(-28px, 0, 0);
             filter: brightness(0.5);
           }
         }
@@ -670,45 +666,36 @@ export function Hero({
         @keyframes heroCrossfadeInNext {
           0% {
             opacity: 0;
-            transform: translate3d(28px, 0, 0);
           }
           16% {
             opacity: 0.06;
-            transform: translate3d(24px, 0, 0);
           }
           50% {
             opacity: 0.72;
-            transform: translate3d(12px, 0, 0);
           }
           82% {
             opacity: 0.95;
-            transform: translate3d(4px, 0, 0);
           }
           100% {
             opacity: 1;
-            transform: translate3d(0, 0, 0);
           }
         }
 
         @keyframes heroCrossfadeOutPrev {
           0% {
             opacity: 1;
-            transform: translate3d(0, 0, 0);
             filter: brightness(1);
           }
           20% {
             opacity: 0.96;
-            transform: translate3d(5px, 0, 0);
             filter: brightness(0.72);
           }
           50% {
             opacity: 0.65;
-            transform: translate3d(14px, 0, 0);
             filter: brightness(0.62);
           }
           100% {
             opacity: 0;
-            transform: translate3d(28px, 0, 0);
             filter: brightness(0.5);
           }
         }
@@ -716,23 +703,18 @@ export function Hero({
         @keyframes heroCrossfadeInPrev {
           0% {
             opacity: 0;
-            transform: translate3d(-28px, 0, 0);
           }
           16% {
             opacity: 0.06;
-            transform: translate3d(-24px, 0, 0);
           }
           50% {
             opacity: 0.72;
-            transform: translate3d(-12px, 0, 0);
           }
           82% {
             opacity: 0.95;
-            transform: translate3d(-4px, 0, 0);
           }
           100% {
             opacity: 1;
-            transform: translate3d(0, 0, 0);
           }
         }
       `}</style>
@@ -740,10 +722,10 @@ export function Hero({
       {/* Camadas da transição ou anime ativo */}
       {transitioning ? (
         <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">
-          {/* Camada inferior: Anime saindo com leve escurecimento inicial e deslocamento sutil de profundidade */}
+          {/* Camada inferior: Anime saindo com leve escurecimento inicial e desvanecimento */}
           <div
             key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
-            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[transform,opacity,filter]"
+            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter]"
             style={{
               animation: `${transitioning.direction === "next" ? "heroCrossfadeOutNext" : "heroCrossfadeOutPrev"} 1000ms cubic-bezier(0.25, 1, 0.5, 1) forwards`,
             }}
@@ -754,7 +736,7 @@ export function Hero({
           {/* Camada superior: Próximo anime surgindo gradualmente por cima com crossfade e sincronização completa */}
           <div
             key={`incoming-${transitioning.toIndex}-${items[transitioning.toIndex].id}`}
-            className="relative size-full overflow-hidden z-20 will-change-[transform,opacity]"
+            className="relative size-full overflow-hidden z-20 will-change-[opacity]"
             style={{
               animation: `${transitioning.direction === "next" ? "heroCrossfadeInNext" : "heroCrossfadeInPrev"} 1000ms cubic-bezier(0.25, 1, 0.5, 1) forwards`,
             }}
