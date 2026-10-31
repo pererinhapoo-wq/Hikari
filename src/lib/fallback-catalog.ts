@@ -293,6 +293,7 @@ export const FALLBACK_ANIMES: SlimAnime[] = [
 
 export function getEmergencyFallbackCatalog(): HomeCatalog {
   return {
+    todaySchedule: [],
     trending: FALLBACK_ANIMES.slice(0, 8),
     popular: FALLBACK_ANIMES.slice(0, 10),
     top: [...FALLBACK_ANIMES].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 10),

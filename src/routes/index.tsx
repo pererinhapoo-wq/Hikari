@@ -7,9 +7,11 @@ import {
 import { fetchHomeCatalog } from "@/lib/api";
 import { useHikariStore } from "@/lib/store";
 import { overlayList } from "@/lib/overlay";
+import { localToAnime } from "@/lib/types";
 
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
+import { TodayEpisodesSection } from "@/components/today-episodes-section";
 import { RecentEpisodesSection } from "@/components/recent-episodes-section";
 import { SectionReveal } from "@/components/section-reveal";
 import { AnimeCardSkeleton } from "@/components/anime-card";
@@ -76,37 +78,39 @@ function Home() {
   const data = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
+  const hydrated = useHikariStore((s) => s.hydrated);
 
   const trending = overlayList(data.trending, locals);
   const popular = overlayList(data.popular, locals);
   const season = overlayList(data.season, locals);
+  const emAltaItems = trending.length > 0 ? trending : popular;
 
-  // Combina dados reais de tendências recentes (sort: TRENDING_DESC) e popularidade geral (sort: POPULARITY_DESC) do AniList
-  const trendingAndPopular = useMemo(() => {
-    const scoreMap = new Map<string, { anime: (typeof trending)[number]; score: number }>();
+  // Animes Recém-Adicionados: animes incluídos no catálogo próprio do Hikari com data real (createdAt),
+  // ordenados do mais recente para o mais antigo
+  const { recentlyAddedAnimes, hasLocalWithoutCreationDate } = useMemo(() => {
+    const visibleLocals = locals.filter((a) => !a.hidden);
+    const withValidCreatedAt = visibleLocals.filter(
+      (a) =>
+        typeof a.createdAt === "number" &&
+        Number.isFinite(a.createdAt) &&
+        a.createdAt > 0,
+    );
 
-    // Tendências recentes reais (AniList TRENDING_DESC)
-    trending.forEach((item, index) => {
-      const trendScore = (trending.length - index) * 1.5;
-      scoreMap.set(item.id, { anime: item, score: trendScore });
-    });
+    const sorted = [...withValidCreatedAt]
+      .sort(
+        (a, b) =>
+          b.createdAt - a.createdAt ||
+          (b.updatedAt || 0) - (a.updatedAt || 0),
+      )
+      .slice(0, 18)
+      .map(localToAnime);
 
-    // Popularidade geral real (AniList POPULARITY_DESC)
-    popular.forEach((item, index) => {
-      const popScore = popular.length - index;
-      const existing = scoreMap.get(item.id);
-      if (existing) {
-        existing.score += popScore;
-      } else {
-        scoreMap.set(item.id, { anime: item, score: popScore });
-      }
-    });
-
-    return Array.from(scoreMap.values())
-      .sort((a, b) => b.score - a.score)
-      .map((entry) => entry.anime)
-      .slice(0, 10);
-  }, [trending, popular]);
+    return {
+      recentlyAddedAnimes: sorted,
+      hasLocalWithoutCreationDate:
+        visibleLocals.length > 0 && withValidCreatedAt.length === 0,
+    };
+  }, [locals]);
 
   const featured = trending[0] ?? popular[0];
 
@@ -128,21 +132,41 @@ function Home() {
         <HomePending />
       )}
 
-      {/* Seção 1: Selecionados */}
-      <AnimeRow
-        title="Selecionados"
-        eyebrow="TENDÊNCIAS & POPULARIDADE"
-        iconType="flame"
-        items={trendingAndPopular}
-        showBookmark={false}
-        showRank={false}
-        resetScrollOnReturn
-      />
+      {/* 1. Episódios de Hoje */}
+      <TodayEpisodesSection initialItems={data.todaySchedule ?? []} />
 
-      {/* Seção 2: Últimos Episódios (publicados pelo administrador) */}
+      {/* 2. Novos Episódios (publicados pelo administrador) */}
       <RecentEpisodesSection />
 
-      {/* Seção 3: Animes da Temporada */}
+      {/* 3. Em Alta */}
+      <AnimeRow
+        title="Em Alta"
+        eyebrow="POPULARES NO MOMENTO"
+        iconType="flame"
+        href="/browse/trending"
+        items={emAltaItems}
+        showBookmark={false}
+        showRank={false}
+      />
+
+      {/* 4. Animes Recém-Adicionados */}
+      <AnimeRow
+        title="Animes Recém-Adicionados"
+        eyebrow="NOVOS NO CATÁLOGO"
+        iconType="sparkles"
+        items={recentlyAddedAnimes}
+        loading={!hydrated}
+        showBookmark={false}
+        showRank={false}
+        emptyTitle="Não há dados suficientes de animes recém-adicionados"
+        emptyDescription={
+          hasLocalWithoutCreationDate
+            ? "Os registros encontrados no catálogo local não possuem data de criação ou inclusão válida para ordenação."
+            : "Ainda não há animes cadastrados no catálogo próprio do Hikari com data de inclusão registrada, e a fonte externa de catálogo não informa a data de adição à plataforma."
+        }
+      />
+
+      {/* 5. Animes da Temporada */}
       <AnimeRow
         title="Animes da Temporada"
         eyebrow="SIMULCAST SEMANAL"

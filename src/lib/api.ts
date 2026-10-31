@@ -3169,14 +3169,234 @@ async function fetchRecentReleasesFromAni(): Promise<
   return releases;
 }
 
+const TIMEZONE_BR = "America/Recife";
+
+function getDayKeyRecife(dateOrUnixSeconds: Date | number): string {
+  const date =
+    typeof dateOrUnixSeconds === "number"
+      ? new Date(dateOrUnixSeconds * 1000)
+      : dateOrUnixSeconds;
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE_BR,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function getTodayRangeRecife(): {
+  todayKey: string;
+  start: number;
+  end: number;
+} {
+  const todayKey = getDayKeyRecife(new Date());
+  const [year, month, day] = todayKey.split("-").map(Number);
+
+  // America/Recife opera permanentemente em UTC-3 (00:00 local = 03:00 UTC)
+  const startUtcMs = Date.UTC(year, month - 1, day, 3, 0, 0);
+  const endUtcMs = Date.UTC(year, month - 1, day + 1, 2, 59, 59);
+
+  return {
+    todayKey,
+    start: Math.floor(startUtcMs / 1000) - 1,
+    end: Math.floor(endUtcMs / 1000) + 1,
+  };
+}
+
+type RawTodayScheduleEntry = {
+  id: number;
+  airingAt: number;
+  episode: number;
+  media?: AniMedia | null;
+};
+
+async function fetchRawTodaySchedulesFromAni(
+  todayKey: string,
+  start: number,
+  end: number,
+): Promise<RawTodayScheduleEntry[]> {
+  const rawCacheKey = `today-raw:${todayKey}`;
+  const cachedRaw = fromCache<RawTodayScheduleEntry[]>(rawCacheKey);
+  if (cachedRaw) {
+    return cachedRaw;
+  }
+
+  type TodayScheduleResponse = {
+    Page: {
+      pageInfo?: {
+        hasNextPage?: boolean;
+      };
+      airingSchedules?: RawTodayScheduleEntry[];
+    };
+  };
+
+  const query = `
+    query TodayAiringSchedule(
+      $page: Int,
+      $start: Int,
+      $end: Int
+    ) {
+      Page(
+        page: $page,
+        perPage: 50
+      ) {
+        pageInfo {
+          hasNextPage
+        }
+        airingSchedules(
+          airingAt_greater: $start,
+          airingAt_lesser: $end,
+          sort: TIME
+        ) {
+          id
+          airingAt
+          episode
+          media {
+            ${CARD_FIELDS}
+          }
+        }
+      }
+    }
+  `;
+
+  const schedules: RawTodayScheduleEntry[] = [];
+
+  for (let page = 1; page <= 3; page += 1) {
+    const res =
+      page === 1
+        ? await anilistGraphQL<TodayScheduleResponse>(query, {
+            page,
+            start,
+            end,
+          })
+        : await anilistGraphQL<TodayScheduleResponse>(query, {
+            page,
+            start,
+            end,
+          }).catch(() => null);
+
+    if (!res?.Page?.airingSchedules?.length) {
+      break;
+    }
+
+    schedules.push(...res.Page.airingSchedules);
+
+    if (!res.Page.pageInfo?.hasNextPage) {
+      break;
+    }
+  }
+
+  schedules.sort((a, b) => a.airingAt - b.airingAt);
+  return toCache(rawCacheKey, schedules);
+}
+
+function filterUpcomingTodayAnimes(
+  schedules: RawTodayScheduleEntry[],
+  todayKey: string,
+  nowSeconds: number,
+): SlimAnime[] {
+  const grouped = new Map<
+    number,
+    {
+      media: AniMedia;
+      episodes: { number: number; airingAt: number }[];
+    }
+  >();
+
+  for (const entry of schedules) {
+    const media = entry.media;
+    if (!media?.id) continue;
+    if (isAdultAnime(media) || isHentaiAnime(media)) continue;
+    if (
+      typeof entry.airingAt !== "number" ||
+      !Number.isFinite(entry.airingAt) ||
+      entry.airingAt <= 0
+    ) {
+      continue;
+    }
+    // Exige data de hoje em America/Recife e horário ainda futuro
+    if (getDayKeyRecife(entry.airingAt) !== todayKey) continue;
+    if (entry.airingAt <= nowSeconds) continue;
+    if (typeof entry.episode !== "number" || entry.episode <= 0) continue;
+
+    const existing = grouped.get(media.id);
+    if (existing) {
+      if (
+        !existing.episodes.some(
+          (ep) =>
+            ep.number === entry.episode && ep.airingAt === entry.airingAt,
+        )
+      ) {
+        existing.episodes.push({
+          number: entry.episode,
+          airingAt: entry.airingAt,
+        });
+      }
+    } else {
+      grouped.set(media.id, {
+        media,
+        episodes: [
+          {
+            number: entry.episode,
+            airingAt: entry.airingAt,
+          },
+        ],
+      });
+    }
+  }
+
+  const items: SlimAnime[] = [];
+
+  for (const { media, episodes } of grouped.values()) {
+    episodes.sort((a, b) => a.airingAt - b.airingAt);
+    const nextEp = episodes[0];
+    if (!nextEp) continue;
+
+    const slim = mapAniSlim(media);
+    slim.todayEpisode = nextEp;
+    slim.todayUpcomingEpisodes = episodes;
+    items.push(slim);
+  }
+
+  items.sort(
+    (a, b) =>
+      (a.todayEpisode?.airingAt ?? Number.MAX_SAFE_INTEGER) -
+      (b.todayEpisode?.airingAt ?? Number.MAX_SAFE_INTEGER),
+  );
+
+  return items;
+}
+
+async function fetchTodayScheduleFromAni(): Promise<SlimAnime[]> {
+  const { todayKey, start, end } = getTodayRangeRecife();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const rawSchedules = await fetchRawTodaySchedulesFromAni(
+    todayKey,
+    start,
+    end,
+  );
+  return filterUpcomingTodayAnimes(rawSchedules, todayKey, nowSeconds);
+}
+
+export const fetchTodaySchedule = createServerFn({
+  method: "GET",
+}).handler(async (): Promise<SlimAnime[] | null> => {
+  try {
+    return await fetchTodayScheduleFromAni();
+  } catch {
+    return null;
+  }
+});
+
 async function fetchHomeFromAni(): Promise<HomeCatalog> {
   const {
     season,
     year,
   } = currentAnimeSeason();
 
-  const data =
-    await anilistGraphQL<{
+  const [data, todaySchedule, releases] = await Promise.all([
+    anilistGraphQL<{
       trending: {
         media: AniMedia[];
       };
@@ -3257,10 +3477,10 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
         season,
         year,
       },
-    );
-
-  const releases =
-    await fetchRecentReleasesFromAni().catch(() => []);
+    ),
+    fetchTodayScheduleFromAni().catch(() => []),
+    fetchRecentReleasesFromAni().catch(() => []),
+  ]);
 
   const trending =
     (
@@ -3306,6 +3526,8 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
     );
 
   return {
+    todaySchedule,
+
     trending:
       trending.map(
         mapAniSlim,
@@ -3401,6 +3623,8 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
     );
 
   return {
+    todaySchedule: [],
+
     trending:
       seasonItems,
 
@@ -3598,6 +3822,7 @@ async function fetchHomeFromKitsu(): Promise<HomeCatalog> {
   }
 
   const catalog: HomeCatalog = {
+    todaySchedule: [],
     trending: trendingItems.length > 0 ? trendingItems : popularItems,
     popular: popularItems,
     top: topItems,
@@ -3684,7 +3909,8 @@ export const fetchHomeCatalog =
     method: "GET",
   }).handler(
     async () => {
-      const key = "home";
+      const { todayKey } = getTodayRangeRecife();
+      const key = `home:${todayKey}`;
 
       const cached =
         fromCache<HomeCatalog>(
@@ -3692,7 +3918,19 @@ export const fetchHomeCatalog =
         );
 
       if (cached) {
-        return cached;
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const freshToday = await fetchTodayScheduleFromAni().catch(() =>
+          cached.todaySchedule.filter(
+            (item) =>
+              item.todayEpisode &&
+              item.todayEpisode.airingAt > nowSeconds &&
+              getDayKeyRecife(item.todayEpisode.airingAt) === todayKey,
+          ),
+        );
+        return {
+          ...cached,
+          todaySchedule: freshToday,
+        };
       }
 
       // 1. Tenta AniList (fonte primária do Hikari)

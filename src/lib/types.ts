@@ -46,6 +46,14 @@ export type SlimAnime = {
   year: number | null;
   trailerId: string | null;
   color?: string;
+  todayEpisode?: {
+    number: number;
+    airingAt: number;
+  };
+  todayUpcomingEpisodes?: {
+    number: number;
+    airingAt: number;
+  }[];
   source: "anilist" | "jikan" | "kitsu" | "local" | "cache";
 };
 
@@ -134,6 +142,7 @@ export type LocalAnime = {
 };
 
 export type HomeCatalog = {
+  todaySchedule: SlimAnime[];
   trending: SlimAnime[];
   popular: SlimAnime[];
   top: SlimAnime[];

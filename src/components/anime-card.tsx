@@ -10,14 +10,13 @@ import {
   type SlimAnime,
 } from "@/lib/types";
 
-import { scoreLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useHikariStore } from "@/lib/store";
 
 export const AnimeCard = memo(function AnimeCard({
   anime,
   size = "md",
-  rank,
+  rank: _rank,
   showBookmark = true,
   loadImage = true,
 }: {
@@ -110,57 +109,6 @@ export const AnimeCard = memo(function AnimeCard({
 
           {/* Sombra sutil interna com gradiente escuro */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/25 opacity-40 transition-opacity duration-300 [@media(hover:hover)]:group-hover:opacity-60 group-active:opacity-60" />
-
-          {/* Badge de Ranking para listas como Em Alta */}
-          {rank != null && (
-            <span
-              className="
-                absolute
-                bottom-1.5
-                left-1.5
-                rounded-md
-                bg-purple-950/95
-                border
-                border-purple-500/40
-                px-1.5
-                py-0.5
-                text-[9.5px]
-                font-black
-                tabular-nums
-                text-purple-200
-                shadow-md
-              "
-            >
-              #{rank}
-            </span>
-          )}
-
-          {/* Badge de Nota compacto e elegante */}
-          {anime.score != null && (
-            <span
-              className="
-                absolute
-                top-1.5
-                left-1.5
-                rounded-md
-                bg-black/90
-                border
-                border-purple-500/35
-                px-1.5
-                py-0.5
-                text-[9.5px]
-                font-bold
-                tabular-nums
-                text-purple-200
-                shadow-sm
-                flex
-                items-center
-                gap-0.5
-              "
-            >
-              <span className="text-amber-400">★</span> {scoreLabel(anime.score)}
-            </span>
-          )}
         </div>
 
         {/* Bloco de informações com alinhamento uniforme e espaçamento compacto */}

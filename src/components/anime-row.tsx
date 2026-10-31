@@ -22,22 +22,28 @@ export function AnimeRow({
   tag,
   iconType,
   href,
+  linkLabel = "Ver tudo",
   items,
   loading,
   showRank = false,
   showBookmark = true,
   resetScrollOnReturn = false,
+  emptyTitle,
+  emptyDescription,
 }: {
   title: string;
   eyebrow?: string;
   tag?: string;
   iconType?: "flame" | "calendar" | "sparkles" | "trophy" | "star";
   href?: string;
+  linkLabel?: string;
   items: SlimAnime[];
   loading?: boolean;
   showRank?: boolean;
   showBookmark?: boolean;
   resetScrollOnReturn?: boolean;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -60,7 +66,9 @@ export function AnimeRow({
     return unsubscribe;
   }, [resetScrollOnReturn, router]);
 
-  if (!loading && items.length === 0) return null;
+  const hasEmptyState = Boolean(emptyTitle || emptyDescription);
+
+  if (!loading && items.length === 0 && !hasEmptyState) return null;
 
   const scroll = (direction: "left" | "right") => {
     if (!railRef.current) return;
@@ -118,63 +126,67 @@ export function AnimeRow({
             <h2 className="font-section text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-sm truncate">
               {title}
             </h2>
-            <span className="hidden sm:inline-flex shrink-0 rounded-full bg-purple-950/50 border border-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300/80">
-              {items.length} títulos
-            </span>
+            {items.length > 0 && (
+              <span className="hidden sm:inline-flex shrink-0 rounded-full bg-purple-950/50 border border-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300/80">
+                {items.length} {items.length === 1 ? "título" : "títulos"}
+              </span>
+            )}
           </div>
         </div>
 
         {/* Controles: Setas de rolagem no desktop e botão Ver Tudo discreto e elegante */}
         <div className="flex shrink-0 items-center gap-2 mb-0.5">
           {/* Controles de Navegação por trilho no Desktop */}
-          <div className="hidden md:flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => scroll("left")}
-              aria-label="Rolar para a esquerda"
-              className="
-                flex
-                size-8
-                items-center
-                justify-center
-                rounded-lg
-                bg-white/5
-                border
-                border-white/10
-                text-zinc-300
-                transition-all
-                hover:bg-purple-950/60
-                hover:border-purple-500/40
-                hover:text-white
-                active:scale-95
-              "
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => scroll("right")}
-              aria-label="Rolar para a direita"
-              className="
-                flex
-                size-8
-                items-center
-                justify-center
-                rounded-lg
-                bg-white/5
-                border
-                border-white/10
-                text-zinc-300
-                transition-all
-                hover:bg-purple-950/60
-                hover:border-purple-500/40
-                hover:text-white
-                active:scale-95
-              "
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
+          {(loading || items.length > 0) && (
+            <div className="hidden md:flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => scroll("left")}
+                aria-label="Rolar para a esquerda"
+                className="
+                  flex
+                  size-8
+                  items-center
+                  justify-center
+                  rounded-lg
+                  bg-white/5
+                  border
+                  border-white/10
+                  text-zinc-300
+                  transition-all
+                  hover:bg-purple-950/60
+                  hover:border-purple-500/40
+                  hover:text-white
+                  active:scale-95
+                "
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scroll("right")}
+                aria-label="Rolar para a direita"
+                className="
+                  flex
+                  size-8
+                  items-center
+                  justify-center
+                  rounded-lg
+                  bg-white/5
+                  border
+                  border-white/10
+                  text-zinc-300
+                  transition-all
+                  hover:bg-purple-950/60
+                  hover:border-purple-500/40
+                  hover:text-white
+                  active:scale-95
+                "
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+          )}
 
           {href && (
             <Link
@@ -198,32 +210,47 @@ export function AnimeRow({
                 hover:text-white
               "
             >
-              Ver tudo
+              {linkLabel}
             </Link>
           )}
         </div>
       </div>
 
-      {/* Trilho de Cards */}
-      <div
-        ref={railRef}
-        className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 gap-2.5 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"
-      >
-        {loading
-          ? Array.from({ length: 8 }, (_, i) => (
-              <AnimeCardSkeleton key={i} />
-            ))
-          : items.map((anime, index) => (
-              <AnimeCard
-                key={anime.id}
-                anime={anime}
-                rank={showRank ? index + 1 : undefined}
-                showBookmark={showBookmark}
-              />
-            ))}
-        {/* Espaçador invisível para limites suaves no fim da rolagem */}
-        <div className="w-1 shrink-0 -ml-1 sm:w-2 sm:-ml-2 pointer-events-none" aria-hidden="true" />
-      </div>
+      {/* Trilho de Cards ou Estado Vazio */}
+      {!loading && items.length === 0 ? (
+        <div className="rounded-xl border border-purple-500/15 bg-[#100e1b]/80 px-4 py-7 sm:px-6 sm:py-9 text-center">
+          {emptyTitle && (
+            <p className="text-xs sm:text-sm font-semibold text-zinc-200">
+              {emptyTitle}
+            </p>
+          )}
+          {emptyDescription && (
+            <p className="mx-auto mt-1 max-w-lg text-[11px] sm:text-xs leading-relaxed text-zinc-400">
+              {emptyDescription}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div
+          ref={railRef}
+          className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 gap-2.5 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"
+        >
+          {loading
+            ? Array.from({ length: 8 }, (_, i) => (
+                <AnimeCardSkeleton key={i} />
+              ))
+            : items.map((anime, index) => (
+                <AnimeCard
+                  key={anime.id}
+                  anime={anime}
+                  rank={showRank ? index + 1 : undefined}
+                  showBookmark={showBookmark}
+                />
+              ))}
+          {/* Espaçador invisível para limites suaves no fim da rolagem */}
+          <div className="w-1 shrink-0 -ml-1 sm:w-2 sm:-ml-2 pointer-events-none" aria-hidden="true" />
+        </div>
+      )}
     </section>
   );
 }
