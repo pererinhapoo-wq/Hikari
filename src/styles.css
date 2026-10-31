@@ -1,7 +1,71 @@
-@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Manrope:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@500;700&display=swap");
-@import "tailwindcss";
-@import "video.js/dist/video-js.css";
-@import "@videojs/react/video/skin.css";
+@import "tailwindcss" source("./");
+@source not "./components/player/NovaStreamPlayer.tsx";
+@source not "./components/player/NovaStreamVideoPlayer.tsx";
+@source not "./**/*.test.ts";
+
+/* =========================================================
+   FONTES OFICIAIS HOSPEDADAS LOCALMENTE (WOFF2 VARIÁVEL + SWAP)
+========================================================= */
+
+/* Manrope — latin-ext (sob demanda via unicode-range) */
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/assets/fonts/manrope-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Manrope — latin (português / inglês / interface principal) */
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/assets/fonts/manrope-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Playfair Display — latin-ext (sob demanda via unicode-range) */
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url("/assets/fonts/playfair-display-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Playfair Display — latin (títulos de seção do Hikari) */
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url("/assets/fonts/playfair-display-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Noto Serif JP — latin-ext (sob demanda via unicode-range) */
+@font-face {
+  font-family: "Noto Serif JP";
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url("/assets/fonts/noto-serif-jp-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Noto Serif JP — latin (títulos display) */
+@font-face {
+  font-family: "Noto Serif JP";
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url("/assets/fonts/noto-serif-jp-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 @theme {
   --color-bg: #08070d;
@@ -18,9 +82,9 @@
   --color-danger-fg: #f4f4f1;
   --color-score: #c084fc;
 
-  --font-sans: "Manrope", "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-display: "Noto Serif JP", "Playfair Display", serif;
-  --font-section: "Playfair Display", "Cinzel", "Noto Serif JP", serif;
+  --font-sans: "Manrope", "Noto Sans CJK JP", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Meiryo", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: "Noto Serif JP", "Playfair Display", "Noto Serif CJK JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-section: "Playfair Display", "Noto Serif JP", "Noto Serif CJK JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
 
   --radius-xs: 4px;
   --radius-sm: 8px;
@@ -103,15 +167,6 @@ html[data-theme="light"] {
     font-family: var(--font-section);
   }
 
-  .hide-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .hide-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-
   .rail {
     display: flex;
     gap: 0.75rem;
@@ -166,53 +221,6 @@ html[data-theme="light"] {
   }
 }
 
-/* =========================================================
-   REFLEXO LUMINOSO CONTÍNUO HIKARI (LUZ VIOLETA & BRANCA)
-========================================================= */
-
-@keyframes hikariLuminousGleam {
-  0% {
-    background-position: 160% 0;
-  }
-  42% {
-    background-position: -60% 0;
-  }
-  100% {
-    background-position: -60% 0;
-  }
-}
-
-.hikari-luminous-text {
-  font-family: "Cinzel", "Playfair Display", Georgia, serif;
-  font-weight: 500;
-  background: linear-gradient(
-    115deg,
-    #f4f4f6 0%,
-    #e4e4e7 25%,
-    #ffffff 38%,
-    #c084fc 46%,
-    #ffffff 54%,
-    #d8b4fe 62%,
-    #f4f4f6 75%,
-    #f4f4f6 100%
-  );
-  background-size: 260% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  display: inline-block;
-  will-change: background-position;
-  animation: hikariLuminousGleam 4.6s ease-in-out infinite;
-  filter: drop-shadow(0 2px 10px rgba(168, 85, 247, 0.42));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hikari-luminous-text {
-    animation: none !important;
-    background-position: 50% 0 !important;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -225,259 +233,9 @@ html[data-theme="light"] {
 }
 
 /* =========================================================
-   ESTILOS DO REPRODUTOR HIKARI - VIDEO.JS 10
+   ÁREA DE COMENTÁRIOS, BOTÕES E INTERAÇÕES TÁTEIS
 ========================================================= */
 
-.hikari-video-player {
-  --media-accent-color: #a855f7;
-  --media-accent-text-color: #ffffff;
-  --media-border-color: rgb(255 255 255 / 0.1);
-  --media-border-radius: 1rem;
-  --media-scale-unit: 1rem;
-  --media-font-family: var(--font-sans);
-  background-color: #000000;
-  position: relative;
-  overflow: hidden;
-  border-radius: 1rem;
-  width: 100%;
-  height: 100%;
-}
-
-.hikari-video-player video {
-  outline: none;
-  border: none;
-  background-color: #000000;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-/* 1. Remove título/nome do anime e episódio no canto superior esquerdo */
-.hikari-video-player .media-title {
-  display: none !important;
-}
-
-/* 2. Remove os ícones de transmissão (Cast, AirPlay) e modo janela / PiP no canto superior direito */
-.hikari-video-player .media-cast-button,
-.hikari-video-player .media-airplay-button,
-.hikari-video-player .media-pip-button {
-  display: none !important;
-}
-
-/* 3. Mantém a opção de tela cheia sempre na barra inferior de controles junto aos outros controles (incluindo Android/mobile) */
-.hikari-video-player .video-controls-secondary::after {
-  display: none !important;
-}
-
-/* =========================================================
-   EXIBIÇÃO E RESPONSIVIDADE DOS TEMPOS E CONTROLES (VIDEO.JS 10)
-   Anula a supressão de "@container media-time (width < 16rem)"
-   assegurando que o tempo atual e o tempo restante permaneçam visíveis
-   a 100% de zoom em todas as larguras mobile (320px, 360px, 390px, 430px)
-   e desktop, mantendo a sequência exata dos controles e sem sobreposição.
-========================================================= */
-
-/* Impede o ocultamento dos tempos e formata dígitos tabulares */
-.hikari-video-player .video-time-value {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  font-variant-numeric: tabular-nums !important;
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-  user-select: none !important;
-  font-size: 0.8125rem;
-  line-height: 1;
-}
-
-/* Grupo do controle de tempo e barra de progresso */
-.hikari-video-player .video-time-slider-group {
-  display: flex !important;
-  flex: 1 1 0% !important;
-  min-width: 0 !important;
-  align-items: center !important;
-  gap: 0.5rem !important;
-  padding-inline: 0.375rem !important;
-}
-
-/* Barra de progresso flexível ocupando o espaço restante */
-.hikari-video-player .media-time-slider {
-  flex: 1 1 36px !important;
-  min-width: 32px !important;
-}
-
-/* Adaptação para telas mobile (< 32rem / 512px) */
-@container media-root (width < 32rem) {
-  .hikari-video-player {
-    --media-control-size: 2rem !important;
-  }
-
-  .hikari-video-player .video-controls-content {
-    display: flex !important;
-    position: absolute !important;
-    inset-inline: 0.375rem !important;
-    bottom: 0.375rem !important;
-    z-index: 30 !important;
-    border-radius: var(--media-controls-radius) !important;
-    background-color: var(--media-popover) !important;
-    color: var(--media-popover-foreground) !important;
-    box-shadow: 0 0 0 1px var(--media-surface-border, var(--media-border)), var(--media-shadow-surface) !important;
-    -webkit-backdrop-filter: var(--media-backdrop-filter-surface) !important;
-    backdrop-filter: var(--media-backdrop-filter-surface) !important;
-    align-items: center !important;
-    padding: 0.25rem 0.375rem !important;
-    gap: 0.125rem !important;
-  }
-
-  .hikari-video-player .video-controls-content:not([data-visible]) {
-    pointer-events: none !important;
-    translate: 0 var(--media-hidden-offset) !important;
-    scale: var(--media-hidden-scale) var(--media-hidden-scale) !important;
-    opacity: 0 !important;
-    transition-duration: var(--media-duration-controls) !important;
-  }
-
-  .hikari-video-player .video-controls-primary {
-    position: static !important;
-    display: flex !important;
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-    background-color: transparent !important;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    padding: 0 !important;
-    inset-inline: auto !important;
-    bottom: auto !important;
-    align-items: center !important;
-    gap: 0.125rem !important;
-  }
-
-  .hikari-video-player .video-controls-primary::after {
-    display: none !important;
-  }
-
-  .hikari-video-player .video-controls-secondary {
-    position: static !important;
-    display: flex !important;
-    flex: 0 0 auto !important;
-    top: auto !important;
-    right: auto !important;
-    background-color: transparent !important;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    align-items: center !important;
-  }
-
-  .hikari-video-player .video-time-value {
-    font-size: 0.75rem !important;
-  }
-
-  .hikari-video-player .video-time-slider-group {
-    gap: 0.375rem !important;
-    padding-inline: 0.25rem !important;
-  }
-}
-
-/* Ajustes finos para telas ultra-estreitas (< 24rem / 384px até 320px) */
-@container media-root (width < 24rem) {
-  .hikari-video-player {
-    --media-control-size: 1.875rem !important;
-  }
-
-  .hikari-video-player .video-controls-content {
-    inset-inline: 0.25rem !important;
-    bottom: 0.25rem !important;
-    padding: 0.1875rem 0.25rem !important;
-    gap: 0 !important;
-  }
-
-  .hikari-video-player .video-time-value {
-    font-size: 0.6875rem !important;
-  }
-
-  .hikari-video-player .video-time-slider-group {
-    gap: 0.25rem !important;
-    padding-inline: 0.125rem !important;
-  }
-
-  .hikari-video-player .media-time-slider {
-    min-width: 28px !important;
-  }
-}
-
-/* Transições suaves e responsividade dos controles nativos */
-.hikari-video-player [data-visible] {
-  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Botão voltar/fechar integrado ao visual do Hikari */
-.hikari-player-close-btn {
-  transition: opacity 0.25s, transform 0.2s;
-}
-
-.hikari-player-close-btn:hover {
-  transform: scale(1.05);
-}
-
-.hikari-player-close-btn:active {
-  transform: scale(0.95);
-}
-
-/* =========================================================
-   SUAVIDADE DE TRANSIÇÕES E FEEDBACK DE TOQUE - PÁGINA DE ASSISTIR
-   Melhorias leves de interação para botões de navegação, controles
-   do reprodutor, área de comentários e feedback tátil (touch).
-========================================================= */
-
-/* 1. Controles nativos do Video.js: feedback tátil e transições discretas */
-.hikari-video-player .media-button,
-.hikari-video-player button:not(.hikari-player-close-btn) {
-  transition: color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.12s cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-  -webkit-tap-highlight-color: transparent;
-}
-
-.hikari-video-player .media-button:hover,
-.hikari-video-player button:not(.hikari-player-close-btn):hover {
-  filter: brightness(1.15);
-}
-
-.hikari-video-player .media-button:active,
-.hikari-video-player button:not(.hikari-player-close-btn):active {
-  transform: scale(0.92);
-}
-
-.hikari-video-player .media-time-slider {
-  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.hikari-video-player .media-time-slider:hover {
-  filter: brightness(1.1);
-}
-
-/* 2. Botões de navegação de episódios (anterior, central "=", próximo) */
-div[class*="mt-3.5 flex items-center justify-between"] button,
-div[class*="mt-3.5 flex items-center justify-between"] a {
-  transition: color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-              background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
-  -webkit-tap-highlight-color: transparent;
-}
-
-div[class*="mt-3.5 flex items-center justify-between"] button:active:not(:disabled),
-div[class*="mt-3.5 flex items-center justify-between"] a:active {
-  transform: scale(0.96) !important;
-}
-
-/* 3. Área de comentários, botões e interações táteis */
 article[id^="comment-"] button,
 button[aria-label="Curtir comentário"],
 button[aria-label="Remover curtida"],
@@ -499,7 +257,6 @@ button[aria-label="Adicionar GIF"]:active:not(:disabled) {
   transform: scale(0.94);
 }
 
-/* Transição suave nos cards e campos de texto de comentários */
 article[id^="comment-"] {
   transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
               background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
@@ -582,6 +339,3 @@ textarea:focus {
     transform: none !important;
   }
 }
-
-
-

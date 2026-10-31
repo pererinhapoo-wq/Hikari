@@ -1,0 +1,248 @@
+@import "@videojs/react/video/skin.css";
+
+/* =========================================================
+   ESTILOS DO REPRODUTOR HIKARI - VIDEO.JS 10
+========================================================= */
+
+.hikari-video-player {
+  --media-accent-color: #a855f7;
+  --media-accent-text-color: #ffffff;
+  --media-border-color: rgb(255 255 255 / 0.1);
+  --media-border-radius: 1rem;
+  --media-scale-unit: 1rem;
+  --media-font-family: var(--font-sans);
+  background-color: #000000;
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  width: 100%;
+  height: 100%;
+}
+
+.hikari-video-player video {
+  outline: none;
+  border: none;
+  background-color: #000000;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 1. Remove título/nome do anime e episódio no canto superior esquerdo */
+.hikari-video-player .media-title {
+  display: none !important;
+}
+
+/* 2. Remove os ícones de transmissão (Cast, AirPlay) e modo janela / PiP no canto superior direito */
+.hikari-video-player .media-cast-button,
+.hikari-video-player .media-airplay-button,
+.hikari-video-player .media-pip-button {
+  display: none !important;
+}
+
+/* 3. Mantém a opção de tela cheia sempre na barra inferior de controles junto aos outros controles (incluindo Android/mobile) */
+.hikari-video-player .video-controls-secondary::after {
+  display: none !important;
+}
+
+/* =========================================================
+   EXIBIÇÃO E RESPONSIVIDADE DOS TEMPOS E CONTROLES (VIDEO.JS 10)
+   Anula a supressão de "@container media-time (width < 16rem)"
+   assegurando que o tempo atual e o tempo restante permaneçam visíveis
+   a 100% de zoom em todas as larguras mobile (320px, 360px, 390px, 430px)
+   e desktop, mantendo a sequência exata dos controles e sem sobreposição.
+========================================================= */
+
+/* Impede o ocultamento dos tempos e formata dígitos tabulares */
+.hikari-video-player .video-time-value {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  user-select: none !important;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+/* Grupo do controle de tempo e barra de progresso */
+.hikari-video-player .video-time-slider-group {
+  display: flex !important;
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  padding-inline: 0.375rem !important;
+}
+
+/* Barra de progresso flexível ocupando o espaço restante */
+.hikari-video-player .media-time-slider {
+  flex: 1 1 36px !important;
+  min-width: 32px !important;
+}
+
+/* Adaptação para telas mobile (< 32rem / 512px) */
+@container media-root (width < 32rem) {
+  .hikari-video-player {
+    --media-control-size: 2rem !important;
+  }
+
+  .hikari-video-player .video-controls-content {
+    display: flex !important;
+    position: absolute !important;
+    inset-inline: 0.375rem !important;
+    bottom: 0.375rem !important;
+    z-index: 30 !important;
+    border-radius: var(--media-controls-radius) !important;
+    background-color: var(--media-popover) !important;
+    color: var(--media-popover-foreground) !important;
+    box-shadow: 0 0 0 1px var(--media-surface-border, var(--media-border)), var(--media-shadow-surface) !important;
+    -webkit-backdrop-filter: var(--media-backdrop-filter-surface) !important;
+    backdrop-filter: var(--media-backdrop-filter-surface) !important;
+    align-items: center !important;
+    padding: 0.25rem 0.375rem !important;
+    gap: 0.125rem !important;
+  }
+
+  .hikari-video-player .video-controls-content:not([data-visible]) {
+    pointer-events: none !important;
+    translate: 0 var(--media-hidden-offset) !important;
+    scale: var(--media-hidden-scale) var(--media-hidden-scale) !important;
+    opacity: 0 !important;
+    transition-duration: var(--media-duration-controls) !important;
+  }
+
+  .hikari-video-player .video-controls-primary {
+    position: static !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    inset-inline: auto !important;
+    bottom: auto !important;
+    align-items: center !important;
+    gap: 0.125rem !important;
+  }
+
+  .hikari-video-player .video-controls-primary::after {
+    display: none !important;
+  }
+
+  .hikari-video-player .video-controls-secondary {
+    position: static !important;
+    display: flex !important;
+    flex: 0 0 auto !important;
+    top: auto !important;
+    right: auto !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    align-items: center !important;
+  }
+
+  .hikari-video-player .video-time-value {
+    font-size: 0.75rem !important;
+  }
+
+  .hikari-video-player .video-time-slider-group {
+    gap: 0.375rem !important;
+    padding-inline: 0.25rem !important;
+  }
+}
+
+/* Ajustes finos para telas ultra-estreitas (< 24rem / 384px até 320px) */
+@container media-root (width < 24rem) {
+  .hikari-video-player {
+    --media-control-size: 1.875rem !important;
+  }
+
+  .hikari-video-player .video-controls-content {
+    inset-inline: 0.25rem !important;
+    bottom: 0.25rem !important;
+    padding: 0.1875rem 0.25rem !important;
+    gap: 0 !important;
+  }
+
+  .hikari-video-player .video-time-value {
+    font-size: 0.6875rem !important;
+  }
+
+  .hikari-video-player .video-time-slider-group {
+    gap: 0.25rem !important;
+    padding-inline: 0.125rem !important;
+  }
+
+  .hikari-video-player .media-time-slider {
+    min-width: 28px !important;
+  }
+}
+
+/* Transições suaves e responsividade dos controles nativos */
+.hikari-video-player [data-visible] {
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Botão voltar/fechar integrado ao visual do Hikari */
+.hikari-player-close-btn {
+  transition: opacity 0.25s, transform 0.2s;
+}
+
+.hikari-player-close-btn:hover {
+  transform: scale(1.05);
+}
+
+.hikari-player-close-btn:active {
+  transform: scale(0.95);
+}
+
+/* Controles nativos do Video.js: feedback tátil e transições discretas */
+.hikari-video-player .media-button,
+.hikari-video-player button:not(.hikari-player-close-btn) {
+  transition: color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.12s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hikari-video-player .media-button:hover,
+.hikari-video-player button:not(.hikari-player-close-btn):hover {
+  filter: brightness(1.15);
+}
+
+.hikari-video-player .media-button:active,
+.hikari-video-player button:not(.hikari-player-close-btn):active {
+  transform: scale(0.92);
+}
+
+.hikari-video-player .media-time-slider {
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hikari-video-player .media-time-slider:hover {
+  filter: brightness(1.1);
+}
+
+/* Botões de navegação de episódios da página de assistir (anterior, central "=", próximo) */
+div[class*="mt-3.5 flex items-center justify-between"] button,
+div[class*="mt-3.5 flex items-center justify-between"] a {
+  transition: color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+div[class*="mt-3.5 flex items-center justify-between"] button:active:not(:disabled),
+div[class*="mt-3.5 flex items-center justify-between"] a:active {
+  transform: scale(0.96) !important;
+}

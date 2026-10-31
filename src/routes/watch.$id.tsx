@@ -29,6 +29,7 @@ import {
   type Episode,
 } from "@/lib/types";
 import { youtubeIdFrom } from "@/lib/utils";
+import playerCss from "@/styles/player.css?url";
 
 export const Route = createFileRoute("/watch/$id")({
   validateSearch: (
@@ -60,6 +61,15 @@ export const Route = createFileRoute("/watch/$id")({
 
     return { remote };
   },
+
+  head: () => ({
+    links: [
+      {
+        rel: "stylesheet",
+        href: playerCss,
+      },
+    ],
+  }),
 
   component: WatchPage,
 });
