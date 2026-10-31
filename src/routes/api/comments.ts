@@ -358,6 +358,86 @@ export const Route = createFileRoute("/api/comments")({
                 notifError,
               );
             }
+          } else if (!parentId && rawContent) {
+            // Se houver menção direta (@nick) em comentário principal, notifica o usuário mencionado
+            const mentionMatches = Array.from(
+              String(rawContent).matchAll(/(?:^|\s)@([a-z0-9_]{3,30})\b/gi),
+            );
+            const mentionedNicks: string[] = Array.from(
+              new Set<string>(
+                mentionMatches
+                  .map((m) => (m[1] ? m[1].toLowerCase() : ""))
+                  .filter(Boolean),
+              ),
+            ).slice(0, 3);
+
+            if (mentionedNicks.length > 0) {
+              try {
+                const mentionedResult = await sql.query(
+                  `
+                    select distinct p."userId"
+                    from "profile" p
+                    where lower(p."nick") = any($1::text[])
+                      and p."userId" <> $2
+                  `,
+                  [mentionedNicks, apiUser.id],
+                );
+                const mentionedRows: any[] = Array.isArray(mentionedResult)
+                  ? mentionedResult
+                  : (mentionedResult as any)?.rows ?? [];
+
+                for (const row of mentionedRows) {
+                  const targetUserId = row?.userId ? String(row.userId) : "";
+                  if (!targetUserId) continue;
+
+                  const notificationId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+                  const commentMessage = `${resolvedAuthorName} mencionou você em um comentário.`;
+
+                  await sql.query(
+                    `
+                      insert into "notification" (
+                        "id",
+                        "userId",
+                        "actorId",
+                        "type",
+                        "message",
+                        "read",
+                        "createdAt",
+                        "commentId",
+                        "animeId",
+                        "episodeId"
+                      )
+                      values (
+                        $1,
+                        $2,
+                        $3,
+                        'comment',
+                        $4,
+                        false,
+                        (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+                        $5,
+                        $6,
+                        $7
+                      )
+                    `,
+                    [
+                      notificationId,
+                      targetUserId,
+                      apiUser.id,
+                      commentMessage,
+                      commentId,
+                      animeId,
+                      episodeId,
+                    ],
+                  );
+                }
+              } catch (mentionError) {
+                console.error(
+                  "[api/comments] Erro ao criar notificação de comentário:",
+                  mentionError,
+                );
+              }
+            }
           }
 
           const nowIso = new Date().toISOString();

@@ -1460,69 +1460,134 @@ export function EpisodeCommentsSection({
   /* ====================================================== */
 
   const hasScrolledTargetRef = useRef<string | null>(null);
+  const refetchedMissingTargetRef = useRef<string | null>(null);
+  const highlightTimerRef = useRef<number | null>(null);
+
+  const focusCommentElement = useCallback((commentId: string) => {
+    const element = document.getElementById(`comment-${commentId}`);
+    if (!element) {
+      return false;
+    }
+
+    hasScrolledTargetRef.current = commentId;
+    setHighlightedCommentId(commentId);
+
+    element.scrollIntoView({
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+      block: "center",
+    });
+
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightedCommentId(null);
+      highlightTimerRef.current = null;
+    }, 4000);
+
+    return true;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current !== null) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (
       loading ||
       !targetCommentId ||
-      comments.length === 0 ||
       hasScrolledTargetRef.current === targetCommentId
     ) {
       return;
     }
 
+    const existsInLoaded = comments.some((c) => c.id === targetCommentId);
     let cancelled = false;
 
-    const focusComment = () => {
-      if (cancelled) {
-        return;
+    if (!existsInLoaded) {
+      if (
+        refetchedMissingTargetRef.current !== targetCommentId &&
+        animeId &&
+        episodeId
+      ) {
+        refetchedMissingTargetRef.current = targetCommentId;
+        void (async () => {
+          try {
+            const bearer = getBearerToken();
+            const response = await fetch(
+              `/api/comments?animeId=${encodeURIComponent(
+                animeId,
+              )}&episodeId=${encodeURIComponent(episodeId)}`,
+              {
+                method: "GET",
+                credentials: "include",
+                headers: bearer
+                  ? { Authorization: `Bearer ${bearer}` }
+                  : undefined,
+              },
+            );
+            if (!response.ok || cancelled) return;
+            const data = await response.json();
+            if (cancelled || !Array.isArray(data?.comments)) return;
+            const loaded: Comment[] = data.comments;
+            setComments(loaded);
+            setRootOrder((prev) => {
+              const seen = new Set(prev);
+              const extraRoots = loaded
+                .filter((c) => !c.parentId && !seen.has(c.id))
+                .map((c) => c.id);
+              return extraRoots.length > 0 ? [...extraRoots, ...prev] : prev;
+            });
+          } catch {
+            // Ignora falha silenciosa de sincronização.
+          }
+        })();
       }
+      return () => {
+        cancelled = true;
+      };
+    }
 
-      const element =
-        document.getElementById(
-          `comment-${targetCommentId}`,
-        );
-
-      if (!element) {
-        return;
+    const firstFrame = window.requestAnimationFrame(() => {
+      if (!cancelled) {
+        focusCommentElement(targetCommentId);
       }
-
-      hasScrolledTargetRef.current = targetCommentId;
-
-      setHighlightedCommentId(
-        targetCommentId,
-      );
-
-      element.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-
-      window.setTimeout(() => {
-        if (!cancelled) {
-          setHighlightedCommentId(
-            null,
-          );
-        }
-      }, 4000);
-    };
-
-    const firstFrame =
-      window.requestAnimationFrame(
-        focusComment,
-      );
+    });
 
     return () => {
       cancelled = true;
-      window.cancelAnimationFrame(
-        firstFrame,
-      );
+      window.cancelAnimationFrame(firstFrame);
     };
   }, [
     loading,
     comments,
     targetCommentId,
+    animeId,
+    episodeId,
+    focusCommentElement,
   ]);
+
+  useEffect(() => {
+    const handleFocusEvent = (event: Event) => {
+      const commentId = (event as CustomEvent<{ commentId?: string }>)?.detail
+        ?.commentId;
+      if (!commentId) return;
+
+      hasScrolledTargetRef.current = null;
+      if (!focusCommentElement(commentId)) {
+        refetchedMissingTargetRef.current = null;
+      }
+    };
+
+    window.addEventListener("hikari:focus-comment", handleFocusEvent);
+    return () => {
+      window.removeEventListener("hikari:focus-comment", handleFocusEvent);
+    };
+  }, [focusCommentElement]);
 
   /* ====================================================== */
   /* ENVIAR COMENTÁRIO                                      */

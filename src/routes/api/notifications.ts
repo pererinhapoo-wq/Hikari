@@ -10,10 +10,60 @@ const ANIME_META_TTL_MS = 1000 * 60 * 30;
 type CachedAnimeMeta = {
   title: string | null;
   cover: string | null;
+  seasonNumber: number | null;
   expiresAt: number;
 };
 
 const animeMetaCache = new Map<string, CachedAnimeMeta>();
+
+function extractSeasonNumberFromText(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const text = value.trim();
+  if (!text) return null;
+
+  const patterns = [
+    /\b(?:season|temporada)\s*(\d{1,2})\b/i,
+    /\b(\d{1,2})\s*(?:ª|º|a|o)\s*temporada\b/i,
+    /\b(\d{1,2})(?:st|nd|rd|th)\s+season\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      const parsed = Number(match[1]);
+      if (Number.isInteger(parsed) && parsed > 0 && parsed <= 50) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function inferSeasonNumber(params: {
+  titles: Array<string | null | undefined>;
+  format?: string | null;
+  tvPrequelCount?: number;
+}): number | null {
+  for (const title of params.titles) {
+    const explicit = extractSeasonNumberFromText(title);
+    if (explicit !== null) {
+      return explicit;
+    }
+  }
+
+  const normalizedFormat = (params.format ?? "").toUpperCase();
+  if (
+    normalizedFormat === "TV" ||
+    normalizedFormat === "TV_SHORT" ||
+    normalizedFormat === "ONA"
+  ) {
+    const prequels = Math.max(0, Number(params.tvPrequelCount ?? 0) || 0);
+    return prequels + 1;
+  }
+
+  return null;
+}
 
 function normalizeUtcIsoString(value: unknown): string {
   if (value instanceof Date) {
@@ -41,8 +91,16 @@ function normalizeUtcIsoString(value: unknown): string {
 
 async function resolveAnimeMetadataMap(
   animeIds: string[],
-): Promise<Map<string, { title: string | null; cover: string | null }>> {
-  const result = new Map<string, { title: string | null; cover: string | null }>();
+): Promise<
+  Map<
+    string,
+    { title: string | null; cover: string | null; seasonNumber: number | null }
+  >
+> {
+  const result = new Map<
+    string,
+    { title: string | null; cover: string | null; seasonNumber: number | null }
+  >();
   if (animeIds.length === 0) {
     return result;
   }
@@ -56,7 +114,11 @@ async function resolveAnimeMetadataMap(
 
     const cached = animeMetaCache.get(id);
     if (cached && cached.expiresAt > now) {
-      result.set(id, { title: cached.title, cover: cached.cover });
+      result.set(id, {
+        title: cached.title,
+        cover: cached.cover,
+        seasonNumber: cached.seasonNumber,
+      });
       continue;
     }
 
@@ -73,6 +135,14 @@ async function resolveAnimeMetadataMap(
       const meta = {
         title: displayTitle(fallback) || null,
         cover: fallback.cover || null,
+        seasonNumber: inferSeasonNumber({
+          titles: [
+            fallback.titles.english,
+            fallback.titles.romaji,
+            fallback.titles.native,
+          ],
+          format: fallback.format,
+        }),
       };
       result.set(id, meta);
       animeMetaCache.set(id, { ...meta, expiresAt: now + ANIME_META_TTL_MS });
@@ -99,6 +169,7 @@ async function resolveAnimeMetadataMap(
               Page(perPage: 50) {
                 media(id_in: $ids, type: ANIME) {
                   id
+                  format
                   title {
                     english
                     romaji
@@ -107,6 +178,16 @@ async function resolveAnimeMetadataMap(
                   coverImage {
                     extraLarge
                     large
+                  }
+                  relations {
+                    edges {
+                      relationType(version: 2)
+                      node {
+                        id
+                        type
+                        format
+                      }
+                    }
                   }
                 }
               }
@@ -123,6 +204,7 @@ async function resolveAnimeMetadataMap(
             Page?: {
               media?: Array<{
                 id?: number;
+                format?: string | null;
                 title?: {
                   english?: string | null;
                   romaji?: string | null;
@@ -131,6 +213,16 @@ async function resolveAnimeMetadataMap(
                 coverImage?: {
                   extraLarge?: string | null;
                   large?: string | null;
+                } | null;
+                relations?: {
+                  edges?: Array<{
+                    relationType?: string | null;
+                    node?: {
+                      id?: number;
+                      type?: string | null;
+                      format?: string | null;
+                    } | null;
+                  }> | null;
                 } | null;
               }>;
             };
@@ -151,10 +243,36 @@ async function resolveAnimeMetadataMap(
             media.coverImage?.large?.trim() ||
             null;
 
-          result.set(key, { title, cover });
+          const tvPrequelCount = (media.relations?.edges ?? []).filter(
+            (edge) => {
+              const rel = (edge?.relationType ?? "").toUpperCase();
+              const nodeType = (edge?.node?.type ?? "").toUpperCase();
+              const nodeFormat = (edge?.node?.format ?? "").toUpperCase();
+              return (
+                rel === "PREQUEL" &&
+                nodeType === "ANIME" &&
+                (nodeFormat === "TV" ||
+                  nodeFormat === "TV_SHORT" ||
+                  nodeFormat === "ONA")
+              );
+            },
+          ).length;
+
+          const seasonNumber = inferSeasonNumber({
+            titles: [
+              media.title?.english,
+              media.title?.romaji,
+              media.title?.native,
+            ],
+            format: media.format,
+            tvPrequelCount,
+          });
+
+          result.set(key, { title, cover, seasonNumber });
           animeMetaCache.set(key, {
             title,
             cover,
+            seasonNumber,
             expiresAt: now + ANIME_META_TTL_MS,
           });
         }
@@ -227,8 +345,29 @@ export const Route = createFileRoute("/api/notifications")({
                 end as "actorName",
                 u."image" as "actorImage",
                 n."commentId",
-                n."animeId",
-                n."episodeId",
+                coalesce(
+                  nullif(trim(n."animeId"), ''),
+                  nullif(trim(c."animeId"), '')
+                ) as "animeId",
+                coalesce(
+                  nullif(trim(n."episodeId"), ''),
+                  nullif(trim(c."episodeId"), '')
+                ) as "episodeId",
+                c."content" as "commentContent",
+                c."imageUrl" as "commentImageUrl",
+                coalesce(c."isSpoiler", false) as "commentIsSpoiler",
+                c."parentId" as "parentCommentId",
+                pc."content" as "parentCommentContent",
+                pc."imageUrl" as "parentCommentImageUrl",
+                coalesce(pc."isSpoiler", false) as "parentCommentIsSpoiler",
+                case
+                  when pc."userId" is not null then coalesce(
+                    nullif(trim(pp."nick"), ''),
+                    nullif(trim(pu."name"), ''),
+                    'Usuário'
+                  )
+                  else null
+                end as "parentCommentAuthorName",
                 case
                   when n."type" = 'comment_like' and n."commentId" is not null then (
                     select count(*)::int
@@ -244,6 +383,14 @@ export const Route = createFileRoute("/api/notifications")({
                 on u."id" = n."actorId"
               left join "profile" p
                 on p."userId" = n."actorId"
+              left join "comment" c
+                on c."id" = n."commentId"
+              left join "comment" pc
+                on pc."id" = c."parentId"
+              left join "user" pu
+                on pu."id" = pc."userId"
+              left join "profile" pp
+                on pp."userId" = pc."userId"
               where ${VALID_NOTIFICATION_PREDICATE}
               order by n."createdAt" desc
               limit 50
@@ -363,6 +510,31 @@ export const Route = createFileRoute("/api/notifications")({
               episodeId: row.episodeId ? String(row.episodeId) : null,
               animeTitle: animeMeta?.title ?? null,
               animeCover: animeMeta?.cover ?? null,
+              animeSeasonNumber: animeMeta?.seasonNumber ?? null,
+              commentContent:
+                typeof row.commentContent === "string"
+                  ? row.commentContent
+                  : null,
+              commentHasMedia: Boolean(
+                typeof row.commentImageUrl === "string" &&
+                  row.commentImageUrl.trim(),
+              ),
+              commentIsSpoiler: Boolean(row.commentIsSpoiler),
+              parentCommentId: row.parentCommentId
+                ? String(row.parentCommentId)
+                : null,
+              parentCommentContent:
+                typeof row.parentCommentContent === "string"
+                  ? row.parentCommentContent
+                  : null,
+              parentCommentHasMedia: Boolean(
+                typeof row.parentCommentImageUrl === "string" &&
+                  row.parentCommentImageUrl.trim(),
+              ),
+              parentCommentIsSpoiler: Boolean(row.parentCommentIsSpoiler),
+              parentCommentAuthorName: row.parentCommentAuthorName
+                ? String(row.parentCommentAuthorName)
+                : null,
               commentLikes: Number(row.commentLikes ?? 0) || 0,
               likeAvatars:
                 row.type === "comment_like" && commentId
@@ -408,11 +580,21 @@ export const Route = createFileRoute("/api/notifications")({
 
           const notificationId =
             typeof body?.id === "string" ? body.id.trim() : "";
+          const notificationIds: string[] = Array.isArray(body?.ids)
+            ? Array.from(
+                new Set<string>(
+                  (body.ids as unknown[])
+                    .filter((item): item is string => typeof item === "string")
+                    .map((item) => item.trim())
+                    .filter(Boolean),
+                ),
+              ).slice(0, 100)
+            : [];
           const markAll = body?.all === true;
 
-          if (!notificationId && !markAll) {
+          if (!notificationId && notificationIds.length === 0 && !markAll) {
             return Response.json(
-              { error: "Informe 'id' ou 'all: true'." },
+              { error: "Informe 'id', 'ids' ou 'all: true'." },
               { status: 400 },
             );
           }
@@ -427,6 +609,17 @@ export const Route = createFileRoute("/api/notifications")({
               `,
               [apiUser.id],
             );
+          } else if (notificationIds.length > 0) {
+            await sql.query(
+              `
+                update "notification"
+                set "read" = true
+                where "userId" = $1
+                  and "id" = any($2::text[])
+                  and "read" = false
+              `,
+              [apiUser.id, notificationIds],
+            );
           } else {
             await sql.query(
               `
@@ -434,6 +627,7 @@ export const Route = createFileRoute("/api/notifications")({
                 set "read" = true
                 where "id" = $1
                   and "userId" = $2
+                  and "read" = false
               `,
               [notificationId, apiUser.id],
             );

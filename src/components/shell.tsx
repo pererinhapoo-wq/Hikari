@@ -20,6 +20,10 @@ import {
 } from "lucide-react";
 
 import { Logo } from "@/components/logo";
+import {
+  NotificationItemCard,
+  type NotificationItem,
+} from "@/components/notifications/notification-item-card";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -33,37 +37,60 @@ import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import {
   memo,
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 
-type NotificationItem = {
-  id: string;
-  type: string;
-  message: string;
-  read: boolean;
-  createdAt: string;
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
 
-  actorId: string | null;
-  actorName: string | null;
-  actorImage: string | null;
+function useNotificationPanelPresence(open: boolean, exitMs = 170) {
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(false);
 
-  commentId: string | null;
-  animeId: string | null;
-  episodeId: string | null;
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      if (prefersReducedMotion()) {
+        setVisible(true);
+        return;
+      }
+      let raf2 = 0;
+      const raf1 = window.requestAnimationFrame(() => {
+        raf2 = window.requestAnimationFrame(() => {
+          setVisible(true);
+        });
+      });
+      return () => {
+        window.cancelAnimationFrame(raf1);
+        if (raf2) window.cancelAnimationFrame(raf2);
+      };
+    }
 
-  animeTitle: string | null;
-  animeCover: string | null;
+    setVisible(false);
+    if (prefersReducedMotion()) {
+      setMounted(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setMounted(false);
+    }, exitMs);
+    return () => window.clearTimeout(timer);
+  }, [open, exitMs]);
 
-  commentLikes: number;
-
-  likeAvatars: Array<{
-    id: string;
-    name: string | null;
-    image: string | null;
-  }>;
-};
+  return {
+    mounted: open || mounted,
+    visible: open && visible,
+    closing: !open && mounted,
+  };
+}
 
 const BASE_NAV = [
   {
@@ -283,6 +310,36 @@ export function Shell() {
     notificationsLoading,
     setNotificationsLoading,
   ] = useState(false);
+
+  const notificationsPanel =
+    useNotificationPanelPresence(notificationsOpen, 170);
+
+  const notificationsRef = useRef<NotificationItem[]>([]);
+  notificationsRef.current = notifications;
+
+  const hasLoadedNotificationsRef = useRef(false);
+  const pendingReadTokensRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    setNotificationsOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!notificationsOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNotificationsOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [notificationsOpen]);
 
   /* =========================================================
      TRAVA ROLAGEM DO FUNDO AO ABRIR NOTIFICAÇÕES
@@ -536,8 +593,40 @@ export function Shell() {
      NOTIFICAÇÕES
   ========================================================== */
 
+  const reconcileNotifications = useCallback(
+    (rawList: NotificationItem[], rawUnread: number) => {
+      let pendingOverrides = 0;
+
+      const reconciled = rawList.map((item) => {
+        const pendingCreatedAt = pendingReadTokensRef.current.get(item.id);
+        if (pendingCreatedAt !== undefined) {
+          if (item.read) {
+            pendingReadTokensRef.current.delete(item.id);
+            return item;
+          }
+          if (pendingCreatedAt === item.createdAt) {
+            pendingOverrides += 1;
+            return { ...item, read: true };
+          }
+          pendingReadTokensRef.current.delete(item.id);
+        }
+        return item;
+      });
+
+      return {
+        notifications: reconciled,
+        unreadCount: Math.max(0, rawUnread - pendingOverrides),
+      };
+    },
+    [],
+  );
+
+  const userId = user?.id ?? null;
+
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
+      hasLoadedNotificationsRef.current = false;
+      pendingReadTokensRef.current.clear();
       setNotifications([]);
       setUnreadCount(0);
       return;
@@ -575,15 +664,15 @@ export function Shell() {
             return;
           }
 
-          setNotifications(
+          hasLoadedNotificationsRef.current = true;
+
+          const reconciled = reconcileNotifications(
             data.notifications ?? [],
+            Number(data.unreadCount ?? 0),
           );
 
-          setUnreadCount(
-            Number(
-              data.unreadCount ?? 0,
-            ),
-          );
+          setNotifications(reconciled.notifications);
+          setUnreadCount(reconciled.unreadCount);
         } catch {
           // Mantém o estado atual caso a API esteja indisponível.
         }
@@ -627,83 +716,124 @@ export function Shell() {
         handleVisibilityOrSync,
       );
     };
-  }, [user?.id]);
+  }, [userId, reconcileNotifications]);
 
-  const markNotificationAsRead =
-    async (
-      id: string,
-    ) => {
-      const target =
-        notifications.find(
-          (notification) =>
-            notification.id === id,
-        );
-
-      if (!target || target.read) {
+  const markNotificationsAsRead = useCallback(
+    async (ids: string[]) => {
+      if (!user || ids.length === 0) {
         return;
       }
 
-      setNotifications(
-        (current) =>
-          current.map(
-            (notification) =>
-              notification.id === id
-                ? {
-                    ...notification,
-                    read: true,
-                  }
-                : notification,
-          ),
+      const requestedSet = new Set(ids);
+      const targets = notificationsRef.current.filter(
+        (item) =>
+          requestedSet.has(item.id) &&
+          !item.read &&
+          pendingReadTokensRef.current.get(item.id) !== item.createdAt,
       );
 
-      setUnreadCount(
-        (current) =>
-          Math.max(0, current - 1),
+      if (targets.length === 0) {
+        return;
+      }
+
+      const targetIdSet = new Set<string>();
+      for (const item of targets) {
+        targetIdSet.add(item.id);
+        pendingReadTokensRef.current.set(item.id, item.createdAt);
+      }
+      const targetIds = Array.from(targetIdSet);
+
+      setNotifications((current) =>
+        current.map((notification) =>
+          targetIdSet.has(notification.id)
+            ? { ...notification, read: true }
+            : notification,
+        ),
+      );
+
+      setUnreadCount((current) =>
+        Math.max(0, current - targetIds.length),
       );
 
       try {
         const bearer = getBearerToken();
-        const response =
-          await fetch(
-            "/api/notifications",
-            {
-              method: "PATCH",
-              credentials: "include",
-              headers: {
-                "Content-Type":
-                  "application/json",
-                ...(bearer
-                  ? { Authorization: `Bearer ${bearer}` }
-                  : {}),
-              },
-              body: JSON.stringify({
-                id,
-              }),
-            },
-          );
+        const response = await fetch("/api/notifications", {
+          method: "PATCH",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+          },
+          body: JSON.stringify({ ids: targetIds }),
+        });
 
         if (!response.ok) {
+          for (const id of targetIds) {
+            pendingReadTokensRef.current.delete(id);
+          }
+          window.dispatchEvent(
+            new CustomEvent("hikari:notifications-updated"),
+          );
           return;
         }
 
-        const data =
-          (await response.json()) as {
-            unreadCount?: number;
-          };
+        const data = (await response.json()) as {
+          unreadCount?: number;
+        };
 
+        for (const id of targetIds) {
+          pendingReadTokensRef.current.delete(id);
+        }
+
+        const otherPendingCount = pendingReadTokensRef.current.size;
         setUnreadCount(
-          Number(
-            data.unreadCount ?? 0,
-          ),
+          Math.max(0, Number(data.unreadCount ?? 0) - otherPendingCount),
         );
 
         window.dispatchEvent(
           new CustomEvent("hikari:notifications-updated"),
         );
       } catch {
-        // Mantém a alteração visual.
+        for (const id of targetIds) {
+          pendingReadTokensRef.current.delete(id);
+        }
       }
-    };
+    },
+    [user],
+  );
+
+  // Marca automaticamente como lidas as notificações exibidas ao abrir o sino
+  useEffect(() => {
+    if (!notificationsOpen || notificationsLoading || !user) {
+      return;
+    }
+
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState === "hidden"
+    ) {
+      return;
+    }
+
+    const displayedUnreadIds = notifications
+      .slice(0, 7)
+      .filter(
+        (item) =>
+          !item.read &&
+          pendingReadTokensRef.current.get(item.id) !== item.createdAt,
+      )
+      .map((item) => item.id);
+
+    if (displayedUnreadIds.length > 0) {
+      void markNotificationsAsRead(displayedUnreadIds);
+    }
+  }, [
+    notificationsOpen,
+    notificationsLoading,
+    notifications,
+    user,
+    markNotificationsAsRead,
+  ]);
 
   const openNotifications =
     async () => {
@@ -715,9 +845,10 @@ export function Shell() {
         return;
       }
 
-      setNotificationsLoading(
-        true,
-      );
+      const showInitialLoader = !hasLoadedNotificationsRef.current;
+      if (showInitialLoader) {
+        setNotificationsLoading(true);
+      }
 
       try {
         const bearer = getBearerToken();
@@ -743,21 +874,21 @@ export function Shell() {
             unreadCount?: number;
           };
 
-        setNotifications(
+        hasLoadedNotificationsRef.current = true;
+
+        const reconciled = reconcileNotifications(
           data.notifications ?? [],
+          Number(data.unreadCount ?? 0),
         );
 
-        setUnreadCount(
-          Number(
-            data.unreadCount ?? 0,
-          ),
-        );
+        setNotifications(reconciled.notifications);
+        setUnreadCount(reconciled.unreadCount);
       } catch {
         // Mantém os dados atuais.
       } finally {
-        setNotificationsLoading(
-          false,
-        );
+        if (showInitialLoader) {
+          setNotificationsLoading(false);
+        }
       }
     };
 
@@ -777,7 +908,12 @@ export function Shell() {
       <ShellHeaderWrapper
         pathname={pathname}
         isBannerPage={isBannerPage}
-        keepVisible={searchOpen || notificationsOpen || menuOpen}
+        keepVisible={
+          searchOpen ||
+          notificationsOpen ||
+          notificationsPanel.mounted ||
+          menuOpen
+        }
       >
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
 
@@ -815,7 +951,11 @@ export function Shell() {
                   void openNotifications();
                 }
               }}
-              className="relative hidden size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:flex"
+              className={cn(
+                "relative hidden size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:flex",
+                "motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+                notificationsOpen && "bg-elevated text-fg",
+              )}
               aria-label="Notificações"
               aria-expanded={
                 notificationsOpen
@@ -824,7 +964,7 @@ export function Shell() {
               <Bell className="size-5" />
 
               {unreadCount > 0 && (
-                <span className="absolute right-0.5 top-0.5 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg">
+                <span className="absolute right-0.5 top-0.5 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg tabular-nums">
                   {unreadCount > 99
                     ? "99+"
                     : unreadCount}
@@ -865,7 +1005,11 @@ export function Shell() {
                   void openNotifications();
                 }
               }}
-              className="relative flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden"
+              className={cn(
+                "relative flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden",
+                "motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+                notificationsOpen && "bg-elevated text-fg",
+              )}
               aria-label="Notificações"
               aria-expanded={
                 notificationsOpen
@@ -874,7 +1018,7 @@ export function Shell() {
               <Bell className="size-5" />
 
               {unreadCount > 0 && (
-                <span className="absolute right-0.5 top-0.5 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg">
+                <span className="absolute right-0.5 top-0.5 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg tabular-nums">
                   {unreadCount > 99
                     ? "99+"
                     : unreadCount}
@@ -1038,7 +1182,7 @@ export function Shell() {
       {/* =========================================================
           PAINEL DE NOTIFICAÇÕES
       ========================================================== */}
-      {notificationsOpen && (
+      {notificationsPanel.mounted && (
         <>
           <button
             type="button"
@@ -1047,15 +1191,31 @@ export function Shell() {
                 false,
               )
             }
-            className="fixed inset-0 z-40"
+            className={cn(
+              "fixed inset-0 z-40 bg-black/25 md:bg-transparent",
+              "motion-safe:transition-opacity motion-safe:duration-150 motion-reduce:transition-none",
+              notificationsPanel.visible ? "opacity-100" : "opacity-0",
+              notificationsPanel.closing && "pointer-events-none",
+            )}
             aria-label="Fechar notificações"
           />
 
-          <div className="fixed right-4 top-16 z-50 flex max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-sm flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:right-6 md:top-20">
+          <div
+            role="dialog"
+            aria-label="Painel de notificações"
+            className={cn(
+              "fixed right-4 top-16 z-50 flex max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-sm origin-top-right flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:right-6 md:top-20",
+              "motion-safe:transition-[opacity,transform] motion-safe:duration-[170ms] motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
+              notificationsPanel.visible
+                ? "opacity-100 translate-y-0 scale-100"
+                : "opacity-0 -translate-y-1.5 scale-[0.98]",
+              notificationsPanel.closing && "pointer-events-none",
+            )}
+          >
 
-            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-4">
-              <div>
-                <h2 className="font-semibold">
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3.5">
+              <div className="min-w-0">
+                <h2 className="font-semibold text-fg">
                   Notificações
                 </h2>
 
@@ -1071,7 +1231,7 @@ export function Shell() {
                     false,
                   )
                 }
-                className="flex size-9 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
+                className="flex size-9 shrink-0 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none"
                 aria-label="Fechar notificações"
               >
                 <X className="size-5" />
@@ -1102,372 +1262,17 @@ export function Shell() {
               </div>
             ) : (
 
-              <div className="min-h-0 flex-1 overflow-y-auto">
-
-                {notifications
-                  .slice(0, 7)
-                  .map(
-                  (
-                    notification,
-                  ) => {
-
-                    const hasEpisodeTarget =
-                      Boolean(
-                        notification.animeId &&
-                        notification.episodeId &&
-                        notification.episodeId !== "anime",
-                      );
-
-                    const hasAnimeTarget =
-                      Boolean(
-                        notification.animeId &&
-                        (!notification.episodeId ||
-                          notification.episodeId === "anime"),
-                      );
-
-                    const hasTarget =
-                      hasEpisodeTarget || hasAnimeTarget;
-
-                    const matchedLocal =
-                      notification.animeId
-                        ? localAnimes.find(
-                            (a) =>
-                              a.id === notification.animeId ||
-                              (Number(notification.animeId) > 0 &&
-                                (a.anilistId === Number(notification.animeId) ||
-                                  a.malId === Number(notification.animeId))),
-                          )
-                        : undefined;
-
-                    const resolvedAnimeTitle =
-                      notification.animeTitle ||
-                      (matchedLocal
-                        ? matchedLocal.titleEnglish?.trim() ||
-                          matchedLocal.titleRomaji?.trim() ||
-                          matchedLocal.titleNative?.trim() ||
-                          null
-                        : null);
-
-                    const resolvedAnimeCover =
-                      notification.animeCover ||
-                      matchedLocal?.cover ||
-                      null;
-
-                    const isLikeNotification =
-                      notification.type ===
-                      "comment_like";
-
-                    const isReplyNotification =
-                      notification.type ===
-                      "comment_reply";
-
-                    const likeCount =
-                      Number(
-                        notification.commentLikes ??
-                          0,
-                      );
-
-                    const likeAvatars =
-                      Array.isArray(
-                        notification.likeAvatars,
-                      )
-                        ? notification.likeAvatars
-                        : [];
-
-                    const notificationMessage =
-                      isLikeNotification &&
-                      likeCount > 1 &&
-                      notification.actorName
-                        ? `${notification.actorName} e mais ${
-                            likeCount - 1
-                          } ${
-                            likeCount - 1 ===
-                            1
-                              ? "pessoa"
-                              : "pessoas"
-                          } curtiram seu comentário.`
-                        : notification.message;
-
-                    const notificationContent =
-                      (
-                        <div
-                          className={cn(
-                            "border-b border-border px-4 py-4 last:border-b-0 transition-colors",
-                            !notification.read &&
-                              "border-l-4 border-l-blue-500 bg-blue-500/10",
-                          )}
-                        >
-                          <div className="flex gap-3">
-
-                            {notification.actorImage ? (
-                              <img
-                                src={
-                                  notification.actorImage
-                                }
-                                alt=""
-                                className="size-10 shrink-0 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
-                                <UserCircle className="size-6" />
-                              </div>
-                            )}
-
-                            <div className="min-w-0 flex-1">
-
-                              <p className="text-sm leading-5">
-                                {
-                                  notificationMessage
-                                }
-                              </p>
-
-                              {isLikeNotification && (
-                                <div className="mt-2 flex items-center gap-2">
-
-                                  {likeAvatars.length >
-                                    0 && (
-                                    <div className="flex items-center pl-1">
-
-                                      {likeAvatars
-                                        .slice(
-                                          0,
-                                          2,
-                                        )
-                                        .map(
-                                          (
-                                            avatar,
-                                            index,
-                                          ) => (
-                                            <div
-                                              key={
-                                                avatar.id
-                                              }
-                                              className={cn(
-                                                "relative size-7 overflow-hidden rounded-full border-2 border-bg bg-elevated",
-                                                index >
-                                                  0 &&
-                                                  "-ml-2",
-                                              )}
-                                              style={{
-                                                zIndex:
-                                                  10 -
-                                                  index,
-                                              }}
-                                            >
-                                              {avatar.image ? (
-                                                <img
-                                                  src={
-                                                    avatar.image
-                                                  }
-                                                  alt=""
-                                                  className="size-full object-cover"
-                                                />
-                                              ) : (
-                                                <div className="flex size-full items-center justify-center text-[10px] font-semibold text-muted">
-                                                  {(
-                                                    avatar.name ??
-                                                    "U"
-                                                  )
-                                                    .charAt(
-                                                      0,
-                                                    )
-                                                    .toUpperCase()}
-                                                </div>
-                                              )}
-                                            </div>
-                                          ),
-                                        )}
-
-                                    </div>
-                                  )}
-
-                                  <span className="text-xs font-medium text-muted">
-                                    {
-                                      likeCount
-                                    }{" "}
-                                    {likeCount ===
-                                    1
-                                      ? "curtida"
-                                      : "curtidas"}
-                                  </span>
-                                </div>
-                              )}
-
-                              {(resolvedAnimeCover ||
-                                resolvedAnimeTitle) && (
-                                <div className="mt-3 flex items-center gap-3">
-
-                                  {resolvedAnimeCover ? (
-                                    <img
-                                      src={
-                                        resolvedAnimeCover
-                                      }
-                                      alt=""
-                                      className="h-16 w-11 shrink-0 rounded-md object-cover"
-                                    />
-                                  ) : null}
-
-                                  <div className="min-w-0 flex-1">
-
-                                    {resolvedAnimeTitle && (
-                                      <p className="truncate text-sm font-medium text-fg">
-                                        {
-                                          resolvedAnimeTitle
-                                        }
-                                      </p>
-                                    )}
-
-                                    {hasTarget &&
-                                      (isLikeNotification ||
-                                        isReplyNotification) && (
-                                        <p className="mt-1 text-xs font-medium text-muted">
-                                          {notification.commentId
-                                            ? "Ver comentário"
-                                            : hasAnimeTarget
-                                              ? "Ver anime"
-                                              : "Ver episódio"}
-                                        </p>
-                                      )}
-
-                                  </div>
-                                </div>
-                              )}
-
-                              {hasTarget &&
-                                (isLikeNotification ||
-                                  isReplyNotification) &&
-                                !resolvedAnimeCover &&
-                                !resolvedAnimeTitle && (
-                                  <div className="mt-2">
-                                    <span className="inline-flex items-center rounded-md bg-elevated px-2.5 py-1 text-xs font-medium text-fg">
-                                      {notification.commentId
-                                        ? "Ver comentário"
-                                        : hasAnimeTarget
-                                          ? "Ver anime"
-                                          : "Ver episódio"}
-                                    </span>
-                                  </div>
-                                )}
-
-                              <p className="mt-1.5 text-[11px] text-muted">
-                                {new Date(
-                                  notification.createdAt,
-                                ).toLocaleString(
-                                  "pt-BR",
-                                  {
-                                    dateStyle:
-                                      "short",
-                                    timeStyle:
-                                      "short",
-                                  },
-                                )}
-                              </p>
-                            </div>
-
-                            {!notification.read && (
-                              <span className="mt-1 size-2 shrink-0 rounded-full bg-blue-500" />
-                            )}
-
-                          </div>
-                        </div>
-                      );
-
-                    if (
-                      hasEpisodeTarget
-                    ) {
-                      return (
-                        <Link
-                          key={
-                            notification.id
-                          }
-                          to="/watch/$id"
-                          params={{
-                            id:
-                              notification.animeId!,
-                          }}
-                          search={{
-                            ep:
-                              notification.episodeId!,
-                            comment:
-                              notification.commentId ??
-                              undefined,
-                          }}
-                          onClick={() => {
-                            void markNotificationAsRead(
-                              notification.id,
-                            );
-
-                            setNotificationsOpen(
-                              false,
-                            );
-                          }}
-                          className="block transition-colors hover:bg-elevated/70"
-                        >
-                          {
-                            notificationContent
-                          }
-                        </Link>
-                      );
-                    }
-
-                    if (
-                      hasAnimeTarget
-                    ) {
-                      return (
-                        <Link
-                          key={
-                            notification.id
-                          }
-                          to="/anime/$id"
-                          params={{
-                            id:
-                              notification.animeId!,
-                          }}
-                          search={{
-                            comment:
-                              notification.commentId ??
-                              undefined,
-                          }}
-                          onClick={() => {
-                            void markNotificationAsRead(
-                              notification.id,
-                            );
-
-                            setNotificationsOpen(
-                              false,
-                            );
-                          }}
-                          className="block transition-colors hover:bg-elevated/70"
-                        >
-                          {
-                            notificationContent
-                          }
-                        </Link>
-                      );
-                    }
-
-
-                    return (
-                      <button
-                        key={
-                          notification.id
-                        }
-                        type="button"
-                        onClick={() => {
-                          void markNotificationAsRead(
-                            notification.id,
-                          );
-                        }}
-                        className="block w-full text-left transition-colors hover:bg-elevated/70"
-                      >
-                        {
-                          notificationContent
-                        }
-                      </button>
-                    );
-                  },
-                )}
-
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                {notifications.slice(0, 7).map((notification) => (
+                  <NotificationItemCard
+                    key={notification.id}
+                    notification={notification}
+                    localAnimes={localAnimes}
+                    compact
+                    onMarkAsRead={(id) => void markNotificationsAsRead([id])}
+                    onNavigate={() => setNotificationsOpen(false)}
+                  />
+                ))}
               </div>
             )}
 
@@ -1481,7 +1286,7 @@ export function Shell() {
                       false,
                     )
                   }
-                  className="block shrink-0 border-t border-border px-4 py-4 text-center text-sm font-medium text-fg transition-colors hover:bg-elevated"
+                  className="block shrink-0 border-t border-border px-4 py-3.5 text-center text-sm font-medium text-fg hover:bg-elevated active:bg-elevated/80 motion-safe:transition-colors motion-safe:duration-150 motion-reduce:transition-none"
                 >
                   Ver todas as notificações
                 </Link>
