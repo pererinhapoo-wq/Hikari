@@ -133,11 +133,6 @@ export const EpisodeCard = memo(function EpisodeCard({
             )}
           />
 
-          {/* Badge do Número do Episódio sem filtro blur pesado para fluidez na rolagem */}
-          <div className="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 flex items-center rounded bg-[#160c2b]/95 border border-purple-500/40 px-1 sm:px-1.5 py-0.5 text-[8.5px] sm:text-[10px] font-bold text-purple-200 shadow-md">
-            <span>EP {episode.episodeNumber}</span>
-          </div>
-
           {/* Duração se disponível */}
           {episode.duration ? (
             <div className="absolute bottom-1.5 right-1.5 sm:bottom-2 sm:right-2 rounded bg-black/90 border border-white/10 px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9.5px] font-medium text-zinc-300">
@@ -163,25 +158,25 @@ export const EpisodeCard = memo(function EpisodeCard({
           </div>
         </div>
 
-        {/* Informações de Texto: Nome do Anime (Linha 1) e Número/Título do Episódio (Abaixo) sem duplicações */}
+        {/* Informações de Texto: Título do Anime e Número do Episódio em linha separada */}
         <div className="mt-1.5 sm:mt-2.5 px-0.5">
-          {/* Nome do Anime exibido uma única vez */}
+          {/* Título do Anime abaixo da miniatura */}
           <h4
             title={episode.animeTitle}
             className={cn(
-              "text-[10.5px] sm:text-xs md:text-[13px] font-bold text-zinc-200 transition-colors motion-reduce:transition-none [@media(hover:hover)]:group-hover:text-purple-300 group-active:text-purple-200 truncate",
+              "text-xs sm:text-[13px] md:text-sm font-semibold text-zinc-200 transition-colors motion-reduce:transition-none [@media(hover:hover)]:group-hover:text-purple-300 group-active:text-purple-200 truncate",
               isSelecting && "text-purple-200",
             )}
           >
             {episode.animeTitle}
           </h4>
 
-          {/* Número e Título correto do Episódio sem palavras duplicadas ou números repetidos */}
+          {/* Número do episódio em uma linha separada, abaixo do título */}
           <p
             title={formattedSubtitle}
-            className="mt-0.5 text-[9.5px] sm:text-[11px] md:text-xs font-medium text-zinc-400 line-clamp-2 leading-tight sm:leading-snug break-words"
+            className="mt-0.5 text-[11px] sm:text-xs font-medium text-purple-400/90 truncate"
           >
-            {formattedSubtitle}
+            Episódio {episode.episodeNumber}
           </p>
         </div>
       </Link>

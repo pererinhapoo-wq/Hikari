@@ -69,8 +69,8 @@ export function RecentEpisodesSection() {
         </div>
       </div>
 
-      {/* Grade de 3 Colunas Lado a Lado (3 cards por linha, até 6 linhas de 3 cards) */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3.5 md:gap-4.5">
+      {/* Grade de 2 colunas no mobile e 3 colunas em telas maiores */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4.5">
         {recentEpisodes.map((episode) => (
           <EpisodeCard
             key={`${episode.animeId}-${episode.episodeId}`}
