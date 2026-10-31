@@ -471,14 +471,14 @@ export function Hero({
     };
   }, [resetAutoTimer, index]);
 
-  // Conclui a animação após exatamente 1000ms (~900-1100ms) com aceleração e desaceleração naturais
+  // Conclui a animação após exatamente 1300ms (~1200-1400ms) com aceleração e desaceleração naturais
   useEffect(() => {
     if (!transitioning) return;
 
     const timeout = window.setTimeout(() => {
       setIndex(transitioning.toIndex);
       setTransitioning(null);
-    }, 1000);
+    }, 1300);
 
     return () => window.clearTimeout(timeout);
   }, [transitioning]);
@@ -647,74 +647,92 @@ export function Hero({
         @keyframes heroCrossfadeOutNext {
           0% {
             opacity: 1;
-            filter: brightness(1);
+            filter: brightness(1) contrast(1);
           }
-          20% {
-            opacity: 0.96;
-            filter: brightness(0.72);
+          18% {
+            opacity: 0.95;
+            filter: brightness(0.82) contrast(1.02);
           }
-          50% {
-            opacity: 0.65;
-            filter: brightness(0.62);
+          45% {
+            opacity: 0.68;
+            filter: brightness(0.68) contrast(1.04);
+          }
+          75% {
+            opacity: 0.28;
+            filter: brightness(0.55) contrast(1.02);
           }
           100% {
             opacity: 0;
-            filter: brightness(0.5);
+            filter: brightness(0.45) contrast(1);
           }
         }
 
         @keyframes heroCrossfadeInNext {
           0% {
             opacity: 0;
+            filter: brightness(0.9);
           }
-          16% {
-            opacity: 0.06;
+          20% {
+            opacity: 0.18;
+            filter: brightness(0.94);
           }
           50% {
-            opacity: 0.72;
+            opacity: 0.65;
+            filter: brightness(0.98);
           }
-          82% {
-            opacity: 0.95;
+          80% {
+            opacity: 0.92;
+            filter: brightness(1);
           }
           100% {
             opacity: 1;
+            filter: brightness(1);
           }
         }
 
         @keyframes heroCrossfadeOutPrev {
           0% {
             opacity: 1;
-            filter: brightness(1);
+            filter: brightness(1) contrast(1);
           }
-          20% {
-            opacity: 0.96;
-            filter: brightness(0.72);
+          18% {
+            opacity: 0.95;
+            filter: brightness(0.82) contrast(1.02);
           }
-          50% {
-            opacity: 0.65;
-            filter: brightness(0.62);
+          45% {
+            opacity: 0.68;
+            filter: brightness(0.68) contrast(1.04);
+          }
+          75% {
+            opacity: 0.28;
+            filter: brightness(0.55) contrast(1.02);
           }
           100% {
             opacity: 0;
-            filter: brightness(0.5);
+            filter: brightness(0.45) contrast(1);
           }
         }
 
         @keyframes heroCrossfadeInPrev {
           0% {
             opacity: 0;
+            filter: brightness(0.9);
           }
-          16% {
-            opacity: 0.06;
+          20% {
+            opacity: 0.18;
+            filter: brightness(0.94);
           }
           50% {
-            opacity: 0.72;
+            opacity: 0.65;
+            filter: brightness(0.98);
           }
-          82% {
-            opacity: 0.95;
+          80% {
+            opacity: 0.92;
+            filter: brightness(1);
           }
           100% {
             opacity: 1;
+            filter: brightness(1);
           }
         }
       `}</style>
@@ -722,12 +740,12 @@ export function Hero({
       {/* Camadas da transição ou anime ativo */}
       {transitioning ? (
         <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">
-          {/* Camada inferior: Anime saindo com leve escurecimento inicial e desvanecimento */}
+          {/* Camada inferior: Anime saindo com leve escurecimento inicial, rastro sutil e desvanecimento */}
           <div
             key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
             className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter]"
             style={{
-              animation: `${transitioning.direction === "next" ? "heroCrossfadeOutNext" : "heroCrossfadeOutPrev"} 1000ms cubic-bezier(0.25, 1, 0.5, 1) forwards`,
+              animation: `${transitioning.direction === "next" ? "heroCrossfadeOutNext" : "heroCrossfadeOutPrev"} 1300ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
             }}
           >
             <HeroSlide anime={items[transitioning.fromIndex]} />
@@ -736,9 +754,9 @@ export function Hero({
           {/* Camada superior: Próximo anime surgindo gradualmente por cima com crossfade e sincronização completa */}
           <div
             key={`incoming-${transitioning.toIndex}-${items[transitioning.toIndex].id}`}
-            className="relative size-full overflow-hidden z-20 will-change-[opacity]"
+            className="relative size-full overflow-hidden z-20 will-change-[opacity,filter]"
             style={{
-              animation: `${transitioning.direction === "next" ? "heroCrossfadeInNext" : "heroCrossfadeInPrev"} 1000ms cubic-bezier(0.25, 1, 0.5, 1) forwards`,
+              animation: `${transitioning.direction === "next" ? "heroCrossfadeInNext" : "heroCrossfadeInPrev"} 1300ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
             }}
           >
             <HeroSlide anime={items[transitioning.toIndex]} priority />
