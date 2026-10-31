@@ -183,45 +183,68 @@ export const Route = createFileRoute("/anime/$id")({
         )
       : null;
 
+    const usesKitsuMedia =
+      Boolean(syncMobile?.url && syncMobile.url.includes("media.kitsu.app")) ||
+      Boolean(desktopBanner && desktopBanner.includes("media.kitsu.app")) ||
+      Boolean(remote.kitsuId) ||
+      params.id.startsWith("kitsu-");
+
+    const links: Array<{
+      rel: string;
+      as?: string;
+      href: string;
+      media?: string;
+      fetchPriority?: "high" | "low" | "auto";
+    }> = [];
+
+    if (usesKitsuMedia) {
+      links.push(
+        {
+          rel: "preconnect",
+          href: "https://media.kitsu.app",
+        },
+        {
+          rel: "dns-prefetch",
+          href: "https://media.kitsu.app",
+        },
+      );
+    }
+
     if (syncMobile?.isAlternative && syncMobile.url) {
-      return {
-        links: [
-          {
-            rel: "preload",
-            as: "image",
-            href: syncMobile.url,
-            media: MOBILE_BANNER_MEDIA_QUERY,
-            fetchPriority: "high" as const,
-          },
-          ...(desktopBanner
-            ? [
-                {
-                  rel: "preload",
-                  as: "image",
-                  href: desktopBanner,
-                  media: DESKTOP_BANNER_MEDIA_QUERY,
-                  fetchPriority: "high" as const,
-                },
-              ]
-            : []),
-        ],
-      };
+      links.push(
+        {
+          rel: "preload",
+          as: "image",
+          href: syncMobile.url,
+          media: MOBILE_BANNER_MEDIA_QUERY,
+          fetchPriority: "high",
+        },
+        ...(desktopBanner
+          ? [
+              {
+                rel: "preload",
+                as: "image",
+                href: desktopBanner,
+                media: DESKTOP_BANNER_MEDIA_QUERY,
+                fetchPriority: "high" as const,
+              },
+            ]
+          : []),
+      );
+      return { links };
     }
 
     if (desktopBanner) {
-      return {
-        links: [
-          {
-            rel: "preload",
-            as: "image",
-            href: desktopBanner,
-            fetchPriority: "high" as const,
-          },
-        ],
-      };
+      links.push({
+        rel: "preload",
+        as: "image",
+        href: desktopBanner,
+        fetchPriority: "high",
+      });
+      return { links };
     }
 
-    return {};
+    return links.length > 0 ? { links } : {};
   },
 
   pendingComponent: () => (

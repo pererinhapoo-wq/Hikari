@@ -1581,9 +1581,13 @@ describe("season-banner validation & Admin priority", () => {
       fetchJikanPictures: async () => blackCloverS2RealMalGallery,
     });
 
-    assert.equal(bc2.isAlternative, false);
-    assert.equal(bc2.source, "season-default");
-    assert.equal(bc2.url, bc2OriginalBanner);
+    assert.equal(bc2.isAlternative, true);
+    assert.equal(bc2.source, "kitsu-season");
+    assert.equal(
+      bc2.url,
+      "https://media.kitsu.app/anime/50024/cover_image/c344242518d97e6a4dd5fb0a79c8ca43.jpg",
+    );
+    assert.equal(bc2.initialObjectPosition, "50% 24%");
 
     // Solo Leveling S1 (151807 / MAL 52299): Kitsu 46231 é panorâmico e MAL possui arte promocional horizontal oficial 142290l.jpg (600x425 = 1.412:1)
     const sl1 = await resolveSeasonMobileBanner({

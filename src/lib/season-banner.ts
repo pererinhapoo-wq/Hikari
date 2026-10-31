@@ -222,6 +222,24 @@ export const SPECIFIC_SEASON_MOBILE_ALTERNATIVES: Record<
     expectedYear: 2016,
     format: "TV",
   },
+  // Black Clover 2nd Season (AniList ID 195604 / MAL ID 60462 / Kitsu 50024)
+  // Referência visual oficial do Kitsu: 50024 (proporção 2.811:1), enquadramento 50% 24%
+  "195604": {
+    url: "https://media.kitsu.app/anime/50024/cover_image/c344242518d97e6a4dd5fb0a79c8ca43.jpg",
+    aspect: 2.811284046692607,
+    source: "kitsu-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2026,
+    format: "TV",
+  },
+  "kitsu-50024": {
+    url: "https://media.kitsu.app/anime/50024/cover_image/c344242518d97e6a4dd5fb0a79c8ca43.jpg",
+    aspect: 2.811284046692607,
+    source: "kitsu-season",
+    initialObjectPosition: "50% 24%",
+    expectedYear: 2026,
+    format: "TV",
+  },
   // The Apothecary Diaries Season 3 (AniList ID 195516 / MAL ID 61987)
   // Referência visual aprovada: MAL 152170l.jpg (600x424, proporção 1.415:1), enquadramento 50% 24%
   "195516": {
