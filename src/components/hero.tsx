@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronRight, Info, Play } from "lucide-react";
+import { Check, ChevronRight, Info, Play } from "lucide-react";
 
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
@@ -478,14 +478,54 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
         : "Em lançamento";
 
   const statusText = statusLabel(anime.status);
+  const rawStatus = (anime.status || "").toLowerCase();
   const isAiring =
-    anime.status === "RELEASING" ||
-    anime.status?.toLowerCase() === "airing" ||
-    anime.status?.toLowerCase() === "currently_airing" ||
+    rawStatus === "releasing" ||
+    rawStatus === "airing" ||
+    rawStatus === "currently_airing" ||
     statusText?.toLowerCase() === "em exibição";
+
+  const isFinished =
+    !isAiring &&
+    (rawStatus === "finished" ||
+      rawStatus === "completed" ||
+      statusText?.toLowerCase() === "encerrado");
 
   return (
     <div className="relative size-full min-w-full shrink-0 flex flex-col justify-end select-none overflow-hidden min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px]">
+      <style>{`
+        @keyframes heroGreenDotPulse {
+          0%, 100% {
+            transform: scale(1);
+            opacity: 1;
+            box-shadow: 0 0 5px 1px rgba(16, 185, 129, 0.8);
+          }
+          50% {
+            transform: scale(0.85);
+            opacity: 0.75;
+            box-shadow: 0 0 2px 0px rgba(16, 185, 129, 0.4);
+          }
+        }
+        .hero-glass-capsule {
+          background-color: rgba(255, 255, 255, 0.42);
+          backdrop-filter: blur(10px) saturate(130%);
+          -webkit-backdrop-filter: blur(10px) saturate(130%);
+          border: 1px solid rgba(255, 255, 255, 0.28);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+        }
+        .hero-btn-action {
+          transition: transform 140ms cubic-bezier(0.2, 0.8, 0.4, 1), box-shadow 140ms ease, background-color 140ms ease, opacity 140ms ease;
+          will-change: transform;
+        }
+        .hero-btn-action:active {
+          transform: scale(0.95);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-btn-action:active {
+            transform: none !important;
+          }
+        }
+      `}</style>
       {/* CAMADA DE IMAGEM AMPLA EM BACKGROUND (CORES E LUZ NATURAIS) */}
       <div className="absolute inset-0 size-full pointer-events-none overflow-hidden select-none">
         {/* MOBILE: Imagem ampla ocupando a tela com enquadramento focado nos personagens e cores originais */}
@@ -571,8 +611,6 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                   pointer-events-none
                   drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)]
                   filter
-                  transition-all
-                  duration-200
                   ${logoConfig.sizeClasses}
                 `}
               />
@@ -599,37 +637,37 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
           )}
         </div>
 
-        {/* Linha Compacta de Informações: Nota ★ · Total Temporadas · Temporada de Lançamento · Episódios */}
-        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:text-[12.5px] font-semibold text-zinc-100 drop-shadow-[0_2px_5px_rgba(0,0,0,0.95)]">
+        {/* Linha de Metadados: Nota com estrela dourada · Total Temporadas · Lançamento · Episódios */}
+        <div className="flex flex-wrap items-center justify-center gap-x-2.5 sm:gap-x-3 gap-y-1 text-xs sm:text-[13px] font-semibold text-zinc-100 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
           {scoreValue && (
-            <span className="inline-flex items-center gap-1 text-amber-300 font-bold tracking-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
-              <span className="text-amber-400 text-xs sm:text-[13px] drop-shadow-[0_1px_2px_rgba(0,0,0,1)]">★</span>
-              <span className="tabular-nums text-amber-200 font-bold">{scoreValue}</span>
+            <span className="inline-flex items-center gap-1 font-extrabold tracking-tight text-amber-400 drop-shadow-[0_2px_8px_rgba(245,158,11,0.4)]">
+              <span className="text-sm sm:text-base leading-none text-amber-400 drop-shadow-[0_1px_3px_rgba(245,158,11,0.6)]">★</span>
+              <span className="tabular-nums text-xs sm:text-[13.5px] leading-none font-extrabold text-amber-300">{scoreValue}</span>
             </span>
           )}
 
           {scoreValue && (seasonsSpan || seasonValue || episodesValue) && (
-            <span className="size-1 rounded-full bg-white/40 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
+            <span className="size-1 rounded-full bg-zinc-400/80 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
           )}
 
           {seasonsSpan && (
-            <span className="font-bold text-white tracking-wide drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{seasonsSpan}</span>
+            <span className="font-bold text-white tracking-wide text-xs sm:text-[13px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{seasonsSpan}</span>
           )}
 
           {seasonsSpan && (seasonValue || episodesValue) && (
-            <span className="size-1 rounded-full bg-white/40 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
+            <span className="size-1 rounded-full bg-zinc-400/80 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
           )}
 
           {seasonValue && (
-            <span className="text-zinc-100 font-medium drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{seasonValue}</span>
+            <span className="font-semibold text-zinc-100 tracking-normal text-xs sm:text-[13px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{seasonValue}</span>
           )}
 
           {seasonValue && episodesValue && (
-            <span className="size-1 rounded-full bg-white/40 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
+            <span className="size-1 rounded-full bg-zinc-400/80 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
           )}
 
           {episodesValue && (
-            <span className="text-zinc-200 font-medium drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{episodesValue}</span>
+            <span className="font-semibold text-zinc-200 tracking-normal text-xs sm:text-[13px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{episodesValue}</span>
           )}
         </div>
 
@@ -638,146 +676,163 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
           <div className="flex items-center justify-center pt-0.5">
             <span
               className="
+                hero-glass-capsule
                 inline-flex
                 items-center
                 gap-1.5
-                rounded-md
+                rounded-full
                 border
-                border-white/15
-                bg-black/60
-                px-2.5
-                py-0.5
-                text-[10px]
-                sm:text-[11px]
-                font-semibold
+                border-white/30
+                bg-white/40
+                backdrop-blur-md
+                px-3
+                py-1
+                text-[10.5px]
+                sm:text-[11.5px]
+                font-extrabold
                 tracking-wider
                 uppercase
-                text-zinc-100
-                backdrop-blur-md
-                shadow-xs
+                text-zinc-900
               "
             >
               {isAiring && (
                 <span
-                  className="relative flex size-2 items-center justify-center shrink-0"
+                  className="relative flex size-2 sm:size-2.5 items-center justify-center shrink-0"
                   aria-hidden="true"
                 >
-                  <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)] motion-safe:animate-pulse motion-reduce:animate-none" />
+                  <span
+                    className="size-1.5 sm:size-2 rounded-full bg-emerald-600 motion-safe:animate-[heroGreenDotPulse_2.2s_ease-in-out_infinite] motion-reduce:animate-none"
+                    style={{
+                      boxShadow: "0 0 5px 1px rgba(16, 185, 129, 0.8)",
+                    }}
+                  />
                 </span>
               )}
-              <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{statusText}</span>
+              {isFinished && (
+                <Check
+                  className="size-3 sm:size-3.5 text-emerald-700 shrink-0 stroke-[2.75]"
+                  aria-hidden="true"
+                />
+              )}
+              <span>{statusText}</span>
             </span>
           </div>
         )}
 
-        {/* Gêneros / Categorias: Cápsulas compactas translúcidas com contraste aprimorado */}
+        {/* Gêneros / Categorias: Vidro fosco translúcido esbranquiçado com desfoque e texto escuro */}
         {anime.genres.length > 0 && (
           <div className="flex flex-wrap items-center justify-center gap-1.5 pt-0.5 max-w-lg">
             {anime.genres.slice(0, 4).map((genre) => (
               <span
                 key={genre}
                 className="
+                  hero-glass-capsule
+                  inline-flex
+                  items-center
                   rounded-full
                   border
-                  border-white/20
-                  bg-black/65
+                  border-white/30
+                  bg-white/40
+                  backdrop-blur-md
                   px-2.5
                   py-0.5
                   text-[9.5px]
                   sm:text-[10.5px]
-                  font-semibold
+                  font-bold
                   uppercase
                   tracking-wider
-                  text-zinc-100
-                  backdrop-blur-md
-                  shadow-xs
+                  text-zinc-900
                 "
               >
-                {genreLabel(genre)}
+                <span>{genreLabel(genre)}</span>
               </span>
             ))}
           </div>
         )}
 
         {/* Controles de Ação */}
-        <div className="mt-2 flex items-center justify-center gap-2 sm:gap-2.5 w-auto pt-0.5">
-          {/* Botão Assistir: Contraste discreto com fundo suave elegante e texto/ícone pretos nítidos */}
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          className="mt-2.5 flex items-center justify-center gap-2.5 sm:gap-3 w-auto pt-0.5"
+        >
+          {/* Botão Assistir: Inspirado na referência com acabamento vibrante e identidade Hikari */}
           <Link
             to="/watch/$id"
             params={{ id: anime.id }}
             preload="intent"
             className="
+              hero-btn-action
+              group
               inline-flex
               items-center
               justify-center
-              gap-1.5
-              h-8
-              sm:h-8.5
-              px-3.5
-              sm:px-4
-              rounded-lg
-              sm:rounded-xl
-              bg-white/95
-              hover:bg-white
-              active:bg-white/90
-              text-black
+              gap-2
+              h-9
+              sm:h-10
+              px-4.5
+              sm:px-5.5
+              rounded-xl
+              sm:rounded-2xl
+              bg-gradient-to-r
+              from-purple-600
+              via-purple-500
+              to-fuchsia-600
+              hover:from-purple-500
+              hover:via-purple-400
+              hover:to-fuchsia-500
+              text-white
               font-bold
               text-xs
-              sm:text-[13px]
-              tracking-normal
+              sm:text-sm
+              tracking-wide
               border
-              border-white/40
-              backdrop-blur-md
-              shadow-[0_2px_12px_rgba(0,0,0,0.4)]
-              transition-all
-              duration-150
+              border-white/20
+              shadow-[0_4px_20px_rgba(168,85,247,0.38)]
+              hover:shadow-[0_4px_26px_rgba(168,85,247,0.55)]
               cursor-pointer
-              active:scale-[0.98]
               select-none
             "
           >
-            <Play className="size-3 sm:size-3.5 fill-black text-black shrink-0" />
+            <Play className="size-3.5 sm:size-4 fill-white text-white shrink-0 group-hover:scale-110 transition-transform duration-140 ease-out" />
             <span>Assistir</span>
           </Link>
 
-          {/* Controle Detalhes: Ação secundária em vidro escuro translúcido com texto, ícone, seta e contorno nítidos */}
+          {/* Controle Detalhes: Ação secundária combinando estilo e acabamento em vidro translúcido */}
           <Link
             to="/anime/$id"
             params={{ id: anime.id }}
             className="
+              hero-btn-action
               group
               inline-flex
               items-center
               justify-center
               gap-1.5
-              h-8
-              sm:h-8.5
-              px-3
-              sm:px-3.5
-              rounded-lg
-              sm:rounded-xl
-              bg-black/50
-              hover:bg-black/65
-              active:bg-black/75
+              h-9
+              sm:h-10
+              px-3.5
+              sm:px-4.5
+              rounded-xl
+              sm:rounded-2xl
+              bg-black/60
+              hover:bg-black/75
               border
-              border-white/30
-              hover:border-white/45
+              border-white/25
+              hover:border-white/40
               text-white
               font-semibold
               text-xs
-              sm:text-[13px]
+              sm:text-sm
+              tracking-wide
               backdrop-blur-md
-              shadow-xs
-              transition-all
-              duration-150
+              shadow-[0_2px_12px_rgba(0,0,0,0.5)]
               cursor-pointer
-              active:scale-[0.98]
               select-none
             "
           >
-            <Info className="size-3 sm:size-3.5 text-zinc-200 group-hover:text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] shrink-0" />
+            <Info className="size-3.5 sm:size-4 text-purple-200 group-hover:text-white shrink-0 transition-colors drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
             <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">Detalhes</span>
-            <ChevronRight className="size-3 sm:size-3.5 text-zinc-200 group-hover:text-white group-hover:translate-x-0.5 transition-transform drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] shrink-0" />
+            <ChevronRight className="size-3.5 sm:size-4 text-zinc-300 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
           </Link>
         </div>
       </div>
@@ -917,14 +972,14 @@ export function Hero({
     };
   }, [resetAutoTimer, index]);
 
-  // Conclui a animação após exatamente 1300ms (~1200-1400ms) com aceleração e desaceleração naturais
+  // Conclui a animação após exatamente 1800ms com aceleração e desaceleração naturais
   useEffect(() => {
     if (!transitioning) return;
 
     const timeout = window.setTimeout(() => {
       setIndex(transitioning.toIndex);
       setTransitioning(null);
-    }, 1300);
+    }, 1800);
 
     return () => window.clearTimeout(timeout);
   }, [transitioning]);
@@ -1090,95 +1145,44 @@ export function Hero({
       "
     >
       <style>{`
-        @keyframes heroCrossfadeOutNext {
+        @keyframes heroCrossfadeOut {
           0% {
             opacity: 1;
             filter: brightness(1) contrast(1);
           }
-          18% {
-            opacity: 0.95;
-            filter: brightness(0.82) contrast(1.02);
+          22% {
+            opacity: 0.96;
+            filter: brightness(0.65) contrast(1.02);
           }
           45% {
             opacity: 0.68;
-            filter: brightness(0.68) contrast(1.04);
+            filter: brightness(0.48) contrast(1.02);
           }
           75% {
-            opacity: 0.28;
-            filter: brightness(0.55) contrast(1.02);
+            opacity: 0.22;
+            filter: brightness(0.38) contrast(1);
           }
           100% {
             opacity: 0;
-            filter: brightness(0.45) contrast(1);
+            filter: brightness(0.32) contrast(1);
           }
         }
 
-        @keyframes heroCrossfadeInNext {
+        @keyframes heroCrossfadeIn {
           0% {
             opacity: 0;
-            filter: brightness(0.9);
           }
           20% {
-            opacity: 0.18;
-            filter: brightness(0.94);
-          }
-          50% {
-            opacity: 0.65;
-            filter: brightness(0.98);
-          }
-          80% {
-            opacity: 0.92;
-            filter: brightness(1);
-          }
-          100% {
-            opacity: 1;
-            filter: brightness(1);
-          }
-        }
-
-        @keyframes heroCrossfadeOutPrev {
-          0% {
-            opacity: 1;
-            filter: brightness(1) contrast(1);
-          }
-          18% {
-            opacity: 0.95;
-            filter: brightness(0.82) contrast(1.02);
-          }
-          45% {
-            opacity: 0.68;
-            filter: brightness(0.68) contrast(1.04);
-          }
-          75% {
-            opacity: 0.28;
-            filter: brightness(0.55) contrast(1.02);
-          }
-          100% {
             opacity: 0;
-            filter: brightness(0.45) contrast(1);
           }
-        }
-
-        @keyframes heroCrossfadeInPrev {
-          0% {
-            opacity: 0;
-            filter: brightness(0.9);
+          38% {
+            opacity: 0.38;
           }
-          20% {
-            opacity: 0.18;
-            filter: brightness(0.94);
-          }
-          50% {
-            opacity: 0.65;
-            filter: brightness(0.98);
-          }
-          80% {
-            opacity: 0.92;
-            filter: brightness(1);
+          68% {
+            opacity: 0.88;
           }
           100% {
             opacity: 1;
-            filter: brightness(1);
           }
         }
       `}</style>
@@ -1186,23 +1190,23 @@ export function Hero({
       {/* Camadas da transição ou anime ativo */}
       {transitioning ? (
         <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">
-          {/* Camada inferior: Anime saindo com leve escurecimento inicial, rastro sutil e desvanecimento */}
+          {/* Camada inferior: Anime saindo com escurecimento perceptível, gradual e desvanecimento suave */}
           <div
             key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
-            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter]"
+            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter] [contain:paint]"
             style={{
-              animation: `${transitioning.direction === "next" ? "heroCrossfadeOutNext" : "heroCrossfadeOutPrev"} 1300ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+              animation: "heroCrossfadeOut 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
             }}
           >
             <HeroSlide anime={items[transitioning.fromIndex]} />
           </div>
 
-          {/* Camada superior: Próximo anime surgindo gradualmente por cima com crossfade e sincronização completa */}
+          {/* Camada superior: Próximo anime surgindo suavemente sobre a imagem escurecida */}
           <div
             key={`incoming-${transitioning.toIndex}-${items[transitioning.toIndex].id}`}
-            className="relative size-full overflow-hidden z-20 will-change-[opacity,filter]"
+            className="relative size-full overflow-hidden z-20 will-change-[opacity] [contain:paint]"
             style={{
-              animation: `${transitioning.direction === "next" ? "heroCrossfadeInNext" : "heroCrossfadeInPrev"} 1300ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+              animation: "heroCrossfadeIn 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
             }}
           >
             <HeroSlide anime={items[transitioning.toIndex]} priority />
