@@ -498,12 +498,12 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
           0%, 100% {
             transform: scale(1);
             opacity: 1;
-            box-shadow: 0 0 5px 1px rgba(16, 185, 129, 0.8);
+            box-shadow: 0 0 7px 1.5px rgba(30, 240, 102, 0.9), 0 0 2px 0.5px rgba(0, 180, 60, 0.65);
           }
           50% {
             transform: scale(0.85);
-            opacity: 0.75;
-            box-shadow: 0 0 2px 0px rgba(16, 185, 129, 0.4);
+            opacity: 0.92;
+            box-shadow: 0 0 3.5px 0.5px rgba(30, 240, 102, 0.65), 0 0 1px 0px rgba(0, 180, 60, 0.5);
           }
         }
         .hero-glass-capsule {
@@ -701,16 +701,13 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                   aria-hidden="true"
                 >
                   <span
-                    className="size-1.5 sm:size-2 rounded-full bg-emerald-600 motion-safe:animate-[heroGreenDotPulse_2.2s_ease-in-out_infinite] motion-reduce:animate-none"
-                    style={{
-                      boxShadow: "0 0 5px 1px rgba(16, 185, 129, 0.8)",
-                    }}
+                    className="size-1.5 sm:size-2 rounded-full bg-[#1ef066] shadow-[0_0_7px_1.5px_rgba(30,240,102,0.9),0_0_2px_0.5px_rgba(0,180,60,0.65)] motion-safe:animate-[heroGreenDotPulse_2.2s_ease-in-out_infinite] motion-reduce:animate-none"
                   />
                 </span>
               )}
               {isFinished && (
                 <Check
-                  className="size-3 sm:size-3.5 text-emerald-700 shrink-0 stroke-[2.75]"
+                  className="size-3 sm:size-3.5 text-[#1ef066] [filter:drop-shadow(0_0.5px_1px_rgba(0,0,0,0.38))_drop-shadow(0_0_4px_rgba(30,240,102,0.5))] shrink-0 stroke-[2.75]"
                   aria-hidden="true"
                 />
               )}

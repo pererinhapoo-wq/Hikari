@@ -1127,7 +1127,7 @@ function AnimePage() {
                 {statusLabel(anime.status) && (
                   <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/40 px-2.5 py-1 text-xs font-medium text-purple-300">
                     {isReleasing && (
-                      <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] motion-safe:animate-pulse" />
+                      <span className="size-1.5 rounded-full bg-[#1ef066] shadow-[0_0_8px_rgba(30,240,102,0.9)] motion-safe:animate-pulse" />
                     )}
                     <span>{statusLabel(anime.status)}</span>
                   </span>
