@@ -1,3 +1,4 @@
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   createRootRoute,
   HeadContent,
@@ -5,7 +6,6 @@ import {
   ScrollRestoration,
 } from "@tanstack/react-router";
 
-import { Analytics } from "@vercel/analytics/react";
 import { AuthProvider } from "@/lib/auth/provider";
 
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
@@ -15,6 +15,26 @@ import { Shell } from "@/components/shell";
 import appCss from "../styles.css?url";
 
 const APP_NAME = "HIKARI";
+
+const LazyAnalytics = lazy(() =>
+  import("@vercel/analytics/react").then((m) => ({ default: m.Analytics })),
+);
+
+function DeferredAnalytics() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
+
+  return (
+    <Suspense fallback={null}>
+      <LazyAnalytics />
+    </Suspense>
+  );
+}
 
 export const Route = createRootRoute({
   head: () => ({
@@ -37,6 +57,14 @@ export const Route = createRootRoute({
     ],
 
     links: [
+      {
+        rel: "preconnect",
+        href: "https://s4.anilist.co",
+      },
+      {
+        rel: "dns-prefetch",
+        href: "https://s4.anilist.co",
+      },
       {
         rel: "icon",
         type: "image/svg+xml",
@@ -78,13 +106,7 @@ export const Route = createRootRoute({
       suppressHydrationWarning
     >
       <head>
-
-        {/* Google AdSense */}
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594"
-          crossOrigin="anonymous"
-        />
+        <HeadContent />
 
         <script
           dangerouslySetInnerHTML={{
@@ -121,7 +143,12 @@ export const Route = createRootRoute({
           }}
         />
 
-        <HeadContent />
+        {/* Google AdSense */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594"
+          crossOrigin="anonymous"
+        />
       </head>
 
       <body>
@@ -135,7 +162,7 @@ export const Route = createRootRoute({
 
         <Scripts />
 
-        <Analytics />
+        <DeferredAnalytics />
       </body>
     </html>
   ),

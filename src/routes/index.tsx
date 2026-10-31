@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import {
   createFileRoute,
   type ErrorComponentProps,
@@ -12,15 +12,70 @@ import { localToAnime } from "@/lib/types";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
-import { RecentEpisodesSection } from "@/components/recent-episodes-section";
-import { SectionReveal } from "@/components/section-reveal";
 import { AnimeCardSkeleton } from "@/components/anime-card";
-import { Button } from "@/components/ui/button";
+
+const LazyRecentEpisodesSection = lazy(() =>
+  import("@/components/recent-episodes-section").then((m) => ({
+    default: m.RecentEpisodesSection,
+  })),
+);
 
 export const Route = createFileRoute("/")({
   staleTime: 1000 * 60 * 10,
   gcTime: 1000 * 60 * 30,
   loader: () => fetchHomeCatalog(),
+  head: ({ loaderData }) => {
+    const featured =
+      loaderData?.trending?.[0] ?? loaderData?.popular?.[0] ?? null;
+    if (!featured) {
+      return {};
+    }
+
+    const mobileBackdrop =
+      featured.cover?.trim() || featured.banner?.trim() || "";
+    const desktopBackdrop =
+      featured.banner?.trim() || featured.cover?.trim() || "";
+
+    if (!mobileBackdrop && !desktopBackdrop) {
+      return {};
+    }
+
+    if (
+      mobileBackdrop &&
+      desktopBackdrop &&
+      mobileBackdrop !== desktopBackdrop
+    ) {
+      return {
+        links: [
+          {
+            rel: "preload",
+            as: "image",
+            href: mobileBackdrop,
+            media: "(max-width: 767.98px)",
+            fetchPriority: "high" as const,
+          },
+          {
+            rel: "preload",
+            as: "image",
+            href: desktopBackdrop,
+            media: "(min-width: 768px)",
+            fetchPriority: "high" as const,
+          },
+        ],
+      };
+    }
+
+    return {
+      links: [
+        {
+          rel: "preload",
+          as: "image",
+          href: mobileBackdrop || desktopBackdrop,
+          fetchPriority: "high" as const,
+        },
+      ],
+    };
+  },
   pendingComponent: HomePending,
   errorComponent: HomeError,
   component: Home,
@@ -59,8 +114,9 @@ function HomeError({ error }: ErrorComponentProps) {
       </p>
 
       <div className="mt-5 flex justify-center">
-        <Button
-          variant="outline"
+        <button
+          type="button"
+          className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-transparent px-4 text-sm font-medium text-fg shadow-[var(--shadow-border)] transition-[background-color,color,opacity,transform,box-shadow] duration-150 ease-[var(--ease-out)] hover:bg-elevated hover:shadow-[var(--shadow-border-hover)] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           onClick={() => {
             if (typeof window !== "undefined") {
               window.location.reload();
@@ -68,7 +124,7 @@ function HomeError({ error }: ErrorComponentProps) {
           }}
         >
           Tentar novamente
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -80,10 +136,29 @@ function Home() {
   const locals = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
 
-  const trending = overlayList(data.trending, locals);
-  const popular = overlayList(data.popular, locals);
-  const season = overlayList(data.season, locals);
+  const trending = useMemo(
+    () => overlayList(data.trending, locals),
+    [data.trending, locals],
+  );
+  const popular = useMemo(
+    () => overlayList(data.popular, locals),
+    [data.popular, locals],
+  );
+  const season = useMemo(
+    () => overlayList(data.season, locals),
+    [data.season, locals],
+  );
   const emAltaItems = trending.length > 0 ? trending : popular;
+
+  const hasLocalEpisodes = useMemo(
+    () =>
+      locals.some(
+        (a) =>
+          !a.hidden &&
+          (a.seasons?.some((s) => (s.episodes?.length ?? 0) > 0) ?? false),
+      ),
+    [locals],
+  );
 
   // Animes Recém-Adicionados: animes incluídos no catálogo próprio do Hikari com data real (createdAt),
   // ordenados do mais recente para o mais antigo
@@ -114,12 +189,14 @@ function Home() {
 
   const featured = trending[0] ?? popular[0];
 
-  const featuredItems = [
-    ...trending,
-    ...popular.filter(
-      (a) => !trending.some((t) => t.id === a.id),
-    ),
-  ].slice(0, 8);
+  const featuredItems = useMemo(
+    () =>
+      [
+        ...trending,
+        ...popular.filter((a) => !trending.some((t) => t.id === a.id)),
+      ].slice(0, 8),
+    [trending, popular],
+  );
 
   return (
     <div className="space-y-8 pb-12 sm:space-y-11 md:space-y-14">
@@ -136,7 +213,11 @@ function Home() {
       <TodayEpisodesSection initialItems={data.todaySchedule ?? []} />
 
       {/* 2. Novos Episódios (publicados pelo administrador) */}
-      <RecentEpisodesSection />
+      {hydrated && hasLocalEpisodes ? (
+        <Suspense fallback={null}>
+          <LazyRecentEpisodesSection />
+        </Suspense>
+      ) : null}
 
       {/* 3. Em Alta */}
       <AnimeRow

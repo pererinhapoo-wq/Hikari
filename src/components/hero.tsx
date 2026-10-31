@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, Info, Play } from "lucide-react";
 
 import { displayTitle, type SlimAnime } from "@/lib/types";
@@ -450,11 +450,10 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
     displayTitle(anime);
 
   const logoConfig = getAnimeLogo(anime);
-  const [logoFailed, setLogoFailed] = useState(false);
-
-  useEffect(() => {
-    setLogoFailed(false);
-  }, [anime.id]);
+  const [failedLogoAnimeId, setFailedLogoAnimeId] = useState<string | null>(
+    null,
+  );
+  const logoFailed = failedLogoAnimeId === anime.id;
 
   const mobileBackdrop = anime.cover || anime.banner || "";
   const desktopBackdrop = anime.banner || anime.cover || "";
@@ -619,7 +618,7 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                   loading={priority ? "eager" : "lazy"}
                   decoding="async"
                   fetchPriority="auto"
-                  onError={() => setLogoFailed(true)}
+                  onError={() => setFailedLogoAnimeId(anime.id)}
                   className={`
                     object-contain
                     select-none
@@ -860,7 +859,10 @@ export function Hero({
   anime: SlimAnime;
   animes?: SlimAnime[];
 }) {
-  const items = (animes.length > 0 ? animes : [anime]).slice(0, 8);
+  const items = useMemo(
+    () => (animes.length > 0 ? animes : [anime]).slice(0, 8),
+    [animes, anime],
+  );
   const total = items.length;
 
   const [index, setIndex] = useState(0);

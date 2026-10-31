@@ -25,6 +25,7 @@ import {
 
 import { AnimeCard } from "@/components/anime-card";
 import { CommentsSection } from "@/components/comments/CommentsSection";
+import { warmBannerImage } from "@/lib/anime-banner-warmup";
 import {
   fetchAnimeCredits,
   fetchAnimeDetail,
@@ -71,8 +72,6 @@ const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 const clientHydrationState = { hydrated: false };
-const MAX_WARMED_BANNERS = 12;
-const warmedBannerElements = new Map<string, HTMLImageElement>();
 const clientCreditsCache = new Map<
   string,
   {
@@ -82,25 +81,6 @@ const clientCreditsCache = new Map<
   }
 >();
 const clientPicturesCache = new Map<number, string[]>();
-
-function warmBannerImage(url: string | null | undefined): void {
-  if (typeof window === "undefined") return;
-  const clean = url?.trim();
-  if (!clean || warmedBannerElements.has(clean)) return;
-
-  if (warmedBannerElements.size >= MAX_WARMED_BANNERS) {
-    const oldestKey = warmedBannerElements.keys().next().value;
-    if (oldestKey) {
-      warmedBannerElements.delete(oldestKey);
-    }
-  }
-
-  const img = new Image();
-  img.decoding = "async";
-  img.fetchPriority = "high";
-  img.src = clean;
-  warmedBannerElements.set(clean, img);
-}
 
 function buildSeasonBannerInputFromAnime(
   animeId: string,
@@ -150,51 +130,7 @@ function buildSeasonBannerInputFromAnime(
     currentCover: anime.cover ?? null,
     isAdminCustomBanner,
     preloadedMalPictures: anime.images,
-    fetchJikanPictures,
   };
-}
-
-function warmAnimeBannerOnClient(animeId: string, remote: Anime | null): void {
-  if (typeof window === "undefined" || !animeId) return;
-
-  const locals = useHikariStore.getState().animes;
-  const merged = mergeDetail(remote, animeId, locals);
-  if (!merged) return;
-
-  const localRecord = locals.find(
-    (a) =>
-      a.id === merged.id ||
-      (merged.anilistId != null && a.anilistId === merged.anilistId),
-  );
-  const adminBanner = hasAdminCustomBanner(localRecord, remote);
-  const baseBanner =
-    adminBanner && localRecord?.banner?.trim()
-      ? localRecord.banner.trim()
-      : (merged.banner?.trim() || null);
-
-  const isMobile = window.matchMedia(MOBILE_BANNER_MEDIA_QUERY).matches;
-  if (adminBanner || !isMobile) {
-    warmBannerImage(baseBanner);
-    return;
-  }
-
-  const seasonInput = buildSeasonBannerInputFromAnime(
-    merged.id,
-    merged,
-    false,
-  );
-  const sync = resolveSeasonMobileBannerSync(seasonInput);
-  if (sync) {
-    warmBannerImage(sync.url ?? baseBanner);
-    return;
-  }
-
-  warmBannerImage(baseBanner);
-  void resolveSeasonMobileBanner(seasonInput).then((resolved) => {
-    if (resolved.isAlternative && resolved.url) {
-      warmBannerImage(resolved.url);
-    }
-  });
 }
 
 export const Route = createFileRoute("/anime/$id")({
@@ -212,7 +148,11 @@ export const Route = createFileRoute("/anime/$id")({
   gcTime: 1000 * 60 * 15,
   loader: async ({ params }) => {
     if (params.id.startsWith("local-")) {
-      warmAnimeBannerOnClient(params.id, null);
+      if (typeof window !== "undefined") {
+        void import("@/lib/anime-banner-warmup").then((m) =>
+          m.warmAnimeBannerOnClient(params.id, null),
+        );
+      }
       return { remote: null };
     }
 
@@ -220,7 +160,11 @@ export const Route = createFileRoute("/anime/$id")({
       data: { id: params.id },
     });
 
-    warmAnimeBannerOnClient(params.id, remote);
+    if (typeof window !== "undefined") {
+      void import("@/lib/anime-banner-warmup").then((m) =>
+        m.warmAnimeBannerOnClient(params.id, remote),
+      );
+    }
 
     return { remote };
   },
