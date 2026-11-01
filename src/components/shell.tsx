@@ -173,12 +173,12 @@ function ShellHeaderWrapper({
 
   // Mantém o cabeçalho imediatamente visível ao navegar para qualquer página
   useEffect(() => {
-    const nextScrolled = window.scrollY > 15;
+    const nextScrolled = window.scrollY > (isBannerPage ? 70 : 20);
     showHeaderRef.current = true;
     isScrolledRef.current = nextScrolled;
     setShowHeader(true);
     setIsScrolled(nextScrolled);
-  }, [pathname]);
+  }, [pathname, isBannerPage]);
 
   useEffect(() => {
     let lastScrollY = window.scrollY;
@@ -201,26 +201,28 @@ function ShellHeaderWrapper({
 
       // Se qualquer painel/menu/busca estiver aberto, mantém o cabeçalho visível
       if (keepVisible) {
-        commitHeaderState(currentScrollY > 15, true);
+        commitHeaderState(currentScrollY > 20, true);
         lastScrollY = currentScrollY;
         return;
       }
 
       let nextShow = showHeaderRef.current;
+      const scrollDelta = currentScrollY - lastScrollY;
 
-      // 1. No topo da página (<= 20px), exibir o cabeçalho normalmente (com fundo transparente nas páginas com banner)
-      if (currentScrollY <= 20) {
+      // 1. No topo da página (<= 40px no banner, <= 20px sem banner), exibir o cabeçalho normalmente
+      const topThreshold = isBannerPage ? 40 : 20;
+      if (currentScrollY <= topThreshold) {
         nextShow = true;
-      } else if (currentScrollY > lastScrollY + 6 && currentScrollY > 50) {
-        // 2. Quando o usuário começar a rolar para baixo, ocultar o cabeçalho inteiro
+      } else if (scrollDelta > 12 && currentScrollY > 60) {
+        // 2. Quando o usuário rolar para baixo com intenção clara, ocultar o cabeçalho
         nextShow = false;
-      } else if (currentScrollY < lastScrollY - 6) {
-        // 3. Assim que o usuário começar a rolar para cima, mostrar novamente o cabeçalho inteiro
+      } else if (scrollDelta < -12) {
+        // 3. Ao rolar para cima com intenção clara, mostrar novamente o cabeçalho
         nextShow = true;
       }
 
-      // No banner, evita acionar backdrop-blur/fundo escuro transitório se o cabeçalho está em processo de ocultação
-      let nextScrolled = currentScrollY > 20;
+      // No banner, evita acionar backdrop-blur/fundo escuro transitório enquanto perto do topo
+      let nextScrolled = currentScrollY > (isBannerPage ? 70 : 20);
       if (isBannerPage && !nextShow) {
         nextScrolled = false;
       }

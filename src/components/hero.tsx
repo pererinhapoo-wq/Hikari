@@ -492,38 +492,6 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
 
   return (
     <div className="relative size-full min-w-full shrink-0 flex flex-col justify-end select-none overflow-hidden min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px]">
-      <style>{`
-        @keyframes heroGreenDotPulse {
-          0%, 100% {
-            transform: scale(1);
-            opacity: 1;
-          }
-          50% {
-            transform: scale(0.82);
-            opacity: 0.85;
-          }
-        }
-        .hero-glass-capsule {
-          background-color: rgba(255, 255, 255, 0.42);
-          backdrop-filter: blur(8px) saturate(130%);
-          -webkit-backdrop-filter: blur(8px) saturate(130%);
-          border: 1px solid rgba(255, 255, 255, 0.28);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
-          contain: paint;
-        }
-        .hero-btn-action {
-          transition: transform 140ms cubic-bezier(0.2, 0.8, 0.4, 1), box-shadow 140ms ease, background-color 140ms ease, opacity 140ms ease;
-          will-change: transform;
-        }
-        .hero-btn-action:active {
-          transform: scale(0.95);
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .hero-btn-action:active {
-            transform: none !important;
-          }
-        }
-      `}</style>
       {/* CAMADA DE IMAGEM AMPLA EM BACKGROUND (CORES E LUZ NATURAIS) */}
       <div className="absolute inset-0 size-full pointer-events-none overflow-hidden select-none">
         {/* MOBILE / DESKTOP: Elemento único <picture> para priorizar apenas a imagem LCP real do viewport ativo */}
@@ -550,7 +518,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             width={460}
             height={690}
             loading={priority ? "eager" : "lazy"}
-            decoding={priority ? "sync" : "async"}
+            decoding="async"
             fetchPriority={priority ? "high" : "auto"}
             className="size-full object-cover object-top md:object-center"
           />
@@ -615,7 +583,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
                   width={logoConfig.width ?? 360}
                   height={logoConfig.height ?? 176}
                   loading={priority ? "eager" : "lazy"}
-                  decoding={priority ? "sync" : "async"}
+                  decoding="async"
                   fetchPriority={priority ? "high" : "auto"}
                   onError={() => setFailedLogoAnimeId(anime.id)}
                   className={`
@@ -849,6 +817,43 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
   );
 });
 
+const HeroSlideStyles = memo(function HeroSlideStyles() {
+  return (
+    <style>{`
+      @keyframes heroGreenDotPulse {
+        0%, 100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(0.82);
+          opacity: 0.85;
+        }
+      }
+      .hero-glass-capsule {
+        background-color: rgba(255, 255, 255, 0.42);
+        backdrop-filter: blur(8px) saturate(130%);
+        -webkit-backdrop-filter: blur(8px) saturate(130%);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+        contain: paint;
+      }
+      .hero-btn-action {
+        transition: transform 140ms cubic-bezier(0.2, 0.8, 0.4, 1), box-shadow 140ms ease, background-color 140ms ease, opacity 140ms ease;
+        will-change: transform;
+      }
+      .hero-btn-action:active {
+        transform: scale(0.95);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .hero-btn-action:active {
+          transform: none !important;
+        }
+      }
+    `}</style>
+  );
+});
+
 export function Hero({
   anime,
   animes = [anime],
@@ -868,6 +873,13 @@ export function Hero({
     toIndex: number;
     direction: "next" | "prev";
   } | null>(null);
+
+  const transitioningRef = useRef<{
+    fromIndex: number;
+    toIndex: number;
+    direction: "next" | "prev";
+  } | null>(null);
+  transitioningRef.current = transitioning;
 
   const containerRef = useRef<HTMLElement>(null);
   const timerRef = useRef<number | null>(null);
@@ -956,7 +968,7 @@ export function Hero({
   // Disparo da transição suave com crossfade e sobreposição
   const triggerTransition = useCallback(
     (direction: "next" | "prev") => {
-      if (total < 2 || transitioning !== null) return;
+      if (total < 2 || transitioningRef.current !== null) return;
 
       const targetIndex =
         direction === "next" ? (index + 1) % total : (index - 1 + total) % total;
@@ -976,7 +988,7 @@ export function Hero({
         direction,
       });
     },
-    [total, index, transitioning]
+    [total, index]
   );
 
   // Reinicia o temporizador automático de aproximadamente 8 segundos
@@ -991,13 +1003,13 @@ export function Hero({
       if (
         document.hidden ||
         pointerState.current.active ||
-        transitioning !== null
+        transitioningRef.current !== null
       ) {
         return;
       }
       triggerTransition("next");
     }, 8000);
-  }, [total, triggerTransition, transitioning]);
+  }, [total, triggerTransition]);
 
   // Efeito do temporizador automático: reinicia após cada mudança de anime ou transição
   useEffect(() => {
@@ -1028,8 +1040,8 @@ export function Hero({
     if (total < 2 || e.button !== 0) return;
 
     // Se houver uma transição em andamento, conclui-a imediatamente para liberar o novo gesto sem travamento
-    if (transitioning !== null) {
-      setIndex(transitioning.toIndex);
+    if (transitioningRef.current !== null) {
+      setIndex(transitioningRef.current.toIndex);
       setTransitioning(null);
     }
 
@@ -1044,8 +1056,6 @@ export function Hero({
       isLockedVertical: false,
       hasMoved: false,
     };
-
-    resetAutoTimer();
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
@@ -1056,8 +1066,10 @@ export function Hero({
     const dy = e.clientY - state.startY;
 
     if (!state.isLockedHorizontal) {
-      if (Math.hypot(dx, dy) > 8) {
-        if (Math.abs(dy) > Math.abs(dx)) {
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+      if (absX > 7 || absY > 7) {
+        if (absY >= absX) {
           state.isLockedVertical = true;
           state.active = false;
           return;
@@ -1094,11 +1106,11 @@ export function Hero({
     }
 
     if (state.isLockedHorizontal) {
-      const containerWidth = containerRef.current?.offsetWidth || 390;
-      const threshold = Math.max(40, containerWidth * 0.12);
+      const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 390;
+      const threshold = Math.max(35, Math.min(viewportWidth, 600) * 0.12);
       const dx = state.currentX - state.startX;
       const elapsed = Date.now() - state.startTime;
-      const isQuickSwipe = elapsed < 350 && Math.abs(dx) > 30;
+      const isQuickSwipe = elapsed < 350 && Math.abs(dx) > 25;
 
       const shouldAdvance = dx < -threshold || (isQuickSwipe && dx < 0);
       const shouldReturn = dx > threshold || (isQuickSwipe && dx > 0);
@@ -1147,8 +1159,10 @@ export function Hero({
           flex
           flex-col
           justify-end
+          [contain:layout_style]
         "
       >
+        <HeroSlideStyles />
         <HeroSlide anime={items[0]} priority />
       </section>
     );
@@ -1188,8 +1202,10 @@ export function Hero({
         select-none
         touch-pan-y
         cursor-default
+        [contain:layout_style]
       "
     >
+      <HeroSlideStyles />
       <style>{`
         @keyframes heroCrossfadeOut {
           0% {
@@ -1239,9 +1255,10 @@ export function Hero({
           {/* Camada inferior: Anime saindo com escurecimento perceptível, gradual e desvanecimento suave */}
           <div
             key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
-            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter] [contain:paint]"
+            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter] [contain:paint] [transform:translateZ(0)]"
             style={{
               animation: "heroCrossfadeOut 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+              backfaceVisibility: "hidden",
             }}
           >
             <HeroSlide anime={items[transitioning.fromIndex]} />
@@ -1250,9 +1267,10 @@ export function Hero({
           {/* Camada superior: Próximo anime surgindo suavemente sobre a imagem escurecida */}
           <div
             key={`incoming-${transitioning.toIndex}-${items[transitioning.toIndex].id}`}
-            className="relative size-full overflow-hidden z-20 will-change-[opacity] [contain:paint]"
+            className="relative size-full overflow-hidden z-20 will-change-[opacity] [contain:paint] [transform:translateZ(0)]"
             style={{
               animation: "heroCrossfadeIn 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+              backfaceVisibility: "hidden",
             }}
           >
             <HeroSlide anime={items[transitioning.toIndex]} priority />
