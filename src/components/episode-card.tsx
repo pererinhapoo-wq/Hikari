@@ -57,10 +57,7 @@ export const EpisodeCard = memo(function EpisodeCard({
       isLeg: legRegex.test(combined),
     };
   }, [
-    episode.episodeTitle,
-    episode.seasonTitle,
-    episode.animeTitle,
-    episode.animeAltTitles,
+    episode,
   ]);
 
   return (
@@ -145,6 +142,23 @@ export const EpisodeCard = memo(function EpisodeCard({
             </div>
           )}
 
+          {/* Selo de status do episódio (LANÇAMENTO em roxo/índigo, FINAL em vermelho/rose) */}
+          {episode.badge && (
+            <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 flex items-center z-10 select-none pointer-events-none">
+              <span
+                className={cn(
+                  "inline-flex items-center justify-center h-4 sm:h-[18px] px-1.5 rounded text-[7.5px] sm:text-[9px] font-bold tracking-wider text-white shadow-sm leading-none uppercase",
+                  episode.badge === "LANÇAMENTO" &&
+                    "bg-purple-600/95 border border-purple-400/40 text-white shadow-[0_2px_8px_rgba(168,85,247,0.5)]",
+                  episode.badge === "FINAL" &&
+                    "bg-rose-600/95 border border-rose-400/40 text-white shadow-[0_2px_8px_rgba(225,29,72,0.5)]",
+                )}
+              >
+                {episode.badge}
+              </span>
+            </div>
+          )}
+
           {/* Duração se disponível */}
           {episode.duration ? (
             <div className="absolute bottom-1.5 right-1.5 sm:bottom-2 sm:right-2 rounded bg-black/90 border border-white/10 px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9.5px] font-medium text-zinc-300">
@@ -163,13 +177,28 @@ export const EpisodeCard = memo(function EpisodeCard({
             {episode.animeTitle}
           </h4>
 
-          {/* Número do episódio em uma linha separada, abaixo do título */}
-          <p
-            title={formattedSubtitle}
-            className="mt-0.5 text-[11px] sm:text-xs font-medium text-purple-400/90 truncate"
-          >
-            Episódio {episode.episodeNumber}
-          </p>
+          {/* Número do episódio e badge de status em linha separada, abaixo do título */}
+          <div className="mt-0.5 flex items-center gap-1.5 truncate">
+            <p
+              title={formattedSubtitle}
+              className="text-[11px] sm:text-xs font-medium text-purple-400/90 truncate"
+            >
+              Episódio {episode.episodeNumber}
+            </p>
+            {episode.badge && (
+              <span
+                className={cn(
+                  "inline-flex items-center px-1.5 py-0.2 rounded text-[8px] sm:text-[9px] font-bold tracking-wider uppercase leading-tight shrink-0",
+                  episode.badge === "LANÇAMENTO" &&
+                    "bg-purple-500/20 text-purple-300 border border-purple-500/30",
+                  episode.badge === "FINAL" &&
+                    "bg-rose-500/20 text-rose-300 border border-rose-500/30",
+                )}
+              >
+                {episode.badge}
+              </span>
+            )}
+          </div>
         </div>
       </Link>
     </article>

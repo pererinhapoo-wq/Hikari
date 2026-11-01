@@ -173,9 +173,42 @@ export type SearchResult = {
 };
 
 export function displayTitle(
-  a: { titles: SlimAnime["titles"] } | SlimAnime,
+  a?:
+    | {
+        titles?: { english?: string | null; romaji?: string | null; native?: string | null };
+        titleRomaji?: string | null;
+        titleEnglish?: string | null;
+        titleNative?: string | null;
+        title?: string | null;
+      }
+    | SlimAnime
+    | LocalAnime
+    | null,
 ): string {
-  return a.titles.english || a.titles.romaji || a.titles.native || "Sem título";
+  if (!a) return "Sem título";
+
+  const english =
+    a.titles?.english?.trim() ||
+    ("titleEnglish" in a && typeof a.titleEnglish === "string"
+      ? a.titleEnglish.trim()
+      : undefined);
+
+  const romaji =
+    a.titles?.romaji?.trim() ||
+    ("titleRomaji" in a && typeof a.titleRomaji === "string"
+      ? a.titleRomaji.trim()
+      : undefined);
+
+  const rawTitle =
+    "title" in a && typeof a.title === "string" ? a.title.trim() : undefined;
+
+  const native =
+    a.titles?.native?.trim() ||
+    ("titleNative" in a && typeof a.titleNative === "string"
+      ? a.titleNative.trim()
+      : undefined);
+
+  return english || romaji || rawTitle || native || "Sem título";
 }
 
 export function localToAnime(local: LocalAnime): Anime {

@@ -162,11 +162,12 @@ export function TodayEpisodesSection({
       }
 
       const mappedLocal = localToAnime(localOverride);
+      const localHasTitle = Boolean(mappedLocal.titles.english || mappedLocal.titles.romaji);
       result.push({
         ...item,
         titles: {
           romaji: mappedLocal.titles.romaji || item.titles.romaji,
-          english: mappedLocal.titles.english || item.titles.english,
+          english: mappedLocal.titles.english || (localHasTitle ? "" : item.titles.english),
           native: mappedLocal.titles.native || item.titles.native,
         },
         cover: mappedLocal.cover || item.cover,

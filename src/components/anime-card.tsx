@@ -173,21 +173,20 @@ export const AnimeCard = memo(function AnimeCard({
 
         {/* Bloco de informações com alinhamento uniforme e espaçamento compacto */}
         <div className="flex flex-col px-2 pt-1.5 pb-2 sm:px-2.5 sm:pt-2 sm:pb-2.5">
-          {/* Área com altura fixa precisa (26px mobile, 30px desktop) e centralização vertical */}
-          <div className="h-[26px] sm:h-[30px] flex flex-col justify-center overflow-hidden">
+          {/* Área de título com altura mínima uniforme para garantir leitura sem cortes */}
+          <div className="min-h-[28px] sm:min-h-[32px] flex flex-col justify-start">
             <h3
               title={title}
               className="
                 text-[10.5px]
                 sm:text-xs
                 font-semibold
-                leading-[13px]
-                sm:leading-[15px]
+                leading-[14px]
+                sm:leading-[16px]
                 tracking-tight
                 text-zinc-200
                 line-clamp-2
                 break-words
-                [text-wrap:normal]
                 transition-colors
                 [@media(hover:hover)]:group-hover:text-purple-300
                 group-active:text-purple-300
@@ -284,7 +283,7 @@ export function AnimeCardSkeleton({
       <div className="aspect-[2/3] animate-pulse rounded-xl bg-elevated/70 border border-purple-500/10" />
 
       <div className="px-2 pt-1.5 pb-2 sm:px-2.5 sm:pt-2 sm:pb-2.5">
-        <div className="h-[26px] sm:h-[30px] flex flex-col justify-center gap-1">
+        <div className="min-h-[28px] sm:min-h-[32px] flex flex-col justify-center gap-1">
           <div className="h-3 w-4/5 animate-pulse rounded bg-elevated/80" />
           <div className="h-2.5 w-3/5 animate-pulse rounded bg-elevated/80" />
         </div>

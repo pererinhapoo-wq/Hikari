@@ -1,24 +1,24 @@
 import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 import { useHikariStore } from "@/lib/store";
-import { getAllPublishedEpisodes } from "@/lib/published-episodes";
+import { getRecentEpisodesSection } from "@/lib/published-episodes";
 import { EpisodeCard } from "@/components/episode-card";
 
 export function RecentEpisodesSection() {
   const animes = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
 
-  const allEpisodes = useMemo(() => {
-    return getAllPublishedEpisodes(animes);
+  const displayEpisodes = useMemo(() => {
+    return getRecentEpisodesSection(animes);
   }, [animes]);
 
   // Se não houver episódios publicados, oculta a seção sem deixar espaços vazios
-  if (!hydrated || allEpisodes.length === 0) {
+  if (!hydrated || displayEpisodes.length === 0) {
     return null;
   }
 
-  // Exibe no máximo 18 episódios mais recentes (até 6 linhas de 3 cards lado a lado)
-  const recentEpisodes = allEpisodes.slice(0, 18);
+  // Exibe no máximo 18 episódios selecionados para a vitrine
+  const recentEpisodes = displayEpisodes.slice(0, 18);
 
   return (
     <section className="space-y-3 sm:space-y-4 [content-visibility:auto] [contain-intrinsic-size:auto_600px]">
@@ -28,10 +28,10 @@ export function RecentEpisodesSection() {
           {/* Título da Seção */}
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="font-section text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-sm truncate">
-              Últimos Episódios
+              Novos Episódios
             </h2>
             <span className="hidden sm:inline-flex shrink-0 rounded-full bg-purple-950/50 border border-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300/80">
-              {allEpisodes.length} {allEpisodes.length === 1 ? "episódio" : "episódios"}
+              {displayEpisodes.length} {displayEpisodes.length === 1 ? "episódio" : "episódios"}
             </span>
           </div>
         </div>

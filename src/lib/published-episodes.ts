@@ -1,6 +1,8 @@
 import type { LocalAnime } from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
 
+export type PublishedEpisodeBadge = "LANÇAMENTO" | "FINAL" | null;
+
 export type PublishedEpisode = {
   animeId: string;
   animeTitle: string;
@@ -17,6 +19,7 @@ export type PublishedEpisode = {
   duration?: string;
   videoUrl?: string;
   publishedAt: number;
+  badge?: PublishedEpisodeBadge;
 };
 
 /**
@@ -38,6 +41,28 @@ function resolveAnimeCanonicalTitle(anime: LocalAnime): string {
     titles?.romaji?.trim() ||
     titles?.native?.trim() ||
     "Anime"
+  );
+}
+
+/**
+ * Coleta todas as variações conhecidas do nome do anime (Romaji, Inglês, Nativo, etc.).
+ */
+export function resolveAnimeAltTitles(anime: LocalAnime, canonicalTitle: string): string[] {
+  return Array.from(
+    new Set(
+      [
+        canonicalTitle,
+        anime.titleRomaji,
+        anime.titleEnglish,
+        anime.titleNative,
+        (anime as unknown as { title?: string }).title,
+        (anime as unknown as { titles?: { romaji?: string; english?: string; native?: string } }).titles?.romaji,
+        (anime as unknown as { titles?: { romaji?: string; english?: string; native?: string } }).titles?.english,
+        (anime as unknown as { titles?: { romaji?: string; english?: string; native?: string } }).titles?.native,
+      ]
+        .filter((t): t is string => typeof t === "string" && Boolean(t.trim()))
+        .map((t) => t.trim()),
+    ),
   );
 }
 
@@ -117,12 +142,6 @@ export function getYouTubeThumbnail(url?: string | null): string | null {
 /**
  * Determina se um episódio foi efetivamente publicado e cadastrado no sistema
  * de publicação do Hikari pelo administrador.
- * 
- * Regras essenciais:
- * 1. O episódio deve ter ID e número válidos.
- * 2. Se `published === false`, é considerado rascunho/despublicado.
- * 3. O episódio DEVE ter ao menos um player de vídeo configurado (Player 1, 2, 3, 4 ou 5)
- *    com URL válida, descartando placeholders vazios do catálogo e links de terceiros.
  */
 export function isEpisodePublished(ep: {
   id?: string;
@@ -162,6 +181,224 @@ export function isEpisodePublished(ep: {
 }
 
 /**
+ * Verifica se um anime tem status confirmado de concluído / encerrado.
+ */
+export function isAnimeConfirmedFinished(anime: LocalAnime): boolean {
+  if (!anime.status) return false;
+  const s = anime.status.trim().toUpperCase();
+  return s === "FINISHED" || s === "ENCERRADO" || s === "CONCLUÍDO" || s === "CONCLUIDO";
+}
+
+/**
+ * Determina se determinado episódio é com certeza o encerramento oficial da série.
+ * 
+ * Regra:
+ * Destacar o último episódio somente quando houver confirmação de que o anime foi concluído.
+ * Ter o último episódio cadastrado, por si só, não significa que a série terminou.
+ */
+export function isConfirmedFinalEpisode(
+  anime: LocalAnime,
+  seasonNumber: number,
+  episodeNumber: number,
+  episodeTitle?: string,
+): boolean {
+  if (!isAnimeConfirmedFinished(anime)) {
+    return false;
+  }
+
+  const seasons = anime.seasons || [];
+  if (seasons.length === 0) return false;
+
+  const maxSeasonNumber = Math.max(...seasons.map((s) => s.number));
+  if (seasonNumber < maxSeasonNumber) {
+    return false;
+  }
+
+  // Se tiver a contagem total de episódios cadastrada de forma verificável
+  if (typeof anime.episodesCount === "number" && anime.episodesCount > 0) {
+    return episodeNumber >= anime.episodesCount;
+  }
+
+  // Se a contagem total não estiver cadastrada, só confirmamos se o próprio título
+  // indicar expressamente o encerramento (ex.: "Fim", "O Fim", "Final", "The End")
+  if (episodeTitle) {
+    const titleClean = episodeTitle.trim().toLowerCase();
+    const indicatesFinal = /\b(fim|final|o fim|the end|conclusão|conclusao|último episódio|ultimo episodio)\b/i.test(titleClean);
+    if (indicatesFinal) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Retorna os episódios selecionados para a seção "Novos Episódios".
+ * 
+ * Regras implementadas:
+ * 1. LANÇAMENTO: reservado para animes novos. O anime aparece nessa categoria apenas
+ *    uma vez, associado ao episódio 1, sem repetir o status nos episódios seguintes.
+ * 2. Novos episódios: para animes em lançamento semanal, destacar os episódios realmente
+ *    recentes, sem listar todos os episódios antigos quando vários forem cadastrados de uma vez.
+ * 3. FINAL: destacar o último episódio somente quando houver confirmação de que o anime foi concluído.
+ *    Ter o último episódio cadastrado, por si só, não significa que a série terminou.
+ * 4. Cadastro em massa: se forem cadastrados 300 episódios de um anime de uma vez, não exibir
+ *    os 300 na seção "Novos Episódios". Mostrar o episódio 1 como "LANÇAMENTO" e o episódio 300
+ *    como "FINAL" somente se esse for realmente o encerramento da série, omitindo os intermediários.
+ * 5. Disponibilidade: todos os episódios continuam acessíveis normalmente na página do anime.
+ */
+export function getRecentEpisodesSection(animes: LocalAnime[]): PublishedEpisode[] {
+  const result: PublishedEpisode[] = [];
+
+  for (const anime of animes) {
+    if (anime.hidden) continue;
+
+    const animeTitle = resolveAnimeCanonicalTitle(anime);
+    const altTitles = resolveAnimeAltTitles(anime, animeTitle);
+    const baseTime = anime.updatedAt || anime.createdAt || 0;
+    const createTime = anime.createdAt || baseTime;
+
+    // Coleta todos os episódios publicados deste anime
+    const publishedList: {
+      season: LocalAnime["seasons"][number];
+      ep: LocalAnime["seasons"][number]["episodes"][number];
+      seasonNumber: number;
+      episodeNumber: number;
+      validVideo: string;
+      resolvedThumb?: string;
+    }[] = [];
+
+    for (const season of anime.seasons || []) {
+      for (const ep of season.episodes || []) {
+        if (!isEpisodePublished(ep)) continue;
+
+        const validVideo = [
+          ep.videoUrl,
+          ep.videoUrl2,
+          ep.videoUrl3,
+          ep.videoUrl4,
+          ep.videoUrl5,
+        ].find(isHikariPlayableUrl);
+
+        if (!validVideo) continue;
+
+        const cloudinaryThumb = getCloudinaryThumbnail(validVideo);
+        const youtubeThumb = getYouTubeThumbnail(validVideo);
+        const resolvedThumb = ep.thumbnail?.trim() || cloudinaryThumb || youtubeThumb || undefined;
+
+        publishedList.push({
+          season,
+          ep,
+          seasonNumber: season.number,
+          episodeNumber: ep.number,
+          validVideo,
+          resolvedThumb,
+        });
+      }
+    }
+
+    if (publishedList.length === 0) continue;
+
+    // Ordena do primeiro ao último cronológico
+    publishedList.sort(
+      (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
+    );
+
+    // 1. Identifica o Episódio 1 do anime (Temporada 1, Episódio 1)
+    const firstEpItem = publishedList.find(
+      (item) => item.seasonNumber === 1 && item.episodeNumber === 1,
+    );
+
+    // 2. Identifica o último episódio publicado deste anime
+    const latestEpItem = publishedList[publishedList.length - 1];
+
+    // Se só tem 1 episódio publicado no total e for o Episódio 1:
+    if (publishedList.length === 1 && firstEpItem) {
+      result.push({
+        animeId: anime.id,
+        animeTitle,
+        animeAltTitles: altTitles,
+        animeCover: anime.cover,
+        animeBanner: anime.banner || anime.cover,
+        seasonId: firstEpItem.season.id,
+        seasonNumber: firstEpItem.seasonNumber,
+        seasonTitle: firstEpItem.season.title || `Temporada ${firstEpItem.seasonNumber}`,
+        episodeId: firstEpItem.ep.id,
+        episodeNumber: firstEpItem.episodeNumber,
+        episodeTitle: firstEpItem.ep.title || `Episódio ${firstEpItem.episodeNumber}`,
+        thumbnail: firstEpItem.resolvedThumb,
+        duration: firstEpItem.ep.duration?.trim() || undefined,
+        videoUrl: firstEpItem.validVideo,
+        publishedAt: createTime + 1000 + 1,
+        badge: "LANÇAMENTO",
+      });
+      continue;
+    }
+
+    // Se houver múltiplos episódios:
+    // Regra 1: O anime deve aparecer em "LANÇAMENTO" apenas uma vez, associado ao episódio 1
+    if (firstEpItem) {
+      result.push({
+        animeId: anime.id,
+        animeTitle,
+        animeAltTitles: altTitles,
+        animeCover: anime.cover,
+        animeBanner: anime.banner || anime.cover,
+        seasonId: firstEpItem.season.id,
+        seasonNumber: firstEpItem.seasonNumber,
+        seasonTitle: firstEpItem.season.title || `Temporada ${firstEpItem.seasonNumber}`,
+        episodeId: firstEpItem.ep.id,
+        episodeNumber: firstEpItem.episodeNumber,
+        episodeTitle: firstEpItem.ep.title || `Episódio ${firstEpItem.episodeNumber}`,
+        thumbnail: firstEpItem.resolvedThumb,
+        duration: firstEpItem.ep.duration?.trim() || undefined,
+        videoUrl: firstEpItem.validVideo,
+        publishedAt: createTime + 1000 + 1,
+        badge: "LANÇAMENTO",
+      });
+    }
+
+    // Regras 2, 3 e 4: Adiciona o último episódio publicado (se for diferente do Episódio 1)
+    if (
+      latestEpItem &&
+      (!firstEpItem || latestEpItem.ep.id !== firstEpItem.ep.id)
+    ) {
+      const isFinal = isConfirmedFinalEpisode(
+        anime,
+        latestEpItem.seasonNumber,
+        latestEpItem.episodeNumber,
+        latestEpItem.ep.title,
+      );
+
+      result.push({
+        animeId: anime.id,
+        animeTitle,
+        animeAltTitles: altTitles,
+        animeCover: anime.cover,
+        animeBanner: anime.banner || anime.cover,
+        seasonId: latestEpItem.season.id,
+        seasonNumber: latestEpItem.seasonNumber,
+        seasonTitle: latestEpItem.season.title || `Temporada ${latestEpItem.seasonNumber}`,
+        episodeId: latestEpItem.ep.id,
+        episodeNumber: latestEpItem.episodeNumber,
+        episodeTitle: latestEpItem.ep.title || `Episódio ${latestEpItem.episodeNumber}`,
+        thumbnail: latestEpItem.resolvedThumb,
+        duration: latestEpItem.ep.duration?.trim() || undefined,
+        videoUrl: latestEpItem.validVideo,
+        publishedAt: baseTime + latestEpItem.seasonNumber * 1000 + latestEpItem.episodeNumber,
+        badge: isFinal ? "FINAL" : null,
+      });
+    }
+
+    // Note: os episódios intermediários (do episódio 2 ao N-1) NÃO são incluídos na seção,
+    // garantindo que cadastros em massa de dezenas ou centenas de episódios não monopolizem a vitrine.
+  }
+
+  // Ordena do mais recente para o mais antigo
+  return result.sort((a, b) => b.publishedAt - a.publishedAt);
+}
+
+/**
  * Extrai todos os episódios efetivamente publicados no Hikari pelo administrador,
  * ordenados do mais recente para o mais antigo.
  * Não inclui episódios do catálogo do AniList/MAL que não foram publicados no Hikari.
@@ -173,26 +410,38 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
     if (anime.hidden) continue;
 
     const animeTitle = resolveAnimeCanonicalTitle(anime);
+    const altTitles = resolveAnimeAltTitles(anime, animeTitle);
+    const baseTime = anime.updatedAt || anime.createdAt || 0;
 
-    // Coleta todas as variações conhecidas do nome do anime (Romaji, Inglês, Nativo, etc.)
-    const altTitles = Array.from(
-      new Set(
-        [
-          animeTitle,
-          anime.titleRomaji,
-          anime.titleEnglish,
-          anime.titleNative,
-          (anime as unknown as { title?: string }).title,
-          (anime as unknown as { titles?: { romaji?: string; english?: string; native?: string } }).titles?.romaji,
-          (anime as unknown as { titles?: { romaji?: string; english?: string; native?: string } }).titles?.english,
-          (anime as unknown as { titles?: { romaji?: string; english?: string; native?: string } }).titles?.native,
-        ]
-          .filter((t): t is string => typeof t === "string" && Boolean(t.trim()))
-          .map((t) => t.trim()),
-      ),
+    // Coleta episódios publicados para checar encerramento e primeiro episódio
+    const publishedList: {
+      seasonNumber: number;
+      episodeNumber: number;
+      epId: string;
+      title?: string;
+    }[] = [];
+
+    for (const season of anime.seasons || []) {
+      for (const ep of season.episodes || []) {
+        if (!isEpisodePublished(ep)) continue;
+        publishedList.push({
+          seasonNumber: season.number,
+          episodeNumber: ep.number,
+          epId: ep.id,
+          title: ep.title,
+        });
+      }
+    }
+
+    publishedList.sort(
+      (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
     );
 
-    const baseTime = anime.updatedAt || anime.createdAt || 0;
+    const firstEpId = publishedList.find(
+      (p) => p.seasonNumber === 1 && p.episodeNumber === 1,
+    )?.epId;
+
+    const latestEp = publishedList[publishedList.length - 1];
 
     for (const season of anime.seasons || []) {
       for (const ep of season.episodes || []) {
@@ -217,6 +466,17 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
         const youtubeThumb = validVideo ? getYouTubeThumbnail(validVideo) : null;
         const resolvedThumb = ep.thumbnail?.trim() || cloudinaryThumb || youtubeThumb || undefined;
 
+        let badge: PublishedEpisodeBadge = null;
+        if (ep.id === firstEpId) {
+          badge = "LANÇAMENTO";
+        } else if (
+          latestEp &&
+          ep.id === latestEp.epId &&
+          isConfirmedFinalEpisode(anime, latestEp.seasonNumber, latestEp.episodeNumber, latestEp.title)
+        ) {
+          badge = "FINAL";
+        }
+
         list.push({
           animeId: anime.id,
           animeTitle,
@@ -233,6 +493,7 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
           duration: ep.duration ? ep.duration.trim() : undefined,
           videoUrl: validVideo || ep.videoUrl,
           publishedAt: epTime,
+          badge,
         });
       }
     }
@@ -460,6 +721,7 @@ export async function uploadThumbnailBlob(
     .replace(/-+/g, "-")
     .slice(0, 30);
   const filename = `${safePrefix}-${Date.now()}.jpg`;
+  formData.append("file", blob, filename);
 
   const token = getBearerToken();
   const headers: Record<string, string> = {};
