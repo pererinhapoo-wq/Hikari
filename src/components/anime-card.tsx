@@ -13,6 +13,7 @@ import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 
 import { cn } from "@/lib/utils";
 import { useHikariStore } from "@/lib/store";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
 export const AnimeCard = memo(function AnimeCard({
   anime,
@@ -35,9 +36,12 @@ export const AnimeCard = memo(function AnimeCard({
     null,
   );
 
+  const { user } = useCurrentUserState();
+  const canBookmark = showBookmark && Boolean(user);
+
   const inList =
     useHikariStore((s) =>
-      showBookmark ? s.myList.includes(anime.id) : false,
+      canBookmark ? s.isInList(anime.id, user?.id) : false,
     );
 
   const toggleList =
@@ -232,8 +236,8 @@ export const AnimeCard = memo(function AnimeCard({
         </div>
       </Link>
 
-      {/* Botão Minha Lista compacto (preservado em outras páginas, ocultado se showBookmark for false) */}
-      {showBookmark && (
+      {/* Botão Minha Lista compacto (exclusivo para usuários autenticados) */}
+      {canBookmark && (
         <button
           type="button"
           aria-label={
@@ -244,7 +248,8 @@ export const AnimeCard = memo(function AnimeCard({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            toggleList(anime);
+            if (!user) return;
+            toggleList(anime, user.id);
           }}
           className={cn(
             "absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-md bg-black/88 border border-white/10 text-white transition-[color,background-color,border-color,opacity] duration-200 [@media(hover:hover)]:hover:border-purple-500/60 [@media(hover:hover)]:hover:bg-purple-950/85 [@media(hover:hover)]:hover:text-purple-300 shadow-md",

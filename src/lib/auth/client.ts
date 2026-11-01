@@ -105,6 +105,13 @@ export async function signIn(
   providerId: string,
   opts: { callbackURL?: string; errorCallbackURL?: string } = {},
 ): Promise<void> {
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.removeItem("hikari_signed_out");
+    } catch {
+      /* ignore */
+    }
+  }
   const callbackURL = opts.callbackURL ?? "/";
   const errorCallbackURL = opts.errorCallbackURL ?? "/";
 
@@ -237,6 +244,21 @@ function waitForPopupToken(popup: Window): Promise<string | null> {
  * preview the local clear is sufficient, so it always resolves.
  */
 export async function signOut(redirectTo = "/"): Promise<void> {
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.setItem("hikari_signed_out", "true");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (!authEnabled) {
+    if (typeof window !== "undefined") {
+      window.location.href = redirectTo;
+    }
+    return;
+  }
+
   await runSignOut({
     livePreview: inLivePreview(),
     hasBearer: Boolean(getBearerToken()),

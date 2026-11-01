@@ -284,6 +284,10 @@ export function Shell() {
   const { user } =
     useCurrentUserState();
 
+  useEffect(() => {
+    useHikariStore.getState().setCurrentUserId(user?.id ?? null);
+  }, [user?.id]);
+
   const [menuOpen, setMenuOpen] =
     useState(false);
 
@@ -417,13 +421,17 @@ export function Shell() {
     pathname === "/" ||
     pathname.startsWith("/anime/");
 
+  const baseNav = user
+    ? BASE_NAV
+    : BASE_NAV.filter((item) => item.to !== "/my-list");
+
   const nav =
     user &&
     isHikariAdmin(
       user.primaryEmail,
     )
       ? [
-          ...BASE_NAV,
+          ...baseNav,
           {
             to: "/admin",
             label: "Admin",
@@ -434,7 +442,7 @@ export function Shell() {
               ),
           },
         ]
-      : BASE_NAV;
+      : baseNav;
 
   /* =========================================================
      BUSCA AUTOMÁTICA

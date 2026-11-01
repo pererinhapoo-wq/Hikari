@@ -1185,33 +1185,54 @@ export function Hero({
         @keyframes heroCrossfadeOut {
           0% {
             opacity: 1;
+            filter: brightness(1);
           }
-          30% {
-            opacity: 0.85;
+          20% {
+            opacity: 0.98;
+            filter: brightness(0.72);
           }
-          65% {
-            opacity: 0.35;
+          40% {
+            opacity: 0.9;
+            filter: brightness(0.38);
+          }
+          60% {
+            opacity: 0.65;
+            filter: brightness(0.15);
+          }
+          80% {
+            opacity: 0.25;
+            filter: brightness(0.04);
           }
           100% {
             opacity: 0;
+            filter: brightness(0);
           }
         }
 
         @keyframes heroCrossfadeIn {
           0% {
             opacity: 0;
+            filter: brightness(0.2);
           }
-          20% {
+          30% {
             opacity: 0;
+            filter: brightness(0.22);
           }
-          38% {
-            opacity: 0.38;
+          50% {
+            opacity: 0.4;
+            filter: brightness(0.4);
           }
-          68% {
-            opacity: 0.88;
+          70% {
+            opacity: 0.78;
+            filter: brightness(0.66);
+          }
+          88% {
+            opacity: 0.95;
+            filter: brightness(0.88);
           }
           100% {
             opacity: 1;
+            filter: brightness(1);
           }
         }
       `}</style>
@@ -1222,9 +1243,9 @@ export function Hero({
           {/* Camada inferior: Anime saindo com escurecimento gradual e desvanecimento suave */}
           <div
             key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
-            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity] [contain:paint]"
+            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter] [contain:paint]"
             style={{
-              animation: "heroCrossfadeOut 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+              animation: "heroCrossfadeOut 1800ms cubic-bezier(0.4, 0, 0.2, 1) forwards",
             }}
           >
             <HeroSlide anime={items[transitioning.fromIndex]} />
@@ -1233,9 +1254,9 @@ export function Hero({
           {/* Camada superior: Próximo anime surgindo suavemente sobre a imagem escurecida */}
           <div
             key={`incoming-${transitioning.toIndex}-${items[transitioning.toIndex].id}`}
-            className="relative size-full overflow-hidden z-20 will-change-[opacity] [contain:paint]"
+            className="relative size-full overflow-hidden z-20 will-change-[opacity,filter] [contain:paint]"
             style={{
-              animation: "heroCrossfadeIn 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+              animation: "heroCrossfadeIn 1800ms cubic-bezier(0.4, 0, 0.2, 1) forwards",
             }}
           >
             <HeroSlide anime={items[transitioning.toIndex]} priority />

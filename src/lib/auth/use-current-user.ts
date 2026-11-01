@@ -55,7 +55,15 @@ export type CurrentUserState = {
  * call keeps a stable hook order across every render of a given component.
  */
 export function useCurrentUserState(): CurrentUserState {
-  if (!authEnabled) return { user: DEV_USER, isPending: false };
+  if (!authEnabled) {
+    const isSignedOut =
+      typeof window !== "undefined" &&
+      window.sessionStorage.getItem("hikari_signed_out") === "true";
+    return {
+      user: isSignedOut ? null : DEV_USER,
+      isPending: false,
+    };
+  }
   // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
   const { data, isPending } = authClient.useSession();
   const user = data?.user;

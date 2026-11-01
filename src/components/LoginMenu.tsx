@@ -39,10 +39,14 @@ export function LoginMenu({
     setInfoMessage(null);
 
     if (!authEnabled) {
-      setInfoMessage({
-        type: "error",
-        text: "O sistema de autenticação está temporariamente desativado nas configurações.",
-      });
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.removeItem("hikari_signed_out");
+        } catch {
+          /* ignore */
+        }
+        window.location.href = callbackURL;
+      }
       return;
     }
 

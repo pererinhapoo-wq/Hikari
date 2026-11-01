@@ -16,6 +16,9 @@ type HikariState = {
   animes: LocalAnime[];
   myList: string[];
   snapshots: Record<string, SlimAnime>;
+  userLists: Record<string, string[]>;
+  userSnapshots: Record<string, Record<string, SlimAnime>>;
+  currentUserId: string | null;
   continueWatching: ContinueWatch[];
 
   /**
@@ -32,12 +35,13 @@ type HikariState = {
   hydrated: boolean;
 
   setHydrated: (v: boolean) => void;
+  setCurrentUserId: (userId: string | null) => void;
   upsertAnime: (anime: LocalAnime) => void;
   removeAnime: (id: string) => void;
   toggleHidden: (id: string) => void;
   importAll: (animes: LocalAnime[]) => void;
-  isInList: (id: string) => boolean;
-  toggleList: (anime: SlimAnime) => void;
+  isInList: (id: string, userId?: string | null) => boolean;
+  toggleList: (anime: SlimAnime, userId?: string | null) => void;
 
   markContinue: (entry: ContinueWatch) => void;
   clearContinue: (animeId: string) => void;
@@ -65,11 +69,46 @@ export const useHikariStore = create<HikariState>()(
       animes: [],
       myList: [],
       snapshots: {},
+      userLists: {},
+      userSnapshots: {},
+      currentUserId: null,
       continueWatching: [],
       watchedEpisodes: {},
       hydrated: false,
 
       setHydrated: (v) => set({ hydrated: v }),
+
+      setCurrentUserId: (userId) =>
+        set((s) => {
+          if (!userId) {
+            return {
+              currentUserId: null,
+              myList: [],
+              snapshots: {},
+            };
+          }
+
+          // Recupera lista do usuário ou migra a lista existente (preservando dados)
+          const existingUserList =
+            s.userLists?.[userId] ?? (s.myList.length > 0 ? [...s.myList] : []);
+          const existingUserSnapshots =
+            s.userSnapshots?.[userId] ??
+            (Object.keys(s.snapshots).length > 0 ? { ...s.snapshots } : {});
+
+          return {
+            currentUserId: userId,
+            myList: existingUserList,
+            snapshots: existingUserSnapshots,
+            userLists: {
+              ...(s.userLists ?? {}),
+              [userId]: existingUserList,
+            },
+            userSnapshots: {
+              ...(s.userSnapshots ?? {}),
+              [userId]: existingUserSnapshots,
+            },
+          };
+        }),
 
       upsertAnime: (anime) =>
         set((s) => {
@@ -138,36 +177,60 @@ export const useHikariStore = create<HikariState>()(
           animes,
         }),
 
-      isInList: (id) =>
-        get().myList.includes(id),
+      isInList: (id, userId) => {
+        const activeUserId = userId ?? get().currentUserId;
+        if (!activeUserId) return false;
+        const list = get().userLists?.[activeUserId] ?? get().myList;
+        return list.includes(id);
+      },
 
-      toggleList: (anime) =>
-        set((s) => {
-          const on = s.myList.includes(
-            anime.id,
+      toggleList: (anime, userId) => {
+        const activeUserId = userId ?? get().currentUserId;
+        // REGRA OBRIGATÓRIA 5: Proteção da operação de gravação
+        // Visitantes sem sessão iniciada não conseguem adicionar ou remover animes
+        if (!activeUserId) {
+          console.warn(
+            "[Hikari] Operação de gravação bloqueada: Minha Lista é exclusiva para usuários autenticados.",
           );
+          return;
+        }
 
-          const myList = on
-            ? s.myList.filter(
-                (x) => x !== anime.id,
-              )
-            : [anime.id, ...s.myList];
+        set((s) => {
+          const currentList =
+            s.userLists?.[activeUserId] ?? (s.myList.length > 0 ? [...s.myList] : []);
+          const currentSnapshots =
+            s.userSnapshots?.[activeUserId] ??
+            (Object.keys(s.snapshots).length > 0 ? { ...s.snapshots } : {});
 
-          const snapshots = {
-            ...s.snapshots,
+          const on = currentList.includes(anime.id);
+          const nextList = on
+            ? currentList.filter((x) => x !== anime.id)
+            : [anime.id, ...currentList];
+
+          const nextSnapshots = {
+            ...currentSnapshots,
           };
 
           if (on) {
-            delete snapshots[anime.id];
+            delete nextSnapshots[anime.id];
           } else {
-            snapshots[anime.id] = anime;
+            nextSnapshots[anime.id] = anime;
           }
 
           return {
-            myList,
-            snapshots,
+            userLists: {
+              ...(s.userLists ?? {}),
+              [activeUserId]: nextList,
+            },
+            userSnapshots: {
+              ...(s.userSnapshots ?? {}),
+              [activeUserId]: nextSnapshots,
+            },
+            myList: nextList,
+            snapshots: nextSnapshots,
           };
-        }),
+        });
+      },
 
       markContinue: (entry) =>
         set((s) => {
@@ -261,6 +324,9 @@ export const useHikariStore = create<HikariState>()(
         animes: s.animes,
         myList: s.myList,
         snapshots: s.snapshots,
+        userLists: s.userLists,
+        userSnapshots: s.userSnapshots,
+        currentUserId: s.currentUserId,
         continueWatching:
           s.continueWatching,
         watchedEpisodes:
