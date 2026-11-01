@@ -1,6 +1,7 @@
 import {
   Link,
   Outlet,
+  useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
 
@@ -275,6 +276,9 @@ function ShellHeaderWrapper({
 }
 
 export function Shell() {
+  const navigate = useNavigate();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const pathname =
     useRouterState({
       select: (s) =>
@@ -322,6 +326,7 @@ export function Shell() {
 
   useEffect(() => {
     setNotificationsOpen(false);
+    setSearchOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -411,6 +416,73 @@ export function Shell() {
     useHikariStore(
       (s) => s.animes,
     );
+
+  /* =========================================================
+     TRAVA ROLAGEM DO FUNDO AO ABRIR A BUSCA
+  ========================================================== */
+
+  useEffect(() => {
+    if (!searchOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [searchOpen]);
+
+  /* Fecha busca ao pressionar a tecla Escape */
+  useEffect(() => {
+    if (!searchOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSearchOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [searchOpen]);
+
+  const executeSearch = useCallback(
+    (queryToSearch?: string) => {
+      const q = (queryToSearch !== undefined ? queryToSearch : searchQuery).trim();
+      if (!q) {
+        return;
+      }
+
+      setSearchOpen(false);
+      void navigate({
+        to: "/search",
+        search: {
+          q,
+          adult: window.location.pathname.startsWith("/adult") ? true : undefined,
+        },
+      });
+    },
+    [searchQuery, navigate],
+  );
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    executeSearch();
+  };
+
+  const handleClearSearch = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSearchQuery("");
+    setSearchResults([]);
+    searchInputRef.current?.focus();
+  };
 
   const cinema =
     pathname.startsWith(
@@ -1048,18 +1120,26 @@ export function Shell() {
             onClick={() =>
               setSearchOpen(false)
             }
-            className="fixed inset-0 z-40"
+            className="fixed inset-0 z-40 touch-none"
             aria-label="Fechar busca"
           />
 
           <div className="fixed left-4 right-4 top-16 z-50 mx-auto max-w-2xl overflow-hidden rounded-xl border border-border bg-bg shadow-2xl">
 
-            <div className="border-b border-border p-3">
+            <form
+              action=""
+              role="search"
+              onSubmit={handleSearchSubmit}
+              className="border-b border-border p-3"
+            >
               <div className="relative">
 
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
 
                 <input
+                  ref={searchInputRef}
+                  type="search"
+                  enterKeyHint="go"
                   autoFocus
                   value={searchQuery}
                   onChange={(e) =>
@@ -1068,14 +1148,33 @@ export function Shell() {
                     )
                   }
                   placeholder="Buscar animes…"
-                  className="h-11 w-full rounded-lg border border-border bg-elevated pl-10 pr-3 text-sm text-fg outline-none placeholder:text-muted focus:border-fg/30"
+                  className="h-11 w-full rounded-lg border border-border bg-elevated pl-10 pr-10 text-sm text-fg outline-none placeholder:text-muted focus:border-fg/30 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                 />
 
+                {searchQuery.length > 0 && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      // Evita perda de foco do input ao clicar no X
+                      e.preventDefault();
+                    }}
+                    onClick={handleClearSearch}
+                    className="absolute right-2.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:text-fg hover:bg-elevated/70 transition-colors"
+                    aria-label="Limpar busca"
+                  >
+                    <X className="size-4" />
+                  </button>
+                )}
+
               </div>
-            </div>
+            </form>
 
             {searchQuery.trim() && (
-              <div className="max-h-[70vh] overflow-y-auto">
+              <div className="max-h-[70vh] overflow-y-auto overscroll-contain">
 
                 {searchLoading ? (
                   <div className="px-4 py-8 text-center text-sm text-muted">

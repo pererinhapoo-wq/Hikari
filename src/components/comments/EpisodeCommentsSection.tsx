@@ -28,6 +28,7 @@ import {
   ThumbsUp,
   Trash2,
   UserCircle,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
@@ -2850,7 +2851,8 @@ export function EpisodeCommentsSection({
           {/* CAMPO DE COMENTÁRIO                             */}
           {/* =============================================== */}
 
-          <div className="mt-4 rounded-2xl border border-white/10 bg-[#141418] p-3.5 sm:p-4 shadow-xl focus-within:border-[#a855f7]/50 focus-within:ring-1 focus-within:ring-[#a855f7]/20 transition-all">
+          {effectiveUserId ? (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-[#141418] p-3.5 sm:p-4 shadow-xl focus-within:border-[#a855f7]/50 focus-within:ring-1 focus-within:ring-[#a855f7]/20 transition-all">
 
             <div className="flex items-start gap-3">
               <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b1b22] text-xs font-semibold border border-white/10 text-white/80 mt-0.5">
@@ -3229,6 +3231,44 @@ export function EpisodeCommentsSection({
             </div>
 
           </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#141026]/80 via-[#0f0d1b] to-[#0a0814] p-4 sm:p-5 shadow-lg shadow-purple-950/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-purple-950/60 border border-purple-500/30 text-[#c084fc] shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+                  <MessageCircle className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-white tracking-tight">
+                    Quer participar da conversa?
+                  </h3>
+                  <p className="mt-0.5 text-xs text-white/60 leading-relaxed max-w-lg">
+                    Crie uma conta gratuita ou entre para compartilhar seus pensamentos sobre o episódio e interagir com a comunidade do Hikari.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                <Link
+                  to="/login"
+                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-500 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] active:scale-95 transition-all cursor-pointer"
+                >
+                  <UserPlus className="size-4" />
+                  <span>Criar conta</span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setLoginOpen(true)}
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:text-white px-3.5 py-2 text-xs sm:text-sm font-medium text-white/70 active:scale-95 transition-all cursor-pointer"
+                >
+                  <LogIn className="size-3.5" />
+                  <span>Entrar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
           {/* =============================================== */}
           {/* SUCESSO DE DENÚNCIA / MODERAÇÃO                   */}

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, Info, Play } from "lucide-react";
 
 import { displayTitle, type SlimAnime } from "@/lib/types";
@@ -442,7 +442,7 @@ interface HeroSlideProps {
   priority?: boolean;
 }
 
-function HeroSlide({ anime, priority = false }: HeroSlideProps) {
+const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlideProps) {
   const preferredTitle =
     anime.titles?.english?.trim() ||
     anime.titles?.romaji?.trim() ||
@@ -847,7 +847,7 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
       </div>
     </div>
   );
-}
+});
 
 export function Hero({
   anime,
@@ -895,56 +895,58 @@ export function Hero({
     hasMoved: false,
   });
 
-  // Pré-carrega apenas o próximo slide após o carregamento inicial estar ocioso, sem competir com o LCP
+  // Pré-carrega e pré-decodifica as imagens e logotipos dos slides adjacentes para que estejam 100% prontos no escuro
   useEffect(() => {
     if (typeof window === "undefined" || items.length < 2) return;
 
     let cancelled = false;
     let delayTimer: number | null = null;
 
-    const preloadNextSlide = () => {
-      if (cancelled) return;
-      const nextItem = items[(index + 1) % items.length];
-      if (!nextItem) return;
+    const preloadSlide = (targetItem?: SlimAnime) => {
+      if (cancelled || !targetItem) return;
 
       const isDesktop = window.matchMedia("(min-width: 768px)").matches;
       const backdropUrl = isDesktop
-        ? nextItem.banner || nextItem.cover
-        : nextItem.cover || nextItem.banner;
+        ? targetItem.banner || targetItem.cover
+        : targetItem.cover || targetItem.banner;
 
       if (backdropUrl && !preloadedUrlsRef.current.has(backdropUrl)) {
         preloadedUrlsRef.current.add(backdropUrl);
         const img = new Image();
-        img.decoding = "async";
         img.src = backdropUrl;
+        img.decode?.().catch(() => {});
       }
 
-      const nextLogo = getAnimeLogo(nextItem);
-      if (nextLogo && !preloadedUrlsRef.current.has(nextLogo.src)) {
-        preloadedUrlsRef.current.add(nextLogo.src);
+      const logo = getAnimeLogo(targetItem);
+      if (logo && !preloadedUrlsRef.current.has(logo.src)) {
+        preloadedUrlsRef.current.add(logo.src);
         const logoImg = new Image();
-        logoImg.decoding = "async";
-        if (nextLogo.webpSrcSet) {
-          logoImg.sizes = nextLogo.sizes || "160px";
-          logoImg.srcset = nextLogo.webpSrcSet;
+        if (logo.webpSrcSet) {
+          logoImg.sizes = logo.sizes || "160px";
+          logoImg.srcset = logo.webpSrcSet;
         }
-        logoImg.src = nextLogo.src;
+        logoImg.src = logo.src;
+        logoImg.decode?.().catch(() => {});
       }
     };
 
-    const scheduleAfterLoad = () => {
-      delayTimer = window.setTimeout(preloadNextSlide, 3500);
+    const schedulePreload = () => {
+      delayTimer = window.setTimeout(() => {
+        if (cancelled) return;
+        preloadSlide(items[(index + 1) % items.length]);
+        preloadSlide(items[(index - 1 + items.length) % items.length]);
+      }, 250);
     };
 
     if (document.readyState === "complete") {
-      scheduleAfterLoad();
+      schedulePreload();
     } else {
-      window.addEventListener("load", scheduleAfterLoad, { once: true });
+      window.addEventListener("load", schedulePreload, { once: true });
     }
 
     return () => {
       cancelled = true;
-      window.removeEventListener("load", scheduleAfterLoad);
+      window.removeEventListener("load", schedulePreload);
       if (delayTimer !== null) {
         window.clearTimeout(delayTimer);
       }
@@ -1021,9 +1023,15 @@ export function Hero({
   }, [transitioning]);
 
   // Manipulação de gestos de toque/ponteiro
-  // O gesto apenas detecta a intenção de navegação (sem arrastar a imagem diretamente como galeria)
+  // A imagem permanece visualmente estática durante o arrasto, acionando a transição suave de escurecimento ao soltar
   const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
-    if (total < 2 || e.button !== 0 || transitioning !== null) return;
+    if (total < 2 || e.button !== 0) return;
+
+    // Se houver uma transição em andamento, conclui-a imediatamente para liberar o novo gesto sem travamento
+    if (transitioning !== null) {
+      setIndex(transitioning.toIndex);
+      setTransitioning(null);
+    }
 
     pointerState.current = {
       active: true,
@@ -1092,11 +1100,12 @@ export function Hero({
       const elapsed = Date.now() - state.startTime;
       const isQuickSwipe = elapsed < 350 && Math.abs(dx) > 30;
 
-      if (dx < -threshold || (isQuickSwipe && dx < 0)) {
-        // Deslizar para esquerda avança para o próximo anime com a mesma transição suave
+      const shouldAdvance = dx < -threshold || (isQuickSwipe && dx < 0);
+      const shouldReturn = dx > threshold || (isQuickSwipe && dx > 0);
+
+      if (shouldAdvance) {
         triggerTransition("next");
-      } else if (dx > threshold || (isQuickSwipe && dx > 0)) {
-        // Deslizar para direita retorna para o anime anterior com a mesma transição suave
+      } else if (shouldReturn) {
         triggerTransition("prev");
       }
     }
@@ -1187,21 +1196,25 @@ export function Hero({
             opacity: 1;
             filter: brightness(1);
           }
-          20% {
-            opacity: 0.98;
-            filter: brightness(0.72);
+          18% {
+            opacity: 1;
+            filter: brightness(0.9);
+          }
+          30% {
+            opacity: 0.96;
+            filter: brightness(0.68);
           }
           40% {
-            opacity: 0.9;
-            filter: brightness(0.38);
+            opacity: 0.76;
+            filter: brightness(0.42);
           }
-          60% {
-            opacity: 0.65;
-            filter: brightness(0.15);
+          47% {
+            opacity: 0.35;
+            filter: brightness(0.16);
           }
-          80% {
-            opacity: 0.25;
-            filter: brightness(0.04);
+          50% {
+            opacity: 0;
+            filter: brightness(0);
           }
           100% {
             opacity: 0;
@@ -1212,27 +1225,43 @@ export function Hero({
         @keyframes heroCrossfadeIn {
           0% {
             opacity: 0;
-            filter: brightness(0.2);
+            filter: brightness(0);
+            pointer-events: none;
           }
-          30% {
+          48% {
             opacity: 0;
-            filter: brightness(0.22);
+            filter: brightness(0);
+            pointer-events: none;
           }
-          50% {
-            opacity: 0.4;
-            filter: brightness(0.4);
+          51% {
+            opacity: 0.05;
+            filter: brightness(0.1);
+            pointer-events: none;
           }
-          70% {
-            opacity: 0.78;
-            filter: brightness(0.66);
+          60% {
+            opacity: 0.32;
+            filter: brightness(0.35);
+            pointer-events: none;
           }
-          88% {
-            opacity: 0.95;
+          72% {
+            opacity: 0.65;
+            filter: brightness(0.64);
+            pointer-events: auto;
+          }
+          85% {
+            opacity: 0.9;
             filter: brightness(0.88);
+            pointer-events: auto;
+          }
+          95% {
+            opacity: 0.98;
+            filter: brightness(0.97);
+            pointer-events: auto;
           }
           100% {
             opacity: 1;
             filter: brightness(1);
+            pointer-events: auto;
           }
         }
       `}</style>
@@ -1245,7 +1274,7 @@ export function Hero({
             key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
             className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter] [contain:paint]"
             style={{
-              animation: "heroCrossfadeOut 1800ms cubic-bezier(0.4, 0, 0.2, 1) forwards",
+              animation: "heroCrossfadeOut 1800ms cubic-bezier(0.42, 0, 0.58, 1) forwards",
             }}
           >
             <HeroSlide anime={items[transitioning.fromIndex]} />
@@ -1256,7 +1285,7 @@ export function Hero({
             key={`incoming-${transitioning.toIndex}-${items[transitioning.toIndex].id}`}
             className="relative size-full overflow-hidden z-20 will-change-[opacity,filter] [contain:paint]"
             style={{
-              animation: "heroCrossfadeIn 1800ms cubic-bezier(0.4, 0, 0.2, 1) forwards",
+              animation: "heroCrossfadeIn 1800ms cubic-bezier(0.42, 0, 0.58, 1) forwards",
             }}
           >
             <HeroSlide anime={items[transitioning.toIndex]} priority />

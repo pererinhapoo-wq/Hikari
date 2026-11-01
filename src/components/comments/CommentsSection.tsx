@@ -23,6 +23,7 @@ import {
   ThumbsUp,
   Trash2,
   UserCircle,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
@@ -2576,143 +2577,182 @@ export function CommentsSection({
         {/* FORMULÁRIO DE COMENTÁRIO PRINCIPAL               */}
         {/* =============================================== */}
 
-        <div className="mt-4 sm:mt-5 rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#120f22]/70 to-[#0e0c18] p-3 sm:p-4 shadow-sm focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
-          <div className="flex gap-2.5 sm:gap-3">
-            {/* Avatar do usuário */}
-            <div className="size-8 sm:size-9 shrink-0 rounded-full overflow-hidden bg-purple-950/60 ring-1 ring-purple-500/30 flex items-center justify-center text-xs font-bold text-purple-200">
-              {effectiveUserImage ? (
-                <img
-                  src={effectiveUserImage}
-                  alt=""
-                  className="size-full object-cover"
-                />
-              ) : (
-                <UserCircle className="size-5 text-purple-400" />
-              )}
-            </div>
-
-            {/* Textarea e controles */}
-            <div className="min-w-0 flex-1">
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void handleComment();
-                  }
-                }}
-                rows={2}
-                maxLength={2000}
-                placeholder={
-                  isAnimeGeneral
-                    ? "Participe da conversa sobre este anime..."
-                    : "Participe da conversa..."
-                }
-                className="w-full resize-none rounded-xl border border-white/10 bg-[#0c0c10] px-3 py-2.5 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-purple-500/40 transition-colors"
-              />
-
-              {/* Previews de imagem/GIF anexados */}
-              {(commentImagePreview || selectedGifUrl) && (
-                <div className="mt-2 relative inline-block rounded-xl overflow-hidden border border-purple-500/30 bg-black/40">
+        {effectiveUserId ? (
+          <div className="mt-4 sm:mt-5 rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#120f22]/70 to-[#0e0c18] p-3 sm:p-4 shadow-sm focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 transition-all">
+            <div className="flex gap-2.5 sm:gap-3">
+              {/* Avatar do usuário */}
+              <div className="size-8 sm:size-9 shrink-0 rounded-full overflow-hidden bg-purple-950/60 ring-1 ring-purple-500/30 flex items-center justify-center text-xs font-bold text-purple-200">
+                {effectiveUserImage ? (
                   <img
-                    src={commentImagePreview || selectedGifUrl || ""}
-                    alt="Anexo"
-                    className="max-h-40 rounded-xl object-contain"
+                    src={effectiveUserImage}
+                    alt=""
+                    className="size-full object-cover"
                   />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleRemoveImage();
-                      handleRemoveGif();
-                    }}
-                    className="absolute top-1.5 right-1.5 size-6 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black transition-colors cursor-pointer"
-                    aria-label="Remover mídia"
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-              )}
+                ) : (
+                  <UserCircle className="size-5 text-purple-400" />
+                )}
+              </div>
 
-              {/* Dica única e discreta posicionada logo abaixo do campo de texto */}
-              <p className="mt-1.5 text-[11px] text-white/40 select-none">
-                Enter para enviar · Shift + Enter para quebrar linha
-              </p>
-
-              {/* Barra de Ações Inferior com controles à esquerda e botão à direita */}
-              <div className="mt-2.5 flex items-center justify-between gap-2.5 pt-1">
-                <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-                  {/* Botão de Anexo de Imagem */}
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    className="hidden"
-                    onChange={handleSelectImage}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => imageInputRef.current?.click()}
-                    className="flex items-center gap-1.5 text-xs text-white/60 hover:text-purple-300 transition-colors cursor-pointer"
-                    title="Anexar imagem (JPG, PNG, WebP até 10MB)"
-                  >
-                    <ImageIcon className="size-4" />
-                    <span className="hidden sm:inline">Imagem</span>
-                  </button>
-
-                  {/* Botão de GIF */}
-                  <button
-                    type="button"
-                    onClick={openGifPicker}
-                    className="flex items-center gap-1.5 text-xs text-white/60 hover:text-purple-300 transition-colors cursor-pointer"
-                    title="Inserir GIF"
-                  >
-                    <span className="rounded border border-white/20 px-1 py-0.2 text-[10px] font-bold">
-                      GIF
-                    </span>
-                  </button>
-
-                  {/* Checkbox de Spoiler */}
-                  <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">
-                    <input
-                      type="checkbox"
-                      checked={isSpoiler}
-                      onChange={(e) => setIsSpoiler(e.target.checked)}
-                      className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-purple-600 accent-purple-600"
-                    />
-                    <span>Spoiler</span>
-                  </label>
-                </div>
-
-                <div className="flex items-center shrink-0 ml-auto">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => void handleComment()}
-                    disabled={
-                      (!text.trim() && !commentImage && !selectedGifUrl) ||
-                      sending ||
-                      imageUploading
+              {/* Textarea e controles */}
+              <div className="min-w-0 flex-1">
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void handleComment();
                     }
-                    className="h-8 px-4 text-xs font-semibold rounded-xl bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] active:scale-95 transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
-                  >
-                    {sending || imageUploading ? (
-                      <>
-                        <Loader2 className="size-3 animate-spin" />
-                        <span>Publicando...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="size-3 shrink-0" />
-                        <span>Comentar</span>
-                      </>
-                    )}
-                  </Button>
+                  }}
+                  rows={2}
+                  maxLength={2000}
+                  placeholder={
+                    isAnimeGeneral
+                      ? "Participe da conversa sobre este anime..."
+                      : "Participe da conversa..."
+                  }
+                  className="w-full resize-none rounded-xl border border-white/10 bg-[#0c0c10] px-3 py-2.5 text-xs sm:text-sm text-fg outline-none placeholder:text-white/35 focus:border-purple-500/40 transition-colors"
+                />
+
+                {/* Previews de imagem/GIF anexados */}
+                {(commentImagePreview || selectedGifUrl) && (
+                  <div className="mt-2 relative inline-block rounded-xl overflow-hidden border border-purple-500/30 bg-black/40">
+                    <img
+                      src={commentImagePreview || selectedGifUrl || ""}
+                      alt="Anexo"
+                      className="max-h-40 rounded-xl object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleRemoveImage();
+                        handleRemoveGif();
+                      }}
+                      className="absolute top-1.5 right-1.5 size-6 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black transition-colors cursor-pointer"
+                      aria-label="Remover mídia"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Dica única e discreta posicionada logo abaixo do campo de texto */}
+                <p className="mt-1.5 text-[11px] text-white/40 select-none">
+                  Enter para enviar · Shift + Enter para quebrar linha
+                </p>
+
+                {/* Barra de Ações Inferior com controles à esquerda e botão à direita */}
+                <div className="mt-2.5 flex items-center justify-between gap-2.5 pt-1">
+                  <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                    {/* Botão de Anexo de Imagem */}
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={handleSelectImage}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => imageInputRef.current?.click()}
+                      className="flex items-center gap-1.5 text-xs text-white/60 hover:text-purple-300 transition-colors cursor-pointer"
+                      title="Anexar imagem (JPG, PNG, WebP até 10MB)"
+                    >
+                      <ImageIcon className="size-4" />
+                      <span className="hidden sm:inline">Imagem</span>
+                    </button>
+
+                    {/* Botão de GIF */}
+                    <button
+                      type="button"
+                      onClick={openGifPicker}
+                      className="flex items-center gap-1.5 text-xs text-white/60 hover:text-purple-300 transition-colors cursor-pointer"
+                      title="Inserir GIF"
+                    >
+                      <span className="rounded border border-white/20 px-1 py-0.2 text-[10px] font-bold">
+                        GIF
+                      </span>
+                    </button>
+
+                    {/* Checkbox de Spoiler */}
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-white/60 hover:text-white select-none">
+                      <input
+                        type="checkbox"
+                        checked={isSpoiler}
+                        onChange={(e) => setIsSpoiler(e.target.checked)}
+                        className="size-3.5 rounded border-white/20 bg-[#0c0c10] text-purple-600 accent-purple-600"
+                      />
+                      <span>Spoiler</span>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center shrink-0 ml-auto">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void handleComment()}
+                      disabled={
+                        (!text.trim() && !commentImage && !selectedGifUrl) ||
+                        sending ||
+                        imageUploading
+                      }
+                      className="h-8 px-4 text-xs font-semibold rounded-xl bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] active:scale-95 transition-all inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                    >
+                      {sending || imageUploading ? (
+                        <>
+                          <Loader2 className="size-3 animate-spin" />
+                          <span>Publicando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="size-3 shrink-0" />
+                          <span>Comentar</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="mt-4 sm:mt-5 rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#141026]/80 via-[#0f0d1b] to-[#0a0814] p-4 sm:p-5 shadow-lg shadow-purple-950/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-purple-950/60 border border-purple-500/30 text-[#c084fc] shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+                  <MessageCircle className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-display text-sm sm:text-base font-bold text-white tracking-tight">
+                    Quer participar da conversa?
+                  </h3>
+                  <p className="mt-0.5 text-xs text-white/60 leading-relaxed max-w-lg">
+                    Crie uma conta gratuita ou entre para compartilhar seus pensamentos, reagir às opiniões e interagir com a comunidade do Hikari.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                <Link
+                  to="/login"
+                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-500 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] active:scale-95 transition-all cursor-pointer"
+                >
+                  <UserPlus className="size-4" />
+                  <span>Criar conta</span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setLoginOpen(true)}
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:text-white px-3.5 py-2 text-xs sm:text-sm font-medium text-white/70 active:scale-95 transition-all cursor-pointer"
+                >
+                  <LogIn className="size-3.5" />
+                  <span>Entrar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
           {/* Mensagens de Erro ou Sucesso */}
           {error && (
@@ -2848,6 +2888,10 @@ export function CommentsSection({
                               onReplyChange={setReplyText}
                               onReplySpoilerChange={setReplyIsSpoiler}
                               onStartReply={() => {
+                                if (!effectiveUserId) {
+                                  setLoginOpen(true);
+                                  return;
+                                }
                                 setReplyingId(reply.id);
                                 setReplyText("");
                                 setReplyIsSpoiler(false);
@@ -2911,6 +2955,10 @@ export function CommentsSection({
                       onReplyChange={setReplyText}
                       onReplySpoilerChange={setReplyIsSpoiler}
                       onStartReply={() => {
+                        if (!effectiveUserId) {
+                          setLoginOpen(true);
+                          return;
+                        }
                         setReplyingId(root.id);
                         setReplyText("");
                         setReplyIsSpoiler(false);
