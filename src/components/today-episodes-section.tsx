@@ -264,7 +264,7 @@ export function TodayEpisodesSection({
   }, [router]);
 
   return (
-    <section className="space-y-3.5 sm:space-y-4 [content-visibility:auto] [contain-intrinsic-size:auto_260px]">
+    <section className="space-y-3.5 sm:space-y-4">
       {/* Cabeçalho da Seção seguindo o padrão visual do Hikari */}
       <div className="flex items-center justify-between gap-3 px-0.5">
         <div className="min-w-0 flex-1">

@@ -9,6 +9,7 @@ import { useHikariStore } from "@/lib/store";
 import { overlayList } from "@/lib/overlay";
 import { localToAnime } from "@/lib/types";
 
+import { getAnimeLogo } from "@/lib/anime-logos";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
@@ -37,45 +38,70 @@ export const Route = createFileRoute("/")({
     const desktopBackdrop =
       featured.banner?.trim() || featured.cover?.trim() || "";
 
-    if (!mobileBackdrop && !desktopBackdrop) {
-      return {};
-    }
+    const links: Array<{
+      rel: string;
+      as: string;
+      href: string;
+      media?: string;
+      imageSrcSet?: string;
+      imageSizes?: string;
+      type?: string;
+      fetchPriority?: "high" | "auto" | "low";
+    }> = [];
 
     if (
       mobileBackdrop &&
       desktopBackdrop &&
       mobileBackdrop !== desktopBackdrop
     ) {
-      return {
-        links: [
-          {
-            rel: "preload",
-            as: "image",
-            href: mobileBackdrop,
-            media: "(max-width: 767.98px)",
-            fetchPriority: "high" as const,
-          },
-          {
-            rel: "preload",
-            as: "image",
-            href: desktopBackdrop,
-            media: "(min-width: 768px)",
-            fetchPriority: "high" as const,
-          },
-        ],
-      };
-    }
-
-    return {
-      links: [
+      links.push(
         {
           rel: "preload",
           as: "image",
-          href: mobileBackdrop || desktopBackdrop,
-          fetchPriority: "high" as const,
+          href: mobileBackdrop,
+          media: "(max-width: 767.98px)",
+          fetchPriority: "high",
         },
-      ],
-    };
+        {
+          rel: "preload",
+          as: "image",
+          href: desktopBackdrop,
+          media: "(min-width: 768px)",
+          fetchPriority: "high",
+        },
+      );
+    } else if (mobileBackdrop || desktopBackdrop) {
+      links.push({
+        rel: "preload",
+        as: "image",
+        href: mobileBackdrop || desktopBackdrop,
+        fetchPriority: "high",
+      });
+    }
+
+    const logoConfig = getAnimeLogo(featured);
+    if (logoConfig?.src) {
+      if (logoConfig.webpSrcSet) {
+        links.push({
+          rel: "preload",
+          as: "image",
+          href: logoConfig.src,
+          imageSrcSet: logoConfig.webpSrcSet,
+          imageSizes: logoConfig.sizes,
+          type: "image/webp",
+          fetchPriority: "high",
+        });
+      } else {
+        links.push({
+          rel: "preload",
+          as: "image",
+          href: logoConfig.src,
+          fetchPriority: "high",
+        });
+      }
+    }
+
+    return { links };
   },
   pendingComponent: HomePending,
   errorComponent: HomeError,

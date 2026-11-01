@@ -3479,7 +3479,6 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
       },
     ),
     fetchTodayScheduleFromAni().catch(() => []),
-    fetchRecentReleasesFromAni().catch(() => []),
   ]);
 
   const trending =
@@ -3549,9 +3548,7 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
       ),
 
     releases:
-      releases.length > 0
-        ? releases
-        : seasonItems.map(mapAniSlim).slice(0, 18),
+      seasonItems.map(mapAniSlim).slice(0, 18),
 
     seasonName:
       seasonLabel(season),
@@ -3918,19 +3915,8 @@ export const fetchHomeCatalog =
         );
 
       if (cached) {
-        const nowSeconds = Math.floor(Date.now() / 1000);
-        const freshToday = await fetchTodayScheduleFromAni().catch(() =>
-          cached.todaySchedule.filter(
-            (item) =>
-              item.todayEpisode &&
-              item.todayEpisode.airingAt > nowSeconds &&
-              getDayKeyRecife(item.todayEpisode.airingAt) === todayKey,
-          ),
-        );
-        return {
-          ...cached,
-          todaySchedule: freshToday,
-        };
+        // Retorna o catálogo do cache imediatamente em 0ms sem bloquear o carregamento da tela inicial
+        return cached;
       }
 
       // 1. Tenta AniList (fonte primária do Hikari)

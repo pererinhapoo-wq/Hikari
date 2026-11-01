@@ -53,7 +53,7 @@ export function Logo({
   const content = (
     <div
       className={cn(
-        "relative inline-flex flex-col items-center justify-end select-none transition-transform duration-200 ease-out will-change-transform group-hover:scale-[1.02]",
+        "relative inline-flex flex-col items-center justify-end select-none transition-transform duration-200 ease-out group-hover:scale-[1.02]",
         containerSizeClasses,
         className
       )}
@@ -78,6 +78,7 @@ export function Logo({
           )}
           loading="eager"
           decoding="async"
+          fetchPriority="high"
           draggable={false}
         />
       </picture>
@@ -103,6 +104,7 @@ export function Logo({
             className="h-full w-auto object-contain [clip-path:polygon(0%_0%,14%_0%,14%_25%,78%_25%,78%_0%,100%_0%,100%_100%,74%_100%,74%_87%,26%_87%,26%_100%,0%_100%)]"
             loading="eager"
             decoding="async"
+            fetchPriority="high"
             draggable={false}
           />
         </picture>

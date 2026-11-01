@@ -197,11 +197,10 @@ function ShellHeaderWrapper({
     const evaluateScroll = () => {
       rafId = null;
       const currentScrollY = window.scrollY;
-      const nextScrolled = currentScrollY > 15;
 
       // Se qualquer painel/menu/busca estiver aberto, mantém o cabeçalho visível
       if (keepVisible) {
-        commitHeaderState(nextScrolled, true);
+        commitHeaderState(currentScrollY > 15, true);
         lastScrollY = currentScrollY;
         return;
       }
@@ -217,6 +216,12 @@ function ShellHeaderWrapper({
       } else if (currentScrollY < lastScrollY - 6) {
         // 3. Assim que o usuário começar a rolar para cima, mostrar novamente o cabeçalho inteiro
         nextShow = true;
+      }
+
+      // No banner, evita acionar backdrop-blur/fundo escuro transitório se o cabeçalho está em processo de ocultação
+      let nextScrolled = currentScrollY > 20;
+      if (isBannerPage && !nextShow) {
+        nextScrolled = false;
       }
 
       commitHeaderState(nextScrolled, nextShow);
@@ -236,31 +241,22 @@ function ShellHeaderWrapper({
         window.cancelAnimationFrame(rafId);
       }
     };
-  }, [keepVisible]);
+  }, [keepVisible, isBannerPage]);
 
   return (
     <header
       className={cn(
-        "sticky top-0 z-40 transition-[transform,opacity,background-color,border-color] duration-300 ease-out will-change-transform",
+        "sticky top-0 z-40 transition-transform duration-300 ease-out will-change-transform",
         showHeader
-          ? "translate-y-0 opacity-100 pointer-events-auto"
-          : "-translate-y-full opacity-0 pointer-events-none",
+          ? "translate-y-0 pointer-events-auto"
+          : "-translate-y-full pointer-events-none",
         isBannerPage
           ? isScrolled
-            ? cn(
-                "border-b border-purple-500/15 bg-bg/85 shadow-[0_4px_24px_rgba(0,0,0,0.6)]",
-                showHeader && "backdrop-blur-md",
-              )
+            ? "border-b border-purple-500/15 bg-bg/85 shadow-[0_4px_24px_rgba(0,0,0,0.6)] backdrop-blur-md"
             : "border-b border-transparent bg-transparent"
           : isScrolled
-            ? cn(
-                "border-b border-purple-500/15 bg-bg/85 shadow-[0_4px_24px_rgba(0,0,0,0.6)]",
-                showHeader && "backdrop-blur-md",
-              )
-            : cn(
-                "border-b border-border bg-bg/85",
-                showHeader && "backdrop-blur-md",
-              ),
+            ? "border-b border-purple-500/15 bg-bg/85 shadow-[0_4px_24px_rgba(0,0,0,0.6)] backdrop-blur-md"
+            : "border-b border-border bg-bg/85 backdrop-blur-md",
       )}
     >
       {/* Degradê sutil de proteção para contraste no topo do banner */}

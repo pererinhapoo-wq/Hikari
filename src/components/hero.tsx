@@ -497,20 +497,19 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
           0%, 100% {
             transform: scale(1);
             opacity: 1;
-            box-shadow: 0 0 7px 1.5px rgba(30, 240, 102, 0.9), 0 0 2px 0.5px rgba(0, 180, 60, 0.65);
           }
           50% {
-            transform: scale(0.85);
-            opacity: 0.92;
-            box-shadow: 0 0 3.5px 0.5px rgba(30, 240, 102, 0.65), 0 0 1px 0px rgba(0, 180, 60, 0.5);
+            transform: scale(0.82);
+            opacity: 0.85;
           }
         }
         .hero-glass-capsule {
           background-color: rgba(255, 255, 255, 0.42);
-          backdrop-filter: blur(10px) saturate(130%);
-          -webkit-backdrop-filter: blur(10px) saturate(130%);
+          backdrop-filter: blur(8px) saturate(130%);
+          -webkit-backdrop-filter: blur(8px) saturate(130%);
           border: 1px solid rgba(255, 255, 255, 0.28);
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+          contain: paint;
         }
         .hero-btn-action {
           transition: transform 140ms cubic-bezier(0.2, 0.8, 0.4, 1), box-shadow 140ms ease, background-color 140ms ease, opacity 140ms ease;
@@ -616,8 +615,8 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                   width={logoConfig.width ?? 360}
                   height={logoConfig.height ?? 176}
                   loading={priority ? "eager" : "lazy"}
-                  decoding="async"
-                  fetchPriority="auto"
+                  decoding={priority ? "sync" : "async"}
+                  fetchPriority={priority ? "high" : "auto"}
                   onError={() => setFailedLogoAnimeId(anime.id)}
                   className={`
                     object-contain
@@ -699,7 +698,6 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                 border
                 border-white/30
                 bg-white/40
-                backdrop-blur-md
                 px-3
                 py-1
                 text-[10.5px]
@@ -745,7 +743,6 @@ function HeroSlide({ anime, priority = false }: HeroSlideProps) {
                   border
                   border-white/30
                   bg-white/40
-                  backdrop-blur-md
                   px-2.5
                   py-0.5
                   text-[9.5px]
@@ -1051,6 +1048,7 @@ export function Hero({
       if (Math.hypot(dx, dy) > 8) {
         if (Math.abs(dy) > Math.abs(dx)) {
           state.isLockedVertical = true;
+          state.active = false;
           return;
         }
         state.isLockedHorizontal = true;
@@ -1184,23 +1182,15 @@ export function Hero({
         @keyframes heroCrossfadeOut {
           0% {
             opacity: 1;
-            filter: brightness(1) contrast(1);
           }
-          22% {
-            opacity: 0.96;
-            filter: brightness(0.65) contrast(1.02);
+          30% {
+            opacity: 0.85;
           }
-          45% {
-            opacity: 0.68;
-            filter: brightness(0.48) contrast(1.02);
-          }
-          75% {
-            opacity: 0.22;
-            filter: brightness(0.38) contrast(1);
+          65% {
+            opacity: 0.35;
           }
           100% {
             opacity: 0;
-            filter: brightness(0.32) contrast(1);
           }
         }
 
@@ -1226,10 +1216,10 @@ export function Hero({
       {/* Camadas da transição ou anime ativo */}
       {transitioning ? (
         <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">
-          {/* Camada inferior: Anime saindo com escurecimento perceptível, gradual e desvanecimento suave */}
+          {/* Camada inferior: Anime saindo com escurecimento gradual e desvanecimento suave */}
           <div
             key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
-            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter] [contain:paint]"
+            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity] [contain:paint]"
             style={{
               animation: "heroCrossfadeOut 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
             }}
@@ -1251,7 +1241,7 @@ export function Hero({
       ) : (
         <div
           key={`active-${index}-${items[index].id}`}
-          className="relative size-full overflow-hidden z-10"
+          className="relative size-full overflow-hidden z-10 [contain:paint]"
         >
           <HeroSlide anime={items[index]} priority />
         </div>
