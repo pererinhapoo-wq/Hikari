@@ -1225,6 +1225,21 @@ export function Hero({
         @keyframes heroCrossfadeIn {
           0% {
             opacity: 0;
+            filter: brightness(0.2);
+            pointer-events: none;
+          }
+          18% {
+            opacity: 0.28;
+            filter: brightness(0.85);
+            pointer-events: none;
+          }
+          32% {
+            opacity: 0.14;
+            filter: brightness(0.35);
+            pointer-events: none;
+          }
+          46% {
+            opacity: 0;
             filter: brightness(0);
             pointer-events: none;
           }

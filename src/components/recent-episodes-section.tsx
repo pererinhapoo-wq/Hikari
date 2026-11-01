@@ -4,6 +4,18 @@ import { useHikariStore } from "@/lib/store";
 import { getRecentEpisodesSection } from "@/lib/published-episodes";
 import { EpisodeCard } from "@/components/episode-card";
 
+function EpisodeCardSkeleton() {
+  return (
+    <div className="w-full">
+      <div className="relative aspect-video w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#0f0d1a] border border-purple-500/15 animate-pulse" />
+      <div className="mt-1.5 sm:mt-2.5 px-0.5 space-y-1 sm:space-y-1.5">
+        <div className="h-3 sm:h-3.5 w-3/4 rounded bg-purple-950/40 animate-pulse" />
+        <div className="h-2.5 sm:h-3 w-1/3 rounded bg-purple-950/30 animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
 export function RecentEpisodesSection() {
   const animes = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
@@ -12,8 +24,11 @@ export function RecentEpisodesSection() {
     return getRecentEpisodesSection(animes);
   }, [animes]);
 
-  // Se não houver episódios publicados, oculta a seção sem deixar espaços vazios
-  if (!hydrated || displayEpisodes.length === 0) {
+  const hasEpisodes = displayEpisodes.length > 0;
+  const isLoading = !hydrated && !hasEpisodes;
+
+  // Se já hidratou e não houver episódios publicados, oculta a seção sem deixar espaços vazios
+  if (hydrated && !hasEpisodes) {
     return null;
   }
 
@@ -30,9 +45,11 @@ export function RecentEpisodesSection() {
             <h2 className="font-section text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-sm truncate">
               Novos Episódios
             </h2>
-            <span className="hidden sm:inline-flex shrink-0 rounded-full bg-purple-950/50 border border-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300/80">
-              {displayEpisodes.length} {displayEpisodes.length === 1 ? "episódio" : "episódios"}
-            </span>
+            {!isLoading && displayEpisodes.length > 0 && (
+              <span className="hidden sm:inline-flex shrink-0 rounded-full bg-purple-950/50 border border-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300/80">
+                {displayEpisodes.length} {displayEpisodes.length === 1 ? "episódio" : "episódios"}
+              </span>
+            )}
           </div>
         </div>
 
@@ -64,16 +81,25 @@ export function RecentEpisodesSection() {
         </div>
       </div>
 
-      {/* Grade de 2 colunas no mobile e 3 colunas em telas maiores */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4.5">
-        {recentEpisodes.map((episode, index) => (
-          <EpisodeCard
-            key={`${episode.animeId}-${episode.episodeId}`}
-            episode={episode}
-            priority={index < 2}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        /* Grade de carregamento compatível com o layout existente */
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4.5">
+          {Array.from({ length: 6 }, (_, i) => (
+            <EpisodeCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        /* Grade de 2 colunas no mobile e 3 colunas em telas maiores */
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4.5">
+          {recentEpisodes.map((episode, index) => (
+            <EpisodeCard
+              key={`${episode.animeId}-${episode.episodeId}`}
+              episode={episode}
+              priority={index < 2}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

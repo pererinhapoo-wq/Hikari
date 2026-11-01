@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from "react";
+import { useMemo } from "react";
 import {
   createFileRoute,
   type ErrorComponentProps,
@@ -13,14 +13,9 @@ import { getAnimeLogo } from "@/lib/anime-logos";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
+import { RecentEpisodesSection } from "@/components/recent-episodes-section";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { HomeFooter } from "@/components/home-footer";
-
-const LazyRecentEpisodesSection = lazy(() =>
-  import("@/components/recent-episodes-section").then((m) => ({
-    default: m.RecentEpisodesSection,
-  })),
-);
 
 export const Route = createFileRoute("/")({
   staleTime: 1000 * 60 * 10,
@@ -177,16 +172,6 @@ function Home() {
   );
   const emAltaItems = trending.length > 0 ? trending : popular;
 
-  const hasLocalEpisodes = useMemo(
-    () =>
-      locals.some(
-        (a) =>
-          !a.hidden &&
-          (a.seasons?.some((s) => (s.episodes?.length ?? 0) > 0) ?? false),
-      ),
-    [locals],
-  );
-
   // Animes Recém-Adicionados: animes incluídos no catálogo próprio do Hikari com data real (createdAt),
   // ordenados do mais recente para o mais antigo
   const { recentlyAddedAnimes, hasLocalWithoutCreationDate } = useMemo(() => {
@@ -240,11 +225,7 @@ function Home() {
       <TodayEpisodesSection initialItems={data.todaySchedule ?? []} />
 
       {/* 2. Novos Episódios (publicados pelo administrador) */}
-      {hydrated && hasLocalEpisodes ? (
-        <Suspense fallback={null}>
-          <LazyRecentEpisodesSection />
-        </Suspense>
-      ) : null}
+      <RecentEpisodesSection />
 
       {/* 3. Em Alta */}
       <AnimeRow
