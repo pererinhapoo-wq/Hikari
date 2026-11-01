@@ -30,6 +30,7 @@ export function AnimeRow({
   resetScrollOnReturn = false,
   emptyTitle,
   emptyDescription,
+  priorityCount = 0,
 }: {
   title: string;
   eyebrow?: string;
@@ -44,6 +45,7 @@ export function AnimeRow({
   resetScrollOnReturn?: boolean;
   emptyTitle?: string;
   emptyDescription?: string;
+  priorityCount?: number;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -247,6 +249,7 @@ export function AnimeRow({
                   anime={anime}
                   rank={showRank ? index + 1 : undefined}
                   showBookmark={showBookmark}
+                  priority={priorityCount > 0 && index < priorityCount}
                 />
               ))}
           {/* Espaçador invisível para limites suaves no fim da rolagem */}

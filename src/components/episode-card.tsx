@@ -7,8 +7,10 @@ import { cn } from "@/lib/utils";
 
 export const EpisodeCard = memo(function EpisodeCard({
   episode,
+  priority = false,
 }: {
   episode: PublishedEpisode;
+  priority?: boolean;
 }) {
   const [thumbFailed, setThumbFailed] = useState(false);
   const [failedOptimizedFor, setFailedOptimizedFor] = useState<string | null>(null);
@@ -88,8 +90,9 @@ export const EpisodeCard = memo(function EpisodeCard({
               alt=""
               width={320}
               height={180}
-              loading="lazy"
+              loading={priority ? "eager" : "lazy"}
               decoding="async"
+              fetchPriority={priority ? "high" : "auto"}
               onError={() => setThumbFailed(true)}
               className="size-full object-cover transition-opacity duration-200 motion-reduce:transition-none"
             />
@@ -102,8 +105,9 @@ export const EpisodeCard = memo(function EpisodeCard({
               alt=""
               width={320}
               height={180}
-              loading="lazy"
+              loading={priority ? "eager" : "lazy"}
               decoding="async"
+              fetchPriority={priority ? "high" : "auto"}
               onError={() => {
                 if (!fallbackOptimizedFailed && fallbackAttrs.fallbackSrc && fallbackImage) {
                   setFailedOptimizedFor(fallbackImage);

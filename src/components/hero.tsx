@@ -871,6 +871,7 @@ export function Hero({
 
   const containerRef = useRef<HTMLElement>(null);
   const timerRef = useRef<number | null>(null);
+  const preloadedUrlsRef = useRef<Set<string>>(new Set());
 
   const pointerState = useRef<{
     active: boolean;
@@ -911,14 +912,16 @@ export function Hero({
         ? nextItem.banner || nextItem.cover
         : nextItem.cover || nextItem.banner;
 
-      if (backdropUrl) {
+      if (backdropUrl && !preloadedUrlsRef.current.has(backdropUrl)) {
+        preloadedUrlsRef.current.add(backdropUrl);
         const img = new Image();
         img.decoding = "async";
         img.src = backdropUrl;
       }
 
       const nextLogo = getAnimeLogo(nextItem);
-      if (nextLogo) {
+      if (nextLogo && !preloadedUrlsRef.current.has(nextLogo.src)) {
+        preloadedUrlsRef.current.add(nextLogo.src);
         const logoImg = new Image();
         logoImg.decoding = "async";
         if (nextLogo.webpSrcSet) {

@@ -21,6 +21,7 @@ export const AnimeCard = memo(function AnimeCard({
   showBookmark = true,
   loadImage = true,
   showGenre = true,
+  priority = false,
 }: {
   anime: SlimAnime;
   size?: "sm" | "md" | "lg";
@@ -28,6 +29,7 @@ export const AnimeCard = memo(function AnimeCard({
   showBookmark?: boolean;
   loadImage?: boolean;
   showGenre?: boolean;
+  priority?: boolean;
 }) {
   const [failedOptimizedFor, setFailedOptimizedFor] = useState<string | null>(
     null,
@@ -139,8 +141,9 @@ export const AnimeCard = memo(function AnimeCard({
                   [@media(hover:hover)]:group-hover:scale-[1.025]
                   group-active:scale-[1.015]
                 "
-                loading="lazy"
+                loading={priority ? "eager" : "lazy"}
                 decoding="async"
+                fetchPriority={priority ? "high" : "auto"}
               />
             ) : (
               <div className="size-full bg-[#0d0c16]" />

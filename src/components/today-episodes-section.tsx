@@ -323,10 +323,11 @@ export function TodayEpisodesSection({
           ref={railRef}
           className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 gap-2.5 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"
         >
-          {activeItems.map((anime) => (
+          {activeItems.map((anime, index) => (
             <AnimeCard
               key={anime.id}
               anime={anime}
+              priority={index < 4}
               showBookmark={false}
               showGenre={false}
             />

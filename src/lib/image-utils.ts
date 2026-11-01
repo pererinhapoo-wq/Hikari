@@ -8,7 +8,10 @@ export interface ResponsiveCoverAttrs {
 }
 
 const ANILIST_COVER_REGEX =
-  /^https:\/\/s4\.anilist\.co\/file\/anilistcdn\/media\/anime\/cover\/(large|medium)\/([^/?#]+)(\?[^#]*)?$/i;
+  /^https:\/\/s4\.anilist\.co\/file\/anilistcdn\/media\/anime\/cover\/(large|medium|small|extraLarge)\/([^/?#]+)(\?[^#]*)?$/i;
+
+const KITSU_POSTER_REGEX =
+  /^https:\/\/media\.kitsu\.(?:app|io)\/anime\/poster_images\/(\d+)\/(large|medium|small|tiny|original)\.([a-z0-9]+)(\?[^#]*)?$/i;
 
 const SIZES_BY_VARIANT: Record<CoverSizeVariant, string> = {
   thumb: "56px",
@@ -19,7 +22,7 @@ const SIZES_BY_VARIANT: Record<CoverSizeVariant, string> = {
 };
 
 /**
- * Resolve versões menores oficiais do CDN do AniList para cards e miniaturas
+ * Resolve versões menores oficiais do CDN do AniList e Kitsu para cards e miniaturas
  * sem modificar a URL original armazenada nos dados do anime.
  */
 export function getResponsiveCoverAttrs(
@@ -31,33 +34,62 @@ export function getResponsiveCoverAttrs(
     return { src: "" };
   }
 
-  const match = cleanUrl.match(ANILIST_COVER_REGEX);
-  if (!match) {
-    return { src: cleanUrl };
-  }
+  // Tratamento otimizado para capas do AniList
+  const aniMatch = cleanUrl.match(ANILIST_COVER_REGEX);
+  if (aniMatch) {
+    const filename = aniMatch[2];
+    const query = aniMatch[3] ?? "";
+    const base = "https://s4.anilist.co/file/anilistcdn/media/anime/cover";
 
-  const tier = match[1].toLowerCase();
-  const filename = match[2];
-  const query = match[3] ?? "";
-  const base = "https://s4.anilist.co/file/anilistcdn/media/anime/cover";
+    const smallUrl = `${base}/small/${filename}${query}`;
+    const mediumUrl = `${base}/medium/${filename}${query}`;
+    const largeUrl = `${base}/large/${filename}${query}`;
 
-  const smallUrl = `${base}/small/${filename}${query}`;
-  const mediumUrl = `${base}/medium/${filename}${query}`;
-  const largeUrl = tier === "large" ? `${base}/large/${filename}${query}` : null;
+    if (variant === "thumb") {
+      return {
+        src: smallUrl,
+        srcSet: `${smallUrl} 100w, ${mediumUrl} 230w`,
+        sizes: SIZES_BY_VARIANT.thumb,
+        fallbackSrc: cleanUrl,
+      };
+    }
 
-  if (variant === "thumb") {
     return {
-      src: smallUrl,
-      srcSet: `${smallUrl} 100w, ${mediumUrl} 230w`,
-      sizes: SIZES_BY_VARIANT.thumb,
-      fallbackSrc: cleanUrl,
+      src: mediumUrl,
+      srcSet: `${mediumUrl} 230w, ${largeUrl} 460w`,
+      sizes: SIZES_BY_VARIANT[variant],
+      fallbackSrc: cleanUrl !== mediumUrl ? cleanUrl : undefined,
     };
   }
 
-  return {
-    src: mediumUrl,
-    srcSet: largeUrl ? `${mediumUrl} 230w, ${largeUrl} 460w` : undefined,
-    sizes: largeUrl ? SIZES_BY_VARIANT[variant] : undefined,
-    fallbackSrc: cleanUrl !== mediumUrl ? cleanUrl : undefined,
-  };
+  // Tratamento otimizado para pôsteres do Kitsu
+  const kitsuMatch = cleanUrl.match(KITSU_POSTER_REGEX);
+  if (kitsuMatch) {
+    const id = kitsuMatch[1];
+    const ext = kitsuMatch[3];
+    const query = kitsuMatch[4] ?? "";
+    const base = "https://media.kitsu.app/anime/poster_images";
+
+    const smallUrl = `${base}/${id}/small.${ext}${query}`;
+    const mediumUrl = `${base}/${id}/medium.${ext}${query}`;
+    const largeUrl = `${base}/${id}/large.${ext}${query}`;
+
+    if (variant === "thumb") {
+      return {
+        src: smallUrl,
+        srcSet: `${smallUrl} 110w, ${mediumUrl} 220w`,
+        sizes: SIZES_BY_VARIANT.thumb,
+        fallbackSrc: cleanUrl,
+      };
+    }
+
+    return {
+      src: mediumUrl,
+      srcSet: `${mediumUrl} 220w, ${largeUrl} 550w`,
+      sizes: SIZES_BY_VARIANT[variant],
+      fallbackSrc: cleanUrl !== mediumUrl ? cleanUrl : undefined,
+    };
+  }
+
+  return { src: cleanUrl };
 }

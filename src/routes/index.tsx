@@ -253,6 +253,7 @@ function Home() {
         items={emAltaItems}
         showBookmark={false}
         showRank={false}
+        priorityCount={(data.todaySchedule?.length ?? 0) === 0 ? 3 : 0}
       />
 
       {/* 4. Animes Recém-Adicionados */}
