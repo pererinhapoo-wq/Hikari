@@ -1194,89 +1194,41 @@ export function Hero({
         @keyframes heroCrossfadeOut {
           0% {
             opacity: 1;
-            filter: brightness(1);
+            filter: brightness(1) contrast(1);
           }
-          18% {
-            opacity: 1;
-            filter: brightness(0.9);
-          }
-          30% {
+          22% {
             opacity: 0.96;
-            filter: brightness(0.68);
+            filter: brightness(0.65) contrast(1.02);
           }
-          40% {
-            opacity: 0.76;
-            filter: brightness(0.42);
+          45% {
+            opacity: 0.68;
+            filter: brightness(0.48) contrast(1.02);
           }
-          47% {
-            opacity: 0.35;
-            filter: brightness(0.16);
-          }
-          50% {
-            opacity: 0;
-            filter: brightness(0);
+          75% {
+            opacity: 0.22;
+            filter: brightness(0.38) contrast(1);
           }
           100% {
             opacity: 0;
-            filter: brightness(0);
+            filter: brightness(0.32) contrast(1);
           }
         }
 
         @keyframes heroCrossfadeIn {
           0% {
             opacity: 0;
-            filter: brightness(0.2);
-            pointer-events: none;
           }
-          18% {
-            opacity: 0.28;
-            filter: brightness(0.85);
-            pointer-events: none;
-          }
-          32% {
-            opacity: 0.14;
-            filter: brightness(0.35);
-            pointer-events: none;
-          }
-          46% {
+          20% {
             opacity: 0;
-            filter: brightness(0);
-            pointer-events: none;
           }
-          48% {
-            opacity: 0;
-            filter: brightness(0);
-            pointer-events: none;
+          38% {
+            opacity: 0.38;
           }
-          51% {
-            opacity: 0.05;
-            filter: brightness(0.1);
-            pointer-events: none;
-          }
-          60% {
-            opacity: 0.32;
-            filter: brightness(0.35);
-            pointer-events: none;
-          }
-          72% {
-            opacity: 0.65;
-            filter: brightness(0.64);
-            pointer-events: auto;
-          }
-          85% {
-            opacity: 0.9;
-            filter: brightness(0.88);
-            pointer-events: auto;
-          }
-          95% {
-            opacity: 0.98;
-            filter: brightness(0.97);
-            pointer-events: auto;
+          68% {
+            opacity: 0.88;
           }
           100% {
             opacity: 1;
-            filter: brightness(1);
-            pointer-events: auto;
           }
         }
       `}</style>
@@ -1284,12 +1236,12 @@ export function Hero({
       {/* Camadas da transição ou anime ativo */}
       {transitioning ? (
         <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">
-          {/* Camada inferior: Anime saindo com escurecimento gradual e desvanecimento suave */}
+          {/* Camada inferior: Anime saindo com escurecimento perceptível, gradual e desvanecimento suave */}
           <div
             key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
             className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter] [contain:paint]"
             style={{
-              animation: "heroCrossfadeOut 1800ms cubic-bezier(0.42, 0, 0.58, 1) forwards",
+              animation: "heroCrossfadeOut 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
             }}
           >
             <HeroSlide anime={items[transitioning.fromIndex]} />
@@ -1298,9 +1250,9 @@ export function Hero({
           {/* Camada superior: Próximo anime surgindo suavemente sobre a imagem escurecida */}
           <div
             key={`incoming-${transitioning.toIndex}-${items[transitioning.toIndex].id}`}
-            className="relative size-full overflow-hidden z-20 will-change-[opacity,filter] [contain:paint]"
+            className="relative size-full overflow-hidden z-20 will-change-[opacity] [contain:paint]"
             style={{
-              animation: "heroCrossfadeIn 1800ms cubic-bezier(0.42, 0, 0.58, 1) forwards",
+              animation: "heroCrossfadeIn 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
             }}
           >
             <HeroSlide anime={items[transitioning.toIndex]} priority />

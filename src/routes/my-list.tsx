@@ -4,16 +4,27 @@ import { Bookmark } from "lucide-react";
 import { useHikariStore } from "@/lib/store";
 import { localToAnime } from "@/lib/types";
 import { AnimeCard } from "@/components/anime-card";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { RedirectToSignIn } from "@/lib/auth/gates";
 
 export const Route = createFileRoute("/my-list")({
   component: MyListPage,
 });
 
 function MyListPage() {
+  const { user, isPending } = useCurrentUserState();
   const myList = useHikariStore((s) => s.myList);
   const snapshots = useHikariStore((s) => s.snapshots);
   const animes = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
+
+  if (isPending) {
+    return null;
+  }
+
+  if (!user) {
+    return <RedirectToSignIn to="/login" />;
+  }
 
   const items = myList
     .map((id) => {

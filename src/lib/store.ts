@@ -305,6 +305,7 @@ export const useHikariStore = create<HikariState>()(
         animeId,
         episodeId,
       ) => {
+        if (!get().currentUserId) return false;
         return (
           get().watchedEpisodes[
             animeId

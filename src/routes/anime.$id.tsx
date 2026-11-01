@@ -276,22 +276,26 @@ function AnimePage() {
 
   const inList = useHikariStore(
     (s) =>
-      s.myList.includes(id) ||
-      (remote?.id ? s.myList.includes(remote.id) : false),
+      Boolean(
+        user &&
+          (s.myList.includes(id) ||
+            (remote?.id ? s.myList.includes(remote.id) : false)),
+      ),
   );
 
   const toggleList = useHikariStore((s) => s.toggleList);
 
   const continueEntry = useHikariStore((s) =>
-    s.continueWatching.find(
-      (entry) => entry.animeId === id,
-    ),
+    user
+      ? s.continueWatching.find((entry) => entry.animeId === id)
+      : undefined,
   );
 
   const watchedEpisodes = useHikariStore(
     (s) =>
-      s.watchedEpisodes[id] ??
-      EMPTY_WATCHED_EPISODES,
+      user
+        ? (s.watchedEpisodes[id] ?? EMPTY_WATCHED_EPISODES)
+        : EMPTY_WATCHED_EPISODES,
   );
 
   const anime = useMemo(
@@ -438,13 +442,13 @@ function AnimePage() {
   const [isWatchPressing, setIsWatchPressing] = useState(false);
 
   const handleToggleList = useCallback(() => {
-    if (!anime) return;
+    if (!anime || !user) return;
     setIsListToggling(true);
-    toggleList(anime);
+    toggleList(anime, user.id);
     setTimeout(() => {
       setIsListToggling(false);
     }, 300);
-  }, [anime, toggleList]);
+  }, [anime, toggleList, user]);
 
   const localRecord = useMemo(
     () =>
@@ -874,7 +878,7 @@ function AnimePage() {
    * o usuário parou.
    */
   const continueEpisode =
-    continueEntry
+    user && continueEntry
       ? allEpisodes.find(
           (episode) =>
             episode.id ===
@@ -1175,40 +1179,42 @@ function AnimePage() {
                   <span>{watchButtonLabel}</span>
                 </Link>
 
-                <button
-                  type="button"
-                  onClick={handleToggleList}
-                  aria-label={inList ? "Remover da minha lista" : "Adicionar à minha lista"}
-                  className={cn(
-                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-medium shadow-sm transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
-                    "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.96]",
-                    inList
-                      ? "border border-purple-500/50 bg-[#151126] text-purple-200 shadow-[0_0_16px_rgba(168,85,247,0.22)] hover:border-purple-400/70 hover:bg-[#1b1532] hover:shadow-[0_0_20px_rgba(168,85,247,0.32)]"
-                      : "border border-purple-500/30 bg-[#0f0d18]/90 text-zinc-200 hover:border-purple-500/60 hover:bg-[#1a142e] hover:text-white hover:shadow-[0_0_12px_rgba(168,85,247,0.18)]",
-                    isListToggling && (inList
-                      ? "border-purple-400 shadow-[0_0_22px_rgba(168,85,247,0.45)] brightness-110"
-                      : "shadow-[0_0_10px_rgba(168,85,247,0.15)]")
-                  )}
-                >
-                  {inList ? (
-                    <BookmarkCheck
-                      className={cn(
-                        "size-4 text-purple-300 transition-all duration-250 ease-out",
-                        isListToggling && "motion-safe:animate-[bookmarkPop_300ms_cubic-bezier(0.34,1.56,0.64,1)] text-purple-200"
-                      )}
-                    />
-                  ) : (
-                    <Bookmark
-                      className={cn(
-                        "size-4 text-zinc-400 transition-all duration-250 ease-out group-hover:text-purple-300",
-                        isListToggling && "motion-safe:animate-[bookmarkDepop_300ms_ease-out]"
-                      )}
-                    />
-                  )}
-                  <span className="transition-colors duration-250">
-                    {inList ? "Na Minha Lista" : "Minha Lista"}
-                  </span>
-                </button>
+                {user && (
+                  <button
+                    type="button"
+                    onClick={handleToggleList}
+                    aria-label={inList ? "Remover da minha lista" : "Adicionar à minha lista"}
+                    className={cn(
+                      "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-medium shadow-sm transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+                      "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.96]",
+                      inList
+                        ? "border border-purple-500/50 bg-[#151126] text-purple-200 shadow-[0_0_16px_rgba(168,85,247,0.22)] hover:border-purple-400/70 hover:bg-[#1b1532] hover:shadow-[0_0_20px_rgba(168,85,247,0.32)]"
+                        : "border border-purple-500/30 bg-[#0f0d18]/90 text-zinc-200 hover:border-purple-500/60 hover:bg-[#1a142e] hover:text-white hover:shadow-[0_0_12px_rgba(168,85,247,0.18)]",
+                      isListToggling && (inList
+                        ? "border-purple-400 shadow-[0_0_22px_rgba(168,85,247,0.45)] brightness-110"
+                        : "shadow-[0_0_10px_rgba(168,85,247,0.15)]")
+                    )}
+                  >
+                    {inList ? (
+                      <BookmarkCheck
+                        className={cn(
+                          "size-4 text-purple-300 transition-all duration-250 ease-out",
+                          isListToggling && "motion-safe:animate-[bookmarkPop_300ms_cubic-bezier(0.34,1.56,0.64,1)] text-purple-200"
+                        )}
+                      />
+                    ) : (
+                      <Bookmark
+                        className={cn(
+                          "size-4 text-zinc-400 transition-all duration-250 ease-out group-hover:text-purple-300",
+                          isListToggling && "motion-safe:animate-[bookmarkDepop_300ms_ease-out]"
+                        )}
+                      />
+                    )}
+                    <span className="transition-colors duration-250">
+                      {inList ? "Na Minha Lista" : "Minha Lista"}
+                    </span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1316,10 +1322,14 @@ function AnimePage() {
                 <span className="inline-flex items-center rounded-md border border-white/5 bg-white/5 px-2.5 py-1 text-zinc-300">
                   {episodeCount} episódios disponíveis
                 </span>
-                <span className="text-zinc-600">·</span>
-                <span className="inline-flex items-center rounded-md border border-purple-500/20 bg-purple-950/40 px-2.5 py-1 font-medium text-purple-300">
-                  {watchedCount}/{episodeCount} assistidos
-                </span>
+                {user && (
+                  <>
+                    <span className="text-zinc-600">·</span>
+                    <span className="inline-flex items-center rounded-md border border-purple-500/20 bg-purple-950/40 px-2.5 py-1 font-medium text-purple-300">
+                      {watchedCount}/{episodeCount} assistidos
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
