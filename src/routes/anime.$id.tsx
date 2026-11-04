@@ -83,6 +83,8 @@ const clientCreditsCache = new Map<
     staff: AnimeStaff[];
   }
 >();
+const clientCreditsInFlight = new Set<string>();
+const clientEpisodesInFlight = new Set<string>();
 const clientPicturesCache = new Map<number, string[]>();
 
 function buildSeasonBannerInputFromAnime(
@@ -333,17 +335,28 @@ function AnimePage() {
     if (!animeId) return;
     if (hasCharacters && hasStaff && hasStudios) return;
 
-    const cached = clientCreditsCache.get(animeId);
-    if (cached) {
-      setExtraCredits({
-        forId: animeId,
-        studios: cached.studios,
-        characters: cached.characters,
-        staff: cached.staff,
-      });
+    if (clientCreditsCache.has(animeId)) {
+      const cached = clientCreditsCache.get(animeId)!;
+      if (
+        cached.characters.length > 0 ||
+        cached.staff.length > 0 ||
+        cached.studios.length > 0
+      ) {
+        setExtraCredits({
+          forId: animeId,
+          studios: cached.studios,
+          characters: cached.characters,
+          staff: cached.staff,
+        });
+      }
       return;
     }
 
+    if (clientCreditsInFlight.has(animeId)) {
+      return;
+    }
+
+    clientCreditsInFlight.add(animeId);
     let cancelled = false;
 
     const parsedAniId =
@@ -380,17 +393,28 @@ function AnimePage() {
       },
     })
       .then((res) => {
-        if (cancelled || !res) return;
+        clientCreditsInFlight.delete(animeId);
+        if (!res) {
+          clientCreditsCache.set(animeId, {
+            studios: [],
+            characters: [],
+            staff: [],
+          });
+          return;
+        }
+
+        clientCreditsCache.set(animeId, {
+          studios: res.studios,
+          characters: res.characters,
+          staff: res.staff,
+        });
+
+        if (cancelled) return;
         if (
           res.characters.length > 0 ||
           res.staff.length > 0 ||
           res.studios.length > 0
         ) {
-          clientCreditsCache.set(animeId, {
-            studios: res.studios,
-            characters: res.characters,
-            staff: res.staff,
-          });
           startTransition(() => {
             setExtraCredits({
               forId: animeId,
@@ -402,11 +426,13 @@ function AnimePage() {
         }
       })
       .catch(() => {
+        clientCreditsInFlight.delete(animeId);
         // Silencioso: preserva o que já estiver disponível na página
       });
 
     return () => {
       cancelled = true;
+      clientCreditsInFlight.delete(animeId);
     };
   }, [
     animeId,
@@ -859,6 +885,9 @@ function AnimePage() {
     );
     if (!hasGenericTitles) return;
 
+    if (clientEpisodesInFlight.has(animeId)) return;
+    clientEpisodesInFlight.add(animeId);
+
     let cancelled = false;
 
     fetchAnimeEpisodes({
@@ -868,6 +897,7 @@ function AnimePage() {
       },
     })
       .then((seasonsRes) => {
+        clientEpisodesInFlight.delete(animeId);
         if (cancelled || !seasonsRes?.[0]?.episodes?.length) return;
         const jikanEps = seasonsRes[0].episodes;
         const titleMap = new Map<number, { title: string; aired?: string }>();
@@ -895,11 +925,13 @@ function AnimePage() {
         });
       })
       .catch(() => {
+        clientEpisodesInFlight.delete(animeId);
         // Silencioso: mantém os episódios numerados já funcionais
       });
 
     return () => {
       cancelled = true;
+      clientEpisodesInFlight.delete(animeId);
     };
   }, [animeId, animeMalId, anime, currentEpisodes]);
 

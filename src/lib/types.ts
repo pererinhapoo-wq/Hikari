@@ -186,27 +186,22 @@ export function displayTitle(
     | null,
 ): string {
   if (!a) return "Sem título";
+  const obj = a as Record<string, any>;
 
   const english =
-    a.titles?.english?.trim() ||
-    ("titleEnglish" in a && typeof a.titleEnglish === "string"
-      ? a.titleEnglish.trim()
-      : undefined);
+    obj.titles?.english?.trim() ||
+    (typeof obj.titleEnglish === "string" ? obj.titleEnglish.trim() : undefined);
 
   const romaji =
-    a.titles?.romaji?.trim() ||
-    ("titleRomaji" in a && typeof a.titleRomaji === "string"
-      ? a.titleRomaji.trim()
-      : undefined);
+    obj.titles?.romaji?.trim() ||
+    (typeof obj.titleRomaji === "string" ? obj.titleRomaji.trim() : undefined);
 
   const rawTitle =
-    "title" in a && typeof a.title === "string" ? a.title.trim() : undefined;
+    typeof obj.title === "string" ? obj.title.trim() : undefined;
 
   const native =
-    a.titles?.native?.trim() ||
-    ("titleNative" in a && typeof a.titleNative === "string"
-      ? a.titleNative.trim()
-      : undefined);
+    obj.titles?.native?.trim() ||
+    (typeof obj.titleNative === "string" ? obj.titleNative.trim() : undefined);
 
   return english || romaji || rawTitle || native || "Sem título";
 }
