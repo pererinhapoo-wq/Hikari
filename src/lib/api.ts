@@ -3779,22 +3779,9 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
       popular: {
         media: AniMedia[];
       };
-
-      top: {
-        media: AniMedia[];
-      };
-
-      season: {
-        media: AniMedia[];
-      };
-
-      genres: string[];
     }>(
       `
-      query Home(
-        $season: MediaSeason,
-        $year: Int
-      ) {
+      query HomePriority {
         trending: Page(
           page: 1,
           perPage: 18
@@ -3818,130 +3805,40 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
             ${CARD_FIELDS}
           }
         }
-
-        top: Page(
-          page: 1,
-          perPage: 18
-        ) {
-          media(
-            type: ANIME,
-            sort: SCORE_DESC
-          ) {
-            ${CARD_FIELDS}
-          }
-        }
-
-        season: Page(
-          page: 1,
-          perPage: 18
-        ) {
-          media(
-            type: ANIME,
-            season: $season,
-            seasonYear: $year,
-            sort: POPULARITY_DESC
-          ) {
-            ${CARD_FIELDS}
-          }
-        }
-
-        genres: GenreCollection
       }
       `,
-      {
-        season,
-        year,
-      },
     ),
     fetchTodayScheduleFromAni().catch(() => []),
   ]);
 
-  const trending =
-    (
-      data.trending
-        .media ?? []
-    ).filter(
-      (anime) =>
-        !isAdultAnime(
-          anime,
-        ),
-    );
+  const trending = (data.trending.media ?? []).filter(
+    (anime) => !isAdultAnime(anime),
+  );
 
-  const popular =
-    (
-      data.popular
-        .media ?? []
-    ).filter(
-      (anime) =>
-        !isAdultAnime(
-          anime,
-        ),
-    );
-
-  const top =
-    (
-      data.top.media ?? []
-    ).filter(
-      (anime) =>
-        !isAdultAnime(
-          anime,
-        ),
-    );
-
-  const seasonItems =
-    (
-      data.season
-        .media ?? []
-    ).filter(
-      (anime) =>
-        !isAdultAnime(
-          anime,
-        ),
-    );
+  const popular = (data.popular.media ?? []).filter(
+    (anime) => !isAdultAnime(anime),
+  );
 
   return {
     todaySchedule,
 
-    trending:
-      trending.map(
-        mapAniSlim,
-      ),
+    trending: trending.map(mapAniSlim),
 
-    popular:
-      popular.map(
-        mapAniSlim,
-      ),
+    popular: popular.map(mapAniSlim),
 
-    top:
-      top.map(
-        mapAniSlim,
-      ),
+    top: [],
 
-    season:
-      seasonItems.map(
-        mapAniSlim,
-      ),
+    season: [],
 
-    releases:
-      seasonItems.map(mapAniSlim).slice(0, 18),
+    releases: [],
 
-    seasonName:
-      seasonLabel(season),
+    seasonName: seasonLabel(season),
 
-    seasonYear:
-      year,
+    seasonYear: year,
 
     source: "anilist",
 
-    genres:
-      (
-        data.genres ?? []
-      ).filter(
-        (genre) =>
-          genre &&
-          genre !==
-            "Hentai",
-      ),
+    genres: [],
   };
 }
 
@@ -3957,88 +3854,40 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
 
   const [
     now,
-    top,
     popular,
   ] = await Promise.all([
     jikanFetch<List>(
       "/seasons/now?limit=18",
-    ),
+    ).catch(() => ({ data: [] })),
 
     jikanFetch<List>(
       "/top/anime?filter=bypopularity&limit=18",
-    ),
-
-    jikanFetch<List>(
-      "/top/anime?limit=18",
-    ),
+    ).catch(() => ({ data: [] })),
   ]);
 
-  const seasonItems =
-    (
-      now.data ?? []
-    ).map(
-      mapJikanSlim,
-    );
-
-  const popularItems =
-    (
-      top.data ?? []
-    ).map(
-      mapJikanSlim,
-    );
-
-  const topItems =
-    (
-      popular.data ?? []
-    ).map(
-      mapJikanSlim,
-    );
+  const seasonItems = (now.data ?? []).map(mapJikanSlim);
+  const popularItems = (popular.data ?? []).map(mapJikanSlim);
 
   return {
     todaySchedule: [],
 
-    trending:
-      seasonItems,
+    trending: seasonItems.length > 0 ? seasonItems : popularItems,
 
-    popular:
-      popularItems,
+    popular: popularItems,
 
-    top:
-      topItems,
+    top: [],
 
-    season:
-      seasonItems,
+    season: [],
 
-    releases:
-      seasonItems.slice(
-        0,
-        18,
-      ),
+    releases: [],
 
-    seasonName:
-      seasonLabel(season),
+    seasonName: seasonLabel(season),
 
-    seasonYear:
-      year,
+    seasonYear: year,
 
     source: "jikan",
 
-    genres: [
-      "Action",
-      "Adventure",
-      "Comedy",
-      "Drama",
-      "Fantasy",
-      "Horror",
-      "Mecha",
-      "Mystery",
-      "Romance",
-      "Sci-Fi",
-      "Slice of Life",
-      "Sports",
-      "Supernatural",
-      "Thriller",
-    ],
+    genres: [],
   };
 }
 
@@ -4169,52 +4018,29 @@ async function fetchHomeFromKitsu(): Promise<HomeCatalog> {
     data?: KitsuAnimeItem[];
   };
 
-  const [trending, popular, top, seasonData] = await Promise.all([
+  const [trending, popular] = await Promise.all([
     kitsuFetch<KitsuList>("/trending/anime?limit=18").catch(() => ({
       data: [],
     })),
     kitsuFetch<KitsuList>("/anime?sort=-userCount&page[limit]=18").catch(
       () => ({ data: [] }),
     ),
-    kitsuFetch<KitsuList>("/anime?sort=-averageRating&page[limit]=18").catch(
-      () => ({ data: [] }),
-    ),
-    kitsuFetch<KitsuList>(
-      `/anime?filter[season]=${season.toLowerCase()}&filter[seasonYear]=${year}&sort=-userCount&page[limit]=18`,
-    ).catch(() => ({ data: [] })),
   ]);
 
   const trendingItems = (trending.data ?? []).map(mapKitsuSlim);
   const popularItems = (popular.data ?? []).map(mapKitsuSlim);
-  const topItems = (top.data ?? []).map(mapKitsuSlim);
-  let seasonItems = (seasonData.data ?? []).map(mapKitsuSlim);
-
-  if (seasonItems.length === 0) {
-    seasonItems = trendingItems.length > 0 ? trendingItems : popularItems;
-  }
 
   const catalog: HomeCatalog = {
     todaySchedule: [],
     trending: trendingItems.length > 0 ? trendingItems : popularItems,
     popular: popularItems,
-    top: topItems,
-    season: seasonItems,
-    releases: seasonItems.slice(0, 18),
+    top: [],
+    season: [],
+    releases: [],
     seasonName: seasonLabel(season),
     seasonYear: year,
     source: "kitsu",
-    genres: [
-      "Ação",
-      "Aventura",
-      "Comédia",
-      "Drama",
-      "Fantasia",
-      "Ficção Científica",
-      "Mistério",
-      "Romance",
-      "Sobrenatural",
-      "Suspense",
-    ],
+    genres: [],
   };
 
   if (catalog.trending.length === 0 && catalog.popular.length === 0) {
@@ -4223,6 +4049,83 @@ async function fetchHomeFromKitsu(): Promise<HomeCatalog> {
 
   return catalog;
 }
+
+export const fetchSeasonSection = createServerFn({
+  method: "GET",
+}).handler(async (): Promise<SlimAnime[]> => {
+  const { season, year } = currentAnimeSeason();
+  const cacheKey = `home:season:${year}:${season}`;
+
+  return withCache<SlimAnime[]>(
+    cacheKey,
+    async () => {
+      // 1. Tenta AniList
+      try {
+        const data = await anilistGraphQL<{
+          season: {
+            media: AniMedia[];
+          };
+        }>(
+          `
+          query Season($season: MediaSeason, $year: Int) {
+            season: Page(page: 1, perPage: 18) {
+              media(type: ANIME, season: $season, seasonYear: $year, sort: POPULARITY_DESC) {
+                ${CARD_FIELDS}
+              }
+            }
+          }
+          `,
+          { season, year },
+        );
+
+        const items = (data.season?.media ?? [])
+          .filter((anime) => !isAdultAnime(anime))
+          .map(mapAniSlim);
+
+        if (items.length > 0) {
+          return items;
+        }
+      } catch (err) {
+        console.warn("[Hikari] Falha ao carregar animes da temporada de AniList:", err);
+      }
+
+      // 2. Tenta Jikan
+      try {
+        const jikanRes = await jikanFetch<{ data?: JikanAnime[] }>(
+          "/seasons/now?limit=18",
+        );
+        const jikanItems = (jikanRes.data ?? []).map(mapJikanSlim);
+        if (jikanItems.length > 0) {
+          return jikanItems;
+        }
+      } catch (err) {
+        console.warn("[Hikari] Falha ao carregar animes da temporada de Jikan:", err);
+      }
+
+      // 3. Tenta Kitsu
+      try {
+        const kitsuRes = await kitsuFetch<{ data?: KitsuAnimeItem[] }>(
+          `/anime?filter[season]=${season.toLowerCase()}&filter[seasonYear]=${year}&sort=-userCount&page[limit]=18`,
+        );
+        const kitsuItems = (kitsuRes.data ?? []).map(mapKitsuSlim);
+        if (kitsuItems.length > 0) {
+          return kitsuItems;
+        }
+      } catch (err) {
+        console.warn("[Hikari] Falha ao carregar animes da temporada de Kitsu:", err);
+      }
+
+      return FALLBACK_ANIMES.slice(2, 18);
+    },
+    {
+      shouldCache: (items) => Array.isArray(items) && items.length > 0,
+      fallback: () => FALLBACK_ANIMES.slice(2, 18),
+      cacheFallback: true,
+      freshTtl: 15 * 60 * 1000,
+      swrWindow: 60 * 60 * 1000,
+    },
+  );
+});
 
 async function fetchBrowseFromKitsu(
   section: "popular" | "season" | "top" | "trending",

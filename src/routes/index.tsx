@@ -1,19 +1,20 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createFileRoute,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 
-import { fetchHomeCatalog } from "@/lib/api";
+import { fetchHomeCatalog, fetchSeasonSection } from "@/lib/api";
 import { useHikariStore } from "@/lib/store";
 import { overlayList } from "@/lib/overlay";
-import { localToAnime } from "@/lib/types";
+import { localToAnime, type SlimAnime } from "@/lib/types";
 
 import { getAnimeLogo } from "@/lib/anime-logos";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
 import { RecentEpisodesSection } from "@/components/recent-episodes-section";
+import { getRecentEpisodesSection } from "@/lib/published-episodes";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { HomeFooter } from "@/components/home-footer";
 import { SectionReveal } from "@/components/section-reveal";
@@ -167,10 +168,6 @@ function Home() {
     () => overlayList(data.popular, locals),
     [data.popular, locals],
   );
-  const season = useMemo(
-    () => overlayList(data.season, locals),
-    [data.season, locals],
-  );
   const emAltaItems = trending.length > 0 ? trending : popular;
 
   // Animes Recém-Adicionados: animes incluídos no catálogo próprio do Hikari com data real (createdAt),
@@ -211,6 +208,11 @@ function Home() {
     [trending, popular],
   );
 
+  // Novos Episódios: apenas monta o container de carregamento progressivo se houver episódios cadastrados
+  const hasRecentEpisodes = useMemo(() => {
+    return getRecentEpisodesSection(locals).length > 0;
+  }, [locals]);
+
   return (
     <div className="space-y-8 pb-12 sm:space-y-11 md:space-y-14">
       {featured ? (
@@ -222,15 +224,17 @@ function Home() {
         <HomePending />
       )}
 
-      {/* 1. Episódios de Hoje */}
+      {/* 1. Episódios de Hoje (prioritário na primeira visualização) */}
       <TodayEpisodesSection initialItems={data.todaySchedule ?? []} />
 
-      {/* 2. Novos Episódios (publicados pelo administrador) */}
-      <SectionReveal minHeight="380px" rootMargin="300px 0px">
-        <RecentEpisodesSection />
-      </SectionReveal>
+      {/* 2. Novos Episódios (publicados pelo administrador - carregamento progressivo adiado) */}
+      {hasRecentEpisodes && (
+        <SectionReveal minHeight="380px" rootMargin="300px 0px">
+          <RecentEpisodesSection />
+        </SectionReveal>
+      )}
 
-      {/* 3. Em Alta */}
+      {/* 3. Em Alta (carregamento progressivo adiado) */}
       <SectionReveal minHeight="260px" rootMargin="300px 0px">
         <AnimeRow
           title="Em Alta"
@@ -259,15 +263,12 @@ function Home() {
         />
       </SectionReveal>
 
-      {/* 5. Animes da Temporada */}
+      {/* 5. Animes da Temporada (carregamento sob demanda e progressivo) */}
       <SectionReveal minHeight="260px" rootMargin="300px 0px">
-        <AnimeRow
-          title="Animes da Temporada"
-          tag={`${data.seasonName} ${data.seasonYear}`}
-          href="/browse/season"
-          items={season}
-          showBookmark={false}
-          showRank={false}
+        <SeasonAnimeRow
+          seasonName={data.seasonName}
+          seasonYear={data.seasonYear}
+          initialItems={data.season && data.season.length > 0 ? data.season : []}
         />
       </SectionReveal>
 
@@ -276,5 +277,56 @@ function Home() {
         <HomeFooter />
       </SectionReveal>
     </div>
+  );
+}
+
+function SeasonAnimeRow({
+  seasonName,
+  seasonYear,
+  initialItems = [],
+}: {
+  seasonName: string;
+  seasonYear: number;
+  initialItems?: SlimAnime[];
+}) {
+  const locals = useHikariStore((s) => s.animes);
+  const [seasonItems, setSeasonItems] = useState<SlimAnime[]>(initialItems);
+  const [loading, setLoading] = useState(initialItems.length === 0);
+
+  useEffect(() => {
+    if (seasonItems.length > 0) return;
+    let active = true;
+    fetchSeasonSection()
+      .then((items) => {
+        if (active && Array.isArray(items) && items.length > 0) {
+          setSeasonItems(items);
+        }
+      })
+      .catch((err) => {
+        console.warn("[Hikari] Falha ao carregar temporada sob demanda:", err);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [seasonItems.length]);
+
+  const season = useMemo(
+    () => overlayList(seasonItems, locals),
+    [seasonItems, locals],
+  );
+
+  return (
+    <AnimeRow
+      title="Animes da Temporada"
+      tag={`${seasonName} ${seasonYear}`}
+      href="/browse/season"
+      items={season}
+      loading={loading}
+      showBookmark={false}
+      showRank={false}
+    />
   );
 }
