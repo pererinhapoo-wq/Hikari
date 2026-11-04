@@ -25,6 +25,7 @@ import {
 
 import { AnimeCard } from "@/components/anime-card";
 import { CommentsSection } from "@/components/comments/CommentsSection";
+import { SectionReveal } from "@/components/section-reveal";
 import { warmBannerImage } from "@/lib/anime-banner-warmup";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import {
@@ -86,6 +87,7 @@ const clientCreditsCache = new Map<
 const clientCreditsInFlight = new Set<string>();
 const clientEpisodesInFlight = new Set<string>();
 const clientPicturesCache = new Map<number, string[]>();
+const clientPicturesInFlight = new Set<number>();
 
 function buildSeasonBannerInputFromAnime(
   animeId: string,
@@ -1470,51 +1472,63 @@ function AnimePage() {
         </section>
       )}
 
-      {/* ELENCO */}
-      <ElencoSection
-        key={`elenco-${anime.id}`}
-        animeId={anime.id}
-        characters={effectiveCharacters}
-      />
-
-      {/* DIREÇÃO E EQUIPE TÉCNICA */}
-      <DirecaoEquipeSection
-        key={`staff-${anime.id}`}
-        animeId={anime.id}
-        studios={effectiveStudios}
-        staff={effectiveStaff}
-      />
-
-      {/* INFORMAÇÕES ADICIONAIS */}
-      <InformacoesAdicionaisSection anime={anime} />
-
-      {/* IMAGENS */}
-      <ImagensSection
-        key={`imagens-${anime.id}`}
-        animeId={anime.id}
-        images={anime.images}
-        title={title}
-        bannerUrl={anime.banner}
-        coverUrl={anime.cover}
-        malId={anime.malId}
-      />
-
-      {/* RELACIONADOS (SEM BOTÃO DE SALVAR) */}
-      {anime.recommendations.length > 0 && (
-        <RelatedSection
-          key={`related-${anime.id}`}
+      {/* 1. ELENCO */}
+      <SectionReveal minHeight="260px" rootMargin="300px 0px">
+        <ElencoSection
+          key={`elenco-${anime.id}`}
           animeId={anime.id}
-          recommendations={anime.recommendations}
+          characters={effectiveCharacters}
         />
+      </SectionReveal>
+
+      {/* 2. DIREÇÃO E EQUIPE TÉCNICA */}
+      <SectionReveal minHeight="200px" rootMargin="300px 0px">
+        <DirecaoEquipeSection
+          key={`staff-${anime.id}`}
+          animeId={anime.id}
+          studios={effectiveStudios}
+          staff={effectiveStaff}
+        />
+      </SectionReveal>
+
+      {/* 3. INFORMAÇÕES ADICIONAIS */}
+      <SectionReveal minHeight="180px" rootMargin="300px 0px">
+        <InformacoesAdicionaisSection anime={anime} />
+      </SectionReveal>
+
+      {/* 4. IMAGENS (GALERIA) */}
+      <SectionReveal minHeight="220px" rootMargin="300px 0px">
+        <ImagensSection
+          key={`imagens-${anime.id}`}
+          animeId={anime.id}
+          images={anime.images}
+          title={title}
+          bannerUrl={anime.banner}
+          coverUrl={anime.cover}
+          malId={anime.malId}
+        />
+      </SectionReveal>
+
+      {/* 5. RELACIONADOS (SEM BOTÃO DE SALVAR) */}
+      {anime.recommendations.length > 0 && (
+        <SectionReveal minHeight="260px" rootMargin="300px 0px">
+          <RelatedSection
+            key={`related-${anime.id}`}
+            animeId={anime.id}
+            recommendations={anime.recommendations}
+          />
+        </SectionReveal>
       )}
 
-      {/* COMENTÁRIOS DO ANIME */}
-      <CommentsSection
-        animeId={anime.id}
-        animeTitle={title}
-        targetCommentId={targetCommentId}
-        isAnimeGeneral
-      />
+      {/* 6. COMENTÁRIOS DO ANIME */}
+      <SectionReveal minHeight="300px" rootMargin="300px 0px" lazy={!targetCommentId}>
+        <CommentsSection
+          animeId={anime.id}
+          animeTitle={title}
+          targetCommentId={targetCommentId}
+          isAnimeGeneral
+        />
+      </SectionReveal>
     </article>
   );
 }
@@ -2459,6 +2473,9 @@ const ImagensSection = memo(function ImagensSection({
       return;
     }
 
+    if (clientPicturesInFlight.has(malId)) return;
+    clientPicturesInFlight.add(malId);
+
     let isMounted = true;
 
     fetchAnimePictures({ data: { malId } })
@@ -2472,10 +2489,14 @@ const ImagensSection = memo(function ImagensSection({
       })
       .catch(() => {
         // Silencioso: não impacta a experiência visual do usuário
+      })
+      .finally(() => {
+        clientPicturesInFlight.delete(malId);
       });
 
     return () => {
       isMounted = false;
+      clientPicturesInFlight.delete(malId);
     };
   }, [malId, images]);
 

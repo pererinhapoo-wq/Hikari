@@ -66,18 +66,35 @@ export function SectionReveal({
     } else {
       // No topo exato da página (scrollY === 0), prioriza somente Banner e Episódios de Hoje na abertura.
       // Observa assim que o usuário iniciar rolagem/interação ou em momento ocioso do navegador.
+      let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      let idleCallbackId: number | null = null;
+
       const triggerObserve = () => {
         cleanup();
         checkOrObserve();
       };
 
       const cleanup = () => {
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+        if (idleCallbackId !== null && typeof cancelIdleCallback === "function") {
+          cancelIdleCallback(idleCallbackId);
+          idleCallbackId = null;
+        }
         window.removeEventListener("scroll", triggerObserve);
         window.removeEventListener("wheel", triggerObserve);
         window.removeEventListener("touchmove", triggerObserve);
         window.removeEventListener("keydown", triggerObserve);
         window.removeEventListener("pointerdown", triggerObserve);
       };
+
+      if (typeof requestIdleCallback === "function") {
+        idleCallbackId = requestIdleCallback(triggerObserve, { timeout: 2500 });
+      } else {
+        idleTimer = setTimeout(triggerObserve, 2500);
+      }
 
       window.addEventListener("scroll", triggerObserve, { passive: true });
       window.addEventListener("wheel", triggerObserve, { passive: true });
