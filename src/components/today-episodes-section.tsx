@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
+import { useHorizontalRailImageLimit } from "@/components/anime-row";
 import { fetchTodaySchedule } from "@/lib/api";
 import { useHikariStore } from "@/lib/store";
 import { localToAnime, type SlimAnime } from "@/lib/types";
@@ -263,6 +264,14 @@ export function TodayEpisodesSection({
     return unsubscribe;
   }, [router]);
 
+  const { limit: visibleImgLimit } = useHorizontalRailImageLimit(
+    railRef,
+    activeItems.length,
+    undefined,
+    undefined,
+    loadedDayKeyRef.current,
+  );
+
   return (
     <section className="space-y-3.5 sm:space-y-4">
       {/* Cabeçalho da Seção seguindo o padrão visual do Hikari */}
@@ -327,9 +336,13 @@ export function TodayEpisodesSection({
             <AnimeCard
               key={anime.id}
               anime={anime}
-              priority={index < 4}
+              priority={
+                index < (visibleImgLimit >= 4 ? 4 : 3) &&
+                index < visibleImgLimit
+              }
               showBookmark={false}
               showGenre={false}
+              loadImage={index < visibleImgLimit}
             />
           ))}
           <div

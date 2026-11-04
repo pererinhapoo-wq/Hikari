@@ -16,6 +16,7 @@ import { TodayEpisodesSection } from "@/components/today-episodes-section";
 import { RecentEpisodesSection } from "@/components/recent-episodes-section";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { HomeFooter } from "@/components/home-footer";
+import { SectionReveal } from "@/components/section-reveal";
 
 export const Route = createFileRoute("/")({
   staleTime: 1000 * 60 * 10,
@@ -225,45 +226,55 @@ function Home() {
       <TodayEpisodesSection initialItems={data.todaySchedule ?? []} />
 
       {/* 2. Novos Episódios (publicados pelo administrador) */}
-      <RecentEpisodesSection />
+      <SectionReveal minHeight="380px" rootMargin="300px 0px">
+        <RecentEpisodesSection />
+      </SectionReveal>
 
       {/* 3. Em Alta */}
-      <AnimeRow
-        title="Em Alta"
-        href="/browse/trending"
-        items={emAltaItems}
-        showBookmark={false}
-        showRank={false}
-        priorityCount={(data.todaySchedule?.length ?? 0) === 0 ? 3 : 0}
-      />
+      <SectionReveal minHeight="260px" rootMargin="300px 0px">
+        <AnimeRow
+          title="Em Alta"
+          href="/browse/trending"
+          items={emAltaItems}
+          showBookmark={false}
+          showRank={false}
+          priorityCount={(data.todaySchedule?.length ?? 0) === 0 ? 3 : 0}
+        />
+      </SectionReveal>
 
       {/* 4. Animes Recém-Adicionados */}
-      <AnimeRow
-        title="Animes Recém-Adicionados"
-        items={recentlyAddedAnimes}
-        loading={!hydrated}
-        showBookmark={false}
-        showRank={false}
-        emptyTitle="Não há dados suficientes de animes recém-adicionados"
-        emptyDescription={
-          hasLocalWithoutCreationDate
-            ? "Os registros encontrados no catálogo local não possuem data de criação ou inclusão válida para ordenação."
-            : "Ainda não há animes cadastrados no catálogo próprio do Hikari com data de inclusão registrada, e a fonte externa de catálogo não informa a data de adição à plataforma."
-        }
-      />
+      <SectionReveal minHeight="260px" rootMargin="300px 0px">
+        <AnimeRow
+          title="Animes Recém-Adicionados"
+          items={recentlyAddedAnimes}
+          loading={!hydrated}
+          showBookmark={false}
+          showRank={false}
+          emptyTitle="Não há dados suficientes de animes recém-adicionados"
+          emptyDescription={
+            hasLocalWithoutCreationDate
+              ? "Os registros encontrados no catálogo local não possuem data de criação ou inclusão válida para ordenação."
+              : "Ainda não há animes cadastrados no catálogo próprio do Hikari com data de inclusão registrada, e a fonte externa de catálogo não informa a data de adição à plataforma."
+          }
+        />
+      </SectionReveal>
 
       {/* 5. Animes da Temporada */}
-      <AnimeRow
-        title="Animes da Temporada"
-        tag={`${data.seasonName} ${data.seasonYear}`}
-        href="/browse/season"
-        items={season}
-        showBookmark={false}
-        showRank={false}
-      />
+      <SectionReveal minHeight="260px" rootMargin="300px 0px">
+        <AnimeRow
+          title="Animes da Temporada"
+          tag={`${data.seasonName} ${data.seasonYear}`}
+          href="/browse/season"
+          items={season}
+          showBookmark={false}
+          showRank={false}
+        />
+      </SectionReveal>
 
       {/* Rodapé institucional */}
-      <HomeFooter />
+      <SectionReveal minHeight="80px" rootMargin="200px 0px">
+        <HomeFooter />
+      </SectionReveal>
     </div>
   );
 }

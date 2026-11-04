@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { withCache } from "@/lib/api";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 
 /* =========================================================
    CONFIGURAÇÃO DE FUSO HORÁRIO: AMÉRICA/RECIFE (UTC-3)
@@ -364,10 +365,11 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
     "Anime";
 
   const cover =
-    item.media.coverImage?.extraLarge ||
     item.media.coverImage?.large ||
     item.media.coverImage?.medium ||
+    item.media.coverImage?.extraLarge ||
     "";
+  const coverAttrs = getResponsiveCoverAttrs(cover, "card-sm");
 
   // Horário convertido para fuso America/Recife (UTC-3)
   const timeFormatted = formatTimeRecife(item.airingAt);
@@ -382,7 +384,9 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
       <div className="relative aspect-[2/3] w-full md:w-20 lg:w-24 shrink-0 overflow-hidden rounded-lg md:rounded-xl bg-[#0d0c16]">
         {cover ? (
           <img
-            src={cover}
+            src={coverAttrs.src}
+            srcSet={coverAttrs.srcSet}
+            sizes="(min-width: 1024px) 96px, (min-width: 768px) 80px, (min-width: 640px) 126px, 106px"
             alt={title}
             className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"

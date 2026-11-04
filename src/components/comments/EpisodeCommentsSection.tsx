@@ -393,14 +393,23 @@ export function ElizabethCommentsLoading() {
       <div className="relative z-10 flex flex-col items-center justify-center">
         {/* Elizabeth segurando a placa com balanço suave e inclinação sutil */}
         <div className="elizabeth-sway-anim inline-flex items-center justify-center select-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)]">
-          <img
-            src="/assets/hikari-elizabeth-character.png"
-            alt="Elizabeth"
-            className="w-44 sm:w-52 md:w-56 h-auto object-contain pointer-events-none"
-            loading="eager"
-            decoding="async"
-            draggable={false}
-          />
+          <picture className="contents">
+            <source
+              type="image/webp"
+              srcSet="/assets/hikari-elizabeth-character-sm.webp 186w, /assets/hikari-elizabeth-character.webp 290w"
+              sizes="(min-width: 768px) 224px, (min-width: 640px) 208px, 176px"
+            />
+            <img
+              src="/assets/hikari-elizabeth-character.webp"
+              alt="Elizabeth"
+              width={290}
+              height={140}
+              className="w-44 sm:w-52 md:w-56 h-auto object-contain pointer-events-none"
+              loading="eager"
+              decoding="async"
+              draggable={false}
+            />
+          </picture>
         </div>
 
         {/* Indicador circular roxo com animação suave e texto fixo */}

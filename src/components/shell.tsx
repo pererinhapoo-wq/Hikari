@@ -34,6 +34,7 @@ import {
   type SlimAnime,
 } from "@/lib/types";
 import { overlayList } from "@/lib/overlay";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import {
@@ -1213,15 +1214,25 @@ export function Shell() {
                             className="flex items-center gap-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-elevated"
                           >
 
-                            {anime.cover ? (
-                              <img
-                                src={
-                                  anime.cover
-                                }
-                                alt=""
-                                className="size-12 shrink-0 rounded-md object-cover"
-                              />
-                            ) : (
+                            {anime.cover ? (() => {
+                              const coverAttrs = getResponsiveCoverAttrs(
+                                anime.cover,
+                                "thumb",
+                              );
+                              return (
+                                <img
+                                  src={coverAttrs.src}
+                                  srcSet={coverAttrs.srcSet}
+                                  sizes="48px"
+                                  alt=""
+                                  width={48}
+                                  height={48}
+                                  loading="lazy"
+                                  decoding="async"
+                                  className="size-12 shrink-0 rounded-md object-cover"
+                                />
+                              );
+                            })() : (
                               <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-elevated text-muted">
                                 <Clapperboard className="size-5" />
                               </div>

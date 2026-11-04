@@ -33,6 +33,7 @@ const CustomVideoPlayer = lazy(() =>
   })),
 );
 import { fetchAnimeDetail } from "@/lib/api";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { mergeDetail } from "@/lib/overlay";
 import { useHikariStore } from "@/lib/store";
 import {
@@ -768,14 +769,25 @@ function parseDurationToSeconds(raw?: string | number | null): number {
             className="group relative block aspect-[2/3] w-14 sm:w-16 shrink-0 overflow-hidden rounded-xl bg-elevated ring-1 ring-white/15 transition-transform hover:scale-[1.02]"
             aria-label={title}
           >
-            {anime.cover ? (
-              <img
-                src={anime.cover}
-                alt={title}
-                className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
-                loading="lazy"
-              />
-            ) : (
+            {anime.cover ? (() => {
+              const infoCoverAttrs = getResponsiveCoverAttrs(
+                anime.cover,
+                "thumb",
+              );
+              return (
+                <img
+                  src={infoCoverAttrs.src}
+                  srcSet={infoCoverAttrs.srcSet}
+                  sizes="(min-width: 640px) 64px, 56px"
+                  alt={title}
+                  width={64}
+                  height={96}
+                  className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
+                  loading="lazy"
+                  decoding="async"
+                />
+              );
+            })() : (
               <div className="size-full bg-elevated flex items-center justify-center text-white/30 text-[10px]">
                 Sem Capa
               </div>
@@ -1016,14 +1028,23 @@ function CommentsLoadingFallback() {
 
         <div className="relative z-10 flex flex-col items-center justify-center">
           <div className="elizabeth-sway-anim inline-flex items-center justify-center select-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)]">
-            <img
-              src="/assets/hikari-elizabeth-character.png"
-              alt="Elizabeth"
-              className="w-44 sm:w-52 md:w-56 h-auto object-contain pointer-events-none"
-              loading="eager"
-              decoding="async"
-              draggable={false}
-            />
+            <picture className="contents">
+              <source
+                type="image/webp"
+                srcSet="/assets/hikari-elizabeth-character-sm.webp 186w, /assets/hikari-elizabeth-character.webp 290w"
+                sizes="(min-width: 768px) 224px, (min-width: 640px) 208px, 176px"
+              />
+              <img
+                src="/assets/hikari-elizabeth-character.webp"
+                alt="Elizabeth"
+                width={290}
+                height={140}
+                className="w-44 sm:w-52 md:w-56 h-auto object-contain pointer-events-none"
+                loading="eager"
+                decoding="async"
+                draggable={false}
+              />
+            </picture>
           </div>
 
           <div className="mt-5 flex items-center justify-center gap-2.5">

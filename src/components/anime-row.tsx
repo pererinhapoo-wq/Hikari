@@ -8,13 +8,146 @@ import {
   Trophy,
   Calendar,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  startTransition,
+  type RefObject,
+} from "react";
 
 import {
   AnimeCard,
   AnimeCardSkeleton,
 } from "@/components/anime-card";
 import type { SlimAnime } from "@/lib/types";
+
+function getInitialRailLimit(): number {
+  if (typeof window === "undefined") return 3;
+  if (typeof window.matchMedia === "function") {
+    return window.matchMedia("(min-width: 768px)").matches ? 4 : 3;
+  }
+  return window.innerWidth >= 768 ? 4 : 3;
+}
+
+export function useHorizontalRailImageLimit(
+  railRef: RefObject<HTMLDivElement | null>,
+  totalCount: number,
+  itemStridePx?: number,
+  initialCount?: number,
+  resetKey?: string,
+) {
+  const [limit, setLimit] = useState(() =>
+    Math.min(totalCount, initialCount ?? getInitialRailLimit()),
+  );
+  const prevResetKeyRef = useRef(resetKey);
+
+  if (prevResetKeyRef.current !== resetKey) {
+    prevResetKeyRef.current = resetKey;
+    setLimit(Math.min(totalCount, initialCount ?? getInitialRailLimit()));
+  }
+
+  // Ajusta responsivamente se montado no cliente em desktop
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isDesktop = window.matchMedia
+      ? window.matchMedia("(min-width: 768px)").matches
+      : window.innerWidth >= 768;
+    const target = initialCount ?? (isDesktop ? 4 : 3);
+    setLimit((prev) => Math.max(prev, Math.min(totalCount, target)));
+
+    const mql = window.matchMedia ? window.matchMedia("(min-width: 768px)") : null;
+    const handleMediaChange = (e: MediaQueryListEvent) => {
+      const newTarget = initialCount ?? (e.matches ? 4 : 3);
+      setLimit((prev) => Math.max(prev, Math.min(totalCount, newTarget)));
+    };
+    mql?.addEventListener?.("change", handleMediaChange);
+    return () => mql?.removeEventListener?.("change", handleMediaChange);
+  }, [totalCount, initialCount]);
+
+  const advance = useCallback(
+    (extraPx = 0) => {
+      const el = railRef.current;
+      const isDesktop =
+        typeof window !== "undefined" &&
+        (window.matchMedia
+          ? window.matchMedia("(min-width: 768px)").matches
+          : window.innerWidth >= 768);
+      const groupSize = isDesktop ? 4 : 3;
+      const defaultInitial = isDesktop ? 4 : 3;
+      const baseInitial = initialCount ?? defaultInitial;
+
+      if (!el) {
+        startTransition(() => {
+          setLimit((prev) => Math.min(totalCount, prev + groupSize));
+        });
+        return;
+      }
+
+      // Se não houve deslocamento e não foi solicitado avanço extra, mantém o limite inicial
+      if (el.scrollLeft <= 0 && extraPx <= 0) {
+        startTransition(() => {
+          setLimit((prev) => Math.max(prev, Math.min(totalCount, baseInitial)));
+        });
+        return;
+      }
+
+      // Calcula o passo real do card a partir do DOM ou usa valor padrão seguro
+      const firstCard = el.querySelector("article");
+      const cardWidth =
+        firstCard && firstCard.offsetWidth > 0
+          ? firstCard.offsetWidth
+          : isDesktop
+            ? 142
+            : 106;
+      const computedGap =
+        typeof window !== "undefined"
+          ? parseFloat(window.getComputedStyle(el).gap) || (isDesktop ? 16 : 10)
+          : 12;
+      const stride =
+        itemStridePx && itemStridePx > 0 ? itemStridePx : cardWidth + computedGap;
+
+      // Posição visível à direita considerando a rolagem atual e avanço pretendido
+      const effectiveScroll = Math.max(0, el.scrollLeft + extraPx);
+      const visibleEnd = effectiveScroll + el.clientWidth;
+      const visibleCount = Math.ceil(visibleEnd / stride);
+
+      // Garante os cards da área visível mais o próximo grupo de imagens
+      const needed = Math.min(totalCount, visibleCount + (groupSize - 1));
+
+      startTransition(() => {
+        setLimit((prev) => (needed > prev ? needed : prev));
+      });
+    },
+    [railRef, totalCount, itemStridePx, initialCount],
+  );
+
+  useEffect(() => {
+    if (limit >= totalCount) return;
+    const el = railRef.current;
+    if (!el) return;
+
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        advance(0);
+      });
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [railRef, limit, totalCount, advance]);
+
+  return { limit, advance };
+}
 
 export function AnimeRow({
   title,
@@ -50,6 +183,15 @@ export function AnimeRow({
   const railRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
+  const { limit: visibleImgLimit, advance: advanceImgLimit } =
+    useHorizontalRailImageLimit(
+      railRef,
+      items.length,
+      undefined,
+      undefined,
+      title,
+    );
+
   useEffect(() => {
     if (!resetScrollOnReturn) return;
 
@@ -75,6 +217,9 @@ export function AnimeRow({
   const scroll = (direction: "left" | "right") => {
     if (!railRef.current) return;
     const distance = railRef.current.clientWidth * 0.75;
+    if (direction === "right") {
+      advanceImgLimit(distance);
+    }
     railRef.current.scrollBy({
       left: direction === "left" ? -distance : distance,
       behavior: "smooth",
@@ -249,7 +394,12 @@ export function AnimeRow({
                   anime={anime}
                   rank={showRank ? index + 1 : undefined}
                   showBookmark={showBookmark}
-                  priority={priorityCount > 0 && index < priorityCount}
+                  priority={
+                    priorityCount > 0 &&
+                    index < priorityCount &&
+                    index < visibleImgLimit
+                  }
+                  loadImage={index < visibleImgLimit}
                 />
               ))}
           {/* Espaçador invisível para limites suaves no fim da rolagem */}

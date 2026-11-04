@@ -26,6 +26,7 @@ import {
 import { AnimeCard } from "@/components/anime-card";
 import { CommentsSection } from "@/components/comments/CommentsSection";
 import { warmBannerImage } from "@/lib/anime-banner-warmup";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import {
   fetchAnimeCredits,
   fetchAnimeDetail,
@@ -1011,16 +1012,24 @@ function AnimePage() {
             {/* CAPA VERTICAL SOBREPOSTA À ESQUERDA */}
             <div className="block">
               <div className="w-28 max-sm:min-[380px]:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 sm:translate-y-8.5">
-                {anime.cover ? (
-                  <img
-                    src={anime.cover}
-                    alt={title}
-                    loading="eager"
-                    decoding="async"
-                    fetchPriority={shouldRenderPicture ? "auto" : "high"}
-                    className="aspect-2/3 w-full object-cover"
-                  />
-                ) : (
+                {anime.cover ? (() => {
+                  const coverAttrs = getResponsiveCoverAttrs(
+                    anime.cover,
+                    "card-lg",
+                  );
+                  return (
+                    <img
+                      src={coverAttrs.src}
+                      srcSet={coverAttrs.srcSet}
+                      sizes="(min-width: 640px) 176px, (min-width: 380px) 128px, 112px"
+                      alt={title}
+                      loading="eager"
+                      decoding="async"
+                      fetchPriority={shouldRenderPicture ? "auto" : "high"}
+                      className="aspect-2/3 w-full object-cover"
+                    />
+                  );
+                })() : (
                   <div className="aspect-2/3 bg-elevated" />
                 )}
               </div>
@@ -1927,7 +1936,11 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
   loadImage: boolean;
   onSelect: (epId: string) => void;
 }) {
-  const imgSrc = ep.thumbnail || cover;
+  const isFallback = !ep.thumbnail && Boolean(cover);
+  const fallbackCoverAttrs = isFallback
+    ? getResponsiveCoverAttrs(cover, "card-sm")
+    : null;
+  const imgSrc = ep.thumbnail || fallbackCoverAttrs?.src || cover;
 
   return (
     <li>
@@ -1968,6 +1981,12 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
           {imgSrc && loadImage ? (
             <img
               src={imgSrc}
+              srcSet={fallbackCoverAttrs?.srcSet}
+              sizes={
+                fallbackCoverAttrs
+                  ? "(min-width: 640px) 144px, 128px"
+                  : undefined
+              }
               alt=""
               loading="lazy"
               decoding="async"
