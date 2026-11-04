@@ -19,7 +19,7 @@ import {
 } from "react";
 
 import {
-  fetchHomeCatalog,
+  fetchGenres,
   searchCatalog,
 } from "@/lib/api";
 
@@ -126,7 +126,7 @@ export const Route =
     }) => {
       const [
         result,
-        home,
+        genres,
       ] = await Promise.all([
         searchCatalog({
           data: {
@@ -136,13 +136,12 @@ export const Route =
           },
         }),
 
-        fetchHomeCatalog(),
+        fetchGenres(),
       ]);
 
       return {
         result,
-        genres:
-          home.genres,
+        genres,
       };
     },
 

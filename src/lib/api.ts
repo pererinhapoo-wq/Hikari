@@ -4827,6 +4827,7 @@ async function searchRelaxed(
   params: SearchRequestParams,
 ): Promise<SlimAnime[]> {
   const original = params.q?.trim() ?? "";
+  const lowerOriginal = original.toLowerCase();
   const normalized = normalizeSearchText(original);
 
   if (normalized.length < 2) {
@@ -4834,98 +4835,81 @@ async function searchRelaxed(
   }
 
   const compact = normalized.replace(/\s/g, "");
-  const variants = new Set<string>();
+  const candidates: string[] = [];
 
-  variants.add(original);
-  variants.add(normalized);
-
-  if (compact && compact !== normalized) {
-    variants.add(compact);
+  // 1. Variante sem acentos/pontuação (quando difere do texto original)
+  if (
+    normalized.length >= 3 &&
+    normalized !== lowerOriginal
+  ) {
+    candidates.push(normalized);
   }
 
-  // Para pesquisas curtas, uma única redução já é suficiente.
-  // Evitamos várias consultas em cascata que deixavam a busca lenta.
-  if (compact.length >= 4) {
-    variants.add(compact.slice(0, -1));
-  }
-
-  if (compact.length >= 6) {
-    variants.add(compact.slice(0, -2));
-  }
-
-  const validVariants = [...variants].filter(
-    (value) => value.trim().length >= 3,
-  );
-
-  const attempts = validVariants.map(async (variant) => {
-    const searchParams: SearchRequestParams = {
-      ...params,
-      q: variant,
-      page: 1,
-    };
-
-    const results = await Promise.allSettled([
-      searchAni(searchParams),
-      searchJikan(searchParams),
-      searchKitsu(searchParams),
-    ]);
-
-    const ani =
-      results[0].status === "fulfilled"
-        ? results[0].value.items
-        : [];
-
-    const jikan =
-      results[1].status === "fulfilled"
-        ? results[1].value.items
-        : [];
-
-    const kitsu =
-      results[2].status === "fulfilled"
-        ? results[2].value.items
-        : [];
-
-    const items = rankSearchResults(
-      mergeSearchItems(mergeSearchItems(ani, jikan), kitsu),
-      original,
-    );
-
-    return items;
-  });
-
-  // Assim que uma variante produzir uma correspondência forte,
-  // podemos responder sem esperar as outras consultas.
-  const pending = new Set(attempts);
-
-  while (pending.size > 0) {
-    const settled = await Promise.race(
-      [...pending].map(async (promise) => ({
-        promise,
-        items: await promise,
-      })),
-    );
-
-    pending.delete(settled.promise);
-
+  // 2. Redução de 1 caractere final para recuperar erros de digitação
+  if (normalized.length >= 4) {
+    const trimmedOne = normalized
+      .slice(0, -1)
+      .trim();
     if (
-      settled.items.some(
-        (anime) =>
-          searchScore(anime, original) >= 1100,
-      )
+      trimmedOne.length >= 3 &&
+      trimmedOne !== lowerOriginal &&
+      !candidates.includes(trimmedOne)
     ) {
-      return settled.items;
+      candidates.push(trimmedOne);
     }
   }
 
-  // Se nenhuma variante encontrou correspondência forte,
-  // combina os resultados que já terminaram.
-  const completed = await Promise.all(attempts);
+  // 3. Variante compacta sem espaços (se ainda não houver candidata)
+  if (
+    compact.length >= 3 &&
+    compact !== lowerOriginal &&
+    !candidates.includes(compact)
+  ) {
+    candidates.push(compact);
+  }
+
+  // Limita estritamente a no máximo 1 variante adicional (nunca repete a busca original)
+  const additionalVariant = candidates[0];
+  if (!additionalVariant) {
+    return [];
+  }
+
+  const searchParams: SearchRequestParams = {
+    ...params,
+    q: additionalVariant,
+    page: 1,
+  };
+
+  let aniItems: SlimAnime[] = [];
+  try {
+    const aniRes = await searchAni(searchParams);
+    aniItems = aniRes.items;
+    if (aniItems.length >= 3) {
+      return rankSearchResults(aniItems, original);
+    }
+  } catch {
+    aniItems = [];
+  }
+
+  const fallbackResults = await Promise.allSettled([
+    searchJikan(searchParams),
+    searchKitsu(searchParams),
+  ]);
+
+  const jikanItems =
+    fallbackResults[0].status === "fulfilled"
+      ? fallbackResults[0].value.items
+      : [];
+
+  const kitsuItems =
+    fallbackResults[1].status === "fulfilled"
+      ? fallbackResults[1].value.items
+      : [];
 
   return rankSearchResults(
-    completed.reduce(
-      (accumulated, current) =>
-        mergeSearchItems(accumulated, current),
-      [] as SlimAnime[],
+    mergeSearchItems(
+      mergeSearchItems(aniItems, jikanItems),
+      kitsuItems,
     ),
     original,
   );
@@ -4947,50 +4931,48 @@ async function searchDirectFast(
   items: SlimAnime[];
   hasNext: boolean;
   source: "anilist" | "jikan" | "kitsu";
+  aniCount: number;
 }> {
-  const attempts = [
-    searchAni(params).catch(() => null),
-    searchJikan(params).catch(() => null),
-    searchKitsu(params).catch(() => null),
-  ];
+  // 1. Consulta prioritariamente o AniList
+  let aniResult: SearchResult | null = null;
+  try {
+    aniResult = await searchAni(params);
+  } catch {
+    aniResult = null;
+  }
 
-  const pending = new Set(attempts);
-  const results: SearchResult[] = [];
-
-  while (pending.size > 0) {
-    const settled = await Promise.race(
-      [...pending].map(async (promise) => ({
-        promise,
-        result: await promise,
-      })),
-    );
-
-    pending.delete(settled.promise);
-
-    if (!settled.result) {
-      continue;
-    }
-
-    results.push(settled.result);
-
-    // Se uma fonte já encontrou o título certo, não precisamos esperar
-    // uma segunda API mais lenta para mostrar o resultado ao usuário.
-    if (
-      params.q &&
-      isStrongSearchResult(
-        settled.result.items,
+  // Se o AniList retornar 3 ou mais resultados válidos, não consulta Jikan nem Kitsu
+  if (aniResult && aniResult.items.length >= 3) {
+    return {
+      items: rankSearchResults(
+        aniResult.items,
         params.q,
-      )
-    ) {
-      return {
-        items: rankSearchResults(
-          settled.result.items,
-          params.q,
-        ),
-        hasNext: settled.result.hasNext,
-        source: settled.result.source,
-      };
-    }
+      ),
+      hasNext: aniResult.hasNext,
+      source: "anilist",
+      aniCount: aniResult.items.length,
+    };
+  }
+
+  // 2. Se o AniList retornou menos de 3 resultados ou falhou, aciona fallbacks Jikan e Kitsu
+  const fallbackSettled = await Promise.allSettled([
+    searchJikan(params),
+    searchKitsu(params),
+  ]);
+
+  const results: SearchResult[] = [];
+  if (aniResult) {
+    results.push(aniResult);
+  }
+  if (fallbackSettled[0].status === "fulfilled") {
+    results.push(fallbackSettled[0].value);
+  }
+  if (fallbackSettled[1].status === "fulfilled") {
+    results.push(fallbackSettled[1].value);
+  }
+
+  if (results.length === 0) {
+    throw new Error("Todas as fontes de pesquisa falharam");
   }
 
   const merged = results.reduce(
@@ -5002,6 +4984,10 @@ async function searchDirectFast(
     [] as SlimAnime[],
   );
 
+  const primaryWithItems = results.find(
+    (r) => r.items.length > 0,
+  );
+
   return {
     items: rankSearchResults(
       merged,
@@ -5010,7 +4996,11 @@ async function searchDirectFast(
     hasNext: results.some(
       (result) => result.hasNext,
     ),
-    source: results[0]?.source ?? "anilist",
+    source:
+      primaryWithItems?.source ??
+      results[0]?.source ??
+      "anilist",
+    aniCount: aniResult?.items.length ?? 0,
   };
 }
 
@@ -5025,70 +5015,134 @@ export const searchCatalog =
       async ({
         data,
       }) => {
-        const key =
-          `search:v4:${JSON.stringify(data)}`;
+        const normalizedData: SearchRequestParams = {
+          q: data.q?.trim() || undefined,
+          genre: data.genre?.trim() || undefined,
+          year: data.year?.trim() || undefined,
+          format: data.format?.trim() || undefined,
+          status: data.status?.trim() || undefined,
+          sort: data.sort?.trim() || undefined,
+          page: data.page ?? 1,
+          adult: data.adult ? true : undefined,
+        };
+
+        const key = `search:v4:${JSON.stringify({
+          ...normalizedData,
+          q: normalizedData.q?.toLowerCase(),
+        })}`;
 
         return withCache<SearchResult>(
           key,
           async () => {
             const q =
-              data.q?.trim() ?? "";
+              normalizedData.q ?? "";
 
             if (q) {
-              /*
-               * Pesquisa direta nas fontes ao mesmo tempo.
-               * Se o AniList estiver fora do ar, Kitsu responde rapidamente.
-               */
-              const direct = await searchDirectFast(data);
+              const direct =
+                await searchDirectFast(
+                  normalizedData,
+                );
 
               let items = direct.items;
 
-              /*
-               * Se as fontes diretas não encontrarem uma correspondência forte e
-               * direta, fazemos a busca flexível para erros e abreviações.
-               */
-              const hasStrongMatch = items.some(
-                (anime) =>
-                  searchScore(anime, q) >= 1100,
-              );
-
-              if (!hasStrongMatch) {
-                try {
-                  const relaxed =
-                    await searchRelaxed(data);
-
-                  items = rankSearchResults(
-                    mergeSearchItems(
-                      items,
-                      relaxed,
-                    ),
+              // Se o AniList já retornou 3 ou mais resultados válidos,
+              // não executa busca alternativa (searchRelaxed).
+              if (direct.aniCount < 3) {
+                const hasStrongMatch =
+                  isStrongSearchResult(
+                    items,
                     q,
                   );
-                } catch {
-                  // Mantém os resultados diretos já encontrados.
+
+                if (!hasStrongMatch) {
+                  try {
+                    const relaxed =
+                      await searchRelaxed(
+                        normalizedData,
+                      );
+
+                    items =
+                      rankSearchResults(
+                        mergeSearchItems(
+                          items,
+                          relaxed,
+                        ),
+                        q,
+                      );
+                  } catch {
+                    // Mantém os resultados diretos já encontrados.
+                  }
                 }
               }
 
               return {
                 items: items.slice(0, 24),
-                page: data.page ?? 1,
+                page: normalizedData.page ?? 1,
                 hasNext: direct.hasNext,
                 source: direct.source,
               };
             }
 
             try {
-              return await searchAni(
-                data,
+              const aniResult =
+                await searchAni(
+                  normalizedData,
+                );
+
+              if (
+                aniResult.items.length >= 3 ||
+                normalizedData.adult
+              ) {
+                return aniResult;
+              }
+
+              const [jikanRes, kitsuRes] =
+                await Promise.allSettled([
+                  searchJikan(normalizedData),
+                  searchKitsu(normalizedData),
+                ]);
+
+              const jikanItems =
+                jikanRes.status === "fulfilled"
+                  ? jikanRes.value.items
+                  : [];
+              const kitsuItems =
+                kitsuRes.status === "fulfilled"
+                  ? kitsuRes.value.items
+                  : [];
+
+              const merged = mergeSearchItems(
+                mergeSearchItems(
+                  aniResult.items,
+                  jikanItems,
+                ),
+                kitsuItems,
               );
+
+              return {
+                items: merged.slice(0, 24),
+                page: normalizedData.page ?? 1,
+                hasNext:
+                  aniResult.hasNext ||
+                  (jikanRes.status === "fulfilled" &&
+                    jikanRes.value.hasNext) ||
+                  (kitsuRes.status === "fulfilled" &&
+                    kitsuRes.value.hasNext),
+                source:
+                  aniResult.items.length > 0
+                    ? "anilist"
+                    : jikanItems.length > 0
+                      ? "jikan"
+                      : "kitsu",
+              };
             } catch {
               try {
                 return await searchJikan(
-                  data,
+                  normalizedData,
                 );
               } catch {
                 return await searchKitsu(
-                  data,
+                  normalizedData,
                 );
               }
             }
@@ -5098,6 +5152,12 @@ export const searchCatalog =
               result.items.length > 0 ||
               !stale ||
               stale.items.length === 0,
+            fallback: () => ({
+              items: [],
+              page: normalizedData.page ?? 1,
+              hasNext: false,
+              source: "anilist" as const,
+            }),
           },
         );
       },
