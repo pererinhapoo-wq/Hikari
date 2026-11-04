@@ -1357,6 +1357,59 @@ async function jikanEpisodes(
   );
 }
 
+export const fetchAnimeEpisodes = createServerFn({
+  method: "GET",
+})
+  .validator(
+    z.object({
+      malId: z.number(),
+      animeId: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const { malId, animeId } = data;
+    if (!malId || !Number.isFinite(malId)) {
+      return [];
+    }
+
+    try {
+      const seasons = await jikanEpisodes(malId);
+      if (animeId && seasons.length > 0 && seasons[0]?.episodes?.length) {
+        const detailKey = `detail:v5:${animeId}`;
+        const cached = fromCache<Anime>(detailKey);
+        if (cached && (!cached.streamingEpisodes || cached.streamingEpisodes.length === 0)) {
+          const titleMap = new Map<number, { title: string; aired?: string }>();
+          for (const ep of seasons[0].episodes) {
+            if (ep.title && ep.title !== `Episódio ${ep.number}`) {
+              titleMap.set(ep.number, { title: ep.title, aired: ep.aired });
+            }
+          }
+          if (titleMap.size > 0 && cached.seasons?.[0]?.episodes) {
+            const updatedEpisodes = cached.seasons[0].episodes.map((ep) => {
+              const jikan = titleMap.get(ep.number);
+              return jikan
+                ? { ...ep, title: jikan.title, aired: jikan.aired ?? ep.aired }
+                : ep;
+            });
+            toCache(detailKey, {
+              ...cached,
+              seasons: [
+                {
+                  ...cached.seasons[0],
+                  episodes: updatedEpisodes,
+                },
+                ...cached.seasons.slice(1),
+              ],
+            });
+          }
+        }
+      }
+      return seasons;
+    } catch {
+      return [];
+    }
+  });
+
 type JikanPictureItem = {
   jpg?: {
     image_url?: string | null;
@@ -2483,10 +2536,41 @@ export const fetchAnimeCredits = createServerFn({
       titles: z.array(z.string()).optional(),
       year: z.number().nullable().optional(),
       format: z.string().nullable().optional(),
+      animeId: z.string().optional(),
     }),
   )
   .handler(async ({ data }) => {
-    return resolveAnimeCredits(data);
+    const credits = await resolveAnimeCredits(data);
+    if (data.animeId && credits) {
+      const detailKey = `detail:v5:${data.animeId}`;
+      const cached = fromCache<Anime>(detailKey);
+      if (cached) {
+        const hasChar = (cached.characters?.length ?? 0) > 0;
+        const hasStf = (cached.staff?.length ?? 0) > 0;
+        const hasStd = (cached.studios?.length ?? 0) > 0;
+        if (!hasChar || !hasStf || !hasStd) {
+          toCache(detailKey, {
+            ...cached,
+            characters: hasChar
+              ? cached.characters
+              : credits.characters.length > 0
+                ? credits.characters
+                : cached.characters,
+            staff: hasStf
+              ? cached.staff
+              : credits.staff.length > 0
+                ? credits.staff
+                : cached.staff,
+            studios: hasStd
+              ? cached.studios
+              : credits.studios.length > 0
+                ? credits.studios
+                : cached.studios,
+          });
+        }
+      }
+    }
+    return credits;
   });
 
 async function fetchAniMediaByMalId(
@@ -5767,6 +5851,19 @@ async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
   };
 }
 
+function isValidAnimeDetail(detail: Anime | null | undefined): detail is Anime {
+  if (!detail || typeof detail !== "object") return false;
+  if (!detail.id) return false;
+  const hasTitle = Boolean(
+    detail.titles?.romaji?.trim() ||
+    detail.titles?.english?.trim() ||
+    detail.titles?.native?.trim() ||
+    (typeof (detail as unknown as { title?: string }).title === "string" &&
+      (detail as unknown as { title?: string }).title?.trim()),
+  );
+  return hasTitle;
+}
+
 export const fetchAnimeDetail =
   createServerFn({
     method: "GET",
@@ -5790,23 +5887,12 @@ export const fetchAnimeDetail =
         const key =
           `detail:v5:${id}`;
 
-        let detailShouldCache = false;
-
         return withCache<Anime | null>(
           key,
           async () => {
-            detailShouldCache = false;
-
             if (id.startsWith("kitsu-")) {
               const kitsuId = Number(id.replace("kitsu-", ""));
-              const detail = await fetchKitsuDetail(kitsuId);
-              if (
-                (detail.characters?.length ?? 0) > 0 ||
-                (detail.staff?.length ?? 0) > 0
-              ) {
-                detailShouldCache = true;
-              }
-              return detail;
+              return await fetchKitsuDetail(kitsuId);
             }
 
         if (
@@ -5837,20 +5923,29 @@ export const fetchAnimeDetail =
           let seasons: Season[] = [];
           let jikanPictures: string[] = [];
 
-          try {
-            const [seasonsRes, picsRes] = await Promise.allSettled([
-              jikanEpisodes(malId),
-              fetchJikanPictures(malId),
-            ]);
-            if (seasonsRes.status === "fulfilled") {
-              seasons = seasonsRes.value;
-            }
-            if (picsRes.status === "fulfilled") {
-              jikanPictures = picsRes.value;
-            }
-          } catch {
-            seasons = [];
-            jikanPictures = [];
+          // Checa se episódios ou imagens do Jikan já estão em cache (0ms de espera)
+          const cachedMalSeasons = fromCache<Season[]>(`jikan-episodes:v2:${malId}`);
+          if (cachedMalSeasons && cachedMalSeasons.length > 0) {
+            seasons = cachedMalSeasons;
+          } else {
+            const count = json.data.episodes ?? 0;
+            seasons = [
+              {
+                id: `s1-${malId}`,
+                number: 1,
+                title: "Temporada 1",
+                episodes: Array.from({ length: count }, (_, index) => ({
+                  id: `mal-ep-${malId}-${index + 1}`,
+                  number: index + 1,
+                  title: `Episódio ${index + 1}`,
+                })),
+              },
+            ];
+          }
+
+          const cachedMalPics = fromCache<string[]>(`jikan-pictures:v1:${malId}`);
+          if (cachedMalPics && cachedMalPics.length > 0) {
+            jikanPictures = cachedMalPics;
           }
 
           let seasonNavigation:
@@ -5911,33 +6006,32 @@ export const fetchAnimeDetail =
               ? jikanStudios
               : (mappedAni?.studios ?? []);
 
+          // Se faltarem créditos, verifica se já estão no cache em memória (0ms).
+          // Não bloqueia o loader inicial com await resolveAnimeCredits se não estiver em cache.
           if (
             resolvedCharacters.length === 0 ||
             resolvedStaff.length === 0 ||
             resolvedStudios.length === 0
           ) {
-            const extraCredits = await resolveAnimeCredits({
-              anilistId: aniMedia?.id,
-              malId,
-              titles: [
-                slim.titles.romaji,
-                slim.titles.english,
-                slim.titles.native,
-              ],
-              year: slim.year,
-              format: slim.format,
-              skipAnilist: Boolean(aniMedia),
-            }).catch(() => null);
+            const cleanTitles = [
+              slim.titles.romaji,
+              slim.titles.english,
+              slim.titles.native,
+            ]
+              .map((t) => t?.trim())
+              .filter((t): t is string => Boolean(t && t.length >= 2));
+            const creditsCacheKey = `credits:v1:${aniMedia?.id ?? 0}:${malId}:0:${aniMedia ? 1 : 0}:${normalizeSearchText(cleanTitles[0] ?? "")}:${slim.year ?? 0}`;
+            const cachedCredits = fromCache<AnimeCreditsResult>(creditsCacheKey);
 
-            if (extraCredits) {
-              if (resolvedCharacters.length === 0 && extraCredits.characters.length > 0) {
-                resolvedCharacters = extraCredits.characters;
+            if (cachedCredits) {
+              if (resolvedCharacters.length === 0 && cachedCredits.characters.length > 0) {
+                resolvedCharacters = cachedCredits.characters;
               }
-              if (resolvedStaff.length === 0 && extraCredits.staff.length > 0) {
-                resolvedStaff = extraCredits.staff;
+              if (resolvedStaff.length === 0 && cachedCredits.staff.length > 0) {
+                resolvedStaff = cachedCredits.staff;
               }
-              if (resolvedStudios.length === 0 && extraCredits.studios.length > 0) {
-                resolvedStudios = extraCredits.studios;
+              if (resolvedStudios.length === 0 && cachedCredits.studios.length > 0) {
+                resolvedStudios = cachedCredits.studios;
               }
             }
           }
@@ -5961,10 +6055,6 @@ export const fetchAnimeDetail =
             rating: ((json.data as Record<string, unknown>)?.rating as string) ?? null,
             seasonNavigation,
           };
-
-          if (resolvedCharacters.length > 0 || resolvedStaff.length > 0) {
-            detailShouldCache = true;
-          }
 
           return anime;
         }
@@ -6155,135 +6245,47 @@ export const fetchAnimeDetail =
                 episodes,
               },
             ];
-          } else if (media.idMal) {
-            try {
-              const [seasonsRes, picsRes] = await Promise.allSettled([
-                Promise.race([
-                  jikanEpisodes(media.idMal),
-                  new Promise<Season[]>((_, reject) =>
-                    setTimeout(
-                      () =>
-                        reject(
-                          new Error(
-                            "Jikan timeout",
-                          ),
-                        ),
-                      2000,
-                    ),
-                  ),
-                ]),
-                Promise.race([
-                  fetchJikanPictures(media.idMal),
-                  new Promise<string[]>((_, reject) =>
-                    setTimeout(
-                      () =>
-                        reject(
-                          new Error(
-                            "Jikan pics timeout",
-                          ),
-                        ),
-                      2000,
-                    ),
-                  ),
-                ]),
-              ]);
-
-              if (seasonsRes.status === "fulfilled") {
-                seasons = seasonsRes.value;
+          } else {
+            // Quando a AniList não possui streamingEpisodes, verifica se o cache em memória já possui episódios enriquecidos do Jikan (0ms)
+            if (media.idMal) {
+              const cachedEpisodes = fromCache<Season[]>(`jikan-episodes:v2:${media.idMal}`);
+              if (cachedEpisodes && cachedEpisodes.length > 0) {
+                seasons = cachedEpisodes;
               }
-              if (picsRes.status === "fulfilled") {
-                jikanPictures = picsRes.value;
+              const cachedPics = fromCache<string[]>(`jikan-pictures:v1:${media.idMal}`);
+              if (cachedPics && cachedPics.length > 0) {
+                jikanPictures = cachedPics;
               }
-            } catch {
-              seasons = [];
             }
-          }
 
-          if (
-            !seasons.length &&
-            (
-              media
-                .streamingEpisodes
-                ?.length ||
-              media.episodes
-            )
-          ) {
-            const fromStream:
-              Episode[] =
-              (
-                media
-                  .streamingEpisodes ??
-                []
-              ).map(
-                (
-                  episode,
-                  index,
-                ) => ({
-                  id: `stream-${media.id}-${index}`,
+            // Se não estava em cache, gera imediatamente a estrutura canônica numerada sem esperar pelo Jikan (0ms de espera)
+            if (!seasons.length) {
+              const count =
+                media.episodes ??
+                (media.nextAiringEpisode?.episode
+                  ? Math.max(0, media.nextAiringEpisode.episode - 1)
+                  : media.format === "MOVIE"
+                    ? 1
+                    : 0);
 
-                  number:
-                    index + 1,
-
-                  title:
-                    episode.title ??
-                    `Episódio ${index + 1}`,
-
-                  thumbnail:
-                    episode.thumbnail,
-
-                  videoUrl:
-                    episode.url,
+              const episodes = Array.from(
+                { length: count },
+                (_, index) => ({
+                  id: `ep-${media.id}-${index + 1}`,
+                  number: index + 1,
+                  title: `Episódio ${index + 1}`,
                 }),
               );
 
-            const count =
-              media.episodes ??
-              fromStream.length;
-
-            const episodes =
-              fromStream.length >=
-              count
-                ? fromStream
-                : Array.from(
-                    {
-                      length:
-                        count,
-                    },
-                    (
-                      _,
-                      index,
-                    ) => {
-                      const found =
-                        fromStream[
-                          index
-                        ];
-
-                      return (
-                        found ?? {
-                          id: `ep-${media.id}-${index + 1}`,
-
-                          number:
-                            index + 1,
-
-                          title:
-                            `Episódio ${index + 1}`,
-                        }
-                      );
-                    },
-                  );
-
-            seasons = [
-              {
-                id: `s1-${media.id}`,
-
-                number: 1,
-
-                title:
-                  "Temporada 1",
-
-                episodes,
-              },
-            ];
+              seasons = [
+                {
+                  id: `s1-${media.id}`,
+                  number: 1,
+                  title: "Temporada 1",
+                  episodes,
+                },
+              ];
+            }
           }
 
           toCache(`media:raw:${media.id}`, media);
@@ -6300,43 +6302,41 @@ export const fetchAnimeDetail =
             jikanPictures,
           );
 
+          // Se faltarem créditos, verifica se já estão no cache em memória (0ms de espera).
+          // Se não estiverem em cache, não bloqueia o loader: o cliente buscará via fetchAnimeCredits em segundo plano.
           if (
             (mapped.characters?.length ?? 0) === 0 ||
             (mapped.staff?.length ?? 0) === 0 ||
             (mapped.studios?.length ?? 0) === 0
           ) {
-            const extraCredits = await resolveAnimeCredits({
-              anilistId,
-              malId: media.idMal ?? undefined,
-              titles: [
-                mapped.titles.romaji,
-                mapped.titles.english,
-                mapped.titles.native,
-              ],
-              year: mapped.year,
-              format: mapped.format,
-              skipAnilist: true,
-            }).catch(() => null);
+            const cleanTitles = [
+              mapped.titles.romaji,
+              mapped.titles.english,
+              mapped.titles.native,
+            ]
+              .map((t) => t?.trim())
+              .filter((t): t is string => Boolean(t && t.length >= 2));
+            const creditsCacheKey = `credits:v1:${anilistId}:${media.idMal ?? 0}:0:1:${normalizeSearchText(cleanTitles[0] ?? "")}:${mapped.year ?? 0}`;
+            const cachedCredits = fromCache<AnimeCreditsResult>(creditsCacheKey);
 
-            if (extraCredits) {
-              if ((mapped.characters?.length ?? 0) === 0 && extraCredits.characters.length > 0) {
-                mapped.characters = extraCredits.characters;
+            if (cachedCredits) {
+              if ((mapped.characters?.length ?? 0) === 0 && cachedCredits.characters.length > 0) {
+                mapped.characters = cachedCredits.characters;
               }
-              if ((mapped.staff?.length ?? 0) === 0 && extraCredits.staff.length > 0) {
-                mapped.staff = extraCredits.staff;
+              if ((mapped.staff?.length ?? 0) === 0 && cachedCredits.staff.length > 0) {
+                mapped.staff = cachedCredits.staff;
               }
-              if ((mapped.studios?.length ?? 0) === 0 && extraCredits.studios.length > 0) {
-                mapped.studios = extraCredits.studios;
+              if ((mapped.studios?.length ?? 0) === 0 && cachedCredits.studios.length > 0) {
+                mapped.studios = cachedCredits.studios;
               }
             }
           }
 
-          detailShouldCache = true;
           return mapped;
         },
         {
           shouldCache: (detail) =>
-            Boolean(detail && detailShouldCache),
+            isValidAnimeDetail(detail),
           fallback: async () => {
             if (id.startsWith("kitsu-")) {
               const kitsuId = Number(id.replace("kitsu-", ""));

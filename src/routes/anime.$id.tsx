@@ -30,6 +30,7 @@ import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import {
   fetchAnimeCredits,
   fetchAnimeDetail,
+  fetchAnimeEpisodes,
   fetchAnimePictures,
   fetchAnimeSeasonNavigation,
   fetchJikanPictures,
@@ -62,6 +63,7 @@ import {
   type Anime,
   type AnimeCharacter,
   type AnimeStaff,
+  type Episode,
   type SlimAnime,
 } from "@/lib/types";
 import { cn, youtubeIdFrom } from "@/lib/utils";
@@ -374,6 +376,7 @@ function AnimePage() {
         titles,
         year: animeYear,
         format: animeFormat,
+        animeId,
       },
     })
       .then((res) => {
@@ -819,13 +822,94 @@ function AnimePage() {
   const currentSeason = seasons[0] ?? null;
   const currentEpisodes = currentSeason?.episodes;
 
+  const [extraEpisodes, setExtraEpisodes] = useState<{
+    forId: string;
+    episodes: Episode[];
+  } | null>(null);
+
+  const effectiveEpisodes = useMemo(() => {
+    if (
+      extraEpisodes &&
+      extraEpisodes.forId === (anime?.id ?? id) &&
+      extraEpisodes.episodes.length > 0
+    ) {
+      return extraEpisodes.episodes;
+    }
+    return currentEpisodes;
+  }, [extraEpisodes, anime?.id, id, currentEpisodes]);
+
+  useEffect(() => {
+    if (!animeId) return;
+    const malIdToUse =
+      animeMalId ??
+      (animeId.startsWith("mal-")
+        ? Number(animeId.replace("mal-", ""))
+        : undefined);
+    if (!malIdToUse || !Number.isFinite(malIdToUse)) return;
+
+    // Se já possui episódios de streaming oficiais com thumbnail e link de vídeo, não precisa de fallback
+    if (anime?.streamingEpisodes && anime.streamingEpisodes.length > 0) return;
+
+    const baseEpisodes = currentEpisodes ?? [];
+    if (baseEpisodes.length === 0) return;
+
+    // Se os episódios já têm títulos próprios (diferentes de "Episódio X"), não precisa buscar
+    const hasGenericTitles = baseEpisodes.some(
+      (ep) => !ep.title || ep.title === `Episódio ${ep.number}`,
+    );
+    if (!hasGenericTitles) return;
+
+    let cancelled = false;
+
+    fetchAnimeEpisodes({
+      data: {
+        malId: malIdToUse,
+        animeId,
+      },
+    })
+      .then((seasonsRes) => {
+        if (cancelled || !seasonsRes?.[0]?.episodes?.length) return;
+        const jikanEps = seasonsRes[0].episodes;
+        const titleMap = new Map<number, { title: string; aired?: string }>();
+        for (const ep of jikanEps) {
+          if (ep.title && ep.title !== `Episódio ${ep.number}`) {
+            titleMap.set(ep.number, { title: ep.title, aired: ep.aired });
+          }
+        }
+        if (titleMap.size === 0) return;
+
+        startTransition(() => {
+          setExtraEpisodes({
+            forId: animeId,
+            episodes: baseEpisodes.map((ep) => {
+              const jikan = titleMap.get(ep.number);
+              return jikan
+                ? {
+                    ...ep,
+                    title: jikan.title,
+                    aired: jikan.aired ?? ep.aired,
+                  }
+                : ep;
+            }),
+          });
+        });
+      })
+      .catch(() => {
+        // Silencioso: mantém os episódios numerados já funcionais
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [animeId, animeMalId, anime, currentEpisodes]);
+
   const allEpisodes = useMemo(
     () =>
-      (currentEpisodes ?? []).map((episode) => ({
+      (effectiveEpisodes ?? []).map((episode) => ({
         ...episode,
         seasonId: currentSeason?.id ?? "",
       })),
-    [currentEpisodes, currentSeason?.id],
+    [effectiveEpisodes, currentSeason?.id],
   );
 
   const watchedEpisodeSet = useMemo(
@@ -868,7 +952,7 @@ function AnimePage() {
   const yt = youtubeIdFrom(anime.trailerId);
 
   const episodeCount =
-    currentEpisodes?.length ||
+    effectiveEpisodes?.length ||
     anime.episodesCount ||
     0;
 
@@ -1345,7 +1429,7 @@ function AnimePage() {
 
           <div className="mt-5">
             <EpisodeGrid
-              episodes={currentSeason.episodes}
+              episodes={effectiveEpisodes ?? currentSeason.episodes}
               animeId={anime.id}
               cover={anime.cover}
               watchedEpisodes={watchedEpisodes}
