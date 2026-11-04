@@ -134,16 +134,28 @@ export const Route = createFileRoute("/api/comments")({
                 : null,
           }));
 
-          return Response.json({
-            comments,
-            currentUserId,
-            isAdmin,
-          });
+          return Response.json(
+            {
+              comments,
+              currentUserId,
+              isAdmin,
+            },
+            {
+              headers: {
+                "Cache-Control": "private, no-cache, no-store, must-revalidate",
+              },
+            },
+          );
         } catch (error) {
           console.error("[api/comments] Erro no GET:", error);
           return Response.json(
             { error: "Não foi possível carregar os comentários." },
-            { status: 500 },
+            {
+              status: 500,
+              headers: {
+                "Cache-Control": "private, no-cache, no-store, must-revalidate",
+              },
+            },
           );
         }
       },

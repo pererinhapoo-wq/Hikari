@@ -306,33 +306,50 @@ const MAX_CACHE_AGE = FRESH_TTL + SWR_WINDOW;
 const MAX_DOMAIN_ENTRIES = 500;
 const TTL = FRESH_TTL;
 
-type CacheEntry<T = unknown> = {
+// Configuração de TTL e janela SWR específica por domínio
+const DOMAIN_TTL_CONFIGS: Record<
+  string,
+  { freshTtl: number; swrWindow: number }
+> = {
+  calendar: {
+    freshTtl: 15 * 60 * 1000, // 15 minutos fresco
+    swrWindow: 3 * 60 * 60 * 1000, // +3 horas de janela SWR (total 3h15m)
+  },
+  "proxy-anilist": {
+    freshTtl: 5 * 60 * 1000, // 5 minutos fresco
+    swrWindow: 60 * 60 * 1000, // 60 minutos de janela SWR (total 65m)
+  },
+};
+
+export type CacheEntry<T = unknown> = {
   at: number;
   data: T;
 };
 
-type CacheLookupResult<T> =
+export type CacheLookupResult<T> =
   | { status: "miss" }
   | { status: "fresh"; data: T; at: number }
   | { status: "stale"; data: T; at: number };
 
-type WithCacheOptions<T> = {
+export type WithCacheOptions<T> = {
   shouldCache?: (freshData: T, staleData?: T) => boolean;
   fallback?: (error: unknown) => T | Promise<T>;
   cacheFallback?: boolean;
+  freshTtl?: number;
+  swrWindow?: number;
 };
 
-const domainCaches = new Map<
+export const domainCaches = new Map<
   string,
   Map<string, CacheEntry>
 >();
 
-const inFlight = new Map<
+export const inFlight = new Map<
   string,
   Promise<unknown>
 >();
 
-function getCacheDomain(
+export function getCacheDomain(
   key: string,
 ): string {
   const colonIdx = key.indexOf(":");
@@ -342,6 +359,10 @@ function getCacheDomain(
       : key;
 
   switch (prefix) {
+    case "calendar":
+      return "calendar";
+    case "proxy-anilist":
+      return "proxy-anilist";
     case "home":
     case "today-raw":
     case "genres":
@@ -373,7 +394,7 @@ function getCacheDomain(
   }
 }
 
-function getDomainCache(
+export function getDomainCache(
   domain: string,
 ): Map<string, CacheEntry> {
   let domainMap =
@@ -393,8 +414,25 @@ function getDomainCache(
   return domainMap;
 }
 
-function inspectCache<T>(
+export function getDomainTtlConfig(
+  domain: string,
+  options?: { freshTtl?: number; swrWindow?: number },
+): { freshTtl: number; swrWindow: number; maxAge: number } {
+  const domainConfig = DOMAIN_TTL_CONFIGS[domain];
+  const freshTtl =
+    options?.freshTtl ?? domainConfig?.freshTtl ?? FRESH_TTL;
+  const swrWindow =
+    options?.swrWindow ?? domainConfig?.swrWindow ?? SWR_WINDOW;
+  return {
+    freshTtl,
+    swrWindow,
+    maxAge: freshTtl + swrWindow,
+  };
+}
+
+export function inspectCache<T>(
   key: string,
+  options?: WithCacheOptions<T>,
 ): CacheLookupResult<T> {
   const domain =
     getCacheDomain(key);
@@ -406,9 +444,11 @@ function inspectCache<T>(
     return { status: "miss" };
   }
 
+  const { freshTtl, maxAge } =
+    getDomainTtlConfig(domain, options);
   const age = Date.now() - hit.at;
 
-  if (age > MAX_CACHE_AGE) {
+  if (age > maxAge) {
     domainMap.delete(key);
     return { status: "miss" };
   }
@@ -417,7 +457,7 @@ function inspectCache<T>(
   domainMap.delete(key);
   domainMap.set(key, hit);
 
-  if (age <= FRESH_TTL) {
+  if (age <= freshTtl) {
     return {
       status: "fresh",
       data: hit.data as T,
@@ -432,7 +472,7 @@ function inspectCache<T>(
   };
 }
 
-function toCache<T>(
+export function toCache<T>(
   key: string,
   data: T,
 ): T {
@@ -466,7 +506,7 @@ function toCache<T>(
   return data;
 }
 
-function triggerBackgroundRevalidation<T>(
+export function triggerBackgroundRevalidation<T>(
   key: string,
   fetcher: () => Promise<T>,
   options?: WithCacheOptions<T>,
@@ -511,12 +551,13 @@ function triggerBackgroundRevalidation<T>(
   inFlight.set(key, bgPromise);
 }
 
-function fromCache<T>(
+export function fromCache<T>(
   key: string,
   revalidate?: () => Promise<T>,
+  options?: WithCacheOptions<T>,
 ): T | null {
   const lookup =
-    inspectCache<T>(key);
+    inspectCache<T>(key, options);
 
   if (lookup.status === "miss") {
     return null;
@@ -529,7 +570,7 @@ function fromCache<T>(
     triggerBackgroundRevalidation(
       key,
       revalidate,
-      undefined,
+      options,
       lookup.data,
     );
   }
@@ -537,13 +578,13 @@ function fromCache<T>(
   return lookup.data;
 }
 
-async function withCache<T>(
+export async function withCache<T>(
   key: string,
   fetcher: () => Promise<T>,
   options?: WithCacheOptions<T>,
 ): Promise<T> {
   const lookup =
-    inspectCache<T>(key);
+    inspectCache<T>(key, options);
 
   if (lookup.status === "fresh") {
     return lookup.data;

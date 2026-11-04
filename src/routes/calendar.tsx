@@ -3,11 +3,14 @@ import { createServerFn } from "@tanstack/react-start";
 import {
   AlertCircle,
   Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Film,
   RotateCcw,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { withCache } from "@/lib/api";
 
 /* =========================================================
    CONFIGURAÇÃO DE FUSO HORÁRIO: AMÉRICA/RECIFE (UTC-3)
@@ -60,101 +63,6 @@ type WeekDayInfo = {
 };
 
 /* =========================================================
-   QUERY GRAPHQL PARA LANÇAMENTOS SEMANAIS (ANILIST)
-========================================================= */
-
-const AIRING_SCHEDULE_QUERY = `
-  query ($start: Int, $end: Int, $page: Int) {
-    Page(page: $page, perPage: 50) {
-      pageInfo {
-        hasNextPage
-      }
-      airingSchedules(
-        airingAt_greater: $start
-        airingAt_lesser: $end
-        sort: TIME
-      ) {
-        id
-        airingAt
-        timeUntilAiring
-        episode
-        media {
-          id
-          idMal
-          isAdult
-          format
-          title {
-            romaji
-            english
-            native
-          }
-          coverImage {
-            extraLarge
-            large
-            medium
-            color
-          }
-          bannerImage
-          genres
-          status
-        }
-      }
-    }
-  }
-`;
-
-/* =========================================================
-   SERVER FUNCTION (FONTE DE DADOS OFICIAL: ANILIST)
-========================================================= */
-
-const fetchWeeklyScheduleFn = createServerFn({ method: "GET" })
-  .validator((d: { start: number; end: number }) => d)
-  .handler(async ({ data }): Promise<AiringScheduleItem[]> => {
-    const { start, end } = data;
-    const fetchPage = async (page: number): Promise<AiringScheduleItem[]> => {
-      const res = await fetch("https://graphql.anilist.co", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "User-Agent": "Hikari/1.0 (anime streaming platform)",
-        },
-        body: JSON.stringify({
-          query: AIRING_SCHEDULE_QUERY,
-          variables: { start, end, page },
-        }),
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (!res.ok) {
-        throw new Error(`AniList returned HTTP ${res.status}`);
-      }
-
-      const json = await res.json();
-      return json?.data?.Page?.airingSchedules || [];
-    };
-
-    try {
-      const pages = await Promise.all([
-        fetchPage(1),
-        fetchPage(2),
-        fetchPage(3),
-      ]);
-      return pages.flat();
-    } catch {
-      return [];
-    }
-  });
-
-/* =========================================================
-   ROTA DO CALENDÁRIO
-========================================================= */
-
-export const Route = createFileRoute("/calendar")({
-  component: CalendarPage,
-});
-
-/* =========================================================
    UTILITÁRIOS DE DATA E FUSO HORÁRIO (AMERICA/RECIFE)
 ========================================================= */
 
@@ -198,8 +106,9 @@ function getDayKeyRecife(dateOrTimestamp: Date | number): string {
 
 /**
  * Calcula os dias da semana de segunda-feira a domingo com base no fuso "America/Recife".
+ * Aceita offsetWeeks (0 = semana atual, -1 = semana anterior, 1 = próxima semana).
  */
-function getWeekInfoRecife(): {
+function getWeekInfoRecife(offsetWeeks = 0): {
   days: WeekDayInfo[];
   weekRangeLabel: string;
   startTimestamp: number;
@@ -226,7 +135,7 @@ function getWeekInfoRecife(): {
   const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
   const mondayDate = new Date(baseDate);
-  mondayDate.setUTCDate(baseDate.getUTCDate() + diffToMonday);
+  mondayDate.setUTCDate(baseDate.getUTCDate() + diffToMonday + offsetWeeks * 7);
 
   const todayKey = formatter.format(now);
 
@@ -300,6 +209,145 @@ function getWeekInfoRecife(): {
     endTimestamp: Math.floor(sundayEndUTC / 1000) + 86400,
   };
 }
+
+/* =========================================================
+   QUERY GRAPHQL PARA LANÇAMENTOS SEMANAIS (ANILIST)
+========================================================= */
+
+const AIRING_SCHEDULE_QUERY = `
+  query ($start: Int, $end: Int, $page: Int) {
+    Page(page: $page, perPage: 50) {
+      pageInfo {
+        hasNextPage
+      }
+      airingSchedules(
+        airingAt_greater: $start
+        airingAt_lesser: $end
+        sort: TIME
+      ) {
+        id
+        airingAt
+        timeUntilAiring
+        episode
+        media {
+          id
+          idMal
+          isAdult
+          format
+          title {
+            romaji
+            english
+            native
+          }
+          coverImage {
+            extraLarge
+            large
+            medium
+            color
+          }
+          bannerImage
+          genres
+          status
+        }
+      }
+    }
+  }
+`;
+
+/* =========================================================
+   SERVER FUNCTION COM CACHE (SINGLEFLIGHT, SWR 15M/3H, LRU)
+========================================================= */
+
+export const fetchWeeklyScheduleFn = createServerFn({ method: "GET" })
+  .validator((d: { start: number; end: number; weekKey?: string }) => d)
+  .handler(async ({ data }): Promise<AiringScheduleItem[]> => {
+    const { start, end, weekKey } = data;
+    // Chave de cache específica para o calendário semanal
+    const cacheKey = `calendar:week:${weekKey || `${start}:${end}`}`;
+
+    return withCache<AiringScheduleItem[]>(
+      cacheKey,
+      async () => {
+        const fetchPage = async (page: number): Promise<AiringScheduleItem[]> => {
+          const res = await fetch("https://graphql.anilist.co", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              "User-Agent": "Hikari/1.0 (anime streaming platform)",
+            },
+            body: JSON.stringify({
+              query: AIRING_SCHEDULE_QUERY,
+              variables: { start, end, page },
+            }),
+            signal: AbortSignal.timeout(10000),
+          });
+
+          if (!res.ok) {
+            throw new Error(`AniList returned HTTP ${res.status}`);
+          }
+
+          const json = await res.json();
+          return json?.data?.Page?.airingSchedules || [];
+        };
+
+        const pages = await Promise.all([
+          fetchPage(1),
+          fetchPage(2),
+          fetchPage(3),
+        ]);
+        const flat = pages.flat();
+
+        // Deduplica por id e exclui estritamente conteúdo adulto (+18)
+        const uniqueMap = new Map<number, AiringScheduleItem>();
+        for (const item of flat) {
+          if (!item || !item.id || item.media?.isAdult) continue;
+          if (!uniqueMap.has(item.id)) {
+            uniqueMap.set(item.id, item);
+          }
+        }
+        return Array.from(uniqueMap.values());
+      },
+      {
+        freshTtl: 15 * 60 * 1000, // 15 minutos fresco
+        swrWindow: 3 * 60 * 60 * 1000, // +3 horas janela SWR (total 3h15m)
+        shouldCache: (items, staleItems) =>
+          items.length > 0 || !staleItems || staleItems.length === 0,
+        fallback: (err) => {
+          console.warn("[Hikari] Erro ao carregar calendário semanal no AniList:", err);
+          return [];
+        },
+      },
+    );
+  });
+
+/* =========================================================
+   ROTA DO CALENDÁRIO COM SERVER LOADER
+========================================================= */
+
+export const Route = createFileRoute("/calendar")({
+  loader: async () => {
+    const weekInfo = getWeekInfoRecife();
+    try {
+      const schedules = await fetchWeeklyScheduleFn({
+        data: {
+          start: weekInfo.startTimestamp,
+          end: weekInfo.endTimestamp,
+          weekKey: weekInfo.days[0].dateKey,
+        },
+      });
+      return {
+        schedules: schedules || [],
+      };
+    } catch (err) {
+      console.error("[Hikari] Falha no loader do calendário semanal:", err);
+      return {
+        schedules: [] as AiringScheduleItem[],
+      };
+    }
+  },
+  component: CalendarPage,
+});
 
 /* =========================================================
    COMPONENTE DO CARD DE ANIME NO CALENDÁRIO
@@ -395,31 +443,53 @@ function CalendarAnimeCard({ item }: { item: AiringScheduleItem }) {
 ========================================================= */
 
 function CalendarPage() {
-  const [selectedDayKey, setSelectedDayKey] = useState<string>("");
+  const loaderData = Route.useLoaderData();
+  const initialSchedules = useMemo(
+    () => loaderData?.schedules ?? [],
+    [loaderData?.schedules],
+  );
 
-  const [schedules, setSchedules] = useState<AiringScheduleItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [weekOffset, setWeekOffset] = useState<number>(0);
 
   // Calcula os dias da semana de segunda a domingo no fuso America/Recife
-  const weekInfo = useMemo(() => getWeekInfoRecife(), []);
+  const weekInfo = useMemo(() => getWeekInfoRecife(weekOffset), [weekOffset]);
+
+  const [selectedDayKey, setSelectedDayKey] = useState<string>(() => {
+    const today = weekInfo.days.find((d) => d.isToday);
+    return today ? today.dateKey : (weekInfo.days[0]?.dateKey ?? "");
+  });
+
+  const [schedules, setSchedules] = useState<AiringScheduleItem[]>(initialSchedules);
+  const [loading, setLoading] = useState(initialSchedules.length === 0);
+  const [error, setError] = useState<string | null>(null);
+
+  // Sincroniza dados do loader caso mudem na semana atual
+  useEffect(() => {
+    if (weekOffset === 0 && initialSchedules.length > 0) {
+      setSchedules(initialSchedules);
+      setLoading(false);
+      setError(null);
+    }
+  }, [initialSchedules, weekOffset]);
 
   // Busca os lançamentos semanais com segurança (Server Fn + Fallback)
-  const loadScheduleData = async () => {
+  const loadScheduleData = async (targetOffset = weekOffset) => {
     setLoading(true);
     setError(null);
 
-    const { startTimestamp, endTimestamp } = weekInfo;
+    const targetWeekInfo = getWeekInfoRecife(targetOffset);
+    const { startTimestamp, endTimestamp, days } = targetWeekInfo;
 
     try {
       let data: AiringScheduleItem[] = [];
 
-      // 1. Tenta a Server Function primeiro
+      // 1. Tenta a Server Function primeiro (com Singleflight, SWR e LRU)
       try {
         data = await fetchWeeklyScheduleFn({
           data: {
             start: startTimestamp,
             end: endTimestamp,
+            weekKey: days[0]?.dateKey,
           },
         });
       } catch {
@@ -453,27 +523,55 @@ function CalendarPage() {
         data = pages.flat();
       }
 
-      // Deduplica por id e exclui conteúdo adulto
+      // Deduplica por id e exclui estritamente conteúdo adulto (+18)
       const uniqueMap = new Map<number, AiringScheduleItem>();
       for (const item of data) {
-        if (item.media?.isAdult) continue;
+        if (!item || !item.id || item.media?.isAdult) continue;
         if (!uniqueMap.has(item.id)) {
           uniqueMap.set(item.id, item);
         }
       }
 
-      setSchedules(Array.from(uniqueMap.values()));
+      const cleanList = Array.from(uniqueMap.values());
+      setSchedules(cleanList);
     } catch (err) {
       console.error("Erro ao carregar calendário semanal:", err);
-      setError("Não foi possível carregar os lançamentos da semana.");
+      if (schedules.length === 0) {
+        setError("Não foi possível carregar os lançamentos da semana.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const handleWeekChange = (newOffset: number) => {
+    setWeekOffset(newOffset);
+    const newWeekInfo = getWeekInfoRecife(newOffset);
+    const todayInNewWeek = newWeekInfo.days.find((d) => d.isToday);
+    setSelectedDayKey(
+      todayInNewWeek ? todayInNewWeek.dateKey : newWeekInfo.days[0].dateKey,
+    );
+
+    // Se voltar para a semana atual e já temos dados do loader, restaura instantaneamente
+    if (newOffset === 0 && initialSchedules.length > 0) {
+      setSchedules(initialSchedules);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    void loadScheduleData(newOffset);
+  };
+
   useEffect(() => {
-    void loadScheduleData();
-  }, []);
+    if (
+      weekOffset === 0 &&
+      initialSchedules.length === 0 &&
+      schedules.length === 0
+    ) {
+      void loadScheduleData(0);
+    }
+  }, [initialSchedules.length, weekOffset]);
 
   // Agrupa os animes por dia da semana no fuso horário America/Recife
   const episodesByDay = useMemo(() => {
@@ -508,15 +606,17 @@ function CalendarPage() {
     return count;
   }, [episodesByDay]);
 
-  // Inicializa o dia selecionado (para "Hoje" ou primeiro dia disponível)
+  // Inicializa o dia selecionado (para "Hoje" ou primeiro dia disponível) apenas se ainda não definido
   useEffect(() => {
-    const today = weekInfo.days.find((d) => d.isToday);
-    if (today) {
-      setSelectedDayKey(today.dateKey);
-    } else {
-      setSelectedDayKey(weekInfo.days[0].dateKey);
+    if (!selectedDayKey) {
+      const today = weekInfo.days.find((d) => d.isToday);
+      if (today) {
+        setSelectedDayKey(today.dateKey);
+      } else if (weekInfo.days[0]) {
+        setSelectedDayKey(weekInfo.days[0].dateKey);
+      }
     }
-  }, [weekInfo.days]);
+  }, [weekInfo.days, selectedDayKey]);
 
   const activeDay =
     weekInfo.days.find((d) => d.dateKey === selectedDayKey) ?? weekInfo.days[0];
@@ -541,10 +641,37 @@ function CalendarPage() {
           DIAS DA SEMANA: SEGUNDA A DOMINGO (SEM SOBREPOSIÇÃO)
       ========================================================== */}
       <div>
-        <div className="mb-2 flex items-center justify-between text-xs text-subtle px-1">
-          <span className="font-medium text-fg/90">
-            Semana de {weekInfo.weekRangeLabel}
-          </span>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-subtle px-1">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => handleWeekChange(weekOffset - 1)}
+              title="Semana anterior"
+              className="inline-flex size-6 sm:size-7 items-center justify-center rounded-lg border border-border/60 bg-elevated/60 text-muted hover:border-purple-500/40 hover:bg-elevated hover:text-fg transition-colors"
+            >
+              <ChevronLeft className="size-3.5 sm:size-4" />
+            </button>
+            <span className="font-medium text-fg/90">
+              Semana de {weekInfo.weekRangeLabel}
+            </span>
+            <button
+              type="button"
+              onClick={() => handleWeekChange(weekOffset + 1)}
+              title="Próxima semana"
+              className="inline-flex size-6 sm:size-7 items-center justify-center rounded-lg border border-border/60 bg-elevated/60 text-muted hover:border-purple-500/40 hover:bg-elevated hover:text-fg transition-colors"
+            >
+              <ChevronRight className="size-3.5 sm:size-4" />
+            </button>
+            {weekOffset !== 0 && (
+              <button
+                type="button"
+                onClick={() => handleWeekChange(0)}
+                className="text-[10px] font-semibold text-purple-400 hover:text-purple-300 underline underline-offset-2 ml-1"
+              >
+                Voltar para esta semana
+              </button>
+            )}
+          </div>
           <span>
             {loading ? "Carregando..." : `${totalWeekEpisodes} animes previstos`}
           </span>

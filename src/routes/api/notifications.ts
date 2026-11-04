@@ -543,15 +543,27 @@ export const Route = createFileRoute("/api/notifications")({
             };
           });
 
-          return Response.json({
-            notifications,
-            unreadCount,
-          });
+          return Response.json(
+            {
+              notifications,
+              unreadCount,
+            },
+            {
+              headers: {
+                "Cache-Control": "private, no-cache, no-store, must-revalidate",
+              },
+            },
+          );
         } catch (error) {
           console.error("[api/notifications] Erro no GET:", error);
           return Response.json(
             { error: "Não foi possível carregar as notificações." },
-            { status: 500 },
+            {
+              status: 500,
+              headers: {
+                "Cache-Control": "private, no-cache, no-store, must-revalidate",
+              },
+            },
           );
         }
       },
@@ -648,15 +660,27 @@ export const Route = createFileRoute("/api/notifications")({
             : (unreadResult as any)?.rows ?? [];
           const unreadCount = Number(unreadRows[0]?.unreadCount ?? 0) || 0;
 
-          return Response.json({
-            ok: true,
-            unreadCount,
-          });
+          return Response.json(
+            {
+              ok: true,
+              unreadCount,
+            },
+            {
+              headers: {
+                "Cache-Control": "private, no-cache, no-store, must-revalidate",
+              },
+            },
+          );
         } catch (error) {
           console.error("[api/notifications] Erro no PATCH:", error);
           return Response.json(
             { error: "Não foi possível atualizar a notificação." },
-            { status: 500 },
+            {
+              status: 500,
+              headers: {
+                "Cache-Control": "private, no-cache, no-store, must-revalidate",
+              },
+            },
           );
         }
       },
