@@ -307,7 +307,7 @@ const MAX_DOMAIN_ENTRIES = 500;
 const TTL = FRESH_TTL;
 
 // Configuração de TTL e janela SWR específica por domínio
-const DOMAIN_TTL_CONFIGS: Record<
+export const DOMAIN_TTL_CONFIGS: Record<
   string,
   { freshTtl: number; swrWindow: number }
 > = {
@@ -318,6 +318,26 @@ const DOMAIN_TTL_CONFIGS: Record<
   "proxy-anilist": {
     freshTtl: 5 * 60 * 1000, // 5 minutos fresco
     swrWindow: 60 * 60 * 1000, // 60 minutos de janela SWR (total 65m)
+  },
+  detail: {
+    freshTtl: 30 * 60 * 1000, // 30 minutos de cache fresco
+    swrWindow: 24 * 60 * 60 * 1000, // 24 horas de janela SWR
+  },
+  "season-nav": {
+    freshTtl: 2 * 60 * 60 * 1000, // 2 horas de cache fresco
+    swrWindow: 48 * 60 * 60 * 1000, // 48 horas de janela SWR
+  },
+  credits: {
+    freshTtl: 2 * 60 * 60 * 1000, // 2 horas de cache fresco
+    swrWindow: 48 * 60 * 60 * 1000, // 48 horas de janela SWR
+  },
+  episodes: {
+    freshTtl: 5 * 60 * 1000, // 5 minutos fresco (protege episódios semanais e lançamentos)
+    swrWindow: 60 * 60 * 1000, // 60 minutos de janela SWR
+  },
+  "detail-releasing": {
+    freshTtl: 5 * 60 * 1000, // 5 minutos fresco para animes em exibição/lançamento semanal
+    swrWindow: 24 * 60 * 60 * 1000, // 24 horas de janela SWR
   },
 };
 
@@ -348,6 +368,24 @@ export const inFlight = new Map<
   string,
   Promise<unknown>
 >();
+
+export function isReleasingAnime(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const item = data as Record<string, unknown>;
+  const status = typeof item.status === "string" ? item.status.toUpperCase() : "";
+  if (
+    status === "RELEASING" ||
+    status === "CURRENTLY AIRING" ||
+    status === "CURRENT" ||
+    status === "AIRING"
+  ) {
+    return true;
+  }
+  if (item.nextEpisode || item.nextAiringEpisode || item.todayEpisode) {
+    return true;
+  }
+  return false;
+}
 
 export function getCacheDomain(
   key: string,
@@ -381,6 +419,8 @@ export function getCacheDomain(
     case "credits":
       return "credits";
     case "jikan-episodes":
+    case "episodes":
+      return "episodes";
     case "jikan-pictures":
       return "jikan";
     case "kitsu-map":
@@ -444,8 +484,24 @@ export function inspectCache<T>(
     return { status: "miss" };
   }
 
-  const { freshTtl, maxAge } =
+  let { freshTtl, maxAge } =
     getDomainTtlConfig(domain, options);
+
+  // Proteção de dados que mudam frequentemente:
+  // Animes em exibição/lançamento ("RELEASING", com próximo episódio semanal agendado, etc.)
+  // não devem ficar congelados por 30 minutos sem revalidação.
+  // Preserva o TTL fresco de 5 minutos específico de lançamento, permitindo revalidação em segundo plano (SWR).
+  if (domain === "detail" && isReleasingAnime(hit.data)) {
+    const releasingConfig = DOMAIN_TTL_CONFIGS["detail-releasing"] ?? {
+      freshTtl: FRESH_TTL,
+      swrWindow: 24 * 60 * 60 * 1000,
+    };
+    if (options?.freshTtl === undefined) {
+      freshTtl = releasingConfig.freshTtl;
+      maxAge = freshTtl + (options?.swrWindow ?? releasingConfig.swrWindow);
+    }
+  }
+
   const age = Date.now() - hit.at;
 
   if (age > maxAge) {
