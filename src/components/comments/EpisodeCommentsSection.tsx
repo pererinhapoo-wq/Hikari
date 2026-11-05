@@ -17,6 +17,7 @@ import {
   Flag,
   Forward,
   Image as ImageIcon,
+  Loader2,
   LogIn,
   LogOut,
   MessageCircle,
@@ -475,6 +476,15 @@ export function EpisodeCommentsSection({
 
   const [error, setError] =
     useState("");
+
+  /* Paginação progressiva do backend */
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [totalRoots, setTotalRoots] = useState<number | null>(null);
+  const requestIdRef = useRef<number>(0);
 
   const [loginOpen, setLoginOpen] =
     useState(false);
@@ -1342,128 +1352,151 @@ export function EpisodeCommentsSection({
   }, []);
 
   /* ====================================================== */
-  /* CARREGAR COMENTÁRIOS                                   */
+  /* CARREGAR COMENTÁRIOS COM PAGINAÇÃO PROGRESSIVA         */
   /* ====================================================== */
 
-  useEffect(() => {
-    if (
-      !animeId ||
-      !episodeId
-    ) {
-      return;
-    }
+  const fetchComments = useCallback(
+    async (targetSort: SortBy, cursor: string | null = null) => {
+      if (!animeId || !episodeId) return;
 
-    let cancelled = false;
+      const isInitial = !cursor;
+      const currentRequestId = ++requestIdRef.current;
 
-    async function loadComments() {
       try {
-        setLoading(true);
-        setComments([]);
-        setRootOrder([]);
-        setError("");
+        if (isInitial) {
+          setLoading(true);
+          setError("");
+          setComments([]);
+          setRootOrder([]);
+          setNextCursor(null);
+          setHasMore(false);
+        } else {
+          setLoadingMore(true);
+          setLoadMoreError(null);
+        }
 
         const bearer = getBearerToken();
         const headers: Record<string, string> = {
           ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
         };
 
-        const response =
-          await fetch(
-            `/api/comments?animeId=${encodeURIComponent(
-              animeId,
-            )}&episodeId=${encodeURIComponent(
-              episodeId,
-            )}`,
-            {
-              method: "GET",
-              credentials:
-                "include",
-              headers,
-            },
-          );
+        const params = new URLSearchParams({
+          animeId,
+          episodeId,
+          sortBy: targetSort,
+          limit: "25",
+        });
+
+        if (cursor) {
+          params.set("cursor", cursor);
+        } else if (targetCommentId) {
+          params.set("targetCommentId", targetCommentId);
+        }
+
+        const response = await fetch(`/api/comments?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+          headers,
+        });
 
         if (!response.ok) {
+          const errData = await response.json().catch(() => null);
           throw new Error(
-            "Não foi possível carregar os comentários.",
+            errData?.error || "Não foi possível carregar os comentários.",
           );
         }
 
-        const data =
-          await response.json();
+        const data = await response.json();
 
-        if (!cancelled) {
-          const loaded = Array.isArray(data.comments) ? data.comments : [];
+        // Evita que respostas de requisições antigas sobrescrevam o episódio ou ordenação atual
+        if (requestIdRef.current !== currentRequestId) {
+          return;
+        }
+
+        const loaded: Comment[] = Array.isArray(data?.comments)
+          ? data.comments
+          : [];
+        const newNextCursor: string | null =
+          typeof data?.nextCursor === "string" ? data.nextCursor : null;
+        const newHasMore: boolean = Boolean(data?.hasMore);
+        const newTotalCount: number | null =
+          typeof data?.totalCount === "number" ? data.totalCount : null;
+        const newTotalRoots: number | null =
+          typeof data?.totalRoots === "number" ? data.totalRoots : null;
+
+        if (isInitial) {
           setComments(loaded);
-
           const roots = loaded.filter((c: Comment) => !c.parentId);
-          const sorted = [...roots];
-          if (sortBy === "highlight") {
-            sorted.sort((a: Comment, b: Comment) => {
-              const repliesA = loaded.filter((c: Comment) => c.parentId === a.id).length;
-              const repliesB = loaded.filter((c: Comment) => c.parentId === b.id).length;
-              const scoreA = (a.likes ?? 0) * 2 + repliesA - (a.dislikes ?? 0);
-              const scoreB = (b.likes ?? 0) * 2 + repliesB - (b.dislikes ?? 0);
-              if (scoreB !== scoreA) return scoreB - scoreA;
-              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-            });
-          } else if (sortBy === "recent") {
-            sorted.sort((a: Comment, b: Comment) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          } else if (sortBy === "oldest") {
-            sorted.sort((a: Comment, b: Comment) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-          }
-          setRootOrder(sorted.map((c) => c.id));
+          setRootOrder(roots.map((c) => c.id));
+        } else {
+          setComments((prev) => {
+            const existingIds = new Set(prev.map((c) => c.id));
+            const newUnique = loaded.filter((c) => !existingIds.has(c.id));
+            return [...prev, ...newUnique];
+          });
+          setRootOrder((prev) => {
+            const existingSet = new Set(prev);
+            const extraRoots = loaded
+              .filter((c: Comment) => !c.parentId && !existingSet.has(c.id))
+              .map((c) => c.id);
+            return [...prev, ...extraRoots];
+          });
+        }
 
-          if (
-            typeof data.currentUserId ===
-            "string"
-          ) {
-            setCurrentUserId(
-              data.currentUserId,
-            );
-          } else {
-            setCurrentUserId(
-              null,
-            );
-          }
+        setNextCursor(newNextCursor);
+        setHasMore(newHasMore);
+        if (newTotalCount !== null) setTotalCount(newTotalCount);
+        if (newTotalRoots !== null) setTotalRoots(newTotalRoots);
 
-          if (
-            typeof data.isAdmin ===
-            "boolean"
-          ) {
-            if (
-              data.isAdmin &&
-              currentUserEmail
-            ) {
-              setCurrentUserEmail(
-                currentUserEmail,
-              );
-            }
-          }
+        if (typeof data?.currentUserId === "string") {
+          setCurrentUserId(data.currentUserId);
+        } else if (isInitial) {
+          setCurrentUserId(null);
+        }
+
+        if (
+          typeof data?.isAdmin === "boolean" &&
+          data.isAdmin &&
+          currentUserEmail
+        ) {
+          setCurrentUserEmail(currentUserEmail);
         }
       } catch (err) {
+        if (requestIdRef.current !== currentRequestId) return;
         console.error(err);
-
-        if (!cancelled) {
-          setError(
-            "Não foi possível carregar os comentários.",
-          );
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar os comentários.";
+        if (isInitial) {
+          setError(msg);
+        } else {
+          setLoadMoreError(msg);
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
+        if (requestIdRef.current === currentRequestId) {
+          if (isInitial) {
+            setLoading(false);
+          } else {
+            setLoadingMore(false);
+          }
         }
       }
+    },
+    [animeId, episodeId, targetCommentId, currentUserEmail],
+  );
+
+  useEffect(() => {
+    if (!animeId || !episodeId) return;
+    void fetchComments(sortBy, null);
+  }, [animeId, episodeId, sortBy, fetchComments]);
+
+  const handleLoadMore = useCallback(() => {
+    if (loadingMore || !hasMore || !nextCursor) {
+      return;
     }
-
-    void loadComments();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    animeId,
-    episodeId,
-  ]);
+    void fetchComments(sortBy, nextCursor);
+  }, [loadingMore, hasMore, nextCursor, sortBy, fetchComments]);
 
   /* ====================================================== */
   /* IR PARA O COMENTÁRIO DA NOTIFICAÇÃO                    */
@@ -1531,7 +1564,9 @@ export function EpisodeCommentsSection({
             const response = await fetch(
               `/api/comments?animeId=${encodeURIComponent(
                 animeId,
-              )}&episodeId=${encodeURIComponent(episodeId)}`,
+              )}&episodeId=${encodeURIComponent(
+                episodeId,
+              )}&targetCommentId=${encodeURIComponent(targetCommentId)}`,
               {
                 method: "GET",
                 credentials: "include",
@@ -1681,13 +1716,16 @@ export function EpisodeCommentsSection({
         }
 
         if (data.comment) {
-          setComments(
-            (current) => [
-              data.comment,
-              ...current,
-            ],
-          );
-          setRootOrder((current) => [data.comment.id, ...current]);
+          setComments((current) => {
+            if (current.some((c) => c.id === data.comment.id)) return current;
+            return [data.comment, ...current];
+          });
+          setRootOrder((current) => {
+            if (current.includes(data.comment.id)) return current;
+            return [data.comment.id, ...current];
+          });
+          setTotalCount((c) => (c !== null ? c + 1 : 1));
+          setTotalRoots((r) => (r !== null ? r + 1 : 1));
           setNewCommentId(data.comment.id);
           if (newCommentTimeoutRef.current) {
             window.clearTimeout(newCommentTimeoutRef.current);
@@ -1780,12 +1818,11 @@ export function EpisodeCommentsSection({
         }
 
         if (data.comment) {
-          setComments(
-            (current) => [
-              ...current,
-              data.comment,
-            ],
-          );
+          setComments((current) => {
+            if (current.some((c) => c.id === data.comment.id)) return current;
+            return [...current, data.comment];
+          });
+          setTotalCount((c) => (c !== null ? c + 1 : 1));
           setNewCommentId(data.comment.id);
           if (newCommentTimeoutRef.current) {
             window.clearTimeout(newCommentTimeoutRef.current);
@@ -2167,6 +2204,11 @@ export function EpisodeCommentsSection({
               }
             }
           }
+          setTotalCount((c) => (c !== null ? Math.max(0, c - toRemove.size) : null));
+          if (!deletingComment.parentId) {
+            setTotalRoots((r) => (r !== null ? Math.max(0, r - 1) : null));
+            setRootOrder((currentOrder) => currentOrder.filter((id) => id !== deletingComment.id));
+          }
           return current.filter((comment) => !toRemove.has(comment.id));
         });
 
@@ -2392,15 +2434,7 @@ export function EpisodeCommentsSection({
     };
   };
 
-  /* ====================================================== */
-  /* COMENTÁRIOS PRINCIPAIS                                 */
-  /* ====================================================== */
 
-  const rootComments =
-    comments.filter(
-      (comment) =>
-        !comment.parentId,
-    );
 
   /* ====================================================== */
   /* RESPOSTAS                                               */
@@ -2418,27 +2452,7 @@ export function EpisodeCommentsSection({
   /* COMENTÁRIOS FILTRADOS / ORDENADOS                       */
   /* ====================================================== */
 
-  // Reordena os IDs raiz quando o usuário clica nas abas de ordenação
-  useEffect(() => {
-    if (comments.length === 0) return;
-    const roots = comments.filter((c) => !c.parentId);
-    const sorted = [...roots];
-    if (sortBy === "highlight") {
-      sorted.sort((a, b) => {
-        const repliesA = comments.filter((c) => c.parentId === a.id).length;
-        const repliesB = comments.filter((c) => c.parentId === b.id).length;
-        const scoreA = (a.likes ?? 0) * 2 + repliesA - (a.dislikes ?? 0);
-        const scoreB = (b.likes ?? 0) * 2 + repliesB - (b.dislikes ?? 0);
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
-    } else if (sortBy === "recent") {
-      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    } else if (sortBy === "oldest") {
-      sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    }
-    setRootOrder(sorted.map((c) => c.id));
-  }, [sortBy]);
+
 
   const displayedRootComments = useMemo(() => {
     const rootMap = new Map<string, Comment>();
@@ -2507,8 +2521,15 @@ export function EpisodeCommentsSection({
                 <h2 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
                   Comentários
                 </h2>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shrink-0">
-                  {comments.length}
+                <span
+                  className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#a855f7]/15 border border-[#a855f7]/30 text-[#c084fc] shrink-0"
+                  title={
+                    totalCount !== null && totalRoots !== null
+                      ? `${totalRoots} principais • ${Math.max(0, totalCount - totalRoots)} respostas`
+                      : undefined
+                  }
+                >
+                  {totalCount ?? comments.length}
                 </span>
               </div>
 
@@ -3543,6 +3564,56 @@ export function EpisodeCommentsSection({
             )}
 
           </div>
+
+          {/* Controles de Paginação Progressiva (Carregar Mais) */}
+          {hasMore && (
+            <div className="mt-5 flex flex-col items-center justify-center gap-2 pb-2">
+              {loadMoreError && (
+                <div className="mb-1 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-1.5 text-xs text-red-200">
+                  <span>{loadMoreError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setLoadMoreError(null)}
+                    className="text-red-300 hover:text-white cursor-pointer"
+                    aria-label="Fechar erro"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="inline-flex items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-950/35 hover:bg-purple-950/60 hover:border-purple-500/50 active:scale-95 px-4 py-2 text-xs sm:text-sm font-medium text-purple-200 shadow-sm transition-all cursor-pointer disabled:opacity-60 select-none"
+              >
+                {loadingMore ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin text-purple-400" />
+                    <span>Carregando mais comentários...</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="size-3.5 text-purple-400" />
+                    <span>Carregar mais comentários</span>
+                  </>
+                )}
+              </button>
+
+              {totalRoots !== null && totalRoots > displayedRootComments.length && (
+                <span className="text-[11px] text-white/40">
+                  Exibindo {displayedRootComments.length} de {totalRoots} comentários principais
+                </span>
+              )}
+            </div>
+          )}
+
+          {!hasMore && totalRoots !== null && totalRoots > 25 && displayedRootComments.length >= totalRoots && (
+            <p className="mt-4 text-center text-xs text-white/30 pb-2">
+              Todos os comentários foram carregados.
+            </p>
+          )}
 
         </div>
 

@@ -481,7 +481,6 @@ async function runEtapa5DTests() {
     // 22. Teste Fase 1B: Verificação de tratamento de timeout
     // -------------------------------------------------------------
     console.log("\n22. Testando formato da resposta de timeout / cancelamento de consulta...");
-    // Simula requisição que aciona tratamento de erro de timeout se simulado
     const timeoutError = new Error("canceling statement due to statement timeout");
     timeoutError.code = "57014";
     const errorMsg = String(timeoutError.message).toLowerCase();
@@ -492,7 +491,102 @@ async function runEtapa5DTests() {
     assert.equal(isTimeout, true, "Condição de detecção de timeout deve identificar código 57014");
     console.log("✓ Lógica de detecção e resposta HTTP 504 de timeout verificada.");
 
-    console.log("\n=== TODOS OS 22 TESTES DA ETAPA 5D (FASES 1 E 1B) PASSARAM COM SUCESSO! ===");
+    // -------------------------------------------------------------
+    // 23. Teste Fase 1B: Thread excedendo 500 níveis retorna erro explícito (nunca árvore incompleta)
+    // -------------------------------------------------------------
+    console.log("\n23. Testando barreira de segurança: thread que excede 500 níveis retorna erro explícito...");
+    const overflowAnimeId = `anime-overflow-${Date.now()}`;
+    const overflowRootId = `c-overflow-root-${Date.now()}`;
+
+    // Insere raiz
+    await sql.query(`
+      insert into "comment" ("id", "userId", "animeId", "episodeId", "content", "parentId", "isSpoiler", "createdAt", "updatedAt")
+      values ('${overflowRootId}', '${userA}', '${overflowAnimeId}', 'ep1', 'Overflow Root', null, false, current_timestamp, current_timestamp)
+    `);
+
+    // Insere 505 níveis recursivos em uma única instrução SQL ultrarrápida
+    await sql.query(`
+      with recursive gen as (
+        select 1 as lvl, 'c-ovf-1-${Date.now()}' as id, '${overflowRootId}'::text as parent_id
+        union all
+        select lvl + 1, 'c-ovf-' || (lvl + 1) || '-${Date.now()}', 'c-ovf-' || lvl || '-${Date.now()}'
+        from gen
+        where lvl < 505
+      )
+      insert into "comment" ("id", "userId", "animeId", "episodeId", "content", "parentId", "isSpoiler", "createdAt", "updatedAt")
+      select id, '${userB}', '${overflowAnimeId}', 'ep1', 'Nível ' || lvl, parent_id, false, current_timestamp, current_timestamp
+      from gen
+    `);
+
+    const overflowReq = new Request(`http://localhost:3000/api/comments?animeId=${overflowAnimeId}&episodeId=ep1`);
+    const overflowRes = await getHandler({ request: overflowReq });
+    assert.equal(overflowRes.status, 500, "Deve retornar status 500 quando a árvore excede o limite de segurança");
+    const overflowData = await overflowRes.json();
+    assert.ok(overflowData.error?.includes("limite máximo de segurança de 500 níveis"), "Deve informar explicitamente sobre o limite de segurança");
+    assert.ok(overflowData.error?.includes("nunca apresentar uma árvore incompleta"), "Deve deixar claro que a árvore não é truncada silenciosamente");
+    console.log("✓ Proteção de 500 níveis testada: erro explícito 500 retornado sem descarte silencioso.");
+
+    // -------------------------------------------------------------
+    // 24. Teste Fase 1B: Thread muito grande com múltiplos ramos simultâneos
+    // -------------------------------------------------------------
+    console.log("\n24. Testando thread muito grande com múltiplos ramos de respostas em paralelo...");
+    const largeAnimeId = `anime-large-${Date.now()}`;
+    const largeRootId = `c-large-root-${Date.now()}`;
+
+    await sql.query(`
+      insert into "comment" ("id", "userId", "animeId", "episodeId", "content", "parentId", "isSpoiler", "createdAt", "updatedAt")
+      values ('${largeRootId}', '${userA}', '${largeAnimeId}', 'ep1', 'Large Thread Root', null, false, current_timestamp, current_timestamp)
+    `);
+
+    // Insere 50 respostas distribuídas em 5 ramos (10 por ramo)
+    for (let branch = 1; branch <= 5; branch++) {
+      let branchParent = largeRootId;
+      for (let step = 1; step <= 10; step++) {
+        const branchCommentId = `c-branch-${branch}-${step}-${Date.now()}`;
+        await sql.query(`
+          insert into "comment" ("id", "userId", "animeId", "episodeId", "content", "parentId", "isSpoiler", "createdAt", "updatedAt")
+          values ('${branchCommentId}', '${userB}', '${largeAnimeId}', 'ep1', 'Branch ${branch} Step ${step}', '${branchParent}', false, current_timestamp, current_timestamp)
+        `);
+        branchParent = branchCommentId;
+      }
+    }
+
+    const largeReq = new Request(`http://localhost:3000/api/comments?animeId=${largeAnimeId}&episodeId=ep1`);
+    const largeRes = await getHandler({ request: largeReq });
+    assert.equal(largeRes.status, 200);
+    const largeData = await largeRes.json();
+    // 1 raiz + 50 respostas em 5 ramos = 51 comentários
+    assert.equal(largeData.comments.length, 51, "Deve recuperar exatamente os 51 comentários da árvore ramificada");
+    assert.equal(largeData.totalRoots, 1, "Deve ter 1 comentário raiz");
+    assert.equal(largeData.totalCount, 51, "totalCount deve ser 51");
+    console.log("✓ Árvore de 51 nós com múltiplos ramos paralelos recuperada com integridade absoluta.");
+
+    // -------------------------------------------------------------
+    // 25. Teste Fase 1B: Confirmação de integridade contra regressões no método POST
+    // -------------------------------------------------------------
+    console.log("\n25. Testando compatibilidade e integridade do método POST com respostas...");
+    const postHandler = Route.options.server?.handlers?.POST;
+    assert.ok(postHandler, "POST handler deve estar definido");
+
+    const postReq = new Request("http://localhost:3000/api/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        animeId: testAnimeId,
+        episodeId: testEpisodeId,
+        content: "Comentário de teste via POST para validação de integridade",
+        parentId: targetRoot,
+      }),
+    });
+    const postRes = await postHandler({ request: postReq });
+    assert.equal(postRes.status, 201, "POST deve criar comentário com sucesso e status 201");
+    const postData = await postRes.json();
+    assert.ok(postData.comment?.id, "Deve retornar o objeto do comentário criado com id");
+    assert.equal(postData.comment.parentId, targetRoot, "parentId da resposta deve ser preservado");
+    assert.equal(postData.comment.content, "Comentário de teste via POST para validação de integridade");
+    console.log("✓ Método POST preservado com integridade total para criação de comentários e respostas.");
+
+    console.log("\n=== TODOS OS 25 TESTES DA ETAPA 5D (FASES 1 E 1B) PASSARAM COM SUCESSO! ===");
   } finally {
     // Limpeza dos dados de teste
     await sql.query(`

@@ -174,22 +174,37 @@ export const Route = createFileRoute("/api/comments")({
           if (targetCommentId) {
             const targetChainSql = `
               with recursive target_chain as (
-                select c."id", c."parentId", c."animeId", c."episodeId", array[c."id"] as "path"
+                select c."id", c."parentId", c."animeId", c."episodeId", 1 as "depth", array[c."id"] as "path"
                 from "comment" c
                 where c."id" = $1
                 union all
-                select p."id", p."parentId", p."animeId", p."episodeId", tc."path" || p."id" as "path"
+                select p."id", p."parentId", p."animeId", p."episodeId", tc."depth" + 1 as "depth", tc."path" || p."id" as "path"
                 from "comment" p
                 inner join target_chain tc on tc."parentId" = p."id"
                 where tc."parentId" is not null and not (p."id" = any(tc."path"))
+                  and tc."depth" <= 500
               )
-              select "id", "parentId", "animeId", "episodeId"
+              select "id", "parentId", "animeId", "episodeId", "depth"
               from target_chain
-              where "parentId" is null
+              where "parentId" is null or "depth" > 500
               limit 1
             `;
             const targetCheckRows: any[] = (await sql.query(targetChainSql, [targetCommentId])) as any[];
             const rootCandidate = targetCheckRows[0];
+            if (rootCandidate && (Number(rootCandidate.depth) || 0) > 500) {
+              return Response.json(
+                {
+                  error:
+                    "A cadeia de respostas do comentário alvo excedeu o limite máximo de segurança de 500 níveis. A operação foi interrompida.",
+                },
+                {
+                  status: 500,
+                  headers: {
+                    "Cache-Control": "private, no-cache, no-store, must-revalidate",
+                  },
+                },
+              );
+            }
             if (
               rootCandidate &&
               String(rootCandidate.animeId) === animeId &&
@@ -382,6 +397,7 @@ export const Route = createFileRoute("/api/comments")({
               from "comment" child
               inner join thread_hierarchy parent on child."parentId" = parent."id"
               where not (child."id" = any(parent."path"))
+                and parent."depth" <= 500
             ),
             like_counts as (
               select
@@ -405,6 +421,7 @@ export const Route = createFileRoute("/api/comments")({
               th."updatedAt",
               th."updatedAtIso",
               th."userId",
+              th."depth",
               coalesce(p."nick", u."name", 'Usuário') as "userName",
               u."image" as "userImage",
               p."nick" as "userNick",
@@ -439,6 +456,25 @@ export const Route = createFileRoute("/api/comments")({
           const rows: any[] = Array.isArray(rawRows)
             ? rawRows
             : (rawRows as any)?.rows ?? [];
+
+          // Se a hierarquia ultrapassou o limite máximo de segurança (500 níveis),
+          // NUNCA descarta silenciosamente as respostas além do limite apresentando uma árvore
+          // incompleta como se estivesse completa. Retorna erro explícito 500 com diagnóstico.
+          const depthExceeded = rows.some((row) => (Number(row.depth) || 0) > 500);
+          if (depthExceeded) {
+            return Response.json(
+              {
+                error:
+                  "A hierarquia de respostas excedeu o limite máximo de segurança de 500 níveis. A operação foi interrompida para evitar consumo excessivo de recursos e nunca apresentar uma árvore incompleta como íntegra.",
+              },
+              {
+                status: 500,
+                headers: {
+                  "Cache-Control": "private, no-cache, no-store, must-revalidate",
+                },
+              },
+            );
+          }
 
           const comments = rows.map((row) => ({
             id: String(row.id),
