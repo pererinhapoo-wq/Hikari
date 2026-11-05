@@ -800,12 +800,40 @@ export const Route = createFileRoute("/api/comments")({
                   ? mentionedResult
                   : (mentionedResult as any)?.rows ?? [];
 
-                for (const row of mentionedRows) {
-                  const targetUserId = row?.userId ? String(row.userId) : "";
-                  if (!targetUserId) continue;
+                const targetUserIds = Array.from(
+                  new Set<string>(
+                    mentionedRows
+                      .map((row: any) =>
+                        row?.userId ? String(row.userId).trim() : "",
+                      )
+                      .filter(
+                        (uid: string) => Boolean(uid) && uid !== apiUser.id,
+                      ),
+                  ),
+                );
 
-                  const notificationId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+                if (targetUserIds.length > 0) {
                   const commentMessage = `${resolvedAuthorName} mencionou você em um comentário.`;
+                  const valuePlaceholders: string[] = [];
+                  const insertParams: unknown[] = [];
+                  let paramIndex = 1;
+
+                  for (const targetUserId of targetUserIds) {
+                    const notificationId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+                    valuePlaceholders.push(
+                      `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, 'comment', $${paramIndex + 3}, false, (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'), $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6})`,
+                    );
+                    insertParams.push(
+                      notificationId,
+                      targetUserId,
+                      apiUser.id,
+                      commentMessage,
+                      commentId,
+                      animeId,
+                      episodeId,
+                    );
+                    paramIndex += 7;
+                  }
 
                   await sql.query(
                     `
@@ -821,28 +849,9 @@ export const Route = createFileRoute("/api/comments")({
                         "animeId",
                         "episodeId"
                       )
-                      values (
-                        $1,
-                        $2,
-                        $3,
-                        'comment',
-                        $4,
-                        false,
-                        (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
-                        $5,
-                        $6,
-                        $7
-                      )
+                      values ${valuePlaceholders.join(", ")}
                     `,
-                    [
-                      notificationId,
-                      targetUserId,
-                      apiUser.id,
-                      commentMessage,
-                      commentId,
-                      animeId,
-                      episodeId,
-                    ],
+                    insertParams,
                   );
                 }
               } catch (mentionError) {
