@@ -459,7 +459,10 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
   const desktopBackdrop = anime.banner || anime.cover || "";
 
   const scoreValue = anime.score != null ? scoreLabel(anime.score) : null;
-  const seasonsSpan = getConfirmedSeasonsSpan(anime);
+  const seasonsSpan = useMemo(
+    () => getConfirmedSeasonsSpan(anime),
+    [anime]
+  );
   const seasonValue =
     anime.format === "MOVIE"
       ? "Filme"
@@ -884,6 +887,10 @@ export function Hero({
   const containerRef = useRef<HTMLElement>(null);
   const timerRef = useRef<number | null>(null);
   const preloadedUrlsRef = useRef<Set<string>>(new Set());
+  const idleHandleRef = useRef<{
+    timerId: number | null;
+    idleId: number | null;
+  } | null>(null);
 
   const pointerState = useRef<{
     active: boolean;
@@ -907,46 +914,134 @@ export function Hero({
     hasMoved: false,
   });
 
-  // Pré-carrega e pré-decodifica as imagens e logotipos dos slides adjacentes para que estejam 100% prontos no escuro
+  // Executa tarefas em momentos ociosos com fallback seguro e postergação
+  const scheduleIdleTask = useCallback(
+    (
+      callback: () => void,
+      delayMs = 2500,
+      idleTimeout = 3000
+    ): { timerId: number | null; idleId: number | null } => {
+      if (typeof window === "undefined") {
+        return { timerId: null, idleId: null };
+      }
+      const win = window as any;
+      const handle: { timerId: number | null; idleId: number | null } = {
+        timerId: null,
+        idleId: null,
+      };
+
+      handle.timerId = win.setTimeout(() => {
+        handle.timerId = null;
+        if (typeof win.requestIdleCallback === "function") {
+          handle.idleId = win.requestIdleCallback(
+            () => {
+              handle.idleId = null;
+              callback();
+            },
+            { timeout: idleTimeout }
+          );
+        } else {
+          callback();
+        }
+      }, delayMs);
+
+      return handle;
+    },
+    []
+  );
+
+  const cancelIdleTask = useCallback(
+    (handle: { timerId: number | null; idleId: number | null } | null) => {
+      if (!handle || typeof window === "undefined") return;
+      const win = window as any;
+      if (handle.timerId !== null) {
+        win.clearTimeout(handle.timerId);
+        handle.timerId = null;
+      }
+      if (handle.idleId !== null && typeof win.cancelIdleCallback === "function") {
+        win.cancelIdleCallback(handle.idleId);
+        handle.idleId = null;
+      }
+    },
+    []
+  );
+
+  // Pré-carrega e pré-decodifica as imagens e logotipos de um slide alvo
+  const preloadSlide = useCallback((targetItem?: SlimAnime) => {
+    if (!targetItem || typeof window === "undefined") return;
+
+    const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+    const backdropUrl = isDesktop
+      ? targetItem.banner || targetItem.cover
+      : targetItem.cover || targetItem.banner;
+
+    if (backdropUrl && !preloadedUrlsRef.current.has(backdropUrl)) {
+      preloadedUrlsRef.current.add(backdropUrl);
+      const img = new Image();
+      img.src = backdropUrl;
+      img.decode?.().catch(() => {});
+    }
+
+    const logo = getAnimeLogo(targetItem);
+    if (logo && !preloadedUrlsRef.current.has(logo.src)) {
+      preloadedUrlsRef.current.add(logo.src);
+      const logoImg = new Image();
+      if (logo.webpSrcSet) {
+        logoImg.sizes = logo.sizes || "160px";
+        logoImg.srcset = logo.webpSrcSet;
+      }
+      logoImg.src = logo.src;
+      logoImg.decode?.().catch(() => {});
+    }
+  }, []);
+
+  // Garante o pré-carregamento imediato do slide necessário se o usuário interagir
+  const ensureSlidePreloaded = useCallback(
+    (direction: "next" | "prev") => {
+      if (items.length < 2) return;
+      const targetIndex =
+        direction === "next"
+          ? (index + 1) % items.length
+          : (index - 1 + items.length) % items.length;
+
+      // Se houver agendamento ocioso pendente para o slide reverso, cancela para evitar trabalho redundante
+      if (direction === "prev" && idleHandleRef.current !== null) {
+        cancelIdleTask(idleHandleRef.current);
+        idleHandleRef.current = null;
+      }
+
+      preloadSlide(items[targetIndex]);
+    },
+    [items, index, cancelIdleTask, preloadSlide]
+  );
+
+  // Pré-carregamento otimizado: prioriza o próximo slide inicialmente e adia o reverso para oportunidade ociosa
   useEffect(() => {
     if (typeof window === "undefined" || items.length < 2) return;
 
     let cancelled = false;
     let delayTimer: number | null = null;
 
-    const preloadSlide = (targetItem?: SlimAnime) => {
-      if (cancelled || !targetItem) return;
-
-      const isDesktop = window.matchMedia("(min-width: 768px)").matches;
-      const backdropUrl = isDesktop
-        ? targetItem.banner || targetItem.cover
-        : targetItem.cover || targetItem.banner;
-
-      if (backdropUrl && !preloadedUrlsRef.current.has(backdropUrl)) {
-        preloadedUrlsRef.current.add(backdropUrl);
-        const img = new Image();
-        img.src = backdropUrl;
-        img.decode?.().catch(() => {});
-      }
-
-      const logo = getAnimeLogo(targetItem);
-      if (logo && !preloadedUrlsRef.current.has(logo.src)) {
-        preloadedUrlsRef.current.add(logo.src);
-        const logoImg = new Image();
-        if (logo.webpSrcSet) {
-          logoImg.sizes = logo.sizes || "160px";
-          logoImg.srcset = logo.webpSrcSet;
-        }
-        logoImg.src = logo.src;
-        logoImg.decode?.().catch(() => {});
-      }
-    };
+    const nextIndex = (index + 1) % items.length;
+    const prevIndex = (index - 1 + items.length) % items.length;
 
     const schedulePreload = () => {
       delayTimer = window.setTimeout(() => {
         if (cancelled) return;
-        preloadSlide(items[(index + 1) % items.length]);
-        preloadSlide(items[(index - 1 + items.length) % items.length]);
+        // Prioriza exclusivamente o próximo slide no carregamento inicial
+        preloadSlide(items[nextIndex]);
+
+        // Adia o pré-carregamento do slide anterior para momento ocioso do navegador se não for o mesmo slide
+        if (prevIndex !== nextIndex) {
+          if (idleHandleRef.current !== null) {
+            cancelIdleTask(idleHandleRef.current);
+          }
+          idleHandleRef.current = scheduleIdleTask(() => {
+            idleHandleRef.current = null;
+            if (cancelled) return;
+            preloadSlide(items[prevIndex]);
+          }, 2500, 3000);
+        }
       }, 250);
     };
 
@@ -962,13 +1057,19 @@ export function Hero({
       if (delayTimer !== null) {
         window.clearTimeout(delayTimer);
       }
+      if (idleHandleRef.current !== null) {
+        cancelIdleTask(idleHandleRef.current);
+        idleHandleRef.current = null;
+      }
     };
-  }, [items, index]);
+  }, [items, index, cancelIdleTask, preloadSlide, scheduleIdleTask]);
 
   // Disparo da transição suave com crossfade e sobreposição
   const triggerTransition = useCallback(
     (direction: "next" | "prev") => {
       if (total < 2 || transitioningRef.current !== null) return;
+
+      ensureSlidePreloaded(direction);
 
       const targetIndex =
         direction === "next" ? (index + 1) % total : (index - 1 + total) % total;
@@ -988,7 +1089,7 @@ export function Hero({
         direction,
       });
     },
-    [total, index]
+    [total, index, ensureSlidePreloaded]
   );
 
   // Reinicia o temporizador automático de aproximadamente 8 segundos
@@ -1087,6 +1188,12 @@ export function Hero({
 
     if (state.isLockedHorizontal) {
       state.currentX = e.clientX;
+      const currentDx = state.currentX - state.startX;
+      if (currentDx > 0) {
+        ensureSlidePreloaded("prev");
+      } else if (currentDx < 0) {
+        ensureSlidePreloaded("next");
+      }
     }
   };
 
