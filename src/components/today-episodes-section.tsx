@@ -264,6 +264,7 @@ export function TodayEpisodesSection({
     return unsubscribe;
   }, [router]);
 
+  // Carregamento progressivo com medição do layout em cache (sem Layout Thrashing no scroll)
   const { limit: visibleImgLimit } = useHorizontalRailImageLimit(
     railRef,
     activeItems.length,

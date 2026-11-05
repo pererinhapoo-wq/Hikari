@@ -110,8 +110,8 @@ export const AnimeCard = memo(function AnimeCard({
           ease-[var(--ease-out)]
           [@media(hover:hover)]:hover:border-purple-400/50
           [@media(hover:hover)]:hover:shadow-[0_8px_20px_-4px_rgba(168,85,247,0.28)]
-          motion-safe:active:scale-[0.98]
-          motion-safe:active:opacity-85
+          [@media(hover:hover)]:motion-safe:active:scale-[0.98]
+          [@media(hover:hover)]:motion-safe:active:opacity-85
           active:border-purple-400/40
           focus-visible:outline-none
           focus-visible:ring-2
@@ -143,7 +143,7 @@ export const AnimeCard = memo(function AnimeCard({
                   motion-safe:duration-500
                   ease-[var(--ease-out)]
                   [@media(hover:hover)]:group-hover:scale-[1.025]
-                  group-active:scale-[1.015]
+                  [@media(hover:hover)]:group-active:scale-[1.015]
                 "
                 loading={priority ? "eager" : "lazy"}
                 decoding="async"
@@ -159,7 +159,7 @@ export const AnimeCard = memo(function AnimeCard({
           )}
 
           {/* Sombra sutil interna com gradiente escuro */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/25 opacity-40 transition-opacity duration-300 [@media(hover:hover)]:group-hover:opacity-60 group-active:opacity-60" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/25 opacity-40 transition-opacity duration-300 [@media(hover:hover)]:group-hover:opacity-60 [@media(hover:hover)]:group-active:opacity-60" />
 
           {/* Selos de áudio discretos sobre a miniatura (DUB em verde, LEG em vermelho) */}
           {(audioInfo.isDub || audioInfo.isLeg) && (

@@ -1210,23 +1210,36 @@ export function Hero({
         @keyframes heroCrossfadeOut {
           0% {
             opacity: 1;
-            filter: brightness(1) contrast(1);
           }
           22% {
             opacity: 0.96;
-            filter: brightness(0.65) contrast(1.02);
           }
           45% {
             opacity: 0.68;
-            filter: brightness(0.48) contrast(1.02);
           }
           75% {
             opacity: 0.22;
-            filter: brightness(0.38) contrast(1);
           }
           100% {
             opacity: 0;
-            filter: brightness(0.32) contrast(1);
+          }
+        }
+
+        @keyframes heroDarkenFade {
+          0% {
+            opacity: 0;
+          }
+          22% {
+            opacity: 0.42;
+          }
+          45% {
+            opacity: 0.62;
+          }
+          75% {
+            opacity: 0.75;
+          }
+          100% {
+            opacity: 0.82;
           }
         }
 
@@ -1255,13 +1268,21 @@ export function Hero({
           {/* Camada inferior: Anime saindo com escurecimento perceptível, gradual e desvanecimento suave */}
           <div
             key={`outgoing-${transitioning.fromIndex}-${items[transitioning.fromIndex].id}`}
-            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity,filter] [contain:paint] [transform:translateZ(0)]"
+            className="absolute inset-0 size-full pointer-events-none overflow-hidden z-10 will-change-[opacity] [contain:paint] [transform:translateZ(0)]"
             style={{
               animation: "heroCrossfadeOut 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
               backfaceVisibility: "hidden",
             }}
           >
             <HeroSlide anime={items[transitioning.fromIndex]} />
+            <div
+              className="absolute inset-0 size-full pointer-events-none bg-black will-change-[opacity] z-30 [transform:translateZ(0)]"
+              style={{
+                animation: "heroDarkenFade 1800ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+                backfaceVisibility: "hidden",
+              }}
+              aria-hidden="true"
+            />
           </div>
 
           {/* Camada superior: Próximo anime surgindo suavemente sobre a imagem escurecida */}

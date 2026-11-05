@@ -43,10 +43,99 @@ export function useHorizontalRailImageLimit(
   );
   const prevResetKeyRef = useRef(resetKey);
 
+  // Cache para o passo (largura do card + gap) e largura visível do container
+  // Elimina Layout Thrashing (offsetWidth, getComputedStyle, querySelector) durante os frames de rolagem
+  const cachedStrideRef = useRef<number | null>(
+    itemStridePx && itemStridePx > 0 ? itemStridePx : null,
+  );
+  const cachedClientWidthRef = useRef<number>(0);
+
   if (prevResetKeyRef.current !== resetKey) {
     prevResetKeyRef.current = resetKey;
+    cachedStrideRef.current =
+      itemStridePx && itemStridePx > 0 ? itemStridePx : null;
+    cachedClientWidthRef.current = 0;
     setLimit(Math.min(totalCount, initialCount ?? getInitialRailLimit()));
   }
+
+  // Medição segura das dimensões reais do layout fora do evento de rolagem
+  const measureLayout = useCallback(() => {
+    const el = railRef.current;
+    const isDesktop =
+      typeof window !== "undefined" &&
+      (window.matchMedia
+        ? window.matchMedia("(min-width: 768px)").matches
+        : window.innerWidth >= 768);
+
+    if (el) {
+      cachedClientWidthRef.current = el.clientWidth;
+    }
+
+    if (itemStridePx && itemStridePx > 0) {
+      cachedStrideRef.current = itemStridePx;
+      return itemStridePx;
+    }
+
+    if (!el) {
+      const fallback = isDesktop ? 158 : 116;
+      cachedStrideRef.current = fallback;
+      return fallback;
+    }
+
+    const firstCard = el.querySelector("article");
+    const cardWidth =
+      firstCard && firstCard.offsetWidth > 0
+        ? firstCard.offsetWidth
+        : isDesktop
+          ? 142
+          : 106;
+
+    let computedGap = 0;
+    if (typeof window !== "undefined") {
+      try {
+        computedGap =
+          parseFloat(window.getComputedStyle(el).gap) || (isDesktop ? 16 : 10);
+      } catch {
+        computedGap = isDesktop ? 16 : 10;
+      }
+    } else {
+      computedGap = 12;
+    }
+
+    const stride = cardWidth + computedGap;
+    const safeStride = stride > 0 ? stride : isDesktop ? 158 : 116;
+    cachedStrideRef.current = safeStride;
+    return safeStride;
+  }, [railRef, itemStridePx]);
+
+  // Mantém a medição sincronizada com mudanças de tamanho da tela/container sem executar no scroll
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const el = railRef.current;
+    if (!el) return;
+
+    measureLayout();
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        measureLayout();
+      });
+      resizeObserver.observe(el);
+    }
+
+    const handleWindowResize = () => {
+      measureLayout();
+    };
+
+    window.addEventListener("resize", handleWindowResize, { passive: true });
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", handleWindowResize);
+    };
+  }, [railRef, measureLayout, totalCount]);
 
   // Ajusta responsivamente se montado no cliente em desktop
   useEffect(() => {
@@ -93,24 +182,24 @@ export function useHorizontalRailImageLimit(
         return;
       }
 
-      // Calcula o passo real do card a partir do DOM ou usa valor padrão seguro
-      const firstCard = el.querySelector("article");
-      const cardWidth =
-        firstCard && firstCard.offsetWidth > 0
-          ? firstCard.offsetWidth
-          : isDesktop
-            ? 142
-            : 106;
-      const computedGap =
-        typeof window !== "undefined"
-          ? parseFloat(window.getComputedStyle(el).gap) || (isDesktop ? 16 : 10)
-          : 12;
-      const stride =
-        itemStridePx && itemStridePx > 0 ? itemStridePx : cardWidth + computedGap;
+      // Utiliza o stride em cache, sem acionar consultas ao DOM ou recalcular estilos
+      let stride =
+        itemStridePx && itemStridePx > 0
+          ? itemStridePx
+          : cachedStrideRef.current;
+
+      if (!stride || stride <= 0) {
+        stride = measureLayout();
+      }
+
+      const clientWidth =
+        cachedClientWidthRef.current > 0
+          ? cachedClientWidthRef.current
+          : el.clientWidth;
 
       // Posição visível à direita considerando a rolagem atual e avanço pretendido
       const effectiveScroll = Math.max(0, el.scrollLeft + extraPx);
-      const visibleEnd = effectiveScroll + el.clientWidth;
+      const visibleEnd = effectiveScroll + clientWidth;
       const visibleCount = Math.ceil(visibleEnd / stride);
 
       // Garante os cards da área visível mais o próximo grupo de imagens
@@ -120,7 +209,7 @@ export function useHorizontalRailImageLimit(
         setLimit((prev) => (needed > prev ? needed : prev));
       });
     },
-    [railRef, totalCount, itemStridePx, initialCount],
+    [railRef, totalCount, itemStridePx, initialCount, measureLayout],
   );
 
   useEffect(() => {
