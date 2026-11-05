@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
+import { SectionReveal } from "@/components/section-reveal";
 
 const EpisodeCommentsSection = lazy(() =>
   import("@/components/comments/EpisodeCommentsSection").then((mod) => ({
@@ -953,16 +954,23 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* ================================================== */}
 
         {current?.id ? (
-          <Suspense fallback={<CommentsLoadingFallback />}>
-            <EpisodeCommentsSection
-              key={`${anime.id}-${current.id}`}
-              animeId={anime.id}
-              episodeId={current.id}
-              animeTitle={title}
-              episodeNumber={current.number ?? 1}
-              targetCommentId={commentQuery}
-            />
-          </Suspense>
+          <SectionReveal
+            key={`${anime.id}-${current.id}`}
+            minHeight="300px"
+            rootMargin="300px 0px"
+            lazy={!commentQuery}
+          >
+            <Suspense fallback={<CommentsLoadingFallback />}>
+              <EpisodeCommentsSection
+                key={`${anime.id}-${current.id}`}
+                animeId={anime.id}
+                episodeId={current.id}
+                animeTitle={title}
+                episodeNumber={current.number ?? 1}
+                targetCommentId={commentQuery}
+              />
+            </Suspense>
+          </SectionReveal>
         ) : (
           <div className="mt-10 border-t border-purple-500/20 pt-8 text-center text-sm text-zinc-500">
             Selecione um episódio para carregar os comentários.
