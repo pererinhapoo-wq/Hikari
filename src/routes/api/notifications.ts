@@ -621,7 +621,21 @@ export const Route = createFileRoute("/api/notifications")({
               `,
               [apiUser.id],
             );
-          } else if (notificationIds.length > 0) {
+
+            return Response.json(
+              {
+                ok: true,
+                unreadCount: 0,
+              },
+              {
+                headers: {
+                  "Cache-Control": "private, no-cache, no-store, must-revalidate",
+                },
+              },
+            );
+          }
+
+          if (notificationIds.length > 0) {
             await sql.query(
               `
                 update "notification"
