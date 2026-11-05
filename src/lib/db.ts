@@ -93,7 +93,18 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      max: 2,
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+    });
+    pool.on("error", (err) => {
+      console.warn(
+        "[db] Erro inesperado em cliente ocioso do pool Neon:",
+        err?.message || err,
+      );
+    });
     return toSql(async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];

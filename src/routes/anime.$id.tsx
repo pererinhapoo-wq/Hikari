@@ -12,6 +12,8 @@ import {
   X,
 } from "lucide-react";
 import {
+  Suspense,
+  lazy,
   memo,
   startTransition,
   useCallback,
@@ -24,7 +26,11 @@ import {
 } from "react";
 
 import { AnimeCard } from "@/components/anime-card";
-import { CommentsSection } from "@/components/comments/CommentsSection";
+const CommentsSection = lazy(() =>
+  import("@/components/comments/CommentsSection").then((mod) => ({
+    default: mod.CommentsSection,
+  })),
+);
 import { SectionReveal } from "@/components/section-reveal";
 import { warmBannerImage } from "@/lib/anime-banner-warmup";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
@@ -273,6 +279,25 @@ function AnimePage() {
   const search = Route.useSearch();
   const targetCommentId = search?.comment;
   const navigate = useNavigate();
+
+  const [hasCommentHash, setHasCommentHash] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.location.hash.toLowerCase().includes("comment");
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const checkHash = () => {
+      if (window.location.hash.toLowerCase().includes("comment")) {
+        setHasCommentHash(true);
+      }
+    };
+    checkHash();
+    window.addEventListener("hashchange", checkHash);
+    return () => window.removeEventListener("hashchange", checkHash);
+  }, []);
+
+  const shouldForceCommentsLoad = Boolean(targetCommentId || hasCommentHash);
 
   const hydrated = useHikariStore((s) => s.hydrated);
 
@@ -1521,15 +1546,59 @@ function AnimePage() {
       )}
 
       {/* 6. COMENTÁRIOS DO ANIME */}
-      <SectionReveal minHeight="300px" rootMargin="300px 0px" lazy={!targetCommentId}>
-        <CommentsSection
-          animeId={anime.id}
-          animeTitle={title}
-          targetCommentId={targetCommentId}
-          isAnimeGeneral
-        />
+      <SectionReveal minHeight="300px" rootMargin="300px 0px" lazy={!shouldForceCommentsLoad}>
+        <Suspense fallback={<CommentsLoadingFallback />}>
+          <CommentsSection
+            animeId={anime.id}
+            animeTitle={title}
+            targetCommentId={targetCommentId}
+            isAnimeGeneral
+          />
+        </Suspense>
       </SectionReveal>
     </article>
+  );
+}
+
+function CommentsLoadingFallback() {
+  return (
+    <section aria-label="Carregando comentários" className="mt-12 min-h-[300px]">
+      <div className="grid gap-6 sm:gap-8">
+        <div className="min-w-0">
+          <div className="border-b border-purple-500/20 pb-4">
+            <div className="flex items-center gap-2.5">
+              <span className="h-6 w-1 rounded-full bg-purple-500 shrink-0" />
+              <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                Comentários
+              </h2>
+            </div>
+          </div>
+        </div>
+
+        <div
+          role="status"
+          aria-live="polite"
+          className="elizabeth-loading-container relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24]/90 via-[#0c0a15]/95 to-[#08070d] p-8 sm:p-12 text-center shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] backdrop-blur-md"
+        >
+          <div
+            className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-36 bg-[#a855f7]/15 rounded-full blur-3xl"
+            aria-hidden="true"
+          />
+
+          <div className="relative z-10 flex flex-col items-center justify-center">
+            <div className="flex items-center justify-center gap-2.5">
+              <div
+                className="size-5 rounded-full border-2 border-[#a855f7]/25 border-t-[#c084fc] animate-spin shadow-[0_0_12px_rgba(168,85,247,0.45)] shrink-0"
+                aria-hidden="true"
+              />
+              <p className="text-sm font-medium tracking-wide text-white/85 select-none">
+                Carregando comentários...
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

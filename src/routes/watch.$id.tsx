@@ -604,6 +604,10 @@ function parseDurationToSeconds(raw?: string | number | null): number {
   return 0;
 }
 
+  const playerPoster = useMemo(() => {
+    return current?.thumbnail || anime?.banner || anime?.cover || null;
+  }, [current?.thumbnail, anime?.banner, anime?.cover]);
+
   // Criação do objeto VideoItem compatível com o Hikari
   const _currentVideoItem = useMemo((): VideoItem | undefined => {
     if (!current || !file) return undefined;
@@ -623,10 +627,10 @@ function parseDurationToSeconds(raw?: string | number | null): number {
       durationFormatted: initialDuration > 0 ? `${mins}:${secs}` : "00:00",
       category: "Treinamentos & Tutoriais",
       tags: [title, `Episódio ${current.number}`].filter(Boolean),
-      posterUrl: current.thumbnail || anime?.cover || "",
+      posterUrl: playerPoster || "",
       videoUrl: file,
       url: file,
-      thumbnailUrl: current.thumbnail || anime?.cover || undefined,
+      thumbnailUrl: playerPoster || undefined,
       episodeNumber: current.number,
       episodeTitle: current.title,
       playerLabel: selectedPlayer?.name || "Player 1",
@@ -640,7 +644,7 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         { id: "sub-en", lang: "en", label: "Inglês (Original)" },
       ],
     };
-  }, [current, file, title, anime?.cover, anime?.synopsis, selectedPlayer?.name]);
+  }, [current, file, title, playerPoster, anime?.synopsis, selectedPlayer?.name]);
 
   const handlePlayerError = useCallback(() => {
     if (!selectedPlayer) return;
@@ -707,7 +711,18 @@ function parseDurationToSeconds(raw?: string | number | null): number {
         {/* ================================================== */}
 
         {file && selectedPlayer && current ? (
-          <Suspense fallback={<PlayerLoadingFallback />}>
+          <Suspense
+            fallback={
+              <PlayerLoadingFallback
+                posterUrl={playerPoster}
+                title={
+                  current.number
+                    ? `${title} — Episódio ${current.number}`
+                    : title
+                }
+              />
+            }
+          >
             <CustomVideoPlayer
               key={`${anime.id}-${current.id}-${selectedPlayer.id}-${file}`}
               video={_currentVideoItem}
@@ -1004,16 +1019,43 @@ function YouTubeTrailer({ yt, title }: { yt: string; title: string }) {
   );
 }
 
-function PlayerLoadingFallback() {
+function PlayerLoadingFallback({
+  posterUrl,
+  title,
+}: {
+  posterUrl?: string | null;
+  title?: string;
+} = {}) {
   return (
     <div
       aria-label="Carregando reprodutor"
-      className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)] flex items-center justify-center"
+      className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)] flex items-center justify-center select-none"
     >
-      <div
-        className="size-8 animate-spin rounded-full border-2 border-white/10 border-t-[#a855f7]"
-        aria-hidden="true"
-      />
+      {posterUrl ? (
+        <>
+          <img
+            src={posterUrl}
+            alt={title ? `Poster de ${title}` : "Miniatura do episódio"}
+            className="absolute inset-0 size-full object-cover filter brightness-[0.7]"
+            loading="eager"
+            decoding="async"
+          />
+          <div
+            className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40"
+            aria-hidden="true"
+          />
+        </>
+      ) : null}
+
+      <div className="relative z-10 flex flex-col items-center justify-center gap-3">
+        <div
+          className="size-8 animate-spin rounded-full border-2 border-white/20 border-t-[#a855f7] shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+          aria-hidden="true"
+        />
+        <span className="text-xs font-medium text-white/80 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wide">
+          Carregando player...
+        </span>
+      </div>
     </div>
   );
 }
