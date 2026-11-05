@@ -328,6 +328,28 @@ export const Route = createFileRoute("/api/notifications")({
 
           const rowsResult = await sql.query(
             `
+              with target_notifications as (
+                select n.*
+                from "notification" n
+                where ${VALID_NOTIFICATION_PREDICATE}
+                order by n."createdAt" desc
+                limit 50
+              ),
+              like_counts as (
+                select
+                  cl."commentId",
+                  count(*)::int as "likesCount"
+                from "comment_like" cl
+                where (cl."type" = 'like' or cl."type" is null)
+                  and cl."userId" <> $1
+                  and cl."commentId" in (
+                    select distinct tn."commentId"
+                    from target_notifications tn
+                    where tn."type" = 'comment_like'
+                      and tn."commentId" is not null
+                  )
+                group by cl."commentId"
+              )
               select
                 n."id",
                 n."type",
@@ -369,16 +391,12 @@ export const Route = createFileRoute("/api/notifications")({
                   else null
                 end as "parentCommentAuthorName",
                 case
-                  when n."type" = 'comment_like' and n."commentId" is not null then (
-                    select count(*)::int
-                    from "comment_like" cl
-                    where cl."commentId" = n."commentId"
-                      and (cl."type" = 'like' or cl."type" is null)
-                      and cl."userId" <> n."userId"
-                  )
+                  when n."type" = 'comment_like' and n."commentId" is not null then coalesce(lc."likesCount", 0)::int
                   else 0
                 end as "commentLikes"
-              from "notification" n
+              from target_notifications n
+              left join like_counts lc
+                on lc."commentId" = n."commentId"
               left join "user" u
                 on u."id" = n."actorId"
               left join "profile" p
@@ -391,9 +409,7 @@ export const Route = createFileRoute("/api/notifications")({
                 on pu."id" = pc."userId"
               left join "profile" pp
                 on pp."userId" = pc."userId"
-              where ${VALID_NOTIFICATION_PREDICATE}
               order by n."createdAt" desc
-              limit 50
             `,
             [apiUser.id],
           );
