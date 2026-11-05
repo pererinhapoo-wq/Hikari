@@ -27,71 +27,70 @@ export const Route = createFileRoute("/api/comments")({
           const isAdmin = Boolean(apiUser?.email && isHikariAdmin(apiUser.email));
 
           const queryText = `
+            with selected_comments as (
+              select
+                c."id",
+                c."animeId",
+                c."episodeId",
+                c."content",
+                c."imageUrl",
+                c."parentId",
+                c."isSpoiler",
+                c."createdAt",
+                c."updatedAt",
+                c."userId"
+              from "comment" c
+              where c."animeId" = $1
+                ${episodeId ? 'and c."episodeId" = $3' : ""}
+            ),
+            like_counts as (
+              select
+                cl."commentId",
+                count(*) filter (where cl."type" = 'like' or cl."type" is null)::int as "likes",
+                count(*) filter (where cl."type" = 'dislike')::int as "dislikes"
+              from "comment_like" cl
+              inner join selected_comments sc on sc."id" = cl."commentId"
+              group by cl."commentId"
+            )
             select
-              c."id",
-              c."animeId",
-              c."episodeId",
-              c."content",
-              c."imageUrl",
-              c."parentId",
-              c."isSpoiler",
-              c."createdAt",
-              c."updatedAt",
-              c."userId",
+              sc."id",
+              sc."animeId",
+              sc."episodeId",
+              sc."content",
+              sc."imageUrl",
+              sc."parentId",
+              sc."isSpoiler",
+              sc."createdAt",
+              sc."updatedAt",
+              sc."userId",
               coalesce(p."nick", u."name", 'Usuário') as "userName",
               u."image" as "userImage",
               p."nick" as "userNick",
-              (
-                select count(*)::int
-                from "comment_like" cl
-                where cl."commentId" = c."id"
-                  and (cl."type" = 'like' or cl."type" is null)
-              ) as "likes",
-              (
-                select count(*)::int
-                from "comment_like" cl
-                where cl."commentId" = c."id"
-                  and cl."type" = 'dislike'
-              ) as "dislikes",
+              coalesce(lc."likes", 0)::int as "likes",
+              coalesce(lc."dislikes", 0)::int as "dislikes",
               case
-                when $2::text is not null then
-                  exists (
-                    select 1
-                    from "comment_like" cl
-                    where cl."commentId" = c."id"
-                      and cl."userId" = $2
-                      and (cl."type" = 'like' or cl."type" is null)
-                  )
+                when $2::text is not null and (my_cl."type" = 'like' or (my_cl."type" is null and my_cl."id" is not null)) then true
                 else false
               end as "liked",
               case
-                when $2::text is not null then
-                  exists (
-                    select 1
-                    from "comment_like" cl
-                    where cl."commentId" = c."id"
-                      and cl."userId" = $2
-                      and cl."type" = 'dislike'
-                  )
+                when $2::text is not null and my_cl."type" = 'dislike' then true
                 else false
               end as "disliked",
               case
-                when $2::text is not null then
-                  (
-                    select cl."type"
-                    from "comment_like" cl
-                    where cl."commentId" = c."id"
-                      and cl."userId" = $2
-                    limit 1
-                  )
+                when $2::text is null then null
+                when my_cl."type" = 'dislike' then 'dislike'
+                when my_cl."type" = 'like' or (my_cl."type" is null and my_cl."id" is not null) then 'like'
                 else null
               end as "userReaction"
-            from "comment" c
-            left join "user" u on u."id" = c."userId"
-            left join "profile" p on p."userId" = c."userId"
-            where c."animeId" = $1
-              ${episodeId ? 'and c."episodeId" = $3' : ""}
-            order by c."createdAt" asc
+            from selected_comments sc
+            left join "user" u on u."id" = sc."userId"
+            left join "profile" p on p."userId" = sc."userId"
+            left join like_counts lc on lc."commentId" = sc."id"
+            left join "comment_like" my_cl
+              on my_cl."commentId" = sc."id"
+              and $2::text is not null
+              and my_cl."userId" = $2
+            order by sc."createdAt" asc
           `;
 
           const params: unknown[] = [animeId, currentUserId];

@@ -302,9 +302,9 @@ type AniMedia = {
 
 const FRESH_TTL = 5 * 60 * 1000;
 const SWR_WINDOW = 60 * 60 * 1000;
-const MAX_CACHE_AGE = FRESH_TTL + SWR_WINDOW;
+const _MAX_CACHE_AGE = FRESH_TTL + SWR_WINDOW;
 const MAX_DOMAIN_ENTRIES = 500;
-const TTL = FRESH_TTL;
+const _TTL = FRESH_TTL;
 
 // Configuração de TTL e janela SWR específica por domínio
 export const DOMAIN_TTL_CONFIGS: Record<
