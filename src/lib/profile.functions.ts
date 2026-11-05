@@ -289,6 +289,11 @@ export const getProfileFollowers =
       context,
     }) => {
       const sql = await getSql();
+      const currentUserId = context?.userId ?? null;
+
+      if (!currentUserId) {
+        return [];
+      }
 
       const rows =
         await sql<{
@@ -296,12 +301,19 @@ export const getProfileFollowers =
           nick: string | null;
           name: string | null;
           image: string | null;
+          isFollowing: boolean;
         }>`
           select
             u."id" as "userId",
             p."nick",
             u."name",
-            u."image"
+            u."image",
+            exists (
+              select 1
+              from "user_follow" f
+              where f."followerId" = ${currentUserId}
+                and f."followingId" = u."id"
+            ) as "isFollowing"
           from "user_follow" uf
 
           inner join "user" u
@@ -313,7 +325,7 @@ export const getProfileFollowers =
               u."id"
 
           where uf."followingId" =
-            ${context.userId}
+            ${currentUserId}
 
           order by
             uf."createdAt" desc
@@ -326,19 +338,6 @@ export const getProfileFollowers =
           continue;
         }
 
-        const followRows =
-          await sql<{
-            count: string;
-          }>`
-            select count(*)::text as count
-            from "user_follow"
-            where
-              "followerId" =
-                ${context.userId}
-              and "followingId" =
-                ${row.userId}
-          `;
-
         result.push({
           userId: row.userId,
           nick: row.nick,
@@ -346,11 +345,7 @@ export const getProfileFollowers =
             row.name ??
             "Usuário",
           image: row.image,
-          isFollowing:
-            Number(
-              followRows[0]?.count ??
-                "0",
-            ) > 0,
+          isFollowing: Boolean(row.isFollowing),
         });
       }
 
@@ -370,6 +365,11 @@ export const getProfileFollowing =
       context,
     }) => {
       const sql = await getSql();
+      const currentUserId = context?.userId ?? null;
+
+      if (!currentUserId) {
+        return [];
+      }
 
       const rows =
         await sql<{
@@ -377,12 +377,19 @@ export const getProfileFollowing =
           nick: string | null;
           name: string | null;
           image: string | null;
+          isFollowing: boolean;
         }>`
           select
             u."id" as "userId",
             p."nick",
             u."name",
-            u."image"
+            u."image",
+            exists (
+              select 1
+              from "user_follow" f
+              where f."followerId" = ${currentUserId}
+                and f."followingId" = u."id"
+            ) as "isFollowing"
           from "user_follow" uf
 
           inner join "user" u
@@ -394,7 +401,7 @@ export const getProfileFollowing =
               u."id"
 
           where uf."followerId" =
-            ${context.userId}
+            ${currentUserId}
 
           order by
             uf."createdAt" desc
@@ -407,19 +414,6 @@ export const getProfileFollowing =
           continue;
         }
 
-        const followRows =
-          await sql<{
-            count: string;
-          }>`
-            select count(*)::text as count
-            from "user_follow"
-            where
-              "followerId" =
-                ${context.userId}
-              and "followingId" =
-                ${row.userId}
-          `;
-
         result.push({
           userId: row.userId,
           nick: row.nick,
@@ -427,11 +421,7 @@ export const getProfileFollowing =
             row.name ??
             "Usuário",
           image: row.image,
-          isFollowing:
-            Number(
-              followRows[0]?.count ??
-                "0",
-            ) > 0,
+          isFollowing: Boolean(row.isFollowing),
         });
       }
 

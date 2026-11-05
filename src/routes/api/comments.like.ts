@@ -50,31 +50,52 @@ export const Route = createFileRoute("/api/comments/like")({
             );
           }
 
-          // Verifica se o comentário existe e obtém autor e contexto de destino
-          const commentCheck = await sql.query(
+          // 1. Consulta unificada de contexto:
+          // Obtém em uma única viagem:
+          // - Validação de existência do comentário, autor e contexto de episódio/anime
+          // - Reação existente do usuário logado (evitando SELECT subsequente em comment_like)
+          // - Nome formatado do ator (nick do profile ou name do user), eliminando round-trip posterior
+          const contextResult = await sql.query(
             `
-              select "id", "userId", "animeId", "episodeId"
-              from "comment"
-              where "id" = $1
+              select
+                c."id" as "commentId",
+                c."userId" as "commentAuthorId",
+                c."animeId",
+                c."episodeId",
+                cl."id" as "existingReactionId",
+                cl."type" as "existingReactionType",
+                coalesce(
+                  nullif(trim(p."nick"), ''),
+                  nullif(trim(u."name"), ''),
+                  $3
+                ) as "actorName"
+              from "comment" c
+              left join "comment_like" cl
+                on cl."commentId" = c."id" and cl."userId" = $2
+              left join "user" u
+                on u."id" = $2
+              left join "profile" p
+                on p."userId" = u."id"
+              where c."id" = $1
               limit 1
             `,
-            [commentId],
+            [commentId, apiUser.id, apiUser.name || "Usuário"],
           );
 
-          const commentRows: any[] = Array.isArray(commentCheck)
-            ? commentCheck
-            : (commentCheck as any)?.rows ?? [];
+          const contextRows: any[] = Array.isArray(contextResult)
+            ? contextResult
+            : (contextResult as any)?.rows ?? [];
 
-          if (commentRows.length === 0) {
+          if (contextRows.length === 0) {
             return Response.json(
               { error: "Comentário não encontrado." },
               { status: 404 },
             );
           }
 
-          const targetComment = commentRows[0];
-          const commentAuthorId = targetComment?.userId
-            ? String(targetComment.userId)
+          const targetComment = contextRows[0];
+          const commentAuthorId = targetComment?.commentAuthorId
+            ? String(targetComment.commentAuthorId)
             : "";
           const targetAnimeId = targetComment?.animeId
             ? String(targetComment.animeId)
@@ -82,85 +103,54 @@ export const Route = createFileRoute("/api/comments/like")({
           const targetEpisodeId = targetComment?.episodeId
             ? String(targetComment.episodeId)
             : null;
-
-          // Busca reação existente do usuário
-          const existingReactionCheck = await sql.query(
-            `
-              select "id", "type"
-              from "comment_like"
-              where "commentId" = $1 and "userId" = $2
-              limit 1
-            `,
-            [commentId, apiUser.id],
+          const actorName = String(
+            targetComment?.actorName || apiUser.name || "Usuário",
           );
 
-          const existingRows: any[] = Array.isArray(existingReactionCheck)
-            ? existingReactionCheck
-            : (existingReactionCheck as any)?.rows ?? [];
+          const hasExisting = Boolean(targetComment?.existingReactionId);
+          const existingType = targetComment?.existingReactionType || (hasExisting ? "like" : null);
+          const wasLikedBefore = Boolean(hasExisting && existingType === "like");
 
-          const existing = existingRows[0];
-          const wasLikedBefore = Boolean(
-            existing && (existing.type === "like" || !existing.type),
-          );
+          let userReaction: "like" | "dislike" | null = null;
 
-          if (existing) {
-            const currentType = existing.type || "like";
-            if (currentType === reaction) {
-              // Mesma reação clicada novamente -> remove (toggle off)
-              await sql.query(
-                `
-                  delete from "comment_like"
-                  where "id" = $1
-                `,
-                [existing.id],
-              );
-            } else {
-              // Reação oposta -> atualiza para a nova
-              await sql.query(
-                `
-                  update "comment_like"
-                  set "type" = $1
-                  where "id" = $2
-                `,
-                [reaction, existing.id],
-              );
-            }
+          // 2. Operação atômica de mutação:
+          // Se o usuário clicou na mesma reação que já possuía -> toggle off (delete)
+          // Se não possuía ou clicou na reação oposta -> UPSERT atômico (ON CONFLICT ("commentId", "userId"))
+          // Isso elimina condições de corrida entre requisições simultâneas do mesmo usuário
+          if (hasExisting && existingType === reaction) {
+            await sql.query(
+              `
+                delete from "comment_like"
+                where "commentId" = $1 and "userId" = $2
+              `,
+              [commentId, apiUser.id],
+            );
+            userReaction = null;
           } else {
-            // Nenhuma reação prévia -> insere nova
             const reactionId = `cl-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
             await sql.query(
               `
                 insert into "comment_like" ("id", "commentId", "userId", "type", "createdAt")
                 values ($1, $2, $3, $4, CURRENT_TIMESTAMP)
                 on conflict ("commentId", "userId")
-                do update set "type" = $4
+                do update set "type" = excluded."type"
               `,
               [reactionId, commentId, apiUser.id, reaction],
             );
+            userReaction = reaction;
           }
 
-          // Recalcula contagens exatas consolidadas no banco
+          // 3. Contagem consolidada em uma única consulta agregada:
+          // Elimina 2 subqueries aninhadas redundantes utilizando agregação direta com FILTER
           const countsResult = await sql.query(
             `
               select
-                (
-                  select count(*)::int
-                  from "comment_like"
-                  where "commentId" = $1 and ("type" = 'like' or "type" is null)
-                ) as "likes",
-                (
-                  select count(*)::int
-                  from "comment_like"
-                  where "commentId" = $1 and "type" = 'dislike'
-                ) as "dislikes",
-                (
-                  select "type"
-                  from "comment_like"
-                  where "commentId" = $1 and "userId" = $2
-                  limit 1
-                ) as "userReaction"
+                count(*) filter (where "type" = 'like' or "type" is null)::int as "likes",
+                count(*) filter (where "type" = 'dislike')::int as "dislikes"
+              from "comment_like"
+              where "commentId" = $1
             `,
-            [commentId, apiUser.id],
+            [commentId],
           );
 
           const countsRows: any[] = Array.isArray(countsResult)
@@ -170,41 +160,15 @@ export const Route = createFileRoute("/api/comments/like")({
           const counts = countsRows[0] ?? {
             likes: 0,
             dislikes: 0,
-            userReaction: null,
           };
 
-          const userReaction =
-            counts.userReaction === "like" || counts.userReaction === "dislike"
-              ? counts.userReaction
-              : null;
-
-          // Sincroniza notificação de curtida para o autor do comentário (nunca auto-notificação)
+          // 4. Sincronização de notificação (apenas se o autor for outro usuário)
           if (commentAuthorId && commentAuthorId !== apiUser.id) {
             try {
               if (userReaction === "like") {
-                const actorResult = await sql.query(
-                  `
-                    select coalesce(
-                      nullif(trim(p."nick"), ''),
-                      nullif(trim(u."name"), ''),
-                      $2
-                    ) as "actorName"
-                    from "user" u
-                    left join "profile" p
-                      on p."userId" = u."id"
-                    where u."id" = $1
-                    limit 1
-                  `,
-                  [apiUser.id, apiUser.name || "Usuário"],
-                );
-                const actorRows: any[] = Array.isArray(actorResult)
-                  ? actorResult
-                  : (actorResult as any)?.rows ?? [];
-                const actorName = String(
-                  actorRows[0]?.actorName || apiUser.name || "Usuário",
-                );
                 const likeMessage = `${actorName} curtiu seu comentário.`;
 
+                // Busca notificação existente
                 const existingNotifResult = await sql.query(
                   `
                     select "id", "actorId"
@@ -213,29 +177,32 @@ export const Route = createFileRoute("/api/comments/like")({
                       and "type" = 'comment_like'
                       and "commentId" = $2
                     order by "createdAt" desc
-                    limit 1
                   `,
                   [commentAuthorId, commentId],
                 );
                 const existingNotifRows: any[] = Array.isArray(existingNotifResult)
                   ? existingNotifResult
                   : (existingNotifResult as any)?.rows ?? [];
-                const existingNotif = existingNotifRows[0];
 
-                if (existingNotif?.id) {
-                  const keepId = String(existingNotif.id);
-                  await sql.query(
-                    `
-                      delete from "notification"
-                      where "userId" = $1
-                        and "type" = 'comment_like'
-                        and "commentId" = $2
-                        and "id" <> $3
-                    `,
-                    [commentAuthorId, commentId, keepId],
-                  );
+                if (existingNotifRows.length > 0) {
+                  const keepId = String(existingNotifRows[0].id);
 
-                  if (String(existingNotif.actorId ?? "") !== apiUser.id) {
+                  // Se houver mais de uma (devido a requisições simultâneas anteriores), remove as duplicatas
+                  if (existingNotifRows.length > 1) {
+                    await sql.query(
+                      `
+                        delete from "notification"
+                        where "userId" = $1
+                          and "type" = 'comment_like'
+                          and "commentId" = $2
+                          and "id" <> $3
+                      `,
+                      [commentAuthorId, commentId, keepId],
+                    );
+                  }
+
+                  // Atualiza notificação principal
+                  if (String(existingNotifRows[0].actorId ?? "") !== apiUser.id) {
                     await sql.query(
                       `
                         update "notification"
@@ -310,7 +277,8 @@ export const Route = createFileRoute("/api/comments/like")({
                   );
                 }
               } else if (wasLikedBefore) {
-                // O usuário removeu sua curtida (ou trocou para dislike): atualiza ou remove se não restar nenhuma curtida externa
+                // Usuário removeu curtida ou trocou para dislike:
+                // Busca se ainda resta algum outro liker
                 const remainingLikerResult = await sql.query(
                   `
                     select
