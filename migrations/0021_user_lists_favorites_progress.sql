@@ -3,6 +3,7 @@
 
 -- 1. Favoritos oficiais do Perfil (anime, personagem, estúdio, empresa e pessoa).
 create table if not exists "user_favorite" (
+  "id" text not null primary key,
   "userId" text not null
     references "user" ("id") on delete cascade,
   "targetType" text not null
@@ -50,18 +51,25 @@ create table if not exists "user_favorite" (
 create unique index if not exists "user_favorite_user_anime_uidx"
   on "user_favorite" ("userId", "animeId")
   where "animeId" is not null;
+
 create unique index if not exists "user_favorite_user_character_uidx"
   on "user_favorite" ("userId", "characterId")
   where "characterId" is not null;
+
 create unique index if not exists "user_favorite_user_studio_uidx"
   on "user_favorite" ("userId", "studioId")
   where "studioId" is not null;
+
 create unique index if not exists "user_favorite_user_company_uidx"
   on "user_favorite" ("userId", "companyId")
   where "companyId" is not null;
+
 create unique index if not exists "user_favorite_user_person_uidx"
   on "user_favorite" ("userId", "personId")
   where "personId" is not null;
+
+create index if not exists "user_favorite_user_type_pos_idx"
+  on "user_favorite" ("userId", "targetType", "position" asc);
 
 -- 2. Estado do usuário em cada anime. animeId não possui FK intencionalmente:
 -- IDs locais (local-*) também precisam ser aceitos nesta etapa.
@@ -84,6 +92,9 @@ create table if not exists "user_anime_tracking" (
 
 create index if not exists "user_anime_tracking_user_status_idx"
   on "user_anime_tracking" ("userId", "status", "updatedAt" desc);
+
+create index if not exists "user_anime_tracking_user_updated_idx"
+  on "user_anime_tracking" ("userId", "updatedAt" desc);
 
 -- 3. Listas personalizadas criadas pelo usuário.
 create table if not exists "user_custom_list" (
@@ -122,7 +133,7 @@ create table if not exists "user_episode_progress" (
     references "user" ("id") on delete cascade,
   "animeId" text not null,
   "episodeId" text not null,
-  "episodeNumber" integer not null check ("episodeNumber" > 0),
+  "episodeNumber" integer not null check ("episodeNumber" >= 0),
   "currentTime" integer not null default 0 check ("currentTime" >= 0),
   "duration" integer,
   "accumulatedTime" integer not null default 0 check ("accumulatedTime" >= 0),
@@ -139,8 +150,6 @@ create table if not exists "user_episode_progress" (
 
 create index if not exists "user_episode_progress_user_updated_idx"
   on "user_episode_progress" ("userId", "updatedAt" desc);
-create index if not exists "user_episode_progress_user_anime_idx"
-  on "user_episode_progress" ("userId", "animeId");
 
 -- 6. Histórico autoritativo de episódios marcados como assistidos.
 create table if not exists "user_watched_episode" (
@@ -148,7 +157,7 @@ create table if not exists "user_watched_episode" (
     references "user" ("id") on delete cascade,
   "animeId" text not null,
   "episodeId" text not null,
-  "episodeNumber" integer not null check ("episodeNumber" > 0),
+  "episodeNumber" integer not null check ("episodeNumber" >= 0),
   "origin" text not null
     check ("origin" in ('playback', 'manual')),
   "watchedAt" timestamptz not null default current_timestamp,
@@ -157,5 +166,6 @@ create table if not exists "user_watched_episode" (
 
 create index if not exists "user_watched_episode_user_anime_recent_idx"
   on "user_watched_episode" ("userId", "animeId", "watchedAt" desc);
+
 create index if not exists "user_watched_episode_user_recent_idx"
   on "user_watched_episode" ("userId", "watchedAt" desc);
