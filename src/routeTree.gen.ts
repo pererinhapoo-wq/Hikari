@@ -57,6 +57,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCommentsEditRouteImport } from './routes/api/comments.edit'
 import { Route as ApiCommentsLikeRouteImport } from './routes/api/comments.like'
 import { Route as ApiCommentsModerationRouteImport } from './routes/api/comments.moderation'
+import { Route as ApiProfileFollowRouteImport } from './routes/api/profile.follow'
 import { Route as WatchIdEpRouteImport } from './routes/watch_.$id.$ep'
 
 const IndexRoute = IndexRouteImport.update({
@@ -299,6 +300,11 @@ const ApiCommentsModerationRoute = ApiCommentsModerationRouteImport.update({
   path: '/moderation',
   getParentRoute: () => ApiCommentsRoute,
 } as any)
+const ApiProfileFollowRoute = ApiProfileFollowRouteImport.update({
+  id: '/api/profile/follow',
+  path: '/api/profile/follow',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WatchIdEpRoute = WatchIdEpRouteImport.update({
   id: '/watch_/$id/$ep',
   path: '/watch/$id/$ep',
@@ -354,6 +360,7 @@ export interface FileRoutesByFullPath {
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
+  '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRoutesByTo {
@@ -403,6 +410,7 @@ export interface FileRoutesByTo {
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
+  '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRoutesById {
@@ -455,6 +463,7 @@ export interface FileRoutesById {
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
+  '/api/profile/follow': typeof ApiProfileFollowRoute
   '/watch_/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRouteTypes {
@@ -508,6 +517,7 @@ export interface FileRouteTypes {
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
+    | '/api/profile/follow'
     | '/watch/$id/$ep'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -557,6 +567,7 @@ export interface FileRouteTypes {
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
+    | '/api/profile/follow'
     | '/watch/$id/$ep'
   id:
     | '__root__'
@@ -608,6 +619,7 @@ export interface FileRouteTypes {
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
+    | '/api/profile/follow'
     | '/watch_/$id/$ep'
   fileRoutesById: FileRoutesById
 }
@@ -649,6 +661,7 @@ export interface RootRouteChildren {
   WatchIdRoute: typeof WatchIdRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiProfileFollowRoute: typeof ApiProfileFollowRoute
   WatchIdEpRoute: typeof WatchIdEpRoute
 }
 
@@ -990,6 +1003,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCommentsModerationRouteImport
       parentRoute: typeof ApiCommentsRoute
     }
+    '/api/profile/follow': {
+      id: '/api/profile/follow'
+      path: '/api/profile/follow'
+      fullPath: '/api/profile/follow'
+      preLoaderRoute: typeof ApiProfileFollowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/watch_/$id/$ep': {
       id: '/watch_/$id/$ep'
       path: '/watch/$id/$ep'
@@ -1086,8 +1106,18 @@ const rootRouteChildren: RootRouteChildren = {
   WatchIdRoute: WatchIdRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiProfileFollowRoute: ApiProfileFollowRoute,
   WatchIdEpRoute: WatchIdEpRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

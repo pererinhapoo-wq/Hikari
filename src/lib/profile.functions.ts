@@ -47,6 +47,36 @@ export type UserProfile = {
   privacyFollowers: SectionPrivacyLevel;
 };
 
+export type FollowRelationshipStatus =
+  | "self"
+  | "following"
+  | "requested"
+  | "none";
+
+export interface UserRelationship {
+  targetUserId: string;
+  isSelf: boolean;
+  isFollowing: boolean;
+  isFollowedBy: boolean;
+  hasPendingRequestFromViewer: boolean;
+  hasPendingRequestToViewer: boolean;
+  isBlocked: boolean;
+  targetAccountType: AccountType;
+  targetAllowFollowers: boolean;
+  relationStatus: FollowRelationshipStatus;
+}
+
+export type FollowRequestItem = {
+  requesterId: string;
+  targetId: string;
+  status: "pending" | "rejected";
+  createdAt: string;
+  updatedAt: string;
+  nick: string;
+  name: string;
+  image: string | null;
+};
+
 export type PublicUserProfile = {
   userId: string;
   name?: string;
@@ -58,6 +88,8 @@ export type PublicUserProfile = {
   followersCount: number;
   followingCount: number;
   isFollowing: boolean;
+  hasPendingRequest: boolean;
+  relationStatus: FollowRelationshipStatus;
   // Permissões e privacidade avaliadas no servidor
   accountType: AccountType;
   allowFollowers: boolean;
@@ -161,26 +193,6 @@ export async function evaluateUserPrivacy(
 ): Promise<EvaluatedPrivacy> {
   const isOwner = Boolean(viewerUserId && viewerUserId === ownerUserId);
 
-  if (isOwner) {
-    return {
-      isOwner: true,
-      isFollower: false,
-      accountType: "public",
-      allowFollowers: true,
-      privacyLists: "public",
-      privacyFavorites: "public",
-      privacyHistory: "public",
-      privacyComments: "public",
-      privacyFollowers: "public",
-      canViewAccount: true,
-      canViewLists: true,
-      canViewFavorites: true,
-      canViewHistory: true,
-      canViewComments: true,
-      canViewFollowers: true,
-    };
-  }
-
   const rows = await sql<{
     accountType: string | null;
     allowFollowers: boolean | null;
@@ -217,6 +229,26 @@ export async function evaluateUserPrivacy(
     (profile?.privacyComments as SectionPrivacyLevel) || "public";
   const privacyFollowers: SectionPrivacyLevel =
     (profile?.privacyFollowers as SectionPrivacyLevel) || "public";
+
+  if (isOwner) {
+    return {
+      isOwner: true,
+      isFollower: false,
+      accountType,
+      allowFollowers,
+      privacyLists,
+      privacyFavorites,
+      privacyHistory,
+      privacyComments,
+      privacyFollowers,
+      canViewAccount: true,
+      canViewLists: true,
+      canViewFavorites: true,
+      canViewHistory: true,
+      canViewComments: true,
+      canViewFollowers: true,
+    };
+  }
 
   let isFollower = false;
   if (viewerUserId) {
@@ -500,17 +532,41 @@ export const getPublicProfile =
         followingCount = Number(followingRows[0]?.count ?? "0");
       }
 
+      let hasPendingRequest = false;
+      if (viewerUserId && !privacy.isOwner && !privacy.isFollower) {
+        const reqRows = await sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow_request"
+          where "requesterId" = ${viewerUserId}
+            and "targetId" = ${row.userId}
+            and "status" = 'pending'
+          limit 1
+        `;
+        hasPendingRequest = Number(reqRows[0]?.count ?? "0") > 0;
+      }
+
+      let relationStatus: FollowRelationshipStatus = "none";
+      if (privacy.isOwner) {
+        relationStatus = "self";
+      } else if (privacy.isFollower) {
+        relationStatus = "following";
+      } else if (hasPendingRequest) {
+        relationStatus = "requested";
+      }
+
       const profileResult: PublicUserProfile = {
         userId: row.userId,
         name: row.name || row.nick || "Usuário",
         nick: row.nick ?? "",
-        bio: row.bio ?? "",
+        bio: privacy.canViewAccount ? (row.bio ?? "") : "",
         image: row.image,
-        bannerUrl: row.bannerUrl ?? null,
+        bannerUrl: privacy.canViewAccount ? (row.bannerUrl ?? null) : null,
         commentCount,
         followersCount,
         followingCount,
         isFollowing: privacy.isFollower,
+        hasPendingRequest,
+        relationStatus,
         accountType: privacy.accountType,
         allowFollowers: privacy.allowFollowers,
         privacyLists: privacy.privacyLists,
@@ -1288,3 +1344,542 @@ export const updateProfile =
         privacyFollowers: finalPrivacyFollowers,
       } satisfies UserProfile;
     });
+
+/* ============================================================ */
+/* ETAPA 8 — SISTEMA DE SEGUIDORES E SOLICITAÇÕES              */
+/* ============================================================ */
+
+export const followTargetSchema = z.object({
+  targetUserId: z.string().trim().min(1, "ID do usuário alvo é obrigatório"),
+});
+
+export const followRequestActionSchema = z.object({
+  requesterId: z.string().trim().min(1, "ID do solicitante é obrigatório"),
+});
+
+/**
+ * Lógica pura de seguir/solicitar (reutilizável em testes e em Server Functions).
+ */
+export async function executeFollowUser(sql: any, viewerId: string, targetId: string) {
+  if (viewerId === targetId) {
+    throw new Error("Você não pode seguir a si próprio.");
+  }
+
+  // 1. Verificar se o alvo existe e obter preferências de privacidade
+  const targetRows = await sql<{
+    id: string;
+    accountType: string | null;
+    allowFollowers: boolean | null;
+  }>`
+    select
+      u."id",
+      p."accountType",
+      p."allowFollowers"
+    from "user" u
+    left join "profile" p on p."userId" = u."id"
+    where u."id" = ${targetId}
+    limit 1
+  `;
+
+  const targetUser = targetRows[0];
+  if (!targetUser) {
+    throw new Error("Usuário alvo não encontrado.");
+  }
+
+  // 2. Verificar bloqueio mútuo
+  const blockRows = await sql<{ count: string }>`
+    select count(*)::text as count
+    from "user_block"
+    where ("blockerId" = ${viewerId} and "blockedId" = ${targetId})
+       or ("blockerId" = ${targetId} and "blockedId" = ${viewerId})
+    limit 1
+  `;
+  if (Number(blockRows[0]?.count ?? "0") > 0) {
+    throw new Error("Não é possível interagir com este perfil devido a um bloqueio.");
+  }
+
+  // 3. Verificar allowFollowers
+  const allowFollowers = targetUser.allowFollowers ?? true;
+  if (!allowFollowers) {
+    throw new Error("Este usuário não está aceitando novos seguidores.");
+  }
+
+  // 4. Verificar se já segue
+  const alreadyFollowingRows = await sql<{ count: string }>`
+    select count(*)::text as count
+    from "user_follow"
+    where "followerId" = ${viewerId}
+      and "followingId" = ${targetId}
+    limit 1
+  `;
+  const isAlreadyFollowing = Number(alreadyFollowingRows[0]?.count ?? "0") > 0;
+  if (isAlreadyFollowing) {
+    return {
+      status: "following" as const,
+      message: "Você já está seguindo este usuário.",
+    };
+  }
+
+  const isPrivate = targetUser.accountType === "private";
+
+  if (isPrivate) {
+    // Perfil privado: criar ou reabrir solicitação pendente
+    await sql`
+      insert into "user_follow_request" ("requesterId", "targetId", "status", "createdAt", "updatedAt")
+      values (${viewerId}, ${targetId}, 'pending', current_timestamp, current_timestamp)
+      on conflict ("requesterId", "targetId")
+      do update set
+        "status" = 'pending',
+        "updatedAt" = current_timestamp
+    `;
+
+    return {
+      status: "requested" as const,
+      message: "Solicitação para seguir enviada com sucesso.",
+    };
+  } else {
+    // Perfil público: criar vínculo imediato
+    await sql`
+      insert into "user_follow" ("followerId", "followingId", "createdAt")
+      values (${viewerId}, ${targetId}, current_timestamp)
+      on conflict ("followerId", "followingId") do nothing
+    `;
+
+    // Limpar qualquer solicitação antiga residual
+    await sql`
+      delete from "user_follow_request"
+      where "requesterId" = ${viewerId}
+        and "targetId" = ${targetId}
+    `;
+
+    return {
+      status: "following" as const,
+      message: "Agora você está seguindo este usuário.",
+    };
+  }
+}
+
+export async function executeUnfollowUser(sql: any, viewerId: string, targetId: string) {
+  if (viewerId === targetId) {
+    throw new Error("Operação inválida.");
+  }
+
+  await sql`
+    delete from "user_follow"
+    where "followerId" = ${viewerId}
+      and "followingId" = ${targetId}
+  `;
+
+  await sql`
+    delete from "user_follow_request"
+    where "requesterId" = ${viewerId}
+      and "targetId" = ${targetId}
+  `;
+
+  return {
+    status: "none" as const,
+    message: "Você deixou de seguir este usuário.",
+  };
+}
+
+export async function executeCancelFollowRequest(sql: any, viewerId: string, targetId: string) {
+  const deleteResult = await sql<{ requesterId: string }>`
+    delete from "user_follow_request"
+    where "requesterId" = ${viewerId}
+      and "targetId" = ${targetId}
+      and "status" = 'pending'
+    returning "requesterId"
+  `;
+
+  if (deleteResult.length === 0) {
+    throw new Error("Nenhuma solicitação pendente encontrada para cancelar.");
+  }
+
+  return {
+    status: "none" as const,
+    message: "Solicitação cancelada com sucesso.",
+  };
+}
+
+export async function executeAcceptFollowRequest(sql: any, ownerId: string, requesterId: string) {
+  if (ownerId === requesterId) {
+    throw new Error("Operação inválida.");
+  }
+
+  // 1. Verificar bloqueio
+  const blockRows = await sql<{ count: string }>`
+    select count(*)::text as count
+    from "user_block"
+    where ("blockerId" = ${ownerId} and "blockedId" = ${requesterId})
+       or ("blockerId" = ${requesterId} and "blockedId" = ${ownerId})
+    limit 1
+  `;
+  if (Number(blockRows[0]?.count ?? "0") > 0) {
+    throw new Error("Não é possível aceitar solicitação de um usuário bloqueado.");
+  }
+
+  // 2. Verificar solicitação pendente
+  const reqRows = await sql<{ requesterId: string }>`
+    select "requesterId"
+    from "user_follow_request"
+    where "requesterId" = ${requesterId}
+      and "targetId" = ${ownerId}
+      and "status" = 'pending'
+    limit 1
+  `;
+
+  if (reqRows.length === 0) {
+    throw new Error("Solicitação pendente não encontrada.");
+  }
+
+  // 3. Efetivar vínculo de seguidor
+  await sql`
+    insert into "user_follow" ("followerId", "followingId", "createdAt")
+    values (${requesterId}, ${ownerId}, current_timestamp)
+    on conflict ("followerId", "followingId") do nothing
+  `;
+
+  // 4. Remover ou atualizar solicitação concluída
+  await sql`
+    delete from "user_follow_request"
+    where "requesterId" = ${requesterId}
+      and "targetId" = ${ownerId}
+  `;
+
+  return {
+    success: true,
+    message: "Solicitação aceita com sucesso.",
+  };
+}
+
+export async function executeRejectFollowRequest(sql: any, ownerId: string, requesterId: string) {
+  const reqRows = await sql<{ requesterId: string }>`
+    select "requesterId"
+    from "user_follow_request"
+    where "requesterId" = ${requesterId}
+      and "targetId" = ${ownerId}
+      and "status" = 'pending'
+    limit 1
+  `;
+
+  if (reqRows.length === 0) {
+    throw new Error("Solicitação pendente não encontrada.");
+  }
+
+  await sql`
+    delete from "user_follow_request"
+    where "requesterId" = ${requesterId}
+      and "targetId" = ${ownerId}
+  `;
+
+  return {
+    success: true,
+    message: "Solicitação recusada.",
+  };
+}
+
+export async function executeGetUserRelationship(
+  sql: any,
+  viewerId: string | null,
+  targetId: string,
+): Promise<UserRelationship> {
+  const isSelf = Boolean(viewerId && viewerId === targetId);
+
+  const targetRows = await sql<{
+    id: string;
+    accountType: string | null;
+    allowFollowers: boolean | null;
+  }>`
+    select
+      u."id",
+      p."accountType",
+      p."allowFollowers"
+    from "user" u
+    left join "profile" p on p."userId" = u."id"
+    where u."id" = ${targetId}
+    limit 1
+  `;
+
+  const targetUser = targetRows[0];
+  if (!targetUser) {
+    throw new Error("Usuário alvo não encontrado.");
+  }
+
+  const targetAccountType: AccountType =
+    targetUser.accountType === "private" ? "private" : "public";
+  const targetAllowFollowers = targetUser.allowFollowers ?? true;
+
+  if (isSelf || !viewerId) {
+    return {
+      targetUserId: targetId,
+      isSelf,
+      isFollowing: false,
+      isFollowedBy: false,
+      hasPendingRequestFromViewer: false,
+      hasPendingRequestToViewer: false,
+      isBlocked: false,
+      targetAccountType,
+      targetAllowFollowers,
+      relationStatus: isSelf ? "self" : "none",
+    };
+  }
+
+  // Bloqueio mútuo
+  const blockRows = await sql<{ count: string }>`
+    select count(*)::text as count
+    from "user_block"
+    where ("blockerId" = ${viewerId} and "blockedId" = ${targetId})
+       or ("blockerId" = ${targetId} and "blockedId" = ${viewerId})
+    limit 1
+  `;
+  const isBlocked = Number(blockRows[0]?.count ?? "0") > 0;
+
+  // isFollowing
+  const followingRows = await sql<{ count: string }>`
+    select count(*)::text as count
+    from "user_follow"
+    where "followerId" = ${viewerId}
+      and "followingId" = ${targetId}
+    limit 1
+  `;
+  const isFollowing = Number(followingRows[0]?.count ?? "0") > 0;
+
+  // isFollowedBy
+  const followedByRows = await sql<{ count: string }>`
+    select count(*)::text as count
+    from "user_follow"
+    where "followerId" = ${targetId}
+      and "followingId" = ${viewerId}
+    limit 1
+  `;
+  const isFollowedBy = Number(followedByRows[0]?.count ?? "0") > 0;
+
+  // Solicitação enviada pelo visitante
+  const sentReqRows = await sql<{ count: string }>`
+    select count(*)::text as count
+    from "user_follow_request"
+    where "requesterId" = ${viewerId}
+      and "targetId" = ${targetId}
+      and "status" = 'pending'
+    limit 1
+  `;
+  const hasPendingRequestFromViewer = Number(sentReqRows[0]?.count ?? "0") > 0;
+
+  // Solicitação recebida pelo visitante
+  const recvReqRows = await sql<{ count: string }>`
+    select count(*)::text as count
+    from "user_follow_request"
+    where "requesterId" = ${targetId}
+      and "targetId" = ${viewerId}
+      and "status" = 'pending'
+    limit 1
+  `;
+  const hasPendingRequestToViewer = Number(recvReqRows[0]?.count ?? "0") > 0;
+
+  let relationStatus: FollowRelationshipStatus = "none";
+  if (isFollowing) {
+    relationStatus = "following";
+  } else if (hasPendingRequestFromViewer) {
+    relationStatus = "requested";
+  }
+
+  return {
+    targetUserId: targetId,
+    isSelf: false,
+    isFollowing,
+    isFollowedBy,
+    hasPendingRequestFromViewer,
+    hasPendingRequestToViewer,
+    isBlocked,
+    targetAccountType,
+    targetAllowFollowers,
+    relationStatus,
+  };
+}
+
+/**
+ * Seguir um usuário ou solicitar acompanhamento caso o perfil seja privado.
+ * Executado com authMiddleware (identidade do context.userId).
+ */
+export const followUser = createServerFn({
+  method: "POST",
+})
+  .middleware([authMiddleware])
+  .validator((d: { targetUserId: string }) => followTargetSchema.parse(d))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeFollowUser(sql, context.userId, data.targetUserId);
+  });
+
+/**
+ * Deixar de seguir um usuário.
+ */
+export const unfollowUser = createServerFn({
+  method: "POST",
+})
+  .middleware([authMiddleware])
+  .validator((d: { targetUserId: string }) => followTargetSchema.parse(d))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeUnfollowUser(sql, context.userId, data.targetUserId);
+  });
+
+/**
+ * Cancelar solicitação de acompanhamento enviada para um perfil privado.
+ */
+export const cancelFollowRequest = createServerFn({
+  method: "POST",
+})
+  .middleware([authMiddleware])
+  .validator((d: { targetUserId: string }) => followTargetSchema.parse(d))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeCancelFollowRequest(sql, context.userId, data.targetUserId);
+  });
+
+/**
+ * Aceitar solicitação de acompanhamento recebida.
+ * Apenas o proprietário (targetId = context.userId) pode aceitar.
+ */
+export const acceptFollowRequest = createServerFn({
+  method: "POST",
+})
+  .middleware([authMiddleware])
+  .validator((d: { requesterId: string }) => followRequestActionSchema.parse(d))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeAcceptFollowRequest(sql, context.userId, data.requesterId);
+  });
+
+/**
+ * Recusar solicitação de acompanhamento recebida.
+ * Apenas o proprietário (targetId = context.userId) pode recusar.
+ */
+export const rejectFollowRequest = createServerFn({
+  method: "POST",
+})
+  .middleware([authMiddleware])
+  .validator((d: { requesterId: string }) => followRequestActionSchema.parse(d))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeRejectFollowRequest(sql, context.userId, data.requesterId);
+  });
+
+/**
+ * Listar solicitações de acompanhamento recebidas pelo usuário logado.
+ */
+export const getReceivedFollowRequests = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const ownerId = context.userId;
+    const sql = await getSql();
+
+    const rows = await sql<{
+      requesterId: string;
+      targetId: string;
+      status: "pending" | "rejected";
+      createdAt: string;
+      updatedAt: string;
+      nick: string | null;
+      name: string | null;
+      image: string | null;
+    }>`
+      select
+        r."requesterId",
+        r."targetId",
+        r."status",
+        r."createdAt",
+        r."updatedAt",
+        coalesce(p."nick", u."name", 'usuario') as "nick",
+        coalesce(p."displayName", u."name", 'Usuário') as "name",
+        coalesce(p."avatarUrl", u."image") as "image"
+      from "user_follow_request" r
+      inner join "user" u on u."id" = r."requesterId"
+      left join "profile" p on p."userId" = u."id"
+      where r."targetId" = ${ownerId}
+        and r."status" = 'pending'
+      order by r."createdAt" desc
+    `;
+
+    const result: FollowRequestItem[] = rows.map((r) => ({
+      requesterId: r.requesterId,
+      targetId: r.targetId,
+      status: r.status,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      nick: r.nick ?? "usuario",
+      name: r.name ?? "Usuário",
+      image: r.image,
+    }));
+
+    return result;
+  });
+
+/**
+ * Listar solicitações de acompanhamento enviadas pelo usuário logado.
+ */
+export const getSentFollowRequests = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const viewerId = context.userId;
+    const sql = await getSql();
+
+    const rows = await sql<{
+      requesterId: string;
+      targetId: string;
+      status: "pending" | "rejected";
+      createdAt: string;
+      updatedAt: string;
+      nick: string | null;
+      name: string | null;
+      image: string | null;
+    }>`
+      select
+        r."requesterId",
+        r."targetId",
+        r."status",
+        r."createdAt",
+        r."updatedAt",
+        coalesce(p."nick", u."name", 'usuario') as "nick",
+        coalesce(p."displayName", u."name", 'Usuário') as "name",
+        coalesce(p."avatarUrl", u."image") as "image"
+      from "user_follow_request" r
+      inner join "user" u on u."id" = r."targetId"
+      left join "profile" p on p."userId" = u."id"
+      where r."requesterId" = ${viewerId}
+        and r."status" = 'pending'
+      order by r."createdAt" desc
+    `;
+
+    const result: FollowRequestItem[] = rows.map((r) => ({
+      requesterId: r.requesterId,
+      targetId: r.targetId,
+      status: r.status,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      nick: r.nick ?? "usuario",
+      name: r.name ?? "Usuário",
+      image: r.image,
+    }));
+
+    return result;
+  });
+
+/**
+ * Consultar relação detalhada entre o visitante e um perfil alvo.
+ */
+export const getUserRelationship = createServerFn({
+  method: "GET",
+})
+  .middleware([optionalAuthMiddleware])
+  .validator((d: { targetUserId: string }) => followTargetSchema.parse(d))
+  .handler(async ({ context, data }): Promise<UserRelationship> => {
+    const viewerId = context?.userId ?? null;
+    const sql = await getSql();
+    return executeGetUserRelationship(sql, viewerId, data.targetUserId);
+  });
+

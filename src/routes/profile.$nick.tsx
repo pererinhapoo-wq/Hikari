@@ -11,6 +11,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowLeft,
   BadgeCheck,
+  Clock,
   Heart,
   Lock,
   MessageCircle,
@@ -18,13 +19,17 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  UserX,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
 import {
+  cancelFollowRequest,
+  followUser,
   getPublicComments,
   getPublicProfile,
+  unfollowUser,
 } from "@/lib/profile.functions";
 
 export const Route =
@@ -194,10 +199,12 @@ function PublicProfile() {
     setFollowLoading,
   ] = useState(false);
 
-  const [
-    profileBgColor,
-    setProfileBgColor,
-  ] = useState("#030817");
+  const followUserFn = useServerFn(followUser);
+  const unfollowUserFn = useServerFn(unfollowUser);
+  const cancelFollowRequestFn = useServerFn(cancelFollowRequest);
+
+  const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const [profileBgColor, setProfileBgColor] = useState("#030817");
 
   useEffect(() => {
     let active = true;
@@ -219,25 +226,13 @@ function PublicProfile() {
         }
 
         setProfile(result);
-
-        setFollowing(
-          result.isFollowing,
-        );
-
-        setFollowersCount(
-          result.followersCount,
-        );
+        setFollowing(result.isFollowing);
+        setHasPendingRequest(Boolean(result.hasPendingRequest));
+        setFollowersCount(result.followersCount);
 
         if (result.image) {
-          const color =
-            await getProfileBackgroundColor(
-              result.image,
-            );
-
-          if (
-            active &&
-            color
-          ) {
+          const color = await getProfileBackgroundColor(result.image);
+          if (active && color) {
             setProfileBgColor(color);
           }
         }
@@ -246,31 +241,24 @@ function PublicProfile() {
           setCommentsLoading(true);
 
           try {
-            const publicComments =
-              await getPublicCommentsFn({
-                data: {
-                  userId:
-                    result.userId,
-                },
-              });
+            const publicComments = await getPublicCommentsFn({
+              data: {
+                userId: result.userId,
+              },
+            });
 
             if (!active) {
               return;
             }
 
-            setComments(
-              publicComments,
-            );
+            setComments(publicComments);
           } catch {
             if (!active) {
               return;
             }
 
             setComments([]);
-
-            setCommentsError(
-              "Não foi possível carregar os comentários.",
-            );
+            setCommentsError("Não foi possível carregar os comentários.");
           } finally {
             if (active) {
               setCommentsLoading(false);
@@ -287,7 +275,6 @@ function PublicProfile() {
         }
 
         setProfile(null);
-
         setError(
           err instanceof Error
             ? err.message
@@ -305,88 +292,114 @@ function PublicProfile() {
     };
   }, [nick]);
 
-  async function toggleFollow() {
-    if (!profile) {
-      return;
-    }
-
-    if (followLoading) {
-      return;
-    }
+  async function handleFollowAction() {
+    if (!profile) return;
+    if (followLoading) return;
 
     setFollowLoading(true);
     setError("");
 
     try {
-      const response =
-        await fetch(
-          "/api/profile/follow",
-          {
-            method: "POST",
+      if (following) {
+        // Deixar de seguir
+        await unfollowUserFn({
+          data: { targetUserId: profile.userId },
+        });
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              targetUserId:
-                profile.userId,
-            }),
-          },
-        );
-
-      const result =
-        (await response.json()) as {
-          following?: boolean;
-          followersCount?: number;
-          followingCount?: number;
-          error?: string;
-        };
-
-      if (!response.ok) {
-        throw new Error(
-          result.error ??
-            "Não foi possível alterar o seguimento.",
-        );
-      }
-
-      const newFollowing =
-        Boolean(
-          result.following,
-        );
-
-      const newFollowersCount =
-        Number(
-          result.followersCount ??
-            0,
-        );
-
-      setFollowing(
-        newFollowing,
-      );
-
-      setFollowersCount(
-        newFollowersCount,
-      );
-
-      setProfile(
-        (current) =>
-          current
+        const newCount = Math.max(0, followersCount - 1);
+        setFollowing(false);
+        setHasPendingRequest(false);
+        setFollowersCount(newCount);
+        setProfile((curr) =>
+          curr
             ? {
-                ...current,
-                isFollowing:
-                  newFollowing,
-                followersCount:
-                  newFollowersCount,
+                ...curr,
+                isFollowing: false,
+                hasPendingRequest: false,
+                relationStatus: "none",
+                followersCount: newCount,
+                canViewContent: curr.accountType === "public",
               }
-            : current,
-      );
+            : curr,
+        );
+      } else if (hasPendingRequest) {
+        // Cancelar solicitação pendente
+        await cancelFollowRequestFn({
+          data: { targetUserId: profile.userId },
+        });
+
+        setHasPendingRequest(false);
+        setProfile((curr) =>
+          curr
+            ? {
+                ...curr,
+                hasPendingRequest: false,
+                relationStatus: "none",
+              }
+            : curr,
+        );
+      } else {
+        // Seguir ou solicitar para seguir
+        const res = await followUserFn({
+          data: { targetUserId: profile.userId },
+        });
+
+        if (res.status === "following") {
+          const newCount = followersCount + 1;
+          setFollowing(true);
+          setHasPendingRequest(false);
+          setFollowersCount(newCount);
+          setProfile((curr) =>
+            curr
+              ? {
+                  ...curr,
+                  isFollowing: true,
+                  hasPendingRequest: false,
+                  relationStatus: "following",
+                  followersCount: newCount,
+                  canViewContent: true,
+                  canViewLists: curr.privacyLists !== "private",
+                  canViewFavorites: curr.privacyFavorites !== "private",
+                  canViewHistory: curr.privacyHistory !== "private",
+                  canViewComments: curr.privacyComments !== "private",
+                  canViewFollowers: curr.privacyFollowers !== "private",
+                }
+              : curr,
+          );
+
+          // Se desbloqueou conteúdo privado, carregar comentários
+          if (profile.accountType === "private") {
+            setCommentsLoading(true);
+            try {
+              const freshComments = await getPublicCommentsFn({
+                data: { userId: profile.userId },
+              });
+              setComments(freshComments);
+            } catch {
+              // ignore
+            } finally {
+              setCommentsLoading(false);
+            }
+          }
+        } else if (res.status === "requested") {
+          setHasPendingRequest(true);
+          setFollowing(false);
+          setProfile((curr) =>
+            curr
+              ? {
+                  ...curr,
+                  hasPendingRequest: true,
+                  relationStatus: "requested",
+                }
+              : curr,
+          );
+        }
+      }
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Não foi possível alterar o seguimento.",
+          : "Não foi possível completar a ação.",
       );
     } finally {
       setFollowLoading(false);
@@ -582,7 +595,7 @@ function PublicProfile() {
                 >
                   Meu Perfil
                 </Link>
-              ) : !profile.allowFollowers && !following ? (
+              ) : !profile.allowFollowers && !following && !hasPendingRequest ? (
                 <span className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-medium text-zinc-400">
                   <Shield className="size-3.5" />
                   Seguidores desativados
@@ -590,33 +603,35 @@ function PublicProfile() {
               ) : (
                 <Button
                   type="button"
-                  onClick={() =>
-                    void toggleFollow()
-                  }
-                  disabled={
-                    followLoading
-                  }
+                  onClick={() => void handleFollowAction()}
+                  disabled={followLoading}
                   className={
                     following
                       ? "border border-[#365b91] bg-[#102343] text-white hover:bg-[#163055]"
-                      : "bg-violet-600 text-white hover:bg-violet-500"
+                      : hasPendingRequest
+                        ? "border border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20"
+                        : "bg-violet-600 text-white hover:bg-violet-500"
                   }
                 >
                   {following ? (
                     <>
                       <UserCheck className="size-4" />
-
-                      {followLoading
-                        ? "Atualizando..."
-                        : "Seguindo"}
+                      {followLoading ? "Atualizando..." : "Seguindo"}
+                    </>
+                  ) : hasPendingRequest ? (
+                    <>
+                      <Clock className="size-4" />
+                      {followLoading ? "Atualizando..." : "Solicitação enviada (Cancelar)"}
+                    </>
+                  ) : profile.accountType === "private" ? (
+                    <>
+                      <UserPlus className="size-4" />
+                      {followLoading ? "Atualizando..." : "Solicitar para Seguir"}
                     </>
                   ) : (
                     <>
                       <UserPlus className="size-4" />
-
-                      {followLoading
-                        ? "Atualizando..."
-                        : "Seguir"}
+                      {followLoading ? "Atualizando..." : "Seguir"}
                     </>
                   )}
                 </Button>
@@ -683,12 +698,25 @@ function PublicProfile() {
                 <div className="mt-6">
                   <Button
                     type="button"
-                    onClick={() => void toggleFollow()}
+                    onClick={() => void handleFollowAction()}
                     disabled={followLoading}
-                    className="bg-violet-600 text-white hover:bg-violet-500 shadow-lg shadow-violet-600/25"
+                    className={
+                      hasPendingRequest
+                        ? "border border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 shadow-lg"
+                        : "bg-violet-600 text-white hover:bg-violet-500 shadow-lg shadow-violet-600/25"
+                    }
                   >
-                    <UserPlus className="size-4" />
-                    {followLoading ? "Atualizando..." : "Solicitar para Seguir"}
+                    {hasPendingRequest ? (
+                      <>
+                        <Clock className="size-4" />
+                        {followLoading ? "Atualizando..." : "Solicitação enviada (Cancelar)"}
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="size-4" />
+                        {followLoading ? "Atualizando..." : "Solicitar para Seguir"}
+                      </>
+                    )}
                   </Button>
                 </div>
               )}

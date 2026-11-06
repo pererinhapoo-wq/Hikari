@@ -14,6 +14,10 @@ import {
   type MyProfileComment,
   type ProfileUser,
   type UserProfile,
+  type FollowRequestItem,
+  getReceivedFollowRequests,
+  acceptFollowRequest,
+  rejectFollowRequest,
 } from "@/lib/profile.functions";
 
 import { getMyProfileFavorites } from "@/lib/profile-favorites.functions";
@@ -59,6 +63,9 @@ function AccountProfile() {
   const updateProfileFn = useServerFn(updateProfile);
   const getFollowersFn = useServerFn(getProfileFollowers);
   const getFollowingFn = useServerFn(getProfileFollowing);
+  const getRequestsFn = useServerFn(getReceivedFollowRequests);
+  const acceptRequestFn = useServerFn(acceptFollowRequest);
+  const rejectRequestFn = useServerFn(rejectFollowRequest);
   const getCommentsFn = useServerFn(getMyComments);
   const getTrackingFn = useServerFn(getMyAnimeTracking);
   const getFavoritesFn = useServerFn(getMyProfileFavorites);
@@ -106,9 +113,10 @@ function AccountProfile() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
   const [connectionsModalOpen, setConnectionsModalOpen] = useState(false);
-  const [connectionsTab, setConnectionsTab] = useState<"followers" | "following">("followers");
+  const [connectionsTab, setConnectionsTab] = useState<"followers" | "following" | "requests">("followers");
   const [followersList, setFollowersList] = useState<ProfileUser[]>([]);
   const [followingList, setFollowingList] = useState<ProfileUser[]>([]);
+  const [requestsList, setRequestsList] = useState<FollowRequestItem[]>([]);
   const [connectionsLoading, setConnectionsLoading] = useState(false);
 
   // Carregamento inicial do perfil
@@ -200,6 +208,14 @@ function AccountProfile() {
         if (active) setCommentsLoading(false);
       });
 
+    // 6. Solicitações de seguidores recebidas
+    void getRequestsFn()
+      .then((res) => {
+        if (!active) return;
+        setRequestsList(res);
+      })
+      .catch((err) => console.warn("Erro ao buscar solicitações:", err));
+
     return () => {
       active = false;
     };
@@ -224,8 +240,8 @@ function AccountProfile() {
     }
   };
 
-  // Abrir conexões (Seguidores / Seguindo)
-  const handleOpenConnections = async (tab: "followers" | "following") => {
+  // Abrir conexões (Seguidores / Seguindo / Solicitações)
+  const handleOpenConnections = async (tab: "followers" | "following" | "requests") => {
     setConnectionsTab(tab);
     setConnectionsModalOpen(true);
     setConnectionsLoading(true);
@@ -234,9 +250,12 @@ function AccountProfile() {
       if (tab === "followers") {
         const data = await getFollowersFn();
         setFollowersList(data);
-      } else {
+      } else if (tab === "following") {
         const data = await getFollowingFn();
         setFollowingList(data);
+      } else {
+        const data = await getRequestsFn();
+        setRequestsList(data);
       }
     } catch (err) {
       console.warn("Erro ao buscar conexões:", err);
@@ -246,21 +265,48 @@ function AccountProfile() {
   };
 
   // Alternar aba dentro do modal de conexões
-  const handleConnectionsTabChange = async (tab: "followers" | "following") => {
+  const handleConnectionsTabChange = async (tab: "followers" | "following" | "requests") => {
     setConnectionsTab(tab);
     setConnectionsLoading(true);
     try {
       if (tab === "followers") {
         const data = await getFollowersFn();
         setFollowersList(data);
-      } else {
+      } else if (tab === "following") {
         const data = await getFollowingFn();
         setFollowingList(data);
+      } else {
+        const data = await getRequestsFn();
+        setRequestsList(data);
       }
     } catch (err) {
       console.warn("Erro ao alternar aba de conexões:", err);
     } finally {
       setConnectionsLoading(false);
+    }
+  };
+
+  const handleAcceptRequest = async (requesterId: string) => {
+    try {
+      await acceptRequestFn({ data: { requesterId } });
+      setRequestsList((prev) => prev.filter((r) => r.requesterId !== requesterId));
+      setProfile((prev) =>
+        prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev,
+      );
+      // Atualizar lista de seguidores
+      const freshFollowers = await getFollowersFn();
+      setFollowersList(freshFollowers);
+    } catch (err) {
+      console.error("Erro ao aceitar solicitação:", err);
+    }
+  };
+
+  const handleRejectRequest = async (requesterId: string) => {
+    try {
+      await rejectRequestFn({ data: { requesterId } });
+      setRequestsList((prev) => prev.filter((r) => r.requesterId !== requesterId));
+    } catch (err) {
+      console.error("Erro ao recusar solicitação:", err);
     }
   };
 
@@ -379,6 +425,7 @@ function AccountProfile() {
           accountType={profile?.accountType}
           followersCount={followersCount}
           followingCount={followingCount}
+          requestsCount={requestsList.length}
           commentCount={commentCount}
           totalTrackingCount={trackingItems.length}
           favorites={userFavoritesList}
@@ -386,6 +433,7 @@ function AccountProfile() {
           onOpenPrivacy={() => setPrivacyModalOpen(true)}
           onOpenFollowers={() => void handleOpenConnections("followers")}
           onOpenFollowing={() => void handleOpenConnections("following")}
+          onOpenRequests={() => void handleOpenConnections("requests")}
         />
 
         {/* Navegação Horizontal: Visão geral | Animes | Comentários | Sobre | Atividade */}
@@ -465,7 +513,7 @@ function AccountProfile() {
         onSave={handleSaveProfile}
       />
 
-      {/* Modal de Conexões da Comunidade (Seguidores / Seguindo) */}
+      {/* Modal de Conexões da Comunidade (Seguidores / Seguindo / Solicitações) */}
       <ProfileConnectionsModal
         isOpen={connectionsModalOpen}
         initialTab={connectionsTab}
@@ -473,10 +521,14 @@ function AccountProfile() {
         onTabChange={(t) => void handleConnectionsTabChange(t)}
         followers={followersList}
         following={followingList}
+        requests={requestsList}
         followersCount={followersCount}
         followingCount={followingCount}
+        requestsCount={requestsList.length}
         loading={connectionsLoading}
         onClose={() => setConnectionsModalOpen(false)}
+        onAcceptRequest={handleAcceptRequest}
+        onRejectRequest={handleRejectRequest}
       />
 
       {/* Modal de Configurações de Privacidade do Perfil */}

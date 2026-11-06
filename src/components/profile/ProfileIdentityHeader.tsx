@@ -1,6 +1,7 @@
 import {
   BadgeCheck,
   Check,
+  Clock,
   Copy,
   ExternalLink,
   Lock,
@@ -23,6 +24,7 @@ interface ProfileIdentityHeaderProps {
   accountType?: "public" | "private";
   followersCount: number;
   followingCount: number;
+  requestsCount?: number;
   commentCount: number;
   totalTrackingCount: number;
   favorites: string[];
@@ -30,6 +32,7 @@ interface ProfileIdentityHeaderProps {
   onOpenPrivacy?: () => void;
   onOpenFollowers: () => void;
   onOpenFollowing: () => void;
+  onOpenRequests?: () => void;
 }
 
 export function ProfileIdentityHeader({
@@ -41,6 +44,7 @@ export function ProfileIdentityHeader({
   accountType = "public",
   followersCount,
   followingCount,
+  requestsCount = 0,
   commentCount,
   totalTrackingCount,
   favorites,
@@ -48,6 +52,7 @@ export function ProfileIdentityHeader({
   onOpenPrivacy,
   onOpenFollowers,
   onOpenFollowing,
+  onOpenRequests,
 }: ProfileIdentityHeaderProps) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
@@ -347,6 +352,23 @@ export function ProfileIdentityHeader({
               Seguindo
             </span>
           </button>
+
+          {requestsCount > 0 && onOpenRequests && (
+            <button
+              type="button"
+              onClick={onOpenRequests}
+              className="group inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs transition-all hover:border-amber-500/50 hover:bg-amber-500/20"
+              title="Solicitações de seguidores pendentes de aprovação"
+            >
+              <Clock className="size-3.5 text-amber-400 transition-transform group-hover:scale-110" />
+              <span className="font-bold text-amber-300 tabular-nums">
+                {requestsCount}
+              </span>
+              <span className="text-amber-200/90 group-hover:text-amber-100">
+                {requestsCount === 1 ? "Solicitação" : "Solicitações"}
+              </span>
+            </button>
+          )}
 
           <div className="inline-flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3.5 py-2 text-xs">
             <span className="font-bold text-white tabular-nums">
