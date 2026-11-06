@@ -1626,21 +1626,144 @@ export function Shell() {
       )}
 
       {/* =========================================================
-          FOOTER (páginas internas; página inicial possui rodapé próprio)
+          FOOTER COMPLETO E RESPONSIVO
+          - Visível em todas as páginas (exceto /watch no cinema mode)
+          - Colunas Institucional, Legal e Catálogo
+          - Linha de copyright e aviso de conteúdo de terceiros
       ========================================================== */}
-      {pathname !== "/" && (
-        <footer className="mx-auto hidden max-w-6xl items-center justify-between px-6 py-8 text-xs text-subtle md:flex">
-          <p>
-            Hikari 光 — catálogo via AniList, com MyAnimeList como reserva.
-          </p>
+      <footer className="relative mt-12 w-full border-t border-purple-500/15 bg-gradient-to-b from-[#08070d] via-[#0d0b17] to-[#05040a] text-xs text-muted shadow-[0_-4px_24px_rgba(0,0,0,0.5)]">
+        {/* Brilho decorativo sutil no topo do rodapé */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#a855f7]/30 to-transparent"
+          aria-hidden="true"
+        />
 
-          <p className="inline-flex items-center gap-1.5">
-            <Clapperboard className="size-3.5" />
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-12">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-12 md:gap-8">
+            {/* Identidade Hikari / Descrição */}
+            <div className="space-y-3.5 md:col-span-5">
+              <div className="flex items-center">
+                <Logo size="md" />
+              </div>
+              <p className="max-w-sm text-xs sm:text-sm leading-relaxed text-muted">
+                Plataforma de catálogo, acompanhamento e transmissão de animes com interface veloz, moderna e comunidade ativa.
+              </p>
+              <p className="text-[11px] leading-relaxed text-subtle">
+                Acompanhe os lançamentos semanais da temporada japonesa sincronizados com o horário de Brasília.
+              </p>
+            </div>
 
-            Trailers e episódios com URL própria
-          </p>
-        </footer>
-      )}
+            {/* Links organizados em colunas */}
+            <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:col-span-7">
+              {/* Coluna 1: Institucional */}
+              <div>
+                <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-fg">
+                  Institucional
+                </h3>
+                <ul className="space-y-2.5 text-xs sm:text-sm">
+                  <li>
+                    <Link
+                      to="/sobre"
+                      className="text-muted transition-colors hover:text-[#c084fc]"
+                    >
+                      Sobre o Hikari
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      to="/contato"
+                      className="text-muted transition-colors hover:text-[#c084fc]"
+                    >
+                      Fale Conosco
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Coluna 2: Legal */}
+              <div>
+                <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-fg">
+                  Legal
+                </h3>
+                <ul className="space-y-2.5 text-xs sm:text-sm">
+                  <li>
+                    <Link
+                      to="/termos"
+                      className="text-muted transition-colors hover:text-[#c084fc]"
+                    >
+                      Termos de Uso
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      to="/privacidade"
+                      className="text-muted transition-colors hover:text-[#c084fc]"
+                    >
+                      Privacidade &amp; LGPD
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      to="/dmca"
+                      className="text-muted transition-colors hover:text-[#c084fc]"
+                    >
+                      DMCA / Direitos
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Coluna 3: Catálogo */}
+              <div className="col-span-2 sm:col-span-1">
+                <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-fg">
+                  Catálogo
+                </h3>
+                <ul className="space-y-2.5 text-xs sm:text-sm">
+                  <li>
+                    <Link
+                      to="/calendar"
+                      className="text-muted transition-colors hover:text-[#c084fc]"
+                    >
+                      Calendário Semanal
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      to="/browse/$section"
+                      params={{ section: "popular" }}
+                      className="text-muted transition-colors hover:text-[#c084fc]"
+                    >
+                      Explorar Populares
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      to="/browse/$section"
+                      params={{ section: "season" }}
+                      className="text-muted transition-colors hover:text-[#c084fc]"
+                    >
+                      Temporadas
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Divisor */}
+          <div className="my-8 border-t border-white/5" />
+
+          {/* Rodapé inferior: Aviso legal de terceiros e Copyright */}
+          <div className="flex flex-col gap-4 text-[11px] leading-relaxed text-subtle sm:flex-row sm:items-center sm:justify-between">
+            <p className="max-w-2xl">
+              <strong>Isenção de Responsabilidade:</strong> O Hikari não hospeda nenhum arquivo de vídeo em seus servidores. Todos os episódios e vídeos são incorporados a partir de provedores externos independentes. Metadados e imagens fornecidos via AniList.
+            </p>
+            <p className="shrink-0 text-zinc-400">
+              &copy; {new Date().getFullYear()} Hikari. Todos os direitos reservados.
+            </p>
+          </div>
+        </div>
+      </footer>
 
     </div>
   );

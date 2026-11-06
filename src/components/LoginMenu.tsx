@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { AlertCircle, LogIn, X } from "lucide-react";
 import { authEnabled, signIn } from "@/lib/auth/client";
 import { Logo } from "@/components/logo";
@@ -220,7 +221,23 @@ export function LoginMenu({
       </div>
 
       <p className="mt-4 text-center text-[10px] text-white/40 leading-relaxed">
-        Ao continuar, você concorda com os Termos de Uso e a Política de Privacidade do Hikari.
+        Ao continuar, você concorda com os{" "}
+        <Link
+          to="/termos"
+          onClick={onClose}
+          className="text-[#c084fc] hover:underline underline-offset-2"
+        >
+          Termos de Uso
+        </Link>{" "}
+        e a{" "}
+        <Link
+          to="/privacidade"
+          onClick={onClose}
+          className="text-[#c084fc] hover:underline underline-offset-2"
+        >
+          Política de Privacidade
+        </Link>{" "}
+        do Hikari.
       </p>
     </div>
   );

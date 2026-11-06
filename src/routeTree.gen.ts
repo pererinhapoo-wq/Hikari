@@ -15,11 +15,14 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AdultRouteImport } from './routes/adult'
 import { Route as ApiAnilistRouteImport } from './routes/api-anilist'
 import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as ContatoRouteImport } from './routes/contato'
+import { Route as DmcaRouteImport } from './routes/dmca'
 import { Route as EpisodesRouteImport } from './routes/episodes'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MyListRouteImport } from './routes/my-list'
 import { Route as NewsRouteImport } from './routes/news'
 import { Route as NotificationsRouteImport } from './routes/notifications'
+import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SettingsAboutRouteImport } from './routes/settings-about'
@@ -30,6 +33,8 @@ import { Route as SettingsPlayerRouteImport } from './routes/settings-player'
 import { Route as SettingsPrivacyRouteImport } from './routes/settings-privacy'
 import { Route as SettingsProfileRouteImport } from './routes/settings-profile'
 import { Route as SettingsSecurityRouteImport } from './routes/settings-security'
+import { Route as SobreRouteImport } from './routes/sobre'
+import { Route as TermosRouteImport } from './routes/termos'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminIdRouteImport } from './routes/admin.$id'
 import { Route as AdminHikariAiRouteImport } from './routes/admin.hikari-ai'
@@ -83,6 +88,16 @@ const CalendarRoute = CalendarRouteImport.update({
   path: '/calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ContatoRoute = ContatoRouteImport.update({
+  id: '/contato',
+  path: '/contato',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DmcaRoute = DmcaRouteImport.update({
+  id: '/dmca',
+  path: '/dmca',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EpisodesRoute = EpisodesRouteImport.update({
   id: '/episodes',
   path: '/episodes',
@@ -106,6 +121,11 @@ const NewsRoute = NewsRouteImport.update({
 const NotificationsRoute = NotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacidadeRoute = PrivacidadeRouteImport.update({
+  id: '/privacidade',
+  path: '/privacidade',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SearchRoute = SearchRouteImport.update({
@@ -156,6 +176,16 @@ const SettingsProfileRoute = SettingsProfileRouteImport.update({
 const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
   id: '/settings-security',
   path: '/settings-security',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SobreRoute = SobreRouteImport.update({
+  id: '/sobre',
+  path: '/sobre',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermosRoute = TermosRouteImport.update({
+  id: '/termos',
+  path: '/termos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -276,11 +306,14 @@ export interface FileRoutesByFullPath {
   '/adult': typeof AdultRouteWithChildren
   '/api-anilist': typeof ApiAnilistRoute
   '/calendar': typeof CalendarRoute
+  '/contato': typeof ContatoRoute
+  '/dmca': typeof DmcaRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/news': typeof NewsRoute
   '/notifications': typeof NotificationsRoute
+  '/privacidade': typeof PrivacidadeRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/settings-about': typeof SettingsAboutRoute
@@ -291,6 +324,8 @@ export interface FileRoutesByFullPath {
   '/settings-privacy': typeof SettingsPrivacyRoute
   '/settings-profile': typeof SettingsProfileRoute
   '/settings-security': typeof SettingsSecurityRoute
+  '/sobre': typeof SobreRoute
+  '/termos': typeof TermosRoute
   '/admin/$id': typeof AdminIdRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
@@ -319,11 +354,14 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/api-anilist': typeof ApiAnilistRoute
   '/calendar': typeof CalendarRoute
+  '/contato': typeof ContatoRoute
+  '/dmca': typeof DmcaRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/news': typeof NewsRoute
   '/notifications': typeof NotificationsRoute
+  '/privacidade': typeof PrivacidadeRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/settings-about': typeof SettingsAboutRoute
@@ -334,6 +372,8 @@ export interface FileRoutesByTo {
   '/settings-privacy': typeof SettingsPrivacyRoute
   '/settings-profile': typeof SettingsProfileRoute
   '/settings-security': typeof SettingsSecurityRoute
+  '/sobre': typeof SobreRoute
+  '/termos': typeof TermosRoute
   '/admin/$id': typeof AdminIdRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
@@ -365,11 +405,14 @@ export interface FileRoutesById {
   '/adult': typeof AdultRouteWithChildren
   '/api-anilist': typeof ApiAnilistRoute
   '/calendar': typeof CalendarRoute
+  '/contato': typeof ContatoRoute
+  '/dmca': typeof DmcaRoute
   '/episodes': typeof EpisodesRoute
   '/login': typeof LoginRoute
   '/my-list': typeof MyListRoute
   '/news': typeof NewsRoute
   '/notifications': typeof NotificationsRoute
+  '/privacidade': typeof PrivacidadeRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
   '/settings-about': typeof SettingsAboutRoute
@@ -380,6 +423,8 @@ export interface FileRoutesById {
   '/settings-privacy': typeof SettingsPrivacyRoute
   '/settings-profile': typeof SettingsProfileRoute
   '/settings-security': typeof SettingsSecurityRoute
+  '/sobre': typeof SobreRoute
+  '/termos': typeof TermosRoute
   '/admin/$id': typeof AdminIdRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
@@ -412,11 +457,14 @@ export interface FileRouteTypes {
     | '/adult'
     | '/api-anilist'
     | '/calendar'
+    | '/contato'
+    | '/dmca'
     | '/episodes'
     | '/login'
     | '/my-list'
     | '/news'
     | '/notifications'
+    | '/privacidade'
     | '/search'
     | '/settings'
     | '/settings-about'
@@ -427,6 +475,8 @@ export interface FileRouteTypes {
     | '/settings-privacy'
     | '/settings-profile'
     | '/settings-security'
+    | '/sobre'
+    | '/termos'
     | '/admin/$id'
     | '/admin/hikari-ai'
     | '/admin/moderation'
@@ -455,11 +505,14 @@ export interface FileRouteTypes {
     | '/account'
     | '/api-anilist'
     | '/calendar'
+    | '/contato'
+    | '/dmca'
     | '/episodes'
     | '/login'
     | '/my-list'
     | '/news'
     | '/notifications'
+    | '/privacidade'
     | '/search'
     | '/settings'
     | '/settings-about'
@@ -470,6 +523,8 @@ export interface FileRouteTypes {
     | '/settings-privacy'
     | '/settings-profile'
     | '/settings-security'
+    | '/sobre'
+    | '/termos'
     | '/admin/$id'
     | '/admin/hikari-ai'
     | '/admin/moderation'
@@ -500,11 +555,14 @@ export interface FileRouteTypes {
     | '/adult'
     | '/api-anilist'
     | '/calendar'
+    | '/contato'
+    | '/dmca'
     | '/episodes'
     | '/login'
     | '/my-list'
     | '/news'
     | '/notifications'
+    | '/privacidade'
     | '/search'
     | '/settings'
     | '/settings-about'
@@ -515,6 +573,8 @@ export interface FileRouteTypes {
     | '/settings-privacy'
     | '/settings-profile'
     | '/settings-security'
+    | '/sobre'
+    | '/termos'
     | '/admin/$id'
     | '/admin/hikari-ai'
     | '/admin/moderation'
@@ -546,11 +606,14 @@ export interface RootRouteChildren {
   AdultRoute: typeof AdultRouteWithChildren
   ApiAnilistRoute: typeof ApiAnilistRoute
   CalendarRoute: typeof CalendarRoute
+  ContatoRoute: typeof ContatoRoute
+  DmcaRoute: typeof DmcaRoute
   EpisodesRoute: typeof EpisodesRoute
   LoginRoute: typeof LoginRoute
   MyListRoute: typeof MyListRoute
   NewsRoute: typeof NewsRoute
   NotificationsRoute: typeof NotificationsRoute
+  PrivacidadeRoute: typeof PrivacidadeRoute
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
   SettingsAboutRoute: typeof SettingsAboutRoute
@@ -561,6 +624,8 @@ export interface RootRouteChildren {
   SettingsPrivacyRoute: typeof SettingsPrivacyRoute
   SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
+  SobreRoute: typeof SobreRoute
+  TermosRoute: typeof TermosRoute
   AdultNewsRoute: typeof AdultNewsRoute
   AnimeIdRoute: typeof AnimeIdRoute
   ApiCommentsRoute: typeof ApiCommentsRouteWithChildren
@@ -618,6 +683,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/contato': {
+      id: '/contato'
+      path: '/contato'
+      fullPath: '/contato'
+      preLoaderRoute: typeof ContatoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dmca': {
+      id: '/dmca'
+      path: '/dmca'
+      fullPath: '/dmca'
+      preLoaderRoute: typeof DmcaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/episodes': {
       id: '/episodes'
       path: '/episodes'
@@ -651,6 +730,13 @@ declare module '@tanstack/react-router' {
       path: '/notifications'
       fullPath: '/notifications'
       preLoaderRoute: typeof NotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacidade': {
+      id: '/privacidade'
+      path: '/privacidade'
+      fullPath: '/privacidade'
+      preLoaderRoute: typeof PrivacidadeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search': {
@@ -721,6 +807,20 @@ declare module '@tanstack/react-router' {
       path: '/settings-security'
       fullPath: '/settings-security'
       preLoaderRoute: typeof SettingsSecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sobre': {
+      id: '/sobre'
+      path: '/sobre'
+      fullPath: '/sobre'
+      preLoaderRoute: typeof SobreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/termos': {
+      id: '/termos'
+      path: '/termos'
+      fullPath: '/termos'
+      preLoaderRoute: typeof TermosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -935,11 +1035,14 @@ const rootRouteChildren: RootRouteChildren = {
   AdultRoute: AdultRouteWithChildren,
   ApiAnilistRoute: ApiAnilistRoute,
   CalendarRoute: CalendarRoute,
+  ContatoRoute: ContatoRoute,
+  DmcaRoute: DmcaRoute,
   EpisodesRoute: EpisodesRoute,
   LoginRoute: LoginRoute,
   MyListRoute: MyListRoute,
   NewsRoute: NewsRoute,
   NotificationsRoute: NotificationsRoute,
+  PrivacidadeRoute: PrivacidadeRoute,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,
   SettingsAboutRoute: SettingsAboutRoute,
@@ -950,6 +1053,8 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsPrivacyRoute: SettingsPrivacyRoute,
   SettingsProfileRoute: SettingsProfileRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
+  SobreRoute: SobreRoute,
+  TermosRoute: TermosRoute,
   AdultNewsRoute: AdultNewsRoute,
   AnimeIdRoute: AnimeIdRoute,
   ApiCommentsRoute: ApiCommentsRouteWithChildren,
@@ -965,12 +1070,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

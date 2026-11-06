@@ -97,6 +97,14 @@ export const Route = createRootRoute({
         crossOrigin: "anonymous",
       },
     ],
+
+    scripts: [
+      {
+        src: "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594",
+        async: true,
+        crossOrigin: "anonymous",
+      },
+    ],
   }),
 
   component: () => (
@@ -141,13 +149,6 @@ export const Route = createRootRoute({
               })();
             `,
           }}
-        />
-
-        {/* Google AdSense */}
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594"
-          crossOrigin="anonymous"
         />
       </head>
 

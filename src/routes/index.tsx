@@ -16,7 +16,6 @@ import { TodayEpisodesSection } from "@/components/today-episodes-section";
 import { RecentEpisodesSection } from "@/components/recent-episodes-section";
 import { getRecentEpisodesSection } from "@/lib/published-episodes";
 import { AnimeCardSkeleton } from "@/components/anime-card";
-import { HomeFooter } from "@/components/home-footer";
 import { SectionReveal } from "@/components/section-reveal";
 
 export const Route = createFileRoute("/")({
@@ -270,11 +269,6 @@ function Home() {
           seasonYear={data.seasonYear}
           initialItems={data.season && data.season.length > 0 ? data.season : []}
         />
-      </SectionReveal>
-
-      {/* Rodapé institucional */}
-      <SectionReveal minHeight="80px" rootMargin="200px 0px">
-        <HomeFooter />
       </SectionReveal>
     </div>
   );
