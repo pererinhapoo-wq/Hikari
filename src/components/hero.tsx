@@ -737,8 +737,8 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
         >
           {/* Botão Assistir: Inspirado na referência com acabamento vibrante e identidade Hikari */}
           <Link
-            to="/watch/$id"
-            params={{ id: anime.id }}
+            to="/watch/$id/$ep"
+            params={{ id: anime.id, ep: "ep-1" }}
             preload="intent"
             className="
               hero-btn-action

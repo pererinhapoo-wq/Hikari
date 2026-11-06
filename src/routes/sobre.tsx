@@ -4,6 +4,12 @@ import { Database, Layers, ShieldAlert, Sparkles, Tv } from "lucide-react";
 
 export const Route = createFileRoute("/sobre")({
   head: () => ({
+    links: [
+      {
+        rel: "canonical",
+        href: "https://grokhikari.vercel.app/sobre",
+      },
+    ],
     meta: [
       { title: "Sobre o Hikari | Catálogo e Plataforma de Animes" },
       {
@@ -11,6 +17,15 @@ export const Route = createFileRoute("/sobre")({
         content:
           "Conheça o Hikari: nossa missão, como funciona nosso catálogo integrado ao AniList e nosso compromisso de transparência na reprodução e indexação de animes.",
       },
+      { property: "og:title", content: "Sobre o Hikari | Catálogo e Plataforma de Animes" },
+      {
+        property: "og:description",
+        content:
+          "Conheça o Hikari: nossa missão, como funciona nosso catálogo integrado ao AniList e nosso compromisso de transparência na reprodução e indexação de animes.",
+      },
+      { property: "og:url", content: "https://grokhikari.vercel.app/sobre" },
+      { property: "og:locale", content: "pt_BR" },
+      { property: "og:site_name", content: "HIKARI" },
     ],
   }),
   component: SobrePage,

@@ -97,7 +97,57 @@ export const Route = createFileRoute("/")({
       }
     }
 
-    return { links };
+    const homeTitle = "HIKARI — catálogo e streaming de animes";
+    const homeDesc =
+      "Assista a animes online legendados e dublados em alta definição. Lançamentos da temporada, catálogo completo, calendário semanal e episódios atualizados.";
+    const homeUrl = "https://grokhikari.vercel.app/";
+    const homeImage = "https://grokhikari.vercel.app/og.jpg";
+
+    return {
+      meta: [
+        { title: homeTitle },
+        { name: "description", content: homeDesc },
+        { property: "og:title", content: homeTitle },
+        { property: "og:description", content: homeDesc },
+        { property: "og:image", content: homeImage },
+        { property: "og:url", content: homeUrl },
+        { property: "og:type", content: "website" },
+        { property: "og:locale", content: "pt_BR" },
+        { property: "og:site_name", content: "HIKARI" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: homeTitle },
+        { name: "twitter:description", content: homeDesc },
+        { name: "twitter:image", content: homeImage },
+      ],
+      links: [
+        ...links,
+        {
+          rel: "canonical",
+          href: homeUrl,
+        },
+      ],
+      scripts: [
+        {
+          type: "application/ld+json",
+          children: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: "HIKARI",
+            url: homeUrl,
+            description: homeTitle,
+            inLanguage: "pt-BR",
+            potentialAction: {
+              "@type": "SearchAction",
+              target: {
+                "@type": "EntryPoint",
+                urlTemplate: `${homeUrl}search?q={search_term_string}`,
+              },
+              "query-input": "required name=search_term_string",
+            },
+          }),
+        },
+      ],
+    };
   },
   pendingComponent: HomePending,
   errorComponent: HomeError,

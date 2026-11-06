@@ -35,6 +35,11 @@ import { SectionReveal } from "@/components/section-reveal";
 import { warmBannerImage } from "@/lib/anime-banner-warmup";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import {
+  buildCleanCanonical,
+  buildTVSeriesJsonLd,
+  truncateSynopsis,
+} from "@/lib/seo";
+import {
   fetchAnimeCredits,
   fetchAnimeDetail,
   fetchAnimeEpisodes,
@@ -73,7 +78,7 @@ import {
   type Episode,
   type SlimAnime,
 } from "@/lib/types";
-import { cn, youtubeIdFrom } from "@/lib/utils";
+import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
 
 const EMPTY_WATCHED_EPISODES: string[] = [];
 const MOBILE_BANNER_MEDIA_QUERY = "(max-width: 639.98px)";
@@ -210,6 +215,12 @@ export const Route = createFileRoute("/anime/$id")({
       fetchPriority?: "high" | "low" | "auto";
     }> = [];
 
+    const canonicalUrl = buildCleanCanonical(`/anime/${animeId}`);
+    links.push({
+      rel: "canonical",
+      href: canonicalUrl,
+    });
+
     if (usesKitsuMedia) {
       links.push(
         {
@@ -244,20 +255,84 @@ export const Route = createFileRoute("/anime/$id")({
             ]
           : []),
       );
-      return { links };
-    }
-
-    if (desktopBanner) {
+    } else if (desktopBanner) {
       links.push({
         rel: "preload",
         as: "image",
         href: desktopBanner,
         fetchPriority: "high",
       });
-      return { links };
     }
 
-    return links.length > 0 ? { links } : {};
+    const animeTitle =
+      displayTitle(remote) ||
+      remote.titles?.romaji ||
+      remote.titles?.english ||
+      "Anime";
+    const pageTitle = `${animeTitle} — HIKARI`;
+    const synopsisTruncated = truncateSynopsis(remote.synopsis, 155);
+    const coverImageExtraLarge =
+      (remote as { coverImage?: { extraLarge?: string } }).coverImage?.extraLarge ||
+      remote.cover ||
+      "https://grokhikari.vercel.app/og.jpg";
+
+    const meta = [
+      { title: pageTitle },
+      { name: "description", content: synopsisTruncated },
+      { property: "og:title", content: pageTitle },
+      { property: "og:description", content: synopsisTruncated },
+      { property: "og:image", content: coverImageExtraLarge },
+      { property: "og:url", content: canonicalUrl },
+      { property: "og:type", content: "article" },
+      { property: "og:locale", content: "pt_BR" },
+      { property: "og:site_name", content: "HIKARI" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: pageTitle },
+      { name: "twitter:description", content: synopsisTruncated },
+      { name: "twitter:image", content: coverImageExtraLarge },
+    ];
+
+    const alternateNames: string[] = [];
+    if (remote.titles?.english && remote.titles.english !== animeTitle) {
+      alternateNames.push(remote.titles.english);
+    }
+    if (remote.titles?.native && remote.titles.native !== animeTitle) {
+      alternateNames.push(remote.titles.native);
+    }
+    if (remote.titles?.romaji && remote.titles.romaji !== animeTitle) {
+      alternateNames.push(remote.titles.romaji);
+    }
+
+    const jsonLd = buildTVSeriesJsonLd({
+      name: animeTitle,
+      alternateName: alternateNames.length > 0 ? alternateNames : undefined,
+      image: coverImageExtraLarge,
+      description: stripHtml(remote.synopsis || "").trim(),
+      numberOfEpisodes:
+        remote.episodesCount ||
+        (remote.seasons?.[0]?.episodes?.length ? remote.seasons[0].episodes.length : null),
+      datePublished: remote.startDate?.year
+        ? `${remote.startDate.year}-${String(remote.startDate.month || 1).padStart(2, "0")}-${String(remote.startDate.day || 1).padStart(2, "0")}`
+        : remote.year
+          ? `${remote.year}-01-01`
+          : undefined,
+      genre: remote.genres,
+      score: remote.score,
+      studio: remote.studios?.[0],
+    });
+
+    const scripts = [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify(jsonLd),
+      },
+    ];
+
+    return {
+      meta,
+      links,
+      scripts,
+    };
   },
 
   pendingComponent: () => (
@@ -1180,44 +1255,27 @@ function AnimePage() {
 
             {/* INFORMAÇÕES COMPLETAS */}
             <div className="flex min-w-0 flex-1 flex-col justify-end pb-1 sm:pb-2">
-              {/* TÍTULO E BADGES NO MOBILE ABAIXO DA CAPA */}
-              <div className="sm:hidden">
-                <div className="mb-1.5 flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-950/70 px-2 py-0.5 text-[10px] font-semibold tracking-wider text-purple-300 uppercase shadow-[0_0_12px_rgba(168,85,247,0.15)]">
-                    <span>Anime</span>
-                  </span>
+              {/* TÍTULO E BADGES RESPONSIVOS (EXATAMENTE UM H1) */}
+              <div>
+                <div className="mb-1.5 sm:mb-2 flex items-center gap-2">
                   {anime.score != null && (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/35 bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
+                    <span className="inline-flex items-center gap-1 rounded-md sm:rounded-lg border border-amber-500/35 bg-amber-950/60 px-1.5 sm:px-2.5 py-0.5 sm:py-1 text-[10px] sm:text-xs font-bold tabular-nums text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
                       ★ {scoreLabel(anime.score)}
+                    </span>
+                  )}
+                  {anime.format && (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-950/70 px-2 py-0.5 text-[10px] sm:text-xs font-semibold text-purple-300 uppercase">
+                      {formatLabel(anime.format)}
                     </span>
                   )}
                 </div>
 
-                <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-white line-clamp-3 drop-shadow-sm">
+                <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-white line-clamp-3 drop-shadow-sm sm:text-4xl md:text-5xl sm:line-clamp-none">
                   {title}
                 </h1>
 
                 {anime.titles.native && (
-                  <p className="mt-1 font-display text-xs font-medium text-purple-300/70 truncate">
-                    {anime.titles.native}
-                  </p>
-                )}
-              </div>
-
-              {/* TÍTULO NO DESKTOP */}
-              <div className="hidden sm:block">
-                <div className="mb-2">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-950/70 px-2.5 py-0.5 text-xs font-semibold tracking-wider text-purple-300 uppercase shadow-[0_0_12px_rgba(168,85,247,0.15)]">
-                    <span>Anime</span>
-                  </span>
-                </div>
-
-                <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-white drop-shadow-sm sm:text-4xl md:text-5xl">
-                  {title}
-                </h1>
-
-                {anime.titles.native && (
-                  <p className="mt-1 font-display text-sm font-medium text-purple-300/70">
+                  <p className="mt-1 font-display text-xs sm:text-sm font-medium text-purple-300/70 truncate sm:overflow-visible">
                     {anime.titles.native}
                   </p>
                 )}
@@ -1281,17 +1339,11 @@ function AnimePage() {
               {/* BOTÕES DE AÇÃO */}
               <div className="mt-5 flex flex-wrap items-center gap-2.5 sm:gap-3">
                 <Link
-                  to="/watch/$id"
+                  to="/watch/$id/$ep"
                   params={{
                     id: anime.id,
+                    ep: `ep-${continueTarget?.number || 1}`,
                   }}
-                  search={
-                    continueTarget
-                      ? {
-                          ep: continueTarget.id,
-                        }
-                      : undefined
-                  }
                   className={cn(
                     "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 px-5 sm:px-6 text-sm sm:text-base font-semibold text-white shadow-[0_4px_20px_rgba(168,85,247,0.35)] transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
                     "hover:from-purple-500 hover:to-purple-400 hover:shadow-[0_4px_26px_rgba(168,85,247,0.5)] hover:brightness-110",
@@ -1314,15 +1366,11 @@ function AnimePage() {
                     ) {
                       e.preventDefault();
                       void navigate({
-                        to: "/watch/$id",
+                        to: "/watch/$id/$ep",
                         params: {
                           id: anime.id,
+                          ep: `ep-${continueTarget?.number || 1}`,
                         },
-                        search: continueTarget
-                          ? {
-                              ep: continueTarget.id,
-                            }
-                          : undefined,
                       });
                     }
                   }}
@@ -2144,12 +2192,10 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
   return (
     <li>
       <Link
-        to="/watch/$id"
+        to="/watch/$id/$ep"
         params={{
           id: animeId,
-        }}
-        search={{
-          ep: ep.id,
+          ep: `ep-${ep.number}`,
         }}
         preload="intent"
         onClick={() => onSelect(ep.id)}

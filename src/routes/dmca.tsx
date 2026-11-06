@@ -4,6 +4,12 @@ import { AlertCircle, CheckSquare, Clock, FileWarning, Mail, ShieldAlert } from 
 
 export const Route = createFileRoute("/dmca")({
   head: () => ({
+    links: [
+      {
+        rel: "canonical",
+        href: "https://grokhikari.vercel.app/dmca",
+      },
+    ],
     meta: [
       { title: "DMCA e Notificação de Direitos Autorais | Hikari" },
       {
@@ -11,6 +17,15 @@ export const Route = createFileRoute("/dmca")({
         content:
           "Procedimento formal para envio de notificações de remoção de conteúdo (DMCA / Takedown Notice) no Hikari. Diretrizes, informações exigidas e prazos.",
       },
+      { property: "og:title", content: "DMCA e Notificação de Direitos Autorais | Hikari" },
+      {
+        property: "og:description",
+        content:
+          "Procedimento formal para envio de notificações de remoção de conteúdo (DMCA / Takedown Notice) no Hikari. Diretrizes, informações exigidas e prazos.",
+      },
+      { property: "og:url", content: "https://grokhikari.vercel.app/dmca" },
+      { property: "og:locale", content: "pt_BR" },
+      { property: "og:site_name", content: "HIKARI" },
     ],
   }),
   component: DmcaPage,
@@ -69,7 +84,7 @@ function DmcaPage() {
             <strong>Identificação da Obra Protegida:</strong> Descrição clara e detalhada do trabalho protegido por direitos autorais que você alega ter sido violado (título oficial da obra, estúdio detentor e comitê de produção).
           </li>
           <li>
-            <strong>Localização Precisa (URL no Hikari):</strong> A(s) URL(s) exata(s) da página no Hikari onde o link ou conteúdo questionado se encontra (por exemplo: <code>https://.../anime/191656</code> ou <code>https://.../watch/191656?ep=2</code>). Solicitações genéricas que não indiquem o endereço exato não poderão ser localizadas.
+            <strong>Localização Precisa (URL no Hikari):</strong> A(s) URL(s) exata(s) da página no Hikari onde o link ou conteúdo questionado se encontra (por exemplo: <code>https://.../anime/191656</code> ou <code>https://.../watch/191656/ep-2</code>). Solicitações genéricas que não indiquem o endereço exato não poderão ser localizadas.
           </li>
           <li>
             <strong>Dados de Contato do Notificante:</strong> Nome completo, endereço físico, telefone corporativo e endereço de e-mail oficial do titular ou de seu representante legal autorizado.

@@ -4,6 +4,12 @@ import { Cookie, ExternalLink, Eye, Lock, ShieldCheck, UserCheck } from "lucide-
 
 export const Route = createFileRoute("/privacidade")({
   head: () => ({
+    links: [
+      {
+        rel: "canonical",
+        href: "https://grokhikari.vercel.app/privacidade",
+      },
+    ],
     meta: [
       { title: "Política de Privacidade e Cookies (LGPD) | Hikari" },
       {
@@ -11,6 +17,15 @@ export const Route = createFileRoute("/privacidade")({
         content:
           "Política de Privacidade e Proteção de Dados do Hikari em conformidade com a LGPD. Saiba como tratamos seus dados, o uso de cookies pelo Google e como exercer seus direitos.",
       },
+      { property: "og:title", content: "Política de Privacidade e Cookies (LGPD) | Hikari" },
+      {
+        property: "og:description",
+        content:
+          "Política de Privacidade e Proteção de Dados do Hikari em conformidade com a LGPD. Saiba como tratamos seus dados, o uso de cookies pelo Google e como exercer seus direitos.",
+      },
+      { property: "og:url", content: "https://grokhikari.vercel.app/privacidade" },
+      { property: "og:locale", content: "pt_BR" },
+      { property: "og:site_name", content: "HIKARI" },
     ],
   }),
   component: PrivacidadePage,

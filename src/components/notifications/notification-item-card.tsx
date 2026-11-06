@@ -782,12 +782,13 @@ export function NotificationItemCard({
   );
 
   if (hasEpisodeTarget && notification.animeId && notification.episodeId) {
+    const epNumMatch = String(notification.episodeId).match(/(\d+)$/);
+    const epSlug = `ep-${epNumMatch ? epNumMatch[1] : "1"}`;
     return (
       <Link
-        to="/watch/$id"
-        params={{ id: notification.animeId }}
+        to="/watch/$id/$ep"
+        params={{ id: notification.animeId, ep: epSlug }}
         search={{
-          ep: notification.episodeId,
           comment: notification.commentId ?? undefined,
         }}
         onClick={handleActivate}

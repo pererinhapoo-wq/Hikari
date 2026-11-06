@@ -65,9 +65,8 @@ export const EpisodeCard = memo(function EpisodeCard({
   return (
     <article className="group relative w-full">
       <Link
-        to="/watch/$id"
-        params={{ id: episode.animeId }}
-        search={{ ep: episode.episodeId }}
+        to="/watch/$id/$ep"
+        params={{ id: episode.animeId, ep: `ep-${episode.episodeNumber || 1}` }}
         preload="intent"
         resetScroll={true}
         className={cn(

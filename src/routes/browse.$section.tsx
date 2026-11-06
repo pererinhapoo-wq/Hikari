@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 
 import { overlayList } from "@/lib/overlay";
+import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 
 import { useHikariStore } from "@/lib/store";
 
@@ -406,6 +407,61 @@ export const Route = createFileRoute(
 
       genre:
         undefined,
+    };
+  },
+
+  head: ({ params }) => {
+    const sectionTitles: Record<string, { title: string; desc: string }> = {
+      popular: {
+        title: "Animes Mais Populares — HIKARI",
+        desc: "Explore os animes mais populares de todos os tempos no catálogo completo do HIKARI.",
+      },
+      trending: {
+        title: "Animes em Alta — HIKARI",
+        desc: "Descubra as séries e episódios de anime em alta nesta semana no HIKARI.",
+      },
+      top: {
+        title: "Melhores Animes Avaliados — HIKARI",
+        desc: "Confira o ranking dos animes com as maiores notas e melhores avaliações da comunidade no HIKARI.",
+      },
+      season: {
+        title: "Temporada de Animes — HIKARI",
+        desc: "Acompanhe todos os lançamentos da temporada atual de animes transmitidos no Japão no HIKARI.",
+      },
+      genres: {
+        title: "Gêneros de Animes — HIKARI",
+        desc: "Explore animações japonesas organizadas por gênero: ação, romance, fantasia, ficção e mais no HIKARI.",
+      },
+    };
+
+    const info = sectionTitles[params.section] || {
+      title: "Explorar Animes — HIKARI",
+      desc: "Navegue pelo catálogo completo de animes com sinopses, trailers e episódios online no HIKARI.",
+    };
+
+    const canonicalUrl = buildCleanCanonical(`/browse/${params.section}`);
+
+    return {
+      links: [
+        {
+          rel: "canonical",
+          href: canonicalUrl,
+        },
+      ],
+      meta: [
+        { title: info.title },
+        { name: "description", content: info.desc },
+        { property: "og:title", content: info.title },
+        { property: "og:description", content: info.desc },
+        { property: "og:image", content: DEFAULT_OG_IMAGE },
+        { property: "og:url", content: canonicalUrl },
+        { property: "og:locale", content: "pt_BR" },
+        { property: "og:site_name", content: "HIKARI" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: info.title },
+        { name: "twitter:description", content: info.desc },
+        { name: "twitter:image", content: DEFAULT_OG_IMAGE },
+      ],
     };
   },
 

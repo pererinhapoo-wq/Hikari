@@ -4,6 +4,12 @@ import { Clock, HelpCircle, Mail, ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/contato")({
   head: () => ({
+    links: [
+      {
+        rel: "canonical",
+        href: "https://grokhikari.vercel.app/contato",
+      },
+    ],
     meta: [
       { title: "Contato | Fale com a Equipe Hikari" },
       {
@@ -11,6 +17,15 @@ export const Route = createFileRoute("/contato")({
         content:
           "Entre em contato com os responsáveis pelo Hikari. Canais de e-mail direto para suporte técnico, remoção de conteúdo, dúvidas de privacidade e sugestões.",
       },
+      { property: "og:title", content: "Contato | Fale com a Equipe Hikari" },
+      {
+        property: "og:description",
+        content:
+          "Entre em contato com os responsáveis pelo Hikari. Canais de e-mail direto para suporte técnico, remoção de conteúdo, dúvidas de privacidade e sugestões.",
+      },
+      { property: "og:url", content: "https://grokhikari.vercel.app/contato" },
+      { property: "og:locale", content: "pt_BR" },
+      { property: "og:site_name", content: "HIKARI" },
     ],
   }),
   component: ContatoPage,
@@ -106,7 +121,7 @@ function ContatoPage() {
             <strong>Assunto claro:</strong> descreva brevemente o motivo (ex: <em>&quot;[Erro no Player] Episódio 4 de Solo Leveling&quot;</em> ou <em>&quot;[LGPD] Exclusão de perfil&quot;</em>);
           </li>
           <li>
-            <strong>URL do link afetado:</strong> inclua o link exato da página em questão no Hikari (ex: <code>https://.../anime/21</code> ou <code>/watch/21?ep=1</code>);
+            <strong>URL do link afetado:</strong> inclua o link exato da página em questão no Hikari (ex: <code>https://.../anime/21</code> ou <code>/watch/21/ep-1</code>);
           </li>
           <li>
             <strong>Dispositivo e navegador:</strong> mencione se você está utilizando smartphone (Android/iOS) ou computador (Chrome, Firefox, Safari, Edge);

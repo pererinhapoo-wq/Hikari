@@ -1582,20 +1582,24 @@ function ProfileCommentCard({
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[#7186aa]">
-
-            <Link
-              to="/watch/$id"
-              params={{
-                id: comment.animeId,
-              }}
-              search={{
-                ep: comment.episodeId,
-              }}
-              className="transition hover:text-white"
-            >
-              Episódio{" "}
-              {comment.episodeId}
-            </Link>
+            {(() => {
+              const epNum = comment.episodeId.match(/ep-(?:\d+-)?(\d+)$/i)?.[1] || comment.episodeId.match(/(\d+)$/)?.[1] || "1";
+              return (
+                <Link
+                  to="/watch/$id/$ep"
+                  params={{
+                    id: comment.animeId,
+                    ep: `ep-${epNum}`,
+                  }}
+                  search={{
+                    comment: comment.id,
+                  }}
+                  className="transition hover:text-white"
+                >
+                  Episódio {epNum}
+                </Link>
+              );
+            })()}
 
             <span>•</span>
 
@@ -1685,22 +1689,28 @@ function ProfileCommentCard({
             : " curtidas"}
         </button>
 
-        <Link
-          to="/watch/$id"
-          params={{
-            id: comment.animeId,
-          }}
-          search={{
-            ep: comment.episodeId,
-          }}
-          className="flex items-center gap-1.5 transition hover:text-white"
-        >
-          <MessageCircle className="size-4" />
+        {(() => {
+          const epNum = comment.episodeId.match(/ep-(?:\d+-)?(\d+)$/i)?.[1] || comment.episodeId.match(/(\d+)$/)?.[1] || "1";
+          return (
+            <Link
+              to="/watch/$id/$ep"
+              params={{
+                id: comment.animeId,
+                ep: `ep-${epNum}`,
+              }}
+              search={{
+                comment: comment.id,
+              }}
+              className="flex items-center gap-1.5 transition hover:text-white"
+            >
+              <MessageCircle className="size-4" />
 
-          {comment.parentId
-            ? "Resposta"
-            : "Comentário"}
-        </Link>
+              {comment.parentId
+                ? "Resposta"
+                : "Comentário"}
+            </Link>
+          );
+        })()}
 
       </div>
 

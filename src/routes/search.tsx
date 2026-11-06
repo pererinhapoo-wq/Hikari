@@ -31,6 +31,7 @@ import {
 } from "@/lib/labels";
 
 import { overlayList } from "@/lib/overlay";
+import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { useHikariStore } from "@/lib/store";
 
 import {
@@ -142,6 +143,59 @@ export const Route =
       return {
         result,
         genres,
+      };
+    },
+
+    head: ({ match }) => {
+      const search = (match?.search ?? {}) as Search;
+      const hasQueryOrFilter = Boolean(
+        search.q ||
+        search.genre ||
+        search.year ||
+        search.format ||
+        search.status ||
+        search.sort ||
+        (search.page && search.page > 1)
+      );
+
+      const title = search.q
+        ? `Buscar "${search.q}" no catálogo — HIKARI`
+        : search.genre
+          ? `Animes do gênero ${search.genre} — HIKARI`
+          : "Buscar animes no catálogo — HIKARI";
+
+      const description = search.q
+        ? `Resultados da busca por "${search.q}" no catálogo do HIKARI. Assista e explore informações completas de animes.`
+        : "Filtre e encontre animes por gênero, ano de lançamento, temporada e formato no catálogo completo do HIKARI.";
+
+      const canonicalUrl = buildCleanCanonical("/search");
+
+      const meta = [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:image", content: DEFAULT_OG_IMAGE },
+        { property: "og:url", content: canonicalUrl },
+        { property: "og:locale", content: "pt_BR" },
+        { property: "og:site_name", content: "HIKARI" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { name: "twitter:image", content: DEFAULT_OG_IMAGE },
+        ...(hasQueryOrFilter
+          ? [{ name: "robots", content: "noindex, follow" }]
+          : []),
+      ];
+
+      return {
+        links: [
+          {
+            rel: "canonical",
+            href: canonicalUrl,
+          },
+        ],
+        meta,
       };
     },
 

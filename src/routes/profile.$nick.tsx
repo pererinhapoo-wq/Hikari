@@ -738,19 +738,24 @@ function PublicCommentCard({
             </span>
           </div>
 
-          <Link
-            to="/watch/$id"
-            params={{
-              id: comment.animeId,
-            }}
-            search={{
-              ep: comment.episodeId,
-            }}
-            className="mt-1 inline-flex text-xs text-[#b2bfff] transition hover:text-white"
-          >
-            Episódio{" "}
-            {comment.episodeId}
-          </Link>
+          {(() => {
+            const epNum = comment.episodeId.match(/ep-(?:\d+-)?(\d+)$/i)?.[1] || comment.episodeId.match(/(\d+)$/)?.[1] || "1";
+            return (
+              <Link
+                to="/watch/$id/$ep"
+                params={{
+                  id: comment.animeId,
+                  ep: `ep-${epNum}`,
+                }}
+                search={{
+                  comment: comment.id,
+                }}
+                className="mt-1 inline-flex text-xs text-[#b2bfff] transition hover:text-white"
+              >
+                Episódio {epNum}
+              </Link>
+            );
+          })()}
         </div>
       </div>
 
@@ -792,19 +797,25 @@ function PublicCommentCard({
           {comment.likes}
         </button>
 
-        <Link
-          to="/watch/$id"
-          params={{
-            id: comment.animeId,
-          }}
-          search={{
-            ep: comment.episodeId,
-          }}
-          className="inline-flex items-center gap-2 text-sm text-[#aab5c9] transition hover:text-white"
-        >
-          <MessageCircle className="size-4" />
-          Comentário
-        </Link>
+        {(() => {
+          const epNum = comment.episodeId.match(/ep-(?:\d+-)?(\d+)$/i)?.[1] || comment.episodeId.match(/(\d+)$/)?.[1] || "1";
+          return (
+            <Link
+              to="/watch/$id/$ep"
+              params={{
+                id: comment.animeId,
+                ep: `ep-${epNum}`,
+              }}
+              search={{
+                comment: comment.id,
+              }}
+              className="inline-flex items-center gap-2 text-sm text-[#aab5c9] transition hover:text-white"
+            >
+              <MessageCircle className="size-4" />
+              Comentário
+            </Link>
+          );
+        })()}
       </div>
     </article>
   );

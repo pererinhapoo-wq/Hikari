@@ -61,6 +61,73 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+function sitemapPlugin(): Plugin {
+  return {
+    name: "hikari:sitemap",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const rawUrl = req.url ?? "";
+        const pathOnly = rawUrl.split("?", 1)[0];
+        if (!pathOnly.startsWith("/sitemap") || (req.method ?? "GET").toUpperCase() !== "GET") {
+          next();
+          return;
+        }
+        try {
+          const {
+            generateAnimeSitemapXml,
+            generateEpisodeSitemapXml,
+            generateSitemapIndexXml,
+            generateStaticSitemapXml,
+            getSitemapAnimeCatalog,
+          } = await server.ssrLoadModule("/src/lib/seo.ts");
+
+          res.setHeader("Content-Type", "application/xml; charset=utf-8");
+          res.setHeader(
+            "Cache-Control",
+            "public, max-age=86400, s-maxage=86400, stale-while-revalidate=86400",
+          );
+
+          if (pathOnly === "/sitemap.xml") {
+            const animes = await getSitemapAnimeCatalog();
+            const totalEpisodes = animes.reduce(
+              (acc: number, a: { episodesCount?: number }) => acc + (a.episodesCount || 1),
+              0,
+            );
+            res.end(generateSitemapIndexXml(animes.length, totalEpisodes));
+            return;
+          }
+
+          if (pathOnly === "/sitemap-static.xml") {
+            res.end(generateStaticSitemapXml());
+            return;
+          }
+
+          const animeMatch = pathOnly.match(/^\/sitemap-animes-(\d+)\.xml$/);
+          if (animeMatch) {
+            const pageNum = parseInt(animeMatch[1], 10) || 1;
+            const animes = await getSitemapAnimeCatalog();
+            res.end(generateAnimeSitemapXml(animes, pageNum));
+            return;
+          }
+
+          const epMatch = pathOnly.match(/^\/sitemap-episodios-(\d+)\.xml$/);
+          if (epMatch) {
+            const pageNum = parseInt(epMatch[1], 10) || 1;
+            const animes = await getSitemapAnimeCatalog();
+            res.end(generateEpisodeSitemapXml(animes, pageNum));
+            return;
+          }
+
+          next();
+        } catch (err) {
+          next(err);
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(({ command, isPreview }) => {
   const isBuildOrPreview = command === "build" || Boolean(isPreview);
 
@@ -82,6 +149,7 @@ export default defineConfig(({ command, isPreview }) => {
     },
     plugins: [
       appEnvPlugin(),
+      sitemapPlugin(),
       grokPwaPlugin(),
       authPopupPlugin(),
       tailwindcss(),

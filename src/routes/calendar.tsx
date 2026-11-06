@@ -347,6 +347,37 @@ export const Route = createFileRoute("/calendar")({
       };
     }
   },
+  head: () => {
+    const title = "Calendário de lançamentos da semana — HIKARI";
+    const description =
+      "Confira os dias e horários de transmissão dos novos episódios de animes da semana no calendário oficial do HIKARI.";
+    const url = "https://grokhikari.vercel.app/calendar";
+    const image = "https://grokhikari.vercel.app/og.jpg";
+
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:image", content: image },
+        { property: "og:url", content: url },
+        { property: "og:type", content: "website" },
+        { property: "og:locale", content: "pt_BR" },
+        { property: "og:site_name", content: "HIKARI" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        { name: "twitter:image", content: image },
+      ],
+      links: [
+        {
+          rel: "canonical",
+          href: url,
+        },
+      ],
+    };
+  },
   component: CalendarPage,
 });
 
