@@ -87,12 +87,6 @@ export function QuickPlayerUpdate() {
   );
   const [urlInput, setUrlInput] = useState("");
 
-  // Verificação estrita de autorização de administrador
-  if (isPending) return null;
-  if (!user || !isHikariAdmin(user.primaryEmail)) {
-    return null;
-  }
-
   // Filtro de animes pelo termo de busca
   const matchingAnimes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -144,6 +138,12 @@ export function QuickPlayerUpdate() {
     if (!currentEpisode || !activePlayerConfig) return "";
     return currentEpisode[activePlayerConfig.key] ?? "";
   }, [currentEpisode, activePlayerConfig]);
+
+  // Verificação estrita de autorização de administrador
+  if (isPending) return null;
+  if (!user || !isHikariAdmin(user.primaryEmail)) {
+    return null;
+  }
 
   // Manipuladores de seleção que preservam a integridade e limpam estados dependentes
   const handleSelectAnime = (id: string) => {

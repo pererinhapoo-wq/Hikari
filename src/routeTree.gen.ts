@@ -57,6 +57,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCommentsEditRouteImport } from './routes/api/comments.edit'
 import { Route as ApiCommentsLikeRouteImport } from './routes/api/comments.like'
 import { Route as ApiCommentsModerationRouteImport } from './routes/api/comments.moderation'
+import { Route as WatchIdEpRouteImport } from './routes/watch_.$id.$ep'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -298,6 +299,11 @@ const ApiCommentsModerationRoute = ApiCommentsModerationRouteImport.update({
   path: '/moderation',
   getParentRoute: () => ApiCommentsRoute,
 } as any)
+const WatchIdEpRoute = WatchIdEpRouteImport.update({
+  id: '/watch_/$id/$ep',
+  path: '/watch/$id/$ep',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -348,6 +354,7 @@ export interface FileRoutesByFullPath {
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
+  '/watch/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -396,6 +403,7 @@ export interface FileRoutesByTo {
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
+  '/watch/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -447,6 +455,7 @@ export interface FileRoutesById {
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
   '/api/comments/moderation': typeof ApiCommentsModerationRoute
+  '/watch_/$id/$ep': typeof WatchIdEpRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -499,6 +508,7 @@ export interface FileRouteTypes {
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
+    | '/watch/$id/$ep'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -547,6 +557,7 @@ export interface FileRouteTypes {
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
+    | '/watch/$id/$ep'
   id:
     | '__root__'
     | '/'
@@ -597,6 +608,7 @@ export interface FileRouteTypes {
     | '/api/comments/edit'
     | '/api/comments/like'
     | '/api/comments/moderation'
+    | '/watch_/$id/$ep'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -637,6 +649,7 @@ export interface RootRouteChildren {
   WatchIdRoute: typeof WatchIdRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  WatchIdEpRoute: typeof WatchIdEpRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -977,6 +990,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCommentsModerationRouteImport
       parentRoute: typeof ApiCommentsRoute
     }
+    '/watch_/$id/$ep': {
+      id: '/watch_/$id/$ep'
+      path: '/watch/$id/$ep'
+      fullPath: '/watch/$id/$ep'
+      preLoaderRoute: typeof WatchIdEpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1066,7 +1086,17 @@ const rootRouteChildren: RootRouteChildren = {
   WatchIdRoute: WatchIdRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  WatchIdEpRoute: WatchIdEpRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

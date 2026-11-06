@@ -368,7 +368,7 @@ function isSourceBrandImage(
       `${url.pathname}${url.search}`,
     ).toLowerCase();
 
-    return /(?:^|[\/_?=&.-])(logo|favicon|site-logo|header-logo|footer-logo|lune-logo)(?:[\/_?=&.-]|$)/i.test(
+    return /(?:^|[/_?=&.-])(logo|favicon|site-logo|header-logo|footer-logo|lune-logo)(?:[/_?=&.-]|$)/i.test(
       value,
     );
   } catch {
@@ -1533,7 +1533,7 @@ async function fetchLuneAnimeReleaseNews(): Promise<AutomaticNewsItem[]> {
 
   return Promise.all(
     candidates.map(async (item) => {
-      let description =
+      const description =
         `Novo lançamento de anime adulto anunciado pela Lune Soft & Lune Pictures, com lançamento em ${item.date}.`;
       let image = "";
       let articleImages: string[] = [];

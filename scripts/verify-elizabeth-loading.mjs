@@ -7,7 +7,9 @@ async function run() {
   try {
     launchOptions.executablePath =
       "/ms-playwright/chromium_headless_shell-1247/chrome-headless-shell-linux64/chrome-headless-shell";
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   const browser = await chromium.launch(launchOptions).catch(async () => {
     return await chromium.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });

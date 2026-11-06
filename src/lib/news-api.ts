@@ -1130,7 +1130,7 @@ async function fetchSugoiMirrorFeed(
           "";
 
         const text = stripMarkup(description || ogTitle)
-          .replace(/^Sugoi(?: LITE|Bingus)?\s+(?:on X|on Twitter)\s*[:\-]?\s*/i, "")
+          .replace(/^Sugoi(?: LITE|Bingus)?\s+(?:on X|on Twitter)\s*[:-]?\s*/i, "")
           .trim();
 
         if (!text) {
@@ -1572,7 +1572,8 @@ function cleanExternalTitle(value: string): string {
     .replace(/^FixupX\s*[-:–—]?\s*/i, "")
     .replace(/^Media\s+\d+\s*\/\s*\d+\s*[:|-]?\s*/i, "")
     .replace(/^\d{1,2}:\d{2}\s*/i, "")
-    .replace(/^[✅☑️✔️✓\s]+/u, "")
+    .replace(/^[\s\u2705\u2611\u2714\u2713]+/u, "")
+    .replace(/^\uFE0F+/u, "")
     .replace(/^(?:SUGOI\s+)?(?:LITE|BINGUS)\s*\([^)]*\)\s*/i, "")
     .replace(/^(?:SUGOI\s+)?(?:LITE|BINGUS)\s*[-:–—]?\s*/i, "")
     .replace(/\b(?:@SugoiLITE|@SugoiBingus)\b/gi, "")
@@ -1884,12 +1885,12 @@ function telegramPostBlock(html: string, matchIndex: number): string {
 
 function telegramPostImage(html: string, baseUrl: string): string {
   const photo = html.match(
-    /tgme_widget_message_photo_wrap[^>]*style=["'][^"']*background-image\s*:\s*url\((?:["']?)([^\)"']+)(?:["']?)\)[^"']*["']/i,
+    /tgme_widget_message_photo_wrap[^>]*style=["'][^"']*background-image\s*:\s*url\((?:["']?)([^)"']+)(?:["']?)\)[^"']*["']/i,
   )?.[1];
   if (photo) return absoluteUrl(photo, baseUrl);
 
   const background = html.match(
-    /style=["'][^"']*background-image\s*:\s*url\((?:["']?)([^\)"']+)(?:["']?)\)[^"']*["']/i,
+    /style=["'][^"']*background-image\s*:\s*url\((?:["']?)([^)"']+)(?:["']?)\)[^"']*["']/i,
   )?.[1];
   return background ? absoluteUrl(background, baseUrl) : "";
 }
