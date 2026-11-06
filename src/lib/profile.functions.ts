@@ -4,6 +4,10 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 
 export type UserProfile = {
+  userId?: string;
+  name?: string;
+  email?: string;
+  image?: string | null;
   nick: string;
   bio: string;
   favorites: string[];
@@ -152,9 +156,25 @@ export const getProfile =
           ${context.userId}
       `;
 
+      const userRows = await sql<{
+        name: string | null;
+        email: string | null;
+        image: string | null;
+      }>`
+        select "name", "email", "image"
+        from "user"
+        where "id" = ${context.userId}
+        limit 1
+      `;
+
+      const userRow = userRows[0];
       const row = rows[0];
 
       return {
+        userId: context.userId,
+        name: userRow?.name ?? "",
+        email: userRow?.email ?? "",
+        image: userRow?.image ?? null,
         nick: row?.nick ?? "",
         bio: row?.bio ?? "",
         favorites: parseFavorites(
