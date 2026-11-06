@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { authMiddleware } from "@/lib/auth/middleware";
+import { authMiddleware, optionalAuthMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import {
   addFavoriteSchema,
@@ -287,6 +287,114 @@ export const getMyProfileFavorites = createServerFn({
       description: string | null;
       subtitle: string | null;
     }>(query, [userId, targetTypeFilter]);
+
+    const items: ProfileFavoriteItem[] = rawRows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      targetType: row.targetType,
+      targetId: row.targetId,
+      position: Number(row.position),
+      createdAt: row.createdAt,
+      title: row.title,
+      nativeTitle: row.nativeTitle ?? null,
+      image: row.image ?? null,
+      banner: row.banner ?? null,
+      description: row.description ?? null,
+      subtitle: row.subtitle ?? null,
+    }));
+
+    const grouped: ProfileFavoritesGrouped = {
+      anime: [],
+      character: [],
+      studio: [],
+      company: [],
+      person: [],
+    };
+
+    for (const item of items) {
+      if (grouped[item.targetType]) {
+        grouped[item.targetType].push(item);
+      }
+    }
+
+    return {
+      items,
+      grouped,
+    };
+  });
+
+/**
+ * Consultar favoritos públicos de um perfil respeitando as permissões de privacidade.
+ */
+export const getPublicProfileFavorites = createServerFn({
+  method: "GET",
+})
+  .middleware([optionalAuthMiddleware])
+  .validator((d: { userId: string; targetType?: FavoriteTargetType }) => d)
+  .handler(async ({ context, data }): Promise<ProfileFavoritesResponse> => {
+    const viewerId = context?.userId ?? null;
+    const targetUserId = (data?.userId || "").trim();
+    if (!targetUserId) throw new Error("Usuário não informado.");
+
+    const sql = await getSql();
+    const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
+    const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerId);
+    if (!privacy.canViewFavorites) {
+      throw new Error("Os favoritos deste perfil são privados.");
+    }
+
+    const targetTypeFilter = data?.targetType ?? null;
+
+    const query = `
+      SELECT
+        uf."id",
+        uf."userId",
+        uf."targetType",
+        uf."position",
+        uf."createdAt",
+        COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "targetId",
+        COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Sem título') AS "title",
+        COALESCE(ca."titleNative", cc."nativeName", cp."nativeName") AS "nativeTitle",
+        COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl") AS "image",
+        ca."banner" AS "banner",
+        COALESCE(ca."synopsis", cc."description", cs."description", cp."biography") AS "description",
+        CASE
+          WHEN uf."targetType" = 'anime' THEN
+            CASE
+              WHEN ca."year" IS NOT NULL AND ca."format" IS NOT NULL THEN ca."format" || ' • ' || ca."year"
+              WHEN ca."year" IS NOT NULL THEN ca."year"::text
+              ELSE ca."format"
+            END
+          WHEN uf."targetType" = 'studio' THEN
+            CASE WHEN cs."establishedYear" IS NOT NULL THEN 'Fundado em ' || cs."establishedYear" ELSE NULL END
+          WHEN uf."targetType" = 'company' THEN cco."website"
+          ELSE NULL
+        END AS "subtitle"
+      FROM "user_favorite" uf
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
+      LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
+      LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
+      LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
+      LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
+      WHERE uf."userId" = $1
+        AND ($2::text IS NULL OR uf."targetType" = $2)
+      ORDER BY uf."targetType" ASC, uf."position" ASC, uf."createdAt" ASC;
+    `;
+
+    const rawRows = await sql.query<{
+      id: string;
+      userId: string;
+      targetType: FavoriteTargetType;
+      position: number;
+      createdAt: string;
+      targetId: string;
+      title: string;
+      nativeTitle: string | null;
+      image: string | null;
+      banner: string | null;
+      description: string | null;
+      subtitle: string | null;
+    }>(query, [targetUserId, targetTypeFilter]);
 
     const items: ProfileFavoriteItem[] = rawRows.map((row) => ({
       id: row.id,

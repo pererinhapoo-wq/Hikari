@@ -366,6 +366,91 @@ export const getMyProfileLists = createServerFn({
   });
 
 /**
+ * Consultar listas públicas de um perfil respeitando as permissões de privacidade.
+ */
+export const getPublicProfileLists = createServerFn({
+  method: "GET",
+})
+  .middleware([optionalAuthMiddleware])
+  .validator((d: { userId: string }) => d)
+  .handler(async ({ context, data }): Promise<ProfileListSummary[]> => {
+    const viewerId = context?.userId ?? null;
+    const targetUserId = (data?.userId || "").trim();
+    if (!targetUserId) throw new Error("Usuário não informado.");
+
+    const sql = await getSql();
+    const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
+    const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerId);
+    if (!privacy.canViewLists) {
+      throw new Error("As listas deste perfil são privadas.");
+    }
+
+    const isOwner = Boolean(viewerId && viewerId === targetUserId);
+
+    const query = `
+      SELECT
+        ucl."id",
+        ucl."userId",
+        ucl."title",
+        ucl."description",
+        ucl."isPublic",
+        ucl."createdAt",
+        ucl."updatedAt",
+        COUNT(ucli."animeId")::int AS "itemCount",
+        (
+          SELECT json_agg(sub.cover)
+          FROM (
+            SELECT COALESCE(ca."cover", (sub_item."animeSnapshot"->>'cover')) AS cover
+            FROM "user_custom_list_item" sub_item
+            LEFT JOIN "catalog_anime" ca ON ca."id" = sub_item."animeId"
+            WHERE sub_item."listId" = ucl."id"
+              AND COALESCE(ca."cover", (sub_item."animeSnapshot"->>'cover')) IS NOT NULL
+            ORDER BY sub_item."position" ASC
+            LIMIT 4
+          ) sub
+        ) AS "sampleCovers"
+      FROM "user_custom_list" ucl
+      LEFT JOIN "user_custom_list_item" ucli ON ucli."listId" = ucl."id"
+      WHERE ucl."userId" = $1
+        AND ($2::boolean = true OR ucl."isPublic" = true)
+      GROUP BY ucl."id"
+      ORDER BY ucl."updatedAt" DESC;
+    `;
+
+    const rows = await sql.query<{
+      id: string;
+      userId: string;
+      title: string;
+      description: string | null;
+      isPublic: boolean;
+      createdAt: string;
+      updatedAt: string;
+      itemCount: number;
+      sampleCovers: unknown;
+    }>(query, [targetUserId, isOwner]);
+
+    return rows.map((row) => {
+      let sampleCovers: string[] = [];
+      if (Array.isArray(row.sampleCovers)) {
+        sampleCovers = row.sampleCovers.filter(
+          (c): c is string => typeof c === "string",
+        );
+      }
+      return {
+        id: row.id,
+        userId: row.userId,
+        title: row.title,
+        description: row.description ?? null,
+        isPublic: Boolean(row.isPublic),
+        itemCount: Number(row.itemCount) || 0,
+        sampleCovers,
+        createdAt: String(row.createdAt),
+        updatedAt: String(row.updatedAt),
+      };
+    });
+  });
+
+/**
  * 5. getProfileListDetails — Consultar detalhes de uma lista e seus animes.
  * Respeita a visibilidade: se "isPublic = false", apenas o proprietário pode visualizar.
  */
@@ -429,6 +514,13 @@ export const getProfileListDetails = createServerFn({
     // Validação estrita de privacidade: lista privada só é acessível pelo proprietário
     if (!listRow.isPublic && !isOwner) {
       throw new Error("Esta lista é privada.");
+    }
+
+    // Validação estrita das configurações de privacidade do perfil do proprietário
+    const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
+    const ownerPrivacy = await evaluateUserPrivacy(sql, listRow.userId, viewerId);
+    if (!ownerPrivacy.canViewLists) {
+      throw new Error("As listas deste perfil são privadas.");
     }
 
     // 2. Consulta itens ordenados com dados canônicos do catálogo

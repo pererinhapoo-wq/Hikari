@@ -12,7 +12,9 @@ import {
   ArrowLeft,
   BadgeCheck,
   Heart,
+  Lock,
   MessageCircle,
+  Shield,
   UserCheck,
   UserPlus,
   Users,
@@ -240,38 +242,43 @@ function PublicProfile() {
           }
         }
 
-        setCommentsLoading(true);
+        if (result.canViewComments && result.canViewContent) {
+          setCommentsLoading(true);
 
-        try {
-          const publicComments =
-            await getPublicCommentsFn({
-              data: {
-                userId:
-                  result.userId,
-              },
-            });
+          try {
+            const publicComments =
+              await getPublicCommentsFn({
+                data: {
+                  userId:
+                    result.userId,
+                },
+              });
 
-          if (!active) {
-            return;
+            if (!active) {
+              return;
+            }
+
+            setComments(
+              publicComments,
+            );
+          } catch {
+            if (!active) {
+              return;
+            }
+
+            setComments([]);
+
+            setCommentsError(
+              "Não foi possível carregar os comentários.",
+            );
+          } finally {
+            if (active) {
+              setCommentsLoading(false);
+            }
           }
-
-          setComments(
-            publicComments,
-          );
-        } catch {
-          if (!active) {
-            return;
-          }
-
+        } else {
           setComments([]);
-
-          setCommentsError(
-            "Não foi possível carregar os comentários.",
-          );
-        } finally {
-          if (active) {
-            setCommentsLoading(false);
-          }
+          setCommentsLoading(false);
         }
       })
       .catch((err) => {
@@ -548,6 +555,13 @@ function PublicProfile() {
                   </h1>
 
                   <BadgeCheck className="size-6 fill-violet-500 text-white" />
+
+                  {profile.accountType === "private" && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/15 px-2.5 py-0.5 text-xs font-medium text-violet-300">
+                      <Lock className="size-3" />
+                      Privado
+                    </span>
+                  )}
                 </div>
 
                 <p className="mt-1 text-base text-[#c0cbe0]">
@@ -561,38 +575,52 @@ function PublicProfile() {
                 )}
               </div>
 
-              <Button
-                type="button"
-                onClick={() =>
-                  void toggleFollow()
-                }
-                disabled={
-                  followLoading
-                }
-                className={
-                  following
-                    ? "border border-[#365b91] bg-[#102343] text-white hover:bg-[#163055]"
-                    : "bg-violet-600 text-white hover:bg-violet-500"
-                }
-              >
-                {following ? (
-                  <>
-                    <UserCheck className="size-4" />
+              {profile.isOwner ? (
+                <Link
+                  to="/account"
+                  className="inline-flex items-center gap-2 rounded-xl border border-violet-500/40 bg-violet-600/20 px-4 py-2 text-sm font-semibold text-violet-200 transition hover:bg-violet-600/30"
+                >
+                  Meu Perfil
+                </Link>
+              ) : !profile.allowFollowers && !following ? (
+                <span className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-medium text-zinc-400">
+                  <Shield className="size-3.5" />
+                  Seguidores desativados
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={() =>
+                    void toggleFollow()
+                  }
+                  disabled={
+                    followLoading
+                  }
+                  className={
+                    following
+                      ? "border border-[#365b91] bg-[#102343] text-white hover:bg-[#163055]"
+                      : "bg-violet-600 text-white hover:bg-violet-500"
+                  }
+                >
+                  {following ? (
+                    <>
+                      <UserCheck className="size-4" />
 
-                    {followLoading
-                      ? "Atualizando..."
-                      : "Seguindo"}
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="size-4" />
+                      {followLoading
+                        ? "Atualizando..."
+                        : "Seguindo"}
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="size-4" />
 
-                    {followLoading
-                      ? "Atualizando..."
-                      : "Seguir"}
-                  </>
-                )}
-              </Button>
+                      {followLoading
+                        ? "Atualizando..."
+                        : "Seguir"}
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
 
             {error && (
@@ -604,9 +632,11 @@ function PublicProfile() {
             <div className="mt-7 grid grid-cols-2 overflow-hidden rounded-2xl border border-white/10 bg-black/15 sm:grid-cols-4">
               <PublicStat
                 icon={<MessageCircle />}
-                value={String(
-                  profile.commentCount,
-                )}
+                value={
+                  profile.canViewComments
+                    ? String(profile.commentCount)
+                    : "—"
+                }
                 label="Comentários"
               />
 
@@ -618,70 +648,112 @@ function PublicProfile() {
 
               <PublicStat
                 icon={<Users />}
-                value={String(
-                  followersCount,
-                )}
+                value={
+                  profile.canViewFollowers
+                    ? String(followersCount)
+                    : "—"
+                }
                 label="Seguidores"
               />
 
               <PublicStat
                 icon={<UserPlus />}
-                value={String(
-                  profile.followingCount,
-                )}
+                value={
+                  profile.canViewFollowers
+                    ? String(profile.followingCount)
+                    : "—"
+                }
                 label="Seguindo"
               />
             </div>
           </div>
         </section>
 
-        <section className="mt-6 px-5 sm:px-8 lg:px-10">
-          <div className="mb-4 flex items-center gap-2">
-            <MessageCircle className="size-5 text-[#b2bfff]" />
-
-            <h2 className="text-xl font-semibold">
-              Comentários de{" "}
-              {profile.nick}
-            </h2>
-          </div>
-
-          {commentsError && (
-            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-              {commentsError}
-            </div>
-          )}
-
-          {commentsLoading ? (
-            <div className="space-y-3">
-              <CommentSkeleton />
-              <CommentSkeleton />
-            </div>
-          ) : comments.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
-              <MessageCircle className="mx-auto size-9 text-[#8190ad]" />
-
-              <p className="mt-3 text-sm text-[#b5c0d5]">
-                Esse usuário ainda não fez comentários.
+        {!profile.canViewContent ? (
+          <section className="mt-8 px-5 sm:px-8 lg:px-10">
+            <div className="rounded-3xl border border-white/10 bg-black/30 p-8 sm:p-12 text-center backdrop-blur-md">
+              <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-violet-500/30 bg-violet-500/10 text-violet-300 shadow-inner">
+                <Lock className="size-7" />
+              </div>
+              <h2 className="mt-4 text-xl sm:text-2xl font-bold text-white">Esta conta é privada</h2>
+              <p className="mx-auto mt-2 max-w-md text-sm text-[#aab5c9]">
+                Apenas seguidores aprovados têm acesso aos comentários, listas e histórico de @{profile.nick}.
               </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {comments.map(
-                (comment) => (
-                  <PublicCommentCard
-                    key={comment.id}
-                    comment={comment}
-                    onLike={() =>
-                      void toggleCommentLike(
-                        comment.id,
-                      )
-                    }
-                  />
-                ),
+              {profile.allowFollowers && !following && (
+                <div className="mt-6">
+                  <Button
+                    type="button"
+                    onClick={() => void toggleFollow()}
+                    disabled={followLoading}
+                    className="bg-violet-600 text-white hover:bg-violet-500 shadow-lg shadow-violet-600/25"
+                  >
+                    <UserPlus className="size-4" />
+                    {followLoading ? "Atualizando..." : "Solicitar para Seguir"}
+                  </Button>
+                </div>
               )}
             </div>
-          )}
-        </section>
+          </section>
+        ) : (
+          <section className="mt-6 px-5 sm:px-8 lg:px-10">
+            <div className="mb-4 flex items-center gap-2">
+              <MessageCircle className="size-5 text-[#b2bfff]" />
+
+              <h2 className="text-xl font-semibold">
+                Comentários de{" "}
+                {profile.nick}
+              </h2>
+            </div>
+
+            {!profile.canViewComments ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
+                <Lock className="mx-auto size-8 text-zinc-500" />
+                <p className="mt-3 text-sm text-zinc-400 font-medium">
+                  Os comentários deste usuário são privados.
+                </p>
+              </div>
+            ) : (
+              <>
+                {commentsError && (
+                  <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    {commentsError}
+                  </div>
+                )}
+
+                {commentsLoading ? (
+                  <div className="space-y-3">
+                    <CommentSkeleton />
+                    <CommentSkeleton />
+                  </div>
+                ) : comments.length === 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
+                    <MessageCircle className="mx-auto size-9 text-[#8190ad]" />
+
+                    <p className="mt-3 text-sm text-[#b5c0d5]">
+                      Esse usuário ainda não fez comentários.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {comments.map(
+                      (comment) => (
+                        <PublicCommentCard
+                          key={comment.id}
+                          comment={comment}
+                          onLike={() =>
+                            void toggleCommentLike(
+                              comment.id,
+                            )
+                          }
+                        />
+                      ),
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
       </div>
     </main>
   );

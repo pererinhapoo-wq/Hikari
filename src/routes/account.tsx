@@ -45,6 +45,7 @@ import { ProfileAboutSpace } from "@/components/profile/ProfileAboutSpace";
 import { ProfileHistorySpace } from "@/components/profile/ProfileHistorySpace";
 import { ProfileEditModal } from "@/components/profile/ProfileEditModal";
 import { ProfileConnectionsModal } from "@/components/profile/ProfileConnectionsModal";
+import { ProfilePrivacyModal } from "@/components/profile/ProfilePrivacyModal";
 
 export const Route = createFileRoute("/account")({
   component: AccountProfile,
@@ -103,6 +104,7 @@ function AccountProfile() {
 
   // Modais
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
   const [connectionsModalOpen, setConnectionsModalOpen] = useState(false);
   const [connectionsTab, setConnectionsTab] = useState<"followers" | "following">("followers");
   const [followersList, setFollowersList] = useState<ProfileUser[]>([]);
@@ -264,14 +266,20 @@ function AccountProfile() {
 
   // Salvar perfil editado
   const handleSaveProfile = async (data: {
+    name: string;
     nick: string;
     bio: string;
+    image: string | null;
+    bannerUrl: string | null;
     favorites: string[];
   }) => {
     const updated = await updateProfileFn({
       data: {
+        name: data.name,
         nick: data.nick,
         bio: data.bio,
+        image: data.image,
+        bannerUrl: data.bannerUrl,
         favorites: data.favorites,
       },
     });
@@ -280,17 +288,49 @@ function AccountProfile() {
       prev
         ? {
             ...prev,
+            name: updated.name || prev.name,
             nick: updated.nick,
             bio: updated.bio,
+            image: updated.image !== undefined ? updated.image : prev.image,
+            bannerUrl:
+              updated.bannerUrl !== undefined
+                ? updated.bannerUrl
+                : prev.bannerUrl,
             favorites: updated.favorites,
           }
         : {
             ...updated,
-            name: user?.displayName || "",
+            name: updated.name || user?.displayName || "",
             email: user?.primaryEmail || "",
-            image: user?.profileImageUrl || null,
+            image: updated.image ?? user?.profileImageUrl ?? null,
+            bannerUrl: updated.bannerUrl ?? null,
           },
     );
+  };
+
+  // Salvar configurações de privacidade
+  const handleSavePrivacy = async (data: {
+    accountType?: "public" | "private";
+    allowFollowers?: boolean;
+    privacyLists?: "public" | "followers" | "private";
+    privacyFavorites?: "public" | "followers" | "private";
+    privacyHistory?: "public" | "followers" | "private";
+    privacyComments?: "public" | "followers" | "private";
+    privacyFollowers?: "public" | "followers" | "private";
+  }) => {
+    const updated = await updateProfileFn({
+      data: {
+        accountType: data.accountType,
+        allowFollowers: data.allowFollowers,
+        privacyLists: data.privacyLists,
+        privacyFavorites: data.privacyFavorites,
+        privacyHistory: data.privacyHistory,
+        privacyComments: data.privacyComments,
+        privacyFollowers: data.privacyFollowers,
+      },
+    });
+
+    setProfile((prev) => (prev ? { ...prev, ...updated } : null));
   };
 
   if (isPending || (profileLoading && !profile)) {
@@ -335,12 +375,15 @@ function AccountProfile() {
           nick={userNick}
           bio={userBio}
           image={userImage}
+          bannerUrl={profile?.bannerUrl || null}
+          accountType={profile?.accountType}
           followersCount={followersCount}
           followingCount={followingCount}
           commentCount={commentCount}
           totalTrackingCount={trackingItems.length}
           favorites={userFavoritesList}
           onOpenEdit={() => setEditModalOpen(true)}
+          onOpenPrivacy={() => setPrivacyModalOpen(true)}
           onOpenFollowers={() => void handleOpenConnections("followers")}
           onOpenFollowing={() => void handleOpenConnections("following")}
         />
@@ -412,8 +455,11 @@ function AccountProfile() {
       {/* Modal de Personalização do Perfil */}
       <ProfileEditModal
         isOpen={editModalOpen}
+        initialName={profile?.name || user.displayName || profile?.nick || ""}
         initialNick={userNick}
         initialBio={userBio}
+        initialImage={userImage}
+        initialBannerUrl={profile?.bannerUrl || null}
         initialFavorites={userFavoritesList}
         onClose={() => setEditModalOpen(false)}
         onSave={handleSaveProfile}
@@ -431,6 +477,14 @@ function AccountProfile() {
         followingCount={followingCount}
         loading={connectionsLoading}
         onClose={() => setConnectionsModalOpen(false)}
+      />
+
+      {/* Modal de Configurações de Privacidade do Perfil */}
+      <ProfilePrivacyModal
+        isOpen={privacyModalOpen}
+        profile={profile}
+        onClose={() => setPrivacyModalOpen(false)}
+        onSave={handleSavePrivacy}
       />
     </div>
   );

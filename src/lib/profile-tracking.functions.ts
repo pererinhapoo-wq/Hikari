@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { authMiddleware } from "@/lib/auth/middleware";
+import { authMiddleware, optionalAuthMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import {
   upsertAnimeTrackingSchema,
@@ -556,6 +556,92 @@ export const getMyWatchedEpisodes = createServerFn({
       animeTitle: string;
       animeCover: string | null;
     }>(itemsQuery, [userId, animeId, limit, offset]);
+
+    const items: WatchedEpisodeItem[] = rows.map((r) => ({
+      userId: r.userId,
+      animeId: r.animeId,
+      episodeId: r.episodeId,
+      episodeNumber: Number(r.episodeNumber),
+      origin: r.origin,
+      watchedAt: String(r.watchedAt),
+      animeTitle: r.animeTitle,
+      animeCover: r.animeCover ?? null,
+    }));
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
+  });
+
+/**
+ * Consultar histórico de episódios assistidos público respeitando privacidade.
+ */
+export const getPublicWatchedEpisodes = createServerFn({
+  method: "GET",
+})
+  .middleware([optionalAuthMiddleware])
+  .validator((d: { userId: string; page?: number; limit?: number; animeId?: string }) => d)
+  .handler(async ({ context, data }): Promise<WatchedEpisodesResponse> => {
+    const viewerId = context?.userId ?? null;
+    const targetUserId = (data?.userId || "").trim();
+    if (!targetUserId) throw new Error("Usuário não informado.");
+
+    const sql = await getSql();
+    const { evaluateUserPrivacy } = await import("@/lib/profile.functions");
+    const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerId);
+    if (!privacy.canViewHistory) {
+      throw new Error("O histórico de episódios deste perfil é privado.");
+    }
+
+    const animeId = data?.animeId ? data.animeId.trim() : null;
+    const page = data?.page ?? 1;
+    const limit = data?.limit ?? 30;
+    const offset = (page - 1) * limit;
+
+    const countQuery = `
+      SELECT count(*)::int AS total
+      FROM "user_watched_episode"
+      WHERE "userId" = $1
+        AND ($2::text IS NULL OR "animeId" = $2);
+    `;
+
+    const countRows = await sql.query<{ total: number }>(countQuery, [targetUserId, animeId]);
+    const total = Number(countRows[0]?.total) || 0;
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    const itemsQuery = `
+      SELECT
+        uwe."userId",
+        uwe."animeId",
+        uwe."episodeId",
+        uwe."episodeNumber",
+        uwe."origin",
+        uwe."watchedAt",
+        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Sem título') AS "animeTitle",
+        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover')) AS "animeCover"
+      FROM "user_watched_episode" uwe
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId"
+      LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uwe."userId" AND uat."animeId" = uwe."animeId"
+      WHERE uwe."userId" = $1
+        AND ($2::text IS NULL OR uwe."animeId" = $2)
+      ORDER BY uwe."watchedAt" DESC
+      LIMIT $3 OFFSET $4;
+    `;
+
+    const rows = await sql.query<{
+      userId: string;
+      animeId: string;
+      episodeId: string;
+      episodeNumber: number;
+      origin: "playback" | "manual";
+      watchedAt: string;
+      animeTitle: string;
+      animeCover: string | null;
+    }>(itemsQuery, [targetUserId, animeId, limit, offset]);
 
     const items: WatchedEpisodeItem[] = rows.map((r) => ({
       userId: r.userId,

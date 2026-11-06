@@ -3,6 +3,7 @@ import {
   Check,
   Copy,
   ExternalLink,
+  Lock,
   Pencil,
   Settings,
   Share2,
@@ -18,12 +19,15 @@ interface ProfileIdentityHeaderProps {
   nick: string;
   bio: string;
   image: string | null;
+  bannerUrl?: string | null;
+  accountType?: "public" | "private";
   followersCount: number;
   followingCount: number;
   commentCount: number;
   totalTrackingCount: number;
   favorites: string[];
   onOpenEdit: () => void;
+  onOpenPrivacy?: () => void;
   onOpenFollowers: () => void;
   onOpenFollowing: () => void;
 }
@@ -33,12 +37,15 @@ export function ProfileIdentityHeader({
   nick,
   bio,
   image,
+  bannerUrl,
+  accountType = "public",
   followersCount,
   followingCount,
   commentCount,
   totalTrackingCount,
   favorites,
   onOpenEdit,
+  onOpenPrivacy,
   onOpenFollowers,
   onOpenFollowing,
 }: ProfileIdentityHeaderProps) {
@@ -84,25 +91,60 @@ export function ProfileIdentityHeader({
     <header className="relative z-10 w-full overflow-hidden rounded-3xl border border-white/[0.09] bg-[#090812] shadow-[0_16px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
       {/* 1. Banner Panorâmico do Perfil */}
       <div className="relative h-32 sm:h-44 md:h-52 w-full overflow-hidden border-b border-white/[0.07] bg-gradient-to-r from-[#170e2e] via-[#20103b] to-[#0d0918]">
-        {/* Luzes dinâmicas e texturas no banner */}
-        <div
-          className="pointer-events-none absolute -left-12 -top-12 size-60 rounded-full bg-violet-500/25 blur-[70px]"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute right-10 top-0 size-72 rounded-full bg-purple-600/20 blur-[80px]"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(168,85,247,0.15),transparent_70%)]"
-          aria-hidden="true"
-        />
+        {bannerUrl ? (
+          <>
+            <img
+              src={bannerUrl}
+              alt="Banner do perfil"
+              className="size-full object-cover"
+            />
+            {/* Gradiente escurecedor suave para manter legibilidade das badges e contraste do avatar */}
+            <div
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#090812] via-black/25 to-transparent"
+              aria-hidden="true"
+            />
+          </>
+        ) : (
+          <>
+            {/* Luzes dinâmicas e texturas no banner padrão */}
+            <div
+              className="pointer-events-none absolute -left-12 -top-12 size-60 rounded-full bg-violet-500/25 blur-[70px]"
+              aria-hidden="true"
+            />
+            <div
+              className="pointer-events-none absolute right-10 top-0 size-72 rounded-full bg-purple-600/20 blur-[80px]"
+              aria-hidden="true"
+            />
+            <div
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(168,85,247,0.15),transparent_70%)]"
+              aria-hidden="true"
+            />
+          </>
+        )}
 
         {/* Indicador de Privacidade Flutuante no Banner */}
-        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 flex items-center gap-1.5 rounded-full border border-white/10 bg-black/50 px-3 py-1 text-[11px] font-medium text-emerald-300 backdrop-blur-md shadow-md">
-          <Shield className="size-3 text-emerald-400" />
-          <span>Perfil Protegido</span>
-        </div>
+        <button
+          type="button"
+          onClick={onOpenPrivacy}
+          className={`absolute top-3 right-3 sm:top-4 sm:right-4 z-10 flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium backdrop-blur-md shadow-md transition-all ${
+            accountType === "private"
+              ? "border-amber-500/30 bg-black/60 text-amber-300 hover:border-amber-500/50 hover:bg-black/80"
+              : "border-emerald-500/30 bg-black/60 text-emerald-300 hover:border-emerald-500/50 hover:bg-black/80"
+          } ${onOpenPrivacy ? "cursor-pointer" : "cursor-default"}`}
+          title={onOpenPrivacy ? "Clique para gerenciar a privacidade do seu perfil" : undefined}
+        >
+          {accountType === "private" ? (
+            <>
+              <Lock className="size-3 text-amber-400" />
+              <span>Perfil Privado</span>
+            </>
+          ) : (
+            <>
+              <Shield className="size-3 text-emerald-400" />
+              <span>Perfil Público</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* 2. Conteúdo de Identidade com Avatar Sobreposto ao Banner */}
@@ -164,6 +206,22 @@ export function ProfileIdentityHeader({
                 </>
               )}
             </button>
+
+            {onOpenPrivacy && (
+              <button
+                type="button"
+                onClick={onOpenPrivacy}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2 text-xs sm:text-sm font-medium text-zinc-200 transition-all hover:bg-white/[0.1] hover:text-white"
+                title="Configurações de privacidade do perfil"
+              >
+                {accountType === "private" ? (
+                  <Lock className="size-3.5 text-amber-400" />
+                ) : (
+                  <Shield className="size-3.5 text-emerald-400" />
+                )}
+                <span className="hidden sm:inline">Privacidade</span>
+              </button>
+            )}
 
             <Link
               to="/settings"

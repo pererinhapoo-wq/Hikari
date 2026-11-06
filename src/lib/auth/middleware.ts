@@ -45,3 +45,37 @@ export const authMiddleware = createMiddleware({ type: "function" })
     const userId = await requireUserId(context.bearerToken);
     return next({ context: { userId } });
   });
+
+/**
+ * Middleware para consultas públicas opcionais que precisam distinguir visitantes de
+ * usuários autenticados para avaliação de privacidade e propriedade sem exigir login.
+ */
+export const optionalAuthMiddleware = createMiddleware({ type: "function" })
+  .client(async ({ next }) => {
+    const { getBearerToken } = await import("./client");
+    return next({ sendContext: { bearerToken: getBearerToken() ?? undefined } });
+  })
+  .server(async ({ next, context }) => {
+    const { assertSameSiteRequest } = await import("./isolation.server");
+    assertSameSiteRequest();
+    let userId: string | null = null;
+    try {
+      const { getSessionUser, authConfigured, DEV_USER_ID } = await import(
+        "./verify.server"
+      );
+      const user = await getSessionUser(context.bearerToken);
+      if (user) {
+        userId = user.id;
+      } else if (
+        !authConfigured &&
+        process.env.VITE_AUTH_ENABLED === "false" &&
+        !process.env.DATABASE_URL?.trim()
+      ) {
+        userId = DEV_USER_ID;
+      }
+    } catch {
+      userId = null;
+    }
+    return next({ context: { userId } });
+  });
+

@@ -1,350 +1,538 @@
+import { useEffect, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
-  createFileRoute,
-  Link,
-} from "@tanstack/react-router";
-
-import {
-  Ban,
-  ChevronRight,
+  Check,
+  ChevronLeft,
+  Clock,
   Eye,
+  Heart,
+  ListOrdered,
+  Loader2,
   Lock,
+  MessageSquare,
+  Shield,
+  UserCheck,
+  UserMinus,
   Users,
-  X,
 } from "lucide-react";
 
+import { RedirectToSignIn } from "@/lib/auth/gates";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import {
-  useEffect,
-  useState,
-} from "react";
+  getProfile,
+  updateProfile,
+  type SectionPrivacyLevel,
+  type UserProfile,
+} from "@/lib/profile.functions";
 
-export const Route = createFileRoute(
-  "/settings-privacy",
-)({
+export const Route = createFileRoute("/settings-privacy")({
   component: SettingsPrivacy,
 });
 
-function getSavedPublicProfile() {
-  if (typeof window === "undefined") {
-    return true;
-  }
+export function SettingsPrivacy() {
+  const { user, isPending } = useCurrentUserState();
+  const getProfileFn = useServerFn(getProfile);
+  const updateProfileFn = useServerFn(updateProfile);
 
-  const savedPublicProfile =
-    window.localStorage.getItem(
-      "hikari-public-profile",
-    );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  if (savedPublicProfile === null) {
-    return true;
-  }
+  // Estados dos 7 campos de privacidade (Migration 0020)
+  const [accountType, setAccountType] = useState<"public" | "private">("public");
+  const [allowFollowers, setAllowFollowers] = useState<boolean>(true);
+  const [privacyLists, setPrivacyLists] = useState<SectionPrivacyLevel>("public");
+  const [privacyFavorites, setPrivacyFavorites] = useState<SectionPrivacyLevel>("public");
+  const [privacyHistory, setPrivacyHistory] = useState<SectionPrivacyLevel>("public");
+  const [privacyComments, setPrivacyComments] = useState<SectionPrivacyLevel>("public");
+  const [privacyFollowers, setPrivacyFollowers] = useState<SectionPrivacyLevel>("public");
 
-  return savedPublicProfile !== "false";
-}
+  const [initialState, setInitialState] = useState<{
+    accountType: "public" | "private";
+    allowFollowers: boolean;
+    privacyLists: SectionPrivacyLevel;
+    privacyFavorites: SectionPrivacyLevel;
+    privacyHistory: SectionPrivacyLevel;
+    privacyComments: SectionPrivacyLevel;
+    privacyFollowers: SectionPrivacyLevel;
+  } | null>(null);
 
-function getSavedFollowers() {
-  if (typeof window === "undefined") {
-    return "Todos";
-  }
-
-  return (
-    window.localStorage.getItem(
-      "hikari-followers",
-    ) ?? "Todos"
-  );
-}
-
-function SettingsPrivacy() {
-  const [
-    publicProfile,
-    setPublicProfile,
-  ] = useState<boolean>(
-    getSavedPublicProfile,
-  );
-
-  const [
-    followersOpen,
-    setFollowersOpen,
-  ] = useState(false);
-
-  const [
-    blockedOpen,
-    setBlockedOpen,
-  ] = useState(false);
-
-  const [
-    followers,
-    setFollowers,
-  ] = useState(
-    getSavedFollowers,
-  );
-
+  // Carregar dados reais do perfil
   useEffect(() => {
-    const savedFollowers =
-      localStorage.getItem(
-        "hikari-followers",
-      );
+    if (!user?.id) return;
+    let active = true;
 
-    if (savedFollowers) {
-      setFollowers(savedFollowers);
+    setLoading(true);
+    void getProfileFn()
+      .then((data: UserProfile) => {
+        if (!active) return;
+        const current = {
+          accountType: data.accountType || "public",
+          allowFollowers: data.allowFollowers ?? true,
+          privacyLists: data.privacyLists || "public",
+          privacyFavorites: data.privacyFavorites || "public",
+          privacyHistory: data.privacyHistory || "public",
+          privacyComments: data.privacyComments || "public",
+          privacyFollowers: data.privacyFollowers || "public",
+        };
+        setAccountType(current.accountType);
+        setAllowFollowers(current.allowFollowers);
+        setPrivacyLists(current.privacyLists);
+        setPrivacyFavorites(current.privacyFavorites);
+        setPrivacyHistory(current.privacyHistory);
+        setPrivacyComments(current.privacyComments);
+        setPrivacyFollowers(current.privacyFollowers);
+        setInitialState(current);
+      })
+      .catch((err) => {
+        console.warn("Erro ao carregar privacidade:", err);
+        setErrorMsg("Não foi possível carregar suas configurações atuais.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  const isDirty =
+    initialState &&
+    (accountType !== initialState.accountType ||
+      allowFollowers !== initialState.allowFollowers ||
+      privacyLists !== initialState.privacyLists ||
+      privacyFavorites !== initialState.privacyFavorites ||
+      privacyHistory !== initialState.privacyHistory ||
+      privacyComments !== initialState.privacyComments ||
+      privacyFollowers !== initialState.privacyFollowers);
+
+  // Salvar alterações
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSaving(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const updated = await updateProfileFn({
+        data: {
+          accountType,
+          allowFollowers,
+          privacyLists,
+          privacyFavorites,
+          privacyHistory,
+          privacyComments,
+          privacyFollowers,
+        },
+      });
+
+      const nextState = {
+        accountType: updated.accountType || accountType,
+        allowFollowers: updated.allowFollowers ?? allowFollowers,
+        privacyLists: updated.privacyLists || privacyLists,
+        privacyFavorites: updated.privacyFavorites || privacyFavorites,
+        privacyHistory: updated.privacyHistory || privacyHistory,
+        privacyComments: updated.privacyComments || privacyComments,
+        privacyFollowers: updated.privacyFollowers || privacyFollowers,
+      };
+
+      setInitialState(nextState);
+      setSuccessMsg("Configurações de privacidade salvas com sucesso!");
+      setTimeout(() => setSuccessMsg(null), 3500);
+    } catch (err: unknown) {
+      const errMessage =
+        err instanceof Error ? err.message : "Falha ao salvar as configurações.";
+      setErrorMsg(errMessage);
+    } finally {
+      setSaving(false);
     }
-  }, []);
+  };
 
-  function handlePublicProfileToggle() {
-    const next = !publicProfile;
-
-    setPublicProfile(next);
-
-    localStorage.setItem(
-      "hikari-public-profile",
-      String(next),
+  if (isPending || loading) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-12 text-zinc-300">
+        <div className="flex flex-col items-center justify-center space-y-4 py-20">
+          <Loader2 className="size-8 animate-spin text-violet-400" />
+          <p className="text-sm text-zinc-400">Carregando configurações de privacidade...</p>
+        </div>
+      </div>
     );
   }
 
-  function handleFollowersChange(
-    option: string,
-  ) {
-    setFollowers(option);
-
-    localStorage.setItem(
-      "hikari-followers",
-      option,
-    );
-
-    setFollowersOpen(false);
+  if (!user) {
+    return <RedirectToSignIn to="/login" />;
   }
 
   return (
-    <div className="min-h-screen pb-20 pt-5">
+    <div className="mx-auto min-h-screen max-w-4xl px-3 py-6 sm:px-6 pb-24 text-zinc-100">
+      {/* Topo / Breadcrumb */}
       <div className="mb-6">
         <Link
           to="/settings"
-          className="mb-4 inline-flex items-center text-sm text-muted hover:text-fg"
+          className="group mb-4 inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 transition-colors hover:text-white"
         >
-          ← Voltar
+          <ChevronLeft className="size-4 transition-transform group-hover:-translate-x-0.5" />
+          <span>Voltar para Configurações</span>
         </Link>
 
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-elevated">
-            <Lock className="size-5 text-fg" />
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="flex size-12 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-600/10 shadow-[0_0_25px_rgba(168,85,247,0.15)]">
+              <Shield className="size-6 text-violet-400" />
+            </div>
+            <div>
+              <h1 className="font-display text-2xl font-bold tracking-tight text-white">
+                Privacidade do Perfil
+              </h1>
+              <p className="text-xs sm:text-sm text-zinc-400">
+                Gerencie quem pode visualizar sua conta e suas atividades no Hikari
+              </p>
+            </div>
           </div>
 
-          <div>
-            <h1 className="text-2xl font-bold text-fg">
-              Privacidade
-            </h1>
-
-            <p className="mt-1 text-sm text-muted">
-              Controle quem pode acessar e interagir com seu perfil.
-            </p>
-          </div>
+          {/* Botão de Salvar no topo */}
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saving || !isDirty}
+            className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-xs sm:text-sm font-semibold transition-all ${
+              isDirty
+                ? "border border-violet-500/40 bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] hover:brightness-110 active:scale-98"
+                : "border border-white/5 bg-white/[0.04] text-zinc-500 cursor-not-allowed"
+            }`}
+          >
+            {saving ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                <span>Salvando...</span>
+              </>
+            ) : (
+              <>
+                <Check className="size-4" />
+                <span>Salvar Alterações</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
-      <section className="mb-7">
-        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
-          Visibilidade
-        </h2>
+      {/* Alertas */}
+      {successMsg && (
+        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs sm:text-sm text-emerald-300 shadow-lg animate-in fade-in">
+          <Check className="size-5 shrink-0 text-emerald-400" />
+          <span>{successMsg}</span>
+        </div>
+      )}
 
-        <div className="overflow-hidden rounded-xl border border-border bg-bg">
-          <button
-            type="button"
-            onClick={
-              handlePublicProfileToggle
-            }
-            className="flex w-full items-center gap-4 border-b border-border px-4 py-4 text-left transition-colors hover:bg-elevated"
-          >
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
-              <Eye className="size-5" />
+      {errorMsg && (
+        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs sm:text-sm text-red-300 shadow-lg animate-in fade-in">
+          <Lock className="size-5 shrink-0 text-red-400" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      <form onSubmit={(e) => void handleSave(e)} className="space-y-6">
+        {/* Bloco 1: Visibilidade Geral da Conta */}
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0a17] p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Eye className="size-4 text-violet-400" />
+                <span>Visibilidade Geral da Conta</span>
+              </h2>
+              <p className="mt-0.5 text-xs text-zinc-400">
+                Define se seu perfil inteiro é aberto ao público ou restrito apenas a você e seguidores autorizados
+              </p>
+            </div>
+            {accountType === "private" ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
+                <Lock className="size-3 text-amber-400" />
+                Privado
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                <Shield className="size-3 text-emerald-400" />
+                Público
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setAccountType("public")}
+              className={`flex items-start gap-3.5 rounded-xl border p-4 text-left transition-all ${
+                accountType === "public"
+                  ? "border-violet-500/50 bg-violet-600/15 shadow-[0_0_20px_rgba(168,85,247,0.15)] ring-1 ring-violet-500/40"
+                  : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]"
+              }`}
+            >
+              <div
+                className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
+                  accountType === "public"
+                    ? "bg-violet-600 text-white"
+                    : "bg-white/[0.05] text-zinc-400"
+                }`}
+              >
+                <Shield className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">Perfil Público</p>
+                <p className="mt-0.5 text-xs text-zinc-400 leading-relaxed">
+                  Qualquer visitante pode visualizar seu perfil e as seções configuradas como públicas.
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAccountType("private")}
+              className={`flex items-start gap-3.5 rounded-xl border p-4 text-left transition-all ${
+                accountType === "private"
+                  ? "border-amber-500/50 bg-amber-500/15 shadow-[0_0_20px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/40"
+                  : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]"
+              }`}
+            >
+              <div
+                className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
+                  accountType === "private"
+                    ? "bg-amber-600 text-white"
+                    : "bg-white/[0.05] text-zinc-400"
+                }`}
+              >
+                <Lock className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">Perfil Privado</p>
+                <p className="mt-0.5 text-xs text-zinc-400 leading-relaxed">
+                  Apenas você e seus seguidores confirmados conseguem acessar as seções e detalhes do perfil.
+                </p>
+              </div>
+            </button>
+          </div>
+
+          {accountType === "private" && (
+            <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5 text-xs text-amber-200/90 leading-relaxed">
+              <strong>Atenção:</strong> Ao tornar o perfil privado, visitantes não seguidores verão apenas um aviso de conta privada e não terão acesso a listas, favoritos, animes assistidos ou comentários.
+            </div>
+          )}
+        </section>
+
+        {/* Bloco 2: Controle de Novos Seguidores */}
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0a17] p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-600/10 text-violet-400">
+                <Users className="size-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white">
+                  Permitir Novos Seguidores
+                </h2>
+                <p className="mt-0.5 text-xs text-zinc-400 leading-relaxed">
+                  Quando desativado, o botão "Seguir" será desabilitado no seu perfil público, impedindo novos vínculos.
+                </p>
+              </div>
             </div>
 
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-fg">
-                Perfil público
-              </p>
-
-              <p className="mt-1 text-xs leading-5 text-muted">
-                Permitir que outras pessoas encontrem e vejam seu perfil.
-              </p>
-            </div>
-
-            <div
-              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                publicProfile
-                  ? "bg-green-500"
-                  : "bg-elevated"
+            <button
+              type="button"
+              role="switch"
+              aria-checked={allowFollowers}
+              onClick={() => setAllowFollowers(!allowFollowers)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-[#0c0a17] ${
+                allowFollowers ? "bg-violet-600" : "bg-zinc-800"
               }`}
             >
               <span
-                className={`absolute top-1 size-4 rounded-full transition-transform ${
-                  publicProfile
-                    ? "translate-x-6 bg-white"
-                    : "translate-x-1 bg-muted"
+                className={`pointer-events-none inline-block size-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ${
+                  allowFollowers ? "translate-x-5" : "translate-x-0"
                 }`}
               />
-            </div>
-          </button>
-        </div>
-      </section>
+            </button>
+          </div>
+        </section>
 
-      <section className="mb-7">
-        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
-          Seguidores
-        </h2>
+        {/* Bloco 3: Visibilidade Individual das Seções */}
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0a17] p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+          <div className="mb-5">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <ListOrdered className="size-4 text-violet-400" />
+              <span>Visibilidade Individual das Seções</span>
+            </h2>
+            <p className="mt-0.5 text-xs text-zinc-400 leading-relaxed">
+              Personalize quem tem acesso a cada tipo de dado público. Se sua conta for privada, visitantes anônimos não terão acesso independente dessas configurações.
+            </p>
+          </div>
 
-        <div className="overflow-hidden rounded-xl border border-border bg-bg">
-          <button
-            type="button"
-            onClick={() =>
-              setFollowersOpen(true)
-            }
-            className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
-          >
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
-              <Users className="size-5" />
-            </div>
+          <div className="space-y-4 divide-y divide-white/[0.06]">
+            {/* Seção 1: Listas de Animes */}
+            <SectionPrivacyRow
+              icon={<ListOrdered className="size-4 text-violet-400" />}
+              title="Listas de Animes"
+              description="Coleções personalizadas de animes criadas por você"
+              value={privacyLists}
+              onChange={setPrivacyLists}
+            />
 
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-fg">
-                Quem pode me seguir
-              </p>
-
-              <p className="mt-1 text-xs leading-5 text-muted">
-                {followers}
-              </p>
-            </div>
-
-            <ChevronRight className="size-5 shrink-0 text-muted" />
-          </button>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
-          Usuários bloqueados
-        </h2>
-
-        <div className="overflow-hidden rounded-xl border border-border bg-bg">
-          <button
-            type="button"
-            onClick={() =>
-              setBlockedOpen(true)
-            }
-            className="flex w-full items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-elevated"
-          >
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-elevated text-muted">
-              <Ban className="size-5" />
+            {/* Seção 2: Favoritos */}
+            <div className="pt-4">
+              <SectionPrivacyRow
+                icon={<Heart className="size-4 text-rose-400" />}
+                title="Favoritos"
+                description="Animes, personagens, estúdios e pessoas favoritadas"
+                value={privacyFavorites}
+                onChange={setPrivacyFavorites}
+              />
             </div>
 
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-fg">
-                Usuários bloqueados
-              </p>
-
-              <p className="mt-1 text-xs leading-5 text-muted">
-                Gerencie as pessoas que você bloqueou.
-              </p>
+            {/* Seção 3: Histórico de Episódios */}
+            <div className="pt-4">
+              <SectionPrivacyRow
+                icon={<Clock className="size-4 text-amber-400" />}
+                title="Histórico de Episódios"
+                description="Episódios assistidos e atividade recente no player"
+                value={privacyHistory}
+                onChange={setPrivacyHistory}
+              />
             </div>
 
-            <ChevronRight className="size-5 shrink-0 text-muted" />
-          </button>
-        </div>
-      </section>
-
-      {followersOpen && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-elevated">
-                <Users className="size-5" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <h3 className="text-xl font-semibold text-fg">
-                  Quem pode me seguir
-                </h3>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setFollowersOpen(false)
-                }
-                className="flex size-9 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
-              >
-                <X className="size-5" />
-              </button>
+            {/* Seção 4: Comentários */}
+            <div className="pt-4">
+              <SectionPrivacyRow
+                icon={<MessageSquare className="size-4 text-sky-400" />}
+                title="Comentários"
+                description="Comentários publicados em episódios e discussões de animes"
+                value={privacyComments}
+                onChange={setPrivacyComments}
+              />
             </div>
 
-            <div className="mt-5 space-y-2">
-              {[
-                "Todos",
-                "Somente pessoas que você aprovar",
-                "Ninguém",
-              ].map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() =>
-                    handleFollowersChange(
-                      option,
-                    )
-                  }
-                  className="flex w-full items-center justify-between rounded-xl border border-border bg-bg px-4 py-4 text-left hover:bg-elevated"
-                >
-                  <span className="text-sm text-fg">
-                    {option}
-                  </span>
-
-                  {followers === option && (
-                    <span className="text-sm font-semibold text-green-500">
-                      ✓
-                    </span>
-                  )}
-                </button>
-              ))}
+            {/* Seção 5: Seguidores e Seguindo */}
+            <div className="pt-4">
+              <SectionPrivacyRow
+                icon={<Users className="size-4 text-emerald-400" />}
+                title="Seguidores e Seguindo"
+                description="Visibilidade das pessoas que você segue e de quem te segue"
+                value={privacyFollowers}
+                onChange={setPrivacyFollowers}
+              />
             </div>
           </div>
-        </div>
-      )}
+        </section>
 
-      {blockedOpen && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#17171a] p-5 shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-full bg-elevated">
-                <Ban className="size-5" />
-              </div>
+        {/* Barra Inferior com Status e Ações */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-[#0c0a17] p-4">
+          <div className="text-xs text-zinc-400 flex items-center gap-2">
+            {isDirty ? (
+              <span className="flex items-center gap-1.5 font-medium text-amber-400">
+                <span className="size-2 rounded-full bg-amber-400 animate-pulse" />
+                Você possui alterações não salvas
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-zinc-500">
+                <Check className="size-3.5 text-emerald-400" />
+                Todas as configurações estão sincronizadas
+              </span>
+            )}
+          </div>
 
-              <div className="min-w-0 flex-1">
-                <h3 className="text-xl font-semibold text-fg">
-                  Usuários bloqueados
-                </h3>
-              </div>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <Link
+              to="/account"
+              className="w-full sm:w-auto rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-center text-xs sm:text-sm font-medium text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
+            >
+              Ver Meu Perfil
+            </Link>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setBlockedOpen(false)
-                }
-                className="flex size-9 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-
-            <div className="mt-5 rounded-xl border border-border bg-bg p-5 text-center">
-              <Ban className="mx-auto size-8 text-muted" />
-
-              <p className="mt-3 text-sm font-medium text-fg">
-                Nenhum usuário bloqueado
-              </p>
-
-              <p className="mt-1 text-xs leading-5 text-muted">
-                Os usuários que você bloquear aparecerão aqui.
-              </p>
-            </div>
+            <button
+              type="submit"
+              disabled={saving || !isDirty}
+              className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-xs sm:text-sm font-semibold transition-all ${
+                isDirty
+                  ? "border border-violet-500/40 bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] hover:brightness-110 active:scale-98"
+                  : "border border-white/5 bg-white/[0.04] text-zinc-500 cursor-not-allowed"
+              }`}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  <span>Salvando...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="size-4" />
+                  <span>Salvar Alterações</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
-      )}
+      </form>
+    </div>
+  );
+}
+
+interface SectionPrivacyRowProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  value: SectionPrivacyLevel;
+  onChange: (val: SectionPrivacyLevel) => void;
+}
+
+function SectionPrivacyRow({
+  icon,
+  title,
+  description,
+  value,
+  onChange,
+}: SectionPrivacyRowProps) {
+  const options: Array<{
+    value: SectionPrivacyLevel;
+    label: string;
+    icon: React.ReactNode;
+  }> = [
+    { value: "public", label: "Público", icon: <Eye className="size-3.5" /> },
+    { value: "followers", label: "Seguidores", icon: <UserCheck className="size-3.5" /> },
+    { value: "private", label: "Somente Eu", icon: <UserMinus className="size-3.5" /> },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04]">
+          {icon}
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-white">{title}</h3>
+          <p className="text-xs text-zinc-400">{description}</p>
+        </div>
+      </div>
+
+      <div className="flex items-center rounded-xl border border-white/[0.08] bg-black/40 p-1 self-start sm:self-center">
+        {options.map((opt) => {
+          const isSelected = value === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onChange(opt.value)}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                isSelected
+                  ? "bg-violet-600 text-white shadow-md font-semibold"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+              }`}
+            >
+              {opt.icon}
+              <span>{opt.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

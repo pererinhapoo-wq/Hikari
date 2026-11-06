@@ -1,4 +1,4 @@
-import { BarChart3, Clock, Star, Tv } from "lucide-react";
+import { BarChart3, Tv } from "lucide-react";
 import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
 
 interface ProfileAnimeStatsProps {
@@ -61,7 +61,7 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
       />
 
       {/* 1. Título Anime Stats */}
-      <div className="relative mb-5 flex items-center justify-between gap-3 border-b border-white/[0.06] pb-4">
+      <div className="relative mb-4 flex items-center justify-between gap-3 border-b border-white/[0.06] pb-4">
         <div className="flex items-center gap-2.5">
           <div className="flex size-8 sm:size-9 items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.2)]">
             <BarChart3 className="size-4" />
@@ -85,57 +85,24 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
         </div>
       </div>
 
-      {/* 2. Days Watched e Mean Score na mesma linha */}
-      <div className="relative mb-5 grid grid-cols-2 gap-3 sm:gap-4">
+      {/* 2. Linha compacta: Days Watched à esquerda e Mean Score à direita */}
+      <div className="relative mb-3.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs sm:text-sm">
         {/* Days Watched */}
-        <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3.5 sm:p-4 transition-colors hover:border-violet-500/20 hover:bg-white/[0.03]">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] sm:text-xs font-medium uppercase tracking-wider text-zinc-400">
-              Days Watched
-            </span>
-            <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-white/[0.04] text-zinc-400">
-              <Clock className="size-3.5" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <span className="font-display text-lg sm:text-2xl md:text-3xl font-bold tracking-tight text-zinc-300">
-              Indisponível
-            </span>
-          </div>
-          <p className="mt-1 text-[10px] sm:text-[11px] text-zinc-500 truncate">
-            Requer duração catalogada
-          </p>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-zinc-400 font-medium">Days Watched:</span>
+          <span className="font-semibold text-zinc-300">Indisponível</span>
         </div>
 
         {/* Mean Score */}
-        <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3.5 sm:p-4 transition-colors hover:border-violet-500/20 hover:bg-white/[0.03]">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] sm:text-xs font-medium uppercase tracking-wider text-zinc-400">
-              Mean Score
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-zinc-400 font-medium">Mean Score:</span>
+          {meanScore ? (
+            <span className="font-semibold text-white tabular-nums">
+              {meanScore}
             </span>
-            <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
-              <Star className="size-3.5 fill-amber-400/40" />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            {meanScore ? (
-              <>
-                <span className="font-display text-lg sm:text-2xl md:text-3xl font-bold tracking-tight text-white tabular-nums">
-                  {meanScore}
-                </span>
-                <span className="text-[10px] sm:text-xs text-zinc-400">/ 10</span>
-              </>
-            ) : (
-              <span className="font-display text-lg sm:text-2xl md:text-3xl font-bold tracking-tight text-zinc-400">
-                —
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-[10px] sm:text-[11px] text-zinc-500 truncate">
-            {scoredItems.length > 0
-              ? `${scoredItems.length} ${scoredItems.length === 1 ? "nota atribuída" : "notas atribuídas"}`
-              : "Sem notas atribuídas"}
-          </p>
+          ) : (
+            <span className="font-semibold text-zinc-400">—</span>
+          )}
         </div>
       </div>
 
