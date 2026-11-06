@@ -50,6 +50,16 @@ export interface CustomVideoPlayerProps {
 
   /** Tempo inicial em segundos para retomar reprodução */
   initialTime?: number;
+  /** Callback disparado quando o vídeo começa a tocar */
+  onPlay?: () => void;
+  /** Callback disparado quando a reprodução está em andamento */
+  onPlaying?: () => void;
+  /** Callback disparado quando uma busca na timeline inicia */
+  onSeeking?: () => void;
+  /** Callback disparado quando uma busca na timeline conclui */
+  onSeeked?: () => void;
+  /** Callback disparado quando o player entra em buffering */
+  onWaiting?: () => void;
   /** Callback periódico de tempo e duração para persistência do progresso */
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   /** Callback disparado na pausa para salvar o progresso imediatamente */
@@ -82,6 +92,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   autoPlay = true,
   onUpdateMetadata,
   initialTime = 0,
+  onPlay,
+  onPlaying,
+  onSeeking,
+  onSeeked,
+  onWaiting,
   onTimeUpdate,
   onPause,
   onRestored,
@@ -360,6 +375,26 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     onTimeUpdate?.(time, dur);
   }, [onTimeUpdate, video?.duration, initialTime, applyInitialTime]);
 
+  const handlePlay = useCallback(() => {
+    onPlay?.();
+  }, [onPlay]);
+
+  const handlePlaying = useCallback(() => {
+    onPlaying?.();
+  }, [onPlaying]);
+
+  const handleSeeking = useCallback(() => {
+    onSeeking?.();
+  }, [onSeeking]);
+
+  const handleSeeked = useCallback(() => {
+    onSeeked?.();
+  }, [onSeeked]);
+
+  const handleWaiting = useCallback(() => {
+    onWaiting?.();
+  }, [onWaiting]);
+
   // Manipulador de pausa para salvamento imediato do progresso
   const handlePause = useCallback(() => {
     const el = videoRef.current;
@@ -407,6 +442,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             poster={effectivePosterUrl}
             playsInline
             autoPlay={autoPlay}
+            onPlay={handlePlay}
+            onPlaying={handlePlaying}
+            onSeeking={handleSeeking}
+            onSeeked={handleSeeked}
+            onWaiting={handleWaiting}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
             onCanPlay={handleCanPlay}

@@ -38,6 +38,12 @@ import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { mergeDetail } from "@/lib/overlay";
 import { buildCleanCanonical, buildWatchJsonLd, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { useHikariStore } from "@/lib/store";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import {
+  startEpisodeSession,
+  heartbeatEpisodeProgress,
+  getEpisodeProgress,
+} from "@/lib/profile-playback.functions";
 import {
   displayTitle,
   type Episode,
@@ -377,6 +383,8 @@ function WatchPage() {
     return list;
   }, [current]);
 
+  const { user } = useCurrentUserState();
+
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("player-1");
   const lastEpisodeIdRef = useRef<string | undefined>(current?.id);
   const livePlaybackRef = useRef<{ episodeId: string; time: number }>({
@@ -387,6 +395,14 @@ function WatchPage() {
     episodeId: string;
     time: number;
   } | null>(null);
+
+  const playbackSessionIdRef = useRef<string | null>(null);
+  const sessionStartingRef = useRef<boolean>(false);
+  const isPlayingRef = useRef<boolean>(false);
+  const isBufferingRef = useRef<boolean>(false);
+  const isSeekingRef = useRef<boolean>(false);
+  const lastHeartbeatTimestampRef = useRef<number>(0);
+  const isCompletedRef = useRef<boolean>(false);
 
   // Chave de armazenamento para salvar progresso e retomar a reprodução
   const progressStorageKey =
@@ -412,6 +428,36 @@ function WatchPage() {
 
   const hasRestoredRef = useRef<boolean>(savedInitialTime <= 0);
   const lastSavedTimeRef = useRef<number>(savedInitialTime);
+
+  // Consulta progresso remoto do usuário autenticado no servidor
+  useEffect(() => {
+    let isMounted = true;
+    if (user && anime?.id && current?.id) {
+      getEpisodeProgress({ data: { animeId: anime.id, episodeId: current.id } })
+        .then((progress) => {
+          if (!isMounted || !progress || progress.currentTime <= 0) return;
+          if (!hasRestoredRef.current && progress.currentTime > 0) {
+            setSessionTime({ episodeId: current.id, time: progress.currentTime });
+          }
+        })
+        .catch(() => {
+          // Fallback transparente
+        });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [user, anime?.id, current?.id]);
+
+  useEffect(() => {
+    playbackSessionIdRef.current = null;
+    sessionStartingRef.current = false;
+    isPlayingRef.current = false;
+    isBufferingRef.current = false;
+    isSeekingRef.current = false;
+    isCompletedRef.current = false;
+    lastHeartbeatTimestampRef.current = 0;
+  }, [current?.id, anime?.id]);
 
   useEffect(() => {
     if (current?.id !== lastEpisodeIdRef.current) {
@@ -486,6 +532,110 @@ function WatchPage() {
     [current?.id],
   );
 
+  const ensureSessionAndSendHeartbeat = useCallback(
+    async (time: number, totalDuration: number, isEnding = false) => {
+      if (!user || !anime || !current) return;
+
+      const dur = totalDuration > 0 ? Math.floor(totalDuration) : undefined;
+      const snap = {
+        title: displayTitle(anime),
+        cover: current.thumbnail || anime.cover,
+      };
+
+      // 1. Inicia a sessão se ainda não tiver sido iniciada
+      if (!playbackSessionIdRef.current) {
+        if (sessionStartingRef.current) return;
+        sessionStartingRef.current = true;
+        try {
+          const session = await startEpisodeSession({
+            data: {
+              animeId: anime.id,
+              episodeId: current.id,
+              episodeNumber: current.number,
+              duration: dur,
+              animeSnapshot: snap,
+            },
+          });
+          playbackSessionIdRef.current = session.playbackSessionId;
+          lastHeartbeatTimestampRef.current = Date.now();
+        } catch {
+          // Preserva a reprodução mesmo se o servidor estiver temporariamente indisponível
+        } finally {
+          sessionStartingRef.current = false;
+        }
+        return;
+      }
+
+      // 2. Heartbeat se sessão estiver ativa
+      const sessionId = playbackSessionIdRef.current;
+      const now = Date.now();
+      const deltaMs =
+        lastHeartbeatTimestampRef.current > 0
+          ? Math.max(0, now - lastHeartbeatTimestampRef.current)
+          : 0;
+
+      // Se for heartbeat normal de reprodução, exige ~4.5s de intervalo
+      if (!isEnding && deltaMs < 4500) {
+        return;
+      }
+
+      lastHeartbeatTimestampRef.current = now;
+
+      try {
+        const hb = await heartbeatEpisodeProgress({
+          data: {
+            animeId: anime.id,
+            episodeId: current.id,
+            playbackSessionId: sessionId,
+            currentTime: Math.floor(time),
+            duration: dur,
+            deltaMs,
+            isPlaying: isEnding ? false : isPlayingRef.current,
+            isBuffering: isBufferingRef.current,
+            isSeeking: isSeekingRef.current,
+            ended: isEnding,
+            animeSnapshot: snap,
+          },
+        });
+        if (hb.completed) {
+          isCompletedRef.current = true;
+        }
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message || "";
+        if (msg.includes("expirada") || msg.includes("inválida")) {
+          playbackSessionIdRef.current = null;
+        }
+      }
+    },
+    [user, anime, current],
+  );
+
+  const handlePlay = useCallback(() => {
+    isPlayingRef.current = true;
+    isBufferingRef.current = false;
+    const curTime = livePlaybackRef.current.time;
+    void ensureSessionAndSendHeartbeat(curTime, 0);
+  }, [ensureSessionAndSendHeartbeat]);
+
+  const handlePlaying = useCallback(() => {
+    isPlayingRef.current = true;
+    isBufferingRef.current = false;
+    const curTime = livePlaybackRef.current.time;
+    void ensureSessionAndSendHeartbeat(curTime, 0);
+  }, [ensureSessionAndSendHeartbeat]);
+
+  const handleSeeking = useCallback(() => {
+    isSeekingRef.current = true;
+  }, []);
+
+  const handleSeeked = useCallback(() => {
+    isSeekingRef.current = false;
+  }, []);
+
+  const handleWaiting = useCallback(() => {
+    isBufferingRef.current = true;
+  }, []);
+
   const handleTimeUpdate = useCallback(
     (time: number, totalDuration: number) => {
       if (!current?.id || !progressStorageKey || totalDuration <= 0) return;
@@ -505,6 +655,9 @@ function WatchPage() {
       if (time > 0) {
         livePlaybackRef.current = { episodeId: current.id, time };
       }
+
+      // Envia heartbeat com throttled timing para o servidor
+      void ensureSessionAndSendHeartbeat(time, totalDuration, false);
 
       if (time / totalDuration > 0.95) {
         try {
@@ -527,16 +680,19 @@ function WatchPage() {
         }
       }
     },
-    [progressStorageKey, current?.id, effectiveInitialTime],
+    [progressStorageKey, current?.id, effectiveInitialTime, ensureSessionAndSendHeartbeat],
   );
 
   const handlePause = useCallback(
     (time: number, totalDuration: number) => {
+      isPlayingRef.current = false;
       if (!current?.id || !progressStorageKey || totalDuration <= 0) return;
 
       if (time > 0) {
         livePlaybackRef.current = { episodeId: current.id, time };
       }
+
+      void ensureSessionAndSendHeartbeat(time, totalDuration, false);
 
       if (time / totalDuration > 0.95) {
         try {
@@ -563,7 +719,7 @@ function WatchPage() {
         }
       }
     },
-    [current?.id, progressStorageKey, effectiveInitialTime],
+    [current?.id, progressStorageKey, effectiveInitialTime, ensureSessionAndSendHeartbeat],
   );
 
   const handleSelectPlayer = useCallback(
@@ -610,6 +766,8 @@ function WatchPage() {
   }, [next, navigate, anime]);
 
   const handleEnded = useCallback(() => {
+    isPlayingRef.current = false;
+    void ensureSessionAndSendHeartbeat(livePlaybackRef.current.time, 0, true);
     if (progressStorageKey) {
       try {
         localStorage.removeItem(progressStorageKey);
@@ -620,7 +778,7 @@ function WatchPage() {
     livePlaybackRef.current = { episodeId: "", time: 0 };
     setSessionTime(null);
     handleNextEpisode();
-  }, [progressStorageKey, handleNextEpisode]);
+  }, [progressStorageKey, handleNextEpisode, ensureSessionAndSendHeartbeat]);
 
   const selectedPlayer =
     playerSources.find((s) => s.id === selectedPlayerId) ??
@@ -772,6 +930,11 @@ function WatchPage() {
               video={_currentVideoItem}
               autoPlay={userAutoplay}
               initialTime={effectiveInitialTime}
+              onPlay={handlePlay}
+              onPlaying={handlePlaying}
+              onSeeking={handleSeeking}
+              onSeeked={handleSeeked}
+              onWaiting={handleWaiting}
               onTimeUpdate={handleTimeUpdate}
               onPause={handlePause}
               onRestored={handleRestored}

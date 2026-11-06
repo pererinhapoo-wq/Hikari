@@ -1,0 +1,263 @@
+import { z } from "zod";
+
+/**
+ * Status válidos para o acompanhamento de animes na Migration 0021.
+ */
+export const TRACKING_STATUSES = [
+  "watching",
+  "completed",
+  "planning",
+  "on_hold",
+  "dropped",
+] as const;
+
+export type TrackingStatus = (typeof TRACKING_STATUSES)[number];
+
+export const trackingStatusSchema = z.enum(TRACKING_STATUSES);
+
+/**
+ * Origens válidas para o histórico de episódios assistidos.
+ */
+export const WATCHED_ORIGINS = ["playback", "manual"] as const;
+
+export type WatchedOrigin = (typeof WATCHED_ORIGINS)[number];
+
+export const watchedOriginSchema = z.enum(WATCHED_ORIGINS);
+
+/**
+ * Snapshot leve com apenas os campos essenciais para exibição dos animes.
+ * Compatível tanto com catálogo canônico quanto com animes locais ("local-*").
+ */
+export const animeSnapshotSchema = z
+  .object({
+    title: z.string().trim().min(1).optional(),
+    titleRomaji: z.string().trim().optional().nullable(),
+    titleEnglish: z.string().trim().optional().nullable(),
+    titleNative: z.string().trim().optional().nullable(),
+    cover: z.string().trim().optional().nullable(),
+    banner: z.string().trim().optional().nullable(),
+    format: z.string().trim().optional().nullable(),
+    year: z.number().int().optional().nullable(),
+    episodesCount: z.number().int().optional().nullable(),
+    status: z.string().trim().optional().nullable(),
+    score: z.number().optional().nullable(),
+  })
+  .catchall(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+  .optional()
+  .nullable();
+
+export type AnimeSnapshot = NonNullable<z.infer<typeof animeSnapshotSchema>>;
+
+/**
+ * 1. Schema e tipo para criar ou atualizar acompanhamento de anime.
+ */
+export const upsertAnimeTrackingSchema = z.object({
+  animeId: z
+    .string()
+    .trim()
+    .min(1, "O identificador do anime (animeId) é obrigatório."),
+  status: trackingStatusSchema.optional().default("planning"),
+  score: z
+    .number()
+    .min(0, "A nota deve ser maior ou igual a 0.")
+    .max(10, "A nota deve ser menor ou igual a 10.")
+    .nullable()
+    .optional(),
+  episodesWatched: z
+    .number()
+    .int("O número de episódios assistidos deve ser inteiro.")
+    .min(0, "Episódios assistidos não podem ser negativos.")
+    .optional(),
+  animeSnapshot: animeSnapshotSchema,
+  startedAt: z.string().nullable().optional(),
+  completedAt: z.string().nullable().optional(),
+});
+
+export type UpsertAnimeTrackingInput = z.infer<
+  typeof upsertAnimeTrackingSchema
+>;
+
+/**
+ * 2. Schema e tipo para consultar acompanhamento do usuário autenticado.
+ */
+export const getMyAnimeTrackingSchema = z
+  .object({
+    status: trackingStatusSchema.optional(),
+    animeId: z.string().trim().min(1).optional(),
+  })
+  .optional();
+
+export type GetMyAnimeTrackingInput = z.infer<
+  typeof getMyAnimeTrackingSchema
+>;
+
+/**
+ * 3. Schema e tipo para consultar acompanhamento filtrado por status.
+ */
+export const getAnimeTrackingByStatusSchema = z.object({
+  status: trackingStatusSchema,
+});
+
+export type GetAnimeTrackingByStatusInput = z.infer<
+  typeof getAnimeTrackingByStatusSchema
+>;
+
+/**
+ * 4. Schema e tipo para remover acompanhamento de anime.
+ */
+export const removeAnimeTrackingSchema = z.object({
+  animeId: z
+    .string()
+    .trim()
+    .min(1, "O identificador do anime (animeId) é obrigatório."),
+});
+
+export type RemoveAnimeTrackingInput = z.infer<
+  typeof removeAnimeTrackingSchema
+>;
+
+/**
+ * 5. Schema e tipo para consultar histórico paginado de episódios assistidos.
+ */
+export const getMyWatchedEpisodesSchema = z
+  .object({
+    animeId: z.string().trim().min(1).optional(),
+    page: z
+      .number()
+      .int()
+      .min(1, "A página deve ser maior ou igual a 1.")
+      .optional()
+      .default(1),
+    limit: z
+      .number()
+      .int()
+      .min(1, "O limite mínimo é 1.")
+      .max(100, "O limite máximo é 100.")
+      .optional()
+      .default(30),
+  })
+  .optional();
+
+export type GetMyWatchedEpisodesInput = z.infer<
+  typeof getMyWatchedEpisodesSchema
+>;
+
+/**
+ * 6. Schema e tipo para marcar manualmente um episódio como assistido.
+ */
+export const markEpisodeWatchedSchema = z.object({
+  animeId: z
+    .string()
+    .trim()
+    .min(1, "O identificador do anime (animeId) é obrigatório."),
+  episodeId: z
+    .string()
+    .trim()
+    .min(1, "O identificador do episódio (episodeId) é obrigatório."),
+  episodeNumber: z
+    .number()
+    .int("O número do episódio deve ser inteiro.")
+    .min(0, "O número do episódio não pode ser negativo."),
+  animeSnapshot: animeSnapshotSchema,
+});
+
+export type MarkEpisodeWatchedInput = z.infer<
+  typeof markEpisodeWatchedSchema
+>;
+
+/**
+ * 7. Schema e tipo para desmarcar manualmente um episódio do histórico.
+ */
+export const unmarkEpisodeWatchedSchema = z.object({
+  animeId: z
+    .string()
+    .trim()
+    .min(1, "O identificador do anime (animeId) é obrigatório."),
+  episodeId: z
+    .string()
+    .trim()
+    .min(1, "O identificador do episódio (episodeId) é obrigatório."),
+});
+
+export type UnmarkEpisodeWatchedInput = z.infer<
+  typeof unmarkEpisodeWatchedSchema
+>;
+
+/**
+ * Representação direta da linha na tabela "user_anime_tracking".
+ */
+export interface UserAnimeTrackingRecord {
+  userId: string;
+  animeId: string;
+  status: TrackingStatus;
+  score: number | null;
+  episodesWatched: number;
+  animeSnapshot: AnimeSnapshot | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Item de acompanhamento enriquecido com dados do catálogo ou snapshot.
+ */
+export interface UserAnimeTrackingItem {
+  userId: string;
+  animeId: string;
+  status: TrackingStatus;
+  score: number | null;
+  episodesWatched: number;
+  title: string;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  titleNative: string | null;
+  cover: string | null;
+  banner: string | null;
+  format: string | null;
+  year: number | null;
+  episodesCount: number | null;
+  animeStatus: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  animeSnapshot: AnimeSnapshot | null;
+}
+
+/**
+ * Representação direta da linha na tabela "user_watched_episode".
+ */
+export interface UserWatchedEpisodeRecord {
+  userId: string;
+  animeId: string;
+  episodeId: string;
+  episodeNumber: number;
+  origin: WatchedOrigin;
+  watchedAt: string;
+}
+
+/**
+ * Item de episódio assistido enriquecido com dados de apresentação.
+ */
+export interface WatchedEpisodeItem {
+  userId: string;
+  animeId: string;
+  episodeId: string;
+  episodeNumber: number;
+  origin: WatchedOrigin;
+  watchedAt: string;
+  animeTitle: string;
+  animeCover: string | null;
+}
+
+/**
+ * Resposta paginada de episódios assistidos do usuário.
+ */
+export interface WatchedEpisodesResponse {
+  items: WatchedEpisodeItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
