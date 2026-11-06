@@ -11,7 +11,9 @@ import {
   Calendar,
   CalendarDays,
   Clapperboard,
+  Compass,
   House,
+  LogIn,
   Menu,
   Search,
   Settings2,
@@ -19,7 +21,7 @@ import {
   UserCircle,
   X,
 } from "lucide-react";
-
+import { LoginMenu } from "@/components/LoginMenu";
 import { Logo } from "@/components/logo";
 import {
   NotificationItemCard,
@@ -93,51 +95,6 @@ function useNotificationPanelPresence(open: boolean, exitMs = 170) {
     closing: !open && mounted,
   };
 }
-
-const BASE_NAV = [
-  {
-    to: "/",
-    label: "Início",
-    icon: House,
-    match: (p: string) => p === "/",
-  },
-  {
-    to: "/my-list",
-    label: "Minha Lista",
-    icon: Bookmark,
-    match: (p: string) =>
-      p.startsWith("/my-list"),
-  },
-  {
-    to: "/calendar",
-    label: "Calendário",
-    icon: Calendar,
-    match: (p: string) =>
-      p.startsWith("/calendar"),
-  },
-  {
-    to: "/browse/season",
-    label: "Temporadas",
-    icon: CalendarDays,
-    match: (p: string) =>
-      p.startsWith("/browse/season"),
-  },
-  {
-    to: "/browse/genres",
-    label: "Gêneros",
-    icon: Tags,
-    match: (p: string) =>
-      p.startsWith("/browse/genres"),
-  },
-  {
-    to: "/account",
-    label: "Conta",
-    icon: UserCircle,
-    match: (p: string) =>
-      p.startsWith("/account") ||
-      p.startsWith("/login"),
-  },
-] as const;
 
 const ShellMain = memo(function ShellMain({
   isBannerPage,
@@ -298,6 +255,9 @@ export function Shell() {
   const [menuOpen, setMenuOpen] =
     useState(false);
 
+  const [loginModalOpen, setLoginModalOpen] =
+    useState(false);
+
   const [
     notificationsOpen,
     setNotificationsOpen,
@@ -330,6 +290,7 @@ export function Shell() {
   useEffect(() => {
     setNotificationsOpen(false);
     setSearchOpen(false);
+    setLoginModalOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -467,6 +428,12 @@ export function Shell() {
         to: "/search",
         search: {
           q,
+          genre: undefined,
+          year: undefined,
+          format: undefined,
+          status: undefined,
+          sort: undefined,
+          page: undefined,
           adult: window.location.pathname.startsWith("/adult") ? true : undefined,
         },
       });
@@ -496,28 +463,6 @@ export function Shell() {
     pathname === "/" ||
     pathname.startsWith("/anime/");
 
-  const baseNav = user
-    ? BASE_NAV
-    : BASE_NAV.filter((item) => item.to !== "/my-list");
-
-  const nav =
-    user &&
-    isHikariAdmin(
-      user.primaryEmail,
-    )
-      ? [
-          ...baseNav,
-          {
-            to: "/admin",
-            label: "Admin",
-            icon: Settings2,
-            match: (p: string) =>
-              p.startsWith(
-                "/admin",
-              ),
-          },
-        ]
-      : baseNav;
 
   /* =========================================================
      BUSCA AUTOMÁTICA
@@ -1001,114 +946,140 @@ export function Shell() {
       >
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
 
-          {/* MENU */}
-          <button
-            type="button"
-            onClick={() =>
-              setMenuOpen(true)
-            }
-            className="flex size-11 items-center justify-center rounded-md text-fg hover:bg-elevated/70 transition-colors"
-            aria-label="Abrir menu"
-          >
-            <Menu className="size-6" />
-          </button>
+          {/* LADO ESQUERDO: Menu Mobile + Logo + Navegação Desktop */}
+          <div className="flex items-center gap-3 sm:gap-6">
+            {/* BOTÃO MENU (visível em telas menores que md) */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              className="flex size-10 items-center justify-center rounded-xl text-fg hover:bg-elevated/70 transition-colors md:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
+              aria-label="Abrir menu de navegação"
+            >
+              <Menu className="size-5" />
+            </button>
 
-          {/* LOGO OFICIAL HIKARI */}
-          <div className="flex flex-1 items-center justify-center md:justify-start">
-            <Logo size="md" />
+            {/* LOGO OFICIAL HIKARI */}
+            <div className="flex items-center">
+              <Logo size="md" />
+            </div>
+
+            {/* LINKS DE NAVEGAÇÃO DESKTOP */}
+            <nav className="hidden md:flex items-center gap-1" aria-label="Navegação principal">
+              {/* Início */}
+              <Link
+                to="/"
+                className={cn(
+                  "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+                  pathname === "/"
+                    ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                    : "text-muted hover:bg-elevated/70 hover:text-fg",
+                )}
+              >
+                <House className="size-4" />
+                <span>Início</span>
+              </Link>
+
+              {/* Calendário */}
+              <Link
+                to="/calendar"
+                className={cn(
+                  "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+                  pathname.startsWith("/calendar")
+                    ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                    : "text-muted hover:bg-elevated/70 hover:text-fg",
+                )}
+              >
+                <Calendar className="size-4" />
+                <span>Calendário</span>
+              </Link>
+
+              {/* Explorar */}
+              <Link
+                to="/browse/$section"
+                params={{ section: "popular" }}
+                className={cn(
+                  "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+                  pathname.startsWith("/browse")
+                    ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                    : "text-muted hover:bg-elevated/70 hover:text-fg",
+                )}
+              >
+                <Compass className="size-4" />
+                <span>Explorar</span>
+              </Link>
+            </nav>
           </div>
 
           {/* AÇÕES DA DIREITA */}
-          <div className="flex items-center gap-1">
-
-            {/* NOTIFICAÇÕES DESKTOP */}
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  notificationsOpen
-                ) {
-                  setNotificationsOpen(
-                    false,
-                  );
-                } else {
-                  void openNotifications();
-                }
-              }}
-              className={cn(
-                "relative hidden size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:flex",
-                "motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
-                notificationsOpen && "bg-elevated text-fg",
-              )}
-              aria-label="Notificações"
-              aria-expanded={
-                notificationsOpen
-              }
-            >
-              <Bell className="size-5" />
-
-              {unreadCount > 0 && (
-                <span className="absolute right-0.5 top-0.5 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg tabular-nums">
-                  {unreadCount > 99
-                    ? "99+"
-                    : unreadCount}
-                </span>
-              )}
-            </button>
-
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* BUSCA — escondida na área de Notícias */}
             {!pathname.startsWith("/news") && (
               <button
                 type="button"
                 onClick={() => {
-                  setSearchOpen(
-                    (value) => !value,
-                  );
+                  setSearchOpen((value) => !value);
                 }}
-                className="flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
-                aria-label="Buscar"
-                aria-expanded={
-                  searchOpen
-                }
+                className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
+                aria-label="Buscar animes"
+                aria-expanded={searchOpen}
               >
-                <Search className="size-5" />
+                <Search className="size-4 sm:size-5" />
               </button>
             )}
 
-            {/* NOTIFICAÇÕES MOBILE */}
+            {/* NOTIFICAÇÕES */}
             <button
               type="button"
               onClick={() => {
-                if (
-                  notificationsOpen
-                ) {
-                  setNotificationsOpen(
-                    false,
-                  );
+                if (notificationsOpen) {
+                  setNotificationsOpen(false);
                 } else {
                   void openNotifications();
                 }
               }}
               className={cn(
-                "relative flex size-11 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg md:hidden",
+                "relative flex size-10 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
                 "motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
                 notificationsOpen && "bg-elevated text-fg",
               )}
               aria-label="Notificações"
-              aria-expanded={
-                notificationsOpen
-              }
+              aria-expanded={notificationsOpen}
             >
-              <Bell className="size-5" />
+              <Bell className="size-4 sm:size-5" />
 
               {unreadCount > 0 && (
-                <span className="absolute right-0.5 top-0.5 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg tabular-nums">
-                  {unreadCount > 99
-                    ? "99+"
-                    : unreadCount}
+                <span className="absolute right-0.5 top-0.5 flex min-w-4 h-4 sm:min-w-5 sm:h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] sm:text-[10px] font-bold leading-none text-white ring-2 ring-bg tabular-nums">
+                  {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
             </button>
+
+            {/* BOTÃO ENTRAR / MINHA CONTA */}
+            {user ? (
+              <Link
+                to="/account"
+                className={cn(
+                  "flex items-center gap-2 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+                  pathname.startsWith("/account")
+                    ? "bg-[#a855f7]/20 text-[#c084fc] font-semibold border border-[#a855f7]/40"
+                    : "border border-white/10 bg-[#161424] text-white/90 hover:border-[#a855f7]/40 hover:bg-[#a855f7]/15 hover:text-white",
+                )}
+                aria-label="Minha Conta"
+              >
+                <UserCircle className="size-4 text-[#c084fc]" />
+                <span className="hidden sm:inline font-semibold">Minha Conta</span>
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setLoginModalOpen(true)}
+                className="flex items-center gap-1.5 sm:gap-2 rounded-xl border border-[#a855f7]/40 bg-[#a855f7] px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#9333ea] hover:shadow-[0_0_20px_rgba(168,85,247,0.35)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
+                aria-label="Entrar na conta"
+              >
+                <LogIn className="size-3.5 sm:size-4" />
+                <span>Entrar</span>
+              </button>
+            )}
           </div>
         </div>
       </ShellHeaderWrapper>
@@ -1271,8 +1242,13 @@ export function Shell() {
                     <Link
                       to="/search"
                       search={{
-                        q:
-                          searchQuery.trim(),
+                        q: searchQuery.trim(),
+                        genre: undefined,
+                        year: undefined,
+                        format: undefined,
+                        status: undefined,
+                        sort: undefined,
+                        page: undefined,
                         adult:
                           window.location.pathname.startsWith(
                             "/adult",
@@ -1462,48 +1438,111 @@ export function Shell() {
                 </p>
 
                 <div className="space-y-1">
-
-                  {nav
-                    .filter(
-                      (item) =>
-                        item.to === "/" ||
-                        item.to === "/my-list" ||
-                        item.to === "/account" ||
-                        item.to === "/admin",
-                    )
-                    .map(
-                      (item) => {
-                        const active =
-                          item.match(
-                            pathname,
-                          );
-
-                        const Icon =
-                          item.icon;
-
-                        return (
-                          <Link
-                            key={item.to}
-                            to={item.to}
-                            onClick={() =>
-                              setMenuOpen(
-                                false,
-                              )
-                            }
-                            className={cn(
-                              "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                              active
-                                ? "bg-elevated text-fg"
-                                : "text-muted hover:bg-elevated hover:text-fg",
-                            )}
-                          >
-                            <Icon className="size-5" />
-
-                            {item.label}
-                          </Link>
-                        );
-                      },
+                  {/* Início */}
+                  <Link
+                    to="/"
+                    onClick={() => setMenuOpen(false)}
+                    className={cn(
+                      "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                      pathname === "/"
+                        ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                        : "text-muted hover:bg-elevated hover:text-fg",
                     )}
+                  >
+                    <House className="size-5" />
+                    <span>Início</span>
+                  </Link>
+
+                  {/* Calendário */}
+                  <Link
+                    to="/calendar"
+                    onClick={() => setMenuOpen(false)}
+                    className={cn(
+                      "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                      pathname.startsWith("/calendar")
+                        ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <Calendar className="size-5" />
+                    <span>Calendário</span>
+                  </Link>
+
+                  {/* Explorar */}
+                  <Link
+                    to="/browse/$section"
+                    params={{ section: "popular" }}
+                    onClick={() => setMenuOpen(false)}
+                    className={cn(
+                      "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                      pathname.startsWith("/browse")
+                        ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                        : "text-muted hover:bg-elevated hover:text-fg",
+                    )}
+                  >
+                    <Compass className="size-5" />
+                    <span>Explorar</span>
+                  </Link>
+
+                  {user && (
+                    <Link
+                      to="/my-list"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(
+                        "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                        pathname.startsWith("/my-list")
+                          ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      <Bookmark className="size-5" />
+                      <span>Minha Lista</span>
+                    </Link>
+                  )}
+
+                  {user ? (
+                    <Link
+                      to="/account"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(
+                        "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                        pathname.startsWith("/account")
+                          ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      <UserCircle className="size-5" />
+                      <span>Minha Conta</span>
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setLoginModalOpen(true);
+                      }}
+                      className="flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-base font-semibold text-[#c084fc] hover:bg-elevated transition-colors text-left"
+                    >
+                      <LogIn className="size-5" />
+                      <span>Entrar</span>
+                    </button>
+                  )}
+
+                  {user && isHikariAdmin(user.primaryEmail) && (
+                    <Link
+                      to="/admin"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(
+                        "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                        pathname.startsWith("/admin")
+                          ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      <Settings2 className="size-5" />
+                      <span>Admin</span>
+                    </Link>
+                  )}
 
                 </div>
               </div>
@@ -1513,31 +1552,10 @@ export function Shell() {
               ================================================== */}
               <div className="mt-6">
                 <p className="mb-2 px-4 text-[10px] font-semibold tracking-[0.18em] text-subtle uppercase">
-                  Animes
+                  Catálogo
                 </p>
 
                 <div className="space-y-1">
-
-                  <Link
-                    to="/calendar"
-                    onClick={() =>
-                      setMenuOpen(false)
-                    }
-                    className={cn(
-                      "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      pathname.startsWith(
-                        "/calendar",
-                      )
-                        ? "bg-elevated text-fg"
-                        : "text-muted hover:bg-elevated hover:text-fg",
-                    )}
-                  >
-                    <Calendar className="size-5" />
-
-                    <span>
-                      Calendário
-                    </span>
-                  </Link>
 
                   <Link
                     to="/browse/$section"
@@ -1586,8 +1604,6 @@ export function Shell() {
                 </div>
               </div>
 
-
-
             </nav>
           </aside>
         </>
@@ -1597,6 +1613,17 @@ export function Shell() {
           CONTEÚDO PRINCIPAL
       ========================================================== */}
       <ShellMain isBannerPage={isBannerPage} />
+
+      {/* =========================================================
+          MODAL DE ENTRAR NA CONTA
+      ========================================================== */}
+      {loginModalOpen && (
+        <LoginMenu
+          isOpen={loginModalOpen}
+          onClose={() => setLoginModalOpen(false)}
+          isModal={true}
+        />
+      )}
 
       {/* =========================================================
           FOOTER (páginas internas; página inicial possui rodapé próprio)

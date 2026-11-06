@@ -326,7 +326,7 @@ export const getMyProfileFavorites = createServerFn({
 /**
  * 4. Reordenar favoritos dentro de uma categoria.
  * Valida que todos os IDs pertencem ao usuário e à categoria sem omissões ou duplicatas,
- * e atualiza de forma atômica utilizando CTE com bloqueio do usuário.
+ * e atualiza de forma atômica utilizando CTE com bloqueio do usuário ("user FOR UPDATE").
  */
 export const reorderProfileFavorites = createServerFn({
   method: "POST",
@@ -337,7 +337,7 @@ export const reorderProfileFavorites = createServerFn({
     const userId = context.userId;
     const { targetType, orderedFavoriteIds } = data;
 
-    // 1. Rejeita IDs duplicados na lista informada
+    // 1. Rejeita IDs duplicados na lista informada antes de ir ao banco
     const uniqueIds = new Set(orderedFavoriteIds);
     if (uniqueIds.size !== orderedFavoriteIds.length) {
       throw new Error("A lista de reordenação contém IDs duplicados.");
@@ -345,55 +345,106 @@ export const reorderProfileFavorites = createServerFn({
 
     const sql = await getSql();
 
-    // 2. Busca todos os IDs atuais dessa categoria pertencentes ao usuário
-    const currentRows = await sql<{ id: string }>`
-      SELECT "id" FROM "user_favorite"
-      WHERE "userId" = ${userId}
-        AND "targetType" = ${targetType}
-    `;
-
-    const currentIdSet = new Set(currentRows.map((r) => r.id));
-
-    // 3. Validação rigorosa: a lista deve ser uma permutação exata dos existentes
-    if (orderedFavoriteIds.length !== currentRows.length) {
-      throw new Error(
-        `A nova ordem deve conter exatamente todos os ${currentRows.length} favoritos dessa categoria.`,
-      );
-    }
-
-    for (const id of orderedFavoriteIds) {
-      if (!currentIdSet.has(id)) {
-        throw new Error(
-          `O favorito '${id}' é inválido ou não pertence aos seus favoritos desta categoria.`,
-        );
-      }
-    }
-
-    // 4. Atualização atômica sequencial com bloqueio da linha do usuário
-    const reorderQuery = `
+    // 2. Executa bloqueio da linha do usuário (SELECT ... FOR UPDATE), validação da lista
+    // e atualização sequencial das posições (de zero em diante) em uma única instrução SQL atômica.
+    const atomicReorderQuery = `
       WITH user_lock AS (
         SELECT "id" FROM "user" WHERE "id" = $1 FOR UPDATE
       ),
-      new_order AS (
-        SELECT unnest($2::text[]) AS fid, generate_subscripts($2::text[], 1) - 1 AS new_pos
+      incoming AS (
+        SELECT elem AS id, (ord - 1)::int AS new_pos
+        FROM unnest($2::text[]) WITH ORDINALITY AS t(elem, ord)
+      ),
+      current_favs AS (
+        SELECT uf."id"
+        FROM "user_favorite" uf
+        JOIN user_lock ul ON uf."userId" = ul."id"
+        WHERE uf."targetType" = $3
+      ),
+      validation AS (
+        SELECT
+          (SELECT count(*) FROM user_lock)::int AS user_count,
+          (SELECT count(*) FROM incoming)::int AS incoming_count,
+          (SELECT count(DISTINCT id) FROM incoming)::int AS unique_incoming_count,
+          (SELECT count(*) FROM current_favs)::int AS current_count,
+          (
+            SELECT count(*)
+            FROM current_favs cf
+            JOIN incoming inc ON inc.id = cf."id"
+          )::int AS matched_count,
+          (
+            SELECT inc.id
+            FROM incoming inc
+            LEFT JOIN current_favs cf ON cf."id" = inc.id
+            WHERE cf."id" IS NULL
+            LIMIT 1
+          ) AS invalid_id
+      ),
+      updated_rows AS (
+        UPDATE "user_favorite" uf
+        SET "position" = inc.new_pos
+        FROM incoming inc, user_lock ul, validation v
+        WHERE v.user_count = 1
+          AND v.incoming_count = v.unique_incoming_count
+          AND v.incoming_count = v.current_count
+          AND v.matched_count = v.current_count
+          AND uf."id" = inc.id
+          AND uf."userId" = ul."id"
+          AND uf."targetType" = $3
+        RETURNING uf."id", uf."position"
       )
-      UPDATE "user_favorite" uf
-      SET "position" = no.new_pos
-      FROM new_order no, user_lock ul
-      WHERE uf."id" = no.fid
-        AND uf."userId" = ul."id"
-        AND uf."targetType" = $3
-      RETURNING uf."id", uf."position";
+      SELECT
+        v.user_count,
+        v.incoming_count,
+        v.unique_incoming_count,
+        v.current_count,
+        v.matched_count,
+        v.invalid_id,
+        (SELECT count(*)::int FROM updated_rows) AS updated_count
+      FROM validation v;
     `;
 
-    const updated = await sql.query<{ id: string; position: number }>(
-      reorderQuery,
-      [userId, orderedFavoriteIds, targetType],
-    );
+    const results = await sql.query<{
+      user_count: number;
+      incoming_count: number;
+      unique_incoming_count: number;
+      current_count: number;
+      matched_count: number;
+      invalid_id: string | null;
+      updated_count: number;
+    }>(atomicReorderQuery, [userId, orderedFavoriteIds, targetType]);
+
+    const result = results[0];
+    if (!result || result.user_count === 0) {
+      throw new Error("Usuário não encontrado.");
+    }
+
+    if (result.incoming_count !== result.unique_incoming_count) {
+      throw new Error("A lista de reordenação contém IDs duplicados.");
+    }
+
+    if (result.invalid_id) {
+      throw new Error(
+        `O favorito '${result.invalid_id}' é inválido ou não pertence aos seus favoritos desta categoria.`,
+      );
+    }
+
+    if (
+      result.incoming_count !== result.current_count ||
+      result.matched_count !== result.current_count
+    ) {
+      throw new Error(
+        `A nova ordem deve conter exatamente todos os ${result.current_count} favoritos dessa categoria.`,
+      );
+    }
+
+    if (result.updated_count !== result.incoming_count) {
+      throw new Error("Falha ao atualizar as posições dos favoritos.");
+    }
 
     return {
       success: true,
       targetType,
-      updatedCount: updated.length,
+      updatedCount: result.updated_count,
     };
   });
