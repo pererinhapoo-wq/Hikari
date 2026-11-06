@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  LogOut,
-  ShieldCheck,
-} from "lucide-react";
 
-import { isHikariAdmin } from "@/lib/auth/admin";
-import { signOut } from "@/lib/auth/client";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
@@ -301,7 +295,7 @@ function AccountProfile() {
 
   if (isPending || (profileLoading && !profile)) {
     return (
-      <main className="min-h-screen bg-[#07060a] px-4 py-8 text-white">
+      <div className="w-full px-4 py-8 text-white">
         <div className="mx-auto max-w-6xl space-y-6">
           <div className="h-64 animate-pulse rounded-3xl bg-white/[0.04]" />
           <div className="h-14 animate-pulse rounded-2xl bg-white/[0.04]" />
@@ -314,15 +308,13 @@ function AccountProfile() {
             ))}
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!user) {
     return <RedirectToSignIn to="/login" />;
   }
-
-  const isAdmin = isHikariAdmin(user.primaryEmail);
 
   // Dados consolidados
   const displayName = profile?.name || user.displayName || profile?.nick || "Membro";
@@ -335,8 +327,8 @@ function AccountProfile() {
   const userFavoritesList = profile?.favorites ?? [];
 
   return (
-    <main className="min-h-screen bg-[#07060a] text-zinc-100 pb-20 pt-4 sm:pt-6">
-      <div className="mx-auto w-full max-w-6xl px-3 sm:px-6 space-y-7">
+    <div className="w-full text-zinc-100 pt-1 sm:pt-3">
+      <div className="mx-auto w-full max-w-6xl px-1 sm:px-2 space-y-7">
         {/* Cabeçalho do Perfil: Banner, Avatar, Nome, Username, Privacidade, Bio, Seguidores e Seguindo */}
         <ProfileIdentityHeader
           name={displayName}
@@ -365,7 +357,7 @@ function AccountProfile() {
         />
 
         {/* Área de Conteúdo da Aba Selecionada */}
-        <section aria-label="Conteúdo da Aba Ativa" className="relative z-10 min-h-[350px]">
+        <section aria-label="Conteúdo da Aba Ativa" className="relative z-10">
           {/* Aba 1: Visão geral (Anime Stats + Favoritos Animes, Personagens, Studios, People) */}
           {activeSpace === "overview" && (
             <ProfileOverviewSpace
@@ -415,37 +407,6 @@ function AccountProfile() {
             />
           )}
         </section>
-
-        {/* Rodapé do Perfil */}
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-6 pb-8 text-xs text-zinc-500">
-          <div className="flex items-center gap-2">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-zinc-300 transition-all hover:bg-white/[0.08] hover:text-white"
-            >
-              <span>Voltar ao início</span>
-            </Link>
-
-            {isAdmin && (
-              <Link
-                to="/admin"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3.5 py-2 font-semibold text-violet-300 transition-all hover:bg-violet-500/20"
-              >
-                <ShieldCheck className="size-3.5" />
-                <span>Painel Admin</span>
-              </Link>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void signOut("/")}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/5 px-3.5 py-2 text-rose-300 transition-all hover:bg-rose-500/15"
-          >
-            <LogOut className="size-3.5" />
-            <span>Encerrar Sessão</span>
-          </button>
-        </footer>
       </div>
 
       {/* Modal de Personalização do Perfil */}
@@ -471,6 +432,6 @@ function AccountProfile() {
         loading={connectionsLoading}
         onClose={() => setConnectionsModalOpen(false)}
       />
-    </main>
+    </div>
   );
 }

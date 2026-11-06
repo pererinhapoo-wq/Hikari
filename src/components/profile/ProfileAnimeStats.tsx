@@ -1,4 +1,4 @@
-import { BarChart3, Clock, Flame, Star, Tv } from "lucide-react";
+import { BarChart3, Clock, Star, Tv } from "lucide-react";
 import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
 
 interface ProfileAnimeStatsProps {
@@ -20,13 +20,13 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
 
   const totalEntries = items.length;
 
-  // Episódios assistidos reais acumulados no acompanhamento
+  // Episódios assistidos acumulados reais
   const episodesWatched = items.reduce(
     (acc, curr) => acc + (curr.episodesWatched || 0),
     0,
   );
 
-  // Mean Score: deve considerar somente entradas com nota válida (> 0)
+  // Mean Score: calculada exclusivamente sobre entradas com nota válida (> 0)
   const scoredItems = items.filter(
     (i) => typeof i.score === "number" && i.score > 0,
   );
@@ -38,7 +38,7 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
         ).toFixed(1)
       : null;
 
-  // Percentuais de distribuição para a barra
+  // Percentuais de distribuição para a barra horizontal
   const pctWatching = totalEntries > 0 ? (watchingCount / totalEntries) * 100 : 0;
   const pctCompleted = totalEntries > 0 ? (completedCount / totalEntries) * 100 : 0;
   const pctOnHold = totalEntries > 0 ? (onHoldCount / totalEntries) * 100 : 0;
@@ -60,10 +60,10 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
         aria-hidden="true"
       />
 
-      {/* Cabeçalho da Seção */}
-      <div className="relative mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] pb-4">
+      {/* 1. Título Anime Stats */}
+      <div className="relative mb-5 flex items-center justify-between gap-3 border-b border-white/[0.06] pb-4">
         <div className="flex items-center gap-2.5">
-          <div className="flex size-9 items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.2)]">
+          <div className="flex size-8 sm:size-9 items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.2)]">
             <BarChart3 className="size-4" />
           </div>
           <div>
@@ -71,7 +71,7 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
               Anime Stats
             </h2>
             <p className="text-xs text-zinc-400">
-              Métricas reais do catálogo e acompanhamento do usuário
+              Estatísticas consolidadas do catálogo pessoal
             </p>
           </div>
         </div>
@@ -85,64 +85,64 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
         </div>
       </div>
 
-      {/* Destaques Superiores: Days Watched & Mean Score */}
-      <div className="relative mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* 2. Days Watched e Mean Score na mesma linha */}
+      <div className="relative mb-5 grid grid-cols-2 gap-3 sm:gap-4">
         {/* Days Watched */}
-        <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-colors hover:border-violet-500/20 hover:bg-white/[0.03]">
+        <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3.5 sm:p-4 transition-colors hover:border-violet-500/20 hover:bg-white/[0.03]">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+            <span className="text-[11px] sm:text-xs font-medium uppercase tracking-wider text-zinc-400">
               Days Watched
             </span>
-            <div className="flex size-7 items-center justify-center rounded-lg bg-white/[0.04] text-zinc-400">
+            <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-white/[0.04] text-zinc-400">
               <Clock className="size-3.5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-zinc-300">
+          <div className="mt-2">
+            <span className="font-display text-lg sm:text-2xl md:text-3xl font-bold tracking-tight text-zinc-300">
               Indisponível
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-zinc-500">
-            Requer duração de episódios catalogada
+          <p className="mt-1 text-[10px] sm:text-[11px] text-zinc-500 truncate">
+            Requer duração catalogada
           </p>
         </div>
 
         {/* Mean Score */}
-        <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-colors hover:border-violet-500/20 hover:bg-white/[0.03]">
+        <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3.5 sm:p-4 transition-colors hover:border-violet-500/20 hover:bg-white/[0.03]">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+            <span className="text-[11px] sm:text-xs font-medium uppercase tracking-wider text-zinc-400">
               Mean Score
             </span>
-            <div className="flex size-7 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
+            <div className="flex size-6 sm:size-7 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
               <Star className="size-3.5 fill-amber-400/40" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
+          <div className="mt-2 flex items-baseline gap-1.5">
             {meanScore ? (
               <>
-                <span className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white tabular-nums">
+                <span className="font-display text-lg sm:text-2xl md:text-3xl font-bold tracking-tight text-white tabular-nums">
                   {meanScore}
                 </span>
-                <span className="text-xs text-zinc-400">/ 10</span>
+                <span className="text-[10px] sm:text-xs text-zinc-400">/ 10</span>
               </>
             ) : (
-              <span className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-zinc-400">
+              <span className="font-display text-lg sm:text-2xl md:text-3xl font-bold tracking-tight text-zinc-400">
                 —
               </span>
             )}
           </div>
-          <p className="mt-1 text-[11px] text-zinc-500">
+          <p className="mt-1 text-[10px] sm:text-[11px] text-zinc-500 truncate">
             {scoredItems.length > 0
-              ? `Calculado sobre ${scoredItems.length} ${scoredItems.length === 1 ? "nota atribuída" : "notas atribuídas"}`
-              : "Nenhuma avaliação com nota atribuída"}
+              ? `${scoredItems.length} ${scoredItems.length === 1 ? "nota atribuída" : "notas atribuídas"}`
+              : "Sem notas atribuídas"}
           </p>
         </div>
       </div>
 
-      {/* Barra de Distribuição por Status */}
-      <div className="relative mb-6 space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold text-zinc-300">
+      {/* 3. Barra horizontal de distribuição proporcional por status */}
+      <div className="relative mb-5 space-y-1.5">
+        <div className="flex items-center justify-between text-[11px] sm:text-xs">
+          <span className="font-medium text-zinc-400">
             Distribuição por Status
           </span>
           <span className="text-zinc-500 tabular-nums">
@@ -151,7 +151,7 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
         </div>
 
         {/* Trilho horizontal da barra */}
-        <div className="flex h-3.5 w-full overflow-hidden rounded-full bg-white/[0.05] p-0.5 ring-1 ring-white/[0.08]">
+        <div className="flex h-3 sm:h-3.5 w-full overflow-hidden rounded-full bg-white/[0.05] p-0.5 ring-1 ring-white/[0.08]">
           {totalEntries > 0 ? (
             <>
               {pctWatching > 0 && (
@@ -199,14 +199,14 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
         </div>
       </div>
 
-      {/* Grade de Métricas Detalhadas: Status e Totais */}
-      <div className="relative grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 border-t border-white/[0.06] pt-5">
-        {/* Coluna 1: Status Ativos */}
-        <div className="space-y-3">
+      {/* 4. Abaixo da barra, organização estrita em duas colunas */}
+      <div className="relative grid grid-cols-1 min-[420px]:grid-cols-2 gap-4 sm:gap-8 border-t border-white/[0.06] pt-4">
+        {/* Coluna Esquerda: Assistindo, Concluídos, Em espera, Abandonados e Planejados */}
+        <div className="space-y-2.5">
           {/* Assistindo */}
-          <div className="flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
             <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+              <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] shrink-0" />
               <span>Assistindo</span>
             </div>
             <span className="font-semibold text-white tabular-nums">
@@ -215,23 +215,20 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
           </div>
 
           {/* Concluídos */}
-          <div className="flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
             <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2.5 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)]" />
+              <span className="size-2 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)] shrink-0" />
               <span>Concluídos</span>
             </div>
             <span className="font-semibold text-white tabular-nums">
               {completedCount}
             </span>
           </div>
-        </div>
 
-        {/* Coluna 2: Status Secundários */}
-        <div className="space-y-3">
           {/* Em espera */}
-          <div className="flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
             <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+              <span className="size-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] shrink-0" />
               <span>Em espera</span>
             </div>
             <span className="font-semibold text-white tabular-nums">
@@ -240,55 +237,49 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
           </div>
 
           {/* Abandonados */}
-          <div className="flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
             <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" />
+              <span className="size-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)] shrink-0" />
               <span>Abandonados</span>
             </div>
             <span className="font-semibold text-white tabular-nums">
               {droppedCount}
             </span>
           </div>
-        </div>
 
-        {/* Coluna 3: Planejados & Reassistidos */}
-        <div className="space-y-3">
           {/* Planejados */}
-          <div className="flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
             <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
+              <span className="size-2 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)] shrink-0" />
               <span>Planejados</span>
             </div>
             <span className="font-semibold text-white tabular-nums">
               {planningCount}
             </span>
           </div>
-
-          {/* Reassistidos */}
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 text-zinc-400">
-              <Flame className="size-3 text-zinc-500" />
-              <span>Reassistidos</span>
-            </div>
-            <span className="font-medium text-zinc-400">
-              Indisponível
-            </span>
-          </div>
         </div>
 
-        {/* Coluna 4: Agregados Globais */}
-        <div className="space-y-3">
+        {/* Coluna Direita: Total de entradas, Reassistidos e Episódios assistidos */}
+        <div className="space-y-2.5">
           {/* Total de entradas */}
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="font-medium text-zinc-300">Total de entradas</span>
+          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
+            <span className="text-zinc-300">Total de entradas</span>
             <span className="font-bold text-white tabular-nums">
               {totalEntries}
             </span>
           </div>
 
+          {/* Reassistidos */}
+          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
+            <span className="text-zinc-300">Reassistidos</span>
+            <span className="font-medium text-zinc-400">
+              Indisponível
+            </span>
+          </div>
+
           {/* Episódios assistidos */}
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="font-medium text-zinc-300">Episódios assistidos</span>
+          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
+            <span className="text-zinc-300">Episódios assistidos</span>
             <span className="font-bold text-violet-300 tabular-nums">
               {episodesWatched}
             </span>
