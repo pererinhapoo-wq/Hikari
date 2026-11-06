@@ -289,6 +289,14 @@ const VALID_NOTIFICATION_PREDICATE = `
   n."userId" = $1
   and (n."actorId" is null or n."actorId" <> n."userId")
   and (
+    n."actorId" is null
+    or not exists (
+      select 1 from "user_block" ub
+      where (ub."blockerId" = n."userId" and ub."blockedId" = n."actorId")
+         or (ub."blockerId" = n."actorId" and ub."blockedId" = n."userId")
+    )
+  )
+  and (
     n."commentId" is null
     or exists (
       select 1
@@ -359,13 +367,15 @@ export const Route = createFileRoute("/api/notifications")({
                 n."actorId",
                 case
                   when n."actorId" is not null then coalesce(
+                    nullif(trim(p."displayName"), ''),
                     nullif(trim(p."nick"), ''),
                     nullif(trim(u."name"), ''),
                     'Usuário'
                   )
                   else null
                 end as "actorName",
-                u."image" as "actorImage",
+                p."nick" as "actorNick",
+                coalesce(p."avatarUrl", u."image") as "actorImage",
                 n."commentId",
                 coalesce(
                   nullif(trim(n."animeId"), ''),
@@ -520,6 +530,7 @@ export const Route = createFileRoute("/api/notifications")({
               createdAt: normalizeUtcIsoString(row.createdAt),
               actorId: row.actorId ? String(row.actorId) : null,
               actorName: row.actorName ? String(row.actorName) : null,
+              actorNick: row.actorNick ? String(row.actorNick) : null,
               actorImage: row.actorImage ? String(row.actorImage) : null,
               commentId,
               animeId,
@@ -705,6 +716,101 @@ export const Route = createFileRoute("/api/notifications")({
           console.error("[api/notifications] Erro no PATCH:", error);
           return Response.json(
             { error: "Não foi possível atualizar a notificação." },
+            {
+              status: 500,
+              headers: {
+                "Cache-Control": "private, no-cache, no-store, must-revalidate",
+              },
+            },
+          );
+        }
+      },
+      DELETE: async ({ request }) => {
+        try {
+          const sql = await getSql();
+          const apiUser = await resolveApiUser(request, sql);
+
+          if (!apiUser?.id) {
+            return Response.json(
+              { error: "Não autorizado." },
+              { status: 401 },
+            );
+          }
+
+          const url = new URL(request.url);
+          let notificationId = url.searchParams.get("id")?.trim() || "";
+          let deleteAll = url.searchParams.get("all") === "true";
+
+          if (!notificationId && !deleteAll) {
+            try {
+              const body = await request.json();
+              if (typeof body?.id === "string") {
+                notificationId = body.id.trim();
+              }
+              if (body?.all === true) {
+                deleteAll = true;
+              }
+            } catch {
+              // Corpo JSON opcional
+            }
+          }
+
+          if (!notificationId && !deleteAll) {
+            return Response.json(
+              { error: "Informe 'id' ou 'all: true'." },
+              { status: 400 },
+            );
+          }
+
+          if (deleteAll) {
+            await sql.query(
+              `
+                delete from "notification"
+                where "userId" = $1
+              `,
+              [apiUser.id],
+            );
+          } else {
+            await sql.query(
+              `
+                delete from "notification"
+                where "id" = $1
+                  and "userId" = $2
+              `,
+              [notificationId, apiUser.id],
+            );
+          }
+
+          const unreadResult = await sql.query(
+            `
+              select count(*)::int as "unreadCount"
+              from "notification" n
+              where ${VALID_NOTIFICATION_PREDICATE}
+                and n."read" = false
+            `,
+            [apiUser.id],
+          );
+
+          const unreadRows: any[] = Array.isArray(unreadResult)
+            ? unreadResult
+            : (unreadResult as any)?.rows ?? [];
+          const unreadCount = Number(unreadRows[0]?.unreadCount ?? 0) || 0;
+
+          return Response.json(
+            {
+              ok: true,
+              unreadCount,
+            },
+            {
+              headers: {
+                "Cache-Control": "private, no-cache, no-store, must-revalidate",
+              },
+            },
+          );
+        } catch (error) {
+          console.error("[api/notifications] Erro no DELETE:", error);
+          return Response.json(
+            { error: "Não foi possível excluir a notificação." },
             {
               status: 500,
               headers: {

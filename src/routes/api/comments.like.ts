@@ -111,6 +111,32 @@ export const Route = createFileRoute("/api/comments/like")({
           const existingType = targetComment?.existingReactionType || (hasExisting ? "like" : null);
           const wasLikedBefore = Boolean(hasExisting && existingType === "like");
 
+          // Bloqueio mútuo: impede reações se houver bloqueio entre o usuário e o autor do comentário
+          if (commentAuthorId && commentAuthorId !== apiUser.id) {
+            const blockCheck = await sql.query(
+              `
+                select 1 from "user_block"
+                where ("blockerId" = $1 and "blockedId" = $2)
+                   or ("blockerId" = $2 and "blockedId" = $1)
+                limit 1
+              `,
+              [apiUser.id, commentAuthorId],
+            );
+            const blockRows: any[] = Array.isArray(blockCheck)
+              ? blockCheck
+              : (blockCheck as any)?.rows ?? [];
+
+            if (blockRows.length > 0) {
+              return Response.json(
+                {
+                  error:
+                    "Não é possível reagir a este comentário devido a um bloqueio ativo entre os usuários.",
+                },
+                { status: 403 },
+              );
+            }
+          }
+
           let userReaction: "like" | "dislike" | null = null;
 
           // 2. Operação atômica de mutação:

@@ -11,8 +11,10 @@ import {
   Tv,
   UserPlus,
   Users,
+  UserX,
   X,
 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type {
   AccountType,
@@ -370,6 +372,20 @@ export function ProfilePrivacyModal({
               onChange={setPrivacyFollowers}
             />
           </section>
+
+          <div className="mt-4 flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-zinc-400">
+            <span className="flex items-center gap-2">
+              <UserX className="size-4 text-zinc-500" />
+              <span>Gerenciar usuários bloqueados</span>
+            </span>
+            <Link
+              to="/settings-privacy"
+              onClick={onClose}
+              className="text-violet-400 hover:text-violet-300 font-medium transition-colors"
+            >
+              Abrir Configurações
+            </Link>
+          </div>
         </form>
 
         {/* Rodapé de Ações */}

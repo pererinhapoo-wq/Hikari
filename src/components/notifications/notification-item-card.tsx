@@ -1,11 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import {
   ChevronRight,
+  Clock,
   CornerDownRight,
   EyeOff,
   Heart,
   MessageCircle,
+  Trash2,
+  UserCheck,
   UserCircle,
+  UserPlus,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -21,6 +25,7 @@ export type NotificationItem = {
 
   actorId: string | null;
   actorName: string | null;
+  actorNick?: string | null;
   actorImage: string | null;
 
   commentId: string | null;

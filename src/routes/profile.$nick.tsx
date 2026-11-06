@@ -11,6 +11,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowLeft,
   BadgeCheck,
+  Check,
   Clock,
   Heart,
   Lock,
@@ -25,10 +26,12 @@ import {
 import { Button } from "@/components/ui/button";
 
 import {
+  blockUser,
   cancelFollowRequest,
   followUser,
   getPublicComments,
   getPublicProfile,
+  unblockUser,
   unfollowUser,
 } from "@/lib/profile.functions";
 
@@ -202,9 +205,17 @@ function PublicProfile() {
   const followUserFn = useServerFn(followUser);
   const unfollowUserFn = useServerFn(unfollowUser);
   const cancelFollowRequestFn = useServerFn(cancelFollowRequest);
+  const blockUserFn = useServerFn(blockUser);
+  const unblockUserFn = useServerFn(unblockUser);
 
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
   const [profileBgColor, setProfileBgColor] = useState("#030817");
+
+  const [isBlockedByMe, setIsBlockedByMe] = useState(false);
+  const [isBlockedByTarget, setIsBlockedByTarget] = useState(false);
+  const [blockLoading, setBlockLoading] = useState(false);
+  const [confirmModalType, setConfirmModalType] = useState<"block" | "unblock" | null>(null);
+  const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -214,6 +225,7 @@ function PublicProfile() {
     setCommentsError("");
     setComments([]);
     setProfileBgColor("#030817");
+    setFeedbackMsg(null);
 
     void getPublicProfileFn({
       data: {
@@ -229,6 +241,8 @@ function PublicProfile() {
         setFollowing(result.isFollowing);
         setHasPendingRequest(Boolean(result.hasPendingRequest));
         setFollowersCount(result.followersCount);
+        setIsBlockedByMe(Boolean(result.isBlockedByMe));
+        setIsBlockedByTarget(Boolean(result.isBlockedByTarget));
 
         if (result.image) {
           const color = await getProfileBackgroundColor(result.image);
@@ -403,6 +417,77 @@ function PublicProfile() {
       );
     } finally {
       setFollowLoading(false);
+    }
+  }
+
+  async function handleConfirmBlockAction() {
+    if (!profile) return;
+    if (blockLoading) return;
+
+    setBlockLoading(true);
+    setError("");
+
+    try {
+      if (confirmModalType === "block") {
+        await blockUserFn({
+          data: { targetUserId: profile.userId },
+        });
+
+        const newFollowersCount = Math.max(0, followersCount - (following ? 1 : 0));
+        setIsBlockedByMe(true);
+        setFollowing(false);
+        setHasPendingRequest(false);
+        setFollowersCount(newFollowersCount);
+        setComments([]);
+        setProfile((curr) =>
+          curr
+            ? {
+                ...curr,
+                isFollowing: false,
+                hasPendingRequest: false,
+                relationStatus: "none",
+                isBlocked: true,
+                isBlockedByMe: true,
+                followersCount: newFollowersCount,
+                canViewComments: false,
+                canViewFollowers: false,
+                canViewLists: false,
+                canViewFavorites: false,
+                canViewHistory: false,
+              }
+            : curr,
+        );
+        setConfirmModalType(null);
+        setFeedbackMsg({ text: "Usuário bloqueado com sucesso.", type: "success" });
+        setTimeout(() => setFeedbackMsg(null), 4000);
+      } else if (confirmModalType === "unblock") {
+        await unblockUserFn({
+          data: { targetUserId: profile.userId },
+        });
+
+        setIsBlockedByMe(false);
+        setProfile((curr) =>
+          curr
+            ? {
+                ...curr,
+                isBlocked: isBlockedByTarget,
+                isBlockedByMe: false,
+              }
+            : curr,
+        );
+        setConfirmModalType(null);
+        setFeedbackMsg({ text: "Usuário desbloqueado com sucesso.", type: "success" });
+        setTimeout(() => setFeedbackMsg(null), 4000);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível concluir a ação de bloqueio.",
+      );
+      setConfirmModalType(null);
+    } finally {
+      setBlockLoading(false);
     }
   }
 
@@ -595,48 +680,97 @@ function PublicProfile() {
                 >
                   Meu Perfil
                 </Link>
-              ) : !profile.allowFollowers && !following && !hasPendingRequest ? (
-                <span className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-medium text-zinc-400">
-                  <Shield className="size-3.5" />
-                  Seguidores desativados
-                </span>
               ) : (
-                <Button
-                  type="button"
-                  onClick={() => void handleFollowAction()}
-                  disabled={followLoading}
-                  className={
-                    following
-                      ? "border border-[#365b91] bg-[#102343] text-white hover:bg-[#163055]"
-                      : hasPendingRequest
-                        ? "border border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20"
-                        : "bg-violet-600 text-white hover:bg-violet-500"
-                  }
-                >
-                  {following ? (
-                    <>
-                      <UserCheck className="size-4" />
-                      {followLoading ? "Atualizando..." : "Seguindo"}
-                    </>
-                  ) : hasPendingRequest ? (
-                    <>
-                      <Clock className="size-4" />
-                      {followLoading ? "Atualizando..." : "Solicitação enviada (Cancelar)"}
-                    </>
-                  ) : profile.accountType === "private" ? (
-                    <>
-                      <UserPlus className="size-4" />
-                      {followLoading ? "Atualizando..." : "Solicitar para Seguir"}
-                    </>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Status / Ação de Seguir */}
+                  {isBlockedByMe ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300">
+                      <UserX className="size-3.5" />
+                      <span>Usuário bloqueado</span>
+                    </span>
+                  ) : isBlockedByTarget ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-zinc-400">
+                      <Shield className="size-3.5" />
+                      <span>Indisponível</span>
+                    </span>
+                  ) : !profile.allowFollowers && !following && !hasPendingRequest ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-zinc-400">
+                      <Shield className="size-3.5" />
+                      <span>Seguidores desativados</span>
+                    </span>
                   ) : (
-                    <>
-                      <UserPlus className="size-4" />
-                      {followLoading ? "Atualizando..." : "Seguir"}
-                    </>
+                    <Button
+                      type="button"
+                      onClick={() => void handleFollowAction()}
+                      disabled={followLoading}
+                      className={
+                        following
+                          ? "border border-[#365b91] bg-[#102343] text-white hover:bg-[#163055]"
+                          : hasPendingRequest
+                            ? "border border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20"
+                            : "bg-violet-600 text-white hover:bg-violet-500"
+                      }
+                    >
+                      {following ? (
+                        <>
+                          <UserCheck className="size-4" />
+                          {followLoading ? "Atualizando..." : "Seguindo"}
+                        </>
+                      ) : hasPendingRequest ? (
+                        <>
+                          <Clock className="size-4" />
+                          {followLoading ? "Atualizando..." : "Solicitação enviada (Cancelar)"}
+                        </>
+                      ) : profile.accountType === "private" ? (
+                        <>
+                          <UserPlus className="size-4" />
+                          {followLoading ? "Atualizando..." : "Solicitar para Seguir"}
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="size-4" />
+                          {followLoading ? "Atualizando..." : "Seguir"}
+                        </>
+                      )}
+                    </Button>
                   )}
-                </Button>
+
+                  {/* Ação de Bloqueio / Desbloqueio */}
+                  {isBlockedByMe ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setConfirmModalType("unblock")}
+                      disabled={blockLoading}
+                      className="border-violet-500/40 bg-violet-600/15 text-violet-300 hover:bg-violet-600/25 hover:text-white"
+                      title="Desbloquear usuário"
+                    >
+                      <Shield className="size-4" />
+                      <span>Desbloquear</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setConfirmModalType("block")}
+                      disabled={blockLoading}
+                      className="border-white/10 bg-white/[0.04] text-zinc-400 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+                      title="Bloquear usuário"
+                    >
+                      <UserX className="size-4" />
+                      <span className="hidden sm:inline">Bloquear</span>
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
+
+            {feedbackMsg && (
+              <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-xs font-medium text-emerald-300 animate-in fade-in">
+                <Check className="size-4 shrink-0 text-emerald-400" />
+                <span>{feedbackMsg.text}</span>
+              </div>
+            )}
 
             {error && (
               <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -781,6 +915,73 @@ function PublicProfile() {
               </>
             )}
           </section>
+        )}
+
+        {/* Modal de Confirmação para Bloquear / Desbloquear */}
+        {confirmModalType && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0d0c18] p-5 shadow-2xl space-y-4">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
+                    confirmModalType === "block"
+                      ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                      : "bg-violet-500/20 text-violet-400 border border-violet-500/30"
+                  }`}
+                >
+                  {confirmModalType === "block" ? (
+                    <UserX className="size-5" />
+                  ) : (
+                    <Shield className="size-5" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-white text-sm sm:text-base">
+                    {confirmModalType === "block"
+                      ? `Bloquear @${profile.nick}?`
+                      : `Desbloquear @${profile.nick}?`}
+                  </h3>
+                  <p className="mt-1 text-xs text-zinc-400 leading-relaxed">
+                    {confirmModalType === "block"
+                      ? "Ao bloquear este usuário, vínculos de seguidores e solicitações serão removidos nas duas direções e interações em comentários serão impedidas."
+                      : "Após o desbloqueio, vocês poderão voltar a interagir e realizar solicitações conforme as regras de privacidade."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/[0.06]">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setConfirmModalType(null)}
+                  disabled={blockLoading}
+                  className="border-white/10 text-zinc-300 hover:bg-white/5 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void handleConfirmBlockAction()}
+                  disabled={blockLoading}
+                  className={
+                    confirmModalType === "block"
+                      ? "bg-red-600 text-white hover:bg-red-500 text-xs font-semibold"
+                      : "bg-violet-600 text-white hover:bg-violet-500 text-xs font-semibold"
+                  }
+                >
+                  {blockLoading
+                    ? "Processando..."
+                    : confirmModalType === "block"
+                      ? "Sim, bloquear"
+                      : "Sim, desbloquear"}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </main>

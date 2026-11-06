@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  AlertTriangle,
   Check,
   ChevronLeft,
   Clock,
@@ -15,13 +16,17 @@ import {
   UserCheck,
   UserMinus,
   Users,
+  UserX,
 } from "lucide-react";
 
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import {
+  getMyBlockedUsers,
   getProfile,
+  unblockUser,
   updateProfile,
+  type BlockedUserItem,
   type SectionPrivacyLevel,
   type UserProfile,
 } from "@/lib/profile.functions";
@@ -34,11 +39,20 @@ export function SettingsPrivacy() {
   const { user, isPending } = useCurrentUserState();
   const getProfileFn = useServerFn(getProfile);
   const updateProfileFn = useServerFn(updateProfile);
+  const getMyBlockedUsersFn = useServerFn(getMyBlockedUsers);
+  const unblockUserFn = useServerFn(unblockUser);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Lista de usuários bloqueados (Etapa 9)
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUserItem[]>([]);
+  const [blockedLoading, setBlockedLoading] = useState(true);
+  const [unblockTarget, setUnblockTarget] = useState<BlockedUserItem | null>(null);
+  const [unblocking, setUnblocking] = useState(false);
+  const [unblockSuccess, setUnblockSuccess] = useState<string | null>(null);
 
   // Estados dos 7 campos de privacidade (Migration 0020)
   const [accountType, setAccountType] = useState<"public" | "private">("public");
@@ -98,6 +112,46 @@ export function SettingsPrivacy() {
       active = false;
     };
   }, [user?.id]);
+
+  // Carregar usuários bloqueados (Etapa 9)
+  const loadBlockedUsers = () => {
+    if (!user?.id) return;
+    setBlockedLoading(true);
+    getMyBlockedUsersFn()
+      .then((data) => {
+        setBlockedUsers(data || []);
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar usuários bloqueados:", err);
+      })
+      .finally(() => {
+        setBlockedLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    loadBlockedUsers();
+  }, [user?.id]);
+
+  // Desbloquear usuário diretamente pela lista (Etapa 9)
+  const handleUnblock = async () => {
+    if (!unblockTarget) return;
+    setUnblocking(true);
+    setErrorMsg(null);
+    try {
+      await unblockUserFn({ data: { targetUserId: unblockTarget.id } });
+      setBlockedUsers((prev) => prev.filter((u) => u.id !== unblockTarget.id));
+      setUnblockSuccess(`Usuário ${unblockTarget.name || unblockTarget.username || "selecionado"} foi desbloqueado.`);
+      setUnblockTarget(null);
+      setTimeout(() => setUnblockSuccess(null), 3500);
+    } catch (err: unknown) {
+      const errMessage =
+        err instanceof Error ? err.message : "Erro ao desbloquear usuário.";
+      setErrorMsg(errMessage);
+    } finally {
+      setUnblocking(false);
+    }
+  };
 
   const isDirty =
     initialState &&
@@ -472,6 +526,155 @@ export function SettingsPrivacy() {
           </div>
         </div>
       </form>
+
+      {/* Seção de Usuários Bloqueados (Etapa 9) */}
+      <section className="mt-8 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0a17] p-5 sm:p-6 shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+        <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-4 border-b border-white/[0.06]">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400 border border-red-500/20">
+              <UserX className="size-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-white">Usuários Bloqueados</h2>
+              <p className="text-xs text-zinc-400">
+                Pessoas bloqueadas não podem interagir, seguir ou visualizar seus dados privados
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-white/[0.06] border border-white/10 px-2.5 py-1 text-xs font-semibold text-zinc-300 tabular-nums">
+              {blockedUsers.length} {blockedUsers.length === 1 ? "bloqueado" : "bloqueados"}
+            </span>
+          </div>
+        </div>
+
+        {unblockSuccess && (
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-xs text-emerald-300">
+            <Check className="size-4 shrink-0 text-emerald-400" />
+            <span>{unblockSuccess}</span>
+          </div>
+        )}
+
+        {blockedLoading ? (
+          <div className="flex items-center justify-center py-10 text-zinc-400 gap-2.5 text-xs">
+            <Loader2 className="size-4 animate-spin text-violet-400" />
+            <span>Carregando lista de bloqueios...</span>
+          </div>
+        ) : blockedUsers.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-white/[0.08] bg-white/[0.01] p-8 text-center">
+            <UserX className="mx-auto size-8 text-zinc-600 mb-2" />
+            <p className="text-sm font-medium text-zinc-300">Nenhum usuário bloqueado</p>
+            <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+              Você não possui nenhum bloqueio ativo. Para bloquear alguém, acesse o perfil público do usuário e escolha "Bloquear usuário".
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-white/[0.05]">
+            {blockedUsers.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between py-3.5 first:pt-1 last:pb-1 gap-3"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  {item.image ? (
+                    <img
+                      src={item.image}
+                      alt={item.name || item.username || "Avatar"}
+                      className="size-10 rounded-full object-cover border border-white/10 bg-zinc-800"
+                    />
+                  ) : (
+                    <div className="flex size-10 items-center justify-center rounded-full bg-violet-600/30 border border-violet-500/30 text-sm font-bold text-violet-200 uppercase">
+                      {(item.name?.[0] || item.username?.[0] || "U")}
+                    </div>
+                  )}
+
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-white">
+                      {item.name || item.username || "Usuário"}
+                    </p>
+                    <p className="truncate text-xs text-zinc-400">
+                      @{item.username || item.id.slice(0, 8)}
+                    </p>
+                    {item.blockedAt && (
+                      <p className="text-[10px] text-zinc-500 mt-0.5">
+                        Bloqueado em {new Date(item.blockedAt).toLocaleDateString("pt-BR")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setUnblockTarget(item)}
+                  className="shrink-0 rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-red-500/20 hover:border-red-500/30 hover:text-red-300 transition-colors"
+                >
+                  Desbloquear
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Modal de Confirmação para Desbloquear */}
+      {unblockTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !unblocking) {
+              setUnblockTarget(null);
+            }
+          }}
+        >
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0d0c18] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <AlertTriangle className="size-5" />
+              </div>
+              <div>
+                <h3 className="font-display text-base font-bold text-white">
+                  Desbloquear Usuário
+                </h3>
+                <p className="text-xs text-zinc-400">
+                  Confirmar liberação de interações
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+              Deseja desbloquear <strong className="text-white">@{unblockTarget.username || unblockTarget.name}</strong>?
+              Isso permitirá novas interações públicas, mas <span className="text-amber-300 font-medium">não restaurará automaticamente seguidores ou solicitações anteriores</span>.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={unblocking}
+                onClick={() => setUnblockTarget(null)}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/10 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                disabled={unblocking}
+                onClick={() => void handleUnblock()}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/40 bg-red-600/20 px-4 py-2 text-xs font-semibold text-red-300 hover:bg-red-600/30 transition-colors disabled:opacity-50"
+              >
+                {unblocking ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    <span>Desbloqueando...</span>
+                  </>
+                ) : (
+                  <span>Confirmar Desbloqueio</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

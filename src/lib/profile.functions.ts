@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { authMiddleware, optionalAuthMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
+import { executeCreateNotification } from "@/lib/notifications.functions";
 
 export type SectionPrivacyLevel = "public" | "followers" | "private";
 export type AccountType = "public" | "private";
@@ -61,9 +62,29 @@ export interface UserRelationship {
   hasPendingRequestFromViewer: boolean;
   hasPendingRequestToViewer: boolean;
   isBlocked: boolean;
+  isBlockedByMe: boolean;
+  isBlockedByTarget: boolean;
   targetAccountType: AccountType;
   targetAllowFollowers: boolean;
   relationStatus: FollowRelationshipStatus;
+}
+
+export type BlockedUserItem = {
+  id: string;
+  userId: string;
+  nick: string;
+  username: string;
+  name: string;
+  image: string | null;
+  blockedAt: string;
+};
+
+export interface UserBlockStatus {
+  targetUserId: string;
+  isBlockedByMe: boolean;
+  isBlockedByTarget: boolean;
+  hasBlock: boolean;
+  isBlocked: boolean;
 }
 
 export type FollowRequestItem = {
@@ -90,6 +111,9 @@ export type PublicUserProfile = {
   isFollowing: boolean;
   hasPendingRequest: boolean;
   relationStatus: FollowRelationshipStatus;
+  isBlocked?: boolean;
+  isBlockedByMe?: boolean;
+  isBlockedByTarget?: boolean;
   // Permissões e privacidade avaliadas no servidor
   accountType: AccountType;
   allowFollowers: boolean;
@@ -251,15 +275,58 @@ export async function evaluateUserPrivacy(
   }
 
   let isFollower = false;
+  let isBlocked = false;
+
   if (viewerUserId) {
-    const followRows = await sql<{ count: string }>`
-      select count(*)::text as count
-      from "user_follow"
-      where "followerId" = ${viewerUserId}
-        and "followingId" = ${ownerUserId}
-      limit 1
+    const blockRows = await sql<{
+      isBlockedByOwner: boolean;
+      isBlockedByViewer: boolean;
+    }>`
+      select
+        exists (
+          select 1 from "user_block"
+          where "blockerId" = ${ownerUserId} and "blockedId" = ${viewerUserId}
+        ) as "isBlockedByOwner",
+        exists (
+          select 1 from "user_block"
+          where "blockerId" = ${viewerUserId} and "blockedId" = ${ownerUserId}
+        ) as "isBlockedByViewer"
     `;
-    isFollower = Number(followRows[0]?.count ?? "0") > 0;
+
+    const b = blockRows[0];
+    isBlocked = Boolean(b?.isBlockedByOwner || b?.isBlockedByViewer);
+
+    if (!isBlocked) {
+      const followRows = await sql<{ count: string }>`
+        select count(*)::text as count
+        from "user_follow"
+        where "followerId" = ${viewerUserId}
+          and "followingId" = ${ownerUserId}
+        limit 1
+      `;
+      isFollower = Number(followRows[0]?.count ?? "0") > 0;
+    }
+  }
+
+  // Se houver bloqueio mútuo ativo:
+  if (isBlocked) {
+    return {
+      isOwner: false,
+      isFollower: false,
+      accountType,
+      allowFollowers,
+      privacyLists,
+      privacyFavorites,
+      privacyHistory,
+      privacyComments,
+      privacyFollowers,
+      canViewAccount: accountType === "public",
+      canViewLists: false,
+      canViewFavorites: false,
+      canViewHistory: false,
+      canViewComments: false,
+      canViewFollowers: false,
+    };
   }
 
   // Se a conta for privada e o visitante não for seguidor aprovado:
@@ -532,8 +599,33 @@ export const getPublicProfile =
         followingCount = Number(followingRows[0]?.count ?? "0");
       }
 
+      let isBlockedByMe = false;
+      let isBlockedByTarget = false;
+      let isBlocked = false;
+
+      if (viewerUserId && viewerUserId !== row.userId) {
+        const blockRows = await sql<{
+          isBlockedByMe: boolean;
+          isBlockedByTarget: boolean;
+        }>`
+          select
+            exists (
+              select 1 from "user_block"
+              where "blockerId" = ${viewerUserId} and "blockedId" = ${row.userId}
+            ) as "isBlockedByMe",
+            exists (
+              select 1 from "user_block"
+              where "blockerId" = ${row.userId} and "blockedId" = ${viewerUserId}
+            ) as "isBlockedByTarget"
+        `;
+        const b = blockRows[0];
+        isBlockedByMe = Boolean(b?.isBlockedByMe);
+        isBlockedByTarget = Boolean(b?.isBlockedByTarget);
+        isBlocked = isBlockedByMe || isBlockedByTarget;
+      }
+
       let hasPendingRequest = false;
-      if (viewerUserId && !privacy.isOwner && !privacy.isFollower) {
+      if (viewerUserId && !privacy.isOwner && !privacy.isFollower && !isBlocked) {
         const reqRows = await sql<{ count: string }>`
           select count(*)::text as count
           from "user_follow_request"
@@ -548,6 +640,8 @@ export const getPublicProfile =
       let relationStatus: FollowRelationshipStatus = "none";
       if (privacy.isOwner) {
         relationStatus = "self";
+      } else if (isBlocked) {
+        relationStatus = "none";
       } else if (privacy.isFollower) {
         relationStatus = "following";
       } else if (hasPendingRequest) {
@@ -564,9 +658,12 @@ export const getPublicProfile =
         commentCount,
         followersCount,
         followingCount,
-        isFollowing: privacy.isFollower,
+        isFollowing: isBlocked ? false : privacy.isFollower,
         hasPendingRequest,
         relationStatus,
+        isBlocked,
+        isBlockedByMe,
+        isBlockedByTarget,
         accountType: privacy.accountType,
         allowFollowers: privacy.allowFollowers,
         privacyLists: privacy.privacyLists,
@@ -1433,6 +1530,24 @@ export async function executeFollowUser(sql: any, viewerId: string, targetId: st
         "updatedAt" = current_timestamp
     `;
 
+    try {
+      const actorRow = await sql<{ name: string | null }>`
+        select coalesce(p."displayName", p."nick", u."name", 'Usuário') as name
+        from "user" u
+        left join "profile" p on p."userId" = u."id"
+        where u."id" = ${viewerId} limit 1
+      `;
+      const actorName = actorRow[0]?.name || "Usuário";
+      await executeCreateNotification(sql, {
+        userId: targetId,
+        actorId: viewerId,
+        type: "follow_request",
+        message: `${actorName} solicitou para seguir você.`,
+      });
+    } catch {
+      // Falha não impeditiva no disparo da notificação
+    }
+
     return {
       status: "requested" as const,
       message: "Solicitação para seguir enviada com sucesso.",
@@ -1451,6 +1566,24 @@ export async function executeFollowUser(sql: any, viewerId: string, targetId: st
       where "requesterId" = ${viewerId}
         and "targetId" = ${targetId}
     `;
+
+    try {
+      const actorRow = await sql<{ name: string | null }>`
+        select coalesce(p."displayName", p."nick", u."name", 'Usuário') as name
+        from "user" u
+        left join "profile" p on p."userId" = u."id"
+        where u."id" = ${viewerId} limit 1
+      `;
+      const actorName = actorRow[0]?.name || "Usuário";
+      await executeCreateNotification(sql, {
+        userId: targetId,
+        actorId: viewerId,
+        type: "new_follower",
+        message: `${actorName} começou a seguir você.`,
+      });
+    } catch {
+      // Falha não impeditiva no disparo da notificação
+    }
 
     return {
       status: "following" as const,
@@ -1476,6 +1609,13 @@ export async function executeUnfollowUser(sql: any, viewerId: string, targetId: 
       and "targetId" = ${targetId}
   `;
 
+  await sql`
+    delete from "notification"
+    where "userId" = ${targetId}
+      and "actorId" = ${viewerId}
+      and "type" = 'new_follower'
+  `;
+
   return {
     status: "none" as const,
     message: "Você deixou de seguir este usuário.",
@@ -1494,6 +1634,14 @@ export async function executeCancelFollowRequest(sql: any, viewerId: string, tar
   if (deleteResult.length === 0) {
     throw new Error("Nenhuma solicitação pendente encontrada para cancelar.");
   }
+
+  // Limpar notificação pendente enviada
+  await sql`
+    delete from "notification"
+    where "userId" = ${targetId}
+      and "actorId" = ${viewerId}
+      and "type" = 'follow_request'
+  `;
 
   return {
     status: "none" as const,
@@ -1546,6 +1694,25 @@ export async function executeAcceptFollowRequest(sql: any, ownerId: string, requ
       and "targetId" = ${ownerId}
   `;
 
+  // 5. Disparar notificação de solicitação aceita para o solicitante
+  try {
+    const ownerRow = await sql<{ name: string | null }>`
+      select coalesce(p."displayName", p."nick", u."name", 'Usuário') as name
+      from "user" u
+      left join "profile" p on p."userId" = u."id"
+      where u."id" = ${ownerId} limit 1
+    `;
+    const ownerName = ownerRow[0]?.name || "Usuário";
+    await executeCreateNotification(sql, {
+      userId: requesterId,
+      actorId: ownerId,
+      type: "follow_accept",
+      message: `${ownerName} aceitou sua solicitação para seguir.`,
+    });
+  } catch {
+    // Falha não impeditiva no disparo da notificação
+  }
+
   return {
     success: true,
     message: "Solicitação aceita com sucesso.",
@@ -1570,6 +1737,14 @@ export async function executeRejectFollowRequest(sql: any, ownerId: string, requ
     delete from "user_follow_request"
     where "requesterId" = ${requesterId}
       and "targetId" = ${ownerId}
+  `;
+
+  // Limpar notificação pendente recebida
+  await sql`
+    delete from "notification"
+    where "userId" = ${ownerId}
+      and "actorId" = ${requesterId}
+      and "type" = 'follow_request'
   `;
 
   return {
@@ -1618,21 +1793,50 @@ export async function executeGetUserRelationship(
       hasPendingRequestFromViewer: false,
       hasPendingRequestToViewer: false,
       isBlocked: false,
+      isBlockedByMe: false,
+      isBlockedByTarget: false,
       targetAccountType,
       targetAllowFollowers,
       relationStatus: isSelf ? "self" : "none",
     };
   }
 
-  // Bloqueio mútuo
-  const blockRows = await sql<{ count: string }>`
-    select count(*)::text as count
-    from "user_block"
-    where ("blockerId" = ${viewerId} and "blockedId" = ${targetId})
-       or ("blockerId" = ${targetId} and "blockedId" = ${viewerId})
-    limit 1
+  // Bloqueio mútuo e direcional
+  const blockRows = await sql<{
+    isBlockedByMe: boolean;
+    isBlockedByTarget: boolean;
+  }>`
+    select
+      exists (
+        select 1 from "user_block"
+        where "blockerId" = ${viewerId} and "blockedId" = ${targetId}
+      ) as "isBlockedByMe",
+      exists (
+        select 1 from "user_block"
+        where "blockerId" = ${targetId} and "blockedId" = ${viewerId}
+      ) as "isBlockedByTarget"
   `;
-  const isBlocked = Number(blockRows[0]?.count ?? "0") > 0;
+  const isBlockedByMe = Boolean(blockRows[0]?.isBlockedByMe);
+  const isBlockedByTarget = Boolean(blockRows[0]?.isBlockedByTarget);
+  const isBlocked = isBlockedByMe || isBlockedByTarget;
+
+  // Se houver bloqueio mútuo, nenhum vínculo ou solicitação pode estar ativo
+  if (isBlocked) {
+    return {
+      targetUserId: targetId,
+      isSelf: false,
+      isFollowing: false,
+      isFollowedBy: false,
+      hasPendingRequestFromViewer: false,
+      hasPendingRequestToViewer: false,
+      isBlocked,
+      isBlockedByMe,
+      isBlockedByTarget,
+      targetAccountType,
+      targetAllowFollowers,
+      relationStatus: "none",
+    };
+  }
 
   // isFollowing
   const followingRows = await sql<{ count: string }>`
@@ -1690,7 +1894,9 @@ export async function executeGetUserRelationship(
     isFollowedBy,
     hasPendingRequestFromViewer,
     hasPendingRequestToViewer,
-    isBlocked,
+    isBlocked: false,
+    isBlockedByMe: false,
+    isBlockedByTarget: false,
     targetAccountType,
     targetAllowFollowers,
     relationStatus,
@@ -1882,4 +2088,200 @@ export const getUserRelationship = createServerFn({
     const sql = await getSql();
     return executeGetUserRelationship(sql, viewerId, data.targetUserId);
   });
+
+/* ============================================================ */
+/* ETAPA 9 — BLOQUEIO E GERENCIAMENTO DE USUÁRIOS              */
+/* ============================================================ */
+
+export const blockTargetSchema = z.object({
+  targetUserId: z.string().trim().min(1, "ID do usuário alvo é obrigatório"),
+});
+
+export async function executeBlockUser(sql: any, blockerId: string, targetId: string) {
+  if (blockerId === targetId) {
+    throw new Error("Você não pode bloquear a si próprio.");
+  }
+
+  // 1. Validar a existência do usuário de destino
+  const userCheck = await sql<{ id: string }>`
+    select "id" from "user" where "id" = ${targetId} limit 1
+  `;
+  if (!userCheck[0]) {
+    throw new Error("Usuário alvo não encontrado.");
+  }
+
+  // 2. Inserir bloqueio de forma atômica
+  await sql`
+    insert into "user_block" ("blockerId", "blockedId", "createdAt")
+    values (${blockerId}, ${targetId}, current_timestamp)
+    on conflict ("blockerId", "blockedId") do nothing
+  `;
+
+  // 3. Remover os vínculos existentes em "user_follow" nas duas direções
+  await sql`
+    delete from "user_follow"
+    where ("followerId" = ${blockerId} and "followingId" = ${targetId})
+       or ("followerId" = ${targetId} and "followingId" = ${blockerId})
+  `;
+
+  // 4. Remover solicitações pendentes nas duas direções
+  await sql`
+    delete from "user_follow_request"
+    where ("requesterId" = ${blockerId} and "targetId" = ${targetId})
+       or ("requesterId" = ${targetId} and "targetId" = ${blockerId})
+  `;
+
+  // 5. Remover notificações mútuas para evitar resíduos visuais
+  await sql`
+    delete from "notification"
+    where ("userId" = ${blockerId} and "actorId" = ${targetId})
+       or ("userId" = ${targetId} and "actorId" = ${blockerId})
+  `;
+
+  return {
+    success: true,
+    message: "Usuário bloqueado com sucesso.",
+  };
+}
+
+export async function executeUnblockUser(sql: any, blockerId: string, targetId: string) {
+  if (blockerId === targetId) {
+    throw new Error("Operação inválida.");
+  }
+
+  // Somente o proprietário do bloqueio (blockerId) pode removê-lo
+  await sql`
+    delete from "user_block"
+    where "blockerId" = ${blockerId}
+      and "blockedId" = ${targetId}
+  `;
+
+  return {
+    success: true,
+    message: "Usuário desbloqueado com sucesso.",
+  };
+}
+
+export async function executeGetMyBlockedUsers(
+  sql: any,
+  userId: string,
+): Promise<BlockedUserItem[]> {
+  const rows = await sql<{
+    userId: string;
+    nick: string | null;
+    name: string | null;
+    image: string | null;
+    blockedAt: string;
+  }>`
+    select
+      b."blockedId" as "userId",
+      coalesce(p."nick", u."name", 'usuario') as "nick",
+      coalesce(p."displayName", u."name", 'Usuário') as "name",
+      coalesce(p."avatarUrl", u."image") as "image",
+      to_char(b."createdAt" at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "blockedAt"
+    from "user_block" b
+    inner join "user" u on u."id" = b."blockedId"
+    left join "profile" p on p."userId" = u."id"
+    where b."blockerId" = ${userId}
+    order by b."createdAt" desc
+  `;
+
+  return rows.map((r) => ({
+    id: r.userId,
+    userId: r.userId,
+    nick: r.nick ?? "usuario",
+    username: r.nick ?? "usuario",
+    name: r.name ?? "Usuário",
+    image: r.image,
+    blockedAt: r.blockedAt,
+  }));
+}
+
+export async function executeGetUserBlockStatus(
+  sql: any,
+  viewerId: string,
+  targetId: string,
+): Promise<UserBlockStatus> {
+  const rows = await sql<{
+    isBlockedByMe: boolean;
+    isBlockedByTarget: boolean;
+  }>`
+    select
+      exists(
+        select 1 from "user_block"
+        where "blockerId" = ${viewerId} and "blockedId" = ${targetId}
+      ) as "isBlockedByMe",
+      exists(
+        select 1 from "user_block"
+        where "blockerId" = ${targetId} and "blockedId" = ${viewerId}
+      ) as "isBlockedByTarget"
+  `;
+
+  const isBlockedByMe = Boolean(rows[0]?.isBlockedByMe);
+  const isBlockedByTarget = Boolean(rows[0]?.isBlockedByTarget);
+
+  return {
+    targetUserId: targetId,
+    isBlockedByMe,
+    isBlockedByTarget,
+    hasBlock: isBlockedByMe || isBlockedByTarget,
+    isBlocked: isBlockedByMe || isBlockedByTarget,
+  };
+}
+
+/**
+ * Bloquear outro usuário.
+ * Protegido por authMiddleware (identidade garantida por context.userId).
+ */
+export const blockUser = createServerFn({
+  method: "POST",
+})
+  .middleware([authMiddleware])
+  .validator((d: { targetUserId: string }) => blockTargetSchema.parse(d))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeBlockUser(sql, context.userId, data.targetUserId);
+  });
+
+/**
+ * Desbloquear usuário.
+ * Protegido por authMiddleware (apenas o proprietário pode remover).
+ */
+export const unblockUser = createServerFn({
+  method: "POST",
+})
+  .middleware([authMiddleware])
+  .validator((d: { targetUserId: string }) => blockTargetSchema.parse(d))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeUnblockUser(sql, context.userId, data.targetUserId);
+  });
+
+/**
+ * Listar usuários bloqueados pelo usuário autenticado.
+ * Protegido por authMiddleware.
+ */
+export const getMyBlockedUsers = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<BlockedUserItem[]> => {
+    const sql = await getSql();
+    return executeGetMyBlockedUsers(sql, context.userId);
+  });
+
+/**
+ * Consultar o estado de bloqueio entre o usuário autenticado e um perfil.
+ * Protegido por authMiddleware.
+ */
+export const getUserBlockStatus = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .validator((d: { targetUserId: string }) => blockTargetSchema.parse(d))
+  .handler(async ({ context, data }): Promise<UserBlockStatus> => {
+    const sql = await getSql();
+    return executeGetUserBlockStatus(sql, context.userId, data.targetUserId);
+  });
+
 

@@ -673,6 +673,32 @@ export const Route = createFileRoute("/api/comments")({
             }
 
             parentAuthorId = parent.userId ? String(parent.userId) : null;
+
+            // Bloqueio mútuo: impede resposta se houver bloqueio em qualquer direção
+            if (parentAuthorId && parentAuthorId !== apiUser.id) {
+              const blockCheck = await sql.query(
+                `
+                  select 1 from "user_block"
+                  where ("blockerId" = $1 and "blockedId" = $2)
+                     or ("blockerId" = $2 and "blockedId" = $1)
+                  limit 1
+                `,
+                [apiUser.id, parentAuthorId],
+              );
+              const blockRows: any[] = Array.isArray(blockCheck)
+                ? blockCheck
+                : (blockCheck as any)?.rows ?? [];
+
+              if (blockRows.length > 0) {
+                return Response.json(
+                  {
+                    error:
+                      "Não é possível interagir ou responder a este comentário devido a um bloqueio ativo entre os usuários.",
+                  },
+                  { status: 403 },
+                );
+              }
+            }
           }
 
           const commentId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -793,6 +819,11 @@ export const Route = createFileRoute("/api/comments")({
                     from "profile" p
                     where lower(p."nick") = any($1::text[])
                       and p."userId" <> $2
+                      and not exists (
+                        select 1 from "user_block" ub
+                        where (ub."blockerId" = p."userId" and ub."blockedId" = $2)
+                           or (ub."blockerId" = $2 and ub."blockedId" = p."userId")
+                      )
                   `,
                   [mentionedNicks, apiUser.id],
                 );
