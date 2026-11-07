@@ -521,6 +521,16 @@ function AccountProfile() {
           totalTrackingCount={trackingItems.length}
           favorites={userFavoritesList}
           onOpenEdit={() => setEditModalOpen(true)}
+          onRemoveBanner={async () => {
+            await handleSaveProfile({
+              name: profile?.name || displayName,
+              nick: profile?.nick || userNick,
+              bio: profile?.bio || userBio,
+              image: profile?.image !== undefined ? profile.image : userImage,
+              favorites: profile?.favorites || userFavoritesList,
+              bannerUrl: null,
+            });
+          }}
           onOpenPrivacy={() => setPrivacyModalOpen(true)}
           onOpenFollowers={() => void handleOpenConnections("followers")}
           onOpenFollowing={() => void handleOpenConnections("following")}

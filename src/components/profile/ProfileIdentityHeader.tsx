@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   BadgeCheck,
+  Camera,
   Clock,
   ExternalLink,
   Lock,
@@ -9,6 +10,7 @@ import {
   Pencil,
   Shield,
   Sparkles,
+  Trash2,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -28,6 +30,7 @@ interface ProfileIdentityHeaderProps {
   totalTrackingCount: number;
   favorites: string[];
   onOpenEdit?: () => void;
+  onRemoveBanner?: () => void;
   onOpenPrivacy?: () => void;
   onOpenFollowers: () => void;
   onOpenFollowing: () => void;
@@ -49,6 +52,7 @@ export function ProfileIdentityHeader({
   totalTrackingCount,
   favorites,
   onOpenEdit,
+  onRemoveBanner,
   onOpenPrivacy,
   onOpenFollowers,
   onOpenFollowing,
@@ -87,23 +91,24 @@ export function ProfileIdentityHeader({
   return (
     <header className="relative z-10 w-full overflow-hidden rounded-3xl border border-white/[0.09] bg-[#090812] shadow-[0_16px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
       {/* 1. Banner Panorâmico do Perfil */}
-      <div className="relative h-32 sm:h-44 md:h-52 w-full overflow-hidden border-b border-white/[0.07] bg-gradient-to-r from-[#170e2e] via-[#20103b] to-[#0d0918]">
+      <div className="relative h-48 sm:h-64 md:h-80 w-full overflow-hidden border-b border-white/[0.07] bg-gradient-to-br from-purple-950 via-[#18112e] to-[#0A0713]">
         {bannerUrl ? (
           <>
             <img
               src={bannerUrl}
               alt="Banner do perfil"
-              className="size-full object-cover"
+              className="h-full w-full object-cover object-center"
             />
             {/* Gradiente escurecedor suave para manter legibilidade das badges e contraste do avatar */}
             <div
-              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#090812] via-black/25 to-transparent"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#090812] via-[#090812]/30 to-transparent"
               aria-hidden="true"
             />
           </>
         ) : (
           <>
             {/* Luzes dinâmicas e texturas no banner padrão */}
+            <div className="h-full w-full bg-gradient-to-r from-purple-950/70 via-indigo-950/50 to-[#130E24]" />
             <div
               className="pointer-events-none absolute -left-12 -top-12 size-60 rounded-full bg-violet-500/25 blur-[70px]"
               aria-hidden="true"
@@ -116,72 +121,150 @@ export function ProfileIdentityHeader({
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(168,85,247,0.15),transparent_70%)]"
               aria-hidden="true"
             />
+            <div
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#090812] via-[#090812]/30 to-transparent"
+              aria-hidden="true"
+            />
           </>
         )}
 
-        {/* Indicador de Privacidade Flutuante no Banner */}
-        <button
-          type="button"
-          onClick={onOpenPrivacy}
-          className={`absolute top-3 right-3 sm:top-4 sm:right-4 z-10 flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium backdrop-blur-md shadow-md transition-all ${
-            accountType === "private"
-              ? "border-amber-500/30 bg-black/60 text-amber-300 hover:border-amber-500/50 hover:bg-black/80"
-              : "border-emerald-500/30 bg-black/60 text-emerald-300 hover:border-emerald-500/50 hover:bg-black/80"
-          } ${onOpenPrivacy ? "cursor-pointer" : "cursor-default"}`}
-          title={onOpenPrivacy ? "Clique para gerenciar a privacidade do seu perfil" : undefined}
-        >
-          {accountType === "private" ? (
+        {/* Controles do Banner (Trocar e Remover Banner) & Indicador de Privacidade */}
+        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 flex items-center gap-2">
+          {isOwner && onOpenEdit && (
             <>
-              <Lock className="size-3 text-amber-400" />
-              <span>Perfil Privado</span>
-            </>
-          ) : (
-            <>
-              <Shield className="size-3 text-emerald-400" />
-              <span>Perfil Público</span>
+              <button
+                type="button"
+                onClick={onOpenEdit}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-black/60 px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs font-medium text-white backdrop-blur-md shadow-md transition-all hover:bg-black/80 hover:border-violet-500/50 cursor-pointer"
+                title="Trocar banner do perfil"
+              >
+                <Camera className="size-3.5 text-violet-300" />
+                <span>Trocar Banner</span>
+              </button>
+              {bannerUrl && (
+                <button
+                  type="button"
+                  onClick={onRemoveBanner || onOpenEdit}
+                  className="inline-flex size-7 sm:size-8 items-center justify-center rounded-xl border border-white/20 bg-black/60 text-zinc-300 backdrop-blur-md shadow-md transition-all hover:bg-rose-950/80 hover:border-rose-500/50 hover:text-rose-200 cursor-pointer"
+                  title="Remover banner"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              )}
             </>
           )}
-        </button>
+
+          <button
+            type="button"
+            onClick={onOpenPrivacy}
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium backdrop-blur-md shadow-md transition-all ${
+              accountType === "private"
+                ? "border-amber-500/30 bg-black/60 text-amber-300 hover:border-amber-500/50 hover:bg-black/80"
+                : "border-emerald-500/30 bg-black/60 text-emerald-300 hover:border-emerald-500/50 hover:bg-black/80"
+            } ${onOpenPrivacy ? "cursor-pointer" : "cursor-default"}`}
+            title={onOpenPrivacy ? "Clique para gerenciar a privacidade do seu perfil" : undefined}
+          >
+            {accountType === "private" ? (
+              <>
+                <Lock className="size-3 text-amber-400" />
+                <span>Perfil Privado</span>
+              </>
+            ) : (
+              <>
+                <Shield className="size-3 text-emerald-400" />
+                <span>Perfil Público</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* 2. Conteúdo de Identidade com Avatar Sobreposto ao Banner */}
-      <div className="relative p-5 sm:p-7 pt-0 sm:pt-0">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between -mt-14 sm:-mt-16 md:-mt-20">
-          {/* Avatar com moldura geométrica e iluminação */}
-          <div className="relative shrink-0">
-            <div className="group relative size-24 sm:size-28 md:size-32 overflow-hidden rounded-2xl bg-gradient-to-br from-[#1c1830] to-[#0c0a17] p-1 shadow-[0_10px_35px_rgba(0,0,0,0.8)] ring-2 ring-[#090812]">
-              <div className="relative size-full overflow-hidden rounded-[14px] bg-[#141220]">
+      <div className="relative px-4 pb-6 sm:px-8 pt-0 sm:pt-0">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 -mt-16 sm:-mt-20">
+          {/* Avatar e Identidade Principal (Nome e Username ao lado do avatar) */}
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3.5 sm:gap-4 min-w-0">
+            {/* Avatar com moldura geométrica e iluminação */}
+            <div className="relative group shrink-0">
+              <div
+                className={`h-28 w-28 sm:h-36 sm:w-36 rounded-2xl overflow-hidden border-4 border-[#090812] bg-[#1a1333] shadow-xl shadow-black/80 ring-2 ring-violet-500/40 ${isOwner && onOpenEdit ? "cursor-pointer" : ""}`}
+                onClick={isOwner ? onOpenEdit : undefined}
+                title={isOwner ? "Editar foto e informações do perfil" : name || nick}
+              >
                 {image ? (
                   <img
                     src={image}
                     alt={name || nick || "Foto de perfil"}
-                    className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                 ) : (
-                  <div className="flex size-full items-center justify-center font-display text-4xl sm:text-5xl font-bold text-violet-300 select-none">
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-800 to-indigo-900 text-3xl sm:text-4xl font-bold text-white select-none">
                     {initial}
                   </div>
                 )}
               </div>
+
+              {/* Botão de câmera para substituir a foto */}
+              {isOwner && onOpenEdit && (
+                <button
+                  type="button"
+                  onClick={onOpenEdit}
+                  className="absolute -bottom-1 -right-1 flex size-7 sm:size-8 items-center justify-center rounded-xl border border-white/20 bg-violet-600 text-white shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer z-10"
+                  title="Substituir foto de perfil"
+                >
+                  <Camera className="size-3.5 sm:size-4" />
+                </button>
+              )}
             </div>
 
-            {/* Sinalizador ativo da comunidade */}
-            <span
-              className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-[#090812] ring-2 ring-[#090812]"
-              title="Membro ativo da comunidade"
-            >
-              <span className="size-3 rounded-full bg-emerald-400 ring-2 ring-emerald-400/40 animate-pulse" />
-            </span>
+            {/* Nome de Exibição, Selos e Username posicionados ao lado do avatar */}
+            <div className="space-y-1 pb-0.5 sm:pb-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                <h1 className="truncate font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                  {name || nick || "Membro do Hikari"}
+                </h1>
+
+                {nick && (
+                  <span title="Perfil Verificado">
+                    <BadgeCheck className="size-5 sm:size-6 text-violet-400 fill-violet-500/20" />
+                  </span>
+                )}
+
+                <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-violet-300">
+                  <Sparkles className="size-3" />
+                  <span>Hikari Persona</span>
+                </span>
+              </div>
+
+              {/* Username (@handle) */}
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-xs sm:text-sm font-medium text-violet-300/90">
+                  {displayHandle}
+                </span>
+
+                {nick && (
+                  <Link
+                    to="/profile/$nick"
+                    params={{ nick }}
+                    className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-violet-300 transition-colors"
+                    title="Abrir como perfil público"
+                  >
+                    <ExternalLink className="size-3" />
+                    <span className="hidden sm:inline">Página pública</span>
+                  </Link>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Botões de Ações Rápidas do Perfil */}
-          <div className="flex items-center gap-2 self-end sm:self-end">
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-end pt-2 sm:pt-0">
             {/* Botão Existente: Personalizar Perfil */}
             {isOwner && onOpenEdit && (
               <button
                 type="button"
                 onClick={onOpenEdit}
-                className="inline-flex items-center gap-2 rounded-xl border border-violet-500/40 bg-gradient-to-r from-violet-600 to-purple-600 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all hover:brightness-110 active:scale-98"
+                className="inline-flex items-center gap-2 rounded-xl border border-violet-500/40 bg-gradient-to-r from-violet-600 to-purple-600 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all hover:brightness-110 active:scale-98 cursor-pointer"
               >
                 <Pencil className="size-3.5" />
                 <span>Personalizar Perfil</span>
@@ -193,7 +276,7 @@ export function ProfileIdentityHeader({
               <button
                 type="button"
                 onClick={onOpenPrivacy}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-3 sm:px-3.5 py-2 text-xs sm:text-sm font-medium text-zinc-200 transition-all hover:bg-white/[0.1] hover:text-white"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-3 sm:px-3.5 py-2 text-xs sm:text-sm font-medium text-zinc-200 transition-all hover:bg-white/[0.1] hover:text-white cursor-pointer"
                 title="Configurações de privacidade do perfil"
               >
                 {accountType === "private" ? (
@@ -294,45 +377,8 @@ export function ProfileIdentityHeader({
           </div>
         </div>
 
-        {/* 3. Nome, Username, Biografia e Destaques */}
-        <div className="mt-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="truncate font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              {name || nick || "Membro do Hikari"}
-            </h1>
-
-            {nick && (
-              <span title="Perfil Verificado">
-                <BadgeCheck className="size-5 sm:size-6 text-violet-400 fill-violet-500/20" />
-              </span>
-            )}
-
-            <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-violet-300">
-              <Sparkles className="size-3" />
-              <span>Hikari Persona</span>
-            </span>
-          </div>
-
-          {/* Username (@handle) */}
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-xs font-medium text-violet-300/90">
-              {displayHandle}
-            </span>
-
-            {nick && (
-              <Link
-                to="/profile/$nick"
-                params={{ nick }}
-                className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-violet-300 transition-colors"
-                title="Abrir como perfil público"
-              >
-                <ExternalLink className="size-3" />
-                <span className="hidden sm:inline">Página pública</span>
-              </Link>
-            )}
-          </div>
-
-          {/* Biografia */}
+        {/* 3. Biografia e Tags de Destaque */}
+        <div className="mt-4 space-y-2.5">
           {bio ? (
             <p className="max-w-2xl text-xs sm:text-sm leading-relaxed text-zinc-300/90 whitespace-pre-wrap">
               {bio}
