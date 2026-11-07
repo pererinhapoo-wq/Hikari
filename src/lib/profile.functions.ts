@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { authMiddleware, optionalAuthMiddleware } from "@/lib/auth/middleware";
-import { getSql } from "@/lib/db";
+import { getSql, type Sql } from "@/lib/db";
 import { executeCreateNotification } from "@/lib/notifications.functions";
 
 export type SectionPrivacyLevel = "public" | "followers" | "private";
@@ -153,10 +153,58 @@ export type MyProfileComment = {
   userImage: string | null;
   likes: number;
   liked: boolean;
+  animeTitle?: string;
+  animeCover?: string | null;
 };
 
-export type PublicProfileComment =
-  MyProfileComment;
+export type PublicProfileComment = MyProfileComment;
+
+export interface ProfileCommentsResponse {
+  items: MyProfileComment[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+export type ActivityType =
+  | "watched_episode"
+  | "tracking_added"
+  | "tracking_updated"
+  | "favorite_added"
+  | "list_created"
+  | "list_item_added";
+
+export interface UserActivityItem {
+  id: string;
+  type: ActivityType;
+  createdAt: string;
+  description: string;
+  resourceId: string;
+  resourceTitle: string;
+  resourceCover: string | null;
+  resourceType: "anime" | "list" | "character" | "studio" | "company" | "person";
+  metadata?: {
+    episodeId?: string;
+    episodeNumber?: number;
+    origin?: string;
+    status?: string;
+    score?: number | null;
+    listId?: string;
+    listTitle?: string;
+    targetType?: string;
+  };
+}
+
+export interface UserActivitiesResponse {
+  items: UserActivityItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasMore: boolean;
+}
 
 function parseFavorites(
   value: unknown,
@@ -211,7 +259,7 @@ function isValidNick(
  * Executado estritamente no servidor.
  */
 export async function evaluateUserPrivacy(
-  sql: any,
+  sql: Sql,
   ownerUserId: string,
   viewerUserId: string | null,
 ): Promise<EvaluatedPrivacy> {
@@ -839,165 +887,501 @@ export const getProfileFollowing =
 /* MEUS COMENTÁRIOS                                               */
 /* ============================================================ */
 
-export const getMyComments =
-  createServerFn({
-    method: "GET",
-  })
-    .middleware([authMiddleware])
-    .handler(async ({ context }) => {
-      const sql = await getSql();
+export async function executeGetComments(
+  sql: Sql,
+  targetUserId: string,
+  viewerUserId: string | null,
+  isOwner: boolean,
+  page = 1,
+  limit = 15,
+): Promise<ProfileCommentsResponse> {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.max(1, Math.min(50, limit));
+  const offset = (safePage - 1) * safeLimit;
 
-      const rows =
-        await sql<MyProfileComment>`
-          select
-            c."id",
-            c."animeId",
-            c."episodeId",
-            c."content",
-            c."parentId",
-            c."isSpoiler",
-            c."createdAt",
-            c."updatedAt",
-            c."userId",
+  const countRows = await sql.query<{ total: number }>(
+    `SELECT count(*)::int as total FROM "comment" WHERE "userId" = $1`,
+    [targetUserId],
+  );
+  const total = Number(countRows[0]?.total || 0);
+  const totalPages = Math.ceil(total / safeLimit) || 1;
 
-            coalesce(
-              u."name",
-              'Usuário'
-            ) as "userName",
+  const selectQuery = `
+    SELECT
+      c."id",
+      c."animeId",
+      c."episodeId",
+      c."content",
+      c."parentId",
+      c."isSpoiler",
+      c."createdAt",
+      c."updatedAt",
+      c."userId",
+      COALESCE(u."name", 'Usuário') AS "userName",
+      u."image" AS "userImage",
+      COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime indisponível') AS "animeTitle",
+      COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "animeCover",
+      (
+        SELECT count(*)::int
+        FROM "comment_like" cl
+        WHERE cl."commentId" = c."id"
+      ) AS "likes",
+      CASE
+        WHEN $2::text IS NOT NULL THEN
+          EXISTS (
+            SELECT 1
+            FROM "comment_like" cl2
+            WHERE cl2."commentId" = c."id"
+              AND cl2."userId" = $2
+          )
+        ELSE false
+      END AS "liked"
+    FROM "comment" c
+    LEFT JOIN "user" u ON u."id" = c."userId"
+    LEFT JOIN "catalog_anime" ca ON ca."id" = c."animeId"
+    LEFT JOIN "user_anime_tracking" uat ON uat."userId" = c."userId" AND uat."animeId" = c."animeId"
+    WHERE c."userId" = $1
+    ORDER BY c."createdAt" DESC
+    LIMIT $3 OFFSET $4
+  `;
 
-            u."image" as "userImage",
+  const rows = await sql.query<{
+    id: string;
+    animeId: string;
+    episodeId: string;
+    content: string;
+    parentId: string | null;
+    isSpoiler: boolean;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+    userId: string;
+    userName: string;
+    userImage: string | null;
+    animeTitle: string;
+    animeCover: string | null;
+    likes: number;
+    liked: boolean;
+  }>(selectQuery, [targetUserId, viewerUserId, safeLimit, offset]);
 
-            (
-              select count(*)::int
-              from "comment_like" cl
-              where
-                cl."commentId" =
-                  c."id"
-            ) as "likes",
+  const items: MyProfileComment[] = rows.map((comment) => ({
+    ...comment,
+    createdAt:
+      comment.createdAt instanceof Date
+        ? comment.createdAt.toISOString()
+        : String(comment.createdAt),
+    updatedAt:
+      comment.updatedAt instanceof Date
+        ? comment.updatedAt.toISOString()
+        : String(comment.updatedAt),
+    likes: Number(comment.likes ?? 0) || 0,
+    liked: Boolean(comment.liked),
+    animeTitle: comment.animeTitle || "Anime indisponível",
+    animeCover: comment.animeCover || null,
+  }));
 
-            exists (
-              select 1
-              from "comment_like" cl2
-              where
-                cl2."commentId" =
-                  c."id"
-                and cl2."userId" =
-                  ${context.userId}
-            ) as "liked"
+  return {
+    items,
+    total,
+    page: safePage,
+    limit: safeLimit,
+    totalPages,
+    hasMore: safePage < totalPages,
+  };
+}
 
-          from "comment" c
-
-          left join "user" u
-            on u."id" =
-              c."userId"
-
-          where c."userId" =
-            ${context.userId}
-
-          order by
-            c."createdAt" desc
-        `;
-
-      return rows.map((comment) => ({
-        ...comment,
-        likes:
-          Number(
-            comment.likes ?? 0,
-          ) || 0,
-        liked:
-          Boolean(comment.liked),
-      }));
-    });
+export const getMyComments = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .validator((d?: { page?: number; limit?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeGetComments(
+      sql,
+      context.userId,
+      context.userId,
+      true,
+      data?.page ?? 1,
+      data?.limit ?? 15,
+    );
+  });
 
 /* ============================================================ */
 /* COMENTÁRIOS DO PERFIL PÚBLICO                                  */
 /* ============================================================ */
 
-export const getPublicComments =
-  createServerFn({
-    method: "GET",
-  })
-    .middleware([optionalAuthMiddleware])
-    .validator((d: { userId: string }) => d)
-    .handler(async ({
-      context,
-      data,
-    }) => {
-      const viewerUserId = context?.userId ?? null;
-      const input = data as {
-        userId?: unknown;
-      };
+export const getPublicComments = createServerFn({
+  method: "GET",
+})
+  .middleware([optionalAuthMiddleware])
+  .validator((d: { userId: string; page?: number; limit?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const viewerUserId = context?.userId ?? null;
+    const userId = (data?.userId || "").trim();
+    if (!userId) {
+      throw new Error("Usuário não informado.");
+    }
 
-      const userId =
-        typeof input.userId ===
-        "string"
-          ? input.userId.trim()
-          : "";
+    const sql = await getSql();
+    const privacy = await evaluateUserPrivacy(sql, userId, viewerUserId);
+    if (!privacy.canViewComments) {
+      throw new Error("Os comentários deste perfil são privados.");
+    }
 
-      if (!userId) {
-        throw new Error(
-          "Usuário não informado.",
-        );
+    return executeGetComments(
+      sql,
+      userId,
+      viewerUserId,
+      privacy.isOwner,
+      data?.page ?? 1,
+      data?.limit ?? 15,
+    );
+  });
+
+/* ============================================================ */
+/* FEED DE ATIVIDADES REAIS DO PERFIL (ETAPA 11)                */
+/* ============================================================ */
+
+export async function executeGetUserActivities(
+  sql: Sql,
+  targetUserId: string,
+  isOwner: boolean,
+  page = 1,
+  limit = 15,
+): Promise<UserActivitiesResponse> {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.max(1, Math.min(50, limit));
+  const offset = (safePage - 1) * safeLimit;
+
+  const countQuery = `
+    WITH user_activities AS (
+      -- 1. Episódios assistidos
+      SELECT
+        uwe."watchedAt" AS "createdAt"
+      FROM "user_watched_episode" uwe
+      WHERE uwe."userId" = $1
+
+      UNION ALL
+
+      -- 2. Anime adicionado ao acompanhamento
+      SELECT
+        uat."createdAt" AS "createdAt"
+      FROM "user_anime_tracking" uat
+      WHERE uat."userId" = $1
+
+      UNION ALL
+
+      -- 3. Atualização de status de acompanhamento
+      SELECT
+        uat."updatedAt" AS "createdAt"
+      FROM "user_anime_tracking" uat
+      WHERE uat."userId" = $1
+        AND uat."updatedAt" > uat."createdAt" + interval '2 seconds'
+        AND NOT EXISTS (
+          SELECT 1 FROM "user_watched_episode" uwe
+          WHERE uwe."userId" = uat."userId"
+            AND uwe."animeId" = uat."animeId"
+            AND abs(extract(epoch from (uwe."watchedAt" - uat."updatedAt"))) < 3
+        )
+
+      UNION ALL
+
+      -- 4. Favoritos adicionados
+      SELECT
+        uf."createdAt" AS "createdAt"
+      FROM "user_favorite" uf
+      WHERE uf."userId" = $1
+
+      UNION ALL
+
+      -- 5. Criação de lista personalizada
+      SELECT
+        ucl."createdAt" AS "createdAt"
+      FROM "user_custom_list" ucl
+      WHERE ucl."userId" = $1
+        AND ($2::boolean = true OR ucl."isPublic" = true)
+
+      UNION ALL
+
+      -- 6. Adição de anime a uma lista personalizada
+      SELECT
+        ucli."addedAt" AS "createdAt"
+      FROM "user_custom_list_item" ucli
+      INNER JOIN "user_custom_list" ucl ON ucl."id" = ucli."listId"
+      WHERE ucl."userId" = $1
+        AND ($2::boolean = true OR ucl."isPublic" = true)
+    )
+    SELECT count(*)::int AS total FROM user_activities;
+  `;
+
+  const countRes = await sql.query<{ total: number }>(countQuery, [targetUserId, isOwner]);
+  const total = Number(countRes[0]?.total || 0);
+  const totalPages = Math.ceil(total / safeLimit) || 1;
+
+  const selectQuery = `
+    WITH user_activities AS (
+      -- 1. Episódios assistidos
+      SELECT
+        'watched:' || uwe."animeId" || ':' || uwe."episodeId" || ':' || to_char(uwe."watchedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
+        'watched_episode' AS "type",
+        uwe."watchedAt" AS "createdAt",
+        'Assistiu ao episódio ' || uwe."episodeNumber" AS "description",
+        uwe."animeId" AS "resourceId",
+        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
+        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
+        'anime' AS "resourceType",
+        json_build_object(
+          'episodeId', uwe."episodeId",
+          'episodeNumber', uwe."episodeNumber",
+          'origin', uwe."origin"
+        )::text AS "metadata"
+      FROM "user_watched_episode" uwe
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId"
+      LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uwe."userId" AND uat."animeId" = uwe."animeId"
+      WHERE uwe."userId" = $1
+
+      UNION ALL
+
+      -- 2. Anime adicionado ao acompanhamento
+      SELECT
+        'tracking_add:' || uat."animeId" || ':' || to_char(uat."createdAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
+        'tracking_added' AS "type",
+        uat."createdAt" AS "createdAt",
+        CASE uat."status"
+          WHEN 'watching' THEN 'Começou a assistir o anime'
+          WHEN 'completed' THEN 'Marcou como concluído'
+          WHEN 'planning' THEN 'Adicionou à lista de interesse'
+          WHEN 'on_hold' THEN 'Colocou em espera'
+          WHEN 'dropped' THEN 'Marcou como abandonado'
+          ELSE 'Adicionou à lista de animes'
+        END AS "description",
+        uat."animeId" AS "resourceId",
+        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
+        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
+        'anime' AS "resourceType",
+        json_build_object(
+          'status', uat."status",
+          'score', uat."score",
+          'episodesWatched', uat."episodesWatched"
+        )::text AS "metadata"
+      FROM "user_anime_tracking" uat
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+      WHERE uat."userId" = $1
+
+      UNION ALL
+
+      -- 3. Atualização de status de acompanhamento
+      SELECT
+        'tracking_upd:' || uat."animeId" || ':' || to_char(uat."updatedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
+        'tracking_updated' AS "type",
+        uat."updatedAt" AS "createdAt",
+        'Atualizou status para ' || (
+          CASE uat."status"
+            WHEN 'watching' THEN 'Assistindo'
+            WHEN 'completed' THEN 'Concluído'
+            WHEN 'planning' THEN 'Planeja assistir'
+            WHEN 'on_hold' THEN 'Em espera'
+            WHEN 'dropped' THEN 'Abandonado'
+            ELSE uat."status"
+          END
+        ) || CASE WHEN uat."score" IS NOT NULL THEN ' • Nota ' || uat."score"::text ELSE '' END AS "description",
+        uat."animeId" AS "resourceId",
+        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
+        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
+        'anime' AS "resourceType",
+        json_build_object(
+          'status', uat."status",
+          'score', uat."score",
+          'episodesWatched', uat."episodesWatched"
+        )::text AS "metadata"
+      FROM "user_anime_tracking" uat
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+      WHERE uat."userId" = $1
+        AND uat."updatedAt" > uat."createdAt" + interval '2 seconds'
+        AND NOT EXISTS (
+          SELECT 1 FROM "user_watched_episode" uwe
+          WHERE uwe."userId" = uat."userId"
+            AND uwe."animeId" = uat."animeId"
+            AND abs(extract(epoch from (uwe."watchedAt" - uat."updatedAt"))) < 3
+        )
+
+      UNION ALL
+
+      -- 4. Favoritos adicionados
+      SELECT
+        'fav:' || uf."id" AS "id",
+        'favorite_added' AS "type",
+        uf."createdAt" AS "createdAt",
+        CASE uf."targetType"
+          WHEN 'anime' THEN 'Adicionou anime aos favoritos'
+          WHEN 'character' THEN 'Adicionou personagem aos favoritos'
+          WHEN 'studio' THEN 'Adicionou estúdio aos favoritos'
+          WHEN 'company' THEN 'Adicionou produtora aos favoritos'
+          WHEN 'person' THEN 'Adicionou pessoa aos favoritos'
+          ELSE 'Adicionou aos favoritos'
+        END AS "description",
+        COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") AS "resourceId",
+        COALESCE(ca."title", cc."name", cs."name", cco."name", cp."name", 'Favorito') AS "resourceTitle",
+        COALESCE(ca."cover", cc."imageUrl", cs."logoUrl", cco."logoUrl", cp."imageUrl", NULL) AS "resourceCover",
+        uf."targetType" AS "resourceType",
+        json_build_object(
+          'targetType', uf."targetType"
+        )::text AS "metadata"
+      FROM "user_favorite" uf
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
+      LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
+      LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
+      LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
+      LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
+      WHERE uf."userId" = $1
+
+      UNION ALL
+
+      -- 5. Criação de lista personalizada
+      SELECT
+        'list_create:' || ucl."id" AS "id",
+        'list_created' AS "type",
+        ucl."createdAt" AS "createdAt",
+        'Criou a lista "' || ucl."title" || '"' AS "description",
+        ucl."id" AS "resourceId",
+        ucl."title" AS "resourceTitle",
+        NULL AS "resourceCover",
+        'list' AS "resourceType",
+        json_build_object(
+          'listId', ucl."id",
+          'isPublic', ucl."isPublic"
+        )::text AS "metadata"
+      FROM "user_custom_list" ucl
+      WHERE ucl."userId" = $1
+        AND ($2::boolean = true OR ucl."isPublic" = true)
+
+      UNION ALL
+
+      -- 6. Adição de anime a uma lista personalizada
+      SELECT
+        'list_item:' || ucli."listId" || ':' || ucli."animeId" AS "id",
+        'list_item_added' AS "type",
+        ucli."addedAt" AS "createdAt",
+        'Adicionou à lista "' || ucl."title" || '"' AS "description",
+        ucli."animeId" AS "resourceId",
+        COALESCE(ca."title", (ucli."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
+        COALESCE(ca."cover", (ucli."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
+        'anime' AS "resourceType",
+        json_build_object(
+          'listId', ucl."id",
+          'listTitle', ucl."title"
+        )::text AS "metadata"
+      FROM "user_custom_list_item" ucli
+      INNER JOIN "user_custom_list" ucl ON ucl."id" = ucli."listId"
+      LEFT JOIN "catalog_anime" ca ON ca."id" = ucli."animeId"
+      WHERE ucl."userId" = $1
+        AND ($2::boolean = true OR ucl."isPublic" = true)
+    )
+    SELECT
+      "id",
+      "type",
+      "createdAt",
+      "description",
+      "resourceId",
+      "resourceTitle",
+      "resourceCover",
+      "resourceType",
+      "metadata"
+    FROM user_activities
+    ORDER BY "createdAt" DESC
+    LIMIT $3 OFFSET $4;
+  `;
+
+  const rows = await sql.query<{
+    id: string;
+    type: ActivityType;
+    createdAt: Date | string;
+    description: string;
+    resourceId: string;
+    resourceTitle: string;
+    resourceCover: string | null;
+    resourceType: "anime" | "list" | "character" | "studio" | "company" | "person";
+    metadata: string | null;
+  }>(selectQuery, [targetUserId, isOwner, safeLimit, offset]);
+
+  const items: UserActivityItem[] = rows.map((r) => {
+    let parsedMetadata = undefined;
+    if (r.metadata) {
+      try {
+        parsedMetadata =
+          typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata;
+      } catch {
+        parsedMetadata = undefined;
       }
+    }
+    return {
+      id: r.id,
+      type: r.type,
+      createdAt:
+        r.createdAt instanceof Date
+          ? r.createdAt.toISOString()
+          : String(r.createdAt),
+      description: r.description,
+      resourceId: r.resourceId,
+      resourceTitle: r.resourceTitle,
+      resourceCover: r.resourceCover,
+      resourceType: r.resourceType,
+      metadata: parsedMetadata,
+    };
+  });
 
-      const sql = await getSql();
+  return {
+    items,
+    total,
+    page: safePage,
+    limit: safeLimit,
+    totalPages,
+    hasMore: safePage < totalPages,
+  };
+}
 
-      // Avaliação estrita de privacidade no servidor
-      const privacy = await evaluateUserPrivacy(sql, userId, viewerUserId);
-      if (!privacy.canViewComments) {
-        throw new Error("Os comentários deste perfil são privados.");
-      }
+export const getMyActivities = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .validator((d?: { page?: number; limit?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeGetUserActivities(
+      sql,
+      context.userId,
+      true,
+      data?.page ?? 1,
+      data?.limit ?? 15,
+    );
+  });
 
-      const rows =
-        await sql<PublicProfileComment>`
-          select
-            c."id",
-            c."animeId",
-            c."episodeId",
-            c."content",
-            c."parentId",
-            c."isSpoiler",
-            c."createdAt",
-            c."updatedAt",
-            c."userId",
+export const getPublicActivities = createServerFn({
+  method: "GET",
+})
+  .middleware([optionalAuthMiddleware])
+  .validator((d: { userId: string; page?: number; limit?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const viewerUserId = context?.userId ?? null;
+    const userId = (data?.userId || "").trim();
+    if (!userId) {
+      throw new Error("Usuário não informado.");
+    }
 
-            coalesce(
-              u."name",
-              'Usuário'
-            ) as "userName",
+    const sql = await getSql();
+    const privacy = await evaluateUserPrivacy(sql, userId, viewerUserId);
+    if (!privacy.canViewHistory) {
+      throw new Error("A atividade deste perfil é privada.");
+    }
 
-            u."image" as "userImage",
-
-            (
-              select count(*)::int
-              from "comment_like" cl
-              where
-                cl."commentId" =
-                  c."id"
-            ) as "likes"
-
-          from "comment" c
-
-          left join "user" u
-            on u."id" =
-              c."userId"
-
-          where c."userId" =
-            ${userId}
-
-          order by
-            c."createdAt" desc
-        `;
-
-      return rows.map((comment) => ({
-        ...comment,
-        likes:
-          Number(
-            comment.likes ?? 0,
-          ) || 0,
-        liked: false,
-      }));
-    });
+    return executeGetUserActivities(
+      sql,
+      userId,
+      privacy.isOwner,
+      data?.page ?? 1,
+      data?.limit ?? 15,
+    );
+  });
 
 /* ============================================================ */
 /* SEGUIDORES E SEGUINDO PÚBLICOS COM CONTROLE DE PRIVACIDADE    */
@@ -1457,7 +1841,7 @@ export const followRequestActionSchema = z.object({
 /**
  * Lógica pura de seguir/solicitar (reutilizável em testes e em Server Functions).
  */
-export async function executeFollowUser(sql: any, viewerId: string, targetId: string) {
+export async function executeFollowUser(sql: Sql, viewerId: string, targetId: string) {
   if (viewerId === targetId) {
     throw new Error("Você não pode seguir a si próprio.");
   }
@@ -1592,7 +1976,7 @@ export async function executeFollowUser(sql: any, viewerId: string, targetId: st
   }
 }
 
-export async function executeUnfollowUser(sql: any, viewerId: string, targetId: string) {
+export async function executeUnfollowUser(sql: Sql, viewerId: string, targetId: string) {
   if (viewerId === targetId) {
     throw new Error("Operação inválida.");
   }
@@ -1622,7 +2006,7 @@ export async function executeUnfollowUser(sql: any, viewerId: string, targetId: 
   };
 }
 
-export async function executeCancelFollowRequest(sql: any, viewerId: string, targetId: string) {
+export async function executeCancelFollowRequest(sql: Sql, viewerId: string, targetId: string) {
   const deleteResult = await sql<{ requesterId: string }>`
     delete from "user_follow_request"
     where "requesterId" = ${viewerId}
@@ -1649,7 +2033,7 @@ export async function executeCancelFollowRequest(sql: any, viewerId: string, tar
   };
 }
 
-export async function executeAcceptFollowRequest(sql: any, ownerId: string, requesterId: string) {
+export async function executeAcceptFollowRequest(sql: Sql, ownerId: string, requesterId: string) {
   if (ownerId === requesterId) {
     throw new Error("Operação inválida.");
   }
@@ -1726,7 +2110,7 @@ export async function executeAcceptFollowRequest(sql: any, ownerId: string, requ
   };
 }
 
-export async function executeRejectFollowRequest(sql: any, ownerId: string, requesterId: string) {
+export async function executeRejectFollowRequest(sql: Sql, ownerId: string, requesterId: string) {
   const reqRows = await sql<{ requesterId: string }>`
     select "requesterId"
     from "user_follow_request"
@@ -1761,7 +2145,7 @@ export async function executeRejectFollowRequest(sql: any, ownerId: string, requ
 }
 
 export async function executeGetUserRelationship(
-  sql: any,
+  sql: Sql,
   viewerId: string | null,
   targetId: string,
 ): Promise<UserRelationship> {
@@ -2104,7 +2488,7 @@ export const blockTargetSchema = z.object({
   targetUserId: z.string().trim().min(1, "ID do usuário alvo é obrigatório"),
 });
 
-export async function executeBlockUser(sql: any, blockerId: string, targetId: string) {
+export async function executeBlockUser(sql: Sql, blockerId: string, targetId: string) {
   if (blockerId === targetId) {
     throw new Error("Você não pode bloquear a si próprio.");
   }
@@ -2151,7 +2535,7 @@ export async function executeBlockUser(sql: any, blockerId: string, targetId: st
   };
 }
 
-export async function executeUnblockUser(sql: any, blockerId: string, targetId: string) {
+export async function executeUnblockUser(sql: Sql, blockerId: string, targetId: string) {
   if (blockerId === targetId) {
     throw new Error("Operação inválida.");
   }
@@ -2178,10 +2562,10 @@ export interface BlockedUserRow {
 }
 
 export async function executeGetMyBlockedUsers(
-  sql: any,
+  sql: Sql,
   userId: string,
 ): Promise<BlockedUserItem[]> {
-  const rows: BlockedUserRow[] = (await sql<BlockedUserRow>`
+  const rows = await sql<BlockedUserRow>`
     select
       b."blockedId" as "userId",
       coalesce(p."nick", u."name", 'usuario') as "nick",
@@ -2193,7 +2577,7 @@ export async function executeGetMyBlockedUsers(
     left join "profile" p on p."userId" = u."id"
     where b."blockerId" = ${userId}
     order by b."createdAt" desc
-  `) as BlockedUserRow[];
+  `;
 
   return rows.map((r: BlockedUserRow) => ({
     id: r.userId,
@@ -2207,7 +2591,7 @@ export async function executeGetMyBlockedUsers(
 }
 
 export async function executeGetUserBlockStatus(
-  sql: any,
+  sql: Sql,
   viewerId: string,
   targetId: string,
 ): Promise<UserBlockStatus> {

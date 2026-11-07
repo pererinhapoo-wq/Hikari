@@ -1,22 +1,30 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
+  Activity,
+  Bookmark,
   Calendar,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Film,
+  Heart,
+  ListPlus,
   Play,
+  Sparkles,
+  Tv,
 } from "lucide-react";
+import type { UserActivityItem } from "@/lib/profile.functions";
 import type { WatchedEpisodeItem } from "@/types/profile-tracking";
 
 interface ProfileHistorySpaceProps {
-  items: WatchedEpisodeItem[];
+  items: (UserActivityItem | WatchedEpisodeItem)[];
   total: number;
   page: number;
   totalPages: number;
   onPageChange: (newPage: number) => void;
   loading?: boolean;
+  isOwner?: boolean;
 }
 
 export function ProfileHistorySpace({
@@ -26,8 +34,43 @@ export function ProfileHistorySpace({
   totalPages,
   onPageChange,
   loading = false,
+  isOwner = true,
 }: ProfileHistorySpaceProps) {
-  const formatDate = (isoString: string) => {
+  const [filterType, setFilterType] = useState<
+    "all" | "episodes" | "tracking" | "favorites" | "lists"
+  >("all");
+
+  const formatRelativeDate = (isoString: string): string => {
+    const d = new Date(isoString);
+    if (Number.isNaN(d.getTime())) return "";
+
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    if (diffSec < 60) return "Agora mesmo";
+    if (diffMin < 60) return `Há ${diffMin} ${diffMin === 1 ? "minuto" : "minutos"}`;
+    if (diffHour < 24) return `Há ${diffHour} ${diffHour === 1 ? "hora" : "horas"}`;
+    if (diffDay === 1) {
+      const timeStr = d.toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      return `Ontem às ${timeStr}`;
+    }
+    if (diffDay < 30) return `Há ${diffDay} ${diffDay === 1 ? "dia" : "dias"}`;
+
+    return d.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const formatFullDate = (isoString: string): string => {
     const d = new Date(isoString);
     if (Number.isNaN(d.getTime())) return "";
 
@@ -40,23 +83,118 @@ export function ProfileHistorySpace({
     });
   };
 
+  // Normaliza itens que podem ser UserActivityItem ou WatchedEpisodeItem antigo
+  const normalizedItems: UserActivityItem[] = items.map((raw) => {
+    if ("type" in raw) {
+      return raw as UserActivityItem;
+    }
+    const ep = raw as WatchedEpisodeItem;
+    return {
+      id: `watched:${ep.animeId}:${ep.episodeId}:${ep.watchedAt}`,
+      type: "watched_episode",
+      createdAt: ep.watchedAt,
+      description: `Assistiu ao episódio ${ep.episodeNumber}`,
+      resourceId: ep.animeId,
+      resourceTitle: ep.animeTitle || "Anime",
+      resourceCover: ep.animeCover,
+      resourceType: "anime",
+      metadata: {
+        episodeId: ep.episodeId,
+        episodeNumber: ep.episodeNumber,
+        origin: ep.origin,
+      },
+    };
+  });
+
+  const filteredItems = normalizedItems.filter((item) => {
+    if (filterType === "all") return true;
+    if (filterType === "episodes") return item.type === "watched_episode";
+    if (filterType === "tracking")
+      return item.type === "tracking_added" || item.type === "tracking_updated";
+    if (filterType === "favorites") return item.type === "favorite_added";
+    if (filterType === "lists")
+      return item.type === "list_created" || item.type === "list_item_added";
+    return true;
+  });
+
   return (
     <div className="space-y-6">
-      {/* Cabeçalho da Seção de Histórico */}
-      <div className="flex items-center justify-between">
+      {/* Cabeçalho da Seção de Atividades */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-display text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-            <Clock className="size-5 text-violet-400" />
-            <span>Histórico de Episódios Assistidos</span>
+            <Activity className="size-5 text-violet-400" />
+            <span>Feed de Atividades</span>
           </h2>
           <p className="mt-0.5 text-xs sm:text-sm text-zinc-400">
-            Registro cronológico das suas reproduções e episódios concluídos.
+            {isOwner
+              ? "Registro cronológico das suas interações, episódios assistidos e atualizações no Hikari."
+              : "Registro cronológico das atividades recentes deste usuário no Hikari."}
           </p>
         </div>
 
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-zinc-300 tabular-nums">
-          {total} {total === 1 ? "episódio" : "episódios"}
+        <span className="self-start sm:self-auto rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-zinc-300 tabular-nums">
+          {total} {total === 1 ? "atividade" : "atividades"}
         </span>
+      </div>
+
+      {/* Filtros rápidos de tipo */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-white/[0.06] pb-3 text-xs">
+        <button
+          type="button"
+          onClick={() => setFilterType("all")}
+          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
+            filterType === "all"
+              ? "bg-violet-600 text-white shadow-sm"
+              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
+          }`}
+        >
+          Todas
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterType("episodes")}
+          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
+            filterType === "episodes"
+              ? "bg-violet-600 text-white shadow-sm"
+              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
+          }`}
+        >
+          Episódios
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterType("tracking")}
+          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
+            filterType === "tracking"
+              ? "bg-violet-600 text-white shadow-sm"
+              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
+          }`}
+        >
+          Acompanhamento
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterType("favorites")}
+          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
+            filterType === "favorites"
+              ? "bg-violet-600 text-white shadow-sm"
+              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
+          }`}
+        >
+          Favoritos
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterType("lists")}
+          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
+            filterType === "lists"
+              ? "bg-violet-600 text-white shadow-sm"
+              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
+          }`}
+        >
+          Listas
+        </button>
       </div>
 
       {/* Conteúdo: Skeleton, Vazio ou Lista em Timeline */}
@@ -69,110 +207,186 @@ export function ProfileHistorySpace({
             />
           ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : filteredItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-10 sm:p-14 text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 shadow-inner">
-            <Clock className="size-7" />
+            <Activity className="size-7" />
           </div>
 
           <h3 className="mt-4 font-display text-base sm:text-lg font-bold text-white">
-            Nenhum episódio no histórico ainda
+            Nenhuma atividade encontrada
           </h3>
 
           <p className="mt-1.5 max-w-sm text-xs sm:text-sm text-zinc-400 leading-relaxed">
-            Ao assistir seus animes favoritos pelo player do Hikari ou marcar episódios como assistidos, eles aparecerão aqui automaticamente.
+            {filterType !== "all"
+              ? "Nenhum evento registrado nesta categoria até o momento."
+              : isOwner
+                ? "Ao assistir episódios, favoritar conteúdos ou organizar suas listas, suas atividades aparecerão aqui cronologicamente."
+                : "Este usuário ainda não possui atividades recentes registradas."}
           </p>
 
-          <Link
-            to="/"
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all hover:bg-violet-500 active:scale-95"
-          >
-            <Play className="size-4 fill-white" />
-            <span>Começar a Assistir</span>
-          </Link>
+          {isOwner && (
+            <Link
+              to="/"
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all hover:bg-violet-500 active:scale-95"
+            >
+              <Play className="size-4 fill-white" />
+              <span>Explorar Animes</span>
+            </Link>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {items.map((entry) => {
-            const epNum = entry.episodeNumber;
+          {filteredItems.map((entry) => {
+            const isEpisode = entry.type === "watched_episode";
+            const isFavorite = entry.type === "favorite_added";
+            const isTracking =
+              entry.type === "tracking_added" ||
+              entry.type === "tracking_updated";
+            const isList =
+              entry.type === "list_created" ||
+              entry.type === "list_item_added";
+
+            const epNum = entry.metadata?.episodeNumber ?? 1;
 
             return (
               <article
-                key={`${entry.animeId}-${entry.episodeId}-${entry.watchedAt}`}
-                className="group relative flex items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 hover:border-violet-500/35 hover:bg-[#12101e]"
+                key={entry.id}
+                className="group relative flex items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 hover:border-violet-500/35 hover:bg-[#12101e]"
               >
-                {/* Lado Esquerdo: Capa do Anime + Título e Episódio */}
+                {/* Lado Esquerdo: Ícone/Capa + Descrição e Tempo Relativo */}
                 <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
+                  {/* Thumbnail / Ícone */}
                   <div className="relative size-14 sm:size-16 shrink-0 overflow-hidden rounded-xl bg-[#161424]">
-                    {entry.animeCover ? (
+                    {entry.resourceCover ? (
                       <img
-                        src={entry.animeCover}
+                        src={entry.resourceCover}
                         alt=""
                         loading="lazy"
                         className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
                       />
                     ) : (
-                      <div className="flex size-full items-center justify-center text-zinc-600">
-                        <Film className="size-6" />
+                      <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
+                        {isFavorite ? (
+                          <Heart className="size-6 text-rose-400" />
+                        ) : isList ? (
+                          <ListPlus className="size-6 text-amber-400" />
+                        ) : isTracking ? (
+                          <Tv className="size-6 text-violet-400" />
+                        ) : (
+                          <Film className="size-6" />
+                        )}
                       </div>
                     )}
                   </div>
 
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        to="/anime/$id"
-                        params={{ id: entry.animeId }}
-                        className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors hover:text-violet-300"
-                        title={entry.animeTitle}
-                      >
-                        {entry.animeTitle}
-                      </Link>
+                      {entry.resourceType === "anime" ? (
+                        <Link
+                          to="/anime/$id"
+                          params={{ id: entry.resourceId }}
+                          className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors hover:text-violet-300"
+                          title={entry.resourceTitle}
+                        >
+                          {entry.resourceTitle}
+                        </Link>
+                      ) : (
+                        <span
+                          className="truncate font-semibold text-sm sm:text-base text-zinc-100"
+                          title={entry.resourceTitle}
+                        >
+                          {entry.resourceTitle}
+                        </span>
+                      )}
 
-                      <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[11px] font-bold text-violet-300 ring-1 ring-violet-500/30">
-                        Episódio {entry.episodeNumber}
-                      </span>
+                      {/* Badges de Categoria */}
+                      {isEpisode && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[11px] font-bold text-violet-300 ring-1 ring-violet-500/30">
+                          Episódio {epNum}
+                        </span>
+                      )}
+
+                      {isFavorite && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300 ring-1 ring-rose-500/25">
+                          <Heart className="size-3 fill-rose-500/80" />
+                          <span>Favorito</span>
+                        </span>
+                      )}
+
+                      {isTracking && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2 py-0.5 text-[11px] font-semibold text-indigo-300 ring-1 ring-indigo-500/25">
+                          <Bookmark className="size-3" />
+                          <span>Acompanhamento</span>
+                        </span>
+                      )}
+
+                      {isList && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300 ring-1 ring-amber-500/25">
+                          <ListPlus className="size-3" />
+                          <span>Lista</span>
+                        </span>
+                      )}
                     </div>
 
-                    <div className="mt-1 flex flex-wrap items-center gap-2.5 text-xs text-zinc-400">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="size-3 text-zinc-500" />
-                        <span>{formatDate(entry.watchedAt)}</span>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                      <span className="font-medium text-zinc-300">
+                        {entry.description}
                       </span>
 
                       <span className="text-zinc-600">•</span>
 
-                      {entry.origin === "playback" ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400/90 font-medium">
-                          <CheckCircle className="size-3" />
-                          <span>Player Oficial</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400">
-                          <span>Marcado manualmente</span>
-                        </span>
+                      <span
+                        className="flex items-center gap-1 text-zinc-400 hover:text-zinc-300 cursor-default"
+                        title={formatFullDate(entry.createdAt)}
+                      >
+                        <Calendar className="size-3 text-zinc-500" />
+                        <span>{formatRelativeDate(entry.createdAt)}</span>
+                      </span>
+
+                      {isEpisode && entry.metadata?.origin === "playback" && (
+                        <>
+                          <span className="text-zinc-600">•</span>
+                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+                            <CheckCircle className="size-3" />
+                            <span>Player Oficial</span>
+                          </span>
+                        </>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Ação: Botão Assistir Novamente */}
-                <Link
-                  to="/watch/$id/$ep"
-                  params={{
-                    id: entry.animeId,
-                    ep: `ep-${epNum}`,
-                  }}
-                  className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-zinc-200 transition-all group-hover:border-violet-500/40 group-hover:bg-violet-600 group-hover:text-white"
-                >
-                  <Play className="size-3.5 fill-current" />
-                  <span className="hidden sm:inline">Assistir</span>
-                </Link>
+                {/* Ação contextual */}
+                {isEpisode && (
+                  <Link
+                    to="/watch/$id/$ep"
+                    params={{
+                      id: entry.resourceId,
+                      ep: `ep-${epNum}`,
+                    }}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-zinc-200 transition-all group-hover:border-violet-500/40 group-hover:bg-violet-600 group-hover:text-white"
+                  >
+                    <Play className="size-3.5 fill-current" />
+                    <span className="hidden sm:inline">Assistir</span>
+                  </Link>
+                )}
+
+                {entry.resourceType === "anime" && !isEpisode && (
+                  <Link
+                    to="/anime/$id"
+                    params={{ id: entry.resourceId }}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-zinc-200 transition-all group-hover:border-violet-500/40 group-hover:bg-violet-600 group-hover:text-white"
+                  >
+                    <Sparkles className="size-3.5" />
+                    <span className="hidden sm:inline">Ver Detalhes</span>
+                  </Link>
+                )}
               </article>
             );
           })}
 
-          {/* Paginação do Histórico */}
+          {/* Paginação do Feed */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-white/[0.06] pt-4">
               <span className="text-xs text-zinc-400">

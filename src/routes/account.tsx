@@ -7,11 +7,13 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
 import {
   getMyComments,
+  getMyActivities,
   getProfile,
   getProfileFollowers,
   getProfileFollowing,
   updateProfile,
   type MyProfileComment,
+  type UserActivityItem,
   type ProfileUser,
   type UserProfile,
   type FollowRequestItem,
@@ -70,7 +72,7 @@ function AccountProfile() {
   const getTrackingFn = useServerFn(getMyAnimeTracking);
   const getFavoritesFn = useServerFn(getMyProfileFavorites);
   const getListsFn = useServerFn(getMyProfileLists);
-  const getHistoryFn = useServerFn(getMyWatchedEpisodes);
+  const getActivitiesFn = useServerFn(getMyActivities);
 
   // Estados principais do perfil
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -98,15 +100,18 @@ function AccountProfile() {
   // Listas Personalizadas
   const [lists, setLists] = useState<ProfileListSummary[]>([]);
 
-  // Histórico de Episódios
-  const [historyItems, setHistoryItems] = useState<WatchedEpisodeItem[]>([]);
-  const [historyTotal, setHistoryTotal] = useState(0);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historyTotalPages, setHistoryTotalPages] = useState(1);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  // Feed de Atividades Unificado (Etapa 11)
+  const [activityItems, setActivityItems] = useState<UserActivityItem[]>([]);
+  const [activityTotal, setActivityTotal] = useState(0);
+  const [activityPage, setActivityPage] = useState(1);
+  const [activityTotalPages, setActivityTotalPages] = useState(1);
+  const [activityLoading, setActivityLoading] = useState(true);
 
-  // Comentários da Comunidade
+  // Comentários da Comunidade (Paginados)
   const [comments, setComments] = useState<MyProfileComment[]>([]);
+  const [commentsTotal, setCommentsTotal] = useState(0);
+  const [commentsPage, setCommentsPage] = useState(1);
+  const [commentsTotalPages, setCommentsTotalPages] = useState(1);
   const [commentsLoading, setCommentsLoading] = useState(true);
 
   // Modais
@@ -143,7 +148,7 @@ function AccountProfile() {
     };
   }, [user?.id]);
 
-  // Carregamento de acompanhamento, favoritos, listas, histórico e comentários
+  // Carregamento de acompanhamento, favoritos, listas, atividades e comentários
   useEffect(() => {
     if (!user?.id) return;
     let active = true;
@@ -181,27 +186,30 @@ function AccountProfile() {
       })
       .catch((err) => console.warn("Erro ao buscar listas:", err));
 
-    // 4. Histórico
-    setHistoryLoading(true);
-    void getHistoryFn({ data: { page: 1, limit: 15 } })
+    // 4. Feed de Atividades Unificado (Etapa 11)
+    setActivityLoading(true);
+    void getActivitiesFn({ data: { page: 1, limit: 15 } })
       .then((res) => {
         if (!active) return;
-        setHistoryItems(res.items);
-        setHistoryTotal(res.total);
-        setHistoryPage(res.page);
-        setHistoryTotalPages(res.totalPages);
+        setActivityItems(res.items);
+        setActivityTotal(res.total);
+        setActivityPage(res.page);
+        setActivityTotalPages(res.totalPages);
       })
-      .catch((err) => console.warn("Erro ao buscar histórico:", err))
+      .catch((err) => console.warn("Erro ao buscar atividades:", err))
       .finally(() => {
-        if (active) setHistoryLoading(false);
+        if (active) setActivityLoading(false);
       });
 
-    // 5. Comentários
+    // 5. Comentários (Paginados)
     setCommentsLoading(true);
-    void getCommentsFn()
+    void getCommentsFn({ data: { page: 1, limit: 15 } })
       .then((res) => {
         if (!active) return;
-        setComments(res);
+        setComments(res.items);
+        setCommentsTotal(res.total);
+        setCommentsPage(res.page);
+        setCommentsTotalPages(res.totalPages);
       })
       .catch((err) => console.warn("Erro ao buscar comentários:", err))
       .finally(() => {
@@ -221,23 +229,64 @@ function AccountProfile() {
     };
   }, [user?.id]);
 
-  // Troca de página no histórico
-  const handleHistoryPageChange = async (newPage: number) => {
-    if (newPage < 1 || newPage > historyTotalPages) return;
-    setHistoryLoading(true);
+  // Troca de página no feed de atividades
+  const handleActivityPageChange = async (newPage: number) => {
+    if (newPage < 1 || newPage > activityTotalPages) return;
+    setActivityLoading(true);
     try {
-      const res = await getHistoryFn({
+      const res = await getActivitiesFn({
         data: { page: newPage, limit: 15 },
       });
-      setHistoryItems(res.items);
-      setHistoryTotal(res.total);
-      setHistoryPage(res.page);
-      setHistoryTotalPages(res.totalPages);
+      setActivityItems(res.items);
+      setActivityTotal(res.total);
+      setActivityPage(res.page);
+      setActivityTotalPages(res.totalPages);
     } catch (err) {
-      console.warn("Erro ao mudar página do histórico:", err);
+      console.warn("Erro ao mudar página de atividades:", err);
     } finally {
-      setHistoryLoading(false);
+      setActivityLoading(false);
     }
+  };
+
+  // Troca de página nos comentários
+  const handleCommentsPageChange = async (newPage: number) => {
+    if (newPage < 1 || newPage > commentsTotalPages) return;
+    setCommentsLoading(true);
+    try {
+      const res = await getCommentsFn({
+        data: { page: newPage, limit: 15 },
+      });
+      setComments(res.items);
+      setCommentsTotal(res.total);
+      setCommentsPage(res.page);
+      setCommentsTotalPages(res.totalPages);
+    } catch (err) {
+      console.warn("Erro ao mudar página de comentários:", err);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const handleCommentDeleted = (commentId: string) => {
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    setCommentsTotal((prev) => Math.max(0, prev - 1));
+    setProfile((prev) =>
+      prev ? { ...prev, commentCount: Math.max(0, prev.commentCount - 1) } : prev,
+    );
+  };
+
+  const handleCommentUpdated = (
+    commentId: string,
+    newContent: string,
+    isSpoiler: boolean,
+  ) => {
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? { ...c, content: newContent, isSpoiler, updatedAt: new Date().toISOString() }
+          : c,
+      ),
+    );
   };
 
   // Abrir conexões (Seguidores / Seguindo / Solicitações)
@@ -442,8 +491,8 @@ function AccountProfile() {
           onChangeSpace={setActiveSpace}
           counts={{
             animes: trackingItems.length,
-            comments: commentCount,
-            activity: historyTotal,
+            comments: commentsTotal,
+            activity: activityTotal,
           }}
         />
 
@@ -470,6 +519,13 @@ function AccountProfile() {
           {activeSpace === "comments" && (
             <ProfileCommentsSpace
               comments={comments}
+              total={commentsTotal}
+              page={commentsPage}
+              totalPages={commentsTotalPages}
+              onPageChange={(p) => void handleCommentsPageChange(p)}
+              onCommentDeleted={handleCommentDeleted}
+              onCommentUpdated={handleCommentUpdated}
+              isOwner={true}
               loading={commentsLoading}
             />
           )}
@@ -486,15 +542,16 @@ function AccountProfile() {
             />
           )}
 
-          {/* Aba 5: Atividade (Histórico de episódios assistidos) */}
+          {/* Aba 5: Atividade (Feed unificado da Etapa 11) */}
           {activeSpace === "activity" && (
             <ProfileHistorySpace
-              items={historyItems}
-              total={historyTotal}
-              page={historyPage}
-              totalPages={historyTotalPages}
-              onPageChange={(p) => void handleHistoryPageChange(p)}
-              loading={historyLoading}
+              items={activityItems}
+              total={activityTotal}
+              page={activityPage}
+              totalPages={activityTotalPages}
+              onPageChange={(p) => void handleActivityPageChange(p)}
+              isOwner={true}
+              loading={activityLoading}
             />
           )}
         </section>

@@ -264,6 +264,7 @@ export const Route = createFileRoute("/api/comments/like")({
                   }
                 } else {
                   const notificationId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+                  const dedupKey = `comment_like:${commentAuthorId}:${commentId}`;
                   await sql.query(
                     `
                       insert into "notification" (
@@ -276,7 +277,8 @@ export const Route = createFileRoute("/api/comments/like")({
                         "createdAt",
                         "commentId",
                         "animeId",
-                        "episodeId"
+                        "episodeId",
+                        "dedupKey"
                       )
                       values (
                         $1,
@@ -288,8 +290,17 @@ export const Route = createFileRoute("/api/comments/like")({
                         (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
                         $5,
                         $6,
-                        $7
+                        $7,
+                        $8
                       )
+                      on conflict ("dedupKey") do update
+                      set
+                        "actorId" = excluded."actorId",
+                        "message" = excluded."message",
+                        "read" = false,
+                        "createdAt" = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+                        "animeId" = coalesce(excluded."animeId", "notification"."animeId"),
+                        "episodeId" = coalesce(excluded."episodeId", "notification"."episodeId")
                     `,
                     [
                       notificationId,
@@ -299,6 +310,7 @@ export const Route = createFileRoute("/api/comments/like")({
                       commentId,
                       targetAnimeId,
                       targetEpisodeId,
+                      dedupKey,
                     ],
                   );
                 }

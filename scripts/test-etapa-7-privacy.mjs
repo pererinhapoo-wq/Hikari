@@ -1,11 +1,26 @@
 // scripts/test-etapa-7-privacy.mjs
-import assert from "node:assert/strict";
-import { z } from "zod";
-import { getSql, dbSource } from "../src/lib/db.ts";
-import {
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+if (
+  !process.execArgv.some((a) => a.includes("tsx")) &&
+  !process.env._ETAPA7_TSX
+) {
+  const res = spawnSync(
+    process.execPath,
+    ["--import", "tsx", fileURLToPath(import.meta.url)],
+    { stdio: "inherit", env: { ...process.env, _ETAPA7_TSX: "1" } },
+  );
+  process.exit(res.status ?? 0);
+}
+
+const assert = (await import("node:assert/strict")).default;
+const { z } = await import("zod");
+const { getSql, dbSource } = await import("../src/lib/db.ts");
+const {
   evaluateUserPrivacy,
   updateProfileInputSchema,
-} from "../src/lib/profile.functions.ts";
+} = await import("../src/lib/profile.functions.ts");
 
 async function runTests() {
   console.log("=== INICIANDO SUÍTE COMPLETA DE TESTES DA ETAPA 7: PRIVACIDADE DO PERFIL ===");

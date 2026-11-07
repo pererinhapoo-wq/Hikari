@@ -822,8 +822,9 @@ export const Route = createFileRoute("/api/comments")({
 
                   for (const targetUserId of targetUserIds) {
                     const notificationId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+                    const dedupKey = `comment:${targetUserId}:${apiUser.id}:${commentId}`;
                     valuePlaceholders.push(
-                      `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, 'comment', $${paramIndex + 3}, false, (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'), $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6})`,
+                      `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, 'comment', $${paramIndex + 3}, false, (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'), $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7})`,
                     );
                     insertParams.push(
                       notificationId,
@@ -833,8 +834,9 @@ export const Route = createFileRoute("/api/comments")({
                       commentId,
                       animeId,
                       episodeId,
+                      dedupKey,
                     );
-                    paramIndex += 7;
+                    paramIndex += 8;
                   }
 
                   await sql.query(
@@ -849,9 +851,11 @@ export const Route = createFileRoute("/api/comments")({
                         "createdAt",
                         "commentId",
                         "animeId",
-                        "episodeId"
+                        "episodeId",
+                        "dedupKey"
                       )
                       values ${valuePlaceholders.join(", ")}
+                      on conflict ("dedupKey") do nothing
                     `,
                     insertParams,
                   );

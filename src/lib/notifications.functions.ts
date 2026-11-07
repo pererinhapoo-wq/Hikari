@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { authMiddleware } from "@/lib/auth/middleware";
-import { getSql } from "@/lib/db";
+import { getSql, type Sql } from "@/lib/db";
 
 export type NotificationType =
   | "new_follower"
@@ -404,7 +404,7 @@ const notificationLocks = new Map<string, Promise<unknown>>();
  * 4. Mutex em memória (notificationLocks) como otimização local adicional.
  */
 export async function executeCreateNotification(
-  sql: any,
+  sql: Sql,
   params: CreateNotificationParams,
 ): Promise<{ success: boolean; notificationId?: string; reason?: string }> {
   // 1. Evitar notificações para ações do próprio usuário logo no início
@@ -439,7 +439,7 @@ export async function executeCreateNotification(
 }
 
 async function executeCreateNotificationInternal(
-  sql: any,
+  sql: Sql,
   params: CreateNotificationParams,
   dedupKey: string,
 ): Promise<{ success: boolean; notificationId?: string; reason?: string }> {
@@ -514,7 +514,7 @@ async function executeCreateNotificationInternal(
  * Consulta lista de notificações do usuário com suporte a paginação e isolamento.
  */
 export async function executeGetNotifications(
-  sql: any,
+  sql: Sql,
   userId: string,
   params?: GetNotificationsParams,
 ): Promise<GetNotificationsResult> {
@@ -710,7 +710,7 @@ export async function executeGetNotifications(
 
   // Carrega avatares de likes
   const likeCommentIds: string[] = Array.from(
-    new Set(
+    new Set<string>(
       items
         .filter((r: RawNotificationRow) => r.type === "comment_like" && Boolean(r.commentId))
         .map((r: RawNotificationRow) => String(r.commentId)),
@@ -763,7 +763,7 @@ export async function executeGetNotifications(
 
   // Resolve metadados de anime
   const distinctAnimeIds: string[] = Array.from(
-    new Set(
+    new Set<string>(
       items
         .map((r: RawNotificationRow) => (typeof r.animeId === "string" ? r.animeId.trim() : ""))
         .filter((id): id is string => Boolean(id)),
@@ -822,7 +822,7 @@ export async function executeGetNotifications(
  * Consulta quantidade de notificações não lidas.
  */
 export async function executeGetUnreadNotificationCount(
-  sql: any,
+  sql: Sql,
   userId: string,
 ): Promise<{ unreadCount: number }> {
   const rows = await sql<{ count: string }>`
@@ -867,7 +867,7 @@ export async function executeGetUnreadNotificationCount(
  * Marca uma notificação como lida com validação de titularidade.
  */
 export async function executeMarkNotificationAsRead(
-  sql: any,
+  sql: Sql,
   userId: string,
   notificationId: string,
 ): Promise<{ success: boolean }> {
@@ -886,7 +886,7 @@ export async function executeMarkNotificationAsRead(
  * Marca todas as notificações do usuário como lidas.
  */
 export async function executeMarkAllNotificationsAsRead(
-  sql: any,
+  sql: Sql,
   userId: string,
 ): Promise<{ success: boolean; updatedCount: number }> {
   const result = await sql`
@@ -903,7 +903,7 @@ export async function executeMarkAllNotificationsAsRead(
  * Exclui uma notificação individual com validação de titularidade.
  */
 export async function executeDeleteNotification(
-  sql: any,
+  sql: Sql,
   userId: string,
   notificationId: string,
 ): Promise<{ success: boolean }> {
@@ -920,7 +920,7 @@ export async function executeDeleteNotification(
  * Exclui todas as notificações do usuário autenticado.
  */
 export async function executeDeleteAllNotifications(
-  sql: any,
+  sql: Sql,
   userId: string,
 ): Promise<{ success: boolean; deletedCount: number }> {
   const result = await sql`

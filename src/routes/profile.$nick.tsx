@@ -12,7 +12,11 @@ import {
   ArrowLeft,
   BadgeCheck,
   Check,
+  Activity,
+  ChevronLeft,
+  ChevronRight,
   Clock,
+  Film,
   Heart,
   Lock,
   MessageCircle,
@@ -24,15 +28,19 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ProfileHistorySpace } from "@/components/profile/ProfileHistorySpace";
 
 import {
   blockUser,
   cancelFollowRequest,
   followUser,
+  getPublicActivities,
   getPublicComments,
   getPublicProfile,
   unblockUser,
   unfollowUser,
+  type PublicProfileComment,
+  type UserActivityItem,
 } from "@/lib/profile.functions";
 
 export const Route =
@@ -42,9 +50,7 @@ export const Route =
     component: PublicProfile,
   });
 
-type PublicComment = Awaited<
-  ReturnType<typeof getPublicComments>
->[number];
+type PublicComment = PublicProfileComment;
 
 async function getProfileBackgroundColor(
   imageUrl: string,
@@ -161,6 +167,9 @@ function PublicProfile() {
   const getPublicCommentsFn =
     useServerFn(getPublicComments);
 
+  const getPublicActivitiesFn =
+    useServerFn(getPublicActivities);
+
   const [profile, setProfile] =
     useState<
       Awaited<
@@ -170,8 +179,32 @@ function PublicProfile() {
       > | null
     >(null);
 
+  const [activeTab, setActiveTab] =
+    useState<"comments" | "activity">("comments");
+
+  // Comentários paginados
   const [comments, setComments] =
     useState<PublicComment[]>([]);
+  const [commentsTotal, setCommentsTotal] =
+    useState(0);
+  const [commentsPage, setCommentsPage] =
+    useState(1);
+  const [commentsTotalPages, setCommentsTotalPages] =
+    useState(1);
+
+  // Atividades paginadas
+  const [activities, setActivities] =
+    useState<UserActivityItem[]>([]);
+  const [activityTotal, setActivityTotal] =
+    useState(0);
+  const [activityPage, setActivityPage] =
+    useState(1);
+  const [activityTotalPages, setActivityTotalPages] =
+    useState(1);
+  const [activityLoading, setActivityLoading] =
+    useState(false);
+  const [activityError, setActivityError] =
+    useState("");
 
   const [loading, setLoading] =
     useState(true);
@@ -223,7 +256,9 @@ function PublicProfile() {
     setLoading(true);
     setError("");
     setCommentsError("");
+    setActivityError("");
     setComments([]);
+    setActivities([]);
     setProfileBgColor("#030817");
     setFeedbackMsg(null);
 
@@ -244,6 +279,13 @@ function PublicProfile() {
         setIsBlockedByMe(Boolean(result.isBlockedByMe));
         setIsBlockedByTarget(Boolean(result.isBlockedByTarget));
 
+        // Define aba padrão: se comentários forem privados mas atividade for pública, foca atividade
+        if (!result.canViewComments && result.canViewHistory) {
+          setActiveTab("activity");
+        } else {
+          setActiveTab("comments");
+        }
+
         if (result.image) {
           const color = await getProfileBackgroundColor(result.image);
           if (active && color) {
@@ -251,26 +293,26 @@ function PublicProfile() {
           }
         }
 
+        // Carrega comentários se permitido
         if (result.canViewComments && result.canViewContent) {
           setCommentsLoading(true);
 
           try {
-            const publicComments = await getPublicCommentsFn({
+            const res = await getPublicCommentsFn({
               data: {
                 userId: result.userId,
+                page: 1,
+                limit: 15,
               },
             });
 
-            if (!active) {
-              return;
-            }
-
-            setComments(publicComments);
+            if (!active) return;
+            setComments(res.items);
+            setCommentsTotal(res.total);
+            setCommentsPage(res.page);
+            setCommentsTotalPages(res.totalPages);
           } catch {
-            if (!active) {
-              return;
-            }
-
+            if (!active) return;
             setComments([]);
             setCommentsError("Não foi possível carregar os comentários.");
           } finally {
@@ -281,6 +323,38 @@ function PublicProfile() {
         } else {
           setComments([]);
           setCommentsLoading(false);
+        }
+
+        // Carrega atividades se permitido
+        if (result.canViewHistory && result.canViewContent) {
+          setActivityLoading(true);
+
+          try {
+            const actRes = await getPublicActivitiesFn({
+              data: {
+                userId: result.userId,
+                page: 1,
+                limit: 15,
+              },
+            });
+
+            if (!active) return;
+            setActivities(actRes.items);
+            setActivityTotal(actRes.total);
+            setActivityPage(actRes.page);
+            setActivityTotalPages(actRes.totalPages);
+          } catch {
+            if (!active) return;
+            setActivities([]);
+            setActivityError("Não foi possível carregar a atividade.");
+          } finally {
+            if (active) {
+              setActivityLoading(false);
+            }
+          }
+        } else {
+          setActivities([]);
+          setActivityLoading(false);
         }
       })
       .catch((err) => {
@@ -305,6 +379,42 @@ function PublicProfile() {
       active = false;
     };
   }, [nick]);
+
+  const handleCommentsPageChange = async (newPage: number) => {
+    if (!profile || newPage < 1 || newPage > commentsTotalPages) return;
+    setCommentsLoading(true);
+    try {
+      const res = await getPublicCommentsFn({
+        data: { userId: profile.userId, page: newPage, limit: 15 },
+      });
+      setComments(res.items);
+      setCommentsTotal(res.total);
+      setCommentsPage(res.page);
+      setCommentsTotalPages(res.totalPages);
+    } catch (err) {
+      setCommentsError("Não foi possível carregar a página de comentários.");
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const handleActivityPageChange = async (newPage: number) => {
+    if (!profile || newPage < 1 || newPage > activityTotalPages) return;
+    setActivityLoading(true);
+    try {
+      const res = await getPublicActivitiesFn({
+        data: { userId: profile.userId, page: newPage, limit: 15 },
+      });
+      setActivities(res.items);
+      setActivityTotal(res.total);
+      setActivityPage(res.page);
+      setActivityTotalPages(res.totalPages);
+    } catch (err) {
+      setActivityError("Não foi possível carregar a página de atividades.");
+    } finally {
+      setActivityLoading(false);
+    }
+  };
 
   async function handleFollowAction() {
     if (!profile) return;
@@ -857,62 +967,150 @@ function PublicProfile() {
             </div>
           </section>
         ) : (
-          <section className="mt-6 px-5 sm:px-8 lg:px-10">
-            <div className="mb-4 flex items-center gap-2">
-              <MessageCircle className="size-5 text-[#b2bfff]" />
+          <section className="mt-8 px-5 sm:px-8 lg:px-10">
+            {/* Abas Públicas: Comentários e Atividade */}
+            <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3">
+              <button
+                type="button"
+                onClick={() => setActiveTab("comments")}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                  activeTab === "comments"
+                    ? "bg-violet-600 text-white shadow-sm"
+                    : "text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+                }`}
+              >
+                <MessageCircle className="size-4" />
+                <span>Comentários</span>
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs tabular-nums text-zinc-300">
+                  {profile.canViewComments ? commentsTotal : "—"}
+                </span>
+              </button>
 
-              <h2 className="text-xl font-semibold">
-                Comentários de{" "}
-                {profile.nick}
-              </h2>
+              <button
+                type="button"
+                onClick={() => setActiveTab("activity")}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                  activeTab === "activity"
+                    ? "bg-violet-600 text-white shadow-sm"
+                    : "text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+                }`}
+              >
+                <Activity className="size-4" />
+                <span>Atividade</span>
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs tabular-nums text-zinc-300">
+                  {profile.canViewHistory ? activityTotal : "—"}
+                </span>
+              </button>
             </div>
 
-            {!profile.canViewComments ? (
-              <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
-                <Lock className="mx-auto size-8 text-zinc-500" />
-                <p className="mt-3 text-sm text-zinc-400 font-medium">
-                  Os comentários deste usuário são privados.
-                </p>
-              </div>
-            ) : (
-              <>
-                {commentsError && (
-                  <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                    {commentsError}
-                  </div>
-                )}
-
-                {commentsLoading ? (
-                  <div className="space-y-3">
-                    <CommentSkeleton />
-                    <CommentSkeleton />
-                  </div>
-                ) : comments.length === 0 ? (
+            {/* Conteúdo da Aba Comentários */}
+            {activeTab === "comments" && (
+              <div className="mt-5 space-y-4">
+                {!profile.canViewComments ? (
                   <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
-                    <MessageCircle className="mx-auto size-9 text-[#8190ad]" />
-
-                    <p className="mt-3 text-sm text-[#b5c0d5]">
-                      Esse usuário ainda não fez comentários.
+                    <Lock className="mx-auto size-8 text-zinc-500" />
+                    <p className="mt-3 text-sm text-zinc-400 font-medium">
+                      Os comentários deste usuário são privados.
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {comments.map(
-                      (comment) => (
-                        <PublicCommentCard
-                          key={comment.id}
-                          comment={comment}
-                          onLike={() =>
-                            void toggleCommentLike(
-                              comment.id,
-                            )
-                          }
-                        />
-                      ),
+                  <>
+                    {commentsError && (
+                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                        {commentsError}
+                      </div>
                     )}
-                  </div>
+
+                    {commentsLoading ? (
+                      <div className="space-y-3">
+                        <CommentSkeleton />
+                        <CommentSkeleton />
+                      </div>
+                    ) : comments.length === 0 ? (
+                      <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
+                        <MessageCircle className="mx-auto size-9 text-[#8190ad]" />
+                        <p className="mt-3 text-sm text-[#b5c0d5]">
+                          Esse usuário ainda não fez comentários.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {comments.map((comment) => (
+                          <PublicCommentCard
+                            key={comment.id}
+                            comment={comment}
+                            onLike={() => void toggleCommentLike(comment.id)}
+                          />
+                        ))}
+
+                        {/* Paginação dos comentários */}
+                        {commentsTotalPages > 1 && (
+                          <div className="flex items-center justify-between border-t border-white/[0.06] pt-4">
+                            <span className="text-xs text-zinc-400">
+                              Página <strong className="text-white">{commentsPage}</strong> de{" "}
+                              <strong className="text-white">{commentsTotalPages}</strong>
+                            </span>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleCommentsPageChange(commentsPage - 1)}
+                                disabled={commentsPage <= 1}
+                                className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-all hover:bg-white/[0.08] disabled:opacity-40 disabled:pointer-events-none"
+                              >
+                                <ChevronLeft className="size-4" />
+                                <span>Anterior</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => void handleCommentsPageChange(commentsPage + 1)}
+                                disabled={commentsPage >= commentsTotalPages}
+                                className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-all hover:bg-white/[0.08] disabled:opacity-40 disabled:pointer-events-none"
+                              >
+                                <span>Próxima</span>
+                                <ChevronRight className="size-4" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
-              </>
+              </div>
+            )}
+
+            {/* Conteúdo da Aba Atividade */}
+            {activeTab === "activity" && (
+              <div className="mt-5 space-y-4">
+                {!profile.canViewHistory ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
+                    <Lock className="mx-auto size-8 text-zinc-500" />
+                    <p className="mt-3 text-sm text-zinc-400 font-medium">
+                      A atividade deste usuário é privada.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {activityError && (
+                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                        {activityError}
+                      </div>
+                    )}
+
+                    <ProfileHistorySpace
+                      items={activities}
+                      total={activityTotal}
+                      page={activityPage}
+                      totalPages={activityTotalPages}
+                      onPageChange={(p) => void handleActivityPageChange(p)}
+                      loading={activityLoading}
+                      isOwner={false}
+                    />
+                  </>
+                )}
+              </div>
             )}
           </section>
         )}
@@ -996,24 +1194,51 @@ function PublicCommentCard({
   onLike: () => void;
 }) {
   const avatarLetter =
-    comment.userName
-      ?.charAt(0)
-      .toUpperCase() || "U";
+    comment.userName?.charAt(0).toUpperCase() || "U";
 
-  const createdAt =
-    new Date(
-      comment.createdAt,
-    ).toLocaleDateString(
-      "pt-BR",
-      {
+  const dateObj = new Date(comment.createdAt);
+  const fullDate = Number.isNaN(dateObj.getTime())
+    ? ""
+    : dateObj.toLocaleString("pt-BR", {
         day: "2-digit",
-        month: "2-digit",
+        month: "short",
         year: "numeric",
-      },
-    );
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+  const relativeDate = (() => {
+    if (Number.isNaN(dateObj.getTime())) return "";
+    const now = new Date();
+    const diffMs = now.getTime() - dateObj.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    if (diffSec < 60) return "Agora mesmo";
+    if (diffMin < 60) return `Há ${diffMin} ${diffMin === 1 ? "minuto" : "minutos"}`;
+    if (diffHour < 24) return `Há ${diffHour} ${diffHour === 1 ? "hora" : "horas"}`;
+    if (diffDay === 1) return "Ontem";
+    if (diffDay < 30) return `Há ${diffDay} ${diffDay === 1 ? "dia" : "dias"}`;
+    return dateObj.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  })();
+
+  const epNum =
+    comment.episodeId.match(/ep-(?:\d+-)?(\d+)$/i)?.[1] ||
+    comment.episodeId.match(/(\d+)$/)?.[1] ||
+    "1";
+
+  const hasAnimeInfo = Boolean(
+    comment.animeTitle && comment.animeTitle !== "Anime indisponível",
+  );
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5">
+    <article className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5 transition-all hover:border-violet-500/30">
       <div className="flex items-start gap-3">
         <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-[#15284b] text-sm font-semibold text-white">
           {comment.userImage ? (
@@ -1030,33 +1255,63 @@ function PublicCommentCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-white">
-              {comment.userName ||
-                "Usuário"}
+              {comment.userName || "Usuário"}
             </span>
 
-            <span className="text-xs text-[#aab5c9]">
-              {createdAt}
+            <span
+              className="text-xs text-[#aab5c9] cursor-default"
+              title={fullDate}
+            >
+              {relativeDate}
             </span>
           </div>
 
-          {(() => {
-            const epNum = comment.episodeId.match(/ep-(?:\d+-)?(\d+)$/i)?.[1] || comment.episodeId.match(/(\d+)$/)?.[1] || "1";
-            return (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {comment.animeCover && (
+              <img
+                src={comment.animeCover}
+                alt=""
+                className="size-5 rounded object-cover"
+              />
+            )}
+
+            {hasAnimeInfo ? (
               <Link
-                to="/watch/$id/$ep"
-                params={{
-                  id: comment.animeId,
-                  ep: `ep-${epNum}`,
-                }}
-                search={{
-                  comment: comment.id,
-                }}
-                className="mt-1 inline-flex text-xs text-[#b2bfff] transition hover:text-white"
+                to="/anime/$id"
+                params={{ id: comment.animeId }}
+                className="text-xs font-semibold text-zinc-200 hover:text-violet-300 transition-colors"
+                title={comment.animeTitle}
               >
-                Episódio {epNum}
+                {comment.animeTitle}
               </Link>
-            );
-          })()}
+            ) : (
+              <span className="text-xs text-zinc-500 italic">
+                Conteúdo arquivado ou indisponível
+              </span>
+            )}
+
+            <span className="text-zinc-600">•</span>
+
+            <Link
+              to="/watch/$id/$ep"
+              params={{
+                id: comment.animeId,
+                ep: `ep-${epNum}`,
+              }}
+              search={{
+                comment: comment.id,
+              }}
+              className="inline-flex text-xs font-medium text-violet-300 transition hover:text-white"
+            >
+              Episódio {epNum}
+            </Link>
+
+            {comment.parentId && (
+              <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-300">
+                Resposta
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1088,35 +1343,25 @@ function PublicCommentCard({
         >
           <Heart
             className="size-4"
-            fill={
-              comment.liked
-                ? "currentColor"
-                : "none"
-            }
+            fill={comment.liked ? "currentColor" : "none"}
           />
-
           {comment.likes}
         </button>
 
-        {(() => {
-          const epNum = comment.episodeId.match(/ep-(?:\d+-)?(\d+)$/i)?.[1] || comment.episodeId.match(/(\d+)$/)?.[1] || "1";
-          return (
-            <Link
-              to="/watch/$id/$ep"
-              params={{
-                id: comment.animeId,
-                ep: `ep-${epNum}`,
-              }}
-              search={{
-                comment: comment.id,
-              }}
-              className="inline-flex items-center gap-2 text-sm text-[#aab5c9] transition hover:text-white"
-            >
-              <MessageCircle className="size-4" />
-              Comentário
-            </Link>
-          );
-        })()}
+        <Link
+          to="/watch/$id/$ep"
+          params={{
+            id: comment.animeId,
+            ep: `ep-${epNum}`,
+          }}
+          search={{
+            comment: comment.id,
+          }}
+          className="inline-flex items-center gap-2 text-sm text-[#aab5c9] transition hover:text-white"
+        >
+          <MessageCircle className="size-4" />
+          Ver no episódio
+        </Link>
       </div>
     </article>
   );
