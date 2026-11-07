@@ -1,19 +1,6 @@
-import {
-  createFileRoute,
-  Link,
-} from "@tanstack/react-router";
-
-import {
-  ArrowLeft,
-  Bell,
-} from "lucide-react";
-
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { ArrowLeft, Bell, CheckCheck, Loader2, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   NotificationItemCard,
@@ -22,130 +9,120 @@ import {
 import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useHikariStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute(
-  "/notifications",
-)({
+export const Route = createFileRoute("/notifications")({
   component: NotificationsPage,
 });
 
+const PAGE_SIZE = 20;
+
 function NotificationsPage() {
-  const { user, isPending } =
-    useCurrentUserState();
+  const { user, isPending } = useCurrentUserState();
+  const localAnimes = useHikariStore((s) => s.animes);
 
-  const localAnimes =
-    useHikariStore((s) => s.animes);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
 
-  const [
-    notifications,
-    setNotifications,
-  ] = useState<
-    NotificationItem[]
-  >([]);
+  const filterRef = useRef<"all" | "unread">(filter);
+  filterRef.current = filter;
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const offsetRef = useRef(0);
 
-  const notificationsRef = useRef<NotificationItem[]>([]);
-  notificationsRef.current = notifications;
+  const loadNotifications = useCallback(
+    async (
+      offsetToFetch = 0,
+      append = false,
+      showSpinner = false,
+      forcedFilter?: "all" | "unread",
+    ) => {
+      if (!user) {
+        setNotifications([]);
+        setLoading(false);
+        return;
+      }
 
-  const pendingReadTokensRef = useRef<Map<string, string>>(new Map());
-
-  const reconcileNotifications = useCallback(
-    (rawList: NotificationItem[]) => {
-      return rawList.map((item) => {
-        const pendingCreatedAt = pendingReadTokensRef.current.get(item.id);
-        if (pendingCreatedAt !== undefined) {
-          if (item.read) {
-            pendingReadTokensRef.current.delete(item.id);
-            return item;
-          }
-          if (pendingCreatedAt === item.createdAt) {
-            return { ...item, read: true };
-          }
-          pendingReadTokensRef.current.delete(item.id);
+      if (showSpinner) {
+        if (append) {
+          setLoadingMore(true);
+        } else {
+          setLoading(true);
         }
-        return item;
-      });
+      }
+
+      try {
+        const activeFilter = forcedFilter ?? filterRef.current;
+        const bearer = getBearerToken();
+        const params = new URLSearchParams({
+          limit: String(PAGE_SIZE),
+          offset: String(offsetToFetch),
+          filter: activeFilter,
+        });
+
+        const response = await fetch(`/api/notifications?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+          headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+        });
+
+        if (!response.ok) return;
+
+        const data = (await response.json()) as {
+          notifications?: NotificationItem[];
+          unreadCount?: number;
+          totalCount?: number;
+          hasMore?: boolean;
+        };
+
+        const incomingList = data.notifications ?? [];
+        if (append) {
+          setNotifications((prev) => {
+            const seen = new Set(prev.map((i) => i.id));
+            const fresh = incomingList.filter((i) => !seen.has(i.id));
+            return [...prev, ...fresh];
+          });
+        } else {
+          setNotifications(incomingList);
+        }
+
+        offsetRef.current = offsetToFetch;
+        setHasMore(Boolean(data.hasMore));
+        setUnreadCount(Number(data.unreadCount ?? 0) || 0);
+        setTotalCount(Number(data.totalCount ?? 0) || 0);
+      } catch {
+        if (!append) {
+          setNotifications([]);
+        }
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     },
-    [],
+    [user],
   );
 
-  const userId = user?.id ?? null;
-
   useEffect(() => {
-    if (isPending) {
-      return;
-    }
-
-    if (!userId) {
-      pendingReadTokensRef.current.clear();
+    if (isPending) return;
+    if (!user) {
       setNotifications([]);
       setLoading(false);
       return;
     }
 
-    let cancelled = false;
-
-    const loadNotifications =
-      async (showSpinner = false) => {
-        if (showSpinner) {
-          setLoading(true);
-        }
-
-        try {
-          const bearer = getBearerToken();
-          const response =
-            await fetch(
-              "/api/notifications",
-              {
-                method: "GET",
-                credentials: "include",
-                headers: bearer
-                  ? { Authorization: `Bearer ${bearer}` }
-                  : undefined,
-              },
-            );
-
-          if (!response.ok) {
-            return;
-          }
-
-          const data =
-            (await response.json()) as {
-              notifications?: NotificationItem[];
-            };
-
-          if (cancelled) {
-            return;
-          }
-
-          setNotifications(
-            reconcileNotifications(data.notifications ?? []),
-          );
-        } catch {
-          if (!cancelled && showSpinner) {
-            setNotifications([]);
-          }
-        } finally {
-          if (!cancelled) {
-            setLoading(false);
-          }
-        }
-      };
-
-    void loadNotifications(true);
+    offsetRef.current = 0;
+    void loadNotifications(0, false, true, filter);
 
     const handleSync = () => {
-      if (
-        typeof document !== "undefined" &&
-        document.visibilityState === "hidden"
-      ) {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return;
       }
-      void loadNotifications(false);
+      void loadNotifications(0, false, false);
     };
 
     window.addEventListener("focus", handleSync);
@@ -153,178 +130,341 @@ function NotificationsPage() {
     window.addEventListener("hikari:notifications-updated", handleSync);
 
     return () => {
-      cancelled = true;
       window.removeEventListener("focus", handleSync);
       document.removeEventListener("visibilitychange", handleSync);
       window.removeEventListener("hikari:notifications-updated", handleSync);
     };
-  }, [userId, isPending, reconcileNotifications]);
+  }, [user, isPending, filter, loadNotifications]);
 
-  const markNotificationsAsRead = useCallback(
-    async (ids: string[]) => {
-      if (!user || ids.length === 0) {
-        return;
-      }
+  const handleFilterChange = (newFilter: "all" | "unread") => {
+    if (filter === newFilter) return;
+    setFilter(newFilter);
+    offsetRef.current = 0;
+    setNotifications([]);
+    void loadNotifications(0, false, true, newFilter);
+  };
 
-      const requestedSet = new Set(ids);
-      const targets = notificationsRef.current.filter(
-        (item) =>
-          requestedSet.has(item.id) &&
-          !item.read &&
-          pendingReadTokensRef.current.get(item.id) !== item.createdAt,
-      );
+  const handleLoadMore = () => {
+    if (loadingMore || !hasMore) return;
+    const nextOffset = notifications.length;
+    void loadNotifications(nextOffset, true, true);
+  };
 
-      if (targets.length === 0) {
-        return;
-      }
+  const handleMarkAsRead = async (id: string) => {
+    if (!user) return;
 
-      const targetIdSet = new Set<string>();
-      for (const item of targets) {
-        targetIdSet.add(item.id);
-        pendingReadTokensRef.current.set(item.id, item.createdAt);
-      }
-      const targetIds = Array.from(targetIdSet);
+    setNotifications((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, read: true } : item)),
+    );
+    setUnreadCount((c) => Math.max(0, c - 1));
 
-      setNotifications((current) =>
-        current.map((notification) =>
-          targetIdSet.has(notification.id)
-            ? { ...notification, read: true }
-            : notification,
-        ),
-      );
+    try {
+      const bearer = getBearerToken();
+      const response = await fetch("/api/notifications", {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        },
+        body: JSON.stringify({ id }),
+      });
 
-      try {
-        const bearer = getBearerToken();
-        const response = await fetch(
-          "/api/notifications",
-          {
-            method: "PATCH",
-            credentials: "include",
-            headers: {
-              "Content-Type":
-                "application/json",
-              ...(bearer
-                ? { Authorization: `Bearer ${bearer}` }
-                : {}),
-            },
-            body: JSON.stringify({
-              ids: targetIds,
-            }),
-          },
-        );
-
-        for (const id of targetIds) {
-          pendingReadTokensRef.current.delete(id);
+      if (response.ok) {
+        const data = (await response.json()) as { unreadCount?: number };
+        if (typeof data.unreadCount === "number") {
+          setUnreadCount(data.unreadCount);
         }
-
-        if (response.ok) {
-          window.dispatchEvent(
-            new CustomEvent("hikari:notifications-updated"),
-          );
-        }
-      } catch {
-        for (const id of targetIds) {
-          pendingReadTokensRef.current.delete(id);
-        }
+        window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
       }
-    },
-    [user],
-  );
+    } catch {
+      // Falha não-bloqueante
+    }
+  };
 
-  // Marca automaticamente como lidas as notificações exibidas nesta página
-  useEffect(() => {
-    if (loading || !user || notifications.length === 0) {
-      return;
+  const handleMarkAllAsRead = async () => {
+    if (!user || unreadCount === 0) return;
+
+    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+    setUnreadCount(0);
+
+    try {
+      const bearer = getBearerToken();
+      const response = await fetch("/api/notifications", {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        },
+        body: JSON.stringify({ all: true }),
+      });
+
+      if (response.ok) {
+        window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+      }
+    } catch {
+      void loadNotifications(0, false, false);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    if (!user) return;
+
+    const target = notifications.find((i) => i.id === id);
+    const wasUnread = target ? !target.read : false;
+
+    setNotifications((prev) => prev.filter((item) => item.id !== id));
+    setTotalCount((t) => Math.max(0, t - 1));
+    if (wasUnread) {
+      setUnreadCount((c) => Math.max(0, c - 1));
     }
 
-    if (
-      typeof document !== "undefined" &&
-      document.visibilityState === "hidden"
-    ) {
-      return;
-    }
+    try {
+      const bearer = getBearerToken();
+      const response = await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+      });
 
-    const displayedUnreadIds = notifications
-      .filter(
-        (item) =>
-          !item.read &&
-          pendingReadTokensRef.current.get(item.id) !== item.createdAt,
-      )
-      .map((item) => item.id);
-
-    if (displayedUnreadIds.length > 0) {
-      void markNotificationsAsRead(displayedUnreadIds);
+      if (response.ok) {
+        const data = (await response.json()) as { unreadCount?: number };
+        if (typeof data.unreadCount === "number") {
+          setUnreadCount(data.unreadCount);
+        }
+        window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+      }
+    } catch {
+      void loadNotifications(0, false, false);
     }
-  }, [loading, user, notifications, markNotificationsAsRead]);
+  };
+
+  const handleDeleteAllNotifications = async () => {
+    if (!user || notifications.length === 0) return;
+
+    setNotifications([]);
+    setUnreadCount(0);
+    setTotalCount(0);
+    setHasMore(false);
+    setConfirmClearAll(false);
+
+    try {
+      const bearer = getBearerToken();
+      const response = await fetch("/api/notifications?all=true", {
+        method: "DELETE",
+        credentials: "include",
+        headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+      });
+
+      if (response.ok) {
+        window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+      }
+    } catch {
+      void loadNotifications(0, false, false);
+    }
+  };
 
   return (
     <div className="mx-auto w-full max-w-3xl py-6 sm:py-8">
-
       {/* CABEÇALHO */}
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Link
+            to="/"
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-surface text-muted hover:border-[#a855f7]/40 hover:bg-elevated hover:text-fg motion-safe:transition-all motion-safe:duration-150 active:scale-95"
+            aria-label="Voltar para a página inicial"
+          >
+            <ArrowLeft className="size-5" />
+          </Link>
 
-        <Link
-          to="/"
-          className="flex size-10 shrink-0 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none"
-          aria-label="Voltar"
-        >
-          <ArrowLeft className="size-5" />
-        </Link>
-
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold sm:text-2xl">
-            Todas as notificações
-          </h1>
-
-          <p className="mt-1 text-sm text-muted">
-            Suas atividades recentes
-          </p>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold tracking-tight text-fg sm:text-2xl">
+              Notificações
+            </h1>
+            <p className="text-xs text-muted sm:text-sm">
+              Suas atividades recentes e interações
+            </p>
+          </div>
         </div>
 
+        {/* AÇÕES DE CABEÇALHO: MARCAR TODAS COMO LIDAS / LIMPAR */}
+        {user && notifications.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={handleMarkAllAsRead}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#a855f7]/30 bg-[#a855f7]/10 px-3 py-1.5 text-xs font-semibold text-[#c084fc] hover:border-[#a855f7]/60 hover:bg-[#a855f7]/20 transition-all active:scale-95"
+                title="Marcar todas as notificações como lidas"
+              >
+                <CheckCheck className="size-3.5" />
+                <span>Marcar todas lidas</span>
+              </button>
+            )}
+
+            {!confirmClearAll ? (
+              <button
+                type="button"
+                onClick={() => setConfirmClearAll(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-400 transition-all active:scale-95"
+                title="Excluir todas as notificações"
+              >
+                <Trash2 className="size-3.5" />
+                <span className="hidden sm:inline">Limpar todas</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-xs">
+                <span className="text-rose-300 font-medium">Limpar tudo?</span>
+                <button
+                  type="button"
+                  onClick={handleDeleteAllNotifications}
+                  className="rounded bg-rose-600 px-2 py-0.5 font-bold text-white hover:bg-rose-500 transition-colors"
+                >
+                  Sim
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearAll(false)}
+                  className="rounded border border-white/10 px-2 py-0.5 text-muted hover:text-fg transition-colors"
+                >
+                  Não
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* CARREGANDO */}
+      {/* ABAS DE FILTRO: TODAS / NÃO LIDAS */}
+      <div className="mb-4 flex items-center gap-2 border-b border-border/80 pb-2">
+        <button
+          type="button"
+          onClick={() => handleFilterChange("all")}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs sm:text-sm font-semibold transition-all",
+            filter === "all"
+              ? "bg-[#a855f7]/20 text-[#c084fc] shadow-[0_0_12px_rgba(168,85,247,0.2)]"
+              : "text-muted hover:bg-elevated hover:text-fg",
+          )}
+        >
+          <span>Todas</span>
+          {totalCount > 0 && (
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
+                filter === "all"
+                  ? "bg-[#a855f7] text-white"
+                  : "bg-surface text-muted border border-border",
+              )}
+            >
+              {totalCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleFilterChange("unread")}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs sm:text-sm font-semibold transition-all",
+            filter === "unread"
+              ? "bg-[#a855f7]/20 text-[#c084fc] shadow-[0_0_12px_rgba(168,85,247,0.2)]"
+              : "text-muted hover:bg-elevated hover:text-fg",
+          )}
+        >
+          <span>Não lidas</span>
+          {unreadCount > 0 && (
+            <span className="rounded-full bg-rose-500 px-1.5 py-0.2 text-[10px] font-bold text-white tabular-nums">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ESTADO CARREGANDO */}
       {loading && (
-        <div className="flex min-h-40 items-center justify-center rounded-xl border border-border bg-bg px-5 py-10">
-          <p className="text-sm text-muted">
-            Carregando notificações...
-          </p>
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 rounded-xl border border-border/60 bg-surface/80 p-4 animate-pulse"
+            >
+              <div className="size-10 rounded-full bg-elevated shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3.5 w-3/4 rounded bg-elevated" />
+                <div className="h-3 w-1/3 rounded bg-elevated/70" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* VAZIO */}
-      {!loading &&
-        notifications.length === 0 && (
-          <div className="flex min-h-60 items-center justify-center rounded-xl border border-border bg-bg px-5 py-10 text-center">
-            <div>
-              <Bell className="mx-auto mb-4 size-8 text-muted" />
-
-              <p className="text-sm font-medium">
-                Nenhuma notificação
-              </p>
-
-              <p className="mt-1 text-xs text-muted">
-                Quando alguém interagir com seu perfil, aparecerá aqui.
-              </p>
-            </div>
+      {/* ESTADO VAZIO */}
+      {!loading && notifications.length === 0 && (
+        <div className="flex min-h-60 flex-col items-center justify-center rounded-2xl border border-border/80 bg-surface/50 px-5 py-12 text-center">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-elevated/80 text-muted shadow-inner mb-3">
+            <Bell className="size-7" />
           </div>
-        )}
+          <p className="text-base font-semibold text-fg">
+            {filter === "unread"
+              ? "Nenhuma notificação não lida"
+              : "Nenhuma notificação por enquanto"}
+          </p>
+          <p className="mt-1 max-w-sm text-xs text-muted sm:text-sm">
+            {filter === "unread"
+              ? "Você está em dia com todas as suas atividades e respostas."
+              : "Quando alguém interagir com seus comentários, seguir você ou responder, aparecerá aqui."}
+          </p>
+          {filter === "unread" && (
+            <button
+              type="button"
+              onClick={() => handleFilterChange("all")}
+              className="mt-4 rounded-lg border border-border bg-elevated px-3.5 py-1.5 text-xs font-semibold text-fg hover:border-[#a855f7]/40 hover:bg-[#a855f7]/10 hover:text-[#c084fc] transition-colors"
+            >
+              Ver todas as notificações
+            </button>
+          )}
+        </div>
+      )}
 
-      {/* LISTA */}
-      {!loading &&
-        notifications.length > 0 && (
-          <div className="overflow-hidden rounded-xl border border-border bg-bg">
+      {/* LISTA DE NOTIFICAÇÕES */}
+      {!loading && notifications.length > 0 && (
+        <div className="space-y-3">
+          <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface/70 shadow-sm backdrop-blur-sm divide-y divide-border/60">
             {notifications.map((notification) => (
               <NotificationItemCard
                 key={notification.id}
                 notification={notification}
                 localAnimes={localAnimes}
-                onMarkAsRead={(id) => void markNotificationsAsRead([id])}
+                onMarkAsRead={handleMarkAsRead}
+                onDelete={handleDeleteNotification}
               />
             ))}
           </div>
-        )}
 
+          {/* BOTÃO CARREGAR MAIS */}
+          {hasMore && (
+            <div className="pt-3 text-center">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-5 py-2.5 text-xs font-semibold text-fg hover:border-[#a855f7]/50 hover:bg-elevated hover:text-[#c084fc] disabled:opacity-50 transition-all active:scale-95"
+              >
+                {loadingMore ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin text-[#c084fc]" />
+                    <span>Carregando mais...</span>
+                  </>
+                ) : (
+                  <span>Carregar mais notificações</span>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

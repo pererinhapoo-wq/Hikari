@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { resolveApiUser } from "@/lib/auth/api-session";
 import { isHikariAdmin } from "@/lib/auth/admin";
+import { executeCreateNotification } from "@/lib/notifications.functions";
 
 export const Route = createFileRoute("/api/comments")({
   server: {
@@ -752,46 +753,16 @@ export const Route = createFileRoute("/api/comments")({
           // Gera notificação para o autor do comentário respondido (nunca auto-notificação)
           if (parentId && parentAuthorId && parentAuthorId !== apiUser.id) {
             try {
-              const notificationId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
               const replyMessage = `${resolvedAuthorName} respondeu ao seu comentário.`;
-
-              await sql.query(
-                `
-                  insert into "notification" (
-                    "id",
-                    "userId",
-                    "actorId",
-                    "type",
-                    "message",
-                    "read",
-                    "createdAt",
-                    "commentId",
-                    "animeId",
-                    "episodeId"
-                  )
-                  values (
-                    $1,
-                    $2,
-                    $3,
-                    'comment_reply',
-                    $4,
-                    false,
-                    (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
-                    $5,
-                    $6,
-                    $7
-                  )
-                `,
-                [
-                  notificationId,
-                  parentAuthorId,
-                  apiUser.id,
-                  replyMessage,
-                  commentId,
-                  animeId,
-                  episodeId,
-                ],
-              );
+              await executeCreateNotification(sql, {
+                userId: parentAuthorId,
+                actorId: apiUser.id,
+                type: "comment_reply",
+                message: replyMessage,
+                commentId,
+                animeId,
+                episodeId,
+              });
             } catch (notifError) {
               console.error(
                 "[api/comments] Erro ao criar notificação de resposta:",

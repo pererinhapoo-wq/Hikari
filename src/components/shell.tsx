@@ -10,6 +10,7 @@ import {
   Bookmark,
   Calendar,
   CalendarDays,
+  CheckCheck,
   Clapperboard,
   Compass,
   House,
@@ -834,6 +835,57 @@ export function Shell() {
     [user],
   );
 
+  const markAllNotificationsAsReadAction = useCallback(async () => {
+    if (!user || unreadCount === 0) return;
+    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+    setUnreadCount(0);
+    try {
+      const bearer = getBearerToken();
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        },
+        body: JSON.stringify({ all: true }),
+      });
+      window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+    } catch {
+      // Falha não-bloqueante
+    }
+  }, [user, unreadCount]);
+
+  const deleteNotificationAction = useCallback(
+    async (id: string) => {
+      if (!user) return;
+      const target = notifications.find((i) => i.id === id);
+      const wasUnread = target ? !target.read : false;
+      setNotifications((prev) => prev.filter((item) => item.id !== id));
+      if (wasUnread) {
+        setUnreadCount((c) => Math.max(0, c - 1));
+      }
+      try {
+        const bearer = getBearerToken();
+        const res = await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          credentials: "include",
+          headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { unreadCount?: number };
+          if (typeof data.unreadCount === "number") {
+            setUnreadCount(data.unreadCount);
+          }
+          window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+        }
+      } catch {
+        // Falha não-bloqueante
+      }
+    },
+    [user, notifications],
+  );
+
   // Marca automaticamente como lidas as notificações exibidas ao abrir o sino
   useEffect(() => {
     if (!notificationsOpen || notificationsLoading || !user) {
@@ -1313,7 +1365,7 @@ export function Shell() {
             )}
           >
 
-            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3.5">
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
               <div className="min-w-0">
                 <h2 className="font-semibold text-fg">
                   Notificações
@@ -1324,18 +1376,32 @@ export function Shell() {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setNotificationsOpen(
-                    false,
-                  )
-                }
-                className="flex size-9 shrink-0 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none"
-                aria-label="Fechar notificações"
-              >
-                <X className="size-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={markAllNotificationsAsReadAction}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-[#c084fc] hover:bg-[#a855f7]/15 transition-colors active:scale-95"
+                    title="Marcar todas como lidas"
+                  >
+                    <CheckCheck className="size-3.5" />
+                    <span>Lidas</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNotificationsOpen(
+                      false,
+                    )
+                  }
+                  className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none"
+                  aria-label="Fechar notificações"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
             </div>
 
             {notificationsLoading ? (
@@ -1370,6 +1436,7 @@ export function Shell() {
                     localAnimes={localAnimes}
                     compact
                     onMarkAsRead={(id) => void markNotificationsAsRead([id])}
+                    onDelete={(id) => void deleteNotificationAction(id)}
                     onNavigate={() => setNotificationsOpen(false)}
                   />
                 ))}

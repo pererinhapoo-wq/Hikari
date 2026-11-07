@@ -74,13 +74,303 @@ export interface CreateNotificationParams {
   episodeId?: string | null;
 }
 
+import { FALLBACK_ANIMES } from "@/lib/fallback-catalog";
+import { displayTitle } from "@/lib/types";
+
+const ANILIST_ENDPOINT = "https://graphql.anilist.co";
+const ANIME_META_TTL_MS = 1000 * 60 * 30;
+
+type CachedAnimeMeta = {
+  title: string | null;
+  cover: string | null;
+  seasonNumber: number | null;
+  expiresAt: number;
+};
+
+const animeMetaCache = new Map<string, CachedAnimeMeta>();
+
+function extractSeasonNumberFromText(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const text = value.trim();
+  if (!text) return null;
+
+  const patterns = [
+    /\b(?:season|temporada)\s*(\d{1,2})\b/i,
+    /\b(\d{1,2})\s*(?:ª|º|a|o)\s*temporada\b/i,
+    /\b(\d{1,2})(?:st|nd|rd|th)\s+season\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      const parsed = Number(match[1]);
+      if (Number.isInteger(parsed) && parsed > 0 && parsed <= 50) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function inferSeasonNumber(params: {
+  titles: Array<string | null | undefined>;
+  format?: string | null;
+  tvPrequelCount?: number;
+}): number | null {
+  for (const title of params.titles) {
+    const explicit = extractSeasonNumberFromText(title);
+    if (explicit !== null) {
+      return explicit;
+    }
+  }
+
+  const normalizedFormat = (params.format ?? "").toUpperCase();
+  if (
+    normalizedFormat === "TV" ||
+    normalizedFormat === "TV_SHORT" ||
+    normalizedFormat === "ONA"
+  ) {
+    const prequels = Math.max(0, Number(params.tvPrequelCount ?? 0) || 0);
+    return prequels + 1;
+  }
+
+  return null;
+}
+
+export async function resolveAnimeMetadataMap(
+  animeIds: string[],
+): Promise<
+  Map<
+    string,
+    { title: string | null; cover: string | null; seasonNumber: number | null }
+  >
+> {
+  const result = new Map<
+    string,
+    { title: string | null; cover: string | null; seasonNumber: number | null }
+  >();
+  if (animeIds.length === 0) {
+    return result;
+  }
+
+  const now = Date.now();
+  const numericToFetch: number[] = [];
+
+  for (const rawId of animeIds) {
+    const id = rawId.trim();
+    if (!id) continue;
+
+    const cached = animeMetaCache.get(id);
+    if (cached && cached.expiresAt > now) {
+      result.set(id, {
+        title: cached.title,
+        cover: cached.cover,
+        seasonNumber: cached.seasonNumber,
+      });
+      continue;
+    }
+
+    const numericId = Number(id);
+    const fallback = FALLBACK_ANIMES.find(
+      (a) =>
+        a.id === id ||
+        (!Number.isNaN(numericId) &&
+          numericId > 0 &&
+          (a.anilistId === numericId || a.malId === numericId)),
+    );
+
+    if (fallback) {
+      const meta = {
+        title: displayTitle(fallback) || null,
+        cover: fallback.cover || null,
+        seasonNumber: inferSeasonNumber({
+          titles: [
+            fallback.titles.english,
+            fallback.titles.romaji,
+            fallback.titles.native,
+          ],
+          format: fallback.format,
+        }),
+      };
+      result.set(id, meta);
+      animeMetaCache.set(id, { ...meta, expiresAt: now + ANIME_META_TTL_MS });
+      continue;
+    }
+
+    if (Number.isInteger(numericId) && numericId > 0) {
+      numericToFetch.push(numericId);
+    }
+  }
+
+  if (numericToFetch.length > 0) {
+    try {
+      const uniqueNumeric = Array.from(new Set(numericToFetch)).slice(0, 50);
+      const response = await fetch(ANILIST_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          query: `
+            query ($ids: [Int]) {
+              Page(perPage: 50) {
+                media(id_in: $ids, type: ANIME) {
+                  id
+                  format
+                  title {
+                    english
+                    romaji
+                    native
+                  }
+                  coverImage {
+                    extraLarge
+                    large
+                  }
+                  relations {
+                    edges {
+                      relationType(version: 2)
+                      node {
+                        id
+                        type
+                        format
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          `,
+          variables: { ids: uniqueNumeric },
+        }),
+        signal: AbortSignal.timeout(2500),
+      });
+
+      if (response.ok) {
+        const json = (await response.json()) as {
+          data?: {
+            Page?: {
+              media?: Array<{
+                id?: number;
+                format?: string | null;
+                title?: {
+                  english?: string | null;
+                  romaji?: string | null;
+                  native?: string | null;
+                } | null;
+                coverImage?: {
+                  extraLarge?: string | null;
+                  large?: string | null;
+                } | null;
+                relations?: {
+                  edges?: Array<{
+                    relationType?: string | null;
+                    node?: {
+                      id?: number;
+                      type?: string | null;
+                      format?: string | null;
+                    } | null;
+                  }> | null;
+                } | null;
+              }>;
+            };
+          };
+        };
+
+        const mediaList = json?.data?.Page?.media ?? [];
+        for (const media of mediaList) {
+          if (!media?.id) continue;
+          const key = String(media.id);
+          const title =
+            media.title?.english?.trim() ||
+            media.title?.romaji?.trim() ||
+            media.title?.native?.trim() ||
+            null;
+          const cover =
+            media.coverImage?.extraLarge?.trim() ||
+            media.coverImage?.large?.trim() ||
+            null;
+
+          const tvPrequelCount = (media.relations?.edges ?? []).filter(
+            (edge) => {
+              const rel = (edge?.relationType ?? "").toUpperCase();
+              const nodeType = (edge?.node?.type ?? "").toUpperCase();
+              const nodeFormat = (edge?.node?.format ?? "").toUpperCase();
+              return (
+                rel === "PREQUEL" &&
+                nodeType === "ANIME" &&
+                (nodeFormat === "TV" ||
+                  nodeFormat === "TV_SHORT" ||
+                  nodeFormat === "ONA")
+              );
+            },
+          ).length;
+
+          const seasonNumber = inferSeasonNumber({
+            titles: [
+              media.title?.english,
+              media.title?.romaji,
+              media.title?.native,
+            ],
+            format: media.format,
+            tvPrequelCount,
+          });
+
+          result.set(key, { title, cover, seasonNumber });
+          animeMetaCache.set(key, {
+            title,
+            cover,
+            seasonNumber,
+            expiresAt: now + ANIME_META_TTL_MS,
+          });
+        }
+      }
+    } catch {
+      // Falha silenciosa de metadados externos: a notificação continua sendo exibida normalmente.
+    }
+  }
+
+  return result;
+}
+
+const notificationLocks = new Map<string, Promise<unknown>>();
+
 /**
  * Criação atômica de notificação com validação de:
  * 1. Não gerar auto-notificações (actorId === userId).
  * 2. Bloqueio mútuo via user_block em qualquer direção.
- * 3. Deduplicação inteligente de eventos.
+ * 3. Deduplicação inteligente de eventos com proteção contra concorrência simultânea.
  */
 export async function executeCreateNotification(
+  sql: any,
+  params: CreateNotificationParams,
+): Promise<{ success: boolean; notificationId?: string; reason?: string }> {
+  // 1. Evitar notificações para ações do próprio usuário logo no início
+  if (params.actorId && params.actorId === params.userId) {
+    return { success: false, reason: "self_action" };
+  }
+
+  const lockKey = `${params.userId}:${params.actorId ?? ""}:${params.type}:${params.commentId ?? ""}`;
+  const previous = notificationLocks.get(lockKey) ?? Promise.resolve();
+  let release: () => void = () => {};
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  notificationLocks.set(lockKey, previous.then(() => current, () => current));
+
+  await previous;
+  try {
+    return await executeCreateNotificationInternal(sql, params);
+  } finally {
+    release();
+    if (notificationLocks.get(lockKey) === current) {
+      notificationLocks.delete(lockKey);
+    }
+  }
+}
+
+async function executeCreateNotificationInternal(
   sql: any,
   params: CreateNotificationParams,
 ): Promise<{ success: boolean; notificationId?: string; reason?: string }> {
@@ -152,14 +442,8 @@ export async function executeCreateNotification(
     }
   }
 
-  // c) Para follow_accept: se houver follow_request anterior pendente, limpa-o
+  // c) Para follow_accept: se já houver notificação desse actor para esse user, atualiza
   if (type === "follow_accept" && actorId) {
-    await sql`
-      delete from "notification"
-      where "userId" = ${actorId}
-        and "actorId" = ${userId}
-        and "type" = 'follow_request'
-    `;
     const existing = await sql<{ id: string }>`
       select "id" from "notification"
       where "userId" = ${userId}
@@ -181,7 +465,33 @@ export async function executeCreateNotification(
     }
   }
 
-  // d) Para comment_reply: evita duplicatas exatas nos últimos 5 segundos
+  // d) Para comment_like: se já houver notificação de like para este comentário deste autor, atualiza
+  if (type === "comment_like" && commentId) {
+    const existing = await sql<{ id: string }>`
+      select "id" from "notification"
+      where "userId" = ${userId}
+        and "commentId" = ${commentId}
+        and "type" = 'comment_like'
+      order by "createdAt" desc
+      limit 1
+    `;
+    if (existing[0]?.id) {
+      await sql`
+        update "notification"
+        set
+          "actorId" = ${actorId ?? null},
+          "read" = false,
+          "message" = ${message},
+          "createdAt" = current_timestamp,
+          "animeId" = ${animeId ?? null},
+          "episodeId" = ${episodeId ?? null}
+        where "id" = ${existing[0].id}
+      `;
+      return { success: true, notificationId: existing[0].id };
+    }
+  }
+
+  // e) Para comment_reply: evita duplicatas exatas nos últimos 5 segundos
   if (type === "comment_reply" && commentId && actorId) {
     const recent = await sql<{ id: string }>`
       select "id" from "notification"
@@ -242,7 +552,7 @@ export async function executeGetNotifications(
   const offset = Math.max(0, Number(params?.offset ?? 0));
   const filter = params?.filter === "unread" ? "unread" : "all";
 
-  // Consulta otimizada com índices compostos, filtrando bloqueios mútuos
+  // Consulta otimizada com índices compostos, filtrando bloqueios mútuos e recursos válidos
   const rows = await sql<{
     id: string;
     type: string;
@@ -264,12 +574,13 @@ export async function executeGetNotifications(
     parentCommentImageUrl: string | null;
     parentCommentIsSpoiler: boolean | null;
     parentCommentAuthorName: string | null;
+    commentLikes: number | null;
   }>`
     with target_notifications as (
       select n.*
       from "notification" n
       where n."userId" = ${userId}
-        ${filter === "unread" ? sql`and n."read" = false` : sql``}
+        and (${filter} = 'all' or n."read" = false)
         and (
           n."actorId" is null
           or not exists (
@@ -285,9 +596,36 @@ export async function executeGetNotifications(
             where c."id" = n."commentId"
           )
         )
+        and (
+          n."type" <> 'comment_like'
+          or (
+            n."commentId" is not null
+            and exists (
+              select 1 from "comment_like" cl
+              where cl."commentId" = n."commentId"
+                and (cl."type" = 'like' or cl."type" is null)
+                and cl."userId" <> n."userId"
+            )
+          )
+        )
       order by n."createdAt" desc
       limit ${limit + 1}
       offset ${offset}
+    ),
+    like_counts as (
+      select
+        cl."commentId",
+        count(*)::int as "likesCount"
+      from "comment_like" cl
+      where (cl."type" = 'like' or cl."type" is null)
+        and cl."userId" <> ${userId}
+        and cl."commentId" in (
+          select distinct tn."commentId"
+          from target_notifications tn
+          where tn."type" = 'comment_like'
+            and tn."commentId" is not null
+        )
+      group by cl."commentId"
     )
     select
       n."id",
@@ -331,8 +669,13 @@ export async function executeGetNotifications(
           'Usuário'
         )
         else null
-      end as "parentCommentAuthorName"
+      end as "parentCommentAuthorName",
+      case
+        when n."type" = 'comment_like' and n."commentId" is not null then coalesce(lc."likesCount", 0)::int
+        else 0
+      end as "commentLikes"
     from target_notifications n
+    left join like_counts lc on lc."commentId" = n."commentId"
     left join "user" u on u."id" = n."actorId"
     left join "profile" p on p."userId" = n."actorId"
     left join "comment" c on c."id" = n."commentId"
@@ -366,6 +709,18 @@ export async function executeGetNotifications(
           where c."id" = n."commentId"
         )
       )
+      and (
+        n."type" <> 'comment_like'
+        or (
+          n."commentId" is not null
+          and exists (
+            select 1 from "comment_like" cl
+            where cl."commentId" = n."commentId"
+              and (cl."type" = 'like' or cl."type" is null)
+              and cl."userId" <> n."userId"
+          )
+        )
+      )
   `;
   const unreadCount = Number(unreadRows[0]?.count ?? "0") || 0;
 
@@ -374,6 +729,7 @@ export async function executeGetNotifications(
     select count(*)::text as count
     from "notification" n
     where n."userId" = ${userId}
+      and (${filter} = 'all' or n."read" = false)
       and (
         n."actorId" is null
         or not exists (
@@ -389,31 +745,120 @@ export async function executeGetNotifications(
           where c."id" = n."commentId"
         )
       )
+      and (
+        n."type" <> 'comment_like'
+        or (
+          n."commentId" is not null
+          and exists (
+            select 1 from "comment_like" cl
+            where cl."commentId" = n."commentId"
+              and (cl."type" = 'like' or cl."type" is null)
+              and cl."userId" <> n."userId"
+          )
+        )
+      )
   `;
   const totalCount = Number(totalRows[0]?.count ?? "0") || 0;
 
-  const notifications: NotificationItem[] = items.map((r) => ({
-    id: r.id,
-    type: r.type,
-    message: r.message,
-    read: Boolean(r.read),
-    createdAt: r.createdAt,
-    actorId: r.actorId,
-    actorName: r.actorName,
-    actorNick: r.actorNick,
-    actorImage: r.actorImage,
-    commentId: r.commentId,
-    animeId: r.animeId,
-    episodeId: r.episodeId,
-    commentContent: r.commentContent,
-    commentHasMedia: Boolean(r.commentImageUrl),
-    commentIsSpoiler: Boolean(r.commentIsSpoiler),
-    parentCommentId: r.parentCommentId,
-    parentCommentContent: r.parentCommentContent,
-    parentCommentHasMedia: Boolean(r.parentCommentImageUrl),
-    parentCommentIsSpoiler: Boolean(r.parentCommentIsSpoiler),
-    parentCommentAuthorName: r.parentCommentAuthorName,
-  }));
+  // Carrega avatares de likes
+  const likeCommentIds = Array.from(
+    new Set(
+      items
+        .filter((r) => r.type === "comment_like" && r.commentId)
+        .map((r) => String(r.commentId)),
+    ),
+  );
+
+  const avatarsByCommentId = new Map<
+    string,
+    Array<{ id: string; name: string | null; image: string | null }>
+  >();
+
+  if (likeCommentIds.length > 0) {
+    const avatarRows = await sql<{
+      commentId: string;
+      id: string;
+      name: string | null;
+      image: string | null;
+    }>`
+      select
+        cl."commentId",
+        u."id",
+        coalesce(
+          nullif(trim(p."nick"), ''),
+          nullif(trim(u."name"), ''),
+          'Usuário'
+        ) as "name",
+        u."image"
+      from "comment_like" cl
+      inner join "user" u on u."id" = cl."userId"
+      left join "profile" p on p."userId" = u."id"
+      where cl."userId" <> ${userId}
+        and (cl."type" = 'like' or cl."type" is null)
+        and cl."commentId" = any(${likeCommentIds}::text[])
+      order by cl."createdAt" desc
+    `;
+
+    for (const row of avatarRows) {
+      const cid = String(row.commentId);
+      const list = avatarsByCommentId.get(cid) ?? [];
+      if (list.length < 4 && !list.some((item) => item.id === String(row.id))) {
+        list.push({
+          id: String(row.id),
+          name: row.name ? String(row.name) : null,
+          image: row.image ? String(row.image) : null,
+        });
+        avatarsByCommentId.set(cid, list);
+      }
+    }
+  }
+
+  // Resolve metadados de anime
+  const distinctAnimeIds = Array.from(
+    new Set(
+      items
+        .map((r) => (typeof r.animeId === "string" ? r.animeId.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+  const animeMetaMap = await resolveAnimeMetadataMap(distinctAnimeIds);
+
+  const notifications: NotificationItem[] = items.map((r) => {
+    const animeId = r.animeId ? String(r.animeId) : null;
+    const commentId = r.commentId ? String(r.commentId) : null;
+    const animeMeta = animeId ? animeMetaMap.get(animeId) : undefined;
+
+    return {
+      id: r.id,
+      type: r.type,
+      message: r.message,
+      read: Boolean(r.read),
+      createdAt: r.createdAt,
+      actorId: r.actorId,
+      actorName: r.actorName,
+      actorNick: r.actorNick,
+      actorImage: r.actorImage,
+      commentId,
+      animeId,
+      episodeId: r.episodeId,
+      animeTitle: animeMeta?.title ?? null,
+      animeCover: animeMeta?.cover ?? null,
+      animeSeasonNumber: animeMeta?.seasonNumber ?? null,
+      commentContent: r.commentContent,
+      commentHasMedia: Boolean(r.commentImageUrl),
+      commentIsSpoiler: Boolean(r.commentIsSpoiler),
+      parentCommentId: r.parentCommentId,
+      parentCommentContent: r.parentCommentContent,
+      parentCommentHasMedia: Boolean(r.parentCommentImageUrl),
+      parentCommentIsSpoiler: Boolean(r.parentCommentIsSpoiler),
+      parentCommentAuthorName: r.parentCommentAuthorName,
+      commentLikes: Number(r.commentLikes ?? 0) || 0,
+      likeAvatars:
+        r.type === "comment_like" && commentId
+          ? avatarsByCommentId.get(commentId) ?? []
+          : [],
+    };
+  });
 
   return {
     notifications,
@@ -450,6 +895,18 @@ export async function executeGetUnreadNotificationCount(
         or exists (
           select 1 from "comment" c
           where c."id" = n."commentId"
+        )
+      )
+      and (
+        n."type" <> 'comment_like'
+        or (
+          n."commentId" is not null
+          and exists (
+            select 1 from "comment_like" cl
+            where cl."commentId" = n."commentId"
+              and (cl."type" = 'like' or cl."type" is null)
+              and cl."userId" <> n."userId"
+          )
         )
       )
   `;

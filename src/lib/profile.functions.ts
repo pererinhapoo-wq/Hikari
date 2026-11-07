@@ -1687,11 +1687,18 @@ export async function executeAcceptFollowRequest(sql: any, ownerId: string, requ
     on conflict ("followerId", "followingId") do nothing
   `;
 
-  // 4. Remover ou atualizar solicitação concluída
+  // 4. Remover solicitação concluída e notificação pendente
   await sql`
     delete from "user_follow_request"
     where "requesterId" = ${requesterId}
       and "targetId" = ${ownerId}
+  `;
+
+  await sql`
+    delete from "notification"
+    where "userId" = ${ownerId}
+      and "actorId" = ${requesterId}
+      and "type" = 'follow_request'
   `;
 
   // 5. Disparar notificação de solicitação aceita para o solicitante

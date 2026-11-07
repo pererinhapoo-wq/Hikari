@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import {
   ChevronRight,
-  Clock,
   CornerDownRight,
   EyeOff,
   Heart,
@@ -57,6 +56,28 @@ export type NotificationItem = {
 
 const INLINE_SPOILER_REGEX =
   /\|\|([\s\S]+?)\|\||<spoiler>([\s\S]+?)<\/spoiler>|\[spoiler\]([\s\S]+?)\[\/spoiler\]|>!([\s\S]+?)!<|~!([\s\S]+?)!~/gi;
+
+export function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = Date.now();
+  const diffSec = Math.floor((now - date.getTime()) / 1000);
+
+  if (diffSec < 45) return "agora";
+  if (diffSec < 90) return "há 1 min";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `há ${diffMin} min`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `há ${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return "ontem";
+  if (diffDays < 7) return `há ${diffDays} dias`;
+  if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return `há ${weeks} ${weeks === 1 ? "sem." : "semanas"}`;
+  }
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
 
 function extractSeasonFromTitle(title: string | null | undefined): number | null {
   if (!title) return null;
@@ -356,12 +377,14 @@ export function NotificationItemCard({
   localAnimes,
   compact = false,
   onMarkAsRead,
+  onDelete,
   onNavigate,
 }: {
   notification: NotificationItem;
   localAnimes: LocalAnime[];
   compact?: boolean;
   onMarkAsRead: (id: string) => void;
+  onDelete?: (id: string) => void;
   onNavigate?: () => void;
 }) {
   const [isPressingAction, setIsPressingAction] = useState(false);
@@ -389,7 +412,7 @@ export function NotificationItemCard({
   const {
     hasEpisodeTarget,
     hasAnimeTarget,
-    hasTarget,
+    hasTarget: hasMediaTarget,
     animeTitle,
     animeCover,
     seasonLabel,
@@ -398,14 +421,22 @@ export function NotificationItemCard({
 
   const isLikeNotification = notification.type === "comment_like";
   const isReplyNotification = notification.type === "comment_reply";
+  const isFollowNotification =
+    notification.type === "new_follower" ||
+    notification.type === "follow_request" ||
+    notification.type === "follow_accept";
   const isCommentNotification =
     !isLikeNotification &&
     !isReplyNotification &&
+    !isFollowNotification &&
     (Boolean(notification.commentId) ||
       notification.type === "comment" ||
       notification.type === "mention" ||
       notification.type === "episode_comment" ||
       notification.type === "anime_comment");
+
+  const hasTarget =
+    hasMediaTarget || (isFollowNotification && Boolean(notification.actorNick));
 
   const likeCount = Number(notification.commentLikes ?? 0) || 0;
   const likeAvatars = Array.isArray(notification.likeAvatars)
@@ -434,13 +465,18 @@ export function NotificationItemCard({
     ? "Ver comentário"
     : hasEpisodeTarget
       ? "Ver episódio"
-      : "Ver anime";
+      : hasAnimeTarget
+        ? "Ver anime"
+        : isFollowNotification && notification.actorNick
+          ? "Ver perfil"
+          : null;
 
-  const formattedDate = (() => {
+  const relativeDate = formatRelativeTime(notification.createdAt);
+  const fullDateTitle = (() => {
     const parsed = new Date(notification.createdAt);
     if (Number.isNaN(parsed.getTime())) return "";
     return parsed.toLocaleString("pt-BR", {
-      dateStyle: "short",
+      dateStyle: "full",
       timeStyle: "short",
     });
   })();
@@ -511,37 +547,86 @@ export function NotificationItemCard({
         "relative border-b border-border last:border-b-0",
         compact ? "px-3.5 py-3.5 sm:px-4" : "px-4 py-4 sm:px-5",
         "motion-safe:transition-[background-color,border-color] motion-safe:duration-200 motion-reduce:transition-none",
-        !notification.read && "border-l-4 border-l-blue-500 bg-blue-500/10",
+        !notification.read
+          ? "border-l-4 border-l-[#a855f7] bg-[#a855f7]/[0.08]"
+          : "border-l-4 border-l-transparent opacity-95",
       )}
     >
       <div className="flex items-start gap-3 min-w-0">
-        {/* AVATAR DO AUTOR */}
-        {notification.actorImage ? (
-          <img
-            src={notification.actorImage}
-            alt=""
-            className="size-10 shrink-0 rounded-full object-cover ring-1 ring-white/10"
-          />
-        ) : (
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-elevated text-muted ring-1 ring-white/5">
-            <UserCircle className="size-5" />
-          </div>
-        )}
+        {/* AVATAR DO AUTOR COM BADGE DE TIPO */}
+        <div className="relative shrink-0">
+          {notification.actorImage ? (
+            <img
+              src={notification.actorImage}
+              alt=""
+              className="size-10 rounded-full object-cover ring-1 ring-white/10"
+            />
+          ) : (
+            <div className="flex size-10 items-center justify-center rounded-full bg-elevated text-muted ring-1 ring-white/5">
+              <UserCircle className="size-5" />
+            </div>
+          )}
+
+          {/* BADGE DE TIPO NO AVATAR */}
+          {isLikeNotification && (
+            <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-rose-500 text-white ring-2 ring-bg">
+              <Heart className="size-2.5 fill-current" />
+            </span>
+          )}
+          {isReplyNotification && (
+            <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-purple-500 text-white ring-2 ring-bg">
+              <MessageCircle className="size-2.5 fill-current" />
+            </span>
+          )}
+          {notification.type === "new_follower" && (
+            <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-blue-500 text-white ring-2 ring-bg">
+              <UserCheck className="size-2.5" />
+            </span>
+          )}
+          {notification.type === "follow_request" && (
+            <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-amber-500 text-white ring-2 ring-bg">
+              <UserPlus className="size-2.5" />
+            </span>
+          )}
+          {notification.type === "follow_accept" && (
+            <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-emerald-500 text-white ring-2 ring-bg">
+              <UserCheck className="size-2.5" />
+            </span>
+          )}
+        </div>
 
         {/* CONTEÚDO PRINCIPAL */}
         <div className="min-w-0 flex-1 space-y-2">
-          {/* LINHA 1: MENSAGEM + INDICADOR AZUL DE NÃO LIDA */}
+          {/* LINHA 1: MENSAGEM + BADGE NÃO LIDA + EXCLUIR */}
           <div className="flex items-start justify-between gap-2.5 min-w-0">
             <p className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-[13px] sm:text-sm leading-5">
               {renderSummaryText()}
             </p>
 
-            {!notification.read && (
-              <span
-                aria-label="Notificação não lida"
-                className="mt-1.5 size-2 shrink-0 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.65)] motion-safe:transition-opacity motion-safe:duration-200 motion-reduce:transition-none"
-              />
-            )}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {!notification.read && (
+                <span
+                  aria-label="Notificação não lida"
+                  className="mt-1 size-2 rounded-full bg-[#a855f7] shadow-[0_0_8px_rgba(168,85,247,0.7)] motion-safe:transition-opacity motion-safe:duration-200 motion-reduce:transition-none"
+                />
+              )}
+
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDelete(notification.id);
+                  }}
+                  className="inline-flex size-6 items-center justify-center rounded text-muted/60 hover:bg-rose-500/15 hover:text-rose-400 motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-500/50"
+                  title="Excluir notificação"
+                  aria-label="Excluir notificação"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* AVATARES E CONTAGEM DE CURTIDAS */}
@@ -746,16 +831,17 @@ export function NotificationItemCard({
             </div>
           )}
 
-          {/* RODAPÉ: DATA + BOTÃO "VER COMENTÁRIO" */}
+          {/* RODAPÉ: DATA RELATIVA + BOTÃO DE AÇÃO */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 min-w-0">
             <time
               dateTime={notification.createdAt}
-              className="text-[11px] text-muted tabular-nums"
+              title={fullDateTitle}
+              className="text-[11px] text-muted tabular-nums hover:text-fg transition-colors"
             >
-              {formattedDate}
+              {relativeDate}
             </time>
 
-            {hasTarget && (
+            {hasTarget && actionLabel && (
               <span
                 onPointerDown={triggerPressFeedback}
                 className={cn(
@@ -768,7 +854,11 @@ export function NotificationItemCard({
                     "motion-safe:scale-[0.95] border-purple-400/75 bg-purple-500/30 text-white shadow-[0_0_14px_rgba(168,85,247,0.3)]",
                 )}
               >
-                <MessageCircle className="size-3.5 shrink-0 text-purple-300 [@media(hover:hover)]:group-hover/notif:text-purple-200" />
+                {isFollowNotification ? (
+                  <UserCheck className="size-3.5 shrink-0 text-purple-300 [@media(hover:hover)]:group-hover/notif:text-purple-200" />
+                ) : (
+                  <MessageCircle className="size-3.5 shrink-0 text-purple-300 [@media(hover:hover)]:group-hover/notif:text-purple-200" />
+                )}
                 <span>{actionLabel}</span>
                 <ChevronRight className="size-3.5 shrink-0 opacity-75 motion-safe:transition-transform motion-safe:duration-150 [@media(hover:hover)]:group-hover/notif:translate-x-0.5 motion-reduce:transform-none" />
               </span>
@@ -812,6 +902,19 @@ export function NotificationItemCard({
         search={{
           comment: notification.commentId ?? undefined,
         }}
+        onClick={handleActivate}
+        className={interactiveWrapperClass}
+      >
+        {innerContent}
+      </Link>
+    );
+  }
+
+  if (isFollowNotification && notification.actorNick) {
+    return (
+      <Link
+        to="/profile/$nick"
+        params={{ nick: notification.actorNick }}
         onClick={handleActivate}
         className={interactiveWrapperClass}
       >
