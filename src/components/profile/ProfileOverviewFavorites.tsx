@@ -3,9 +3,6 @@ import {
   Building2,
   Film,
   Heart,
-  Sparkles,
-  UserCheck,
-  Users,
 } from "lucide-react";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
 
@@ -25,19 +22,10 @@ export function ProfileOverviewFavorites({
     <div className="space-y-10 sm:space-y-12">
       {/* B. Favoritos — Animes */}
       <section aria-label="Favoritos — Animes" className="space-y-4">
-        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-7 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
-              <Film className="size-3.5" />
-            </div>
-            <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
-              Favoritos — Animes
-            </h3>
-          </div>
-
-          <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-xs font-semibold text-zinc-400 tabular-nums">
-            {animes.length}
-          </span>
+        <div className="border-b border-white/[0.06] pb-3">
+          <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
+            Favoritos — Animes
+          </h3>
         </div>
 
         {animes.length > 0 ? (
@@ -48,7 +36,6 @@ export function ProfileOverviewFavorites({
           </div>
         ) : (
           <EmptyFavoritesNotice
-            icon={Film}
             title="Nenhum anime favoritado"
             description="Explore o catálogo do Hikari e marque seus animes prediletos para exibi-los em destaque no seu perfil."
           />
@@ -57,19 +44,10 @@ export function ProfileOverviewFavorites({
 
       {/* C. Favoritos — Personagens */}
       <section aria-label="Favoritos — Personagens" className="space-y-4">
-        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-7 items-center justify-center rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300">
-              <Sparkles className="size-3.5" />
-            </div>
-            <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
-              Favoritos — Personagens
-            </h3>
-          </div>
-
-          <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-xs font-semibold text-zinc-400 tabular-nums">
-            {characters.length}
-          </span>
+        <div className="border-b border-white/[0.06] pb-3">
+          <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
+            Favoritos — Personagens
+          </h3>
         </div>
 
         {characters.length > 0 ? (
@@ -80,7 +58,6 @@ export function ProfileOverviewFavorites({
           </div>
         ) : (
           <EmptyFavoritesNotice
-            icon={Sparkles}
             title="Nenhum personagem favoritado"
             description="Seus personagens icônicos favoritos aparecerão aqui com retratos e detalhes canônicos."
           />
@@ -89,19 +66,10 @@ export function ProfileOverviewFavorites({
 
       {/* D. Favoritos — Studios */}
       <section aria-label="Favoritos — Studios" className="space-y-4">
-        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-7 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300">
-              <Building2 className="size-3.5" />
-            </div>
-            <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
-              Favoritos — Studios
-            </h3>
-          </div>
-
-          <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-xs font-semibold text-zinc-400 tabular-nums">
-            {studios.length}
-          </span>
+        <div className="border-b border-white/[0.06] pb-3">
+          <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
+            Favoritos — Studios
+          </h3>
         </div>
 
         {studios.length > 0 ? (
@@ -112,7 +80,6 @@ export function ProfileOverviewFavorites({
           </div>
         ) : (
           <EmptyFavoritesNotice
-            icon={Building2}
             title="Nenhum estúdio favoritado"
             description="Acompanhe os estúdios responsáveis pelas suas animações favoritas no Hikari."
           />
@@ -121,19 +88,10 @@ export function ProfileOverviewFavorites({
 
       {/* E. Favorites — People */}
       <section aria-label="Favorites — People" className="space-y-4">
-        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-7 items-center justify-center rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-300">
-              <Users className="size-3.5" />
-            </div>
-            <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
-              Favorites — People
-            </h3>
-          </div>
-
-          <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-xs font-semibold text-zinc-400 tabular-nums">
-            {people.length}
-          </span>
+        <div className="border-b border-white/[0.06] pb-3">
+          <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
+            Favorites — People
+          </h3>
         </div>
 
         {people.length > 0 ? (
@@ -144,7 +102,6 @@ export function ProfileOverviewFavorites({
           </div>
         ) : (
           <EmptyFavoritesNotice
-            icon={UserCheck}
             title="Nenhuma pessoa favoritada"
             description="Diretores, dubladores (seiyuus), roteiristas e compositores da indústria que você admira."
           />
@@ -324,19 +281,14 @@ function PersonFavoriteCard({ item }: { item: ProfileFavoriteItem }) {
 }
 
 function EmptyFavoritesNotice({
-  icon: Icon,
   title,
   description,
 }: {
-  icon: typeof Film;
   title: string;
   description: string;
 }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/[0.05] bg-[#0c0a15]/60 p-6 sm:p-8 text-center backdrop-blur-md">
-      <div className="mx-auto flex size-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-zinc-500 mb-3">
-        <Icon className="size-5" />
-      </div>
       <h4 className="text-sm font-semibold text-zinc-300 mb-1">
         {title}
       </h4>

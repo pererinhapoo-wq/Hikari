@@ -1,19 +1,15 @@
 import {
   BadgeCheck,
-  Check,
   Clock,
-  Copy,
   ExternalLink,
   Lock,
   Pencil,
   Settings,
-  Share2,
   Shield,
   Sparkles,
   Users,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
 
 interface ProfileIdentityHeaderProps {
   name: string;
@@ -54,43 +50,8 @@ export function ProfileIdentityHeader({
   onOpenFollowing,
   onOpenRequests,
 }: ProfileIdentityHeaderProps) {
-  const [copied, setCopied] = useState(false);
-  const [shared, setShared] = useState(false);
-
   const displayHandle = nick ? `@${nick}` : "@hikari_membro";
   const initial = (nick || name || "U").charAt(0).toUpperCase();
-
-  const handleCopyHandle = async () => {
-    try {
-      await navigator.clipboard.writeText(displayHandle);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleShare = async () => {
-    try {
-      const shareUrl = nick
-        ? `${window.location.origin}/profile/${encodeURIComponent(nick)}`
-        : window.location.href;
-
-      if (navigator.share) {
-        await navigator.share({
-          title: `Perfil de ${name || nick || "Membro"} no Hikari`,
-          text: `Confira meu perfil e coleção de animes no Hikari!`,
-          url: shareUrl,
-        });
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
-        setShared(true);
-        setTimeout(() => setShared(false), 2000);
-      }
-    } catch {
-      // User cancelled
-    }
-  };
 
   return (
     <header className="relative z-10 w-full overflow-hidden rounded-3xl border border-white/[0.09] bg-[#090812] shadow-[0_16px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
@@ -193,25 +154,6 @@ export function ProfileIdentityHeader({
               <span>Personalizar Perfil</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleShare}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2 text-xs sm:text-sm font-medium text-zinc-200 transition-all hover:bg-white/[0.1] hover:text-white"
-              title="Compartilhar link do perfil"
-            >
-              {shared ? (
-                <>
-                  <Check className="size-3.5 text-emerald-400" />
-                  <span className="text-emerald-400">Link copiado!</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="size-3.5" />
-                  <span className="hidden sm:inline">Compartilhar</span>
-                </>
-              )}
-            </button>
-
             {onOpenPrivacy && (
               <button
                 type="button"
@@ -229,7 +171,7 @@ export function ProfileIdentityHeader({
             )}
 
             <Link
-              to="/settings"
+              to="/settings-account"
               className="inline-flex size-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-zinc-300 transition-all hover:bg-white/[0.1] hover:text-white"
               title="Configurações da conta"
             >
@@ -258,28 +200,10 @@ export function ProfileIdentityHeader({
           </div>
 
           {/* Username (@handle) */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCopyHandle}
-              className="group inline-flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 text-xs text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-white"
-              title="Clique para copiar seu @username"
-            >
-              <span className="font-mono text-violet-300/90 group-hover:text-violet-200">
-                {displayHandle}
-              </span>
-              {copied ? (
-                <Check className="size-3 text-emerald-400" />
-              ) : (
-                <Copy className="size-3 text-zinc-500 transition-transform group-hover:scale-110 group-hover:text-zinc-300" />
-              )}
-            </button>
-
-            {copied && (
-              <span className="text-[11px] font-medium text-emerald-400 animate-in fade-in duration-150">
-                Copiado!
-              </span>
-            )}
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-xs font-medium text-violet-300/90">
+              {displayHandle}
+            </span>
 
             {nick && (
               <Link

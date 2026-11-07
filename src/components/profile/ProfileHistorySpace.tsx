@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
@@ -36,10 +35,6 @@ export function ProfileHistorySpace({
   loading = false,
   isOwner = true,
 }: ProfileHistorySpaceProps) {
-  const [filterType, setFilterType] = useState<
-    "all" | "episodes" | "tracking" | "favorites" | "lists"
-  >("all");
-
   const formatRelativeDate = (isoString: string): string => {
     const d = new Date(isoString);
     if (Number.isNaN(d.getTime())) return "";
@@ -106,17 +101,6 @@ export function ProfileHistorySpace({
     };
   });
 
-  const filteredItems = normalizedItems.filter((item) => {
-    if (filterType === "all") return true;
-    if (filterType === "episodes") return item.type === "watched_episode";
-    if (filterType === "tracking")
-      return item.type === "tracking_added" || item.type === "tracking_updated";
-    if (filterType === "favorites") return item.type === "favorite_added";
-    if (filterType === "lists")
-      return item.type === "list_created" || item.type === "list_item_added";
-    return true;
-  });
-
   return (
     <div className="space-y-6">
       {/* Cabeçalho da Seção de Atividades */}
@@ -138,65 +122,6 @@ export function ProfileHistorySpace({
         </span>
       </div>
 
-      {/* Filtros rápidos de tipo */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-white/[0.06] pb-3 text-xs">
-        <button
-          type="button"
-          onClick={() => setFilterType("all")}
-          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
-            filterType === "all"
-              ? "bg-violet-600 text-white shadow-sm"
-              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
-          }`}
-        >
-          Todas
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilterType("episodes")}
-          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
-            filterType === "episodes"
-              ? "bg-violet-600 text-white shadow-sm"
-              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
-          }`}
-        >
-          Episódios
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilterType("tracking")}
-          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
-            filterType === "tracking"
-              ? "bg-violet-600 text-white shadow-sm"
-              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
-          }`}
-        >
-          Acompanhamento
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilterType("favorites")}
-          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
-            filterType === "favorites"
-              ? "bg-violet-600 text-white shadow-sm"
-              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
-          }`}
-        >
-          Favoritos
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilterType("lists")}
-          className={`rounded-xl px-3 py-1.5 font-medium transition-all ${
-            filterType === "lists"
-              ? "bg-violet-600 text-white shadow-sm"
-              : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
-          }`}
-        >
-          Listas
-        </button>
-      </div>
-
       {/* Conteúdo: Skeleton, Vazio ou Lista em Timeline */}
       {loading ? (
         <div className="space-y-3">
@@ -207,7 +132,7 @@ export function ProfileHistorySpace({
             />
           ))}
         </div>
-      ) : filteredItems.length === 0 ? (
+      ) : normalizedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-10 sm:p-14 text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 shadow-inner">
             <Activity className="size-7" />
@@ -218,11 +143,9 @@ export function ProfileHistorySpace({
           </h3>
 
           <p className="mt-1.5 max-w-sm text-xs sm:text-sm text-zinc-400 leading-relaxed">
-            {filterType !== "all"
-              ? "Nenhum evento registrado nesta categoria até o momento."
-              : isOwner
-                ? "Ao assistir episódios, favoritar conteúdos ou organizar suas listas, suas atividades aparecerão aqui cronologicamente."
-                : "Este usuário ainda não possui atividades recentes registradas."}
+            {isOwner
+              ? "Ao assistir episódios, favoritar conteúdos ou organizar suas listas, suas atividades aparecerão aqui cronologicamente."
+              : "Este usuário ainda não possui atividades recentes registradas."}
           </p>
 
           {isOwner && (
@@ -237,7 +160,7 @@ export function ProfileHistorySpace({
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredItems.map((entry) => {
+          {normalizedItems.map((entry) => {
             const isEpisode = entry.type === "watched_episode";
             const isFavorite = entry.type === "favorite_added";
             const isTracking =

@@ -1,4 +1,4 @@
-import { BarChart3, Tv } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
 
 interface ProfileAnimeStatsProps {
@@ -66,22 +66,9 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
           <div className="flex size-8 sm:size-9 items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.2)]">
             <BarChart3 className="size-4" />
           </div>
-          <div>
-            <h2 className="font-display text-lg sm:text-xl font-bold tracking-tight text-white">
-              Anime Stats
-            </h2>
-            <p className="text-xs text-zinc-400">
-              Estatísticas consolidadas do catálogo pessoal
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.03] px-3 py-1 text-xs text-zinc-400">
-          <Tv className="size-3.5 text-violet-400" />
-          <span className="font-semibold text-white tabular-nums">
-            {totalEntries}
-          </span>
-          <span>{totalEntries === 1 ? "anime" : "animes"}</span>
+          <h2 className="font-display text-lg sm:text-xl font-bold tracking-tight text-white">
+            Anime Stats
+          </h2>
         </div>
       </div>
 

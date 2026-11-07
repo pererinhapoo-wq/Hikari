@@ -1,6 +1,5 @@
 import {
   Calendar,
-  FolderHeart,
   Lock,
   Pencil,
   Shield,
@@ -14,7 +13,7 @@ interface ProfileAboutSpaceProps {
   nick: string;
   bio: string;
   favorites: string[];
-  lists: ProfileListSummary[];
+  lists?: ProfileListSummary[];
   onOpenEdit: () => void;
 }
 
@@ -23,7 +22,6 @@ export function ProfileAboutSpace({
   nick,
   bio,
   favorites,
-  lists,
   onOpenEdit,
 }: ProfileAboutSpaceProps) {
   return (
@@ -119,57 +117,6 @@ export function ProfileAboutSpace({
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Listas do Usuário */}
-      <div className="rounded-3xl border border-white/[0.08] bg-gradient-to-br from-[#100e1f] via-[#0b0915] to-[#07060c] p-6 sm:p-8 shadow-[0_12px_45px_rgba(0,0,0,0.6)]">
-        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] pb-4 mb-5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-300">
-              <FolderHeart className="size-4" />
-            </div>
-            <div>
-              <h3 className="font-display text-base sm:text-lg font-bold text-white">
-                Minhas Listas Personalizadas
-              </h3>
-              <p className="text-xs text-zinc-400">
-                Coleções temáticas criadas pelo usuário
-              </p>
-            </div>
-          </div>
-
-          <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-0.5 text-xs font-semibold text-zinc-400 tabular-nums">
-            {lists.length}
-          </span>
-        </div>
-
-        {lists.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-            {lists.map((l) => (
-              <div
-                key={l.id}
-                className="rounded-2xl border border-white/[0.07] bg-[#0c0a16] p-4 transition-all hover:border-violet-500/30"
-              >
-                <h4 className="font-semibold text-sm text-zinc-100 truncate">
-                  {l.title}
-                </h4>
-                {l.description && (
-                  <p className="mt-1 line-clamp-2 text-xs text-zinc-400">
-                    {l.description}
-                  </p>
-                )}
-                <div className="mt-3 flex items-center justify-between text-[11px] text-zinc-500">
-                  <span>{l.itemCount} {l.itemCount === 1 ? "item" : "itens"}</span>
-                  <span>{l.isPublic ? "Pública" : "Privada"}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-zinc-500 italic">
-            Nenhuma lista personalizada criada ainda.
-          </p>
-        )}
       </div>
     </div>
   );
