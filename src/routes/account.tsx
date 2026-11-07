@@ -401,6 +401,17 @@ function AccountProfile() {
             bannerUrl: updated.bannerUrl ?? null,
           },
     );
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("hikari:profile-updated", {
+          detail: {
+            image: updated.image !== undefined ? updated.image : null,
+            nick: updated.nick,
+          },
+        }),
+      );
+    }
   };
 
   // Salvar configurações de privacidade

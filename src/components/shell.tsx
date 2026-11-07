@@ -15,15 +15,19 @@ import {
   Compass,
   House,
   LogIn,
+  LogOut,
   Menu,
   Search,
   Settings2,
+  Shield,
   Tags,
   UserCircle,
   X,
 } from "lucide-react";
 import { LoginMenu } from "@/components/LoginMenu";
 import { Logo } from "@/components/logo";
+import { ProfileDropdownMenu } from "@/components/profile/ProfileDropdownMenu";
+import { signOut } from "@/lib/auth/client";
 import {
   NotificationItemCard,
   type NotificationItem,
@@ -1109,21 +1113,9 @@ export function Shell() {
               )}
             </button>
 
-            {/* BOTÃO ENTRAR / MINHA CONTA */}
+            {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO ENTRAR (QUANDO VISITANTE) */}
             {user ? (
-              <Link
-                to="/account"
-                className={cn(
-                  "flex items-center gap-2 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-                  pathname.startsWith("/account")
-                    ? "bg-[#a855f7]/20 text-[#c084fc] font-semibold border border-[#a855f7]/40"
-                    : "border border-white/10 bg-[#161424] text-white/90 hover:border-[#a855f7]/40 hover:bg-[#a855f7]/15 hover:text-white",
-                )}
-                aria-label="Minha Conta"
-              >
-                <UserCircle className="size-4 text-[#c084fc]" />
-                <span className="hidden sm:inline font-semibold">Minha Conta</span>
-              </Link>
+              <ProfileDropdownMenu user={user} />
             ) : (
               <button
                 type="button"
@@ -1571,19 +1563,35 @@ export function Shell() {
                   )}
 
                   {user ? (
-                    <Link
-                      to="/account"
-                      onClick={() => setMenuOpen(false)}
-                      className={cn(
-                        "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
-                        pathname.startsWith("/account")
-                          ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                          : "text-muted hover:bg-elevated hover:text-fg",
-                      )}
-                    >
-                      <UserCircle className="size-5" />
-                      <span>Minha Conta</span>
-                    </Link>
+                    <>
+                      <Link
+                        to="/account"
+                        onClick={() => setMenuOpen(false)}
+                        className={cn(
+                          "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                          pathname.startsWith("/account")
+                            ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                            : "text-muted hover:bg-elevated hover:text-fg",
+                        )}
+                      >
+                        <UserCircle className="size-5" />
+                        <span>Meu Perfil</span>
+                      </Link>
+
+                      <Link
+                        to="/settings-privacy"
+                        onClick={() => setMenuOpen(false)}
+                        className={cn(
+                          "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                          pathname.startsWith("/settings-privacy")
+                            ? "bg-emerald-500/15 text-emerald-300 font-semibold shadow-[inset_0_0_0_1px_rgba(16,185,129,0.3)]"
+                            : "text-muted hover:bg-elevated hover:text-fg",
+                        )}
+                      >
+                        <Shield className="size-5 text-emerald-400" />
+                        <span>Configurações do Perfil</span>
+                      </Link>
+                    </>
                   ) : (
                     <button
                       type="button"
@@ -1612,6 +1620,25 @@ export function Shell() {
                       <Settings2 className="size-5" />
                       <span>Admin</span>
                     </Link>
+                  )}
+
+                  {user && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setMenuOpen(false);
+                        try {
+                          await signOut();
+                          window.location.reload();
+                        } catch {
+                          window.location.reload();
+                        }
+                      }}
+                      className="flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium text-rose-400 hover:bg-rose-500/10 transition-colors text-left cursor-pointer"
+                    >
+                      <LogOut className="size-5" />
+                      <span>Sair</span>
+                    </button>
                   )}
 
                 </div>

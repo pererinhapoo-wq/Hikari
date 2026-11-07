@@ -225,24 +225,24 @@ export function SettingsPrivacy() {
       {/* Topo / Breadcrumb */}
       <div className="mb-6">
         <Link
-          to="/settings"
+          to="/account"
           className="group mb-4 inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 transition-colors hover:text-white"
         >
           <ChevronLeft className="size-4 transition-transform group-hover:-translate-x-0.5" />
-          <span>Voltar para Configurações</span>
+          <span>Voltar para o Perfil</span>
         </Link>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="flex size-12 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-600/10 shadow-[0_0_25px_rgba(168,85,247,0.15)]">
-              <Shield className="size-6 text-violet-400" />
+            <div className="flex size-12 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.15)]">
+              <Shield className="size-6 text-emerald-400" />
             </div>
             <div>
               <h1 className="font-display text-2xl font-bold tracking-tight text-white">
-                Privacidade do Perfil
+                Configurações do Perfil
               </h1>
               <p className="text-xs sm:text-sm text-zinc-400">
-                Gerencie quem pode visualizar sua conta e suas atividades no Hikari
+                Gerencie quem pode visualizar sua conta, seções e usuários bloqueados no Hikari
               </p>
             </div>
           </div>

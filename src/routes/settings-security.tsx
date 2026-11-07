@@ -35,10 +35,10 @@ function SettingsSecurity() {
       {/* CABEÇALHO */}
       <div className="mb-6">
         <Link
-          to="/settings"
+          to="/account"
           className="mb-4 inline-flex items-center text-sm text-muted hover:text-fg"
         >
-          ← Voltar
+          ← Voltar ao Perfil
         </Link>
 
         <div className="flex items-center gap-3">

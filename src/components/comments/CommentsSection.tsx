@@ -19,6 +19,7 @@ import {
   Search,
   Send,
   Settings2,
+  Shield,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -2268,13 +2269,13 @@ export function CommentsSection({
                               </Link>
                             )}
                             <Link
-                              to="/settings"
+                              to="/settings-privacy"
                               role="menuitem"
                               onClick={() => setUserMenuOpen(false)}
                               className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
                             >
-                              <Settings2 className="size-4 text-purple-400" />
-                              <span>Configurações</span>
+                              <Shield className="size-4 text-emerald-400" />
+                              <span>Configurações do Perfil</span>
                             </Link>
                             <button
                               type="button"
@@ -2585,13 +2586,13 @@ export function CommentsSection({
                               </Link>
                             )}
                             <Link
-                              to="/settings"
+                              to="/settings-privacy"
                               role="menuitem"
                               onClick={() => setUserMenuOpen(false)}
                               className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
                             >
-                              <Settings2 className="size-4 text-purple-400" />
-                              <span>Configurações</span>
+                              <Shield className="size-4 text-emerald-400" />
+                              <span>Configurações do Perfil</span>
                             </Link>
                             <button
                               type="button"
