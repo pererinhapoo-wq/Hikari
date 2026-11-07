@@ -496,20 +496,172 @@ async function runTests() {
     console.log("✓ Teste 12 passou: Eventos simultâneos processados atomicamente com 100% de consistência.");
 
     // =========================================================================
-    // TESTE 13: Regressão das Etapas 7, 8 e 9
+    // TESTE 14: Eventos diferentes do mesmo autor (devem coexistir)
     // =========================================================================
-    console.log("\n[Teste 13] Verificando regressão de privacidade e bloqueios...");
+    console.log("\n[Teste 14] Eventos diferentes do mesmo autor devem coexistir");
 
-    // Valida que privacidade das etapas 7 e 8 continua funcionando perfeitamente
+    // Bob curte o comentário de Alice e Bob responde ao comentário de Alice
+    const notifLikeBob = await executeCreateNotification(sql, {
+      userId: idAlice,
+      actorId: idBob,
+      type: "comment_like",
+      message: "Bob curtiu seu comentário.",
+      commentId: testCommentId,
+    });
+    const notifReplyBob = await executeCreateNotification(sql, {
+      userId: idAlice,
+      actorId: idBob,
+      type: "comment_reply",
+      message: "Bob respondeu ao seu comentário.",
+      commentId: `reply_${now}_1`,
+    });
+
+    if (!notifLikeBob.success || !notifReplyBob.success) {
+      throw new Error("Falha ao criar eventos diferentes do mesmo autor");
+    }
+    if (notifLikeBob.notificationId === notifReplyBob.notificationId) {
+      throw new Error("Eventos de tipos diferentes colidiram indevidamente");
+    }
+    console.log("✓ Teste 14 passou: Eventos diferentes do mesmo autor coexistiram com sucesso.");
+
+    // =========================================================================
+    // TESTE 15: Comentários diferentes do mesmo autor (devem gerar notificações distintas)
+    // =========================================================================
+    console.log("\n[Teste 15] Comentários diferentes do mesmo autor geram notificações distintas");
+
+    const testCommentId2 = `c10_2_${now}`;
+    await sql`
+      insert into "comment" ("id", "userId", "animeId", "episodeId", "content", "createdAt")
+      values (${testCommentId2}, ${idAlice}, 'kitsu-7442', 'ep-1', 'Segundo comentário para teste!', current_timestamp)
+    `;
+
+    // Charlie curte comentário 1 de Alice e Charlie curte comentário 2 de Alice
+    const likeC1 = await executeCreateNotification(sql, {
+      userId: idAlice,
+      actorId: idCharlie,
+      type: "comment_like",
+      message: "Charlie curtiu seu comentário 1.",
+      commentId: testCommentId,
+    });
+    const likeC2 = await executeCreateNotification(sql, {
+      userId: idAlice,
+      actorId: idCharlie,
+      type: "comment_like",
+      message: "Charlie curtiu seu comentário 2.",
+      commentId: testCommentId2,
+    });
+
+    if (!likeC1.success || !likeC2.success) {
+      throw new Error("Falha ao criar curtidas em comentários diferentes");
+    }
+    if (likeC1.notificationId === likeC2.notificationId) {
+      throw new Error("Curtidas em comentários diferentes colidiram indevidamente");
+    }
+    console.log("✓ Teste 15 passou: Comentários diferentes geraram notificações distintas e legítimas.");
+
+    // =========================================================================
+    // TESTE 16: Respostas diferentes geram notificações distintas
+    // =========================================================================
+    console.log("\n[Teste 16] Respostas diferentes geram notificações distintas");
+
+    const replyC1 = await executeCreateNotification(sql, {
+      userId: idAlice,
+      actorId: idCharlie,
+      type: "comment_reply",
+      message: "Charlie respondeu primeira vez.",
+      commentId: `reply_diff_1_${now}`,
+    });
+    const replyC2 = await executeCreateNotification(sql, {
+      userId: idAlice,
+      actorId: idCharlie,
+      type: "comment_reply",
+      message: "Charlie respondeu segunda vez.",
+      commentId: `reply_diff_2_${now}`,
+    });
+
+    if (!replyC1.success || !replyC2.success) {
+      throw new Error("Falha ao criar respostas diferentes");
+    }
+    if (replyC1.notificationId === replyC2.notificationId) {
+      throw new Error("Respostas diferentes colidiram indevidamente");
+    }
+    console.log("✓ Teste 16 passou: Respostas diferentes preservadas com identidades próprias.");
+
+    // =========================================================================
+    // TESTE 17: Concorrência multi-instância (sem mutex em memória, bypassLock: true)
+    // =========================================================================
+    console.log("\n[Teste 17] Concorrência multi-instância direta no banco (bypassLock: true)");
+
+    const multiInstancePromises = Array.from({ length: 10 }, (_, idx) =>
+      executeCreateNotification(sql, {
+        userId: idBob,
+        actorId: idAlice,
+        type: "new_follower",
+        message: `Follow multi-instancia ${idx}`,
+        bypassLock: true, // Ignora o mutex em memória, forçando resolução atômica no PostgreSQL
+      }),
+    );
+
+    const multiInstanceResults = await Promise.all(multiInstancePromises);
+    const multiSuccess = multiInstanceResults.filter((r) => r.success).length;
+    if (multiSuccess !== 10) {
+      throw new Error(`Concorrência multi-instância falhou: ${multiSuccess}/10 sucessos`);
+    }
+
+    const checkMultiDedup = await sql<{ count: string }>`
+      select count(*)::text as count from "notification"
+      where "userId" = ${idBob} and "actorId" = ${idAlice} and "type" = 'new_follower'
+    `;
+    if (Number(checkMultiDedup[0]?.count ?? "0") !== 1) {
+      throw new Error(
+        `Falha de deduplicação no banco: esperada 1 notificação, encontrados ${checkMultiDedup[0]?.count}`,
+      );
+    }
+    console.log("✓ Teste 17 passou: Concorrência multi-instância resolvida atomicamente no PostgreSQL sem mutex.");
+
+    // =========================================================================
+    // TESTE 18: Integridade da constraint UNIQUE no PostgreSQL
+    // =========================================================================
+    console.log("\n[Teste 18] Validação de integridade do índice UNIQUE no PostgreSQL");
+
+    const directDedupKey = `test_unique_key_${now}`;
+    await sql`
+      insert into "notification" ("id", "userId", "type", "message", "dedupKey")
+      values (${"uidx_1_" + now}, ${idAlice}, 'custom', 'Teste Unique 1', ${directDedupKey})
+    `;
+
+    let uniqueViolated = false;
+    try {
+      await sql`
+        insert into "notification" ("id", "userId", "type", "message", "dedupKey")
+        values (${"uidx_2_" + now}, ${idAlice}, 'custom', 'Teste Unique 2', ${directDedupKey})
+      `;
+    } catch (err: any) {
+      // Código de erro PostgreSQL para violação de constraint unique é 23505
+      if (err?.code === "23505" || String(err).includes("unique") || String(err).includes("duplicate")) {
+        uniqueViolated = true;
+      }
+    }
+
+    if (!uniqueViolated) {
+      throw new Error("Índice UNIQUE no PostgreSQL falhou em rejeitar inserção duplicada direta");
+    }
+    console.log("✓ Teste 18 passou: Constraint UNIQUE no PostgreSQL rejeitou duplicatas diretas (23505).");
+
+    // =========================================================================
+    // TESTE 19: Regressão das Etapas 7, 8 e 9
+    // =========================================================================
+    console.log("\n[Teste 19] Verificando regressão de privacidade e bloqueios...");
+
     const privTest = await evaluateUserPrivacy(sql, idAlice, idDave);
     if (!privTest.canViewAccount) {
       throw new Error("Regressão em conta pública na privacidade");
     }
 
-    console.log("✓ Teste 13 passou: Sem regressão nas Etapas 7, 8 e 9.");
+    console.log("✓ Teste 19 passou: Sem regressão nas Etapas 7, 8 e 9.");
 
     console.log("\n========================================================");
-    console.log(">>> TODOS OS 13 TESTES DA ETAPA 10 PASSARAM COM SUCESSO! <<<");
+    console.log(">>> TODOS OS 19 TESTES DA ETAPA 10.1 PASSARAM COM SUCESSO! <<<");
     console.log("========================================================");
   } finally {
     // Limpeza de usuários de teste

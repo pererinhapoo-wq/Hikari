@@ -72,6 +72,33 @@ export interface CreateNotificationParams {
   commentId?: string | null;
   animeId?: string | null;
   episodeId?: string | null;
+  dedupKey?: string | null;
+  bypassLock?: boolean;
+}
+
+export interface RawNotificationRow {
+  id: string;
+  type: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+  actorId: string | null;
+  actorName: string | null;
+  actorNick: string | null;
+  actorImage: string | null;
+  commentId: string | null;
+  animeId: string | null;
+  episodeId: string | null;
+  commentContent: string | null;
+  commentImageUrl: string | null;
+  commentIsSpoiler: boolean | null;
+  parentCommentId: string | null;
+  parentCommentContent: string | null;
+  parentCommentImageUrl: string | null;
+  parentCommentIsSpoiler: boolean | null;
+  parentCommentAuthorName: string | null;
+  commentLikes: number | null;
+  dedupKey?: string | null;
 }
 
 import { FALLBACK_ANIMES } from "@/lib/fallback-catalog";
@@ -334,13 +361,47 @@ export async function resolveAnimeMetadataMap(
   return result;
 }
 
+export function buildNotificationDedupKey(params: {
+  userId: string;
+  actorId?: string | null;
+  type: string;
+  commentId?: string | null;
+  dedupKey?: string | null;
+}): string {
+  if (params.dedupKey && params.dedupKey.trim()) {
+    return params.dedupKey.trim();
+  }
+  const { userId, actorId, type, commentId } = params;
+  const safeActor = actorId ? String(actorId).trim() : "";
+  const safeComment = commentId ? String(commentId).trim() : "";
+
+  switch (type) {
+    case "new_follower":
+      return `new_follower:${userId}:${safeActor}`;
+    case "follow_request":
+      return `follow_request:${userId}:${safeActor}`;
+    case "follow_accept":
+      return `follow_accept:${userId}:${safeActor}`;
+    case "comment_like":
+      return `comment_like:${userId}:${safeComment}`;
+    case "comment_reply":
+      return `comment_reply:${userId}:${safeActor}:${safeComment}`;
+    default:
+      if (safeComment) {
+        return `${type}:${userId}:${safeActor}:${safeComment}`;
+      }
+      return `${type}:${userId}:${safeActor}`;
+  }
+}
+
 const notificationLocks = new Map<string, Promise<unknown>>();
 
 /**
  * Criação atômica de notificação com validação de:
  * 1. Não gerar auto-notificações (actorId === userId).
  * 2. Bloqueio mútuo via user_block em qualquer direção.
- * 3. Deduplicação inteligente de eventos com proteção contra concorrência simultânea.
+ * 3. Deduplicação persistente no PostgreSQL via UNIQUE ("dedupKey") e ON CONFLICT.
+ * 4. Mutex em memória (notificationLocks) como otimização local adicional.
  */
 export async function executeCreateNotification(
   sql: any,
@@ -351,7 +412,14 @@ export async function executeCreateNotification(
     return { success: false, reason: "self_action" };
   }
 
-  const lockKey = `${params.userId}:${params.actorId ?? ""}:${params.type}:${params.commentId ?? ""}`;
+  const dedupKey = buildNotificationDedupKey(params);
+
+  // Se bypassLock for solicitado (ex: teste de concorrência pura entre instâncias), vai direto ao banco
+  if (params.bypassLock) {
+    return executeCreateNotificationInternal(sql, params, dedupKey);
+  }
+
+  const lockKey = dedupKey;
   const previous = notificationLocks.get(lockKey) ?? Promise.resolve();
   let release: () => void = () => {};
   const current = new Promise<void>((resolve) => {
@@ -361,7 +429,7 @@ export async function executeCreateNotification(
 
   await previous;
   try {
-    return await executeCreateNotificationInternal(sql, params);
+    return await executeCreateNotificationInternal(sql, params, dedupKey);
   } finally {
     release();
     if (notificationLocks.get(lockKey) === current) {
@@ -373,6 +441,7 @@ export async function executeCreateNotification(
 async function executeCreateNotificationInternal(
   sql: any,
   params: CreateNotificationParams,
+  dedupKey: string,
 ): Promise<{ success: boolean; notificationId?: string; reason?: string }> {
   const { userId, actorId, type, message, commentId, animeId, episodeId } = params;
 
@@ -395,122 +464,10 @@ async function executeCreateNotificationInternal(
     }
   }
 
-  // 3. Deduplicação inteligente
-  // a) Para new_follower: se já houver notificação desse actor para esse user, atualiza timestamp e read = false
-  if (type === "new_follower" && actorId) {
-    const existing = await sql<{ id: string }>`
-      select "id" from "notification"
-      where "userId" = ${userId}
-        and "actorId" = ${actorId}
-        and "type" = 'new_follower'
-      order by "createdAt" desc
-      limit 1
-    `;
-    if (existing[0]?.id) {
-      await sql`
-        update "notification"
-        set
-          "read" = false,
-          "message" = ${message},
-          "createdAt" = current_timestamp
-        where "id" = ${existing[0].id}
-      `;
-      return { success: true, notificationId: existing[0].id };
-    }
-  }
-
-  // b) Para follow_request: se já houver notificação pendente desse actor, atualiza
-  if (type === "follow_request" && actorId) {
-    const existing = await sql<{ id: string }>`
-      select "id" from "notification"
-      where "userId" = ${userId}
-        and "actorId" = ${actorId}
-        and "type" = 'follow_request'
-      order by "createdAt" desc
-      limit 1
-    `;
-    if (existing[0]?.id) {
-      await sql`
-        update "notification"
-        set
-          "read" = false,
-          "message" = ${message},
-          "createdAt" = current_timestamp
-        where "id" = ${existing[0].id}
-      `;
-      return { success: true, notificationId: existing[0].id };
-    }
-  }
-
-  // c) Para follow_accept: se já houver notificação desse actor para esse user, atualiza
-  if (type === "follow_accept" && actorId) {
-    const existing = await sql<{ id: string }>`
-      select "id" from "notification"
-      where "userId" = ${userId}
-        and "actorId" = ${actorId}
-        and "type" = 'follow_accept'
-      order by "createdAt" desc
-      limit 1
-    `;
-    if (existing[0]?.id) {
-      await sql`
-        update "notification"
-        set
-          "read" = false,
-          "message" = ${message},
-          "createdAt" = current_timestamp
-        where "id" = ${existing[0].id}
-      `;
-      return { success: true, notificationId: existing[0].id };
-    }
-  }
-
-  // d) Para comment_like: se já houver notificação de like para este comentário deste autor, atualiza
-  if (type === "comment_like" && commentId) {
-    const existing = await sql<{ id: string }>`
-      select "id" from "notification"
-      where "userId" = ${userId}
-        and "commentId" = ${commentId}
-        and "type" = 'comment_like'
-      order by "createdAt" desc
-      limit 1
-    `;
-    if (existing[0]?.id) {
-      await sql`
-        update "notification"
-        set
-          "actorId" = ${actorId ?? null},
-          "read" = false,
-          "message" = ${message},
-          "createdAt" = current_timestamp,
-          "animeId" = ${animeId ?? null},
-          "episodeId" = ${episodeId ?? null}
-        where "id" = ${existing[0].id}
-      `;
-      return { success: true, notificationId: existing[0].id };
-    }
-  }
-
-  // e) Para comment_reply: evita duplicatas exatas nos últimos 5 segundos
-  if (type === "comment_reply" && commentId && actorId) {
-    const recent = await sql<{ id: string }>`
-      select "id" from "notification"
-      where "userId" = ${userId}
-        and "actorId" = ${actorId}
-        and "commentId" = ${commentId}
-        and "type" = 'comment_reply'
-        and "createdAt" > current_timestamp - interval '5 seconds'
-      limit 1
-    `;
-    if (recent[0]?.id) {
-      return { success: true, notificationId: recent[0].id };
-    }
-  }
-
-  // 4. Inserção com ID único
+  // 3. Deduplicação persistente atômica via INSERT ... ON CONFLICT ("dedupKey") DO UPDATE
   const newId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-  await sql`
+  const inserted = await sql<{ id: string }>`
     insert into "notification" (
       "id",
       "userId",
@@ -521,7 +478,8 @@ async function executeCreateNotificationInternal(
       "createdAt",
       "commentId",
       "animeId",
-      "episodeId"
+      "episodeId",
+      "dedupKey"
     )
     values (
       ${newId},
@@ -533,11 +491,23 @@ async function executeCreateNotificationInternal(
       current_timestamp,
       ${commentId ?? null},
       ${animeId ?? null},
-      ${episodeId ?? null}
+      ${episodeId ?? null},
+      ${dedupKey}
     )
+    on conflict ("dedupKey") do update
+    set
+      "actorId" = coalesce(excluded."actorId", "notification"."actorId"),
+      "message" = excluded."message",
+      "read" = false,
+      "createdAt" = current_timestamp,
+      "commentId" = coalesce(excluded."commentId", "notification"."commentId"),
+      "animeId" = coalesce(excluded."animeId", "notification"."animeId"),
+      "episodeId" = coalesce(excluded."episodeId", "notification"."episodeId")
+    returning "id"
   `;
 
-  return { success: true, notificationId: newId };
+  const returnedId = inserted[0]?.id || newId;
+  return { success: true, notificationId: returnedId };
 }
 
 /**
@@ -553,29 +523,7 @@ export async function executeGetNotifications(
   const filter = params?.filter === "unread" ? "unread" : "all";
 
   // Consulta otimizada com índices compostos, filtrando bloqueios mútuos e recursos válidos
-  const rows = await sql<{
-    id: string;
-    type: string;
-    message: string;
-    read: boolean;
-    createdAt: string;
-    actorId: string | null;
-    actorName: string | null;
-    actorNick: string | null;
-    actorImage: string | null;
-    commentId: string | null;
-    animeId: string | null;
-    episodeId: string | null;
-    commentContent: string | null;
-    commentImageUrl: string | null;
-    commentIsSpoiler: boolean | null;
-    parentCommentId: string | null;
-    parentCommentContent: string | null;
-    parentCommentImageUrl: string | null;
-    parentCommentIsSpoiler: boolean | null;
-    parentCommentAuthorName: string | null;
-    commentLikes: number | null;
-  }>`
+  const rows: RawNotificationRow[] = await sql<RawNotificationRow>`
     with target_notifications as (
       select n.*
       from "notification" n
@@ -761,11 +709,11 @@ export async function executeGetNotifications(
   const totalCount = Number(totalRows[0]?.count ?? "0") || 0;
 
   // Carrega avatares de likes
-  const likeCommentIds = Array.from(
+  const likeCommentIds: string[] = Array.from(
     new Set(
       items
-        .filter((r) => r.type === "comment_like" && r.commentId)
-        .map((r) => String(r.commentId)),
+        .filter((r: RawNotificationRow) => r.type === "comment_like" && Boolean(r.commentId))
+        .map((r: RawNotificationRow) => String(r.commentId)),
     ),
   );
 
@@ -814,16 +762,16 @@ export async function executeGetNotifications(
   }
 
   // Resolve metadados de anime
-  const distinctAnimeIds = Array.from(
+  const distinctAnimeIds: string[] = Array.from(
     new Set(
       items
-        .map((r) => (typeof r.animeId === "string" ? r.animeId.trim() : ""))
-        .filter(Boolean),
+        .map((r: RawNotificationRow) => (typeof r.animeId === "string" ? r.animeId.trim() : ""))
+        .filter((id): id is string => Boolean(id)),
     ),
   );
   const animeMetaMap = await resolveAnimeMetadataMap(distinctAnimeIds);
 
-  const notifications: NotificationItem[] = items.map((r) => {
+  const notifications: NotificationItem[] = items.map((r: RawNotificationRow) => {
     const animeId = r.animeId ? String(r.animeId) : null;
     const commentId = r.commentId ? String(r.commentId) : null;
     const animeMeta = animeId ? animeMetaMap.get(animeId) : undefined;

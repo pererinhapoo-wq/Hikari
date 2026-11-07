@@ -2169,17 +2169,19 @@ export async function executeUnblockUser(sql: any, blockerId: string, targetId: 
   };
 }
 
+export interface BlockedUserRow {
+  userId: string;
+  nick: string | null;
+  name: string | null;
+  image: string | null;
+  blockedAt: string;
+}
+
 export async function executeGetMyBlockedUsers(
   sql: any,
   userId: string,
 ): Promise<BlockedUserItem[]> {
-  const rows = await sql<{
-    userId: string;
-    nick: string | null;
-    name: string | null;
-    image: string | null;
-    blockedAt: string;
-  }>`
+  const rows: BlockedUserRow[] = (await sql<BlockedUserRow>`
     select
       b."blockedId" as "userId",
       coalesce(p."nick", u."name", 'usuario') as "nick",
@@ -2191,9 +2193,9 @@ export async function executeGetMyBlockedUsers(
     left join "profile" p on p."userId" = u."id"
     where b."blockerId" = ${userId}
     order by b."createdAt" desc
-  `;
+  `) as BlockedUserRow[];
 
-  return rows.map((r) => ({
+  return rows.map((r: BlockedUserRow) => ({
     id: r.userId,
     userId: r.userId,
     nick: r.nick ?? "usuario",
