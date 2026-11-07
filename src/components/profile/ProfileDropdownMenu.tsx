@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LogOut, Shield, Settings2, UserCircle } from "lucide-react";
+import { LogOut, Settings, Settings2, UserCircle } from "lucide-react";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { signOut } from "@/lib/auth/client";
 import type { AppUser } from "@/lib/auth/use-current-user";
@@ -103,6 +103,10 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
 
   const isProfileActive = pathname.startsWith("/account");
   const isSettingsActive = pathname.startsWith("/settings-privacy");
+  const isProfileRoute =
+    pathname.startsWith("/account") ||
+    pathname.startsWith("/profile") ||
+    pathname.startsWith("/settings-privacy");
 
   return (
     <div ref={menuRef} className="relative inline-block text-left">
@@ -171,21 +175,23 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
               <span>Meu Perfil</span>
             </Link>
 
-            {/* 2. Configurações do Perfil (Tela do Escudo Verde) */}
-            <Link
-              to="/settings-privacy"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className={cn(
-                "flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-colors",
-                isSettingsActive
-                  ? "bg-emerald-500/15 text-emerald-300 font-semibold"
-                  : "text-fg/90 hover:bg-white/[0.06] hover:text-white",
-              )}
-            >
-              <Shield className="size-4 text-emerald-400 shrink-0" />
-              <span>Configurações do Perfil</span>
-            </Link>
+            {/* 2. Configurações do Perfil (Exibição contextual em rotas de perfil) */}
+            {isProfileRoute && (
+              <Link
+                to="/settings-privacy"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-colors",
+                  isSettingsActive
+                    ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold"
+                    : "text-fg/90 hover:bg-white/[0.06] hover:text-white",
+                )}
+              >
+                <Settings className="size-4 text-[#c084fc] shrink-0" />
+                <span>Configurações do Perfil</span>
+              </Link>
+            )}
 
             {/* Opção administrativa se aplicável */}
             {user.primaryEmail && isHikariAdmin(user.primaryEmail) && (

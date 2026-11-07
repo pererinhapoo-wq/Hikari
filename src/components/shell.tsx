@@ -18,8 +18,8 @@ import {
   LogOut,
   Menu,
   Search,
+  Settings,
   Settings2,
-  Shield,
   Tags,
   UserCircle,
   X,
@@ -1584,11 +1584,11 @@ export function Shell() {
                         className={cn(
                           "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
                           pathname.startsWith("/settings-privacy")
-                            ? "bg-emerald-500/15 text-emerald-300 font-semibold shadow-[inset_0_0_0_1px_rgba(16,185,129,0.3)]"
+                            ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
                             : "text-muted hover:bg-elevated hover:text-fg",
                         )}
                       >
-                        <Shield className="size-5 text-emerald-400" />
+                        <Settings className="size-5 text-[#c084fc]" />
                         <span>Configurações do Perfil</span>
                       </Link>
                     </>

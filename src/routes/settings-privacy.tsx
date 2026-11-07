@@ -12,6 +12,7 @@ import {
   Loader2,
   Lock,
   MessageSquare,
+  Settings,
   Shield,
   UserCheck,
   UserMinus,
@@ -234,8 +235,8 @@ export function SettingsPrivacy() {
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="flex size-12 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.15)]">
-              <Shield className="size-6 text-emerald-400" />
+            <div className="flex size-12 items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 text-[#c084fc] shadow-[0_0_25px_rgba(168,85,247,0.15)]">
+              <Settings className="size-6 text-[#c084fc]" />
             </div>
             <div>
               <h1 className="font-display text-2xl font-bold tracking-tight text-white">
