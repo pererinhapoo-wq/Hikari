@@ -1,15 +1,20 @@
+import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   BadgeCheck,
+  Check,
   Clock,
   ExternalLink,
   Lock,
+  MoreVertical,
   Pencil,
-  Settings,
+  Share2,
   Shield,
   Sparkles,
+  UserCheck,
   Users,
 } from "lucide-react";
-import { Link } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 
 interface ProfileIdentityHeaderProps {
   name: string;
@@ -169,14 +174,6 @@ export function ProfileIdentityHeader({
                 <span className="hidden sm:inline">Privacidade</span>
               </button>
             )}
-
-            <Link
-              to="/settings-account"
-              className="inline-flex size-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-zinc-300 transition-all hover:bg-white/[0.1] hover:text-white"
-              title="Configurações da conta"
-            >
-              <Settings className="size-4" />
-            </Link>
           </div>
         </div>
 
