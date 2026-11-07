@@ -6,8 +6,12 @@ import {
 import {
   ChevronLeft,
   ChevronRight,
+  Film,
+  Loader2,
+  Lock,
   Search as SearchIcon,
   SlidersHorizontal,
+  Users,
 } from "lucide-react";
 
 import {
@@ -31,6 +35,7 @@ import {
 } from "@/lib/labels";
 
 import { overlayList } from "@/lib/overlay";
+import { searchUsers, type SearchUserItem } from "@/lib/profile.functions";
 import { buildCleanCanonical, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { useHikariStore } from "@/lib/store";
 
@@ -59,6 +64,7 @@ type Search = {
   sort?: string;
   page?: number;
   adult?: boolean;
+  tab?: "animes" | "users";
 };
 
 export const Route =
@@ -115,6 +121,11 @@ export const Route =
         raw.adult === true ||
         raw.adult === "true"
           ? true
+          : undefined,
+
+      tab:
+        raw.tab === "users"
+          ? "users"
           : undefined,
     }),
 
@@ -322,6 +333,124 @@ function SearchPage() {
   const currentPage =
     search.page ?? 1;
 
+  const activeTab: "animes" | "users" =
+    search.tab === "users" ? "users" : "animes";
+
+  const handleTabChange = (nextTab: "animes" | "users") => {
+    void navigate({
+      search: {
+        ...search,
+        tab: nextTab === "users" ? "users" : undefined,
+      },
+      replace: true,
+    });
+  };
+
+  /*
+   * =========================================================
+   * PESQUISA DE USUÁRIOS (ETAPA 12)
+   * =========================================================
+   */
+
+  const [userResults, setUserResults] = useState<SearchUserItem[]>([]);
+  const [usersPage, setUsersPage] = useState(1);
+  const [hasMoreUsers, setHasMoreUsers] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersLoadingMore, setUsersLoadingMore] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const isFetchingMoreRef = useRef(false);
+
+  let userQueryClean = draft.trim();
+  if (userQueryClean.startsWith("@")) {
+    userQueryClean = userQueryClean.slice(1).trim();
+  }
+
+  useEffect(() => {
+    if (activeTab !== "users") {
+      return;
+    }
+
+    let clean = draft.trim();
+    if (clean.startsWith("@")) {
+      clean = clean.slice(1).trim();
+    }
+
+    if (clean.length < 2) {
+      setUserResults([]);
+      setHasMoreUsers(false);
+      setUsersLoading(false);
+      setUsersError(null);
+      return;
+    }
+
+    setUsersLoading(true);
+    setUsersError(null);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const results = await searchUsers({
+          data: {
+            query: clean,
+            page: 1,
+            limit: 20,
+          },
+        });
+        setUserResults(results);
+        setUsersPage(1);
+        setHasMoreUsers(results.length >= 20);
+      } catch (err) {
+        console.error("Erro ao buscar usuários:", err);
+        setUsersError("Não foi possível carregar os usuários. Tente novamente.");
+        setUserResults([]);
+        setHasMoreUsers(false);
+      } finally {
+        setUsersLoading(false);
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [activeTab, draft]);
+
+  const handleLoadMoreUsers = async () => {
+    if (usersLoadingMore || isFetchingMoreRef.current || !hasMoreUsers) {
+      return;
+    }
+
+    let clean = draft.trim();
+    if (clean.startsWith("@")) {
+      clean = clean.slice(1).trim();
+    }
+    if (clean.length < 2) return;
+
+    const nextPage = usersPage + 1;
+    isFetchingMoreRef.current = true;
+    setUsersLoadingMore(true);
+
+    try {
+      const moreUsers = await searchUsers({
+        data: {
+          query: clean,
+          page: nextPage,
+          limit: 20,
+        },
+      });
+
+      setUserResults((prev) => {
+        const existingIds = new Set(prev.map((u) => u.userId));
+        const newUnique = moreUsers.filter((u) => !existingIds.has(u.userId));
+        return [...prev, ...newUnique];
+      });
+
+      setUsersPage(nextPage);
+      setHasMoreUsers(moreUsers.length >= 20);
+    } catch (err) {
+      console.error("Erro ao carregar mais usuários:", err);
+    } finally {
+      isFetchingMoreRef.current = false;
+      setUsersLoadingMore(false);
+    }
+  };
+
   /*
    * =========================================================
    * LIMPAR BUSCA SOMENTE NO RELOAD REAL
@@ -404,6 +533,10 @@ function SearchPage() {
       return;
     }
 
+    if (activeTab === "users") {
+      return;
+    }
+
     const q =
       draft.trim();
 
@@ -449,6 +582,7 @@ function SearchPage() {
     navigate,
     search,
     clearingOnReload,
+    activeTab,
   ]);
 
   /*
@@ -773,149 +907,140 @@ function SearchPage() {
       </div>
 
       {/* =====================================================
+          ABAS DISCRETAS: ANIMES E USUÁRIOS
+      ====================================================== */}
+
+      <div className="flex items-center gap-2 border-b border-white/[0.08] pb-2">
+        <button
+          type="button"
+          onClick={() => handleTabChange("animes")}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all ${
+            activeTab === "animes"
+              ? "bg-violet-600/20 text-violet-300 border border-violet-500/30 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+          }`}
+        >
+          <Film className="size-4" />
+          <span>Animes</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange("users")}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all ${
+            activeTab === "users"
+              ? "bg-violet-600/20 text-violet-300 border border-violet-500/30 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
+          }`}
+        >
+          <Users className="size-4" />
+          <span>Usuários</span>
+        </button>
+      </div>
+
+      {/* =====================================================
           BUSCA
       ====================================================== */}
 
       <div className="relative flex gap-2">
         <div className="relative flex-1">
-
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-subtle" />
 
           <Input
             value={draft}
             onChange={(e) => {
-              setDraft(
-                e.target.value,
-              );
+              setDraft(e.target.value);
             }}
-            placeholder="Buscar animes…"
+            placeholder={
+              activeTab === "users"
+                ? "Buscar usuários por @username ou nome…"
+                : "Buscar animes…"
+            }
             className="pl-10"
-            aria-label="Buscar animes"
+            aria-label={
+              activeTab === "users" ? "Buscar usuários" : "Buscar animes"
+            }
           />
-
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          aria-label="Filtros"
-          onClick={() =>
-            setFiltersOpen(
-              (value) =>
-                !value,
-            )
-          }
-        >
-          <SlidersHorizontal className="size-4" />
-        </Button>
+        {activeTab === "animes" && (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Filtros"
+            onClick={() =>
+              setFiltersOpen((value) => !value)
+            }
+          >
+            <SlidersHorizontal className="size-4" />
+          </Button>
+        )}
       </div>
 
       {/* =====================================================
-          FILTROS
+          FILTROS (SOMENTE ABA ANIMES)
       ====================================================== */}
 
-      <div
-        className={
-          filtersOpen
-            ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
-            : "hidden lg:grid lg:grid-cols-4 lg:gap-3"
-        }
-      >
-
-        {/* GÊNERO */}
-        <Field label="Gênero">
-          <NativeSelect
-            value={
-              search.genre ??
-              ""
-            }
-            onChange={(e) =>
-              apply({
-                genre:
-                  e.target
-                    .value ||
-                  undefined,
-              })
-            }
-          >
-            <option value="">
-              Todos
-            </option>
-
-            {genreOptions.map(
-              (genre) => (
-                <option
-                  key={genre}
-                  value={genre}
-                >
-                  {GENRE_PT[
-                    genre
-                  ] ?? genre}
+      {activeTab === "animes" && (
+        <div
+          className={
+            filtersOpen
+              ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+              : "hidden lg:grid lg:grid-cols-4 lg:gap-3"
+          }
+        >
+          {/* GÊNERO */}
+          <Field label="Gênero">
+            <NativeSelect
+              value={search.genre ?? ""}
+              onChange={(e) =>
+                apply({
+                  genre: e.target.value || undefined,
+                })
+              }
+            >
+              <option value="">Todos</option>
+              {genreOptions.map((genre) => (
+                <option key={genre} value={genre}>
+                  {GENRE_PT[genre] ?? genre}
                 </option>
-              ),
-            )}
-          </NativeSelect>
-        </Field>
+              ))}
+            </NativeSelect>
+          </Field>
 
-        {/* ANO */}
-        <Field label="Ano">
-          <NativeSelect
-            value={
-              search.year ??
-              ""
-            }
-            onChange={(e) =>
-              apply({
-                year:
-                  e.target
-                    .value ||
-                  undefined,
-              })
-            }
-          >
-            <option value="">
-              Qualquer
-            </option>
-
-            {YEARS.map(
-              (year) => (
-                <option
-                  key={year}
-                  value={year}
-                >
+          {/* ANO */}
+          <Field label="Ano">
+            <NativeSelect
+              value={search.year ?? ""}
+              onChange={(e) =>
+                apply({
+                  year: e.target.value || undefined,
+                })
+              }
+            >
+              <option value="">Qualquer</option>
+              {YEARS.map((year) => (
+                <option key={year} value={year}>
                   {year}
                 </option>
-              ),
-            )}
-          </NativeSelect>
-        </Field>
+              ))}
+            </NativeSelect>
+          </Field>
 
-        {/* FORMATO */}
-        <Field label="Formato">
-          <NativeSelect
-            value={
-              search.format ??
-              ""
-            }
-            onChange={(e) =>
-              apply({
-                format:
-                  e.target
-                    .value ||
-                  undefined,
-              })
-            }
-          >
-            <option value="">
-              Todos
-            </option>
-
-            {Object.entries(
-              FORMAT_PT,
-            )
-              .filter(
-                ([key]) =>
+          {/* FORMATO */}
+          <Field label="Formato">
+            <NativeSelect
+              value={search.format ?? ""}
+              onChange={(e) =>
+                apply({
+                  format: e.target.value || undefined,
+                })
+              }
+            >
+              <option value="">Todos</option>
+              {Object.entries(FORMAT_PT)
+                .filter(([key]) =>
                   [
                     "TV",
                     "MOVIE",
@@ -923,290 +1048,348 @@ function SearchPage() {
                     "ONA",
                     "SPECIAL",
                     "TV_SHORT",
-                  ].includes(
-                    key,
-                  ),
-              )
-              .map(
-                ([
-                  key,
-                  value,
-                ]) => (
-                  <option
-                    key={key}
-                    value={key}
-                  >
+                  ].includes(key),
+                )
+                .map(([key, value]) => (
+                  <option key={key} value={key}>
                     {value}
                   </option>
-                ),
-              )}
-          </NativeSelect>
-        </Field>
+                ))}
+            </NativeSelect>
+          </Field>
 
-        {/* STATUS */}
-        <Field label="Status">
-          <NativeSelect
-            value={
-              search.status ??
-              ""
-            }
-            onChange={(e) =>
-              apply({
-                status:
-                  e.target
-                    .value ||
-                  undefined,
-              })
-            }
-          >
-            <option value="">
-              Todos
-            </option>
-
-            {Object.entries(
-              STATUS_PT,
-            ).map(
-              ([
-                key,
-                value,
-              ]) => (
-                <option
-                  key={key}
-                  value={key}
-                >
+          {/* STATUS */}
+          <Field label="Status">
+            <NativeSelect
+              value={search.status ?? ""}
+              onChange={(e) =>
+                apply({
+                  status: e.target.value || undefined,
+                })
+              }
+            >
+              <option value="">Todos</option>
+              {Object.entries(STATUS_PT).map(([key, value]) => (
+                <option key={key} value={key}>
                   {value}
                 </option>
-              ),
-            )}
-          </NativeSelect>
-        </Field>
+              ))}
+            </NativeSelect>
+          </Field>
 
-        {/* ORDENAR */}
-        <Field
-          label="Ordenar"
-          className="lg:col-span-2"
-        >
-          <NativeSelect
-            value={
-              search.sort ??
-              "TRENDING_DESC"
-            }
-            onChange={(e) =>
-              apply({
-                sort:
-                  e.target
-                    .value ||
-                  undefined,
-              })
-            }
-          >
-            {SORT_OPTIONS.map(
-              (option) => (
-                <option
-                  key={
-                    option.value
-                  }
-                  value={
-                    option.value
-                  }
-                >
-                  {
-                    option.label
-                  }
+          {/* ORDENAR */}
+          <Field label="Ordenar" className="lg:col-span-2">
+            <NativeSelect
+              value={search.sort ?? "TRENDING_DESC"}
+              onChange={(e) =>
+                apply({
+                  sort: e.target.value || undefined,
+                })
+              }
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
-              ),
-            )}
-          </NativeSelect>
-        </Field>
-
-      </div>
-
-      {/* =====================================================
-          RESULTADOS
-      ====================================================== */}
-
-      {hasQuery &&
-        hasAnimes && (
-          <section className="space-y-5">
-
-            <div className="flex items-end justify-between gap-3">
-
-              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-
-                <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-                  Resultados da busca
-                </h1>
-
-                <span className="text-sm text-muted">
-                  {items.length}{" "}
-                  {items.length ===
-                  1
-                    ? "anime encontrado"
-                    : "animes encontrados"}
-                </span>
-
-              </div>
-
-            </div>
-
-            <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-4 lg:grid-cols-6">
-
-              {items.map(
-                (anime) => (
-                  <div
-                    key={
-                      anime.id
-                    }
-                    className="min-w-0 [&>article]:w-full"
-                  >
-                    <AnimeCard
-                      anime={
-                        anime
-                      }
-                    />
-                  </div>
-                ),
-              )}
-
-            </div>
-
-            {(currentPage >
-              1 ||
-              result.hasNext) && (
-              <div className="flex items-center justify-center gap-1 pt-4">
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    goToPage(
-                      currentPage -
-                        1,
-                    )
-                  }
-                  disabled={
-                    currentPage ===
-                    1
-                  }
-                  aria-label="Página anterior"
-                  className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-                >
-                  <ChevronLeft className="size-5" />
-                </button>
-
-                <div className="flex items-center gap-1">
-
-                  {pageNumbers.map(
-                    (page) => (
-                      <button
-                        key={
-                          page
-                        }
-                        type="button"
-                        onClick={() =>
-                          goToPage(
-                            page,
-                          )
-                        }
-                        aria-current={
-                          page ===
-                          currentPage
-                            ? "page"
-                            : undefined
-                        }
-                        className={
-                          page ===
-                          currentPage
-                            ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
-                            : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
-                        }
-                      >
-                        {
-                          page
-                        }
-                      </button>
-                    ),
-                  )}
-
-                  {result.hasNext &&
-                    currentPage <=
-                      3 && (
-                      <span className="flex size-10 items-center justify-center text-sm text-muted">
-                        …
-                      </span>
-                    )}
-
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    goToPage(
-                      currentPage +
-                        1,
-                    )
-                  }
-                  disabled={
-                    !result.hasNext
-                  }
-                  aria-label="Próxima página"
-                  className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-                >
-                  <ChevronRight className="size-5" />
-                </button>
-
-              </div>
-            )}
-
-          </section>
-        )}
-
-      {/* =====================================================
-          SEM BUSCA
-      ====================================================== */}
-
-      {!hasQuery && (
-        <div className="py-20 text-center">
-
-          <SearchIcon className="mx-auto size-8 text-subtle" />
-
-          <p className="mt-4 font-display text-2xl">
-            Pesquise um anime
-          </p>
-
-          <p className="mt-2 text-sm text-muted">
-            Digite o nome do anime para ver os resultados.
-          </p>
-
+              ))}
+            </NativeSelect>
+          </Field>
         </div>
       )}
 
       {/* =====================================================
-          NADA ENCONTRADO
+          CONTEÚDO DA ABA DE ANIMES
       ====================================================== */}
 
-      {hasQuery &&
-        !hasAnimes && (
-          <div className="py-20 text-center">
+      {activeTab === "animes" && (
+        <>
+          {hasQuery && hasAnimes && (
+            <section className="space-y-5">
+              <div className="flex items-end justify-between gap-3">
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+                    Resultados da busca
+                  </h1>
+                  <span className="text-sm text-muted">
+                    {items.length}{" "}
+                    {items.length === 1
+                      ? "anime encontrado"
+                      : "animes encontrados"}
+                  </span>
+                </div>
+              </div>
 
-            <p className="font-display text-2xl">
-              Nada encontrado
-            </p>
+              <div className="grid grid-cols-2 items-stretch gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                {items.map((anime) => (
+                  <div
+                    key={anime.id}
+                    className="min-w-0 [&>article]:w-full"
+                  >
+                    <AnimeCard anime={anime} />
+                  </div>
+                ))}
+              </div>
 
-            <p className="mt-2 text-sm text-muted">
-              Tente outro título
-              ou limpe os
-              filtros.
-            </p>
+              {(currentPage > 1 || result.hasNext) && (
+                <div className="flex items-center justify-center gap-1 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    aria-label="Página anterior"
+                    className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+                  >
+                    <ChevronLeft className="size-5" />
+                  </button>
 
-            <Link
-              to="/search"
-              className="mt-4 inline-block text-sm text-fg underline"
-            >
-              Limpar busca
-            </Link>
+                  <div className="flex items-center gap-1">
+                    {pageNumbers.map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        onClick={() => goToPage(page)}
+                        aria-current={
+                          page === currentPage ? "page" : undefined
+                        }
+                        className={
+                          page === currentPage
+                            ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
+                            : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+                        }
+                      >
+                        {page}
+                      </button>
+                    ))}
 
-          </div>
-        )}
+                    {result.hasNext && currentPage <= 3 && (
+                      <span className="flex size-10 items-center justify-center text-sm text-muted">
+                        …
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={!result.hasNext}
+                    aria-label="Próxima página"
+                    className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
+                  >
+                    <ChevronRight className="size-5" />
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
+
+          {!hasQuery && (
+            <div className="py-20 text-center">
+              <SearchIcon className="mx-auto size-8 text-subtle" />
+              <p className="mt-4 font-display text-2xl">
+                Pesquise um anime
+              </p>
+              <p className="mt-2 text-sm text-muted">
+                Digite o nome do anime para ver os resultados.
+              </p>
+            </div>
+          )}
+
+          {hasQuery && !hasAnimes && (
+            <div className="py-20 text-center">
+              <p className="font-display text-2xl">Nada encontrado</p>
+              <p className="mt-2 text-sm text-muted">
+                Tente outro título ou limpe os filtros.
+              </p>
+              <Link
+                to="/search"
+                className="mt-4 inline-block text-sm text-fg underline"
+              >
+                Limpar busca
+              </Link>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* =====================================================
+          CONTEÚDO DA ABA DE USUÁRIOS (ETAPA 12)
+      ====================================================== */}
+
+      {activeTab === "users" && (
+        <section className="space-y-5">
+          {/* Carregamento inicial de usuários */}
+          {usersLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3.5 sm:p-4 animate-pulse"
+                >
+                  <div className="size-11 sm:size-12 shrink-0 rounded-xl bg-white/[0.05]" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-32 rounded bg-white/[0.05]" />
+                    <div className="h-3 w-20 rounded bg-white/[0.05]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Erro ao buscar usuários */}
+          {!usersLoading && usersError && (
+            <div className="py-20 text-center">
+              <p className="font-display text-2xl text-red-400">
+                Erro na busca
+              </p>
+              <p className="mt-2 text-sm text-muted">{usersError}</p>
+            </div>
+          )}
+
+          {/* Menos de dois caracteres */}
+          {!usersLoading && !usersError && userQueryClean.length < 2 && (
+            <div className="py-20 text-center">
+              <Users className="mx-auto size-8 text-subtle" />
+              <p className="mt-4 font-display text-2xl">
+                Pesquise um usuário
+              </p>
+              <p className="mt-2 text-sm text-muted">
+                Digite o @username ou nome de exibição (mínimo de 2 caracteres) para encontrar membros da comunidade.
+              </p>
+            </div>
+          )}
+
+          {/* Nenhum usuário encontrado */}
+          {!usersLoading &&
+            !usersError &&
+            userQueryClean.length >= 2 &&
+            userResults.length === 0 && (
+              <div className="py-20 text-center">
+                <Users className="mx-auto size-8 text-subtle" />
+                <p className="mt-4 font-display text-2xl">
+                  Nenhum usuário encontrado
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  Não encontramos membros correspondentes a &quot;{draft.trim()}&quot;. Tente outro username ou nome.
+                </p>
+              </div>
+            )}
+
+          {/* Resultados de usuários encontrados */}
+          {!usersLoading && !usersError && userResults.length > 0 && (
+            <>
+              <div className="flex items-end justify-between gap-3">
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+                    Resultados da busca
+                  </h1>
+                  <span className="text-sm text-muted">
+                    {userResults.length}{" "}
+                    {userResults.length === 1
+                      ? "usuário encontrado"
+                      : "usuários encontrados"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {userResults.map((person) => {
+                  const avatarLetter = (
+                    person.displayName ||
+                    person.nick ||
+                    "U"
+                  )
+                    .charAt(0)
+                    .toUpperCase();
+
+                  return (
+                    <div
+                      key={person.userId}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 sm:p-4 transition-colors hover:border-violet-500/30 hover:bg-white/[0.04]"
+                    >
+                      <Link
+                        to="/profile/$nick"
+                        params={{ nick: person.nick }}
+                        className="flex items-center gap-3 min-w-0 flex-1 group"
+                      >
+                        <div className="flex size-11 sm:size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm sm:text-base text-violet-300 ring-1 ring-white/10">
+                          {person.avatarUrl ? (
+                            <img
+                              src={person.avatarUrl}
+                              alt=""
+                              className="size-full object-cover"
+                            />
+                          ) : (
+                            <span>{avatarLetter}</span>
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="truncate text-xs sm:text-sm font-semibold text-zinc-100 transition-colors group-hover:text-violet-300">
+                              {person.displayName || person.nick}
+                            </p>
+                            {person.accountType === "private" && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 border border-white/[0.08]"
+                                title="Conta privada"
+                              >
+                                <Lock className="size-2.5 text-zinc-400" />
+                                <span>Privada</span>
+                              </span>
+                            )}
+                            {person.isFollowing && (
+                              <span className="inline-flex items-center rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300 border border-violet-500/20">
+                                Seguindo
+                              </span>
+                            )}
+                            {person.isOwner && (
+                              <span className="inline-flex items-center rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
+                                Você
+                              </span>
+                            )}
+                          </div>
+                          <p className="truncate text-[11px] sm:text-xs text-zinc-500">
+                            @{person.nick}
+                          </p>
+                        </div>
+                      </Link>
+
+                      <Link
+                        to="/profile/$nick"
+                        params={{ nick: person.nick }}
+                        className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
+                      >
+                        Ver perfil
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {hasMoreUsers && (
+                <div className="flex justify-center pt-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleLoadMoreUsers}
+                    disabled={usersLoadingMore}
+                    className="min-w-[160px] rounded-xl border-white/10 bg-surface hover:bg-elevated text-sm font-semibold"
+                  >
+                    {usersLoadingMore ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        Carregando...
+                      </span>
+                    ) : (
+                      "Carregar mais"
+                    )}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
 
     </div>
   );

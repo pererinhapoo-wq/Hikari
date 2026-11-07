@@ -2708,4 +2708,153 @@ export const getUserBlockStatus = createServerFn({
     return executeGetUserBlockStatus(sql, context.userId, data.targetUserId);
   });
 
+/* ============================================================ */
+/* PESQUISA DE USUÁRIOS (ETAPA 12)                              */
+/* ============================================================ */
+
+export interface SearchUserItem {
+  userId: string;
+  nick: string;
+  displayName: string;
+  avatarUrl: string | null;
+  accountType: AccountType;
+  isFollowing: boolean;
+  isOwner: boolean;
+}
+
+export const searchUsersSchema = z.object({
+  query: z.string(),
+  page: z.number().int().min(1).optional().default(1),
+  limit: z.number().int().min(1).max(20).optional().default(20),
+});
+
+export type SearchUsersInput = z.infer<typeof searchUsersSchema>;
+
+export async function executeSearchUsers(
+  sql: Sql,
+  viewerUserId: string | null,
+  params: { query: string; page?: number; limit?: number },
+): Promise<SearchUserItem[]> {
+  let cleanQuery = (params.query || "").trim();
+  if (cleanQuery.startsWith("@")) {
+    cleanQuery = cleanQuery.slice(1).trim();
+  }
+
+  // Termo mínimo de 2 caracteres após normalização
+  if (cleanQuery.length < 2) {
+    return [];
+  }
+
+  const limit = Math.min(Math.max(1, params.limit ?? 20), 20);
+  const page = Math.max(1, params.page ?? 1);
+  const offset = (page - 1) * limit;
+
+  // Escapar %, _ e \ para pesquisa literal com ILIKE
+  const escapedQuery = cleanQuery.replace(/[\\%_]/g, "\\$&");
+  const searchPattern = `%${escapedQuery}%`;
+
+  const rows = viewerUserId
+    ? await sql<{
+        userId: string;
+        nick: string;
+        displayName: string | null;
+        avatarUrl: string | null;
+        accountType: string;
+        isFollowing: boolean;
+        isOwner: boolean;
+      }>`
+        select
+          u."id" as "userId",
+          p."nick",
+          coalesce(p."displayName", u."name", p."nick") as "displayName",
+          coalesce(p."avatarUrl", u."image") as "avatarUrl",
+          coalesce(p."accountType", 'public') as "accountType",
+          exists (
+            select 1 from "user_follow" f
+            where f."followerId" = ${viewerUserId}
+              and f."followingId" = u."id"
+          ) as "isFollowing",
+          (u."id" = ${viewerUserId}) as "isOwner"
+        from "profile" p
+        inner join "user" u on u."id" = p."userId"
+        where p."nick" is not null and trim(p."nick") <> ''
+          and (
+            p."nick" ilike ${searchPattern} escape '\\'
+            or coalesce(p."displayName", '') ilike ${searchPattern} escape '\\'
+            or coalesce(u."name", '') ilike ${searchPattern} escape '\\'
+          )
+          and not exists (
+            select 1 from "user_block" ub
+            where (ub."blockerId" = ${viewerUserId} and ub."blockedId" = u."id")
+               or (ub."blockerId" = u."id" and ub."blockedId" = ${viewerUserId})
+          )
+        order by
+          case when lower(trim(p."nick")) = lower(${cleanQuery}) then 0 else 1 end asc,
+          lower(p."nick") asc,
+          u."id" asc
+        limit ${limit}
+        offset ${offset}
+      `
+    : await sql<{
+        userId: string;
+        nick: string;
+        displayName: string | null;
+        avatarUrl: string | null;
+        accountType: string;
+        isFollowing: boolean;
+        isOwner: boolean;
+      }>`
+        select
+          u."id" as "userId",
+          p."nick",
+          coalesce(p."displayName", u."name", p."nick") as "displayName",
+          coalesce(p."avatarUrl", u."image") as "avatarUrl",
+          coalesce(p."accountType", 'public') as "accountType",
+          false as "isFollowing",
+          false as "isOwner"
+        from "profile" p
+        inner join "user" u on u."id" = p."userId"
+        where p."nick" is not null and trim(p."nick") <> ''
+          and (
+            p."nick" ilike ${searchPattern} escape '\\'
+            or coalesce(p."displayName", '') ilike ${searchPattern} escape '\\'
+            or coalesce(u."name", '') ilike ${searchPattern} escape '\\'
+          )
+        order by
+          case when lower(trim(p."nick")) = lower(${cleanQuery}) then 0 else 1 end asc,
+          lower(p."nick") asc,
+          u."id" asc
+        limit ${limit}
+        offset ${offset}
+      `;
+
+  return rows.map((r) => ({
+    userId: r.userId,
+    nick: r.nick,
+    displayName: r.displayName || r.nick || "Usuário",
+    avatarUrl: r.avatarUrl,
+    accountType: (r.accountType === "private" ? "private" : "public") as AccountType,
+    isFollowing: Boolean(r.isFollowing),
+    isOwner: Boolean(r.isOwner),
+  }));
+}
+
+/**
+ * Pesquisar usuários da comunidade Hikari por nick, displayName ou nome da conta.
+ * Suporta paginação, bloqueio bilateral para visitantes autenticados e ordenação estável.
+ */
+export const searchUsers = createServerFn({
+  method: "GET",
+})
+  .middleware([optionalAuthMiddleware])
+  .validator((d: { query: string; page?: number; limit?: number }) =>
+    searchUsersSchema.parse(d),
+  )
+  .handler(async ({ context, data }): Promise<SearchUserItem[]> => {
+    const sql = await getSql();
+    const viewerUserId = context?.userId ?? null;
+    return executeSearchUsers(sql, viewerUserId, data);
+  });
+
+
 
