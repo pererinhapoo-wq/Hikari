@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authMiddleware, optionalAuthMiddleware } from "@/lib/auth/middleware";
 import { getSql, type Sql } from "@/lib/db";
 import { executeCreateNotification } from "@/lib/notifications.functions";
+import { FALLBACK_ANIMES } from "@/lib/fallback-catalog";
 
 export type SectionPrivacyLevel = "public" | "followers" | "private";
 export type AccountType = "public" | "private";
@@ -155,6 +156,7 @@ export type MyProfileComment = {
   liked: boolean;
   animeTitle?: string;
   animeCover?: string | null;
+  imageUrl?: string | null;
 };
 
 export type PublicProfileComment = MyProfileComment;
@@ -912,6 +914,7 @@ export async function executeGetComments(
       c."animeId",
       c."episodeId",
       c."content",
+      c."imageUrl",
       c."parentId",
       c."isSpoiler",
       c."createdAt",
@@ -941,7 +944,7 @@ export async function executeGetComments(
     LEFT JOIN "catalog_anime" ca ON ca."id" = c."animeId"
     LEFT JOIN "user_anime_tracking" uat ON uat."userId" = c."userId" AND uat."animeId" = c."animeId"
     WHERE c."userId" = $1
-    ORDER BY c."createdAt" DESC
+    ORDER BY c."createdAt" DESC, c."id" DESC
     LIMIT $3 OFFSET $4
   `;
 
@@ -950,6 +953,7 @@ export async function executeGetComments(
     animeId: string;
     episodeId: string;
     content: string;
+    imageUrl: string | null;
     parentId: string | null;
     isSpoiler: boolean;
     createdAt: Date | string;
@@ -963,21 +967,39 @@ export async function executeGetComments(
     liked: boolean;
   }>(selectQuery, [targetUserId, viewerUserId, safeLimit, offset]);
 
-  const items: MyProfileComment[] = rows.map((comment) => ({
-    ...comment,
-    createdAt:
-      comment.createdAt instanceof Date
-        ? comment.createdAt.toISOString()
-        : String(comment.createdAt),
-    updatedAt:
-      comment.updatedAt instanceof Date
-        ? comment.updatedAt.toISOString()
-        : String(comment.updatedAt),
-    likes: Number(comment.likes ?? 0) || 0,
-    liked: Boolean(comment.liked),
-    animeTitle: comment.animeTitle || "Anime indisponível",
-    animeCover: comment.animeCover || null,
-  }));
+  const items: MyProfileComment[] = rows.map((comment) => {
+    let animeTitle = comment.animeTitle || "Anime indisponível";
+    let animeCover = comment.animeCover || null;
+
+    if (animeTitle === "Anime indisponível" || !animeTitle) {
+      const fallback = FALLBACK_ANIMES.find((a) => a.id === comment.animeId);
+      if (fallback) {
+        animeTitle =
+          fallback.titles?.romaji ||
+          fallback.titles?.english ||
+          fallback.titles?.native ||
+          animeTitle;
+        animeCover = fallback.cover || animeCover;
+      }
+    }
+
+    return {
+      ...comment,
+      createdAt:
+        comment.createdAt instanceof Date
+          ? comment.createdAt.toISOString()
+          : String(comment.createdAt),
+      updatedAt:
+        comment.updatedAt instanceof Date
+          ? comment.updatedAt.toISOString()
+          : String(comment.updatedAt),
+      likes: Number(comment.likes ?? 0) || 0,
+      liked: Boolean(comment.liked),
+      animeTitle,
+      animeCover,
+      imageUrl: comment.imageUrl || null,
+    };
+  });
 
   return {
     items,
@@ -1045,10 +1067,29 @@ export const getPublicComments = createServerFn({
 export async function executeGetUserActivities(
   sql: Sql,
   targetUserId: string,
-  isOwner: boolean,
+  permissionsOrIsOwner:
+    | boolean
+    | {
+        isOwner: boolean;
+        canViewLists?: boolean;
+        canViewFavorites?: boolean;
+      },
   page = 1,
   limit = 15,
 ): Promise<UserActivitiesResponse> {
+  const isOwner =
+    typeof permissionsOrIsOwner === "boolean"
+      ? permissionsOrIsOwner
+      : Boolean(permissionsOrIsOwner.isOwner);
+  const canViewLists =
+    typeof permissionsOrIsOwner === "boolean"
+      ? permissionsOrIsOwner
+      : Boolean(permissionsOrIsOwner.canViewLists ?? isOwner);
+  const canViewFavorites =
+    typeof permissionsOrIsOwner === "boolean"
+      ? permissionsOrIsOwner
+      : Boolean(permissionsOrIsOwner.canViewFavorites ?? isOwner);
+
   const safePage = Math.max(1, page);
   const safeLimit = Math.max(1, Math.min(50, limit));
   const offset = (safePage - 1) * safeLimit;
@@ -1071,50 +1112,43 @@ export async function executeGetUserActivities(
 
       UNION ALL
 
-      -- 3. Atualização de status de acompanhamento
-      SELECT
-        uat."updatedAt" AS "createdAt"
-      FROM "user_anime_tracking" uat
-      WHERE uat."userId" = $1
-        AND uat."updatedAt" > uat."createdAt" + interval '2 seconds'
-        AND NOT EXISTS (
-          SELECT 1 FROM "user_watched_episode" uwe
-          WHERE uwe."userId" = uat."userId"
-            AND uwe."animeId" = uat."animeId"
-            AND abs(extract(epoch from (uwe."watchedAt" - uat."updatedAt"))) < 3
-        )
-
-      UNION ALL
-
-      -- 4. Favoritos adicionados
+      -- 3. Favoritos adicionados
       SELECT
         uf."createdAt" AS "createdAt"
       FROM "user_favorite" uf
       WHERE uf."userId" = $1
+        AND ($4::boolean = true)
 
       UNION ALL
 
-      -- 5. Criação de lista personalizada
+      -- 4. Criação de lista personalizada
       SELECT
         ucl."createdAt" AS "createdAt"
       FROM "user_custom_list" ucl
       WHERE ucl."userId" = $1
+        AND ($3::boolean = true)
         AND ($2::boolean = true OR ucl."isPublic" = true)
 
       UNION ALL
 
-      -- 6. Adição de anime a uma lista personalizada
+      -- 5. Adição de anime a uma lista personalizada
       SELECT
         ucli."addedAt" AS "createdAt"
       FROM "user_custom_list_item" ucli
       INNER JOIN "user_custom_list" ucl ON ucl."id" = ucli."listId"
       WHERE ucl."userId" = $1
+        AND ($3::boolean = true)
         AND ($2::boolean = true OR ucl."isPublic" = true)
     )
     SELECT count(*)::int AS total FROM user_activities;
   `;
 
-  const countRes = await sql.query<{ total: number }>(countQuery, [targetUserId, isOwner]);
+  const countRes = await sql.query<{ total: number }>(countQuery, [
+    targetUserId,
+    isOwner,
+    canViewLists,
+    canViewFavorites,
+  ]);
   const total = Number(countRes[0]?.total || 0);
   const totalPages = Math.ceil(total / safeLimit) || 1;
 
@@ -1170,44 +1204,7 @@ export async function executeGetUserActivities(
 
       UNION ALL
 
-      -- 3. Atualização de status de acompanhamento
-      SELECT
-        'tracking_upd:' || uat."animeId" || ':' || to_char(uat."updatedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
-        'tracking_updated' AS "type",
-        uat."updatedAt" AS "createdAt",
-        'Atualizou status para ' || (
-          CASE uat."status"
-            WHEN 'watching' THEN 'Assistindo'
-            WHEN 'completed' THEN 'Concluído'
-            WHEN 'planning' THEN 'Planeja assistir'
-            WHEN 'on_hold' THEN 'Em espera'
-            WHEN 'dropped' THEN 'Abandonado'
-            ELSE uat."status"
-          END
-        ) || CASE WHEN uat."score" IS NOT NULL THEN ' • Nota ' || uat."score"::text ELSE '' END AS "description",
-        uat."animeId" AS "resourceId",
-        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
-        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
-        'anime' AS "resourceType",
-        json_build_object(
-          'status', uat."status",
-          'score', uat."score",
-          'episodesWatched', uat."episodesWatched"
-        )::text AS "metadata"
-      FROM "user_anime_tracking" uat
-      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
-      WHERE uat."userId" = $1
-        AND uat."updatedAt" > uat."createdAt" + interval '2 seconds'
-        AND NOT EXISTS (
-          SELECT 1 FROM "user_watched_episode" uwe
-          WHERE uwe."userId" = uat."userId"
-            AND uwe."animeId" = uat."animeId"
-            AND abs(extract(epoch from (uwe."watchedAt" - uat."updatedAt"))) < 3
-        )
-
-      UNION ALL
-
-      -- 4. Favoritos adicionados
+      -- 3. Favoritos adicionados
       SELECT
         'fav:' || uf."id" AS "id",
         'favorite_added' AS "type",
@@ -1234,6 +1231,7 @@ export async function executeGetUserActivities(
       LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
       LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
       WHERE uf."userId" = $1
+        AND ($4::boolean = true)
 
       UNION ALL
 
@@ -1253,6 +1251,7 @@ export async function executeGetUserActivities(
         )::text AS "metadata"
       FROM "user_custom_list" ucl
       WHERE ucl."userId" = $1
+        AND ($3::boolean = true)
         AND ($2::boolean = true OR ucl."isPublic" = true)
 
       UNION ALL
@@ -1275,6 +1274,7 @@ export async function executeGetUserActivities(
       INNER JOIN "user_custom_list" ucl ON ucl."id" = ucli."listId"
       LEFT JOIN "catalog_anime" ca ON ca."id" = ucli."animeId"
       WHERE ucl."userId" = $1
+        AND ($3::boolean = true)
         AND ($2::boolean = true OR ucl."isPublic" = true)
     )
     SELECT
@@ -1288,8 +1288,8 @@ export async function executeGetUserActivities(
       "resourceType",
       "metadata"
     FROM user_activities
-    ORDER BY "createdAt" DESC
-    LIMIT $3 OFFSET $4;
+    ORDER BY "createdAt" DESC, "id" DESC
+    LIMIT $5 OFFSET $6;
   `;
 
   const rows = await sql.query<{
@@ -1302,7 +1302,14 @@ export async function executeGetUserActivities(
     resourceCover: string | null;
     resourceType: "anime" | "list" | "character" | "studio" | "company" | "person";
     metadata: string | null;
-  }>(selectQuery, [targetUserId, isOwner, safeLimit, offset]);
+  }>(selectQuery, [
+    targetUserId,
+    isOwner,
+    canViewLists,
+    canViewFavorites,
+    safeLimit,
+    offset,
+  ]);
 
   const items: UserActivityItem[] = rows.map((r) => {
     let parsedMetadata = undefined;
@@ -1314,6 +1321,22 @@ export async function executeGetUserActivities(
         parsedMetadata = undefined;
       }
     }
+
+    let resourceTitle = r.resourceTitle || "Item";
+    let resourceCover = r.resourceCover || null;
+
+    if (r.resourceType === "anime" && (!resourceTitle || resourceTitle === "Anime")) {
+      const fallback = FALLBACK_ANIMES.find((a) => a.id === r.resourceId);
+      if (fallback) {
+        resourceTitle =
+          fallback.titles?.romaji ||
+          fallback.titles?.english ||
+          fallback.titles?.native ||
+          resourceTitle;
+        resourceCover = fallback.cover || resourceCover;
+      }
+    }
+
     return {
       id: r.id,
       type: r.type,
@@ -1323,8 +1346,8 @@ export async function executeGetUserActivities(
           : String(r.createdAt),
       description: r.description,
       resourceId: r.resourceId,
-      resourceTitle: r.resourceTitle,
-      resourceCover: r.resourceCover,
+      resourceTitle,
+      resourceCover,
       resourceType: r.resourceType,
       metadata: parsedMetadata,
     };
@@ -1350,7 +1373,11 @@ export const getMyActivities = createServerFn({
     return executeGetUserActivities(
       sql,
       context.userId,
-      true,
+      {
+        isOwner: true,
+        canViewLists: true,
+        canViewFavorites: true,
+      },
       data?.page ?? 1,
       data?.limit ?? 15,
     );
@@ -1377,7 +1404,11 @@ export const getPublicActivities = createServerFn({
     return executeGetUserActivities(
       sql,
       userId,
-      privacy.isOwner,
+      {
+        isOwner: privacy.isOwner,
+        canViewLists: privacy.canViewLists,
+        canViewFavorites: privacy.canViewFavorites,
+      },
       data?.page ?? 1,
       data?.limit ?? 15,
     );

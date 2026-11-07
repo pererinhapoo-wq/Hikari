@@ -491,19 +491,42 @@ function PublicProfile() {
               : curr,
           );
 
-          // Se desbloqueou conteúdo privado, carregar comentários
+          // Se desbloqueou conteúdo privado, carregar comentários e atividades
           if (profile.accountType === "private") {
             setCommentsLoading(true);
-            try {
-              const freshComments = await getPublicCommentsFn({
-                data: { userId: profile.userId },
+            setActivityLoading(true);
+
+            void getPublicCommentsFn({
+              data: { userId: profile.userId, page: 1, limit: 15 },
+            })
+              .then((freshComments) => {
+                setComments(freshComments.items);
+                setCommentsTotal(freshComments.total);
+                setCommentsPage(freshComments.page);
+                setCommentsTotalPages(freshComments.totalPages);
+              })
+              .catch(() => {
+                // ignore
+              })
+              .finally(() => {
+                setCommentsLoading(false);
               });
-              setComments(freshComments);
-            } catch {
-              // ignore
-            } finally {
-              setCommentsLoading(false);
-            }
+
+            void getPublicActivitiesFn({
+              data: { userId: profile.userId, page: 1, limit: 15 },
+            })
+              .then((freshActs) => {
+                setActivities(freshActs.items);
+                setActivityTotal(freshActs.total);
+                setActivityPage(freshActs.page);
+                setActivityTotalPages(freshActs.totalPages);
+              })
+              .catch(() => {
+                // ignore
+              })
+              .finally(() => {
+                setActivityLoading(false);
+              });
           }
         } else if (res.status === "requested") {
           setHasPendingRequest(true);
@@ -1329,6 +1352,17 @@ function PublicCommentCard({
         <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#d0d9ea]">
           {comment.content}
         </p>
+      )}
+
+      {comment.imageUrl && (
+        <div className="mt-3 max-w-xs overflow-hidden rounded-xl border border-white/10">
+          <img
+            src={comment.imageUrl}
+            alt="Imagem do comentário"
+            className="max-h-60 w-auto rounded-xl object-contain bg-black/40"
+            loading="lazy"
+          />
+        </div>
       )}
 
       <div className="mt-4 flex items-center gap-5 border-t border-white/10 pt-3">

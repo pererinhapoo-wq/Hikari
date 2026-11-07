@@ -406,6 +406,17 @@ export function ProfileCommentsSpace({
                         {comment.content}
                       </p>
                     )}
+
+                    {comment.imageUrl && (
+                      <div className="mt-3 max-w-xs overflow-hidden rounded-xl border border-white/10">
+                        <img
+                          src={comment.imageUrl}
+                          alt="Imagem do comentário"
+                          className="max-h-60 w-auto rounded-xl object-contain bg-black/40"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
