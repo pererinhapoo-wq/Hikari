@@ -124,6 +124,37 @@ function AccountProfile() {
   const [requestsList, setRequestsList] = useState<FollowRequestItem[]>([]);
   const [connectionsLoading, setConnectionsLoading] = useState(false);
 
+  // Escuta requisição para abrir modal de edição (ex: vindo de "Configurações do Perfil" no menu da foto)
+  useEffect(() => {
+    const handleOpenEdit = () => {
+      setEditModalOpen(true);
+    };
+
+    window.addEventListener("hikari:open-profile-edit", handleOpenEdit);
+
+    // Se navegou com o marcador de abertura automática
+    try {
+      if (sessionStorage.getItem("hikari:open-profile-edit-on-load") === "true") {
+        sessionStorage.removeItem("hikari:open-profile-edit-on-load");
+        setEditModalOpen(true);
+      }
+    } catch {
+      // ignore storage access errors
+    }
+
+    // Se veio com query param ?edit=1 ou ?edit=true
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("edit") === "true" || params.get("edit") === "1") {
+        setEditModalOpen(true);
+      }
+    }
+
+    return () => {
+      window.removeEventListener("hikari:open-profile-edit", handleOpenEdit);
+    };
+  }, []);
+
   // Carregamento inicial do perfil
   useEffect(() => {
     if (!user?.id) return;

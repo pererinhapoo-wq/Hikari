@@ -2276,7 +2276,11 @@ export function CommentsSection({
                                 e.preventDefault();
                                 e.stopPropagation();
                                 setUserMenuOpen(false);
-                                void navigate({ to: "/settings-privacy" });
+                                sessionStorage.setItem("hikari:open-profile-edit-on-load", "true");
+                                void navigate({ to: "/account" });
+                                setTimeout(() => {
+                                  window.dispatchEvent(new CustomEvent("hikari:open-profile-edit"));
+                                }, 120);
                               }}
                               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none text-left cursor-pointer"
                             >
@@ -2598,7 +2602,11 @@ export function CommentsSection({
                                 e.preventDefault();
                                 e.stopPropagation();
                                 setUserMenuOpen(false);
-                                void navigate({ to: "/settings-privacy" });
+                                sessionStorage.setItem("hikari:open-profile-edit-on-load", "true");
+                                void navigate({ to: "/account" });
+                                setTimeout(() => {
+                                  window.dispatchEvent(new CustomEvent("hikari:open-profile-edit"));
+                                }, 120);
                               }}
                               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none text-left cursor-pointer"
                             >

@@ -2,16 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   BadgeCheck,
-  Check,
   Clock,
   ExternalLink,
   Lock,
-  MoreVertical,
+  MoreHorizontal,
   Pencil,
-  Share2,
   Shield,
   Sparkles,
-  UserCheck,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,13 +20,14 @@ interface ProfileIdentityHeaderProps {
   image: string | null;
   bannerUrl?: string | null;
   accountType?: "public" | "private";
+  isOwner?: boolean;
   followersCount: number;
   followingCount: number;
   requestsCount?: number;
   commentCount: number;
   totalTrackingCount: number;
   favorites: string[];
-  onOpenEdit: () => void;
+  onOpenEdit?: () => void;
   onOpenPrivacy?: () => void;
   onOpenFollowers: () => void;
   onOpenFollowing: () => void;
@@ -43,6 +41,7 @@ export function ProfileIdentityHeader({
   image,
   bannerUrl,
   accountType = "public",
+  isOwner = true,
   followersCount,
   followingCount,
   requestsCount = 0,
@@ -57,6 +56,33 @@ export function ProfileIdentityHeader({
 }: ProfileIdentityHeaderProps) {
   const displayHandle = nick ? `@${nick}` : "@hikari_membro";
   const initial = (nick || name || "U").charAt(0).toUpperCase();
+
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  // Fecha o menu de três pontinhos ao clicar fora ou pressionar Escape
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+
+    const handleMouseDown = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMoreMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [moreMenuOpen]);
 
   return (
     <header className="relative z-10 w-full overflow-hidden rounded-3xl border border-white/[0.09] bg-[#090812] shadow-[0_16px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
@@ -148,22 +174,26 @@ export function ProfileIdentityHeader({
             </span>
           </div>
 
-          {/* Botões de Ações Rápidas */}
-          <div className="flex flex-wrap items-center gap-2 sm:self-end">
-            <button
-              type="button"
-              onClick={onOpenEdit}
-              className="inline-flex items-center gap-2 rounded-xl border border-violet-500/40 bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all hover:brightness-110 active:scale-98"
-            >
-              <Pencil className="size-3.5" />
-              <span>Personalizar Perfil</span>
-            </button>
+          {/* Botões de Ações Rápidas do Perfil */}
+          <div className="flex items-center gap-2 self-end sm:self-end">
+            {/* Botão Existente: Personalizar Perfil */}
+            {isOwner && onOpenEdit && (
+              <button
+                type="button"
+                onClick={onOpenEdit}
+                className="inline-flex items-center gap-2 rounded-xl border border-violet-500/40 bg-gradient-to-r from-violet-600 to-purple-600 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all hover:brightness-110 active:scale-98"
+              >
+                <Pencil className="size-3.5" />
+                <span>Personalizar Perfil</span>
+              </button>
+            )}
 
+            {/* Botão Existente: Privacidade */}
             {onOpenPrivacy && (
               <button
                 type="button"
                 onClick={onOpenPrivacy}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2 text-xs sm:text-sm font-medium text-zinc-200 transition-all hover:bg-white/[0.1] hover:text-white"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-3 sm:px-3.5 py-2 text-xs sm:text-sm font-medium text-zinc-200 transition-all hover:bg-white/[0.1] hover:text-white"
                 title="Configurações de privacidade do perfil"
               >
                 {accountType === "private" ? (
@@ -174,6 +204,93 @@ export function ProfileIdentityHeader({
                 <span className="hidden sm:inline">Privacidade</span>
               </button>
             )}
+
+            {/* Menu de Três Pontinhos Horizontal (···) no canto direito */}
+            <div ref={moreMenuRef} className="relative inline-block text-left">
+              <button
+                type="button"
+                onClick={() => setMoreMenuOpen((prev) => !prev)}
+                className={cn(
+                  "inline-flex size-9 sm:size-10 items-center justify-center rounded-xl border transition-all duration-200 select-none cursor-pointer",
+                  moreMenuOpen
+                    ? "border-violet-500/60 bg-violet-600/25 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)]"
+                    : "border-white/10 bg-white/[0.05] text-zinc-300 hover:border-white/20 hover:bg-white/[0.1] hover:text-white active:scale-95",
+                )}
+                aria-label="Mais opções do perfil"
+                aria-haspopup="menu"
+                aria-expanded={moreMenuOpen}
+                title="Mais opções do perfil"
+              >
+                <MoreHorizontal className="size-4 sm:size-5" />
+              </button>
+
+              {/* Menu Suspenso de Três Pontinhos */}
+              {moreMenuOpen && (
+                <div
+                  role="menu"
+                  aria-label="Opções do perfil"
+                  className="absolute right-0 top-full mt-2 w-56 sm:w-60 origin-top-right overflow-hidden rounded-2xl border border-white/10 bg-[#12101e]/98 p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl z-40 animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <div className="px-3 py-1.5 border-b border-white/[0.08] mb-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                      Ações do Perfil
+                    </p>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    {/* Personalizar Perfil (somente dono) */}
+                    {isOwner && onOpenEdit && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          onOpenEdit();
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-fg/90 hover:bg-white/[0.08] hover:text-white transition-colors text-left cursor-pointer"
+                      >
+                        <Pencil className="size-4 text-violet-400 shrink-0" />
+                        <span>Personalizar Perfil</span>
+                      </button>
+                    )}
+
+                    {/* Privacidade do Perfil */}
+                    {onOpenPrivacy && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          onOpenPrivacy();
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-fg/90 hover:bg-white/[0.08] hover:text-white transition-colors text-left cursor-pointer"
+                      >
+                        {accountType === "private" ? (
+                          <Lock className="size-4 text-amber-400 shrink-0" />
+                        ) : (
+                          <Shield className="size-4 text-emerald-400 shrink-0" />
+                        )}
+                        <span>Privacidade do Perfil</span>
+                      </button>
+                    )}
+
+                    {/* Ver Página Pública */}
+                    {nick && (
+                      <Link
+                        to="/profile/$nick"
+                        params={{ nick }}
+                        role="menuitem"
+                        onClick={() => setMoreMenuOpen(false)}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-fg/90 hover:bg-white/[0.08] hover:text-white transition-colors text-left"
+                      >
+                        <ExternalLink className="size-4 text-sky-400 shrink-0" />
+                        <span>Ver Perfil Público</span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

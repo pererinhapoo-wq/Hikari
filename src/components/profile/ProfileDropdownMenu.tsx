@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LogOut, Settings, Settings2, UserCircle } from "lucide-react";
+import { Link, useRouterState } from "@tanstack/react-router";
+import { LogOut, Settings2, UserCircle } from "lucide-react";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { signOut } from "@/lib/auth/client";
 import type { AppUser } from "@/lib/auth/use-current-user";
@@ -18,7 +18,6 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
   const [imgError, setImgError] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const navigate = useNavigate();
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
@@ -94,12 +93,6 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
     }
   }, []);
 
-  const handleNavigateToSettings = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setOpen(false);
-    void navigate({ to: "/settings-privacy" });
-  };
 
   const avatarSrc = !imgError ? customAvatar || user.profileImageUrl || null : null;
   const displayName = user.displayName || customNick || "Membro";
@@ -110,11 +103,6 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
     .toUpperCase();
 
   const isProfileActive = pathname.startsWith("/account");
-  const isSettingsActive = pathname.startsWith("/settings-privacy");
-  const isProfileRoute =
-    pathname.startsWith("/account") ||
-    pathname.startsWith("/profile") ||
-    pathname.startsWith("/settings-privacy");
 
   return (
     <div ref={menuRef} className="relative inline-block text-left">
@@ -182,24 +170,6 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
               <UserCircle className="size-4 text-[#c084fc] shrink-0" />
               <span>Meu Perfil</span>
             </Link>
-
-            {/* 2. Configurações do Perfil (Exibição contextual em rotas de perfil) */}
-            {isProfileRoute && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={handleNavigateToSettings}
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-colors text-left cursor-pointer",
-                  isSettingsActive
-                    ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold"
-                    : "text-fg/90 hover:bg-white/[0.06] hover:text-white",
-                )}
-              >
-                <Settings className="size-4 text-[#c084fc] shrink-0" />
-                <span>Configurações do Perfil</span>
-              </button>
-            )}
 
             {/* Opção administrativa se aplicável */}
             {user.primaryEmail && isHikariAdmin(user.primaryEmail) && (

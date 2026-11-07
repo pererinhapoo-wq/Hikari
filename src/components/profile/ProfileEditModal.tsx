@@ -369,14 +369,14 @@ export function ProfileEditModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="profile-edit-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-5 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-2 sm:p-5 backdrop-blur-md animate-in fade-in duration-200"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !saving) {
           handleRequestClose();
         }
       }}
     >
-      <div className="relative flex flex-col w-full max-w-2xl max-h-[92vh] overflow-hidden rounded-3xl border border-white/10 bg-[#0d0c18] shadow-[0_25px_60px_rgba(0,0,0,0.9)]">
+      <div className="relative flex flex-col w-full max-w-2xl max-h-[94vh] sm:max-h-[90vh] overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0c18] shadow-[0_25px_60px_rgba(0,0,0,0.9)]">
         {/* Luzes decorativas sutis de fundo */}
         <div
           className="pointer-events-none absolute -right-20 -top-20 size-60 rounded-full bg-violet-600/15 blur-3xl"
@@ -388,23 +388,23 @@ export function ProfileEditModal({
         />
 
         {/* 1. Cabeçalho Fixo do Modal */}
-        <div className="relative shrink-0 flex items-center justify-between px-5 sm:px-7 py-4 border-b border-white/[0.08] bg-[#0d0c18]/90 backdrop-blur-md z-20">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 sm:size-10 items-center justify-center rounded-xl border border-violet-500/30 bg-violet-500/15 text-violet-300 shadow-[0_0_15px_rgba(168,85,247,0.25)]">
+        <div className="relative shrink-0 flex items-center justify-between px-3.5 sm:px-7 py-2.5 sm:py-4 border-b border-white/[0.08] bg-[#0d0c18]/90 backdrop-blur-md z-20">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="flex size-8 sm:size-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl border border-violet-500/30 bg-violet-500/15 text-violet-300 shadow-[0_0_15px_rgba(168,85,247,0.25)]">
               <Pencil className="size-4 sm:size-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 id="profile-edit-modal-title" className="font-display text-base sm:text-lg font-bold text-white">
+                <h2 id="profile-edit-modal-title" className="font-display text-sm sm:text-lg font-bold text-white truncate">
                   Editar Perfil
                 </h2>
                 {isDirty && !saveSuccess && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                  <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] font-semibold text-amber-300">
                     Não salvo
                   </span>
                 )}
               </div>
-              <p className="text-xs text-zinc-400">
+              <p className="text-[11px] sm:text-xs text-zinc-400 truncate">
                 Personalize sua identidade visível para a comunidade Hikari.
               </p>
             </div>
@@ -414,7 +414,7 @@ export function ProfileEditModal({
             type="button"
             onClick={handleRequestClose}
             disabled={saving}
-            className="flex size-8 sm:size-9 items-center justify-center rounded-xl text-zinc-400 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
+            className="flex size-7 sm:size-9 shrink-0 items-center justify-center rounded-lg sm:rounded-xl text-zinc-400 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50 ml-2"
             aria-label="Fechar janela de edição"
           >
             <X className="size-4 sm:size-5" />
@@ -422,33 +422,33 @@ export function ProfileEditModal({
         </div>
 
         {/* 2. Conteúdo Rolável */}
-        <div className="relative flex-1 overflow-y-auto px-5 sm:px-7 py-5 space-y-6">
+        <div className="relative flex-1 overflow-y-auto px-3.5 sm:px-7 py-3 sm:py-5 space-y-3.5 sm:space-y-6 overscroll-contain">
           {/* Mensagens de Sucesso e Erro */}
           {saveSuccess && (
-            <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/15 p-3.5 text-xs sm:text-sm font-semibold text-emerald-200 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 rounded-xl sm:rounded-2xl border border-emerald-500/30 bg-emerald-500/15 p-2.5 sm:p-3.5 text-xs sm:text-sm font-semibold text-emerald-200 animate-in fade-in duration-200">
               <Check className="size-4 shrink-0 text-emerald-400" />
               <span>Perfil atualizado com sucesso! Salvando alterações...</span>
             </div>
           )}
 
           {error && (
-            <div className="flex items-start gap-2.5 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs text-rose-300 animate-in fade-in duration-200">
+            <div className="flex items-start gap-2 rounded-xl sm:rounded-2xl border border-rose-500/30 bg-rose-500/10 p-2.5 sm:p-3.5 text-xs text-rose-300 animate-in fade-in duration-200">
               <AlertCircle className="size-4 shrink-0 mt-0.5 text-rose-400" />
               <div className="flex-1">{error}</div>
             </div>
           )}
 
           {/* PRÉ-VISUALIZAÇÃO AO VIVO DO CABEÇALHO */}
-          <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#090812] shadow-inner">
-            <div className="px-3.5 py-2 border-b border-white/[0.06] bg-white/[0.02] flex items-center justify-between text-[11px] text-zinc-400">
+          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.08] bg-[#090812] shadow-inner">
+            <div className="px-3 sm:px-3.5 py-1.5 sm:py-2 border-b border-white/[0.06] bg-white/[0.02] flex items-center justify-between text-[10px] sm:text-[11px] text-zinc-400">
               <span className="font-semibold uppercase tracking-wider text-zinc-400">
                 Pré-visualização do Perfil
               </span>
-              <span className="text-zinc-500">Atualização em tempo real</span>
+              <span className="text-zinc-500 text-[10px] sm:text-[11px]">Tempo real</span>
             </div>
 
             {/* Banner Preview */}
-            <div className="relative h-28 sm:h-36 w-full overflow-hidden bg-gradient-to-r from-[#170e2e] via-[#20103b] to-[#0d0918]">
+            <div className="relative h-20 sm:h-36 w-full overflow-hidden bg-gradient-to-r from-[#170e2e] via-[#20103b] to-[#0d0918]">
               {bannerUrl ? (
                 <>
                   <img
@@ -474,7 +474,7 @@ export function ProfileEditModal({
                 type="button"
                 onClick={() => bannerInputRef.current?.click()}
                 disabled={saving || Boolean(imageProcessing)}
-                className="absolute right-2.5 top-2.5 z-10 inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-md transition-all hover:bg-black/80 hover:border-violet-500/50"
+                className="absolute right-2 top-2 sm:right-2.5 sm:top-2.5 z-10 inline-flex items-center gap-1 sm:gap-1.5 rounded-lg sm:rounded-xl border border-white/20 bg-black/60 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-[11px] font-medium text-white backdrop-blur-md transition-all hover:bg-black/80 hover:border-violet-500/50"
                 title="Alterar imagem do banner"
               >
                 <Camera className="size-3 text-violet-300" />
@@ -483,12 +483,12 @@ export function ProfileEditModal({
             </div>
 
             {/* Avatar & Informações do Header Sobrepostos */}
-            <div className="relative px-4 pb-4 pt-0">
-              <div className="flex items-end gap-3.5 -mt-10 sm:-mt-12">
+            <div className="relative px-3 sm:px-4 pb-3 sm:pb-4 pt-0">
+              <div className="flex items-end gap-2.5 sm:gap-3.5 -mt-7 sm:-mt-12">
                 {/* Avatar Preview */}
                 <div className="relative shrink-0">
-                  <div className="size-20 sm:size-24 overflow-hidden rounded-2xl bg-gradient-to-br from-[#1c1830] to-[#0c0a17] p-1 shadow-[0_8px_25px_rgba(0,0,0,0.8)] ring-2 ring-[#090812]">
-                    <div className="relative size-full overflow-hidden rounded-[13px] bg-[#141220]">
+                  <div className="size-16 sm:size-24 overflow-hidden rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#1c1830] to-[#0c0a17] p-1 shadow-[0_8px_25px_rgba(0,0,0,0.8)] ring-2 ring-[#090812]">
+                    <div className="relative size-full overflow-hidden rounded-[10px] sm:rounded-[13px] bg-[#141220]">
                       {image ? (
                         <img
                           src={image}
@@ -496,7 +496,7 @@ export function ProfileEditModal({
                           className="size-full object-cover"
                         />
                       ) : (
-                        <div className="flex size-full items-center justify-center font-display text-3xl font-bold text-violet-300 select-none">
+                        <div className="flex size-full items-center justify-center font-display text-2xl sm:text-3xl font-bold text-violet-300 select-none">
                           {initialLetter}
                         </div>
                       )}
@@ -508,19 +508,19 @@ export function ProfileEditModal({
                     type="button"
                     onClick={() => avatarInputRef.current?.click()}
                     disabled={saving || Boolean(imageProcessing)}
-                    className="absolute -bottom-1 -right-1 flex size-7 items-center justify-center rounded-xl border border-white/20 bg-violet-600 text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
+                    className="absolute -bottom-1 -right-1 flex size-6 sm:size-7 items-center justify-center rounded-lg sm:rounded-xl border border-white/20 bg-violet-600 text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
                     title="Alterar foto de perfil"
                   >
-                    <Camera className="size-3.5" />
+                    <Camera className="size-3 sm:size-3.5" />
                   </button>
                 </div>
 
                 {/* Nome e Handle */}
-                <div className="min-w-0 flex-1 pb-1">
-                  <div className="font-display text-base sm:text-lg font-bold text-white truncate">
+                <div className="min-w-0 flex-1 pb-0.5 sm:pb-1">
+                  <div className="font-display text-sm sm:text-lg font-bold text-white truncate">
                     {name.trim() || nick.trim() || "Seu Nome"}
                   </div>
-                  <div className="text-xs font-mono text-violet-300 truncate">
+                  <div className="text-[11px] sm:text-xs font-mono text-violet-300 truncate">
                     @{nick.trim().toLowerCase().replace(/^@+/, "") || "username"}
                   </div>
                 </div>
@@ -528,11 +528,11 @@ export function ProfileEditModal({
 
               {/* Pré-visualização de Tags */}
               {previewTags.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
+                <div className="mt-2 sm:mt-3 flex flex-wrap gap-1 sm:gap-1.5">
                   {previewTags.map((tag, idx) => (
                     <span
                       key={idx}
-                      className="rounded-md border border-white/[0.06] bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-zinc-300"
+                      className="rounded-md border border-white/[0.06] bg-white/[0.04] px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] font-medium text-zinc-300"
                     >
                       {tag}
                     </span>
@@ -543,9 +543,9 @@ export function ProfileEditModal({
           </div>
 
           {/* CONTROLES DE IMAGEM: AVATAR & BANNER */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             {/* Bloco Foto de Perfil */}
-            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
+            <div className="rounded-xl sm:rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 sm:p-4 space-y-2.5 sm:space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-zinc-200">
                   Foto de Perfil (Avatar)
@@ -557,12 +557,12 @@ export function ProfileEditModal({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => avatarInputRef.current?.click()}
                   disabled={saving || Boolean(imageProcessing)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-600/20 px-3 py-2 text-xs font-semibold text-violet-200 transition-all hover:bg-violet-600/30 active:scale-95 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg sm:rounded-xl border border-violet-500/30 bg-violet-600/20 px-2.5 sm:px-3 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold text-violet-200 transition-all hover:bg-violet-600/30 active:scale-95 disabled:opacity-50"
                 >
                   <Upload className="size-3.5" />
                   <span>{image ? "Substituir foto" : "Selecionar foto"}</span>
@@ -573,7 +573,7 @@ export function ProfileEditModal({
                     type="button"
                     onClick={() => setImage(null)}
                     disabled={saving || Boolean(imageProcessing)}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 px-2.5 py-2 text-xs font-medium text-rose-300 transition-all hover:bg-rose-500/20 active:scale-95 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg sm:rounded-xl border border-rose-500/20 bg-rose-500/10 px-2 sm:px-2.5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-medium text-rose-300 transition-all hover:bg-rose-500/20 active:scale-95 disabled:opacity-50"
                     title="Remover foto e usar inicial padrão"
                   >
                     <Trash2 className="size-3.5" />
@@ -584,7 +584,7 @@ export function ProfileEditModal({
                 <button
                   type="button"
                   onClick={() => setShowAvatarUrlInput((prev) => !prev)}
-                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] sm:text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
                   <Link2 className="size-3" />
                   <span>Inserir link</span>
@@ -599,19 +599,19 @@ export function ProfileEditModal({
                     value={tempAvatarUrl}
                     onChange={(e) => setTempAvatarUrl(e.target.value)}
                     placeholder="https://exemplo.com/avatar.jpg"
-                    className="h-9 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-violet-500"
+                    className="h-8 sm:h-9 flex-1 rounded-lg sm:rounded-xl border border-white/10 bg-white/[0.04] px-2.5 sm:px-3 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-violet-500"
                   />
                   <button
                     type="button"
                     onClick={handleApplyAvatarUrl}
-                    className="h-9 rounded-xl bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-500"
+                    className="h-8 sm:h-9 rounded-lg sm:rounded-xl bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-500"
                   >
                     OK
                   </button>
                 </div>
               )}
 
-              <p className="text-[11px] text-zinc-500 leading-tight">
+              <p className="text-[10px] sm:text-[11px] text-zinc-500 leading-tight">
                 PNG, JPG, WebP ou GIF (máx. 5 MB). Otimizado automaticamente.
               </p>
 
@@ -627,7 +627,7 @@ export function ProfileEditModal({
             </div>
 
             {/* Bloco Banner do Perfil */}
-            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
+            <div className="rounded-xl sm:rounded-2xl border border-white/[0.08] bg-white/[0.02] p-3 sm:p-4 space-y-2.5 sm:space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-zinc-200">
                   Banner do Perfil
@@ -639,12 +639,12 @@ export function ProfileEditModal({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => bannerInputRef.current?.click()}
                   disabled={saving || Boolean(imageProcessing)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-purple-500/30 bg-purple-600/20 px-3 py-2 text-xs font-semibold text-purple-200 transition-all hover:bg-purple-600/30 active:scale-95 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg sm:rounded-xl border border-purple-500/30 bg-purple-600/20 px-2.5 sm:px-3 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold text-purple-200 transition-all hover:bg-purple-600/30 active:scale-95 disabled:opacity-50"
                 >
                   <ImageIcon className="size-3.5" />
                   <span>{bannerUrl ? "Substituir banner" : "Selecionar banner"}</span>
@@ -655,7 +655,7 @@ export function ProfileEditModal({
                     type="button"
                     onClick={() => setBannerUrl(null)}
                     disabled={saving || Boolean(imageProcessing)}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 px-2.5 py-2 text-xs font-medium text-rose-300 transition-all hover:bg-rose-500/20 active:scale-95 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg sm:rounded-xl border border-rose-500/20 bg-rose-500/10 px-2 sm:px-2.5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-medium text-rose-300 transition-all hover:bg-rose-500/20 active:scale-95 disabled:opacity-50"
                     title="Remover banner e usar gradiente padrão"
                   >
                     <Trash2 className="size-3.5" />
@@ -666,7 +666,7 @@ export function ProfileEditModal({
                 <button
                   type="button"
                   onClick={() => setShowBannerUrlInput((prev) => !prev)}
-                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] sm:text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
                   <Link2 className="size-3" />
                   <span>Inserir link</span>
@@ -681,20 +681,20 @@ export function ProfileEditModal({
                     value={tempBannerUrl}
                     onChange={(e) => setTempBannerUrl(e.target.value)}
                     placeholder="https://exemplo.com/banner.jpg"
-                    className="h-9 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-violet-500"
+                    className="h-8 sm:h-9 flex-1 rounded-lg sm:rounded-xl border border-white/10 bg-white/[0.04] px-2.5 sm:px-3 text-xs text-white placeholder:text-zinc-600 outline-none focus:border-violet-500"
                   />
                   <button
                     type="button"
                     onClick={handleApplyBannerUrl}
-                    className="h-9 rounded-xl bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-500"
+                    className="h-8 sm:h-9 rounded-lg sm:rounded-xl bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-500"
                   >
                     OK
                   </button>
                 </div>
               )}
 
-              <p className="text-[11px] text-zinc-500 leading-tight">
-                Recomendado formato panorâmico (3:1). PNG, JPG ou WebP (máx. 5 MB).
+              <p className="text-[10px] sm:text-[11px] text-zinc-500 leading-tight">
+                Panorâmico (3:1). PNG, JPG ou WebP (máx. 5 MB).
               </p>
 
               {/* Input oculto */}
@@ -710,14 +710,14 @@ export function ProfileEditModal({
           </div>
 
           {/* FORMULÁRIO DE TEXTO */}
-          <form id="profile-edit-form" onSubmit={handleSubmit} className="space-y-4">
+          <form id="profile-edit-form" onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
             {/* Nome de Exibição */}
             <div>
               <div className="flex items-center justify-between">
                 <label htmlFor={nameInputId} className="block text-xs font-semibold text-zinc-300">
                   Nome de Exibição
                 </label>
-                <span className="text-[11px] text-zinc-500 tabular-nums">
+                <span className="text-[10px] sm:text-[11px] text-zinc-500 tabular-nums">
                   {name.length}/50
                 </span>
               </div>
@@ -731,9 +731,9 @@ export function ProfileEditModal({
                 }}
                 maxLength={50}
                 placeholder="Ex: Elizabeth Liones, Luffy, Frieren"
-                className="mt-1.5 h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3.5 text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/80 focus:bg-white/[0.06] focus:ring-2 focus:ring-violet-500/20"
+                className="mt-1 h-10 sm:h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 sm:px-3.5 text-xs sm:text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/80 focus:bg-white/[0.06] focus:ring-2 focus:ring-violet-500/20"
               />
-              <p className="mt-1 text-[11px] text-zinc-500">
+              <p className="mt-1 text-[10px] sm:text-[11px] text-zinc-500">
                 Como seu nome aparecerá para os outros membros nas discussões e no perfil.
               </p>
             </div>
@@ -744,12 +744,12 @@ export function ProfileEditModal({
                 <label htmlFor={nickInputId} className="block text-xs font-semibold text-zinc-300">
                   Nome de Usuário (@username)
                 </label>
-                <span className="text-[11px] text-zinc-500 tabular-nums">
+                <span className="text-[10px] sm:text-[11px] text-zinc-500 tabular-nums">
                   {nick.replace(/^@+/, "").length}/30
                 </span>
               </div>
-              <div className="relative mt-1.5">
-                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-violet-400">
+              <div className="relative mt-1">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-semibold text-violet-400">
                   @
                 </span>
                 <input
@@ -765,11 +765,11 @@ export function ProfileEditModal({
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
-                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-8 pr-4 text-sm font-mono text-white outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/80 focus:bg-white/[0.06] focus:ring-2 focus:ring-violet-500/20"
+                  className="h-10 sm:h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-7 pr-3 sm:pl-8 sm:pr-4 text-xs sm:text-sm font-mono text-white outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/80 focus:bg-white/[0.06] focus:ring-2 focus:ring-violet-500/20"
                 />
               </div>
-              <p className="mt-1 text-[11px] text-zinc-500">
-                Identificador exclusivo de 3 a 30 caracteres. Usado em menções e no link público do perfil.
+              <p className="mt-1 text-[10px] sm:text-[11px] text-zinc-500">
+                Identificador exclusivo de 3 a 30 caracteres (letras, números ou _).
               </p>
             </div>
 
@@ -779,7 +779,7 @@ export function ProfileEditModal({
                 <label htmlFor={bioInputId} className="block text-xs font-semibold text-zinc-300">
                   Biografia
                 </label>
-                <span className="text-[11px] text-zinc-500 tabular-nums">
+                <span className="text-[10px] sm:text-[11px] text-zinc-500 tabular-nums">
                   {bio.length}/500
                 </span>
               </div>
@@ -791,9 +791,9 @@ export function ProfileEditModal({
                   setError("");
                 }}
                 maxLength={500}
-                rows={3}
+                rows={2}
                 placeholder="Fale um pouco sobre seus animes favoritos, gêneros que acompanha ou sua jornada no Hikari..."
-                className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] p-3 text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/80 focus:bg-white/[0.06] focus:ring-2 focus:ring-violet-500/20"
+                className="mt-1 w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] p-2.5 sm:p-3 text-xs sm:text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/80 focus:bg-white/[0.06] focus:ring-2 focus:ring-violet-500/20 sm:rows-3"
               />
             </div>
 
@@ -803,7 +803,7 @@ export function ProfileEditModal({
                 <label htmlFor={tagsInputId} className="block text-xs font-semibold text-zinc-300">
                   Frase de Destaque ou Tags de Interesses
                 </label>
-                <span className="inline-flex items-center gap-1 text-[11px] text-violet-400">
+                <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] text-violet-400">
                   <Sparkles className="size-3" />
                   <span>Destaques</span>
                 </span>
@@ -817,33 +817,33 @@ export function ProfileEditModal({
                   setError("");
                 }}
                 placeholder="Ex: Shounen, Frieren, Ficção Científica, Wit Studio"
-                className="mt-1.5 h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3.5 text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/80 focus:bg-white/[0.06] focus:ring-2 focus:ring-violet-500/20"
+                className="mt-1 h-10 sm:h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 sm:px-3.5 text-xs sm:text-sm text-white outline-none transition-all placeholder:text-zinc-600 focus:border-violet-500/80 focus:bg-white/[0.06] focus:ring-2 focus:ring-violet-500/20"
               />
-              <p className="mt-1 text-[11px] text-zinc-500">
-                Separe os termos com vírgulas. Eles aparecem como insígnias estéticas no cabeçalho do seu perfil.
+              <p className="mt-1 text-[10px] sm:text-[11px] text-zinc-500">
+                Separe os termos com vírgulas. Eles aparecem como insígnias no cabeçalho do seu perfil.
               </p>
             </div>
           </form>
         </div>
 
         {/* 3. Rodapé Fixo com Botões de Ação */}
-        <div className="relative shrink-0 flex items-center justify-between px-5 sm:px-7 py-4 border-t border-white/[0.08] bg-[#0d0c18]/95 backdrop-blur-md z-20">
-          <div className="text-xs text-zinc-500">
+        <div className="relative shrink-0 flex items-center justify-between px-3.5 sm:px-7 py-2.5 sm:py-4 border-t border-white/[0.08] bg-[#0d0c18]/95 backdrop-blur-md z-20 gap-2">
+          <div className="text-[11px] sm:text-xs text-zinc-500 truncate max-w-[130px] sm:max-w-none">
             {isDirty ? (
               <span className="text-amber-300/90 font-medium">
-                Alterações pendentes de gravação
+                Alterações pendentes
               </span>
             ) : (
-              <span>Nenhuma alteração pendente</span>
+              <span>Nenhuma alteração</span>
             )}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleRequestClose}
               disabled={saving}
-              className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs sm:text-sm font-semibold text-zinc-300 transition-all hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
+              className="rounded-xl border border-white/10 bg-white/[0.04] px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-zinc-300 transition-all hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
             >
               Cancelar
             </button>
@@ -852,9 +852,9 @@ export function ProfileEditModal({
               type="submit"
               form="profile-edit-form"
               disabled={saving || !isDirty}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Save className="size-4" />
+              <Save className="size-3.5 sm:size-4" />
               <span>{saving ? "Salvando..." : "Salvar Alterações"}</span>
             </button>
           </div>
