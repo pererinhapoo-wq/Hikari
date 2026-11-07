@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { LogOut, Settings, Settings2, UserCircle } from "lucide-react";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { signOut } from "@/lib/auth/client";
@@ -18,6 +18,7 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
   const [imgError, setImgError] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const navigate = useNavigate();
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
@@ -92,6 +93,13 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
       window.location.reload();
     }
   }, []);
+
+  const handleNavigateToSettings = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(false);
+    void navigate({ to: "/settings-privacy" });
+  };
 
   const avatarSrc = !imgError ? customAvatar || user.profileImageUrl || null : null;
   const displayName = user.displayName || customNick || "Membro";
@@ -177,12 +185,12 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
 
             {/* 2. Configurações do Perfil (Exibição contextual em rotas de perfil) */}
             {isProfileRoute && (
-              <Link
-                to="/settings-privacy"
+              <button
+                type="button"
                 role="menuitem"
-                onClick={() => setOpen(false)}
+                onClick={handleNavigateToSettings}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-colors",
+                  "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-colors text-left cursor-pointer",
                   isSettingsActive
                     ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold"
                     : "text-fg/90 hover:bg-white/[0.06] hover:text-white",
@@ -190,7 +198,7 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
               >
                 <Settings className="size-4 text-[#c084fc] shrink-0" />
                 <span>Configurações do Perfil</span>
-              </Link>
+              </button>
             )}
 
             {/* Opção administrativa se aplicável */}

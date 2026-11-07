@@ -14,7 +14,7 @@ import {
   UserX,
   X,
 } from "lucide-react";
-import { Link } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type {
   AccountType,
@@ -69,6 +69,7 @@ export function ProfilePrivacyModal({
   onClose,
   onSave,
 }: ProfilePrivacyModalProps) {
+  const navigate = useNavigate();
   const [accountType, setAccountType] = useState<AccountType>("public");
   const [allowFollowers, setAllowFollowers] = useState(true);
   const [privacyLists, setPrivacyLists] = useState<SectionPrivacyLevel>("public");
@@ -378,13 +379,18 @@ export function ProfilePrivacyModal({
               <UserX className="size-4 text-zinc-500" />
               <span>Gerenciar usuários bloqueados</span>
             </span>
-            <Link
-              to="/settings-privacy"
-              onClick={onClose}
-              className="text-violet-400 hover:text-violet-300 font-medium transition-colors"
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+                void navigate({ to: "/settings-privacy" });
+              }}
+              className="text-violet-400 hover:text-violet-300 font-medium transition-colors cursor-pointer"
             >
               Abrir Configurações
-            </Link>
+            </button>
           </div>
         </form>
 

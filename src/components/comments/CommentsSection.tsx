@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
@@ -398,6 +398,7 @@ export function CommentsSection({
   const episodeId =
     rawEpisodeId && rawEpisodeId.trim() ? rawEpisodeId.trim() : "anime";
 
+  const navigate = useNavigate();
   const [text, setText] = useState("");
   const [isSpoiler, setIsSpoiler] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -2268,15 +2269,20 @@ export function CommentsSection({
                                 <span>Meu Perfil</span>
                               </Link>
                             )}
-                            <Link
-                              to="/settings-privacy"
+                            <button
+                              type="button"
                               role="menuitem"
-                              onClick={() => setUserMenuOpen(false)}
-                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setUserMenuOpen(false);
+                                void navigate({ to: "/settings-privacy" });
+                              }}
+                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none text-left cursor-pointer"
                             >
                               <Settings className="size-4 text-purple-400" />
                               <span>Configurações do Perfil</span>
-                            </Link>
+                            </button>
                             <button
                               type="button"
                               role="menuitem"
@@ -2585,15 +2591,20 @@ export function CommentsSection({
                                 <span>Meu Perfil</span>
                               </Link>
                             )}
-                            <Link
-                              to="/settings-privacy"
+                            <button
+                              type="button"
                               role="menuitem"
-                              onClick={() => setUserMenuOpen(false)}
-                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setUserMenuOpen(false);
+                                void navigate({ to: "/settings-privacy" });
+                              }}
+                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none text-left cursor-pointer"
                             >
                               <Settings className="size-4 text-purple-400" />
                               <span>Configurações do Perfil</span>
-                            </Link>
+                            </button>
                             <button
                               type="button"
                               role="menuitem"

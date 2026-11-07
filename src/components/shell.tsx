@@ -1578,11 +1578,16 @@ export function Shell() {
                         <span>Meu Perfil</span>
                       </Link>
 
-                      <Link
-                        to="/settings-privacy"
-                        onClick={() => setMenuOpen(false)}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setMenuOpen(false);
+                          void navigate({ to: "/settings-privacy" });
+                        }}
                         className={cn(
-                          "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                          "flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors text-left cursor-pointer",
                           pathname.startsWith("/settings-privacy")
                             ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
                             : "text-muted hover:bg-elevated hover:text-fg",
@@ -1590,7 +1595,7 @@ export function Shell() {
                       >
                         <Settings className="size-5 text-[#c084fc]" />
                         <span>Configurações do Perfil</span>
-                      </Link>
+                      </button>
                     </>
                   ) : (
                     <button
