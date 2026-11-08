@@ -30,7 +30,7 @@ export function ProfileOverviewFavorites({
         </div>
 
         {animes.length > 0 ? (
-          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+          <div className="grid grid-cols-1 min-[340px]:grid-cols-2 min-[480px]:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
             {animes.map((item) => (
               <AnimeFavoriteCard key={item.id} item={item} />
             ))}

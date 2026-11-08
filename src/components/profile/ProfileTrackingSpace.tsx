@@ -264,7 +264,7 @@ export function ProfileTrackingSpace({
 
       {/* Conteúdo: Skeleton, Vazio ou Grade de Obras (3 colunas por linha em telas com espaço suficiente) */}
       {loading ? (
-        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+        <div className="grid grid-cols-1 min-[340px]:grid-cols-2 min-[480px]:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
           {Array.from({ length: 6 }).map((_, idx) => (
             <div
               key={idx}
@@ -285,7 +285,7 @@ export function ProfileTrackingSpace({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+        <div className="grid grid-cols-1 min-[340px]:grid-cols-2 min-[480px]:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
           {filteredItems.map((item) => {
             const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.planning;
             const maxEps = item.episodesCount ?? null;
