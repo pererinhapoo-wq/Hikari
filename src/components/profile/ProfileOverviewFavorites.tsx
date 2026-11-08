@@ -21,7 +21,7 @@ export function ProfileOverviewFavorites({
 
   return (
     <div className="space-y-10 sm:space-y-12">
-      {/* B. Favoritos — Animes (Grade de 3 colunas por linha em telas com espaço suficiente, sem botão Ver Tudo) */}
+      {/* B. Favoritos — Animes (Grade de 3 colunas por linha lado a lado) */}
       <section aria-label="Favoritos — Animes" className="space-y-4">
         <div className="border-b border-white/[0.06] pb-3">
           <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
@@ -30,7 +30,7 @@ export function ProfileOverviewFavorites({
         </div>
 
         {animes.length > 0 ? (
-          <div className="grid grid-cols-1 min-[340px]:grid-cols-2 min-[480px]:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:gap-5">
             {animes.map((item) => (
               <AnimeFavoriteCard key={item.id} item={item} />
             ))}
@@ -121,10 +121,10 @@ function AnimeFavoriteCard({ item }: { item: ProfileFavoriteItem }) {
     <Link
       to="/anime/$id"
       params={{ id: item.targetId }}
-      className="group relative flex flex-col min-w-0 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(139,92,246,0.18)]"
+      className="group relative flex flex-col min-w-0 overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-1.5 min-[360px]:p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(139,92,246,0.18)]"
     >
       {/* Pôster com proporção 3/4 preservada */}
-      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-[#151224]">
+      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224]">
         {item.image ? (
           <img
             src={item.image}
@@ -133,28 +133,28 @@ function AnimeFavoriteCard({ item }: { item: ProfileFavoriteItem }) {
             className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
-          <div className="flex size-full items-center justify-center p-3 text-center text-xs text-zinc-500">
-            <Film className="size-6 text-zinc-600" />
+          <div className="flex size-full items-center justify-center p-2 text-center text-xs text-zinc-500">
+            <Film className="size-5 sm:size-6 text-zinc-600" />
           </div>
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
-        <div className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity">
-          <Heart className="size-3 fill-rose-500 text-rose-500" />
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 flex size-5 sm:size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity">
+          <Heart className="size-2.5 sm:size-3 fill-rose-500 text-rose-500" />
         </div>
       </div>
 
       {/* Informações: títulos com quebra segura sem sobreposição ou invasão aos cards vizinhos */}
-      <div className="mt-2.5 min-w-0 flex-1 space-y-1">
+      <div className="mt-1.5 sm:mt-2.5 min-w-0 flex-1 space-y-0.5 sm:space-y-1">
         <h4
-          className="line-clamp-2 text-xs sm:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white break-words leading-snug"
+          className="line-clamp-2 text-[11px] sm:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white break-words leading-tight sm:leading-snug"
           title={item.title}
         >
           {item.title}
         </h4>
         {item.subtitle && (
-          <p className="truncate text-[11px] sm:text-xs text-zinc-400">
+          <p className="truncate text-[10px] sm:text-xs text-zinc-400">
             {item.subtitle}
           </p>
         )}

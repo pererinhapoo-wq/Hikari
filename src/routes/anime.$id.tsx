@@ -12,7 +12,6 @@ import {
   LogIn,
   Pencil,
   Play,
-  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -21,6 +20,10 @@ import {
   removeAnimeTracking,
 } from "@/lib/profile-tracking.functions";
 import type { TrackingStatus } from "@/types/profile-tracking";
+import {
+  AnimeCollectionModal,
+  TRACKING_STATUS_CONFIG,
+} from "@/components/anime/AnimeCollectionModal";
 import {
   getMyProfileFavorites,
   addProfileFavorite,
@@ -363,60 +366,6 @@ export const Route = createFileRoute("/anime/$id")({
   component: AnimePage,
 });
 
-const TRACKING_STATUS_CONFIG: Record<
-  TrackingStatus,
-  {
-    label: string;
-    dotColor: string;
-    badgeBg: string;
-    textColor: string;
-    borderColor: string;
-  }
-> = {
-  watching: {
-    label: "Assistindo",
-    dotColor: "bg-emerald-500",
-    badgeBg: "bg-emerald-500/15",
-    textColor: "text-emerald-300",
-    borderColor: "border-emerald-500/50",
-  },
-  completed: {
-    label: "Concluídos",
-    dotColor: "bg-violet-500",
-    badgeBg: "bg-violet-500/15",
-    textColor: "text-violet-300",
-    borderColor: "border-violet-500/50",
-  },
-  on_hold: {
-    label: "Em espera",
-    dotColor: "bg-amber-500",
-    badgeBg: "bg-amber-500/15",
-    textColor: "text-amber-300",
-    borderColor: "border-amber-500/50",
-  },
-  dropped: {
-    label: "Abandonados",
-    dotColor: "bg-rose-500",
-    badgeBg: "bg-rose-500/15",
-    textColor: "text-rose-300",
-    borderColor: "border-rose-500/50",
-  },
-  planning: {
-    label: "Planejados",
-    dotColor: "bg-cyan-500",
-    badgeBg: "bg-cyan-500/15",
-    textColor: "text-cyan-300",
-    borderColor: "border-cyan-500/50",
-  },
-};
-
-const ALL_TRACKING_STATUSES: TrackingStatus[] = [
-  "watching",
-  "completed",
-  "on_hold",
-  "dropped",
-  "planning",
-];
 
 function makeAnimeSnapshot(anime: Anime) {
   return {
@@ -669,12 +618,12 @@ function AnimePage() {
   const addFavoriteFn = useServerFn(addProfileFavorite);
   const removeFavoriteFn = useServerFn(removeProfileFavorite);
 
-  // Estados de Coleção (Minha Lista) e Favoritos
+  // Estados de Coleção (Minha Coleção) e Favoritos
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus | null>(null);
+  const [trackingEpisodesWatched, setTrackingEpisodesWatched] = useState<number>(0);
+  const [trackingScore, setTrackingScore] = useState<number | null>(null);
   const [trackingLoading, setTrackingLoading] = useState(false);
-  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
-  const [menuPlacement, setMenuPlacement] = useState<"left" | "right">("left");
-  const statusMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [isFavorite, setIsFavorite] = useState(false);
   const [favFavoriteId, setFavFavoriteId] = useState<string | null>(null);
@@ -686,6 +635,8 @@ function AnimePage() {
   useEffect(() => {
     if (!user?.id || !anime?.id) {
       setTrackingStatus(null);
+      setTrackingEpisodesWatched(0);
+      setTrackingScore(null);
       setIsFavorite(false);
       setFavFavoriteId(null);
       return;
@@ -698,9 +649,14 @@ function AnimePage() {
       .then((items) => {
         if (!active) return;
         if (items && items.length > 0) {
-          setTrackingStatus(items[0].status);
+          const item = items[0];
+          setTrackingStatus(item.status);
+          setTrackingEpisodesWatched(item.episodesWatched ?? 0);
+          setTrackingScore(item.score ?? null);
         } else {
           setTrackingStatus(null);
+          setTrackingEpisodesWatched(0);
+          setTrackingScore(null);
         }
       })
       .catch((err) => {
@@ -729,34 +685,12 @@ function AnimePage() {
     };
   }, [user?.id, anime?.id, getTrackingFn, getFavoritesFn]);
 
-  // Fechar menu de status ao clicar/tocar fora ou apertar Escape
-  useEffect(() => {
-    if (!isStatusMenuOpen) return;
-    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      if (
-        statusMenuRef.current &&
-        !statusMenuRef.current.contains(e.target as Node)
-      ) {
-        setIsStatusMenuOpen(false);
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsStatusMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("touchstart", handleClickOutside, { passive: true });
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("touchstart", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isStatusMenuOpen]);
-
-  // Ações de alteração/adição de status
-  const handleSelectStatus = async (status: TrackingStatus) => {
+  // Ações de salvar e remover da coleção
+  const handleSaveCollection = async (data: {
+    status: TrackingStatus;
+    episodesWatched: number;
+    score: number | null;
+  }) => {
     if (!user) {
       setShowAuthModal(true);
       return;
@@ -764,16 +698,22 @@ function AnimePage() {
     if (!anime) return;
 
     const previousStatus = trackingStatus;
+    const previousEpisodes = trackingEpisodesWatched;
+    const previousScore = trackingScore;
     const isNewEntry = previousStatus === null;
-    setTrackingStatus(status);
-    setIsStatusMenuOpen(false);
+
+    setTrackingStatus(data.status);
+    setTrackingEpisodesWatched(data.episodesWatched);
+    setTrackingScore(data.score);
     setTrackingLoading(true);
 
     try {
       await upsertTrackingFn({
         data: {
           animeId: anime.id,
-          status,
+          status: data.status,
+          episodesWatched: data.episodesWatched,
+          score: data.score,
           animeSnapshot: makeAnimeSnapshot(anime),
         },
       });
@@ -784,25 +724,30 @@ function AnimePage() {
 
       toast.success(
         isNewEntry
-          ? `Adicionado à sua lista como "${TRACKING_STATUS_CONFIG[status].label}"!`
-          : `Status atualizado para "${TRACKING_STATUS_CONFIG[status].label}"!`,
+          ? `Adicionado à sua coleção como "${TRACKING_STATUS_CONFIG[data.status].label}"!`
+          : `Coleção atualizada para "${TRACKING_STATUS_CONFIG[data.status].label}"!`,
       );
     } catch (err: unknown) {
       setTrackingStatus(previousStatus);
-      const msg = err instanceof Error ? err.message : "Erro ao atualizar status.";
+      setTrackingEpisodesWatched(previousEpisodes);
+      setTrackingScore(previousScore);
+      const msg = err instanceof Error ? err.message : "Erro ao atualizar coleção.";
       toast.error(msg);
     } finally {
       setTrackingLoading(false);
     }
   };
 
-  // Remoção do anime da lista
-  const handleRemoveFromList = async () => {
+  const handleRemoveCollection = async () => {
     if (!user || !anime) return;
 
     const previousStatus = trackingStatus;
+    const previousEpisodes = trackingEpisodesWatched;
+    const previousScore = trackingScore;
+
     setTrackingStatus(null);
-    setIsStatusMenuOpen(false);
+    setTrackingEpisodesWatched(0);
+    setTrackingScore(null);
     setTrackingLoading(true);
 
     try {
@@ -816,10 +761,12 @@ function AnimePage() {
         toggleList(anime, user.id);
       }
 
-      toast.info("Anime removido da sua lista.");
+      toast.info("Anime removido da sua coleção.");
     } catch (err: unknown) {
       setTrackingStatus(previousStatus);
-      const msg = err instanceof Error ? err.message : "Erro ao remover da lista.";
+      setTrackingEpisodesWatched(previousEpisodes);
+      setTrackingScore(previousScore);
+      const msg = err instanceof Error ? err.message : "Erro ao remover da coleção.";
       toast.error(msg);
     } finally {
       setTrackingLoading(false);
@@ -1649,147 +1596,89 @@ function AnimePage() {
                 </Link>
 
                 {/* 1. SELETOR DE STATUS DA LISTA (MINHA LISTA) */}
-                <div
-                  className={cn("relative inline-block", isStatusMenuOpen && "z-50")}
-                  ref={statusMenuRef}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!user) {
-                        setShowAuthModal(true);
-                        return;
-                      }
-                      if (!isStatusMenuOpen && statusMenuRef.current) {
-                        const rect = statusMenuRef.current.getBoundingClientRect();
-                        const spaceOnRight = window.innerWidth - rect.left;
-                        if (spaceOnRight < 240 && rect.right > 240) {
-                          setMenuPlacement("right");
-                        } else {
-                          setMenuPlacement("left");
-                        }
-                      }
-                      setIsStatusMenuOpen((prev) => !prev);
-                    }}
-                    aria-label={
-                      trackingStatus
-                        ? `Status: ${TRACKING_STATUS_CONFIG[trackingStatus].label}`
-                        : "Adicionar à Minha Lista"
+                {/* 1. BOTÃO MINHA COLEÇÃO MODERNO & PREMIUM */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!user) {
+                      setShowAuthModal(true);
+                      return;
                     }
-                    className={cn(
-                      "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-medium shadow-sm transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
-                      "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.96]",
-                      trackingStatus
-                        ? cn(
-                            "border",
-                            TRACKING_STATUS_CONFIG[trackingStatus].borderColor,
-                            TRACKING_STATUS_CONFIG[trackingStatus].badgeBg,
-                            TRACKING_STATUS_CONFIG[trackingStatus].textColor,
-                            "shadow-[0_0_16px_rgba(168,85,247,0.22)] hover:brightness-110",
-                          )
-                        : "border border-purple-500/30 bg-[#0f0d18]/90 text-zinc-200 hover:border-purple-500/60 hover:bg-[#1a142e] hover:text-white hover:shadow-[0_0_12px_rgba(168,85,247,0.18)]",
-                    )}
-                  >
-                    {trackingLoading ? (
-                      <Loader2 className="size-4 animate-spin text-purple-300" />
-                    ) : trackingStatus ? (
-                      <>
-                        <span
-                          className={cn(
-                            "size-2.5 rounded-full shrink-0 shadow-sm",
-                            TRACKING_STATUS_CONFIG[trackingStatus].dotColor,
-                          )}
-                        />
-                        <span className="font-semibold">
-                          {TRACKING_STATUS_CONFIG[trackingStatus].label}
-                        </span>
-                        <ChevronDown className="size-3.5 opacity-70 ml-0.5 transition-transform duration-200 group-hover:translate-y-0.5" />
-                      </>
-                    ) : (
-                      <>
-                        <Bookmark className="size-4 text-zinc-400 transition-colors group-hover:text-purple-300" />
-                        <span>Minha Lista</span>
-                        <ChevronDown className="size-3.5 text-zinc-400 ml-0.5" />
-                      </>
-                    )}
-                  </button>
-
-                  {/* Dropdown com os 5 status oficiais do Anime Stats */}
-                  {isStatusMenuOpen && (
-                    <div
-                      className={cn(
-                        "absolute top-full mt-2 z-50 w-52 sm:w-56 max-w-[calc(100vw-2rem)] rounded-2xl border border-purple-500/20 bg-[#0f0c1e]/98 p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_25px_rgba(168,85,247,0.25)] backdrop-blur-2xl ring-1 ring-white/10 animate-in fade-in zoom-in-95 duration-150",
-                        menuPlacement === "right" ? "right-0" : "left-0",
-                      )}
-                      role="menu"
-                    >
-                      <div className="space-y-0.5">
-                        {ALL_TRACKING_STATUSES.map((statusKey) => {
-                          const config = TRACKING_STATUS_CONFIG[statusKey];
-                          const isSelected = trackingStatus === statusKey;
-                          return (
-                            <button
-                              key={statusKey}
-                              type="button"
-                              onClick={() => void handleSelectStatus(statusKey)}
-                              className={cn(
-                                "flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-colors cursor-pointer",
-                                isSelected
-                                  ? cn("bg-white/10 font-semibold", config.textColor)
-                                  : "text-zinc-300 hover:bg-white/5 hover:text-white",
-                              )}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <span
-                                  className={cn("size-2.5 rounded-full shrink-0 shadow-sm", config.dotColor)}
-                                />
-                                <span>{config.label}</span>
-                              </div>
-                              {isSelected && <Check className="size-4 text-white" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {trackingStatus && (
-                        <>
-                          <div className="my-1 border-t border-white/[0.08]" />
-                          <button
-                            type="button"
-                            onClick={() => void handleRemoveFromList()}
-                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-rose-300/80 hover:bg-rose-500/10 hover:text-rose-200 transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="size-3.5 shrink-0" />
-                            <span>Remover da lista</span>
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    setIsCollectionModalOpen(true);
+                  }}
+                  disabled={trackingLoading}
+                  aria-label={
+                    trackingStatus
+                      ? `Coleção: ${TRACKING_STATUS_CONFIG[trackingStatus].label}`
+                      : "Gerenciar Minha Coleção"
+                  }
+                  className={cn(
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-semibold shadow-md transition-all duration-300 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
+                    "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
+                    trackingStatus
+                      ? cn(
+                          "border bg-gradient-to-r backdrop-blur-xl shadow-[0_0_22px_rgba(139,92,246,0.25)] hover:shadow-[0_0_28px_rgba(139,92,246,0.38)] hover:brightness-110",
+                          TRACKING_STATUS_CONFIG[trackingStatus].borderColor,
+                          TRACKING_STATUS_CONFIG[trackingStatus].badgeBg,
+                          TRACKING_STATUS_CONFIG[trackingStatus].textColor,
+                        )
+                      : "border border-violet-500/30 bg-[#0e0c1a]/90 text-zinc-200 hover:border-violet-400/60 hover:bg-[#161229] hover:text-white hover:shadow-[0_0_20px_rgba(139,92,246,0.22)]",
                   )}
-                </div>
+                >
+                  {trackingLoading ? (
+                    <Loader2 className="size-4 animate-spin text-violet-300" />
+                  ) : trackingStatus ? (
+                    <>
+                      <span
+                        className={cn(
+                          "size-2.5 rounded-full shrink-0 shadow-[0_0_8px_currentColor] transition-transform duration-300 group-hover:scale-125",
+                          TRACKING_STATUS_CONFIG[trackingStatus].dotColor,
+                        )}
+                      />
+                      <span className="font-bold tracking-tight">
+                        {TRACKING_STATUS_CONFIG[trackingStatus].label}
+                      </span>
+                      {trackingEpisodesWatched > 0 && (
+                        <span className="text-xs font-mono opacity-80 pl-1.5 border-l border-white/20">
+                          {trackingEpisodesWatched} eps
+                        </span>
+                      )}
+                      <ChevronDown className="size-3.5 opacity-60 ml-0.5 transition-transform duration-200 group-hover:translate-y-0.5" />
+                    </>
+                  ) : (
+                    <>
+                      <Bookmark className="size-4 text-violet-400 transition-transform duration-200 group-hover:scale-110" />
+                      <span>Minha Coleção</span>
+                    </>
+                  )}
+                </button>
 
-                {/* 2. BOTÃO DE FAVORITOS INDEPENDENTE */}
+                {/* 2. BOTÃO DE FAVORITOS HARMONIZADO */}
                 <button
                   type="button"
                   onClick={() => void handleToggleFavorite()}
                   disabled={favoriteLoading}
                   aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
                   className={cn(
-                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-medium shadow-sm transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
-                    "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.96]",
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-semibold shadow-md transition-all duration-300 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400",
+                    "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
                     isFavorite
-                      ? "border border-rose-500/50 bg-rose-500/15 text-rose-200 shadow-[0_0_18px_rgba(244,63,94,0.28)] hover:border-rose-400/70 hover:bg-rose-500/25 hover:shadow-[0_0_24px_rgba(244,63,94,0.38)]"
-                      : "border border-purple-500/25 bg-[#0f0d18]/90 text-zinc-200 hover:border-rose-500/50 hover:bg-[#1a1222] hover:text-white hover:shadow-[0_0_14px_rgba(244,63,94,0.2)]",
+                      ? "border border-rose-500/60 bg-gradient-to-r from-rose-500/20 via-pink-500/15 to-rose-500/20 text-rose-200 shadow-[0_0_22px_rgba(244,63,94,0.32)] hover:border-rose-400/80 hover:bg-rose-500/30 hover:shadow-[0_0_28px_rgba(244,63,94,0.42)]"
+                      : "border border-white/10 bg-[#0e0c1a]/90 text-zinc-300 hover:border-rose-500/50 hover:bg-rose-500/10 hover:text-white hover:shadow-[0_0_18px_rgba(244,63,94,0.22)]",
                   )}
                 >
-                  <Heart
-                    className={cn(
-                      "size-4 transition-all duration-250 ease-out",
-                      isFavorite
-                        ? "fill-rose-500 text-rose-500 motion-safe:animate-[bookmarkPop_300ms_cubic-bezier(0.34,1.56,0.64,1)]"
-                        : "text-zinc-400 group-hover:text-rose-400",
-                    )}
-                  />
+                  {favoriteLoading ? (
+                    <Loader2 className="size-4 animate-spin text-rose-400" />
+                  ) : (
+                    <Heart
+                      className={cn(
+                        "size-4 transition-all duration-300 ease-out",
+                        isFavorite
+                          ? "fill-rose-500 text-rose-500 scale-110 drop-shadow-[0_0_8px_rgba(244,63,94,0.6)] motion-safe:animate-[bookmarkPop_300ms_cubic-bezier(0.34,1.56,0.64,1)]"
+                          : "text-zinc-400 group-hover:text-rose-400 group-hover:scale-110",
+                      )}
+                    />
+                  )}
                   <span>{isFavorite ? "Favoritado" : "Favoritar"}</span>
                 </button>
 
@@ -1972,6 +1861,30 @@ function AnimePage() {
           />
         </Suspense>
       </SectionReveal>
+
+      {/* Modal de Gerenciamento da Coleção */}
+      <AnimeCollectionModal
+        isOpen={isCollectionModalOpen}
+        onClose={() => setIsCollectionModalOpen(false)}
+        anime={{
+          id: anime.id,
+          title: displayTitle(anime),
+          cover: anime.cover,
+          banner: anime.banner,
+          format: anime.format,
+          year: anime.year || anime.startDate?.year,
+          episodesCount:
+            anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
+          status: anime.status,
+          score: anime.score,
+        }}
+        initialStatus={trackingStatus}
+        initialEpisodesWatched={trackingEpisodesWatched}
+        initialScore={trackingScore}
+        loading={trackingLoading}
+        onSave={handleSaveCollection}
+        onRemove={handleRemoveCollection}
+      />
 
       {/* Modal de Orientação para Visitantes não Autenticados */}
       <AuthPromptModal
