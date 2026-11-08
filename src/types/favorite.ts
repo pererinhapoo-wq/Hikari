@@ -24,6 +24,23 @@ export const addFavoriteSchema = z.object({
     .string()
     .trim()
     .min(1, "O identificador do item (targetId) é obrigatório."),
+  animeSnapshot: z
+    .object({
+      title: z.string().optional(),
+      titleRomaji: z.string().nullable().optional(),
+      titleEnglish: z.string().nullable().optional(),
+      titleNative: z.string().nullable().optional(),
+      cover: z.string().nullable().optional(),
+      banner: z.string().nullable().optional(),
+      synopsis: z.string().nullable().optional(),
+      format: z.string().nullable().optional(),
+      year: z.number().nullable().optional(),
+      episodesCount: z.number().nullable().optional(),
+      status: z.string().nullable().optional(),
+    })
+    .catchall(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional()
+    .nullable(),
 });
 
 export type AddFavoriteInput = z.infer<typeof addFavoriteSchema>;
@@ -31,12 +48,19 @@ export type AddFavoriteInput = z.infer<typeof addFavoriteSchema>;
 /**
  * Schema e tipo para remoção de favorito.
  */
-export const removeFavoriteSchema = z.object({
-  favoriteId: z
-    .string()
-    .trim()
-    .min(1, "O identificador do favorito (favoriteId) é obrigatório."),
-});
+export const removeFavoriteSchema = z
+  .object({
+    favoriteId: z.string().trim().optional(),
+    targetType: favoriteTargetTypeSchema.optional(),
+    targetId: z.string().trim().optional(),
+  })
+  .refine(
+    (data) => Boolean(data.favoriteId || (data.targetType && data.targetId)),
+    {
+      message:
+        "O identificador do favorito (favoriteId) ou o par (targetType e targetId) é obrigatório.",
+    },
+  );
 
 export type RemoveFavoriteInput = z.infer<typeof removeFavoriteSchema>;
 
@@ -57,6 +81,7 @@ export type ReorderFavoritesInput = z.infer<typeof reorderFavoritesSchema>;
  */
 export const getFavoritesSchema = z.object({
   targetType: favoriteTargetTypeSchema.optional(),
+  targetId: z.string().trim().optional(),
 });
 
 export type GetFavoritesInput = z.infer<typeof getFavoritesSchema>;

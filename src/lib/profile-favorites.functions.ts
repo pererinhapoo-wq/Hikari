@@ -18,6 +18,19 @@ import {
 async function assertCatalogEntityExists(
   targetType: FavoriteTargetType,
   targetId: string,
+  snapshot?: {
+    title?: string;
+    titleRomaji?: string | null;
+    titleEnglish?: string | null;
+    titleNative?: string | null;
+    cover?: string | null;
+    banner?: string | null;
+    synopsis?: string | null;
+    format?: string | null;
+    year?: number | null;
+    episodesCount?: number | null;
+    status?: string | null;
+  } | null,
 ): Promise<void> {
   const sql = await getSql();
 
@@ -25,9 +38,42 @@ async function assertCatalogEntityExists(
 
   switch (targetType) {
     case "anime": {
-      const rows = await sql<{ id: string }>`
+      let rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_anime" WHERE "id" = ${targetId} LIMIT 1
       `;
+      if (rows.length === 0) {
+        const titleToUse = snapshot?.title?.trim() || targetId;
+        await sql.query(
+          `INSERT INTO "catalog_anime" (
+            "id", "title", "titleRomaji", "titleEnglish", "titleNative",
+            "cover", "banner", "synopsis", "format", "year", "episodesCount", "status",
+            "createdAt", "updatedAt"
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT ("id") DO UPDATE SET
+            "title" = COALESCE(EXCLUDED."title", "catalog_anime"."title"),
+            "cover" = COALESCE(EXCLUDED."cover", "catalog_anime"."cover"),
+            "banner" = COALESCE(EXCLUDED."banner", "catalog_anime"."banner"),
+            "updatedAt" = CURRENT_TIMESTAMP`,
+          [
+            targetId,
+            titleToUse,
+            snapshot?.titleRomaji ?? null,
+            snapshot?.titleEnglish ?? null,
+            snapshot?.titleNative ?? null,
+            snapshot?.cover ?? null,
+            snapshot?.banner ?? null,
+            snapshot?.synopsis ?? null,
+            snapshot?.format ?? null,
+            snapshot?.year ?? null,
+            snapshot?.episodesCount ?? null,
+            snapshot?.status ?? null,
+          ],
+        );
+        rows = await sql<{ id: string }>`
+          SELECT "id" FROM "catalog_anime" WHERE "id" = ${targetId} LIMIT 1
+        `;
+      }
       exists = rows.length > 0;
       break;
     }
@@ -80,10 +126,10 @@ export const addProfileFavorite = createServerFn({
   .validator(addFavoriteSchema)
   .handler(async ({ context, data }) => {
     const userId = context.userId;
-    const { targetType, targetId } = data;
+    const { targetType, targetId, animeSnapshot } = data;
 
-    // 1. Verifica se a entidade existe no catálogo
-    await assertCatalogEntityExists(targetType, targetId);
+    // 1. Verifica se a entidade existe no catálogo (com auto-provisionamento de catálogo para anime se snapshot for enviado)
+    await assertCatalogEntityExists(targetType, targetId, animeSnapshot);
 
     const sql = await getSql();
 
@@ -182,6 +228,7 @@ export const addProfileFavorite = createServerFn({
 /**
  * 2. Remover favorito oficial do perfil.
  * Remove somente o favorito pertencente ao usuário autenticado de maneira atômica.
+ * Suporta remoção por favoriteId OU por targetType + targetId.
  */
 export const removeProfileFavorite = createServerFn({
   method: "POST",
@@ -190,7 +237,7 @@ export const removeProfileFavorite = createServerFn({
   .validator(removeFavoriteSchema)
   .handler(async ({ context, data }) => {
     const userId = context.userId;
-    const { favoriteId } = data;
+    const { favoriteId, targetType, targetId } = data;
 
     const sql = await getSql();
 
@@ -201,7 +248,18 @@ export const removeProfileFavorite = createServerFn({
       DELETE FROM "user_favorite" uf
       USING user_lock ul
       WHERE uf."userId" = ul."id"
-        AND uf."id" = $2
+        AND (
+          ($2::text IS NOT NULL AND uf."id" = $2)
+          OR (
+            $3::text IS NOT NULL AND $4::text IS NOT NULL AND uf."targetType" = $3 AND (
+              ($3 = 'anime' AND uf."animeId" = $4) OR
+              ($3 = 'character' AND uf."characterId" = $4) OR
+              ($3 = 'studio' AND uf."studioId" = $4) OR
+              ($3 = 'company' AND uf."companyId" = $4) OR
+              ($3 = 'person' AND uf."personId" = $4)
+            )
+          )
+        )
       RETURNING uf."id", uf."targetType", uf."position";
     `;
 
@@ -209,7 +267,12 @@ export const removeProfileFavorite = createServerFn({
       id: string;
       targetType: FavoriteTargetType;
       position: number;
-    }>(deleteQuery, [userId, favoriteId]);
+    }>(deleteQuery, [
+      userId,
+      favoriteId ?? null,
+      targetType ?? null,
+      targetId ?? null,
+    ]);
 
     if (deletedRows.length === 0) {
       throw new Error("Favorito não encontrado ou não pertence ao usuário.");
@@ -217,7 +280,7 @@ export const removeProfileFavorite = createServerFn({
 
     return {
       success: true,
-      removedId: favoriteId,
+      removedId: deletedRows[0].id,
       targetType: deletedRows[0].targetType,
     };
   });
@@ -234,6 +297,7 @@ export const getMyProfileFavorites = createServerFn({
   .handler(async ({ context, data }): Promise<ProfileFavoritesResponse> => {
     const userId = context.userId;
     const targetTypeFilter = data?.targetType ?? null;
+    const targetIdFilter = data?.targetId ? data.targetId.trim() : null;
 
     const sql = await getSql();
 
@@ -270,6 +334,7 @@ export const getMyProfileFavorites = createServerFn({
       LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
       WHERE uf."userId" = $1
         AND ($2::text IS NULL OR uf."targetType" = $2)
+        AND ($3::text IS NULL OR COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") = $3)
       ORDER BY uf."targetType" ASC, uf."position" ASC, uf."createdAt" ASC;
     `;
 
@@ -286,7 +351,7 @@ export const getMyProfileFavorites = createServerFn({
       banner: string | null;
       description: string | null;
       subtitle: string | null;
-    }>(query, [userId, targetTypeFilter]);
+    }>(query, [userId, targetTypeFilter, targetIdFilter]);
 
     const items: ProfileFavoriteItem[] = rawRows.map((row) => ({
       id: row.id,

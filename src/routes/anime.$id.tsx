@@ -1,16 +1,31 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { toast } from "sonner";
 import {
   Bookmark,
-  BookmarkCheck,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Heart,
+  Loader2,
+  LogIn,
   Pencil,
   Play,
-  Share2,
+  Trash2,
   X,
 } from "lucide-react";
+import {
+  getMyAnimeTracking,
+  upsertAnimeTracking,
+  removeAnimeTracking,
+} from "@/lib/profile-tracking.functions";
+import type { TrackingStatus } from "@/types/profile-tracking";
+import {
+  getMyProfileFavorites,
+  addProfileFavorite,
+  removeProfileFavorite,
+} from "@/lib/profile-favorites.functions";
 import {
   Suspense,
   lazy,
@@ -348,6 +363,79 @@ export const Route = createFileRoute("/anime/$id")({
   component: AnimePage,
 });
 
+const TRACKING_STATUS_CONFIG: Record<
+  TrackingStatus,
+  {
+    label: string;
+    dotColor: string;
+    badgeBg: string;
+    textColor: string;
+    borderColor: string;
+  }
+> = {
+  watching: {
+    label: "Assistindo",
+    dotColor: "bg-emerald-500",
+    badgeBg: "bg-emerald-500/15",
+    textColor: "text-emerald-300",
+    borderColor: "border-emerald-500/50",
+  },
+  completed: {
+    label: "Concluídos",
+    dotColor: "bg-violet-500",
+    badgeBg: "bg-violet-500/15",
+    textColor: "text-violet-300",
+    borderColor: "border-violet-500/50",
+  },
+  on_hold: {
+    label: "Em espera",
+    dotColor: "bg-amber-500",
+    badgeBg: "bg-amber-500/15",
+    textColor: "text-amber-300",
+    borderColor: "border-amber-500/50",
+  },
+  dropped: {
+    label: "Abandonados",
+    dotColor: "bg-rose-500",
+    badgeBg: "bg-rose-500/15",
+    textColor: "text-rose-300",
+    borderColor: "border-rose-500/50",
+  },
+  planning: {
+    label: "Planejados",
+    dotColor: "bg-cyan-500",
+    badgeBg: "bg-cyan-500/15",
+    textColor: "text-cyan-300",
+    borderColor: "border-cyan-500/50",
+  },
+};
+
+const ALL_TRACKING_STATUSES: TrackingStatus[] = [
+  "watching",
+  "completed",
+  "on_hold",
+  "dropped",
+  "planning",
+];
+
+function makeAnimeSnapshot(anime: Anime) {
+  return {
+    title: displayTitle(anime),
+    titleRomaji: anime.titles?.romaji || null,
+    titleEnglish: anime.titles?.english || null,
+    titleNative: anime.titles?.native || null,
+    cover: anime.cover || null,
+    banner: anime.banner || null,
+    synopsis: anime.synopsis || null,
+    format: anime.format || null,
+    year: anime.year || anime.startDate?.year || null,
+    episodesCount:
+      anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
+    status: anime.status || null,
+    score: anime.score || null,
+  };
+}
+
 function AnimePage() {
   const { id } = Route.useParams();
   const { remote } = Route.useLoaderData();
@@ -570,17 +658,216 @@ function AnimePage() {
       : (activeExtraCredits?.studios ?? []);
 
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
-  const [isListToggling, setIsListToggling] = useState(false);
   const [isWatchPressing, setIsWatchPressing] = useState(false);
 
-  const handleToggleList = useCallback(() => {
-    if (!anime || !user) return;
-    setIsListToggling(true);
-    toggleList(anime, user.id);
-    setTimeout(() => {
-      setIsListToggling(false);
-    }, 300);
-  }, [anime, toggleList, user]);
+  // Server Functions para Coleção e Favoritos
+  const getTrackingFn = useServerFn(getMyAnimeTracking);
+  const upsertTrackingFn = useServerFn(upsertAnimeTracking);
+  const removeTrackingFn = useServerFn(removeAnimeTracking);
+
+  const getFavoritesFn = useServerFn(getMyProfileFavorites);
+  const addFavoriteFn = useServerFn(addProfileFavorite);
+  const removeFavoriteFn = useServerFn(removeProfileFavorite);
+
+  // Estados de Coleção (Minha Lista) e Favoritos
+  const [trackingStatus, setTrackingStatus] = useState<TrackingStatus | null>(null);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
+  const [menuPlacement, setMenuPlacement] = useState<"left" | "right">("left");
+  const statusMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favFavoriteId, setFavFavoriteId] = useState<string | null>(null);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Consulta status de acompanhamento e favoritos do usuário para este anime
+  useEffect(() => {
+    if (!user?.id || !anime?.id) {
+      setTrackingStatus(null);
+      setIsFavorite(false);
+      setFavFavoriteId(null);
+      return;
+    }
+
+    let active = true;
+
+    // 1. Busca acompanhamento da lista do usuário
+    void getTrackingFn({ data: { animeId: anime.id } })
+      .then((items) => {
+        if (!active) return;
+        if (items && items.length > 0) {
+          setTrackingStatus(items[0].status);
+        } else {
+          setTrackingStatus(null);
+        }
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar acompanhamento do anime:", err);
+      });
+
+    // 2. Busca favoritos oficiais do perfil
+    void getFavoritesFn({ data: { targetType: "anime", targetId: anime.id } })
+      .then((res) => {
+        if (!active) return;
+        const match = res.items.find((item) => item.targetId === anime.id);
+        if (match) {
+          setIsFavorite(true);
+          setFavFavoriteId(match.id);
+        } else {
+          setIsFavorite(false);
+          setFavFavoriteId(null);
+        }
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar favorito do anime:", err);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, anime?.id, getTrackingFn, getFavoritesFn]);
+
+  // Fechar menu de status ao clicar/tocar fora ou apertar Escape
+  useEffect(() => {
+    if (!isStatusMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (
+        statusMenuRef.current &&
+        !statusMenuRef.current.contains(e.target as Node)
+      ) {
+        setIsStatusMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsStatusMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside, { passive: true });
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isStatusMenuOpen]);
+
+  // Ações de alteração/adição de status
+  const handleSelectStatus = async (status: TrackingStatus) => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+    if (!anime) return;
+
+    const previousStatus = trackingStatus;
+    const isNewEntry = previousStatus === null;
+    setTrackingStatus(status);
+    setIsStatusMenuOpen(false);
+    setTrackingLoading(true);
+
+    try {
+      await upsertTrackingFn({
+        data: {
+          animeId: anime.id,
+          status,
+          animeSnapshot: makeAnimeSnapshot(anime),
+        },
+      });
+
+      if (!inList) {
+        toggleList(anime, user.id);
+      }
+
+      toast.success(
+        isNewEntry
+          ? `Adicionado à sua lista como "${TRACKING_STATUS_CONFIG[status].label}"!`
+          : `Status atualizado para "${TRACKING_STATUS_CONFIG[status].label}"!`,
+      );
+    } catch (err: unknown) {
+      setTrackingStatus(previousStatus);
+      const msg = err instanceof Error ? err.message : "Erro ao atualizar status.";
+      toast.error(msg);
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
+  // Remoção do anime da lista
+  const handleRemoveFromList = async () => {
+    if (!user || !anime) return;
+
+    const previousStatus = trackingStatus;
+    setTrackingStatus(null);
+    setIsStatusMenuOpen(false);
+    setTrackingLoading(true);
+
+    try {
+      await removeTrackingFn({
+        data: {
+          animeId: anime.id,
+        },
+      });
+
+      if (inList) {
+        toggleList(anime, user.id);
+      }
+
+      toast.info("Anime removido da sua lista.");
+    } catch (err: unknown) {
+      setTrackingStatus(previousStatus);
+      const msg = err instanceof Error ? err.message : "Erro ao remover da lista.";
+      toast.error(msg);
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
+  // Alternar favorito do anime
+  const handleToggleFavorite = async () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+    if (!anime || favoriteLoading) return;
+
+    const willBeFavorite = !isFavorite;
+    setIsFavorite(willBeFavorite);
+    setFavoriteLoading(true);
+
+    try {
+      if (willBeFavorite) {
+        const created = await addFavoriteFn({
+          data: {
+            targetType: "anime",
+            targetId: anime.id,
+            animeSnapshot: makeAnimeSnapshot(anime),
+          },
+        });
+        setFavFavoriteId(created.id);
+        toast.success("Adicionado aos seus favoritos!");
+      } else {
+        await removeFavoriteFn({
+          data: {
+            targetType: "anime",
+            targetId: anime.id,
+            favoriteId: favFavoriteId ?? undefined,
+          },
+        });
+        setFavFavoriteId(null);
+        toast.info("Removido dos favoritos.");
+      }
+    } catch (err: unknown) {
+      setIsFavorite(!willBeFavorite);
+      const msg = err instanceof Error ? err.message : "Erro ao atualizar favoritos.";
+      toast.error(msg);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
 
   const localRecord = useMemo(
     () =>
@@ -1114,24 +1401,6 @@ function AnimePage() {
       ? `Continuar no ep. ${continueEpisode.number}`
       : "Assistir";
 
-  const handleShare = async () => {
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title,
-          text: `Confira ${title} no Hikari`,
-          url: window.location.href,
-        });
-      } else {
-        await navigator.clipboard.writeText(
-          window.location.href,
-        );
-      }
-    } catch {
-      // Usuário cancelou o compartilhamento.
-    }
-  };
-
   return (
     <article className="pb-12 motion-safe:animate-[pageEnter_250ms_ease-out]">
       {/* Testes experimentais isolados: entrada suave da página e assentamento sutil do banner */}
@@ -1162,10 +1431,10 @@ function AnimePage() {
       `}</style>
 
       {/* HERO */}
-      <section className="relative -mx-4 overflow-hidden sm:-mx-6">
+      <section className="relative z-20 -mx-4 sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
-          className="relative max-sm:h-[22rem] max-sm:min-[380px]:h-[24rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated"
+          className="relative max-sm:h-[22rem] max-sm:min-[380px]:h-[24rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated overflow-hidden"
         >
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
 
@@ -1379,50 +1648,149 @@ function AnimePage() {
                   <span>{watchButtonLabel}</span>
                 </Link>
 
-                {user && (
+                {/* 1. SELETOR DE STATUS DA LISTA (MINHA LISTA) */}
+                <div
+                  className={cn("relative inline-block", isStatusMenuOpen && "z-50")}
+                  ref={statusMenuRef}
+                >
                   <button
                     type="button"
-                    onClick={handleToggleList}
-                    aria-label={inList ? "Remover da minha lista" : "Adicionar à minha lista"}
+                    onClick={() => {
+                      if (!user) {
+                        setShowAuthModal(true);
+                        return;
+                      }
+                      if (!isStatusMenuOpen && statusMenuRef.current) {
+                        const rect = statusMenuRef.current.getBoundingClientRect();
+                        const spaceOnRight = window.innerWidth - rect.left;
+                        if (spaceOnRight < 240 && rect.right > 240) {
+                          setMenuPlacement("right");
+                        } else {
+                          setMenuPlacement("left");
+                        }
+                      }
+                      setIsStatusMenuOpen((prev) => !prev);
+                    }}
+                    aria-label={
+                      trackingStatus
+                        ? `Status: ${TRACKING_STATUS_CONFIG[trackingStatus].label}`
+                        : "Adicionar à Minha Lista"
+                    }
                     className={cn(
                       "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-medium shadow-sm transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
                       "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.96]",
-                      inList
-                        ? "border border-purple-500/50 bg-[#151126] text-purple-200 shadow-[0_0_16px_rgba(168,85,247,0.22)] hover:border-purple-400/70 hover:bg-[#1b1532] hover:shadow-[0_0_20px_rgba(168,85,247,0.32)]"
+                      trackingStatus
+                        ? cn(
+                            "border",
+                            TRACKING_STATUS_CONFIG[trackingStatus].borderColor,
+                            TRACKING_STATUS_CONFIG[trackingStatus].badgeBg,
+                            TRACKING_STATUS_CONFIG[trackingStatus].textColor,
+                            "shadow-[0_0_16px_rgba(168,85,247,0.22)] hover:brightness-110",
+                          )
                         : "border border-purple-500/30 bg-[#0f0d18]/90 text-zinc-200 hover:border-purple-500/60 hover:bg-[#1a142e] hover:text-white hover:shadow-[0_0_12px_rgba(168,85,247,0.18)]",
-                      isListToggling && (inList
-                        ? "border-purple-400 shadow-[0_0_22px_rgba(168,85,247,0.45)] brightness-110"
-                        : "shadow-[0_0_10px_rgba(168,85,247,0.15)]")
                     )}
                   >
-                    {inList ? (
-                      <BookmarkCheck
-                        className={cn(
-                          "size-4 text-purple-300 transition-all duration-250 ease-out",
-                          isListToggling && "motion-safe:animate-[bookmarkPop_300ms_cubic-bezier(0.34,1.56,0.64,1)] text-purple-200"
-                        )}
-                      />
+                    {trackingLoading ? (
+                      <Loader2 className="size-4 animate-spin text-purple-300" />
+                    ) : trackingStatus ? (
+                      <>
+                        <span
+                          className={cn(
+                            "size-2.5 rounded-full shrink-0 shadow-sm",
+                            TRACKING_STATUS_CONFIG[trackingStatus].dotColor,
+                          )}
+                        />
+                        <span className="font-semibold">
+                          {TRACKING_STATUS_CONFIG[trackingStatus].label}
+                        </span>
+                        <ChevronDown className="size-3.5 opacity-70 ml-0.5 transition-transform duration-200 group-hover:translate-y-0.5" />
+                      </>
                     ) : (
-                      <Bookmark
-                        className={cn(
-                          "size-4 text-zinc-400 transition-all duration-250 ease-out group-hover:text-purple-300",
-                          isListToggling && "motion-safe:animate-[bookmarkDepop_300ms_ease-out]"
-                        )}
-                      />
+                      <>
+                        <Bookmark className="size-4 text-zinc-400 transition-colors group-hover:text-purple-300" />
+                        <span>Minha Lista</span>
+                        <ChevronDown className="size-3.5 text-zinc-400 ml-0.5" />
+                      </>
                     )}
-                    <span className="transition-colors duration-250">
-                      {inList ? "Na Minha Lista" : "Minha Lista"}
-                    </span>
                   </button>
-                )}
 
+                  {/* Dropdown com os 5 status oficiais do Anime Stats */}
+                  {isStatusMenuOpen && (
+                    <div
+                      className={cn(
+                        "absolute top-full mt-2 z-50 w-52 sm:w-56 max-w-[calc(100vw-2rem)] rounded-2xl border border-purple-500/20 bg-[#0f0c1e]/98 p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_25px_rgba(168,85,247,0.25)] backdrop-blur-2xl ring-1 ring-white/10 animate-in fade-in zoom-in-95 duration-150",
+                        menuPlacement === "right" ? "right-0" : "left-0",
+                      )}
+                      role="menu"
+                    >
+                      <div className="space-y-0.5">
+                        {ALL_TRACKING_STATUSES.map((statusKey) => {
+                          const config = TRACKING_STATUS_CONFIG[statusKey];
+                          const isSelected = trackingStatus === statusKey;
+                          return (
+                            <button
+                              key={statusKey}
+                              type="button"
+                              onClick={() => void handleSelectStatus(statusKey)}
+                              className={cn(
+                                "flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-colors cursor-pointer",
+                                isSelected
+                                  ? cn("bg-white/10 font-semibold", config.textColor)
+                                  : "text-zinc-300 hover:bg-white/5 hover:text-white",
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <span
+                                  className={cn("size-2.5 rounded-full shrink-0 shadow-sm", config.dotColor)}
+                                />
+                                <span>{config.label}</span>
+                              </div>
+                              {isSelected && <Check className="size-4 text-white" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {trackingStatus && (
+                        <>
+                          <div className="my-1 border-t border-white/[0.08]" />
+                          <button
+                            type="button"
+                            onClick={() => void handleRemoveFromList()}
+                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-rose-300/80 hover:bg-rose-500/10 hover:text-rose-200 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="size-3.5 shrink-0" />
+                            <span>Remover da lista</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. BOTÃO DE FAVORITOS INDEPENDENTE */}
                 <button
                   type="button"
-                  onClick={handleShare}
-                  className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-purple-500/25 bg-[#0f0d18]/90 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-200 shadow-sm transition-all duration-200 ease-out hover:border-purple-500/50 hover:bg-[#1a142e] hover:text-white hover:brightness-110 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
+                  onClick={() => void handleToggleFavorite()}
+                  disabled={favoriteLoading}
+                  aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+                  className={cn(
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-medium shadow-sm transition-all duration-250 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+                    "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.96]",
+                    isFavorite
+                      ? "border border-rose-500/50 bg-rose-500/15 text-rose-200 shadow-[0_0_18px_rgba(244,63,94,0.28)] hover:border-rose-400/70 hover:bg-rose-500/25 hover:shadow-[0_0_24px_rgba(244,63,94,0.38)]"
+                      : "border border-purple-500/25 bg-[#0f0d18]/90 text-zinc-200 hover:border-rose-500/50 hover:bg-[#1a1222] hover:text-white hover:shadow-[0_0_14px_rgba(244,63,94,0.2)]",
+                  )}
                 >
-                  <Share2 className="size-4 text-zinc-400" />
-                  <span>Compartilhar</span>
+                  <Heart
+                    className={cn(
+                      "size-4 transition-all duration-250 ease-out",
+                      isFavorite
+                        ? "fill-rose-500 text-rose-500 motion-safe:animate-[bookmarkPop_300ms_cubic-bezier(0.34,1.56,0.64,1)]"
+                        : "text-zinc-400 group-hover:text-rose-400",
+                    )}
+                  />
+                  <span>{isFavorite ? "Favoritado" : "Favoritar"}</span>
                 </button>
 
                 {canEdit && (
@@ -1604,7 +1972,82 @@ function AnimePage() {
           />
         </Suspense>
       </SectionReveal>
+
+      {/* Modal de Orientação para Visitantes não Autenticados */}
+      <AuthPromptModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
     </article>
+  );
+}
+
+function AuthPromptModal({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-prompt-title"
+    >
+      <div className="relative w-full max-w-sm sm:max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#0d0918] p-5 sm:p-7 shadow-[0_25px_70px_rgba(0,0,0,0.85)] text-center space-y-4">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-3.5 right-3.5 rounded-xl border border-white/10 p-1.5 sm:p-2 text-zinc-400 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
+          title="Fechar"
+        >
+          <X className="size-4" />
+        </button>
+
+        <div className="mx-auto flex size-12 sm:size-14 items-center justify-center rounded-2xl border border-purple-500/40 bg-purple-600/20 text-purple-300 shadow-[0_0_20px_rgba(168,85,247,0.3)]">
+          <Bookmark className="size-6 sm:size-7" />
+        </div>
+
+        <div className="space-y-1.5">
+          <h3
+            id="auth-prompt-title"
+            className="font-display text-lg sm:text-xl font-bold text-white"
+          >
+            Organize sua Coleção
+          </h3>
+          <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed max-w-xs sm:max-w-sm mx-auto">
+            Entre na sua conta para adicionar títulos à sua lista, definir status
+            (Assistindo, Concluídos, etc.), favoritar animes e sincronizar suas estatísticas de perfil.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2 pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              void navigate({ to: "/login" });
+            }}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] hover:brightness-110 active:scale-98 transition-all cursor-pointer"
+          >
+            <LogIn className="size-4" />
+            <span>Entrar ou Cadastrar</span>
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-white/10 px-4 py-2.5 text-xs sm:text-sm font-medium text-zinc-400 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
+          >
+            Depois
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
