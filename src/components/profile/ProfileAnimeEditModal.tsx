@@ -154,7 +154,15 @@ export function ProfileAnimeEditModal({
 
   if (!isOpen || !item) return null;
 
-  const maxEps = item.episodesCount ?? null;
+  const maxEps = item.episodesCount ?? item.animeSnapshot?.episodesCount ?? null;
+
+  const handleStatusChange = (newStatus: TrackingStatus) => {
+    setStatus(newStatus);
+    // Ao alterar para Concluído, preenche automaticamente os episódios assistidos com o total real
+    if (newStatus === "completed" && maxEps !== null && maxEps > 0) {
+      setEpisodesWatched(maxEps);
+    }
+  };
 
   const handleEpisodesChange = (val: number) => {
     if (Number.isNaN(val)) return;
@@ -179,13 +187,19 @@ export function ProfileAnimeEditModal({
     e.preventDefault();
     setError(null);
 
+    // Se marcou como Concluído e há total real conhecido, garante o total de episódios
+    const resolvedEpisodes =
+      status === "completed" && maxEps !== null && maxEps > 0
+        ? maxEps
+        : episodesWatched;
+
     // Validações
-    if (episodesWatched < 0) {
+    if (resolvedEpisodes < 0) {
       setError("O número de episódios assistidos não pode ser negativo.");
       return;
     }
 
-    if (maxEps !== null && maxEps > 0 && episodesWatched > maxEps) {
+    if (maxEps !== null && maxEps > 0 && resolvedEpisodes > maxEps) {
       setError(`O número de episódios não pode ultrapassar o total conhecido (${maxEps}).`);
       return;
     }
@@ -201,7 +215,7 @@ export function ProfileAnimeEditModal({
         animeId: item.animeId,
         status,
         score,
-        episodesWatched,
+        episodesWatched: resolvedEpisodes,
       });
       onClose();
     } catch (err) {
@@ -292,7 +306,7 @@ export function ProfileAnimeEditModal({
                   <button
                     key={opt.value}
                     type="button"
-                    onClick={() => setStatus(opt.value)}
+                    onClick={() => handleStatusChange(opt.value)}
                     className={`flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
                       isSelected
                         ? opt.activeRing

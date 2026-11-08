@@ -49,6 +49,43 @@ export function ProfileTrackingSpace({
 
   const [editingItem, setEditingItem] = useState<UserAnimeTrackingItem | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [activeMobileCardId, setActiveMobileCardId] = useState<string | null>(null);
+
+  // Oculta controles no mobile ao tocar fora de qualquer card ativo
+  useEffect(() => {
+    if (!activeMobileCardId) return;
+
+    const handlePointerDownOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest(`[data-card-id="${activeMobileCardId}"]`)) {
+        setActiveMobileCardId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDownOutside);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDownOutside);
+    };
+  }, [activeMobileCardId]);
+
+  const handleCardClick = (e: React.MouseEvent, animeId: string) => {
+    // Detecta se o dispositivo é touch / mobile (sem hover fino de mouse)
+    const isTouchDevice =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      !window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+    if (isTouchDevice && activeMobileCardId !== animeId) {
+      // Primeiro toque no card no mobile: revela os controles sem acionar ação acidental
+      const target = e.target as HTMLElement;
+      const isInteractive = target.closest("button, a");
+      if (isInteractive) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      setActiveMobileCardId(animeId);
+    }
+  };
 
   const upsertTrackingFn = useServerFn(upsertAnimeTracking);
 
@@ -115,11 +152,19 @@ export function ProfileTrackingSpace({
     const targetItem = editingItem;
     const previousItem = { ...targetItem };
 
+    // Ao marcar como Concluído, preenche automaticamente com o total real de episódios do anime
+    const maxEps =
+      targetItem.episodesCount ?? targetItem.animeSnapshot?.episodesCount ?? null;
+    const resolvedEpisodes =
+      data.status === "completed" && maxEps !== null && maxEps > 0
+        ? maxEps
+        : data.episodesWatched;
+
     const optimisticItem: UserAnimeTrackingItem = {
       ...targetItem,
       status: data.status,
       score: data.score,
-      episodesWatched: data.episodesWatched,
+      episodesWatched: resolvedEpisodes,
     };
     onUpdateItem?.(optimisticItem);
 
@@ -129,7 +174,7 @@ export function ProfileTrackingSpace({
           animeId: data.animeId,
           status: data.status,
           score: data.score,
-          episodesWatched: data.episodesWatched,
+          episodesWatched: resolvedEpisodes,
           animeSnapshot: targetItem.animeSnapshot,
         },
       });
@@ -207,11 +252,6 @@ export function ProfileTrackingSpace({
                     : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
                 }`}
               >
-                <span
-                  className={`size-2 rounded-full ${
-                    isActive ? cfg.indicatorDot : "bg-zinc-600"
-                  }`}
-                />
                 <span>{cfg.label}</span>
                 <span
                   className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
@@ -258,11 +298,18 @@ export function ProfileTrackingSpace({
               maxEps && maxEps > 0
                 ? Math.min(100, Math.round((watched / maxEps) * 100))
                 : null;
+            const isMobileActive = activeMobileCardId === item.animeId;
 
             return (
               <article
                 key={item.animeId}
-                className="group relative flex flex-col min-w-0 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0c16]/80 p-1.5 sm:p-2.5 transition-all duration-300 hover:border-violet-500/40 hover:bg-[#121020] hover:shadow-[0_12px_30px_rgba(0,0,0,0.5)]"
+                data-card-id={item.animeId}
+                onClick={(e) => handleCardClick(e, item.animeId)}
+                className={`group relative flex flex-col min-w-0 overflow-hidden rounded-2xl border p-1.5 sm:p-2.5 transition-all duration-300 hover:border-violet-500/40 hover:bg-[#121020] hover:shadow-[0_12px_30px_rgba(0,0,0,0.5)] ${
+                  isMobileActive
+                    ? "border-violet-500/50 bg-[#121020] shadow-[0_8px_25px_rgba(0,0,0,0.5)]"
+                    : "border-white/[0.07] bg-[#0d0c16]/80"
+                }`}
               >
                 {/* Imagem de Capa com Proporção Cinematográfica 3/4.2 */}
                 <div className="relative aspect-[3/4.2] w-full overflow-hidden rounded-xl bg-[#161422]">
@@ -351,8 +398,15 @@ export function ProfileTrackingSpace({
                     ) : null}
                   </div>
 
-                  {/* Controles de Edição Direta e Incremento Rápido */}
-                  <div className="mt-2 pt-1.5 sm:mt-3 sm:pt-2 border-t border-white/[0.06] flex items-center justify-between gap-1 sm:gap-2">
+                  {/* 3. Controles de Edição Direta e Incremento Rápido com Revelação Animada (Hover no desktop, toque no mobile) */}
+                  <div
+                    className={`mt-2 pt-1.5 sm:mt-3 sm:pt-2 border-t border-white/[0.06] flex items-center justify-between gap-1 sm:gap-2 transition-all duration-200 ease-out ${
+                      isMobileActive
+                        ? "opacity-100 translate-y-0 pointer-events-auto"
+                        : "opacity-0 translate-y-1 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto"
+                    }`}
+                  >
+                    {/* 2. Botão +1 ep com apenas um sinal '+' (ícone Plus + texto '1 ep') */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -372,7 +426,7 @@ export function ProfileTrackingSpace({
                       }
                     >
                       <Plus className="size-2.5 sm:size-3 text-violet-400" />
-                      <span>+1 ep</span>
+                      <span>1 ep</span>
                     </button>
 
                     <button
