@@ -3,6 +3,7 @@ import {
   Check,
   Eye,
   Globe,
+  Loader2,
   Lock,
   MessageSquare,
   Save,
@@ -14,12 +15,15 @@ import {
   UserX,
   X,
 } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import type {
-  AccountType,
-  SectionPrivacyLevel,
-  UserProfile,
+import { useServerFn } from "@tanstack/react-start";
+import { useCallback, useEffect, useState } from "react";
+import {
+  getMyBlockedUsers,
+  unblockUser,
+  type AccountType,
+  type BlockedUserItem,
+  type SectionPrivacyLevel,
+  type UserProfile,
 } from "@/lib/profile.functions";
 
 interface ProfilePrivacyModalProps {
@@ -69,7 +73,17 @@ export function ProfilePrivacyModal({
   onClose,
   onSave,
 }: ProfilePrivacyModalProps) {
-  const navigate = useNavigate();
+  const getMyBlockedUsersFn = useServerFn(getMyBlockedUsers);
+  const unblockUserFn = useServerFn(unblockUser);
+
+  const [showBlocked, setShowBlocked] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUserItem[]>([]);
+  const [blockedLoading, setBlockedLoading] = useState(false);
+  const [blockedError, setBlockedError] = useState("");
+  const [confirmUnblockId, setConfirmUnblockId] = useState<string | null>(null);
+  const [unblocking, setUnblocking] = useState(false);
+  const [unblockSuccess, setUnblockSuccess] = useState("");
+
   const [accountType, setAccountType] = useState<AccountType>("public");
   const [allowFollowers, setAllowFollowers] = useState(true);
   const [privacyLists, setPrivacyLists] = useState<SectionPrivacyLevel>("public");
@@ -86,17 +100,69 @@ export function ProfilePrivacyModal({
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
+  const loadBlockedUsers = useCallback(() => {
+    setBlockedLoading(true);
+    setBlockedError("");
+    void getMyBlockedUsersFn()
+      .then((data) => {
+        setBlockedUsers(data || []);
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar usuários bloqueados:", err);
+        setBlockedError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar a lista de usuários bloqueados.",
+        );
+      })
+      .finally(() => {
+        setBlockedLoading(false);
+      });
+  }, [getMyBlockedUsersFn]);
+
   useEffect(() => {
-    if (isOpen && profile) {
-      setAccountType(profile.accountType || "public");
-      setAllowFollowers(profile.allowFollowers ?? true);
-      setPrivacyLists(profile.privacyLists || "public");
-      setPrivacyFavorites(profile.privacyFavorites || "public");
-      setPrivacyHistory(profile.privacyHistory || "public");
-      setPrivacyComments(profile.privacyComments || "public");
-      setPrivacyFollowers(profile.privacyFollowers || "public");
-      setError("");
-      setSuccess(false);
+    if (showBlocked) {
+      loadBlockedUsers();
+    }
+  }, [showBlocked, loadBlockedUsers]);
+
+  const handleUnblock = async (targetUserId: string, targetName?: string | null) => {
+    setUnblocking(true);
+    setBlockedError("");
+    try {
+      await unblockUserFn({ data: { targetUserId } });
+      setBlockedUsers((prev) => prev.filter((u) => u.id !== targetUserId));
+      setUnblockSuccess(
+        `Usuário ${targetName || "selecionado"} foi desbloqueado.`,
+      );
+      setConfirmUnblockId(null);
+      setTimeout(() => setUnblockSuccess(""), 3500);
+    } catch (err: unknown) {
+      const errMessage =
+        err instanceof Error ? err.message : "Erro ao desbloquear usuário.";
+      setBlockedError(errMessage);
+    } finally {
+      setUnblocking(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      setShowBlocked(false);
+      setConfirmUnblockId(null);
+      setUnblockSuccess("");
+      setBlockedError("");
+      if (profile) {
+        setAccountType(profile.accountType || "public");
+        setAllowFollowers(profile.allowFollowers ?? true);
+        setPrivacyLists(profile.privacyLists || "public");
+        setPrivacyFavorites(profile.privacyFavorites || "public");
+        setPrivacyHistory(profile.privacyHistory || "public");
+        setPrivacyComments(profile.privacyComments || "public");
+        setPrivacyFollowers(profile.privacyFollowers || "public");
+        setError("");
+        setSuccess(false);
+      }
     }
   }, [isOpen, profile]);
 
@@ -152,7 +218,7 @@ export function ProfilePrivacyModal({
       aria-labelledby="privacy-modal-title"
     >
       <div className="relative flex max-h-[94vh] sm:max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0918] shadow-[0_25px_70px_rgba(0,0,0,0.85)]">
-        {/* Cabeçalho do Modal */}
+        {/* Cabeçalho do Modal Original */}
         <div className="flex items-center justify-between border-b border-white/[0.08] bg-[#140e24]/70 px-3.5 py-3 sm:px-6 sm:py-4">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="flex size-8 sm:size-10 shrink-0 items-center justify-center rounded-lg sm:rounded-2xl border border-violet-500/30 bg-violet-600/20 text-violet-300">
@@ -180,7 +246,7 @@ export function ProfilePrivacyModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded-lg sm:rounded-xl border border-white/10 p-1.5 sm:p-2 text-zinc-400 transition-colors hover:border-white/20 hover:bg-white/5 hover:text-white shrink-0 ml-2"
+            className="rounded-lg sm:rounded-xl border border-white/10 p-1.5 sm:p-2 text-zinc-400 transition-colors hover:border-white/20 hover:bg-white/5 hover:text-white shrink-0 ml-2 cursor-pointer"
             title="Fechar"
           >
             <X className="size-4" />
@@ -241,7 +307,7 @@ export function ProfilePrivacyModal({
                 onClick={() => setAccountType("public")}
                 className={`flex items-center gap-2 rounded-xl border p-3 text-left transition-all ${
                   accountType === "public"
-                    ? "border-emerald-500/50 bg-emerald-500/10 text-white shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                    ? "border-emerald-500/50 bg-emerald-500/10 text-white shadow-[0_0_15px_rgba(168,85,247,0.15)]"
                     : "border-white/10 bg-white/[0.02] text-zinc-400 hover:border-white/20 hover:text-white"
                 }`}
               >
@@ -374,33 +440,133 @@ export function ProfilePrivacyModal({
             />
           </section>
 
-          <div className="mt-4 flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-zinc-400">
-            <span className="flex items-center gap-2">
-              <UserX className="size-4 text-zinc-500" />
-              <span>Gerenciar usuários bloqueados</span>
-            </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onClose();
-                void navigate({ to: "/settings-privacy" });
-              }}
-              className="text-violet-400 hover:text-violet-300 font-medium transition-colors cursor-pointer"
-            >
-              Abrir Configurações
-            </button>
+          {/* Atalho para Gerenciar Usuários Bloqueados integrado diretamente no conteúdo */}
+          <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-zinc-400">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <UserX className="size-4 text-zinc-500" />
+                <span>Gerenciar usuários bloqueados</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBlocked((prev) => !prev);
+                }}
+                className="text-violet-400 hover:text-violet-300 font-medium transition-colors cursor-pointer"
+              >
+                {showBlocked ? "Ocultar" : "Abrir Configurações"}
+              </button>
+            </div>
+
+            {/* Gerenciamento de Bloqueados Renderizado Diretamente Dentro do Conteúdo */}
+            {showBlocked && (
+              <div className="mt-3.5 pt-3 border-t border-white/[0.06] space-y-3">
+                {unblockSuccess && (
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-300">
+                    <Check className="size-4 shrink-0 text-emerald-400" />
+                    <span>{unblockSuccess}</span>
+                  </div>
+                )}
+
+                {blockedError && (
+                  <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                    <AlertCircle className="size-4 shrink-0 text-red-400" />
+                    <span>{blockedError}</span>
+                  </div>
+                )}
+
+                {blockedLoading ? (
+                  <div className="flex items-center justify-center py-6 text-zinc-400 gap-2 text-xs">
+                    <Loader2 className="size-4 animate-spin text-violet-400" />
+                    <span>Carregando usuários bloqueados...</span>
+                  </div>
+                ) : blockedUsers.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-white/[0.08] bg-white/[0.01] p-4 sm:p-5 text-center">
+                    <UserX className="mx-auto size-6 text-zinc-600 mb-1.5" />
+                    <p className="text-xs font-medium text-zinc-300">Nenhum usuário bloqueado</p>
+                    <p className="text-[11px] text-zinc-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                      Você não possui nenhum bloqueio ativo. Para bloquear alguém, acesse o perfil público do usuário e escolha &quot;Bloquear usuário&quot;.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.06] bg-black/20 p-2 sm:p-3">
+                    {blockedUsers.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between py-2.5 first:pt-0.5 last:pb-0.5 gap-2.5"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.name || item.username || "Avatar"}
+                              className="size-8 sm:size-9 rounded-full object-cover border border-white/10 bg-zinc-800 shrink-0"
+                            />
+                          ) : (
+                            <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-full bg-violet-600/30 border border-violet-500/30 text-xs font-bold text-violet-200 uppercase">
+                              {(item.name?.[0] || item.username?.[0] || "U")}
+                            </div>
+                          )}
+
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold text-white">
+                              {item.name || item.username || "Usuário"}
+                            </p>
+                            <p className="truncate text-[10px] sm:text-[11px] text-zinc-400">
+                              @{item.username || item.id.slice(0, 8)}
+                            </p>
+                            {item.blockedAt && (
+                              <p className="text-[9px] text-zinc-500">
+                                Bloqueado em {new Date(item.blockedAt).toLocaleDateString("pt-BR")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {confirmUnblockId === item.id ? (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              disabled={unblocking}
+                              onClick={() => void handleUnblock(item.id, item.name || item.username)}
+                              className="rounded-lg border border-red-500/40 bg-red-600/20 px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-600/30 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              {unblocking ? "..." : "Confirmar"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={unblocking}
+                              onClick={() => setConfirmUnblockId(null)}
+                              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmUnblockId(item.id)}
+                            className="shrink-0 rounded-lg sm:rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-semibold text-zinc-300 hover:bg-red-500/20 hover:border-red-500/30 hover:text-red-300 transition-colors cursor-pointer"
+                          >
+                            Desbloquear
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </form>
 
-        {/* Rodapé de Ações */}
+        {/* Rodapé de Ações Original */}
         <div className="flex items-center justify-between border-t border-white/[0.08] bg-[#140e24]/70 px-3.5 py-2.5 sm:px-6 sm:py-4 gap-2">
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded-lg sm:rounded-xl border border-white/10 px-3.5 sm:px-4 py-2 sm:py-2 text-xs sm:text-sm font-medium text-zinc-400 transition-colors hover:bg-white/5 hover:text-white"
+            className="rounded-lg sm:rounded-xl border border-white/10 px-3.5 sm:px-4 py-2 sm:py-2 text-xs sm:text-sm font-medium text-zinc-400 transition-colors hover:bg-white/5 hover:text-white cursor-pointer"
           >
             Cancelar
           </button>
@@ -409,7 +575,7 @@ export function ProfilePrivacyModal({
             type="button"
             onClick={handleSubmit}
             disabled={saving || !isDirty}
-            className="inline-flex items-center gap-1.5 sm:gap-2 rounded-lg sm:rounded-xl border border-violet-500/40 bg-gradient-to-r from-violet-600 to-purple-600 px-4 sm:px-5 py-2 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all hover:brightness-110 disabled:opacity-50 disabled:pointer-events-none active:scale-98"
+            className="inline-flex items-center gap-1.5 sm:gap-2 rounded-lg sm:rounded-xl border border-violet-500/40 bg-gradient-to-r from-violet-600 to-purple-600 px-4 sm:px-5 py-2 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.35)] transition-all hover:brightness-110 disabled:opacity-50 disabled:pointer-events-none active:scale-98 cursor-pointer"
           >
             {saving ? (
               <>
