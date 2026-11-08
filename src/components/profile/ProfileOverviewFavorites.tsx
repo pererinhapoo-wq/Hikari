@@ -13,14 +13,15 @@ interface ProfileOverviewFavoritesProps {
 export function ProfileOverviewFavorites({
   grouped,
 }: ProfileOverviewFavoritesProps) {
-  const animes = grouped.anime ?? [];
+  // Exibir no máximo 10 animes favoritos, preservando a ordem canônica real
+  const animes = (grouped.anime ?? []).slice(0, 10);
   const characters = grouped.character ?? [];
   const studios = grouped.studio ?? [];
   const people = grouped.person ?? [];
 
   return (
     <div className="space-y-10 sm:space-y-12">
-      {/* B. Favoritos — Animes */}
+      {/* B. Favoritos — Animes (Grade de 3 colunas por linha em telas com espaço suficiente, sem botão Ver Tudo) */}
       <section aria-label="Favoritos — Animes" className="space-y-4">
         <div className="border-b border-white/[0.06] pb-3">
           <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
@@ -29,7 +30,7 @@ export function ProfileOverviewFavorites({
         </div>
 
         {animes.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4">
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
             {animes.map((item) => (
               <AnimeFavoriteCard key={item.id} item={item} />
             ))}
@@ -120,9 +121,9 @@ function AnimeFavoriteCard({ item }: { item: ProfileFavoriteItem }) {
     <Link
       to="/anime/$id"
       params={{ id: item.targetId }}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(139,92,246,0.18)]"
+      className="group relative flex flex-col min-w-0 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(139,92,246,0.18)]"
     >
-      {/* Pôster com proporção 3/4 */}
+      {/* Pôster com proporção 3/4 preservada */}
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-[#151224]">
         {item.image ? (
           <img
@@ -144,13 +145,16 @@ function AnimeFavoriteCard({ item }: { item: ProfileFavoriteItem }) {
         </div>
       </div>
 
-      {/* Informações */}
-      <div className="mt-2.5 space-y-1">
-        <h4 className="line-clamp-2 text-xs font-semibold text-zinc-200 transition-colors group-hover:text-white">
+      {/* Informações: títulos com quebra segura sem sobreposição ou invasão aos cards vizinhos */}
+      <div className="mt-2.5 min-w-0 flex-1 space-y-1">
+        <h4
+          className="line-clamp-2 text-xs sm:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white break-words leading-snug"
+          title={item.title}
+        >
           {item.title}
         </h4>
         {item.subtitle && (
-          <p className="truncate text-[11px] text-zinc-500">
+          <p className="truncate text-[11px] sm:text-xs text-zinc-400">
             {item.subtitle}
           </p>
         )}

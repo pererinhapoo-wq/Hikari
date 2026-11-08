@@ -1,11 +1,17 @@
 import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   CheckCircle2,
   Film,
+  Pencil,
   Play,
+  Plus,
   Star,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
+import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
+import { upsertAnimeTracking } from "@/lib/profile-tracking.functions";
 import type {
   TrackingStatus,
   UserAnimeTrackingItem,
@@ -14,6 +20,7 @@ import type {
 interface ProfileTrackingSpaceProps {
   items: UserAnimeTrackingItem[];
   loading?: boolean;
+  onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
 }
 
 type FilterOption = "all" | TrackingStatus;
@@ -62,8 +69,112 @@ const STATUS_CONFIG: Record<
 export function ProfileTrackingSpace({
   items,
   loading = false,
+  onUpdateItem,
 }: ProfileTrackingSpaceProps) {
   const [filter, setFilter] = useState<FilterOption>("all");
+  const [editingItem, setEditingItem] = useState<UserAnimeTrackingItem | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const upsertTrackingFn = useServerFn(upsertAnimeTracking);
+
+  const handleQuickIncrement = async (item: UserAnimeTrackingItem) => {
+    const currentWatched = item.episodesWatched ?? 0;
+    const maxEps = item.episodesCount ?? null;
+    if (maxEps !== null && maxEps > 0 && currentWatched >= maxEps) {
+      toast.info("Todos os episódios conhecidos já foram assistidos.");
+      return;
+    }
+    const nextWatched = currentWatched + 1;
+    const nextStatus =
+      maxEps !== null && maxEps > 0 && nextWatched >= maxEps && item.status === "watching"
+        ? "completed"
+        : item.status;
+
+    setUpdatingId(item.animeId);
+
+    const previousItem = { ...item };
+    const updatedItem: UserAnimeTrackingItem = {
+      ...item,
+      episodesWatched: nextWatched,
+      status: nextStatus,
+    };
+    onUpdateItem?.(updatedItem);
+
+    try {
+      const res = await upsertTrackingFn({
+        data: {
+          animeId: item.animeId,
+          status: nextStatus,
+          episodesWatched: nextWatched,
+          score: item.score,
+          animeSnapshot: item.animeSnapshot,
+        },
+      });
+
+      onUpdateItem?.({
+        ...updatedItem,
+        status: res.status,
+        score: res.score,
+        episodesWatched: res.episodesWatched,
+        startedAt: res.startedAt,
+        completedAt: res.completedAt,
+        updatedAt: res.updatedAt,
+      });
+
+      toast.success(`Episódio ${nextWatched}${maxEps ? ` de ${maxEps}` : ""} marcado!`);
+    } catch (err) {
+      onUpdateItem?.(previousItem);
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar episódios.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleSaveEdit = async (data: {
+    animeId: string;
+    status: TrackingStatus;
+    score: number | null;
+    episodesWatched: number;
+  }) => {
+    if (!editingItem) return;
+    const targetItem = editingItem;
+    const previousItem = { ...targetItem };
+
+    const optimisticItem: UserAnimeTrackingItem = {
+      ...targetItem,
+      status: data.status,
+      score: data.score,
+      episodesWatched: data.episodesWatched,
+    };
+    onUpdateItem?.(optimisticItem);
+
+    try {
+      const res = await upsertTrackingFn({
+        data: {
+          animeId: data.animeId,
+          status: data.status,
+          score: data.score,
+          episodesWatched: data.episodesWatched,
+          animeSnapshot: targetItem.animeSnapshot,
+        },
+      });
+
+      onUpdateItem?.({
+        ...targetItem,
+        status: res.status,
+        score: res.score,
+        episodesWatched: res.episodesWatched,
+        startedAt: res.startedAt,
+        completedAt: res.completedAt,
+        updatedAt: res.updatedAt,
+      });
+
+      toast.success("Coleção atualizada com sucesso!");
+    } catch (err) {
+      onUpdateItem?.(previousItem);
+      throw err;
+    }
+  };
 
   const counts: Record<FilterOption, number> = {
     all: items.length,
@@ -151,9 +262,9 @@ export function ProfileTrackingSpace({
         )}
       </div>
 
-      {/* Conteúdo: Skeleton, Vazio ou Grade de Obras */}
+      {/* Conteúdo: Skeleton, Vazio ou Grade de Obras (3 colunas por linha em telas com espaço suficiente) */}
       {loading ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
           {Array.from({ length: 6 }).map((_, idx) => (
             <div
               key={idx}
@@ -161,8 +272,20 @@ export function ProfileTrackingSpace({
             />
           ))}
         </div>
-      ) : filteredItems.length === 0 ? null : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
+      ) : filteredItems.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-8 sm:p-12 text-center">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 mb-3">
+            <Film className="size-6" />
+          </div>
+          <h4 className="text-sm font-semibold text-zinc-300">Nenhum anime encontrado</h4>
+          <p className="mt-1 max-w-sm text-xs text-zinc-500 leading-relaxed">
+            {filter === "all"
+              ? "Você ainda não adicionou nenhum anime à sua lista de acompanhamento."
+              : `Nenhum anime com status "${STATUS_CONFIG[filter]?.label || filter}".`}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
           {filteredItems.map((item) => {
             const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.planning;
             const maxEps = item.episodesCount ?? null;
@@ -175,9 +298,9 @@ export function ProfileTrackingSpace({
             return (
               <article
                 key={item.animeId}
-                className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0c16]/80 p-2 transition-all duration-300 hover:border-violet-500/40 hover:bg-[#121020] hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
+                className="group relative flex flex-col min-w-0 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0c16]/80 p-2 sm:p-2.5 transition-all duration-300 hover:border-violet-500/40 hover:bg-[#121020] hover:shadow-[0_12px_30px_rgba(0,0,0,0.5)]"
               >
-                {/* Imagem de Capa com Proporção Cinematográfica */}
+                {/* Imagem de Capa com Proporção Cinematográfica preservada */}
                 <div className="relative aspect-[3/4.2] w-full overflow-hidden rounded-xl bg-[#161422]">
                   {item.cover ? (
                     <img
@@ -193,26 +316,23 @@ export function ProfileTrackingSpace({
                   )}
 
                   {/* Gradiente escuro para legibilidade */}
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30" />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/35" />
 
-                  {/* Badge de Status no Canto Superior Esquerdo */}
-                  <div className="absolute left-2 top-2">
+                  {/* Top badges: Status e Nota pessoal sem sobreposição */}
+                  <div className="pointer-events-none absolute inset-x-2 top-2 flex items-start justify-between gap-1.5">
                     <span
-                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider backdrop-blur-md ${cfg.badgeBg} ${cfg.badgeText} border ${cfg.badgeBorder}`}
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider backdrop-blur-md truncate max-w-[65%] ${cfg.badgeBg} ${cfg.badgeText} border ${cfg.badgeBorder}`}
                     >
                       {cfg.label}
                     </span>
-                  </div>
 
-                  {/* Nota do Usuário no Canto Superior Direito se existir */}
-                  {typeof item.score === "number" && item.score > 0 && (
-                    <div className="absolute right-2 top-2">
-                      <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-black/60 px-2 py-0.5 text-[10px] font-bold text-amber-300 backdrop-blur-md">
+                    {typeof item.score === "number" && item.score > 0 && (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-500/40 bg-black/60 px-2 py-0.5 text-[10px] font-bold text-amber-300 backdrop-blur-md">
                         <Star className="size-2.5 fill-amber-400 text-amber-400" />
                         <span>{item.score.toFixed(1)}</span>
                       </span>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   {/* Botão Hover de Play / Acesso Rápido */}
                   <Link
@@ -227,10 +347,10 @@ export function ProfileTrackingSpace({
                   </Link>
 
                   {/* Informações na base do pôster */}
-                  <div className="absolute bottom-2 left-2 right-2">
-                    <div className="flex items-center justify-between text-[10px] text-zinc-300">
-                      <span>{item.format || "Anime"}</span>
-                      {item.year && <span>{item.year}</span>}
+                  <div className="pointer-events-none absolute bottom-2 inset-x-2">
+                    <div className="flex items-center justify-between text-[10px] font-medium text-zinc-300">
+                      <span className="truncate">{item.format || "Anime"}</span>
+                      {item.year && <span className="shrink-0">{item.year}</span>}
                     </div>
 
                     {/* Barra de Progresso se houver episódios conhecidos */}
@@ -245,33 +365,72 @@ export function ProfileTrackingSpace({
                   </div>
                 </div>
 
-                {/* Título e Progresso do Anime */}
-                <div className="flex flex-1 flex-col justify-between pt-2.5 pb-1 px-1">
+                {/* Título e Progresso do Anime: quebra segura, sem invasão aos cards vizinhos */}
+                <div className="mt-2.5 min-w-0 flex flex-1 flex-col justify-between pt-0.5 pb-1 px-1">
                   <Link
                     to="/anime/$id"
                     params={{ id: item.animeId }}
-                    className="line-clamp-2 text-xs font-semibold text-zinc-100 transition-colors hover:text-violet-300"
+                    className="line-clamp-2 text-xs sm:text-sm font-semibold text-zinc-100 transition-colors hover:text-violet-300 break-words leading-snug"
                     title={item.title}
                   >
                     {item.title}
                   </Link>
 
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
-                    <span className="tabular-nums">
+                  <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] sm:text-xs text-zinc-400 min-w-0">
+                    <span className="tabular-nums truncate">
                       {watched}
                       {maxEps ? ` / ${maxEps}` : " eps"}
                     </span>
 
                     {item.status === "completed" ? (
-                      <span className="flex items-center gap-1 text-emerald-400">
+                      <span className="flex shrink-0 items-center gap-1 text-emerald-400 font-medium">
                         <CheckCircle2 className="size-3" />
                         <span>Concluído</span>
                       </span>
                     ) : progressPct !== null ? (
-                      <span className="text-zinc-500 font-mono text-[10px]">
+                      <span className="shrink-0 text-zinc-400 font-mono text-[10px] sm:text-[11px]">
                         {progressPct}%
                       </span>
                     ) : null}
+                  </div>
+
+                  {/* Controles de Edição Direta e Incremento Rápido */}
+                  <div className="mt-3 pt-2 border-t border-white/[0.06] flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleQuickIncrement(item);
+                      }}
+                      disabled={
+                        updatingId === item.animeId ||
+                        (maxEps !== null && maxEps > 0 && watched >= maxEps)
+                      }
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600/20 hover:text-white disabled:opacity-40 disabled:pointer-events-none active:scale-95 cursor-pointer"
+                      title={
+                        maxEps !== null && maxEps > 0 && watched >= maxEps
+                          ? "Todos os episódios assistidos"
+                          : "Adicionar 1 episódio assistido (+1)"
+                      }
+                    >
+                      <Plus className="size-3 text-violet-400" />
+                      <span>+1 ep</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setEditingItem(item);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600/20 hover:text-white active:scale-95 cursor-pointer"
+                      title="Editar status, nota e episódios"
+                    >
+                      <Pencil className="size-3 text-violet-400" />
+                      <span>Editar</span>
+                    </button>
                   </div>
                 </div>
               </article>
@@ -279,6 +438,14 @@ export function ProfileTrackingSpace({
           })}
         </div>
       )}
+
+      {/* Modal de Edição Direta de Anime da Coleção */}
+      <ProfileAnimeEditModal
+        isOpen={editingItem !== null}
+        item={editingItem}
+        onClose={() => setEditingItem(null)}
+        onSave={handleSaveEdit}
+      />
     </div>
   );
 }

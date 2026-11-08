@@ -320,6 +320,12 @@ function AccountProfile() {
     );
   };
 
+  const handleUpdateTrackingItem = (updated: UserAnimeTrackingItem) => {
+    setTrackingItems((prev) =>
+      prev.map((item) => (item.animeId === updated.animeId ? updated : item)),
+    );
+  };
+
   // Abrir conexões (Seguidores / Seguindo / Solicitações)
   const handleOpenConnections = async (tab: "followers" | "following" | "requests") => {
     setConnectionsTab(tab);
@@ -564,6 +570,7 @@ function AccountProfile() {
             <ProfileTrackingSpace
               items={trackingItems}
               loading={trackingLoading}
+              onUpdateItem={handleUpdateTrackingItem}
             />
           )}
 

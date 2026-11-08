@@ -24,7 +24,6 @@ import { Route as NewsRouteImport } from './routes/news'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as SearchRouteImport } from './routes/search'
-import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SettingsAboutRouteImport } from './routes/settings-about'
 import { Route as SettingsAccountRouteImport } from './routes/settings-account'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings-appearance'
@@ -133,11 +132,6 @@ const PrivacidadeRoute = PrivacidadeRouteImport.update({
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsAboutRoute = SettingsAboutRouteImport.update({
@@ -327,7 +321,6 @@ export interface FileRoutesByFullPath {
   '/notifications': typeof NotificationsRoute
   '/privacidade': typeof PrivacidadeRoute
   '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
   '/settings-about': typeof SettingsAboutRoute
   '/settings-account': typeof SettingsAccountRoute
   '/settings-appearance': typeof SettingsAppearanceRoute
@@ -377,7 +370,6 @@ export interface FileRoutesByTo {
   '/notifications': typeof NotificationsRoute
   '/privacidade': typeof PrivacidadeRoute
   '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
   '/settings-about': typeof SettingsAboutRoute
   '/settings-account': typeof SettingsAccountRoute
   '/settings-appearance': typeof SettingsAppearanceRoute
@@ -430,7 +422,6 @@ export interface FileRoutesById {
   '/notifications': typeof NotificationsRoute
   '/privacidade': typeof PrivacidadeRoute
   '/search': typeof SearchRoute
-  '/settings': typeof SettingsRoute
   '/settings-about': typeof SettingsAboutRoute
   '/settings-account': typeof SettingsAccountRoute
   '/settings-appearance': typeof SettingsAppearanceRoute
@@ -484,7 +475,6 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/privacidade'
     | '/search'
-    | '/settings'
     | '/settings-about'
     | '/settings-account'
     | '/settings-appearance'
@@ -534,7 +524,6 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/privacidade'
     | '/search'
-    | '/settings'
     | '/settings-about'
     | '/settings-account'
     | '/settings-appearance'
@@ -586,7 +575,6 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/privacidade'
     | '/search'
-    | '/settings'
     | '/settings-about'
     | '/settings-account'
     | '/settings-appearance'
@@ -639,7 +627,6 @@ export interface RootRouteChildren {
   NotificationsRoute: typeof NotificationsRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
   SearchRoute: typeof SearchRoute
-  SettingsRoute: typeof SettingsRoute
   SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsAccountRoute: typeof SettingsAccountRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
@@ -770,13 +757,6 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof SearchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings-about': {
@@ -1084,7 +1064,6 @@ const rootRouteChildren: RootRouteChildren = {
   NotificationsRoute: NotificationsRoute,
   PrivacidadeRoute: PrivacidadeRoute,
   SearchRoute: SearchRoute,
-  SettingsRoute: SettingsRoute,
   SettingsAboutRoute: SettingsAboutRoute,
   SettingsAccountRoute: SettingsAccountRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
