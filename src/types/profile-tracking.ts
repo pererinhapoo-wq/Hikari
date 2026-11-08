@@ -261,3 +261,75 @@ export interface WatchedEpisodesResponse {
   limit: number;
   totalPages: number;
 }
+
+export const STATUS_CONFIG: Record<
+  TrackingStatus,
+  {
+    label: string;
+    color: string;
+    badgeBg: string;
+    badgeBorder: string;
+    badgeText: string;
+    activeStyle: string;
+    indicatorDot: string;
+  }
+> = {
+  watching: {
+    label: "Assistindo",
+    color: "emerald",
+    badgeBg: "bg-emerald-500/15",
+    badgeBorder: "border-emerald-500/30",
+    badgeText: "text-emerald-300",
+    activeStyle:
+      "bg-emerald-500/20 text-emerald-200 border-emerald-500/50 ring-1 ring-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.25)]",
+    indicatorDot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+  },
+  completed: {
+    label: "Concluídos",
+    color: "violet",
+    badgeBg: "bg-violet-500/15",
+    badgeBorder: "border-violet-500/30",
+    badgeText: "text-violet-300",
+    activeStyle:
+      "bg-violet-500/20 text-violet-200 border-violet-500/50 ring-1 ring-violet-500/40 shadow-[0_0_15px_rgba(168,85,247,0.25)]",
+    indicatorDot: "bg-violet-400 shadow-[0_0_8px_rgba(192,132,252,0.8)]",
+  },
+  on_hold: {
+    label: "Em espera",
+    color: "amber",
+    badgeBg: "bg-amber-500/15",
+    badgeBorder: "border-amber-500/30",
+    badgeText: "text-amber-300",
+    activeStyle:
+      "bg-amber-500/20 text-amber-200 border-amber-500/50 ring-1 ring-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.25)]",
+    indicatorDot: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]",
+  },
+  dropped: {
+    label: "Abandonados",
+    color: "rose",
+    badgeBg: "bg-rose-500/15",
+    badgeBorder: "border-rose-500/30",
+    badgeText: "text-rose-300",
+    activeStyle:
+      "bg-rose-500/20 text-rose-200 border-rose-500/50 ring-1 ring-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.25)]",
+    indicatorDot: "bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]",
+  },
+  planning: {
+    label: "Planejados",
+    color: "sky",
+    badgeBg: "bg-sky-500/15",
+    badgeBorder: "border-sky-500/30",
+    badgeText: "text-sky-300",
+    activeStyle:
+      "bg-sky-500/20 text-sky-200 border-sky-500/50 ring-1 ring-sky-500/40 shadow-[0_0_15px_rgba(14,165,233,0.25)]",
+    indicatorDot: "bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.8)]",
+  },
+};
+
+export const STATUS_ORDER: TrackingStatus[] = [
+  "watching",
+  "completed",
+  "on_hold",
+  "dropped",
+  "planning",
+];

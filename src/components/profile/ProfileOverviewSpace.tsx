@@ -7,12 +7,14 @@ interface ProfileOverviewSpaceProps {
   trackingItems: UserAnimeTrackingItem[];
   favoritesGrouped: ProfileFavoritesGrouped;
   loading?: boolean;
+  onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
 }
 
 export function ProfileOverviewSpace({
   trackingItems,
   favoritesGrouped,
   loading = false,
+  onUpdateItem,
 }: ProfileOverviewSpaceProps) {
   if (loading) {
     return (
@@ -29,7 +31,7 @@ export function ProfileOverviewSpace({
   return (
     <div className="space-y-10 sm:space-y-12">
       {/* Seção A: Anime Stats */}
-      <ProfileAnimeStats items={trackingItems} />
+      <ProfileAnimeStats items={trackingItems} onUpdateItem={onUpdateItem} />
 
       {/* Seções B, C, D, E: Favoritos (Animes, Personagens, Studios, People) */}
       <ProfileOverviewFavorites grouped={favoritesGrouped} />

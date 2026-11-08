@@ -1,8 +1,12 @@
 import { BarChart3 } from "lucide-react";
-import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
+import type {
+  TrackingStatus,
+  UserAnimeTrackingItem,
+} from "@/types/profile-tracking";
 
 interface ProfileAnimeStatsProps {
   items: UserAnimeTrackingItem[];
+  onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
 }
 
 export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
@@ -44,6 +48,44 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
   const pctOnHold = totalEntries > 0 ? (onHoldCount / totalEntries) * 100 : 0;
   const pctDropped = totalEntries > 0 ? (droppedCount / totalEntries) * 100 : 0;
   const pctPlanning = totalEntries > 0 ? (planningCount / totalEntries) * 100 : 0;
+
+  const statusIndicators: Array<{
+    status: TrackingStatus;
+    label: string;
+    count: number;
+    dotColor: string;
+  }> = [
+    {
+      status: "watching",
+      label: "Assistindo",
+      count: watchingCount,
+      dotColor: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
+    },
+    {
+      status: "completed",
+      label: "Concluídos",
+      count: completedCount,
+      dotColor: "bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)]",
+    },
+    {
+      status: "on_hold",
+      label: "Em espera",
+      count: onHoldCount,
+      dotColor: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
+    },
+    {
+      status: "dropped",
+      label: "Abandonados",
+      count: droppedCount,
+      dotColor: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]",
+    },
+    {
+      status: "planning",
+      label: "Planejados",
+      count: planningCount,
+      dotColor: "bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]",
+    },
+  ];
 
   return (
     <section
@@ -109,38 +151,58 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
           {totalEntries > 0 ? (
             <>
               {pctWatching > 0 && (
-                <div
+                <a
+                  href="/account?status=watching"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   style={{ width: `${pctWatching}%` }}
-                  className="h-full bg-emerald-500 transition-all duration-500 first:rounded-l-full last:rounded-r-full"
-                  title={`Assistindo: ${watchingCount} (${pctWatching.toFixed(0)}%)`}
+                  className="h-full bg-emerald-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
+                  title={`Assistindo: ${watchingCount} (${pctWatching.toFixed(0)}%) — abrir em nova guia`}
+                  aria-label={`Abrir Assistindo (${watchingCount}) em nova guia`}
                 />
               )}
               {pctCompleted > 0 && (
-                <div
+                <a
+                  href="/account?status=completed"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   style={{ width: `${pctCompleted}%` }}
-                  className="h-full bg-violet-500 transition-all duration-500 first:rounded-l-full last:rounded-r-full"
-                  title={`Concluídos: ${completedCount} (${pctCompleted.toFixed(0)}%)`}
+                  className="h-full bg-violet-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
+                  title={`Concluídos: ${completedCount} (${pctCompleted.toFixed(0)}%) — abrir em nova guia`}
+                  aria-label={`Abrir Concluídos (${completedCount}) em nova guia`}
                 />
               )}
               {pctOnHold > 0 && (
-                <div
+                <a
+                  href="/account?status=on_hold"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   style={{ width: `${pctOnHold}%` }}
-                  className="h-full bg-amber-500 transition-all duration-500 first:rounded-l-full last:rounded-r-full"
-                  title={`Em espera: ${onHoldCount} (${pctOnHold.toFixed(0)}%)`}
+                  className="h-full bg-amber-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
+                  title={`Em espera: ${onHoldCount} (${pctOnHold.toFixed(0)}%) — abrir em nova guia`}
+                  aria-label={`Abrir Em espera (${onHoldCount}) em nova guia`}
                 />
               )}
               {pctDropped > 0 && (
-                <div
+                <a
+                  href="/account?status=dropped"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   style={{ width: `${pctDropped}%` }}
-                  className="h-full bg-rose-500 transition-all duration-500 first:rounded-l-full last:rounded-r-full"
-                  title={`Abandonados: ${droppedCount} (${pctDropped.toFixed(0)}%)`}
+                  className="h-full bg-rose-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
+                  title={`Abandonados: ${droppedCount} (${pctDropped.toFixed(0)}%) — abrir em nova guia`}
+                  aria-label={`Abrir Abandonados (${droppedCount}) em nova guia`}
                 />
               )}
               {pctPlanning > 0 && (
-                <div
+                <a
+                  href="/account?status=planning"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   style={{ width: `${pctPlanning}%` }}
-                  className="h-full bg-cyan-500 transition-all duration-500 first:rounded-l-full last:rounded-r-full"
-                  title={`Planejados: ${planningCount} (${pctPlanning.toFixed(0)}%)`}
+                  className="h-full bg-cyan-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
+                  title={`Planejados: ${planningCount} (${pctPlanning.toFixed(0)}%) — abrir em nova guia`}
+                  aria-label={`Abrir Planejados (${planningCount}) em nova guia`}
                 />
               )}
             </>
@@ -155,68 +217,39 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
 
       {/* 4. Abaixo da barra, organização estrita em duas colunas */}
       <div className="relative grid grid-cols-1 min-[420px]:grid-cols-2 gap-4 sm:gap-8 border-t border-white/[0.06] pt-4">
-        {/* Coluna Esquerda: Assistindo, Concluídos, Em espera, Abandonados e Planejados */}
-        <div className="space-y-2.5">
-          {/* Assistindo */}
-          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
-            <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] shrink-0" />
-              <span>Assistindo</span>
-            </div>
-            <span className="font-semibold text-white tabular-nums">
-              {watchingCount}
-            </span>
-          </div>
-
-          {/* Concluídos */}
-          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
-            <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2 rounded-full bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)] shrink-0" />
-              <span>Concluídos</span>
-            </div>
-            <span className="font-semibold text-white tabular-nums">
-              {completedCount}
-            </span>
-          </div>
-
-          {/* Em espera */}
-          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
-            <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] shrink-0" />
-              <span>Em espera</span>
-            </div>
-            <span className="font-semibold text-white tabular-nums">
-              {onHoldCount}
-            </span>
-          </div>
-
-          {/* Abandonados */}
-          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
-            <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)] shrink-0" />
-              <span>Abandonados</span>
-            </div>
-            <span className="font-semibold text-white tabular-nums">
-              {droppedCount}
-            </span>
-          </div>
-
-          {/* Planejados */}
-          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
-            <div className="flex items-center gap-2 text-zinc-300">
-              <span className="size-2 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)] shrink-0" />
-              <span>Planejados</span>
-            </div>
-            <span className="font-semibold text-white tabular-nums">
-              {planningCount}
-            </span>
-          </div>
+        {/* Coluna Esquerda: Assistindo, Concluídos, Em espera, Abandonados e Planejados (Clicáveis, abrem em nova guia) */}
+        <div className="space-y-1.5">
+          {statusIndicators.map(({ status, label, count, dotColor }) => {
+            return (
+              <a
+                key={status}
+                href={`/account?status=${status}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group w-full flex items-center justify-between gap-2 text-xs py-1.5 px-2.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-white/[0.05] text-zinc-300 hover:text-white"
+                aria-label={`Abrir ${label}: ${count} animes em nova guia`}
+                title={`Abrir lista de ${label} em nova guia`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className={`size-2 rounded-full shrink-0 ${dotColor}`}
+                  />
+                  <span className="truncate">
+                    {label}
+                  </span>
+                </div>
+                <span className="font-semibold tabular-nums shrink-0 text-zinc-200">
+                  {count}
+                </span>
+              </a>
+            );
+          })}
         </div>
 
         {/* Coluna Direita: Total de entradas, Reassistidos e Episódios assistidos */}
-        <div className="space-y-2.5">
+        <div className="space-y-1.5">
           {/* Total de entradas */}
-          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
+          <div className="flex items-center justify-between gap-2 text-xs py-1.5 px-2.5">
             <span className="text-zinc-300">Total de entradas</span>
             <span className="font-bold text-white tabular-nums">
               {totalEntries}
@@ -224,15 +257,13 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
           </div>
 
           {/* Reassistidos */}
-          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
+          <div className="flex items-center justify-between gap-2 text-xs py-1.5 px-2.5">
             <span className="text-zinc-300">Reassistidos</span>
-            <span className="font-medium text-zinc-400">
-              Indisponível
-            </span>
+            <span className="font-medium text-zinc-400">Indisponível</span>
           </div>
 
           {/* Episódios assistidos */}
-          <div className="flex items-center justify-between gap-2 text-xs py-0.5">
+          <div className="flex items-center justify-between gap-2 text-xs py-1.5 px-2.5">
             <span className="text-zinc-300">Episódios assistidos</span>
             <span className="font-bold text-violet-300 tabular-nums">
               {episodesWatched}
@@ -243,3 +274,4 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
     </section>
   );
 }
+

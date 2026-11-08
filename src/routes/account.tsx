@@ -34,9 +34,12 @@ import type {
   ProfileFavoritesGrouped,
 } from "@/types/favorite";
 import type { ProfileListSummary } from "@/types/profile-list";
-import type {
-  UserAnimeTrackingItem,
-  WatchedEpisodeItem,
+import {
+  STATUS_CONFIG,
+  STATUS_ORDER,
+  type TrackingStatus,
+  type UserAnimeTrackingItem,
+  type WatchedEpisodeItem,
 } from "@/types/profile-tracking";
 
 import { ProfileIdentityHeader } from "@/components/profile/ProfileIdentityHeader";
@@ -53,11 +56,43 @@ import { ProfileEditModal } from "@/components/profile/ProfileEditModal";
 import { ProfileConnectionsModal } from "@/components/profile/ProfileConnectionsModal";
 import { ProfilePrivacyModal } from "@/components/profile/ProfilePrivacyModal";
 
+interface AccountSearchParams {
+  status?: TrackingStatus;
+  edit?: string;
+}
+
 export const Route = createFileRoute("/account")({
+  validateSearch: (raw: Record<string, unknown>): AccountSearchParams => {
+    const validStatuses: TrackingStatus[] = [
+      "watching",
+      "completed",
+      "on_hold",
+      "dropped",
+      "planning",
+    ];
+    const status =
+      typeof raw.status === "string" &&
+      validStatuses.includes(raw.status as TrackingStatus)
+        ? (raw.status as TrackingStatus)
+        : undefined;
+
+    const edit = typeof raw.edit === "string" ? raw.edit : undefined;
+
+    return { status, edit };
+  },
   component: AccountProfile,
 });
 
 function AccountProfile() {
+  const search = Route.useSearch();
+  const urlStatus =
+    search.status ||
+    (typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("status") as TrackingStatus | null)
+      : null);
+  const statusParam =
+    urlStatus && STATUS_ORDER.includes(urlStatus) ? urlStatus : undefined;
+
   const { user, isPending } = useCurrentUserState();
 
   // Server Functions
@@ -476,7 +511,7 @@ function AccountProfile() {
     setProfile((prev) => (prev ? { ...prev, ...updated } : null));
   };
 
-  if (isPending || (profileLoading && !profile)) {
+  if (isPending || (!statusParam && profileLoading && !profile)) {
     return (
       <div className="w-full px-4 py-8 text-white">
         <div className="mx-auto max-w-6xl space-y-6">
@@ -497,6 +532,49 @@ function AccountProfile() {
 
   if (!user) {
     return <RedirectToSignIn to="/login" />;
+  }
+
+  // Se a rota for aberta com parâmetro de status (ex: vindo do clique em Anime Stats na Visão Geral),
+  // exibe diretamente a lista de animes correspondente ao status selecionado na nova guia, sem botão de voltar.
+  if (statusParam && STATUS_CONFIG[statusParam]) {
+    const cfg = STATUS_CONFIG[statusParam];
+    const filteredCount = trackingItems.filter((i) => i.status === statusParam).length;
+
+    return (
+      <div className="relative min-h-[80vh] w-full pb-16 pt-6 sm:pt-8">
+        {/* Luz ambiente de fundo violeta sutil */}
+        <div
+          className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-violet-600/10 blur-[120px]"
+          aria-hidden="true"
+        />
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
+          {/* 2. Cabeçalho com o título correspondente (ex: "Animes — Assistindo") e 4. Sem botão de voltar */}
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
+            <div className="flex items-center gap-3">
+              <span className={`size-3.5 rounded-full ${cfg.indicatorDot}`} />
+              <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                Animes — {cfg.label}
+              </h1>
+              {!trackingLoading && (
+                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
+                  {filteredCount}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* 1 e 3. Lista de animes filtrada usando dados reais e componentes de cards já existentes */}
+          <ProfileTrackingSpace
+            items={trackingItems}
+            loading={trackingLoading}
+            activeFilter={statusParam}
+            hideFilterBar={true}
+            onUpdateItem={handleUpdateTrackingItem}
+          />
+        </div>
+      </div>
+    );
   }
 
   // Dados consolidados
@@ -562,6 +640,7 @@ function AccountProfile() {
               trackingItems={trackingItems}
               favoritesGrouped={favoritesGrouped}
               loading={trackingLoading || favoritesLoading}
+              onUpdateItem={handleUpdateTrackingItem}
             />
           )}
 

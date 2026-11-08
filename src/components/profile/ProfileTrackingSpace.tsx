@@ -11,97 +11,42 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
 import { upsertAnimeTracking } from "@/lib/profile-tracking.functions";
-import type {
-  TrackingStatus,
-  UserAnimeTrackingItem,
+import {
+  STATUS_CONFIG,
+  STATUS_ORDER,
+  type TrackingStatus,
+  type UserAnimeTrackingItem,
 } from "@/types/profile-tracking";
 
-interface ProfileTrackingSpaceProps {
+export type FilterOption = "all" | TrackingStatus;
+
+export interface ProfileTrackingSpaceProps {
   items: UserAnimeTrackingItem[];
   loading?: boolean;
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
+  activeFilter?: FilterOption;
+  onFilterChange?: (filter: FilterOption) => void;
+  hideFilterBar?: boolean;
 }
-
-type FilterOption = "all" | TrackingStatus;
-
-const STATUS_CONFIG: Record<
-  TrackingStatus,
-  {
-    label: string;
-    color: string;
-    badgeBg: string;
-    badgeBorder: string;
-    badgeText: string;
-    activeStyle: string;
-    indicatorDot: string;
-  }
-> = {
-  watching: {
-    label: "Assistindo",
-    color: "emerald",
-    badgeBg: "bg-emerald-500/15",
-    badgeBorder: "border-emerald-500/30",
-    badgeText: "text-emerald-300",
-    activeStyle:
-      "bg-emerald-500/20 text-emerald-200 border-emerald-500/50 ring-1 ring-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.25)]",
-    indicatorDot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]",
-  },
-  completed: {
-    label: "Concluídos",
-    color: "violet",
-    badgeBg: "bg-violet-500/15",
-    badgeBorder: "border-violet-500/30",
-    badgeText: "text-violet-300",
-    activeStyle:
-      "bg-violet-500/20 text-violet-200 border-violet-500/50 ring-1 ring-violet-500/40 shadow-[0_0_15px_rgba(168,85,247,0.25)]",
-    indicatorDot: "bg-violet-400 shadow-[0_0_8px_rgba(192,132,252,0.8)]",
-  },
-  on_hold: {
-    label: "Em espera",
-    color: "amber",
-    badgeBg: "bg-amber-500/15",
-    badgeBorder: "border-amber-500/30",
-    badgeText: "text-amber-300",
-    activeStyle:
-      "bg-amber-500/20 text-amber-200 border-amber-500/50 ring-1 ring-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.25)]",
-    indicatorDot: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]",
-  },
-  dropped: {
-    label: "Abandonados",
-    color: "rose",
-    badgeBg: "bg-rose-500/15",
-    badgeBorder: "border-rose-500/30",
-    badgeText: "text-rose-300",
-    activeStyle:
-      "bg-rose-500/20 text-rose-200 border-rose-500/50 ring-1 ring-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.25)]",
-    indicatorDot: "bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]",
-  },
-  planning: {
-    label: "Planejados",
-    color: "sky",
-    badgeBg: "bg-sky-500/15",
-    badgeBorder: "border-sky-500/30",
-    badgeText: "text-sky-300",
-    activeStyle:
-      "bg-sky-500/20 text-sky-200 border-sky-500/50 ring-1 ring-sky-500/40 shadow-[0_0_15px_rgba(14,165,233,0.25)]",
-    indicatorDot: "bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.8)]",
-  },
-};
-
-const STATUS_ORDER: TrackingStatus[] = [
-  "watching",
-  "completed",
-  "on_hold",
-  "dropped",
-  "planning",
-];
 
 export function ProfileTrackingSpace({
   items,
   loading = false,
   onUpdateItem,
+  activeFilter,
+  onFilterChange,
+  hideFilterBar = false,
 }: ProfileTrackingSpaceProps) {
-  const [filter, setFilter] = useState<FilterOption>("all");
+  const [internalFilter, setInternalFilter] = useState<FilterOption>("all");
+  const filter = activeFilter !== undefined ? activeFilter : internalFilter;
+
+  const handleFilterChange = (newFilter: FilterOption) => {
+    if (activeFilter === undefined) {
+      setInternalFilter(newFilter);
+    }
+    onFilterChange?.(newFilter);
+  };
+
   const [editingItem, setEditingItem] = useState<UserAnimeTrackingItem | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -223,61 +168,63 @@ export function ProfileTrackingSpace({
   return (
     <div className="space-y-6">
       {/* Barra de Filtros e Contadores de Status Clicáveis */}
-      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            setFilter("all");
-          }}
-          className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
-            filter === "all"
-              ? "bg-violet-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] ring-1 ring-violet-400"
-              : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
-          }`}
-        >
-          <span>Todos</span>
-          <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
-            {counts.all}
-          </span>
-        </button>
+      {!hideFilterBar && (
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              handleFilterChange("all");
+            }}
+            className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+              filter === "all"
+                ? "bg-violet-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] ring-1 ring-violet-400"
+                : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
+            }`}
+          >
+            <span>Todos</span>
+            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
+              {counts.all}
+            </span>
+          </button>
 
-        {STATUS_ORDER.map((statusKey) => {
-          const cfg = STATUS_CONFIG[statusKey];
-          const isActive = filter === statusKey;
-          const count = counts[statusKey];
+          {STATUS_ORDER.map((statusKey) => {
+            const cfg = STATUS_CONFIG[statusKey];
+            const isActive = filter === statusKey;
+            const count = counts[statusKey];
 
-          return (
-            <button
-              key={statusKey}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                setFilter(statusKey);
-              }}
-              className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
-                isActive
-                  ? `${cfg.activeStyle}`
-                  : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
-              }`}
-            >
-              <span
-                className={`size-2 rounded-full ${
-                  isActive ? cfg.indicatorDot : "bg-zinc-600"
-                }`}
-              />
-              <span>{cfg.label}</span>
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                  isActive ? "bg-white/20 text-white" : "bg-white/10 text-zinc-400"
+            return (
+              <button
+                key={statusKey}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleFilterChange(statusKey);
+                }}
+                className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+                  isActive
+                    ? `${cfg.activeStyle}`
+                    : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
                 }`}
               >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+                <span
+                  className={`size-2 rounded-full ${
+                    isActive ? cfg.indicatorDot : "bg-zinc-600"
+                  }`}
+                />
+                <span>{cfg.label}</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                    isActive ? "bg-white/20 text-white" : "bg-white/10 text-zinc-400"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Conteúdo: Skeleton, Vazio ou Grade de Obras (Exatamente 3 cards por linha) */}
       {loading ? (
