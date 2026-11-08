@@ -17,13 +17,13 @@ import {
 import {
   getMyAnimeTracking,
   upsertAnimeTracking,
-  removeAnimeTracking,
+  removeAnimeTracking as _removeAnimeTracking,
 } from "@/lib/profile-tracking.functions";
-import type { TrackingStatus } from "@/types/profile-tracking";
-import {
-  AnimeCollectionModal,
-  TRACKING_STATUS_CONFIG,
-} from "@/components/anime/AnimeCollectionModal";
+import type {
+  TrackingStatus,
+  UserAnimeTrackingItem,
+} from "@/types/profile-tracking";
+import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
 import {
   getMyProfileFavorites,
   addProfileFavorite,
@@ -367,6 +367,76 @@ export const Route = createFileRoute("/anime/$id")({
 });
 
 
+const COLLECTION_STATUS_CONFIG: Record<
+  TrackingStatus,
+  {
+    label: string;
+    border: string;
+    bg: string;
+    shadow: string;
+    glowDot: string;
+    pillBg: string;
+    pillText: string;
+    textColor: string;
+  }
+> = {
+  watching: {
+    label: "Assistindo",
+    border: "border-emerald-500/40 hover:border-emerald-400/80",
+    bg: "from-[#081b14]/95 via-[#0e271d]/90 to-[#071510]/95",
+    shadow:
+      "shadow-[0_4px_20px_rgba(0,0,0,0.5),0_0_20px_rgba(16,185,129,0.22)] hover:shadow-[0_6px_26px_rgba(0,0,0,0.6),0_0_28px_rgba(16,185,129,0.4)]",
+    glowDot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.95)]",
+    pillBg: "bg-emerald-500/20 border-emerald-400/30",
+    pillText: "text-emerald-300",
+    textColor: "text-emerald-100",
+  },
+  completed: {
+    label: "Concluído",
+    border: "border-violet-500/40 hover:border-violet-400/80",
+    bg: "from-[#1b1032]/95 via-[#231540]/90 to-[#120b24]/95",
+    shadow:
+      "shadow-[0_4px_20px_rgba(0,0,0,0.5),0_0_20px_rgba(168,85,247,0.25)] hover:shadow-[0_6px_26px_rgba(0,0,0,0.6),0_0_28px_rgba(168,85,247,0.45)]",
+    glowDot: "bg-violet-400 shadow-[0_0_8px_rgba(192,132,252,0.95)]",
+    pillBg: "bg-violet-500/20 border-violet-400/30",
+    pillText: "text-violet-300",
+    textColor: "text-violet-100",
+  },
+  on_hold: {
+    label: "Em espera",
+    border: "border-amber-500/40 hover:border-amber-400/80",
+    bg: "from-[#221408]/95 via-[#2e1c0c]/90 to-[#160d05]/95",
+    shadow:
+      "shadow-[0_4px_20px_rgba(0,0,0,0.5),0_0_20px_rgba(245,158,11,0.22)] hover:shadow-[0_6px_26px_rgba(0,0,0,0.6),0_0_28px_rgba(245,158,11,0.4)]",
+    glowDot: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.95)]",
+    pillBg: "bg-amber-500/20 border-amber-400/30",
+    pillText: "text-amber-300",
+    textColor: "text-amber-100",
+  },
+  dropped: {
+    label: "Abandonado",
+    border: "border-rose-500/40 hover:border-rose-400/80",
+    bg: "from-[#260a14]/95 via-[#340e1b]/90 to-[#18050d]/95",
+    shadow:
+      "shadow-[0_4px_20px_rgba(0,0,0,0.5),0_0_20px_rgba(244,63,94,0.22)] hover:shadow-[0_6px_26px_rgba(0,0,0,0.6),0_0_28px_rgba(244,63,94,0.4)]",
+    glowDot: "bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.95)]",
+    pillBg: "bg-rose-500/20 border-rose-400/30",
+    pillText: "text-rose-300",
+    textColor: "text-rose-100",
+  },
+  planning: {
+    label: "Planejado",
+    border: "border-sky-500/40 hover:border-sky-400/80",
+    bg: "from-[#081928]/95 via-[#0d243a]/90 to-[#05111e]/95",
+    shadow:
+      "shadow-[0_4px_20px_rgba(0,0,0,0.5),0_0_20px_rgba(14,165,233,0.22)] hover:shadow-[0_6px_26px_rgba(0,0,0,0.6),0_0_28px_rgba(14,165,233,0.4)]",
+    glowDot: "bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.95)]",
+    pillBg: "bg-sky-500/20 border-sky-400/30",
+    pillText: "text-sky-300",
+    textColor: "text-sky-100",
+  },
+};
+
 function makeAnimeSnapshot(anime: Anime) {
   return {
     title: displayTitle(anime),
@@ -612,7 +682,7 @@ function AnimePage() {
   // Server Functions para Coleção e Favoritos
   const getTrackingFn = useServerFn(getMyAnimeTracking);
   const upsertTrackingFn = useServerFn(upsertAnimeTracking);
-  const removeTrackingFn = useServerFn(removeAnimeTracking);
+  const _removeTrackingFn = useServerFn(_removeAnimeTracking);
 
   const getFavoritesFn = useServerFn(getMyProfileFavorites);
   const addFavoriteFn = useServerFn(addProfileFavorite);
@@ -630,6 +700,40 @@ function AnimePage() {
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Item de acompanhamento estruturado para reutilização do ProfileAnimeEditModal do Perfil
+  const trackingItem: UserAnimeTrackingItem | null = useMemo(() => {
+    if (!anime) return null;
+    return {
+      userId: user?.id ?? "",
+      animeId: anime.id,
+      status: trackingStatus || "watching",
+      score: trackingScore,
+      episodesWatched: trackingEpisodesWatched || 0,
+      title: displayTitle(anime),
+      titleRomaji: anime.titles?.romaji || null,
+      titleEnglish: anime.titles?.english || null,
+      titleNative: anime.titles?.native || null,
+      cover: anime.cover || null,
+      banner: anime.banner || null,
+      format: anime.format || null,
+      year: anime.year || anime.startDate?.year || null,
+      episodesCount:
+        anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
+      animeStatus: anime.status || null,
+      startedAt: null,
+      completedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      animeSnapshot: makeAnimeSnapshot(anime),
+    };
+  }, [
+    user?.id,
+    anime,
+    trackingStatus,
+    trackingScore,
+    trackingEpisodesWatched,
+  ]);
 
   // Consulta status de acompanhamento e favoritos do usuário para este anime
   useEffect(() => {
@@ -724,8 +828,8 @@ function AnimePage() {
 
       toast.success(
         isNewEntry
-          ? `Adicionado à sua coleção como "${TRACKING_STATUS_CONFIG[data.status].label}"!`
-          : `Coleção atualizada para "${TRACKING_STATUS_CONFIG[data.status].label}"!`,
+          ? `Adicionado à sua coleção como "${COLLECTION_STATUS_CONFIG[data.status].label}"!`
+          : `Coleção atualizada para "${COLLECTION_STATUS_CONFIG[data.status].label}"!`,
       );
     } catch (err: unknown) {
       setTrackingStatus(previousStatus);
@@ -733,12 +837,13 @@ function AnimePage() {
       setTrackingScore(previousScore);
       const msg = err instanceof Error ? err.message : "Erro ao atualizar coleção.";
       toast.error(msg);
+      throw err;
     } finally {
       setTrackingLoading(false);
     }
   };
 
-  const handleRemoveCollection = async () => {
+  const _handleRemoveCollection = async () => {
     if (!user || !anime) return;
 
     const previousStatus = trackingStatus;
@@ -751,7 +856,7 @@ function AnimePage() {
     setTrackingLoading(true);
 
     try {
-      await removeTrackingFn({
+      await _removeTrackingFn({
         data: {
           animeId: anime.id,
         },
@@ -1595,8 +1700,7 @@ function AnimePage() {
                   <span>{watchButtonLabel}</span>
                 </Link>
 
-                {/* 1. SELETOR DE STATUS DA LISTA (MINHA LISTA) */}
-                {/* 1. BOTÃO MINHA COLEÇÃO MODERNO & PREMIUM */}
+                {/* 1. BOTÃO MINHA COLEÇÃO (IDENTIDADE PRÓPRIA & REUTILIZA MODAL DO PERFIL) */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1609,77 +1713,150 @@ function AnimePage() {
                   disabled={trackingLoading}
                   aria-label={
                     trackingStatus
-                      ? `Coleção: ${TRACKING_STATUS_CONFIG[trackingStatus].label}`
-                      : "Gerenciar Minha Coleção"
+                      ? `Gerenciar Coleção: ${COLLECTION_STATUS_CONFIG[trackingStatus].label}`
+                      : "Adicionar à Minha Coleção"
                   }
                   className={cn(
-                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-semibold shadow-md transition-all duration-300 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden backdrop-blur-xl transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
+                    "before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:transition-opacity before:duration-300",
                     "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
                     trackingStatus
                       ? cn(
-                          "border bg-gradient-to-r backdrop-blur-xl shadow-[0_0_22px_rgba(139,92,246,0.25)] hover:shadow-[0_0_28px_rgba(139,92,246,0.38)] hover:brightness-110",
-                          TRACKING_STATUS_CONFIG[trackingStatus].borderColor,
-                          TRACKING_STATUS_CONFIG[trackingStatus].badgeBg,
-                          TRACKING_STATUS_CONFIG[trackingStatus].textColor,
+                          "border bg-gradient-to-r",
+                          COLLECTION_STATUS_CONFIG[trackingStatus].border,
+                          COLLECTION_STATUS_CONFIG[trackingStatus].bg,
+                          COLLECTION_STATUS_CONFIG[trackingStatus].shadow,
+                          "before:bg-gradient-to-r before:from-transparent before:via-white/30 before:to-transparent hover:brightness-110",
                         )
-                      : "border border-violet-500/30 bg-[#0e0c1a]/90 text-zinc-200 hover:border-violet-400/60 hover:bg-[#161229] hover:text-white hover:shadow-[0_0_20px_rgba(139,92,246,0.22)]",
+                      : cn(
+                          "border border-violet-500/35 bg-gradient-to-b from-[#1b1432]/95 via-[#120d24]/90 to-[#0a0714]/95 text-zinc-100",
+                          "shadow-[0_4px_20px_rgba(0,0,0,0.5),0_0_18px_rgba(139,92,246,0.18)]",
+                          "hover:border-violet-400/75 hover:text-white hover:shadow-[0_6px_26px_rgba(0,0,0,0.6),0_0_28px_rgba(139,92,246,0.36)] hover:brightness-110",
+                          "before:bg-gradient-to-r before:from-transparent before:via-violet-400/40 before:to-transparent",
+                        ),
                   )}
                 >
+                  {/* Iluminação ambiente sutil */}
+                  <span
+                    className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(168,85,247,0.18),transparent_70%)] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
+                    aria-hidden="true"
+                  />
+
                   {trackingLoading ? (
-                    <Loader2 className="size-4 animate-spin text-violet-300" />
+                    <Loader2 className="relative z-10 size-4 animate-spin text-violet-300" />
                   ) : trackingStatus ? (
-                    <>
+                    <div className="relative z-10 flex items-center gap-2">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 shadow-[0_0_8px_rgba(255,255,255,0.1)]">
+                        <span
+                          className={cn(
+                            "size-2 rounded-full transition-transform duration-300 group-hover:scale-125",
+                            COLLECTION_STATUS_CONFIG[trackingStatus].glowDot,
+                          )}
+                        />
+                      </span>
                       <span
                         className={cn(
-                          "size-2.5 rounded-full shrink-0 shadow-[0_0_8px_currentColor] transition-transform duration-300 group-hover:scale-125",
-                          TRACKING_STATUS_CONFIG[trackingStatus].dotColor,
+                          "font-bold tracking-tight text-white",
+                          COLLECTION_STATUS_CONFIG[trackingStatus].textColor,
                         )}
-                      />
-                      <span className="font-bold tracking-tight">
-                        {TRACKING_STATUS_CONFIG[trackingStatus].label}
+                      >
+                        {COLLECTION_STATUS_CONFIG[trackingStatus].label}
                       </span>
                       {trackingEpisodesWatched > 0 && (
-                        <span className="text-xs font-mono opacity-80 pl-1.5 border-l border-white/20">
-                          {trackingEpisodesWatched} eps
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-mono font-bold tracking-tight",
+                            COLLECTION_STATUS_CONFIG[trackingStatus].pillBg,
+                            COLLECTION_STATUS_CONFIG[trackingStatus].pillText,
+                          )}
+                        >
+                          {trackingEpisodesWatched}
+                          {anime.episodesCount ? `/${anime.episodesCount}` : ""} eps
                         </span>
                       )}
-                      <ChevronDown className="size-3.5 opacity-60 ml-0.5 transition-transform duration-200 group-hover:translate-y-0.5" />
-                    </>
+                      <ChevronDown className="size-3.5 opacity-60 transition-transform duration-200 group-hover:translate-y-0.5 ml-0.5" />
+                    </div>
                   ) : (
-                    <>
-                      <Bookmark className="size-4 text-violet-400 transition-transform duration-200 group-hover:scale-110" />
-                      <span>Minha Coleção</span>
-                    </>
+                    <div className="relative z-10 flex items-center gap-2">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-violet-400/30 bg-violet-500/20 shadow-[0_0_10px_rgba(139,92,246,0.25)] transition-all duration-300 group-hover:scale-110 group-hover:border-violet-400/60 group-hover:bg-violet-500/30">
+                        <Bookmark className="size-3.5 text-violet-300 transition-colors group-hover:text-violet-100" />
+                      </span>
+                      <span className="font-semibold tracking-tight text-zinc-100 group-hover:text-white transition-colors">
+                        Minha Coleção
+                      </span>
+                    </div>
                   )}
                 </button>
 
-                {/* 2. BOTÃO DE FAVORITOS HARMONIZADO */}
+                {/* 2. BOTÃO DE FAVORITOS (IDENTIDADE PRÓPRIA, MODERNA & DIFERENCIADA) */}
                 <button
                   type="button"
                   onClick={() => void handleToggleFavorite()}
                   disabled={favoriteLoading}
                   aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
                   className={cn(
-                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl px-4 sm:px-5 text-sm sm:text-base font-semibold shadow-md transition-all duration-300 ease-out select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400",
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden backdrop-blur-xl transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400",
+                    "before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:transition-opacity before:duration-300",
                     "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
                     isFavorite
-                      ? "border border-rose-500/60 bg-gradient-to-r from-rose-500/20 via-pink-500/15 to-rose-500/20 text-rose-200 shadow-[0_0_22px_rgba(244,63,94,0.32)] hover:border-rose-400/80 hover:bg-rose-500/30 hover:shadow-[0_0_28px_rgba(244,63,94,0.42)]"
-                      : "border border-white/10 bg-[#0e0c1a]/90 text-zinc-300 hover:border-rose-500/50 hover:bg-rose-500/10 hover:text-white hover:shadow-[0_0_18px_rgba(244,63,94,0.22)]",
+                      ? cn(
+                          "border border-rose-400/80 bg-gradient-to-r from-[#5a0828] via-[#40071c] to-[#250410] text-white",
+                          "shadow-[0_4px_22px_rgba(0,0,0,0.6),0_0_28px_rgba(244,63,94,0.45),inset_0_1px_2px_rgba(255,255,255,0.25)]",
+                          "hover:border-rose-300 hover:shadow-[0_6px_28px_rgba(0,0,0,0.7),0_0_36px_rgba(244,63,94,0.65)] hover:brightness-110",
+                          "before:bg-gradient-to-r before:from-transparent before:via-white/45 before:to-transparent",
+                        )
+                      : cn(
+                          "border border-rose-500/35 bg-gradient-to-b from-[#240d1a]/95 via-[#160810]/90 to-[#0b0408]/95 text-rose-100/90",
+                          "shadow-[0_4px_20px_rgba(0,0,0,0.5),0_0_18px_rgba(244,63,94,0.16)]",
+                          "hover:border-rose-400/75 hover:text-white hover:shadow-[0_6px_26px_rgba(0,0,0,0.6),0_0_28px_rgba(244,63,94,0.36)] hover:brightness-110",
+                          "before:bg-gradient-to-r before:from-transparent before:via-rose-400/40 before:to-transparent",
+                        ),
                   )}
                 >
+                  {/* Iluminação ambiente rubi */}
+                  <span
+                    className={cn(
+                      "pointer-events-none absolute inset-0 transition-opacity duration-300",
+                      isFavorite
+                        ? "bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.2),transparent_70%)] opacity-100"
+                        : "bg-[radial-gradient(ellipse_at_top,rgba(244,63,94,0.18),transparent_70%)] opacity-80 group-hover:opacity-100",
+                    )}
+                    aria-hidden="true"
+                  />
+
                   {favoriteLoading ? (
-                    <Loader2 className="size-4 animate-spin text-rose-400" />
+                    <Loader2 className="relative z-10 size-4 animate-spin text-rose-400" />
                   ) : (
-                    <Heart
-                      className={cn(
-                        "size-4 transition-all duration-300 ease-out",
-                        isFavorite
-                          ? "fill-rose-500 text-rose-500 scale-110 drop-shadow-[0_0_8px_rgba(244,63,94,0.6)] motion-safe:animate-[bookmarkPop_300ms_cubic-bezier(0.34,1.56,0.64,1)]"
-                          : "text-zinc-400 group-hover:text-rose-400 group-hover:scale-110",
-                      )}
-                    />
+                    <div className="relative z-10 flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "flex size-6 shrink-0 items-center justify-center rounded-lg transition-all duration-300",
+                          isFavorite
+                            ? "border border-rose-300/70 bg-rose-500/35 shadow-[0_0_14px_rgba(244,63,94,0.7)]"
+                            : "border border-rose-400/30 bg-rose-500/15 shadow-[0_0_10px_rgba(244,63,94,0.25)] group-hover:scale-110 group-hover:border-rose-400/60 group-hover:bg-rose-500/25",
+                        )}
+                      >
+                        <Heart
+                          className={cn(
+                            "size-3.5 transition-all duration-300 ease-out",
+                            isFavorite
+                              ? "fill-rose-500 text-rose-200 scale-110 drop-shadow-[0_0_8px_rgba(244,63,94,0.9)] motion-safe:animate-[bookmarkPop_350ms_cubic-bezier(0.34,1.56,0.64,1)]"
+                              : "text-rose-300 group-hover:text-rose-100",
+                          )}
+                        />
+                      </span>
+                      <span
+                        className={cn(
+                          "tracking-tight transition-colors",
+                          isFavorite
+                            ? "font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]"
+                            : "font-semibold text-rose-100/90 group-hover:text-white",
+                        )}
+                      >
+                        {isFavorite ? "Favoritado" : "Favoritar"}
+                      </span>
+                    </div>
                   )}
-                  <span>{isFavorite ? "Favoritado" : "Favoritar"}</span>
                 </button>
 
                 {canEdit && (
@@ -1862,29 +2039,21 @@ function AnimePage() {
         </Suspense>
       </SectionReveal>
 
-      {/* Modal de Gerenciamento da Coleção */}
-      <AnimeCollectionModal
-        isOpen={isCollectionModalOpen}
-        onClose={() => setIsCollectionModalOpen(false)}
-        anime={{
-          id: anime.id,
-          title: displayTitle(anime),
-          cover: anime.cover,
-          banner: anime.banner,
-          format: anime.format,
-          year: anime.year || anime.startDate?.year,
-          episodesCount:
-            anime.episodesCount || (anime.seasons?.[0]?.episodes?.length ?? null),
-          status: anime.status,
-          score: anime.score,
-        }}
-        initialStatus={trackingStatus}
-        initialEpisodesWatched={trackingEpisodesWatched}
-        initialScore={trackingScore}
-        loading={trackingLoading}
-        onSave={handleSaveCollection}
-        onRemove={handleRemoveCollection}
-      />
+      {/* Modal de Gerenciamento da Coleção existente no Perfil */}
+      {isCollectionModalOpen && trackingItem && (
+        <ProfileAnimeEditModal
+          isOpen={isCollectionModalOpen}
+          item={trackingItem}
+          onClose={() => setIsCollectionModalOpen(false)}
+          onSave={async (data) => {
+            await handleSaveCollection({
+              status: data.status,
+              episodesWatched: data.episodesWatched,
+              score: data.score,
+            });
+          }}
+        />
+      )}
 
       {/* Modal de Orientação para Visitantes não Autenticados */}
       <AuthPromptModal
