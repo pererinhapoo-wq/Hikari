@@ -89,19 +89,20 @@ export function ProfileIdentityHeader({
   }, [moreMenuOpen]);
 
   return (
-    <header className="relative z-10 w-full overflow-hidden rounded-3xl border border-white/[0.09] bg-[#090812] shadow-[0_16px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
+    <header className="relative z-10 w-full overflow-hidden rounded-2xl border border-purple-900/30 bg-[#130E24] shadow-[0_16px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
       {/* 1. Banner Panorâmico do Perfil */}
-      <div className="relative h-48 sm:h-64 md:h-80 w-full overflow-hidden border-b border-white/[0.07] bg-gradient-to-br from-purple-950 via-[#18112e] to-[#0A0713]">
+      <div className="relative h-[192px] sm:h-[256px] md:h-[320px] min-h-[192px] sm:min-h-[256px] md:min-h-[320px] w-full overflow-hidden bg-gradient-to-br from-purple-950 via-[#18112e] to-[#0A0713]">
         {bannerUrl ? (
           <>
             <img
               src={bannerUrl}
               alt="Banner do perfil"
+              referrerPolicy="no-referrer"
               className="h-full w-full object-cover object-center"
             />
             {/* Gradiente escurecedor suave para manter legibilidade das badges e contraste do avatar */}
             <div
-              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#090812] via-[#090812]/30 to-transparent"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#130E24] via-[#130E24]/30 to-transparent"
               aria-hidden="true"
             />
           </>
@@ -122,7 +123,7 @@ export function ProfileIdentityHeader({
               aria-hidden="true"
             />
             <div
-              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#090812] via-[#090812]/30 to-transparent"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#130E24] via-[#130E24]/30 to-transparent"
               aria-hidden="true"
             />
           </>
@@ -182,12 +183,12 @@ export function ProfileIdentityHeader({
       {/* 2. Conteúdo de Identidade com Avatar Sobreposto ao Banner */}
       <div className="relative px-4 pb-6 sm:px-8 pt-0 sm:pt-0">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 -mt-16 sm:-mt-20">
-          {/* Avatar e Identidade Principal (Nome e Username ao lado do avatar) */}
-          <div className="flex flex-col sm:flex-row sm:items-end gap-3.5 sm:gap-4 min-w-0">
-            {/* Avatar com moldura geométrica e iluminação */}
+          {/* Avatar e Identidade Principal (Nome e Username posicionados ao lado do avatar, abaixo do banner) */}
+          <div className="flex flex-row items-end gap-3.5 sm:gap-4 min-w-0">
+            {/* Avatar Container com dimensões e moldura geométrica da referência */}
             <div className="relative group shrink-0">
               <div
-                className={`h-28 w-28 sm:h-36 sm:w-36 rounded-2xl overflow-hidden border-4 border-[#090812] bg-[#1a1333] shadow-xl shadow-black/80 ring-2 ring-violet-500/40 ${isOwner && onOpenEdit ? "cursor-pointer" : ""}`}
+                className={`h-[112px] w-[112px] sm:h-[144px] sm:w-[144px] rounded-2xl overflow-hidden border-4 border-[#130E24] bg-[#1a1333] shadow-xl shadow-black/80 ring-2 ring-purple-600/40 ${isOwner && onOpenEdit ? "cursor-pointer" : ""}`}
                 onClick={isOwner ? onOpenEdit : undefined}
                 title={isOwner ? "Editar foto e informações do perfil" : name || nick}
               >
@@ -195,10 +196,13 @@ export function ProfileIdentityHeader({
                   <img
                     src={image}
                     alt={name || nick || "Foto de perfil"}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
                     className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-800 to-indigo-900 text-3xl sm:text-4xl font-bold text-white select-none">
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-800 to-indigo-900 text-3xl sm:text-4xl font-bold text-white select-none">
                     {initial}
                   </div>
                 )}
@@ -209,7 +213,7 @@ export function ProfileIdentityHeader({
                 <button
                   type="button"
                   onClick={onOpenEdit}
-                  className="absolute -bottom-1 -right-1 flex size-7 sm:size-8 items-center justify-center rounded-xl border border-white/20 bg-violet-600 text-white shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer z-10"
+                  className="absolute -bottom-1 -right-1 flex size-7 sm:size-8 items-center justify-center rounded-xl border border-white/20 bg-purple-600 text-white shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer z-10"
                   title="Substituir foto de perfil"
                 >
                   <Camera className="size-3.5 sm:size-4" />
@@ -218,9 +222,9 @@ export function ProfileIdentityHeader({
             </div>
 
             {/* Nome de Exibição, Selos e Username posicionados ao lado do avatar */}
-            <div className="space-y-1 pb-0.5 sm:pb-1 min-w-0">
+            <div className="space-y-1 pb-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-                <h1 className="truncate font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                <h1 className="truncate font-display text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white">
                   {name || nick || "Membro do Hikari"}
                 </h1>
 
@@ -238,7 +242,7 @@ export function ProfileIdentityHeader({
 
               {/* Username (@handle) */}
               <div className="flex items-center gap-3">
-                <span className="font-mono text-xs sm:text-sm font-medium text-violet-300/90">
+                <span className="font-mono text-xs sm:text-sm font-medium text-purple-400">
                   {displayHandle}
                 </span>
 
