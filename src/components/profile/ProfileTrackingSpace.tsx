@@ -440,12 +440,15 @@ export function ProfileTrackingSpace({
       )}
 
       {/* Modal de Edição Direta de Anime da Coleção */}
-      <ProfileAnimeEditModal
-        isOpen={editingItem !== null}
-        item={editingItem}
-        onClose={() => setEditingItem(null)}
-        onSave={handleSaveEdit}
-      />
+      {editingItem && (
+        <ProfileAnimeEditModal
+          key={editingItem.animeId}
+          isOpen={true}
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSave={handleSaveEdit}
+        />
+      )}
     </div>
   );
 }

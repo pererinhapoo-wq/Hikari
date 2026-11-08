@@ -95,13 +95,23 @@ export function ProfileAnimeEditModal({
   onClose,
   onSave,
 }: ProfileAnimeEditModalProps) {
+  const [prevAnimeId, setPrevAnimeId] = useState(item?.animeId);
   const [status, setStatus] = useState<TrackingStatus>(item?.status || "watching");
   const [score, setScore] = useState<number | null>(item?.score ?? null);
   const [episodesWatched, setEpisodesWatched] = useState<number>(item?.episodesWatched ?? 0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sincroniza estado quando o anime selecionado mudar
+  // Sincroniza durante a renderização se o animeId mudar (evita render intermediário com valor incorreto)
+  if (item && item.animeId !== prevAnimeId) {
+    setPrevAnimeId(item.animeId);
+    setStatus(item.status);
+    setScore(item.score ?? null);
+    setEpisodesWatched(item.episodesWatched ?? 0);
+    setError(null);
+  }
+
+  // Sincroniza estado quando o anime selecionado mudar ou sofrer atualização externa
   useEffect(() => {
     if (item) {
       setStatus(item.status);
@@ -110,6 +120,25 @@ export function ProfileAnimeEditModal({
       setError(null);
     }
   }, [item]);
+
+  // Bloqueio de rolagem do fundo (background scroll lock)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+    };
+  }, [isOpen]);
 
   // Fechar no Escape
   useEffect(() => {
@@ -184,7 +213,12 @@ export function ProfileAnimeEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !saving) {
+          onClose();
+        }
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overscroll-contain animate-in fade-in duration-200"
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-anime-title"
@@ -245,7 +279,7 @@ export function ProfileAnimeEditModal({
         )}
 
         {/* Formulário de Edição */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-5">
           {/* 1. Status de Acompanhamento */}
           <div className="space-y-2">
             <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300">
