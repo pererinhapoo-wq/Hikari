@@ -117,9 +117,11 @@ export function ProfileHistorySpace({
           </p>
         </div>
 
-        <span className="self-start sm:self-auto rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-zinc-300 tabular-nums">
-          {total} {total === 1 ? "atividade" : "atividades"}
-        </span>
+        {total > 0 && (
+          <span className="self-start sm:self-auto rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-zinc-300 tabular-nums">
+            {total} {total === 1 ? "atividade" : "atividades"}
+          </span>
+        )}
       </div>
 
       {/* Conteúdo: Skeleton, Vazio ou Lista em Timeline */}
@@ -132,33 +134,7 @@ export function ProfileHistorySpace({
             />
           ))}
         </div>
-      ) : normalizedItems.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-10 sm:p-14 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 shadow-inner">
-            <Activity className="size-7" />
-          </div>
-
-          <h3 className="mt-4 font-display text-base sm:text-lg font-bold text-white">
-            Nenhuma atividade encontrada
-          </h3>
-
-          <p className="mt-1.5 max-w-sm text-xs sm:text-sm text-zinc-400 leading-relaxed">
-            {isOwner
-              ? "Ao assistir episódios, favoritar conteúdos ou organizar suas listas, suas atividades aparecerão aqui cronologicamente."
-              : "Este usuário ainda não possui atividades recentes registradas."}
-          </p>
-
-          {isOwner && (
-            <Link
-              to="/"
-              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all hover:bg-violet-500 active:scale-95"
-            >
-              <Play className="size-4 fill-white" />
-              <span>Explorar Animes</span>
-            </Link>
-          )}
-        </div>
-      ) : (
+      ) : normalizedItems.length === 0 ? null : (
         <div className="space-y-3">
           {normalizedItems.map((entry) => {
             const isEpisode = entry.type === "watched_episode";

@@ -1,11 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import {
   CheckCircle2,
-  Compass,
   Film,
   Play,
   Star,
-  Tv,
 } from "lucide-react";
 import { useState } from "react";
 import type {
@@ -82,10 +80,6 @@ export function ProfileTrackingSpace({
       : items.filter((item) => item.status === filter);
 
   // Métricas agregadas reais do usuário
-  const totalEpsWatched = items.reduce(
-    (acc, curr) => acc + (curr.episodesWatched || 0),
-    0,
-  );
   const scoredItems = items.filter(
     (i) => typeof i.score === "number" && i.score > 0,
   );
@@ -144,16 +138,8 @@ export function ProfileTrackingSpace({
         </div>
 
         {/* Resumo Rápido das Estatísticas Reais */}
-        <div className="flex items-center gap-3 text-xs text-zinc-400 sm:shrink-0">
-          <div className="flex items-center gap-1">
-            <Tv className="size-3.5 text-violet-400" />
-            <span className="text-zinc-200 font-semibold tabular-nums">
-              {totalEpsWatched}
-            </span>
-            <span>eps assistidos</span>
-          </div>
-
-          {avgScore && (
+        {avgScore && (
+          <div className="flex items-center gap-3 text-xs text-zinc-400 sm:shrink-0">
             <div className="flex items-center gap-1">
               <Star className="size-3.5 text-amber-400 fill-amber-400" />
               <span className="text-zinc-200 font-semibold tabular-nums">
@@ -161,8 +147,8 @@ export function ProfileTrackingSpace({
               </span>
               <span>média pessoal</span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Conteúdo: Skeleton, Vazio ou Grade de Obras */}
@@ -175,32 +161,7 @@ export function ProfileTrackingSpace({
             />
           ))}
         </div>
-      ) : filteredItems.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-10 sm:p-14 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 shadow-inner">
-            <Film className="size-7" />
-          </div>
-
-          <h3 className="mt-4 font-display text-base sm:text-lg font-bold text-white">
-            Nenhuma obra encontrada nesta categoria
-          </h3>
-
-          <p className="mt-1.5 max-w-sm text-xs sm:text-sm text-zinc-400 leading-relaxed">
-            {filter === "all"
-              ? "Você ainda não adicionou animes ao seu acompanhamento pessoal. Explore o catálogo para começar!"
-              : `Você não possui animes marcados como "${STATUS_CONFIG[filter].label}".`}
-          </p>
-
-          <Link
-            to="/browse/$section"
-            params={{ section: "popular" }}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all hover:bg-violet-500 active:scale-95"
-          >
-            <Compass className="size-4" />
-            <span>Explorar Catálogo</span>
-          </Link>
-        </div>
-      ) : (
+      ) : filteredItems.length === 0 ? null : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
           {filteredItems.map((item) => {
             const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.planning;

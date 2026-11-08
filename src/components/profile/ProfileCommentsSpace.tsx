@@ -10,7 +10,6 @@ import {
   Film,
   Heart,
   MessageSquare,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -190,9 +189,11 @@ export function ProfileCommentsSpace({
           </p>
         </div>
 
-        <span className="self-start sm:self-auto rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-zinc-300 tabular-nums">
-          {total} {total === 1 ? "comentário" : "comentários"}
-        </span>
+        {total > 0 && (
+          <span className="self-start sm:self-auto rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-zinc-300 tabular-nums">
+            {total} {total === 1 ? "comentário" : "comentários"}
+          </span>
+        )}
       </div>
 
       {/* Conteúdo: Skeleton, Vazio ou Lista de Comentários */}
@@ -205,35 +206,7 @@ export function ProfileCommentsSpace({
             />
           ))}
         </div>
-      ) : comments.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-10 sm:p-14 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 shadow-inner">
-            <MessageSquare className="size-7" />
-          </div>
-
-          <h3 className="mt-4 font-display text-base sm:text-lg font-bold text-white">
-            {isOwner
-              ? "Você ainda não fez comentários"
-              : "Nenhum comentário publicado"}
-          </h3>
-
-          <p className="mt-1.5 max-w-sm text-xs sm:text-sm text-zinc-400 leading-relaxed">
-            {isOwner
-              ? "Compartilhe suas teorias, impressões e reações nos episódios para interagir com outros fãs de anime."
-              : "Este usuário ainda não publicou comentários na comunidade."}
-          </p>
-
-          {isOwner && (
-            <Link
-              to="/"
-              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all hover:bg-violet-500 active:scale-95"
-            >
-              <Sparkles className="size-4" />
-              <span>Explorar Episódios Recentes</span>
-            </Link>
-          )}
-        </div>
-      ) : (
+      ) : comments.length === 0 ? null : (
         <div className="space-y-3.5">
           {comments.map((comment) => {
             const epNum =
