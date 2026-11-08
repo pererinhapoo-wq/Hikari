@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { BarChart3 } from "lucide-react";
 import type {
   TrackingStatus,
@@ -151,58 +152,53 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
           {totalEntries > 0 ? (
             <>
               {pctWatching > 0 && (
-                <a
-                  href="/account?status=watching"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  to="/account"
+                  search={{ status: "watching" }}
                   style={{ width: `${pctWatching}%` }}
                   className="h-full bg-emerald-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
-                  title={`Assistindo: ${watchingCount} (${pctWatching.toFixed(0)}%) — abrir em nova guia`}
-                  aria-label={`Abrir Assistindo (${watchingCount}) em nova guia`}
+                  title={`Assistindo: ${watchingCount} (${pctWatching.toFixed(0)}%)`}
+                  aria-label={`Ver animes Assistindo (${watchingCount})`}
                 />
               )}
               {pctCompleted > 0 && (
-                <a
-                  href="/account?status=completed"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  to="/account"
+                  search={{ status: "completed" }}
                   style={{ width: `${pctCompleted}%` }}
                   className="h-full bg-violet-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
-                  title={`Concluídos: ${completedCount} (${pctCompleted.toFixed(0)}%) — abrir em nova guia`}
-                  aria-label={`Abrir Concluídos (${completedCount}) em nova guia`}
+                  title={`Concluídos: ${completedCount} (${pctCompleted.toFixed(0)}%)`}
+                  aria-label={`Ver animes Concluídos (${completedCount})`}
                 />
               )}
               {pctOnHold > 0 && (
-                <a
-                  href="/account?status=on_hold"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  to="/account"
+                  search={{ status: "on_hold" }}
                   style={{ width: `${pctOnHold}%` }}
                   className="h-full bg-amber-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
-                  title={`Em espera: ${onHoldCount} (${pctOnHold.toFixed(0)}%) — abrir em nova guia`}
-                  aria-label={`Abrir Em espera (${onHoldCount}) em nova guia`}
+                  title={`Em espera: ${onHoldCount} (${pctOnHold.toFixed(0)}%)`}
+                  aria-label={`Ver animes Em espera (${onHoldCount})`}
                 />
               )}
               {pctDropped > 0 && (
-                <a
-                  href="/account?status=dropped"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  to="/account"
+                  search={{ status: "dropped" }}
                   style={{ width: `${pctDropped}%` }}
                   className="h-full bg-rose-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
-                  title={`Abandonados: ${droppedCount} (${pctDropped.toFixed(0)}%) — abrir em nova guia`}
-                  aria-label={`Abrir Abandonados (${droppedCount}) em nova guia`}
+                  title={`Abandonados: ${droppedCount} (${pctDropped.toFixed(0)}%)`}
+                  aria-label={`Ver animes Abandonados (${droppedCount})`}
                 />
               )}
               {pctPlanning > 0 && (
-                <a
-                  href="/account?status=planning"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  to="/account"
+                  search={{ status: "planning" }}
                   style={{ width: `${pctPlanning}%` }}
                   className="h-full bg-cyan-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
-                  title={`Planejados: ${planningCount} (${pctPlanning.toFixed(0)}%) — abrir em nova guia`}
-                  aria-label={`Abrir Planejados (${planningCount}) em nova guia`}
+                  title={`Planejados: ${planningCount} (${pctPlanning.toFixed(0)}%)`}
+                  aria-label={`Ver animes Planejados (${planningCount})`}
                 />
               )}
             </>
@@ -217,18 +213,17 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
 
       {/* 4. Abaixo da barra, organização estrita em duas colunas */}
       <div className="relative grid grid-cols-1 min-[420px]:grid-cols-2 gap-4 sm:gap-8 border-t border-white/[0.06] pt-4">
-        {/* Coluna Esquerda: Assistindo, Concluídos, Em espera, Abandonados e Planejados (Clicáveis, abrem em nova guia) */}
+        {/* Coluna Esquerda: Assistindo, Concluídos, Em espera, Abandonados e Planejados (Clicáveis, navegam na mesma guia) */}
         <div className="space-y-1.5">
           {statusIndicators.map(({ status, label, count, dotColor }) => {
             return (
-              <a
+              <Link
                 key={status}
-                href={`/account?status=${status}`}
-                target="_blank"
-                rel="noopener noreferrer"
+                to="/account"
+                search={{ status }}
                 className="group w-full flex items-center justify-between gap-2 text-xs py-1.5 px-2.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-white/[0.05] text-zinc-300 hover:text-white"
-                aria-label={`Abrir ${label}: ${count} animes em nova guia`}
-                title={`Abrir lista de ${label} em nova guia`}
+                aria-label={`Ver ${label}: ${count} animes`}
+                title={`Ver lista de ${label}`}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span
@@ -241,7 +236,7 @@ export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
                 <span className="font-semibold tabular-nums shrink-0 text-zinc-200">
                   {count}
                 </span>
-              </a>
+              </Link>
             );
           })}
         </div>
