@@ -7,7 +7,7 @@ import {
   Play,
   Plus,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
 import { upsertAnimeTracking } from "@/lib/profile-tracking.functions";
@@ -68,21 +68,21 @@ export function ProfileTrackingSpace({
     };
   }, [activeMobileCardId]);
 
-  const handleCardClick = (e: React.MouseEvent, animeId: string) => {
-    // Detecta se o dispositivo é touch / mobile (sem hover fino de mouse)
-    const isTouchDevice =
-      typeof window !== "undefined" &&
-      window.matchMedia &&
-      !window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  const isMobileOrTouch = (e?: React.SyntheticEvent) => {
+    if (typeof window === "undefined") return false;
+    if (e && "nativeEvent" in e && e.nativeEvent instanceof PointerEvent) {
+      if (e.nativeEvent.pointerType === "touch") return true;
+    }
+    const isCoarse = window.matchMedia?.("(hover: none), (pointer: coarse)")?.matches;
+    const isMobileWidth = window.innerWidth < 768;
+    return Boolean(isCoarse || isMobileWidth);
+  };
 
-    if (isTouchDevice && activeMobileCardId !== animeId) {
+  const handleCardClick = (e: React.MouseEvent, animeId: string) => {
+    if (isMobileOrTouch(e) && activeMobileCardId !== animeId) {
       // Primeiro toque no card no mobile: revela os controles sem acionar ação acidental
-      const target = e.target as HTMLElement;
-      const isInteractive = target.closest("button, a");
-      if (isInteractive) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      e.preventDefault();
+      e.stopPropagation();
       setActiveMobileCardId(animeId);
     }
   };
@@ -299,6 +299,10 @@ export function ProfileTrackingSpace({
                 ? Math.min(100, Math.round((watched / maxEps) * 100))
                 : null;
             const isMobileActive = activeMobileCardId === item.animeId;
+            const isCompletedOrMax =
+              maxEps !== null && maxEps > 0 && watched >= maxEps;
+            const isUpdating = updatingId === item.animeId;
+            const isButtonDisabled = isUpdating || isCompletedOrMax;
 
             return (
               <article
@@ -338,10 +342,17 @@ export function ProfileTrackingSpace({
                     </span>
                   </div>
 
-                  {/* Botão Hover de Play / Acesso Rápido */}
+                  {/* Botão Hover de Play / Acesso Rápido — primeiro toque no mobile revela controles */}
                   <Link
                     to="/anime/$id"
                     params={{ id: item.animeId }}
+                    onClick={(e) => {
+                      if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveMobileCardId(item.animeId);
+                      }
+                    }}
                     className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-black/40 backdrop-blur-[2px]"
                     aria-label={`Ver ${item.title}`}
                   >
@@ -374,6 +385,13 @@ export function ProfileTrackingSpace({
                   <Link
                     to="/anime/$id"
                     params={{ id: item.animeId }}
+                    onClick={(e) => {
+                      if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveMobileCardId(item.animeId);
+                      }
+                    }}
                     className="line-clamp-2 text-[11px] sm:text-xs md:text-sm font-semibold text-zinc-100 transition-colors hover:text-violet-300 break-words leading-tight sm:leading-snug"
                     title={item.title}
                   >
@@ -406,26 +424,39 @@ export function ProfileTrackingSpace({
                         : "opacity-0 translate-y-1 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto"
                     }`}
                   >
-                    {/* 2. Botão +1 ep com apenas um sinal '+' (ícone Plus + texto '1 ep') */}
+                    {/* 2. Botão +1 ep com alto contraste, legibilidade nítida e estado desabilitado discreto */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
+                        if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
+                          setActiveMobileCardId(item.animeId);
+                          return;
+                        }
                         handleQuickIncrement(item);
                       }}
-                      disabled={
-                        updatingId === item.animeId ||
-                        (maxEps !== null && maxEps > 0 && watched >= maxEps)
-                      }
-                      className="inline-flex items-center justify-center gap-0.5 sm:gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-1.5 sm:px-2 py-1 text-[10px] sm:text-[11px] font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600/20 hover:text-white disabled:opacity-40 disabled:pointer-events-none active:scale-95 cursor-pointer shrink-0"
+                      disabled={isButtonDisabled}
+                      className={`inline-flex items-center justify-center gap-0.5 sm:gap-1 rounded-lg px-1.5 sm:px-2 py-1 text-[10px] sm:text-[11px] font-semibold transition-all shrink-0 ${
+                        isButtonDisabled
+                          ? "border border-white/10 bg-white/[0.04] text-zinc-400 opacity-65 cursor-not-allowed pointer-events-none"
+                          : "border border-violet-500/35 bg-violet-500/15 text-zinc-100 shadow-[0_2px_8px_rgba(139,92,246,0.12)] hover:border-violet-400/60 hover:bg-violet-600/30 hover:text-white active:scale-95 cursor-pointer"
+                      }`}
                       title={
-                        maxEps !== null && maxEps > 0 && watched >= maxEps
+                        isCompletedOrMax
                           ? "Todos os episódios assistidos"
+                          : isUpdating
+                          ? "Atualizando episódio..."
                           : "Adicionar 1 episódio assistido (+1)"
                       }
                     >
-                      <Plus className="size-2.5 sm:size-3 text-violet-400" />
+                      <Plus
+                        className={`size-2.5 sm:size-3 shrink-0 ${
+                          isButtonDisabled
+                            ? "text-zinc-500 stroke-[2]"
+                            : "text-violet-300 stroke-[2.5]"
+                        }`}
+                      />
                       <span>1 ep</span>
                     </button>
 
@@ -434,12 +465,16 @@ export function ProfileTrackingSpace({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
+                        if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
+                          setActiveMobileCardId(item.animeId);
+                          return;
+                        }
                         setEditingItem(item);
                       }}
-                      className="inline-flex items-center justify-center gap-0.5 sm:gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-1.5 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-medium text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600/20 hover:text-white active:scale-95 cursor-pointer shrink-0"
+                      className="inline-flex items-center justify-center gap-0.5 sm:gap-1.5 rounded-lg border border-white/15 bg-white/[0.06] px-1.5 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-zinc-200 transition-all hover:border-violet-500/40 hover:bg-violet-600/20 hover:text-white active:scale-95 cursor-pointer shrink-0"
                       title="Editar status, nota e episódios"
                     >
-                      <Pencil className="size-2.5 sm:size-3 text-violet-400" />
+                      <Pencil className="size-2.5 sm:size-3 text-violet-300 shrink-0 stroke-[2]" />
                       <span>Editar</span>
                     </button>
                   </div>
