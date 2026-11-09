@@ -87,6 +87,10 @@ export function ProfileFavoritesSpace({
       : grouped[activeCategory] || [];
 
   const handleEntityClick = (item: ProfileFavoriteItem) => {
+    if (expandedEntity?.name === item.title) {
+      setExpandedEntity(null);
+      return;
+    }
     if (item.targetType === "studio" || item.targetType === "company") {
       setExpandedEntity({
         type: "studio",

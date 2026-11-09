@@ -102,6 +102,11 @@ export function ProfileOverviewFavorites({
   };
 
   const handleDubladorClick = (item: ProfileFavoriteItem) => {
+    if (expandedCategory === "dubladores" && expandedEntity?.name === item.title) {
+      setExpandedEntity(null);
+      setExpandedCategory(null);
+      return;
+    }
     setExpandedEntity({
       type: "dublador",
       id: item.targetId,
@@ -112,6 +117,11 @@ export function ProfileOverviewFavorites({
   };
 
   const handleStudioClick = (item: ProfileFavoriteItem) => {
+    if (expandedCategory === "studios" && expandedEntity?.name === item.title) {
+      setExpandedEntity(null);
+      setExpandedCategory(null);
+      return;
+    }
     setExpandedEntity({
       type: "studio",
       id: item.targetId,
@@ -122,6 +132,11 @@ export function ProfileOverviewFavorites({
   };
 
   const handlePeopleClick = (item: ProfileFavoriteItem) => {
+    if (expandedCategory === "people" && expandedEntity?.name === item.title) {
+      setExpandedEntity(null);
+      setExpandedCategory(null);
+      return;
+    }
     setExpandedEntity({
       type: "staff",
       id: item.targetId,

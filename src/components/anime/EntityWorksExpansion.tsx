@@ -132,90 +132,45 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
       : data?.staffWorks?.length ?? 0;
 
   return (
-    <section
+    <div
       ref={containerRef}
       aria-label={`Trabalhos e Produções de ${entity.name}`}
       className={cn(
-        "relative overflow-hidden rounded-2xl sm:rounded-3xl border border-purple-500/25 bg-gradient-to-br from-[#120f22] via-[#0d0b18] to-[#07060e] p-4 sm:p-6 shadow-[0_16px_40px_rgba(0,0,0,0.65)] backdrop-blur-2xl transition-all duration-300 animate-in fade-in slide-in-from-top-2",
+        "relative mt-5 pt-4 border-t border-white/[0.08] transition-all duration-300 animate-in fade-in",
         className,
       )}
     >
-      {/* Luz ambiente de fundo violeta/roxo */}
-      <div
-        className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-purple-600/10 blur-[100px]"
-        aria-hidden="true"
-      />
-      <div
-        className="pointer-events-none absolute -bottom-24 -left-20 size-72 rounded-full bg-violet-900/15 blur-[90px]"
-        aria-hidden="true"
-      />
-
-      {/* 1. Cabeçalho da Entidade Expandida */}
-      <header className="relative flex flex-col gap-4 border-b border-white/[0.08] pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3.5 min-w-0">
-          {/* Avatar / Imagem / Logo */}
-          <div className="relative size-12 sm:size-14 shrink-0 overflow-hidden rounded-xl border border-purple-500/30 bg-[#161328] shadow-inner flex items-center justify-center">
-            {displayImage ? (
-              <img
-                src={displayImage}
-                alt={entity.name}
-                loading="lazy"
-                className={cn(
-                  "size-full",
-                  isStudio
-                    ? "object-contain p-1.5"
-                    : "object-cover object-top",
-                )}
-              />
-            ) : (
-              <div className="flex size-full items-center justify-center font-display text-xl font-bold text-purple-400">
-                {initial}
-              </div>
+      {/* 1. Cabeçalho no padrão Anime Stats: Indicador colorido + Título + Contador (sem botão Fechar/X/Voltar) */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className={cn(
+              "size-2.5 rounded-full shrink-0",
+              isStudio
+                ? "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]"
+                : activeTab === "dublador" || entity.type === "dublador"
+                  ? "bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.5)]"
+                  : "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]",
             )}
-          </div>
+          />
+          <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white truncate">
+            {isStudio
+              ? `Produções — ${entity.name}`
+              : activeTab === "dublador" || entity.type === "dublador"
+                ? `Dublagens — ${entity.name}`
+                : `Trabalhos — ${entity.name}`}
+          </h3>
 
-          {/* Nome principal e metadados (SOMENTE nome principal, sem alternativos em japonês) */}
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-950/60 px-2 py-0.5 text-[10px] sm:text-xs font-semibold text-purple-200">
-                {isStudio ? (
-                  <>
-                    <Building2 className="size-3 text-purple-400" />
-                    <span>Estúdio de animação</span>
-                  </>
-                ) : entity.type === "dublador" || activeTab === "dublador" ? (
-                  <>
-                    <Mic className="size-3 text-pink-400" />
-                    <span>Dublador(a)</span>
-                  </>
-                ) : (
-                  <>
-                    <Briefcase className="size-3 text-indigo-400" />
-                    <span>Direção e equipe técnica</span>
-                  </>
-                )}
-              </span>
-
-              {!loading && (
-                <span className="text-[11px] font-medium text-zinc-400">
-                  {totalWorksCount}{" "}
-                  {totalWorksCount === 1 ? "produção" : "produções"}
-                </span>
-              )}
-            </div>
-
-            <h3
-              className="mt-1 font-display text-lg sm:text-xl font-bold tracking-tight text-white truncate"
-              title={entity.name}
-            >
-              {entity.name}
-            </h3>
-          </div>
+          {!loading && (
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
+              {totalWorksCount}
+            </span>
+          )}
         </div>
 
         {/* Controles do Cabeçalho: Alternador de Papéis (se a pessoa possuir papéis de Dublador e Equipe Técnica) */}
         {hasBothPersonRoles && (
-          <div className="inline-flex items-center rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1 shadow-sm self-start sm:self-center">
+          <div className="inline-flex items-center rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1 shadow-sm">
             <button
               type="button"
               onClick={() => setActiveTab("dublador")}
@@ -244,10 +199,10 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
             </button>
           </div>
         )}
-      </header>
+      </div>
 
-      {/* 2. Conteúdo Principal */}
-      <div className="relative mt-4">
+      {/* 2. Conteúdo Principal no mesmo espaço */}
+      <div className="relative">
         {loading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
             {Array.from({ length: 6 }).map((_, idx) => (
@@ -528,7 +483,7 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
           )
         )}
       </div>
-    </section>
+    </div>
   );
 });
 

@@ -3998,6 +3998,10 @@ const DubladoresSection = memo(function DubladoresSection({
             loadImage={index < visibleImgLimit}
             isSelected={expandedEntity?.name === item.vaName}
             onSelect={() => {
+              if (expandedEntity?.name === item.vaName) {
+                setExpandedEntity(null);
+                return;
+              }
               setExpandedEntity({
                 type: "dublador",
                 id: item.vaId,
@@ -4012,13 +4016,11 @@ const DubladoresSection = memo(function DubladoresSection({
         ))}
       </div>
 
-      {/* Seção integrada como aba interna com os trabalhos do dublador selecionado */}
+      {/* Conteúdo integrado no próprio espaço da seção, no padrão de Anime Stats */}
       {expandedEntity && (
-        <div className="mt-4">
-          <EntityWorksExpansion
-            entity={expandedEntity}
-          />
-        </div>
+        <EntityWorksExpansion
+          entity={expandedEntity}
+        />
       )}
     </section>
   );
@@ -4306,6 +4308,10 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
             loadImage={index < visibleImgLimit}
             isSelected={expandedEntity?.name === item.name}
             onSelect={() => {
+              if (expandedEntity?.name === item.name) {
+                setExpandedEntity(null);
+                return;
+              }
               setExpandedEntity({
                 type: item.isStudio ? "studio" : "staff",
                 id: item.isStudio ? item.name : item.id,
@@ -4320,13 +4326,11 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
         ))}
       </div>
 
-      {/* Seção integrada como aba interna com os trabalhos do estúdio ou membro da equipe técnica */}
+      {/* Conteúdo integrado no próprio espaço da seção, no padrão de Anime Stats */}
       {expandedEntity && (
-        <div className="mt-4">
-          <EntityWorksExpansion
-            entity={expandedEntity}
-          />
-        </div>
+        <EntityWorksExpansion
+          entity={expandedEntity}
+        />
       )}
     </section>
   );
