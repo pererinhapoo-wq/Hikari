@@ -3,7 +3,18 @@ import {
   Building2,
   Film,
   Heart,
+  Search,
+  User,
+  Users,
 } from "lucide-react";
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
 
 interface ProfileOverviewFavoritesProps {
@@ -13,11 +24,13 @@ interface ProfileOverviewFavoritesProps {
 export function ProfileOverviewFavorites({
   grouped,
 }: ProfileOverviewFavoritesProps) {
-  // Exibir no máximo 10 animes favoritos, preservando a ordem canônica real
+  const [selectedEntity, setSelectedEntity] = useState<ProfileFavoriteItem | null>(null);
+
+  // Exibir no máximo 10 itens por categoria, preservando a ordem canônica real
   const animes = (grouped.anime ?? []).slice(0, 10);
-  const characters = grouped.character ?? [];
-  const studios = grouped.studio ?? [];
-  const people = grouped.person ?? [];
+  const characters = (grouped.character ?? []).slice(0, 10);
+  const studios = (grouped.studio ?? []).slice(0, 10);
+  const people = (grouped.person ?? []).slice(0, 10);
 
   return (
     <div className="space-y-10 sm:space-y-12">
@@ -43,7 +56,7 @@ export function ProfileOverviewFavorites({
         )}
       </section>
 
-      {/* C. Favoritos — Personagens */}
+      {/* C. Favoritos — Personagens (Grade de 3 colunas por linha lado a lado no celular) */}
       <section aria-label="Favoritos — Personagens" className="space-y-4">
         <div className="border-b border-white/[0.06] pb-3">
           <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
@@ -52,9 +65,13 @@ export function ProfileOverviewFavorites({
         </div>
 
         {characters.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:gap-5">
             {characters.map((item) => (
-              <CharacterFavoriteCard key={item.id} item={item} />
+              <CharacterFavoriteCard
+                key={item.id}
+                item={item}
+                onClick={() => setSelectedEntity(item)}
+              />
             ))}
           </div>
         ) : (
@@ -65,7 +82,7 @@ export function ProfileOverviewFavorites({
         )}
       </section>
 
-      {/* D. Favoritos — Studios */}
+      {/* D. Favoritos — Studios (Grade de 3 colunas por linha lado a lado no celular) */}
       <section aria-label="Favoritos — Studios" className="space-y-4">
         <div className="border-b border-white/[0.06] pb-3">
           <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
@@ -74,9 +91,13 @@ export function ProfileOverviewFavorites({
         </div>
 
         {studios.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 sm:gap-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:gap-5">
             {studios.map((item) => (
-              <StudioFavoriteCard key={item.id} item={item} />
+              <StudioFavoriteCard
+                key={item.id}
+                item={item}
+                onClick={() => setSelectedEntity(item)}
+              />
             ))}
           </div>
         ) : (
@@ -87,7 +108,7 @@ export function ProfileOverviewFavorites({
         )}
       </section>
 
-      {/* E. Favorites — People */}
+      {/* E. Favorites — People (Grade de 3 colunas por linha lado a lado no celular) */}
       <section aria-label="Favorites — People" className="space-y-4">
         <div className="border-b border-white/[0.06] pb-3">
           <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
@@ -96,9 +117,13 @@ export function ProfileOverviewFavorites({
         </div>
 
         {people.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:gap-5">
             {people.map((item) => (
-              <PersonFavoriteCard key={item.id} item={item} />
+              <PersonFavoriteCard
+                key={item.id}
+                item={item}
+                onClick={() => setSelectedEntity(item)}
+              />
             ))}
           </div>
         ) : (
@@ -108,6 +133,15 @@ export function ProfileOverviewFavorites({
           />
         )}
       </section>
+
+      {/* Modal de Detalhes da Entidade Favoritada */}
+      {selectedEntity && (
+        <EntityDetailModal
+          entity={selectedEntity}
+          open={Boolean(selectedEntity)}
+          onClose={() => setSelectedEntity(null)}
+        />
+      )}
     </div>
   );
 }
@@ -163,124 +197,175 @@ function AnimeFavoriteCard({ item }: { item: ProfileFavoriteItem }) {
   );
 }
 
-function CharacterFavoriteCard({ item }: { item: ProfileFavoriteItem }) {
+function CharacterFavoriteCard({
+  item,
+  onClick,
+}: {
+  item: ProfileFavoriteItem;
+  onClick: () => void;
+}) {
   const initial = item.title.charAt(0).toUpperCase();
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(168,85,247,0.18)]">
-      {/* Imagem do Personagem */}
-      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-[#151224]">
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative flex flex-col min-w-0 overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-1.5 min-[360px]:p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(168,85,247,0.18)] cursor-pointer text-left focus:outline-none"
+    >
+      {/* Imagem do Personagem com proporção 3/4 preservada */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224]">
         {item.image ? (
           <img
             src={item.image}
             alt={item.title}
             loading="lazy"
-            className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className="size-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
-          <div className="flex size-full items-center justify-center font-display text-2xl font-bold text-purple-400">
+          <div className="flex size-full items-center justify-center font-display text-xl sm:text-2xl font-bold text-purple-400/80">
             {initial}
           </div>
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 flex size-5 sm:size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity">
+          <Heart className="size-2.5 sm:size-3 fill-rose-500 text-rose-500" />
+        </div>
       </div>
 
-      {/* Informações */}
-      <div className="mt-2.5 space-y-0.5">
-        <h4 className="truncate text-xs font-semibold text-zinc-200 transition-colors group-hover:text-white">
+      {/* Informações: nome e informações canônicas */}
+      <div className="mt-1.5 sm:mt-2.5 min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+        <h4
+          className="line-clamp-2 text-[11px] sm:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white break-words leading-tight sm:leading-snug"
+          title={item.title}
+        >
           {item.title}
         </h4>
-        {item.nativeTitle && (
-          <p className="truncate text-[10px] text-purple-300/80 font-mono">
+        {item.nativeTitle ? (
+          <p className="truncate text-[10px] sm:text-xs text-purple-300/80 font-mono">
             {item.nativeTitle}
           </p>
-        )}
-        {item.subtitle && (
-          <p className="truncate text-[10px] text-zinc-500">
+        ) : item.subtitle ? (
+          <p className="truncate text-[10px] sm:text-xs text-zinc-400">
             {item.subtitle}
           </p>
-        )}
+        ) : null}
       </div>
-    </div>
+    </button>
   );
 }
 
-function StudioFavoriteCard({ item }: { item: ProfileFavoriteItem }) {
+function StudioFavoriteCard({
+  item,
+  onClick,
+}: {
+  item: ProfileFavoriteItem;
+  onClick: () => void;
+}) {
   return (
-    <div className="group relative flex items-center gap-3.5 overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-indigo-500/40 hover:bg-[#120f21] hover:shadow-[0_10px_25px_rgba(99,102,241,0.15)]">
-      <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-[#151224] p-1.5">
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative flex flex-col min-w-0 overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-1.5 min-[360px]:p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-indigo-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(99,102,241,0.18)] cursor-pointer text-left focus:outline-none"
+    >
+      {/* Imagem/Logo do Studio com proporção 3/4 preservada */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224] flex items-center justify-center p-2.5 sm:p-4">
         {item.image ? (
           <img
             src={item.image}
             alt={item.title}
             loading="lazy"
-            className="size-full object-contain"
+            className="max-h-full max-w-full object-contain transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
-          <Building2 className="size-6 text-indigo-400" />
+          <div className="flex flex-col items-center justify-center gap-1 text-center">
+            <Building2 className="size-6 sm:size-8 text-indigo-400" />
+            <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold">
+              Estúdio
+            </span>
+          </div>
         )}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 flex size-5 sm:size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity">
+          <Heart className="size-2.5 sm:size-3 fill-rose-500 text-rose-500" />
+        </div>
       </div>
 
-      <div className="min-w-0 flex-1 space-y-0.5">
-        <h4 className="truncate text-xs sm:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white">
+      {/* Informações: nome do estúdio e ano/subtítulo */}
+      <div className="mt-1.5 sm:mt-2.5 min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+        <h4
+          className="line-clamp-2 text-[11px] sm:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white break-words leading-tight sm:leading-snug"
+          title={item.title}
+        >
           {item.title}
         </h4>
-        {item.subtitle && (
-          <p className="truncate text-[11px] text-zinc-500">
-            {item.subtitle}
-          </p>
-        )}
-        {item.description && (
-          <p className="line-clamp-1 text-[11px] text-zinc-400">
-            {item.description}
-          </p>
-        )}
+        <p className="truncate text-[10px] sm:text-xs text-indigo-300/80">
+          {item.subtitle || "Estúdio de animação"}
+        </p>
       </div>
-    </div>
+    </button>
   );
 }
 
-function PersonFavoriteCard({ item }: { item: ProfileFavoriteItem }) {
+function PersonFavoriteCard({
+  item,
+  onClick,
+}: {
+  item: ProfileFavoriteItem;
+  onClick: () => void;
+}) {
   const initial = item.title.charAt(0).toUpperCase();
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-sky-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(14,165,233,0.18)]">
-      {/* Foto da Pessoa */}
-      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-[#151224]">
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative flex flex-col min-w-0 overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-1.5 min-[360px]:p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-sky-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(14,165,233,0.18)] cursor-pointer text-left focus:outline-none"
+    >
+      {/* Foto real da pessoa (diretor, dublador, criador) com proporção 3/4 */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224]">
         {item.image ? (
           <img
             src={item.image}
             alt={item.title}
             loading="lazy"
-            className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className="size-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
-          <div className="flex size-full items-center justify-center font-display text-2xl font-bold text-sky-400">
+          <div className="flex size-full items-center justify-center font-display text-xl sm:text-2xl font-bold text-sky-400/80">
             {initial}
           </div>
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 flex size-5 sm:size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity">
+          <Heart className="size-2.5 sm:size-3 fill-rose-500 text-rose-500" />
+        </div>
       </div>
 
-      {/* Informações */}
-      <div className="mt-2.5 space-y-0.5">
-        <h4 className="truncate text-xs font-semibold text-zinc-200 transition-colors group-hover:text-white">
+      {/* Informações: nome e papel/subtítulo */}
+      <div className="mt-1.5 sm:mt-2.5 min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+        <h4
+          className="line-clamp-2 text-[11px] sm:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white break-words leading-tight sm:leading-snug"
+          title={item.title}
+        >
           {item.title}
         </h4>
-        {item.nativeTitle && (
-          <p className="truncate text-[10px] text-sky-300/80 font-mono">
+        {item.nativeTitle ? (
+          <p className="truncate text-[10px] sm:text-xs text-sky-300/80 font-mono">
             {item.nativeTitle}
           </p>
-        )}
-        {item.subtitle && (
-          <p className="truncate text-[10px] text-zinc-500">
-            {item.subtitle}
+        ) : (
+          <p className="truncate text-[10px] sm:text-xs text-zinc-400">
+            {item.subtitle || "Produção & Elenco"}
           </p>
         )}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -302,3 +387,104 @@ function EmptyFavoritesNotice({
     </div>
   );
 }
+
+// ==========================================
+// Modal de Detalhes da Entidade Favoritada
+// ==========================================
+
+function EntityDetailModal({
+  entity,
+  open,
+  onClose,
+}: {
+  entity: ProfileFavoriteItem;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const isCharacter = entity.targetType === "character";
+  const isStudio = entity.targetType === "studio";
+  const isPerson = entity.targetType === "person";
+
+  const typeLabel = isCharacter
+    ? "Personagem"
+    : isStudio
+    ? "Estúdio de Animação"
+    : isPerson
+    ? "Pessoa da Indústria"
+    : "Favorito";
+
+  const TypeIcon = isCharacter ? Users : isStudio ? Building2 : User;
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="border border-white/10 bg-[#0e0c19] text-white p-5 sm:p-6 w-[min(100%-1.5rem,32rem)] rounded-2xl sm:rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.85)]">
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-start">
+          {/* Mídia do item */}
+          <div className="relative aspect-[3/4] w-28 sm:w-36 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#151224] shadow-md mx-auto sm:mx-0">
+            {entity.image ? (
+              <img
+                src={entity.image}
+                alt={entity.title}
+                className={cn(
+                  "size-full",
+                  isStudio ? "object-contain p-2.5" : "object-cover object-top"
+                )}
+              />
+            ) : (
+              <div className="flex size-full items-center justify-center font-display text-3xl font-bold text-purple-400">
+                {entity.title.charAt(0).toUpperCase()}
+              </div>
+            )}
+
+            <div className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md">
+              <Heart className="size-3 fill-rose-500 text-rose-500" />
+            </div>
+          </div>
+
+          {/* Dados descritivos */}
+          <div className="flex-1 min-w-0 space-y-2 text-left w-full">
+            <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border border-purple-500/30 bg-purple-950/40 text-purple-300">
+              <TypeIcon className="size-2.5 text-purple-400" />
+              <span>{typeLabel}</span>
+            </div>
+
+            <DialogTitle className="text-lg sm:text-xl font-bold font-display text-white leading-tight break-words">
+              {entity.title}
+            </DialogTitle>
+
+            {entity.nativeTitle && (
+              <p className="text-xs font-mono text-purple-300/80">
+                {entity.nativeTitle}
+              </p>
+            )}
+
+            {entity.subtitle && (
+              <p className="text-xs text-zinc-400 font-medium">
+                {entity.subtitle}
+              </p>
+            )}
+
+            {entity.description && (
+              <DialogDescription className="text-xs text-zinc-300 leading-relaxed max-h-36 overflow-y-auto no-scrollbar pr-1 mt-2">
+                {entity.description}
+              </DialogDescription>
+            )}
+
+            <div className="pt-3">
+              <Link
+                to="/search"
+                search={{ q: entity.title }}
+                onClick={onClose}
+                className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-purple-500 shadow-[0_4px_16px_rgba(168,85,247,0.3)] active:scale-95"
+              >
+                <Search className="size-3.5" />
+                <span>Ver produções no catálogo</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+

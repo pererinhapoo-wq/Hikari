@@ -18,19 +18,39 @@ import {
 async function assertCatalogEntityExists(
   targetType: FavoriteTargetType,
   targetId: string,
-  snapshot?: {
-    title?: string;
-    titleRomaji?: string | null;
-    titleEnglish?: string | null;
-    titleNative?: string | null;
-    cover?: string | null;
-    banner?: string | null;
-    synopsis?: string | null;
-    format?: string | null;
-    year?: number | null;
-    episodesCount?: number | null;
-    status?: string | null;
-  } | null,
+  snapshots?: {
+    anime?: {
+      title?: string;
+      titleRomaji?: string | null;
+      titleEnglish?: string | null;
+      titleNative?: string | null;
+      cover?: string | null;
+      banner?: string | null;
+      synopsis?: string | null;
+      format?: string | null;
+      year?: number | null;
+      episodesCount?: number | null;
+      status?: string | null;
+    } | null;
+    character?: {
+      name?: string;
+      nativeName?: string | null;
+      imageUrl?: string | null;
+      description?: string | null;
+    } | null;
+    studio?: {
+      name?: string;
+      logoUrl?: string | null;
+      establishedYear?: number | null;
+      description?: string | null;
+    } | null;
+    person?: {
+      name?: string;
+      nativeName?: string | null;
+      imageUrl?: string | null;
+      biography?: string | null;
+    } | null;
+  },
 ): Promise<void> {
   const sql = await getSql();
 
@@ -41,8 +61,8 @@ async function assertCatalogEntityExists(
       let rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_anime" WHERE "id" = ${targetId} LIMIT 1
       `;
-      if (rows.length === 0) {
-        const titleToUse = snapshot?.title?.trim() || targetId;
+      if (rows.length === 0 && snapshots?.anime) {
+        const titleToUse = snapshots.anime.title?.trim() || targetId;
         await sql.query(
           `INSERT INTO "catalog_anime" (
             "id", "title", "titleRomaji", "titleEnglish", "titleNative",
@@ -58,16 +78,16 @@ async function assertCatalogEntityExists(
           [
             targetId,
             titleToUse,
-            snapshot?.titleRomaji ?? null,
-            snapshot?.titleEnglish ?? null,
-            snapshot?.titleNative ?? null,
-            snapshot?.cover ?? null,
-            snapshot?.banner ?? null,
-            snapshot?.synopsis ?? null,
-            snapshot?.format ?? null,
-            snapshot?.year ?? null,
-            snapshot?.episodesCount ?? null,
-            snapshot?.status ?? null,
+            snapshots.anime.titleRomaji ?? null,
+            snapshots.anime.titleEnglish ?? null,
+            snapshots.anime.titleNative ?? null,
+            snapshots.anime.cover ?? null,
+            snapshots.anime.banner ?? null,
+            snapshots.anime.synopsis ?? null,
+            snapshots.anime.format ?? null,
+            snapshots.anime.year ?? null,
+            snapshots.anime.episodesCount ?? null,
+            snapshots.anime.status ?? null,
           ],
         );
         rows = await sql<{ id: string }>`
@@ -78,16 +98,64 @@ async function assertCatalogEntityExists(
       break;
     }
     case "character": {
-      const rows = await sql<{ id: string }>`
+      let rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_character" WHERE "id" = ${targetId} LIMIT 1
       `;
+      if (rows.length === 0 && snapshots?.character) {
+        const nameToUse = snapshots.character.name?.trim() || targetId;
+        await sql.query(
+          `INSERT INTO "catalog_character" (
+            "id", "name", "nativeName", "imageUrl", "description",
+            "createdAt", "updatedAt"
+          )
+          VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT ("id") DO UPDATE SET
+            "name" = COALESCE(EXCLUDED."name", "catalog_character"."name"),
+            "imageUrl" = COALESCE(EXCLUDED."imageUrl", "catalog_character"."imageUrl"),
+            "updatedAt" = CURRENT_TIMESTAMP`,
+          [
+            targetId,
+            nameToUse,
+            snapshots.character.nativeName ?? null,
+            snapshots.character.imageUrl ?? null,
+            snapshots.character.description ?? null,
+          ],
+        );
+        rows = await sql<{ id: string }>`
+          SELECT "id" FROM "catalog_character" WHERE "id" = ${targetId} LIMIT 1
+        `;
+      }
       exists = rows.length > 0;
       break;
     }
     case "studio": {
-      const rows = await sql<{ id: string }>`
+      let rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} LIMIT 1
       `;
+      if (rows.length === 0 && snapshots?.studio) {
+        const nameToUse = snapshots.studio.name?.trim() || targetId;
+        await sql.query(
+          `INSERT INTO "catalog_studio" (
+            "id", "name", "logoUrl", "establishedYear", "description",
+            "createdAt", "updatedAt"
+          )
+          VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT ("id") DO UPDATE SET
+            "name" = COALESCE(EXCLUDED."name", "catalog_studio"."name"),
+            "logoUrl" = COALESCE(EXCLUDED."logoUrl", "catalog_studio"."logoUrl"),
+            "updatedAt" = CURRENT_TIMESTAMP`,
+          [
+            targetId,
+            nameToUse,
+            snapshots.studio.logoUrl ?? null,
+            snapshots.studio.establishedYear ?? null,
+            snapshots.studio.description ?? null,
+          ],
+        );
+        rows = await sql<{ id: string }>`
+          SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} LIMIT 1
+        `;
+      }
       exists = rows.length > 0;
       break;
     }
@@ -99,9 +167,33 @@ async function assertCatalogEntityExists(
       break;
     }
     case "person": {
-      const rows = await sql<{ id: string }>`
+      let rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_person" WHERE "id" = ${targetId} LIMIT 1
       `;
+      if (rows.length === 0 && snapshots?.person) {
+        const nameToUse = snapshots.person.name?.trim() || targetId;
+        await sql.query(
+          `INSERT INTO "catalog_person" (
+            "id", "name", "nativeName", "imageUrl", "biography",
+            "createdAt", "updatedAt"
+          )
+          VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT ("id") DO UPDATE SET
+            "name" = COALESCE(EXCLUDED."name", "catalog_person"."name"),
+            "imageUrl" = COALESCE(EXCLUDED."imageUrl", "catalog_person"."imageUrl"),
+            "updatedAt" = CURRENT_TIMESTAMP`,
+          [
+            targetId,
+            nameToUse,
+            snapshots.person.nativeName ?? null,
+            snapshots.person.imageUrl ?? null,
+            snapshots.person.biography ?? null,
+          ],
+        );
+        rows = await sql<{ id: string }>`
+          SELECT "id" FROM "catalog_person" WHERE "id" = ${targetId} LIMIT 1
+        `;
+      }
       exists = rows.length > 0;
       break;
     }
@@ -126,10 +218,22 @@ export const addProfileFavorite = createServerFn({
   .validator(addFavoriteSchema)
   .handler(async ({ context, data }) => {
     const userId = context.userId;
-    const { targetType, targetId, animeSnapshot } = data;
+    const {
+      targetType,
+      targetId,
+      animeSnapshot,
+      characterSnapshot,
+      studioSnapshot,
+      personSnapshot,
+    } = data;
 
-    // 1. Verifica se a entidade existe no catálogo (com auto-provisionamento de catálogo para anime se snapshot for enviado)
-    await assertCatalogEntityExists(targetType, targetId, animeSnapshot);
+    // 1. Verifica se a entidade existe no catálogo (com auto-provisionamento de catálogo se snapshot for enviado)
+    await assertCatalogEntityExists(targetType, targetId, {
+      anime: animeSnapshot,
+      character: characterSnapshot,
+      studio: studioSnapshot,
+      person: personSnapshot,
+    });
 
     const sql = await getSql();
 

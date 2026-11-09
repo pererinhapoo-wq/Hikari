@@ -41,6 +41,36 @@ export const addFavoriteSchema = z.object({
     .catchall(z.union([z.string(), z.number(), z.boolean(), z.null()]))
     .optional()
     .nullable(),
+  characterSnapshot: z
+    .object({
+      name: z.string().optional(),
+      nativeName: z.string().nullable().optional(),
+      imageUrl: z.string().nullable().optional(),
+      description: z.string().nullable().optional(),
+    })
+    .catchall(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional()
+    .nullable(),
+  studioSnapshot: z
+    .object({
+      name: z.string().optional(),
+      logoUrl: z.string().nullable().optional(),
+      establishedYear: z.number().nullable().optional(),
+      description: z.string().nullable().optional(),
+    })
+    .catchall(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional()
+    .nullable(),
+  personSnapshot: z
+    .object({
+      name: z.string().optional(),
+      nativeName: z.string().nullable().optional(),
+      imageUrl: z.string().nullable().optional(),
+      biography: z.string().nullable().optional(),
+    })
+    .catchall(z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional()
+    .nullable(),
 });
 
 export type AddFavoriteInput = z.infer<typeof addFavoriteSchema>;

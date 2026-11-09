@@ -1979,7 +1979,7 @@ function AnimePage() {
         </section>
       )}
 
-      {/* 1. ELENCO */}
+      {/* 1. PERSONAGENS (ELENCO) */}
       <SectionReveal minHeight="260px" rootMargin="300px 0px">
         <ElencoSection
           key={`elenco-${anime.id}`}
@@ -1988,7 +1988,16 @@ function AnimePage() {
         />
       </SectionReveal>
 
-      {/* 2. DIREÇÃO E EQUIPE TÉCNICA */}
+      {/* 2. DUBLADORES */}
+      <SectionReveal minHeight="260px" rootMargin="300px 0px">
+        <DubladoresSection
+          key={`dubladores-${anime.id}`}
+          animeId={anime.id}
+          characters={effectiveCharacters}
+        />
+      </SectionReveal>
+
+      {/* 3. DIREÇÃO E EQUIPE TÉCNICA */}
       <SectionReveal minHeight="200px" rootMargin="300px 0px">
         <DirecaoEquipeSection
           key={`staff-${anime.id}`}
@@ -3337,7 +3346,6 @@ const ElencoSection = memo(function ElencoSection({
   animeId: string;
   characters?: AnimeCharacter[];
 }) {
-  const [selectedLang, setSelectedLang] = useState<"ja" | "pt">("ja");
   const railRef = useRef<HTMLDivElement>(null);
 
   const validCharacters = useMemo(() => {
@@ -3345,27 +3353,6 @@ const ElencoSection = memo(function ElencoSection({
       Boolean(c?.name?.full?.trim() || c?.name?.native?.trim()),
     );
   }, [characters]);
-
-  // Verifica se há dubladores em português brasileiro
-  const hasPortuguese = useMemo(() => {
-    return validCharacters.some((c) =>
-      (c.voiceActors ?? []).some((va) => {
-        const hasName = Boolean(
-          va?.name?.full?.trim() || va?.name?.native?.trim(),
-        );
-        if (!hasName) return false;
-        const lang = (va.language ?? "").toLowerCase();
-        return (
-          lang.includes("portuguese") ||
-          lang.includes("brazil") ||
-          lang.includes("pt-br") ||
-          lang.includes("pt_br")
-        );
-      }),
-    );
-  }, [validCharacters]);
-
-  const activeLang: "ja" | "pt" = hasPortuguese ? selectedLang : "ja";
 
   const { limit: visibleImgLimit, advance: advanceImgLimit } =
     useHorizontalRailImageLimit(
@@ -3391,73 +3378,34 @@ const ElencoSection = memo(function ElencoSection({
 
   return (
     <section className="mt-12 space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
           <span className="h-6 w-1 rounded-full bg-purple-500" />
           <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Elenco
+            Personagens
           </h2>
         </div>
 
-        <div className="flex items-center gap-3 self-start sm:self-auto">
-          {hasPortuguese ? (
-            <div className="inline-flex items-center rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setSelectedLang("ja")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
-                  activeLang === "ja"
-                    ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
-                    : "text-zinc-400 hover:text-zinc-200",
-                )}
-              >
-                <span className="size-1.5 rounded-full bg-purple-400" />
-                <span>Japonês</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedLang("pt")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
-                  activeLang === "pt"
-                    ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
-                    : "text-zinc-400 hover:text-zinc-200",
-                )}
-              >
-                <span className="size-1.5 rounded-full bg-emerald-400" />
-                <span>Português (BR)</span>
-              </button>
-            </div>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/30 px-2.5 py-1 text-[11px] font-medium text-purple-300">
-              <span className="size-1.5 rounded-full bg-purple-400" />
-              Dublagem original (Japonês)
-            </span>
-          )}
-
-          {validCharacters.length > 3 && (
-            <div className="hidden sm:flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => scroll("left")}
-                aria-label="Rolar elenco para a esquerda"
-                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => scroll("right")}
-                aria-label="Rolar elenco para a direita"
-                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-          )}
-        </div>
+        {validCharacters.length > 3 && (
+          <div className="hidden sm:flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => scroll("left")}
+              aria-label="Rolar personagens para a esquerda"
+              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scroll("right")}
+              aria-label="Rolar personagens para a direita"
+              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div
@@ -3468,7 +3416,6 @@ const ElencoSection = memo(function ElencoSection({
           <ElencoCard
             key={`${char.id || char.name.full || char.name.native}-${index}`}
             char={char}
-            selectedLang={activeLang}
             loadImage={index < visibleImgLimit}
           />
         ))}
@@ -3479,11 +3426,9 @@ const ElencoSection = memo(function ElencoSection({
 
 const ElencoCard = memo(function ElencoCard({
   char,
-  selectedLang,
   loadImage,
 }: {
   char: AnimeCharacter;
-  selectedLang: "ja" | "pt";
   loadImage: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
@@ -3493,31 +3438,6 @@ const ElencoCard = memo(function ElencoCard({
   }, [char.image]);
 
   const charName = char.name?.full?.trim() || char.name?.native?.trim() || "";
-  const validVas = (char.voiceActors ?? []).filter((va) =>
-    Boolean(va?.name?.full?.trim() || va?.name?.native?.trim()),
-  );
-
-  const matchingVa =
-    selectedLang === "pt"
-      ? validVas.find((va) => {
-          const l = (va.language ?? "").toLowerCase();
-          return (
-            l.includes("brazil") ||
-            l.includes("pt-br") ||
-            l.includes("pt_br")
-          );
-        }) ??
-        validVas.find((va) =>
-          (va.language ?? "").toLowerCase().includes("portuguese"),
-        )
-      : validVas.find((va) => {
-          const l = (va.language ?? "").toLowerCase();
-          return l.includes("japanese") || l === "ja" || l === "ja_jp";
-        });
-
-  const vaName =
-    matchingVa?.name?.full?.trim() || matchingVa?.name?.native?.trim() || "";
-
   const isMain = (char.role ?? "").toUpperCase() === "MAIN";
   const roleLabel = isMain ? "Protagonista" : "Secundário";
   const showImage = Boolean(char.image) && !imgError;
@@ -3569,28 +3489,346 @@ const ElencoCard = memo(function ElencoCard({
         >
           {charName}
         </p>
+      </div>
+    </div>
+  );
+});
 
-        {/* Nome do dublador correspondente logo abaixo em texto */}
-        <div className="mt-1.5 min-w-0">
-          {vaName ? (
-            <p
-              title={vaName}
-              className="truncate text-[10px] sm:text-[10.5px] font-medium text-purple-300/90 min-w-0"
-            >
-              {vaName}
-            </p>
+function categorizeLanguage(lang?: string): "ja" | "pt" | "other" {
+  if (!lang) return "ja";
+  const l = lang.toLowerCase();
+  if (
+    l.includes("brazil") ||
+    l.includes("portuguese") ||
+    l.includes("pt-br") ||
+    l.includes("pt_br")
+  ) {
+    return "pt";
+  }
+  if (l.includes("japan") || l === "ja" || l === "ja_jp") {
+    return "ja";
+  }
+  return "other";
+}
+
+function formatVoiceActorLanguage(lang?: string): string {
+  if (!lang) return "Japonês";
+  const l = lang.toLowerCase().trim();
+  if (
+    l.includes("brazil") ||
+    l.includes("pt-br") ||
+    l.includes("pt_br") ||
+    l === "portuguese (brazil)"
+  ) {
+    return "Português (BR)";
+  }
+  if (l.includes("portuguese")) {
+    return "Português";
+  }
+  if (l.includes("japan") || l === "ja" || l === "ja_jp") {
+    return "Japonês";
+  }
+  if (l.includes("english") || l === "en" || l === "en_us") {
+    return "Inglês";
+  }
+  if (l.includes("spanish") || l === "es") {
+    return "Espanhol";
+  }
+  if (l.includes("korean") || l === "ko") {
+    return "Coreano";
+  }
+  if (l.includes("french") || l === "fr") {
+    return "Francês";
+  }
+  if (l.includes("german") || l === "de") {
+    return "Alemão";
+  }
+  if (l.includes("italian") || l === "it") {
+    return "Italiano";
+  }
+  return lang;
+}
+
+type DubladorItem = {
+  id: string;
+  vaId: number;
+  vaName: string;
+  vaImage?: string;
+  rawLanguage: string;
+  language: string;
+  langCategory: "ja" | "pt" | "other";
+  characterId: number;
+  characterName: string;
+  isMain: boolean;
+};
+
+const DubladoresSection = memo(function DubladoresSection({
+  animeId,
+  characters,
+}: {
+  animeId: string;
+  characters?: AnimeCharacter[];
+}) {
+  const [selectedLang, setSelectedLang] = useState<"ja" | "pt">("ja");
+  const railRef = useRef<HTMLDivElement>(null);
+
+  const validCharacters = useMemo(() => {
+    return (characters ?? []).filter((c) =>
+      Boolean(c?.name?.full?.trim() || c?.name?.native?.trim()),
+    );
+  }, [characters]);
+
+  const allVoiceActors = useMemo(() => {
+    const list: DubladorItem[] = [];
+    const seen = new Set<string>();
+
+    for (const char of validCharacters) {
+      const charName =
+        char.name?.full?.trim() || char.name?.native?.trim() || "";
+      const isMain = (char.role ?? "").toUpperCase() === "MAIN";
+
+      for (const va of char.voiceActors ?? []) {
+        const vaName =
+          va?.name?.full?.trim() || va?.name?.native?.trim() || "";
+        if (!vaName) continue;
+
+        const rawLang = va.language?.trim() || "Japanese";
+        const key = `${va.id || vaName.toLowerCase()}-${char.id || charName.toLowerCase()}-${rawLang.toLowerCase()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        list.push({
+          id: key,
+          vaId: va.id,
+          vaName,
+          vaImage: va.image,
+          rawLanguage: rawLang,
+          language: formatVoiceActorLanguage(rawLang),
+          langCategory: categorizeLanguage(rawLang),
+          characterId: char.id,
+          characterName: charName,
+          isMain,
+        });
+      }
+    }
+
+    return list.sort((a, b) => {
+      if (a.isMain && !b.isMain) return -1;
+      if (!a.isMain && b.isMain) return 1;
+      return 0;
+    });
+  }, [validCharacters]);
+
+  const hasPortuguese = useMemo(() => {
+    return allVoiceActors.some((item) => item.langCategory === "pt");
+  }, [allVoiceActors]);
+
+  const activeLang: "ja" | "pt" = hasPortuguese ? selectedLang : "ja";
+
+  const displayVoiceActors = useMemo(() => {
+    if (hasPortuguese) {
+      const filtered = allVoiceActors.filter(
+        (item) => item.langCategory === activeLang,
+      );
+      return filtered.length > 0 ? filtered : allVoiceActors;
+    }
+    const japanese = allVoiceActors.filter(
+      (item) => item.langCategory === "ja",
+    );
+    return japanese.length > 0 ? japanese : allVoiceActors;
+  }, [allVoiceActors, hasPortuguese, activeLang]);
+
+  const { limit: visibleImgLimit, advance: advanceImgLimit } =
+    useHorizontalRailImageLimit(
+      railRef,
+      displayVoiceActors.length,
+      128,
+      12,
+      `${animeId}-vas`,
+    );
+
+  if (displayVoiceActors.length === 0) {
+    return null;
+  }
+
+  const scroll = (direction: "left" | "right") => {
+    if (!railRef.current) return;
+    if (direction === "right") {
+      advanceImgLimit(360);
+    }
+    const offset = direction === "left" ? -320 : 320;
+    railRef.current.scrollBy({ left: offset, behavior: "smooth" });
+  };
+
+  return (
+    <section className="mt-12 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="h-6 w-1 rounded-full bg-purple-500" />
+          <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            Dubladores
+          </h2>
+        </div>
+
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          {hasPortuguese ? (
+            <div className="inline-flex items-center rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setSelectedLang("ja")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
+                  activeLang === "ja"
+                    ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
+                    : "text-zinc-400 hover:text-zinc-200",
+                )}
+              >
+                <span className="size-1.5 rounded-full bg-purple-400" />
+                <span>Japonês</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedLang("pt")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
+                  activeLang === "pt"
+                    ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
+                    : "text-zinc-400 hover:text-zinc-200",
+                )}
+              >
+                <span className="size-1.5 rounded-full bg-emerald-400" />
+                <span>Português (BR)</span>
+              </button>
+            </div>
           ) : (
-            <p className="truncate text-[9.5px] sm:text-[10px] italic text-zinc-500 min-w-0">
-              {selectedLang === "pt"
-                ? "Sem dublagem BR"
-                : "Sem dublador creditado"}
-            </p>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/30 px-2.5 py-1 text-[11px] font-medium text-purple-300">
+              <span className="size-1.5 rounded-full bg-purple-400" />
+              Dublagem original (Japonês)
+            </span>
           )}
 
-          <span className="mt-0.5 inline-block rounded bg-white/5 px-1 py-0.5 text-[8px] sm:text-[8.5px] font-medium uppercase tracking-wider text-zinc-400">
-            {selectedLang === "pt" ? "Voz BR" : "Voz JP"}
-          </span>
+          {displayVoiceActors.length > 3 && (
+            <div className="hidden sm:flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => scroll("left")}
+                aria-label="Rolar dubladores para a esquerda"
+                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scroll("right")}
+                aria-label="Rolar dubladores para a direita"
+                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+          )}
         </div>
+      </div>
+
+      <div
+        ref={railRef}
+        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
+      >
+        {displayVoiceActors.map((item, index) => (
+          <DubladorCard
+            key={item.id}
+            item={item}
+            loadImage={index < visibleImgLimit}
+          />
+        ))}
+      </div>
+    </section>
+  );
+});
+
+const DubladorCard = memo(function DubladorCard({
+  item,
+  loadImage,
+}: {
+  item: DubladorItem;
+  loadImage: boolean;
+}) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [item.vaImage]);
+
+  const showImage = Boolean(item.vaImage) && !imgError;
+
+  return (
+    <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
+      {/* Imagem retangular do dublador (foto real da pessoa) */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
+        {showImage ? (
+          loadImage ? (
+            <img
+              src={item.vaImage}
+              alt={item.vaName}
+              onError={() => setImgError(true)}
+              loading="lazy"
+              decoding="async"
+              className="size-full object-cover object-top motion-safe:transition-transform motion-safe:duration-500 ease-out [@media(hover:hover)]:group-hover:scale-105"
+            />
+          ) : (
+            <div className="size-full bg-[#0d0c16]" />
+          )
+        ) : (
+          <div className="flex size-full flex-col items-center justify-center bg-gradient-to-b from-[#18132d] to-[#0c0a15] p-2.5 text-center">
+            <span className="font-display text-xl sm:text-2xl font-black text-purple-400/80">
+              {item.vaName.charAt(0).toUpperCase()}
+            </span>
+            <span className="mt-1 text-[8.5px] sm:text-[9.5px] text-zinc-500 uppercase tracking-widest font-medium">
+              Dublador
+            </span>
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
+
+        {/* Badge do idioma da dublagem */}
+        {item.language && (
+          <span
+            className={cn(
+              "absolute bottom-1.5 left-1.5 max-w-[calc(100%-12px)] truncate rounded px-1.5 py-0.5 text-[8px] sm:text-[8.5px] font-semibold tracking-wider uppercase shadow-sm border",
+              item.langCategory === "pt"
+                ? "bg-emerald-950/92 text-emerald-200 border-emerald-500/40"
+                : "bg-zinc-950/90 text-zinc-300 border-white/10",
+            )}
+          >
+            {item.language}
+          </span>
+        )}
+      </div>
+
+      {/* Textos abaixo da imagem: nome do dublador e associação com o personagem */}
+      <div className="flex flex-1 flex-col justify-between p-2 sm:p-2.5 min-w-0">
+        <p
+          title={item.vaName}
+          className="line-clamp-2 font-display text-[11px] sm:text-xs font-bold text-zinc-100 transition-colors [@media(hover:hover)]:group-hover:text-purple-300 min-w-0 break-words leading-snug"
+        >
+          {item.vaName}
+        </p>
+
+        {item.characterName && (
+          <div className="mt-1.5 min-w-0">
+            <p
+              title={`Dubla ${item.characterName}`}
+              className="truncate text-[9.5px] sm:text-[10px] text-zinc-400 min-w-0"
+            >
+              <span className="text-zinc-500">como </span>
+              <span className="font-medium text-purple-300/90">
+                {item.characterName}
+              </span>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
