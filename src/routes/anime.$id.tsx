@@ -961,6 +961,8 @@ function AnimePage() {
               ? "Personagem"
               : params.targetType === "studio"
               ? "Estúdio"
+              : params.personSnapshot?.biography?.includes("Dublador")
+              ? "Dublador(a)"
               : "Pessoa";
           toast.success(
             `${typeLabel} "${params.name}" adicionado aos favoritos!`,
@@ -2332,8 +2334,8 @@ function AuthPromptModal({
             Organize sua Coleção
           </h3>
           <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed max-w-xs sm:max-w-sm mx-auto">
-            Entre na sua conta para adicionar títulos à sua lista, definir status
-            (Assistindo, Concluídos, etc.), favoritar animes e sincronizar suas estatísticas de perfil.
+            Entre na sua conta para adicionar títulos à sua coleção, favoritar animes,
+            personagens, dubladores, estúdios e equipe técnica, e sincronizar suas preferências.
           </p>
         </div>
 
@@ -4004,12 +4006,30 @@ const DubladorCard = memo(function DubladorCard({
   loadImage: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
+  const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
 
   useEffect(() => {
     setImgError(false);
   }, [item.vaImage]);
 
   const showImage = Boolean(item.vaImage) && !imgError;
+  const vaTargetId = item.vaId ? String(item.vaId) : item.vaName;
+  const isFav = isEntityFavorited("person", vaTargetId, item.vaName);
+
+  const handleToggleFav = async () => {
+    await toggleEntityFavorite({
+      targetType: "person",
+      targetId: vaTargetId,
+      name: item.vaName,
+      personSnapshot: {
+        name: item.vaName,
+        imageUrl: item.vaImage ?? null,
+        biography: item.characterName
+          ? `Dublador(a) como ${item.characterName} (${item.language})`
+          : `Dublador(a) (${item.language})`,
+      },
+    });
+  };
 
   return (
     <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
@@ -4040,6 +4060,17 @@ const DubladorCard = memo(function DubladorCard({
         )}
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
+
+        {/* Botão de Favorito com animação padronizada */}
+        <CardFavoriteButton
+          isFavorite={isFav}
+          onToggle={handleToggleFav}
+          ariaLabel={
+            isFav
+              ? `Remover ${item.vaName} dos favoritos`
+              : `Adicionar ${item.vaName} aos favoritos`
+          }
+        />
 
         {/* Badge do idioma da dublagem */}
         {item.language && (
@@ -4148,7 +4179,7 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
       if (seen.has(key)) continue;
       seen.add(key);
       out.push({
-        id: `studio-${name}`,
+        id: name,
         name,
         role: "Estúdio de animação",
         isStudio: true,
@@ -4237,6 +4268,7 @@ const StaffCard = memo(function StaffCard({
   loadImage,
 }: {
   item: {
+    id?: number | string;
     name: string;
     role: string;
     image?: string;
@@ -4245,6 +4277,7 @@ const StaffCard = memo(function StaffCard({
   loadImage: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
+  const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
 
   useEffect(() => {
     setImgError(false);
@@ -4252,6 +4285,46 @@ const StaffCard = memo(function StaffCard({
 
   const roleText = staffRoleLabel(item.role);
   const showImage = Boolean(item.image) && !imgError;
+
+  const isStudio = Boolean(item.isStudio);
+  const targetType = isStudio ? "studio" : "person";
+  const targetId = isStudio
+    ? item.name
+    : item.id
+    ? String(item.id)
+    : item.name;
+
+  const isFav = isEntityFavorited(targetType, targetId, item.name);
+
+  const handleToggleFav = async () => {
+    if (isStudio) {
+      await toggleEntityFavorite({
+        targetType: "studio",
+        targetId,
+        name: item.name,
+        studioSnapshot: {
+          name: item.name,
+          logoUrl: item.image ?? getStudioLogo(item.name) ?? null,
+          description: "Estúdio de animação",
+        },
+      });
+    } else {
+      await toggleEntityFavorite({
+        targetType: "person",
+        targetId,
+        name: item.name,
+        personSnapshot: {
+          name: item.name,
+          imageUrl: item.image ?? null,
+          biography: roleText || item.role,
+        },
+      });
+    }
+  };
+
+  const itemAriaLabel = isFav
+    ? `Remover ${item.name} dos favoritos`
+    : `Adicionar ${item.name} aos favoritos`;
 
   return (
     <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
@@ -4295,6 +4368,13 @@ const StaffCard = memo(function StaffCard({
         )}
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
+
+        {/* Botão de Favorito com animação padronizada */}
+        <CardFavoriteButton
+          isFavorite={isFav}
+          onToggle={handleToggleFav}
+          ariaLabel={itemAriaLabel}
+        />
       </div>
 
       {/* Textos abaixo da imagem protegidos com min-w-0 e flexbox */}

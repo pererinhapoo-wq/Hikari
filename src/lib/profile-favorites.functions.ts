@@ -52,9 +52,10 @@ async function assertCatalogEntityExists(
       biography?: string | null;
     } | null;
   },
-): Promise<void> {
+): Promise<{ canonicalId: string }> {
   const sql = await getSql();
 
+  let canonicalId = targetId;
   let exists = false;
 
   switch (targetType) {
@@ -95,7 +96,10 @@ async function assertCatalogEntityExists(
           SELECT "id" FROM "catalog_anime" WHERE "id" = ${targetId} LIMIT 1
         `;
       }
-      exists = rows.length > 0;
+      if (rows.length > 0) {
+        canonicalId = rows[0].id;
+        exists = true;
+      }
       break;
     }
     case "character": {
@@ -113,6 +117,7 @@ async function assertCatalogEntityExists(
           ON CONFLICT ("id") DO UPDATE SET
             "name" = COALESCE(EXCLUDED."name", "catalog_character"."name"),
             "imageUrl" = COALESCE(EXCLUDED."imageUrl", "catalog_character"."imageUrl"),
+            "description" = COALESCE(EXCLUDED."description", "catalog_character"."description"),
             "updatedAt" = CURRENT_TIMESTAMP`,
           [
             targetId,
@@ -126,15 +131,18 @@ async function assertCatalogEntityExists(
           SELECT "id" FROM "catalog_character" WHERE "id" = ${targetId} LIMIT 1
         `;
       }
-      exists = rows.length > 0;
+      if (rows.length > 0) {
+        canonicalId = rows[0].id;
+        exists = true;
+      }
       break;
     }
     case "studio": {
+      const nameToUse = snapshots?.studio?.name?.trim() || targetId;
       let rows = await sql<{ id: string }>`
-        SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} LIMIT 1
+        SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} OR "name" = ${nameToUse} LIMIT 1
       `;
       if (rows.length === 0) {
-        const nameToUse = snapshots?.studio?.name?.trim() || targetId;
         const logoToUse = snapshots?.studio?.logoUrl ?? getStudioLogo(nameToUse);
         await sql.query(
           `INSERT INTO "catalog_studio" (
@@ -142,8 +150,7 @@ async function assertCatalogEntityExists(
             "createdAt", "updatedAt"
           )
           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          ON CONFLICT ("id") DO UPDATE SET
-            "name" = COALESCE(EXCLUDED."name", "catalog_studio"."name"),
+          ON CONFLICT ("name") DO UPDATE SET
             "logoUrl" = COALESCE(EXCLUDED."logoUrl", "catalog_studio"."logoUrl"),
             "updatedAt" = CURRENT_TIMESTAMP`,
           [
@@ -155,17 +162,23 @@ async function assertCatalogEntityExists(
           ],
         );
         rows = await sql<{ id: string }>`
-          SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} LIMIT 1
+          SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} OR "name" = ${nameToUse} LIMIT 1
         `;
       }
-      exists = rows.length > 0;
+      if (rows.length > 0) {
+        canonicalId = rows[0].id;
+        exists = true;
+      }
       break;
     }
     case "company": {
       const rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_company" WHERE "id" = ${targetId} LIMIT 1
       `;
-      exists = rows.length > 0;
+      if (rows.length > 0) {
+        canonicalId = rows[0].id;
+        exists = true;
+      }
       break;
     }
     case "person": {
@@ -183,6 +196,7 @@ async function assertCatalogEntityExists(
           ON CONFLICT ("id") DO UPDATE SET
             "name" = COALESCE(EXCLUDED."name", "catalog_person"."name"),
             "imageUrl" = COALESCE(EXCLUDED."imageUrl", "catalog_person"."imageUrl"),
+            "biography" = COALESCE(EXCLUDED."biography", "catalog_person"."biography"),
             "updatedAt" = CURRENT_TIMESTAMP`,
           [
             targetId,
@@ -196,7 +210,10 @@ async function assertCatalogEntityExists(
           SELECT "id" FROM "catalog_person" WHERE "id" = ${targetId} LIMIT 1
         `;
       }
-      exists = rows.length > 0;
+      if (rows.length > 0) {
+        canonicalId = rows[0].id;
+        exists = true;
+      }
       break;
     }
   }
@@ -206,6 +223,8 @@ async function assertCatalogEntityExists(
       `O item de destino (${targetType}) não foi encontrado no catálogo oficial.`,
     );
   }
+
+  return { canonicalId };
 }
 
 /**
@@ -230,12 +249,13 @@ export const addProfileFavorite = createServerFn({
     } = data;
 
     // 1. Verifica se a entidade existe no catálogo (com auto-provisionamento de catálogo se snapshot for enviado)
-    await assertCatalogEntityExists(targetType, targetId, {
+    const { canonicalId } = await assertCatalogEntityExists(targetType, targetId, {
       anime: animeSnapshot,
       character: characterSnapshot,
       studio: studioSnapshot,
       person: personSnapshot,
     });
+    const finalTargetId = canonicalId || targetId;
 
     const sql = await getSql();
 
@@ -244,11 +264,11 @@ export const addProfileFavorite = createServerFn({
       SELECT "id" FROM "user_favorite"
       WHERE "userId" = ${userId}
         AND (
-          (${targetType} = 'anime' AND "animeId" = ${targetId}) OR
-          (${targetType} = 'character' AND "characterId" = ${targetId}) OR
-          (${targetType} = 'studio' AND "studioId" = ${targetId}) OR
-          (${targetType} = 'company' AND "companyId" = ${targetId}) OR
-          (${targetType} = 'person' AND "personId" = ${targetId})
+          (${targetType} = 'anime' AND "animeId" = ${finalTargetId}) OR
+          (${targetType} = 'character' AND "characterId" = ${finalTargetId}) OR
+          (${targetType} = 'studio' AND "studioId" = ${finalTargetId}) OR
+          (${targetType} = 'company' AND "companyId" = ${finalTargetId}) OR
+          (${targetType} = 'person' AND "personId" = ${finalTargetId})
         )
       LIMIT 1
     `;
@@ -258,11 +278,11 @@ export const addProfileFavorite = createServerFn({
     }
 
     // 3. Monta mapeamento exclusivo de colunas conforme targetType
-    const animeId = targetType === "anime" ? targetId : null;
-    const characterId = targetType === "character" ? targetId : null;
-    const studioId = targetType === "studio" ? targetId : null;
-    const companyId = targetType === "company" ? targetId : null;
-    const personId = targetType === "person" ? targetId : null;
+    const animeId = targetType === "anime" ? finalTargetId : null;
+    const characterId = targetType === "character" ? finalTargetId : null;
+    const studioId = targetType === "studio" ? finalTargetId : null;
+    const companyId = targetType === "company" ? finalTargetId : null;
+    const personId = targetType === "person" ? finalTargetId : null;
 
     const favoriteId = crypto.randomUUID();
 
@@ -358,11 +378,11 @@ export const removeProfileFavorite = createServerFn({
           ($2::text IS NOT NULL AND uf."id" = $2)
           OR (
             $3::text IS NOT NULL AND $4::text IS NOT NULL AND uf."targetType" = $3 AND (
-              ($3 = 'anime' AND uf."animeId" = $4) OR
-              ($3 = 'character' AND uf."characterId" = $4) OR
-              ($3 = 'studio' AND uf."studioId" = $4) OR
-              ($3 = 'company' AND uf."companyId" = $4) OR
-              ($3 = 'person' AND uf."personId" = $4)
+              ($3 = 'anime' AND (uf."animeId" = $4 OR uf."animeId" IN (SELECT ca."id" FROM "catalog_anime" ca WHERE ca."title" = $4))) OR
+              ($3 = 'character' AND (uf."characterId" = $4 OR uf."characterId" IN (SELECT cc."id" FROM "catalog_character" cc WHERE cc."name" = $4))) OR
+              ($3 = 'studio' AND (uf."studioId" = $4 OR uf."studioId" IN (SELECT cs."id" FROM "catalog_studio" cs WHERE cs."name" = $4))) OR
+              ($3 = 'company' AND (uf."companyId" = $4 OR uf."companyId" IN (SELECT cco."id" FROM "catalog_company" cco WHERE cco."name" = $4))) OR
+              ($3 = 'person' AND (uf."personId" = $4 OR uf."personId" IN (SELECT cp."id" FROM "catalog_person" cp WHERE cp."name" = $4)))
             )
           )
         )
@@ -450,6 +470,7 @@ export const getMyProfileFavorites = createServerFn({
             COALESCE(
               (SELECT ans."role" FROM "anime_staff" ans WHERE ans."personId" = cp."id" LIMIT 1),
               (SELECT 'Dublador(a) (' || cva."language" || ')' FROM "character_voice_actor" cva WHERE cva."personId" = cp."id" LIMIT 1),
+              NULLIF(cp."biography", ''),
               'Produção & Elenco'
             )
           ELSE NULL
@@ -581,6 +602,7 @@ export const getPublicProfileFavorites = createServerFn({
             COALESCE(
               (SELECT ans."role" FROM "anime_staff" ans WHERE ans."personId" = cp."id" LIMIT 1),
               (SELECT 'Dublador(a) (' || cva."language" || ')' FROM "character_voice_actor" cva WHERE cva."personId" = cp."id" LIMIT 1),
+              NULLIF(cp."biography", ''),
               'Produção & Elenco'
             )
           ELSE NULL
