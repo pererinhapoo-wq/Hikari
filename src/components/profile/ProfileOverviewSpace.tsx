@@ -1,6 +1,6 @@
 import { ProfileAnimeStats } from "@/components/profile/ProfileAnimeStats";
 import { ProfileOverviewFavorites } from "@/components/profile/ProfileOverviewFavorites";
-import type { ProfileFavoritesGrouped } from "@/types/favorite";
+import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
 import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
 
 interface ProfileOverviewSpaceProps {
@@ -8,6 +8,7 @@ interface ProfileOverviewSpaceProps {
   favoritesGrouped: ProfileFavoritesGrouped;
   loading?: boolean;
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
+  onRemoveFavorite?: (item: ProfileFavoriteItem) => Promise<void> | void;
 }
 
 export function ProfileOverviewSpace({
@@ -15,6 +16,7 @@ export function ProfileOverviewSpace({
   favoritesGrouped,
   loading = false,
   onUpdateItem,
+  onRemoveFavorite,
 }: ProfileOverviewSpaceProps) {
   if (loading) {
     return (
@@ -34,7 +36,10 @@ export function ProfileOverviewSpace({
       <ProfileAnimeStats items={trackingItems} onUpdateItem={onUpdateItem} />
 
       {/* Seções B, C, D, E: Favoritos (Animes, Personagens, Studios, People) */}
-      <ProfileOverviewFavorites grouped={favoritesGrouped} />
+      <ProfileOverviewFavorites
+        grouped={favoritesGrouped}
+        onRemoveFavorite={onRemoveFavorite}
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   Film,
   Heart,
   Search,
+  Trash2,
   User,
   Users,
 } from "lucide-react";
@@ -14,23 +15,38 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
 
 interface ProfileOverviewFavoritesProps {
   grouped: ProfileFavoritesGrouped;
+  onRemoveFavorite?: (item: ProfileFavoriteItem) => Promise<void> | void;
 }
 
 export function ProfileOverviewFavorites({
   grouped,
+  onRemoveFavorite,
 }: ProfileOverviewFavoritesProps) {
   const [selectedEntity, setSelectedEntity] = useState<ProfileFavoriteItem | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   // Exibir no máximo 10 itens por categoria, preservando a ordem canônica real
   const animes = (grouped.anime ?? []).slice(0, 10);
   const characters = (grouped.character ?? []).slice(0, 10);
   const studios = (grouped.studio ?? []).slice(0, 10);
   const people = (grouped.person ?? []).slice(0, 10);
+
+  const handleModalRemove = async (item: ProfileFavoriteItem) => {
+    if (!onRemoveFavorite) return;
+    setRemovingId(item.id);
+    try {
+      await onRemoveFavorite(item);
+      setSelectedEntity(null);
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   return (
     <div className="space-y-10 sm:space-y-12">
@@ -140,6 +156,8 @@ export function ProfileOverviewFavorites({
           entity={selectedEntity}
           open={Boolean(selectedEntity)}
           onClose={() => setSelectedEntity(null)}
+          onRemove={onRemoveFavorite ? handleModalRemove : undefined}
+          isRemoving={removingId === selectedEntity.id}
         />
       )}
     </div>
@@ -204,7 +222,8 @@ function CharacterFavoriteCard({
   item: ProfileFavoriteItem;
   onClick: () => void;
 }) {
-  const initial = item.title.charAt(0).toUpperCase();
+  const [imgError, setImgError] = useState(false);
+  const initial = (item.title || "?").charAt(0).toUpperCase();
 
   return (
     <button
@@ -214,10 +233,11 @@ function CharacterFavoriteCard({
     >
       {/* Imagem do Personagem com proporção 3/4 preservada */}
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224]">
-        {item.image ? (
+        {item.image && !imgError ? (
           <img
             src={item.image}
             alt={item.title}
+            onError={() => setImgError(true)}
             loading="lazy"
             className="size-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
           />
@@ -242,13 +262,13 @@ function CharacterFavoriteCard({
         >
           {item.title}
         </h4>
-        {item.nativeTitle ? (
-          <p className="truncate text-[10px] sm:text-xs text-purple-300/80 font-mono">
-            {item.nativeTitle}
-          </p>
-        ) : item.subtitle ? (
-          <p className="truncate text-[10px] sm:text-xs text-zinc-400">
+        {item.subtitle ? (
+          <p className="truncate text-[10px] sm:text-xs text-purple-300/80">
             {item.subtitle}
+          </p>
+        ) : item.nativeTitle ? (
+          <p className="truncate text-[10px] sm:text-xs text-zinc-400 font-mono">
+            {item.nativeTitle}
           </p>
         ) : null}
       </div>
@@ -263,6 +283,9 @@ function StudioFavoriteCard({
   item: ProfileFavoriteItem;
   onClick: () => void;
 }) {
+  const [imgError, setImgError] = useState(false);
+  const logo = (!imgError && item.image) ? item.image : getStudioLogo(item.title);
+
   return (
     <button
       type="button"
@@ -271,10 +294,11 @@ function StudioFavoriteCard({
     >
       {/* Imagem/Logo do Studio com proporção 3/4 preservada */}
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224] flex items-center justify-center p-2.5 sm:p-4">
-        {item.image ? (
+        {logo ? (
           <img
-            src={item.image}
+            src={logo}
             alt={item.title}
+            onError={() => setImgError(true)}
             loading="lazy"
             className="max-h-full max-w-full object-contain transition-transform duration-500 group-hover:scale-105"
           />
@@ -317,7 +341,8 @@ function PersonFavoriteCard({
   item: ProfileFavoriteItem;
   onClick: () => void;
 }) {
-  const initial = item.title.charAt(0).toUpperCase();
+  const [imgError, setImgError] = useState(false);
+  const initial = (item.title || "?").charAt(0).toUpperCase();
 
   return (
     <button
@@ -327,10 +352,11 @@ function PersonFavoriteCard({
     >
       {/* Foto real da pessoa (diretor, dublador, criador) com proporção 3/4 */}
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224]">
-        {item.image ? (
+        {item.image && !imgError ? (
           <img
             src={item.image}
             alt={item.title}
+            onError={() => setImgError(true)}
             loading="lazy"
             className="size-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
           />
@@ -355,13 +381,17 @@ function PersonFavoriteCard({
         >
           {item.title}
         </h4>
-        {item.nativeTitle ? (
-          <p className="truncate text-[10px] sm:text-xs text-sky-300/80 font-mono">
+        {item.subtitle ? (
+          <p className="truncate text-[10px] sm:text-xs text-sky-300/80">
+            {item.subtitle}
+          </p>
+        ) : item.nativeTitle ? (
+          <p className="truncate text-[10px] sm:text-xs text-zinc-400 font-mono">
             {item.nativeTitle}
           </p>
         ) : (
           <p className="truncate text-[10px] sm:text-xs text-zinc-400">
-            {item.subtitle || "Produção & Elenco"}
+            Produção & Elenco
           </p>
         )}
       </div>
@@ -396,10 +426,14 @@ function EntityDetailModal({
   entity,
   open,
   onClose,
+  onRemove,
+  isRemoving = false,
 }: {
   entity: ProfileFavoriteItem;
   open: boolean;
   onClose: () => void;
+  onRemove?: (item: ProfileFavoriteItem) => void;
+  isRemoving?: boolean;
 }) {
   const isCharacter = entity.targetType === "character";
   const isStudio = entity.targetType === "studio";
@@ -414,16 +448,19 @@ function EntityDetailModal({
     : "Favorito";
 
   const TypeIcon = isCharacter ? Users : isStudio ? Building2 : User;
+  const displayImage = isStudio
+    ? (entity.image || getStudioLogo(entity.title))
+    : entity.image;
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent className="border border-white/10 bg-[#0e0c19] text-white p-5 sm:p-6 w-[min(100%-1.5rem,32rem)] rounded-2xl sm:rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.85)]">
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-start">
           {/* Mídia do item */}
-          <div className="relative aspect-[3/4] w-28 sm:w-36 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#151224] shadow-md mx-auto sm:mx-0">
-            {entity.image ? (
+          <div className="relative aspect-[3/4] w-28 sm:w-36 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#151224] shadow-md mx-auto sm:mx-0 flex items-center justify-center">
+            {displayImage ? (
               <img
-                src={entity.image}
+                src={displayImage}
                 alt={entity.title}
                 className={cn(
                   "size-full",
@@ -432,7 +469,7 @@ function EntityDetailModal({
               />
             ) : (
               <div className="flex size-full items-center justify-center font-display text-3xl font-bold text-purple-400">
-                {entity.title.charAt(0).toUpperCase()}
+                {(entity.title || "?").charAt(0).toUpperCase()}
               </div>
             )}
 
@@ -464,22 +501,32 @@ function EntityDetailModal({
               </p>
             )}
 
-            {entity.description && (
-              <DialogDescription className="text-xs text-zinc-300 leading-relaxed max-h-36 overflow-y-auto no-scrollbar pr-1 mt-2">
-                {entity.description}
-              </DialogDescription>
-            )}
+            <DialogDescription className="text-xs text-zinc-300 leading-relaxed max-h-36 overflow-y-auto no-scrollbar pr-1 mt-2">
+              {entity.description || "Informações e créditos canônicos registrados no catálogo do Hikari."}
+            </DialogDescription>
 
-            <div className="pt-3">
+            <div className="pt-3 flex flex-wrap items-center gap-2">
               <Link
                 to="/search"
                 search={{ q: entity.title }}
                 onClick={onClose}
-                className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-purple-500 shadow-[0_4px_16px_rgba(168,85,247,0.3)] active:scale-95"
+                className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-semibold text-white transition-all hover:bg-purple-500 shadow-[0_4px_16px_rgba(168,85,247,0.3)] active:scale-95"
               >
                 <Search className="size-3.5" />
-                <span>Ver produções no catálogo</span>
+                <span>Ver produções</span>
               </Link>
+
+              {onRemove && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(entity)}
+                  disabled={isRemoving}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-500/20 hover:border-red-500/50 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  <Trash2 className="size-3 text-red-400" />
+                  <span>{isRemoving ? "Removendo..." : "Remover favorito"}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

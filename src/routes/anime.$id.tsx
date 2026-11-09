@@ -29,12 +29,16 @@ import {
   addProfileFavorite,
   removeProfileFavorite,
 } from "@/lib/profile-favorites.functions";
+import type { FavoriteTargetType } from "@/types/favorite";
+import { CardFavoriteButton } from "@/components/anime/CardFavoriteButton";
 import {
   Suspense,
+  createContext,
   lazy,
   memo,
   startTransition,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -42,6 +46,46 @@ import {
   useState,
   type RefObject,
 } from "react";
+
+interface FavoritesEntityContextType {
+  isEntityFavorited: (
+    targetType: "character" | "studio" | "person",
+    targetId: string,
+    name?: string,
+  ) => boolean;
+  toggleEntityFavorite: (params: {
+    targetType: "character" | "studio" | "person";
+    targetId: string;
+    name: string;
+    characterSnapshot?: {
+      name: string;
+      nativeName?: string | null;
+      imageUrl?: string | null;
+      role?: string | null;
+      description?: string | null;
+    };
+    studioSnapshot?: {
+      name: string;
+      logoUrl?: string | null;
+      establishedYear?: number | null;
+      description?: string | null;
+    };
+    personSnapshot?: {
+      name: string;
+      nativeName?: string | null;
+      imageUrl?: string | null;
+      biography?: string | null;
+      primaryOccupation?: string | null;
+    };
+  }) => Promise<void>;
+}
+
+const FavoritesEntityContext = createContext<FavoritesEntityContextType>({
+  isEntityFavorited: () => false,
+  toggleEntityFavorite: async () => {},
+});
+
+const useFavoritesEntity = () => useContext(FavoritesEntityContext);
 
 import { AnimeCard } from "@/components/anime-card";
 const CommentsSection = lazy(() =>
@@ -699,6 +743,11 @@ function AnimePage() {
   const [favFavoriteId, setFavFavoriteId] = useState<string | null>(null);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
+  // Mapa de favoritos do perfil indexados por targetType:targetId e targetType:title
+  const [favoriteEntities, setFavoriteEntities] = useState<
+    Map<string, { id: string; targetType: FavoriteTargetType; targetId: string }>
+  >(new Map());
+
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Item de acompanhamento estruturado para reutilização do ProfileAnimeEditModal do Perfil
@@ -735,7 +784,7 @@ function AnimePage() {
     trackingEpisodesWatched,
   ]);
 
-  // Consulta status de acompanhamento e favoritos do usuário para este anime
+  // Consulta status de acompanhamento e favoritos do usuário para este anime e demais entidades
   useEffect(() => {
     if (!user?.id || !anime?.id) {
       setTrackingStatus(null);
@@ -743,6 +792,7 @@ function AnimePage() {
       setTrackingScore(null);
       setIsFavorite(false);
       setFavFavoriteId(null);
+      setFavoriteEntities(new Map());
       return;
     }
 
@@ -767,11 +817,33 @@ function AnimePage() {
         console.warn("Erro ao buscar acompanhamento do anime:", err);
       });
 
-    // 2. Busca favoritos oficiais do perfil
-    void getFavoritesFn({ data: { targetType: "anime", targetId: anime.id } })
+    // 2. Busca favoritos oficiais do perfil (anime, personagens, estúdios, pessoas)
+    void getFavoritesFn({ data: {} })
       .then((res) => {
         if (!active) return;
-        const match = res.items.find((item) => item.targetId === anime.id);
+        const newMap = new Map<
+          string,
+          { id: string; targetType: FavoriteTargetType; targetId: string }
+        >();
+        for (const item of res.items) {
+          newMap.set(`${item.targetType}:${item.targetId}`, {
+            id: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+          });
+          if (item.title) {
+            newMap.set(`${item.targetType}:${item.title.toLowerCase().trim()}`, {
+              id: item.id,
+              targetType: item.targetType,
+              targetId: item.targetId,
+            });
+          }
+        }
+        setFavoriteEntities(newMap);
+
+        const match = res.items.find(
+          (item) => item.targetType === "anime" && item.targetId === anime.id,
+        );
         if (match) {
           setIsFavorite(true);
           setFavFavoriteId(match.id);
@@ -781,13 +853,153 @@ function AnimePage() {
         }
       })
       .catch((err) => {
-        console.warn("Erro ao buscar favorito do anime:", err);
+        console.warn("Erro ao buscar favoritos:", err);
       });
 
     return () => {
       active = false;
     };
   }, [user?.id, anime?.id, getTrackingFn, getFavoritesFn]);
+
+  const isEntityFavorited = useCallback(
+    (
+      targetType: "character" | "studio" | "person",
+      targetId: string,
+      name?: string,
+    ): boolean => {
+      const keyId = `${targetType}:${targetId}`;
+      if (favoriteEntities.has(keyId)) return true;
+      if (name) {
+        const keyName = `${targetType}:${name.toLowerCase().trim()}`;
+        if (favoriteEntities.has(keyName)) return true;
+      }
+      return false;
+    },
+    [favoriteEntities],
+  );
+
+  const handleToggleEntityFavorite = useCallback(
+    async (params: {
+      targetType: "character" | "studio" | "person";
+      targetId: string;
+      name: string;
+      characterSnapshot?: {
+        name: string;
+        nativeName?: string | null;
+        imageUrl?: string | null;
+        role?: string | null;
+        description?: string | null;
+      };
+      studioSnapshot?: {
+        name: string;
+        logoUrl?: string | null;
+        establishedYear?: number | null;
+        description?: string | null;
+      };
+      personSnapshot?: {
+        name: string;
+        nativeName?: string | null;
+        imageUrl?: string | null;
+        biography?: string | null;
+        primaryOccupation?: string | null;
+      };
+    }) => {
+      if (!user) {
+        setShowAuthModal(true);
+        return;
+      }
+
+      const keyId = `${params.targetType}:${params.targetId}`;
+      const keyName = `${params.targetType}:${params.name.toLowerCase().trim()}`;
+      const existing =
+        favoriteEntities.get(keyId) || favoriteEntities.get(keyName);
+      const isCurrentlyFavorite = Boolean(existing);
+      const willBeFavorite = !isCurrentlyFavorite;
+
+      // 1. Atualização visual imediata na UI
+      setFavoriteEntities((prev) => {
+        const next = new Map(prev);
+        if (willBeFavorite) {
+          const tempFav = {
+            id: `temp-${Date.now()}`,
+            targetType: params.targetType,
+            targetId: params.targetId,
+          };
+          next.set(keyId, tempFav);
+          next.set(keyName, tempFav);
+        } else {
+          next.delete(keyId);
+          next.delete(keyName);
+        }
+        return next;
+      });
+
+      try {
+        if (willBeFavorite) {
+          const created = await addFavoriteFn({
+            data: {
+              targetType: params.targetType,
+              targetId: params.targetId,
+              characterSnapshot: params.characterSnapshot,
+              studioSnapshot: params.studioSnapshot,
+              personSnapshot: params.personSnapshot,
+            },
+          });
+          setFavoriteEntities((prev) => {
+            const next = new Map(prev);
+            const realFav = {
+              id: created.id,
+              targetType: params.targetType,
+              targetId: params.targetId,
+            };
+            next.set(keyId, realFav);
+            next.set(keyName, realFav);
+            return next;
+          });
+          const typeLabel =
+            params.targetType === "character"
+              ? "Personagem"
+              : params.targetType === "studio"
+              ? "Estúdio"
+              : "Pessoa";
+          toast.success(
+            `${typeLabel} "${params.name}" adicionado aos favoritos!`,
+          );
+        } else {
+          await removeFavoriteFn({
+            data: {
+              targetType: params.targetType,
+              targetId: existing?.targetId || params.targetId,
+              favoriteId:
+                existing?.id && !existing.id.startsWith("temp-")
+                  ? existing.id
+                  : undefined,
+            },
+          });
+          toast.info(`"${params.name}" removido dos favoritos.`);
+        }
+      } catch (err: unknown) {
+        // Reverte se a requisição falhar
+        setFavoriteEntities((prev) => {
+          const next = new Map(prev);
+          if (isCurrentlyFavorite && existing) {
+            next.set(keyId, existing);
+            next.set(keyName, existing);
+          } else {
+            next.delete(keyId);
+            next.delete(keyName);
+          }
+          return next;
+        });
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Erro ao atualizar favoritos.";
+        toast.error(msg);
+      }
+    },
+    [user, favoriteEntities, addFavoriteFn, removeFavoriteFn],
+  );
 
   // Ações de salvar e remover da coleção
   const handleSaveCollection = async (data: {
@@ -1979,33 +2191,41 @@ function AnimePage() {
         </section>
       )}
 
-      {/* 1. PERSONAGENS (ELENCO) */}
-      <SectionReveal minHeight="260px" rootMargin="300px 0px">
-        <ElencoSection
-          key={`elenco-${anime.id}`}
-          animeId={anime.id}
-          characters={effectiveCharacters}
-        />
-      </SectionReveal>
+      {/* 1. PERSONAGENS, DUBLADORES, ESTÚDIOS E EQUIPE TÉCNICA COM SUPORTE A FAVORITOS */}
+      <FavoritesEntityContext.Provider
+        value={{
+          isEntityFavorited,
+          toggleEntityFavorite: handleToggleEntityFavorite,
+        }}
+      >
+        {/* 1. PERSONAGENS (ELENCO) */}
+        <SectionReveal minHeight="260px" rootMargin="300px 0px">
+          <ElencoSection
+            key={`elenco-${anime.id}`}
+            animeId={anime.id}
+            characters={effectiveCharacters}
+          />
+        </SectionReveal>
 
-      {/* 2. DUBLADORES */}
-      <SectionReveal minHeight="260px" rootMargin="300px 0px">
-        <DubladoresSection
-          key={`dubladores-${anime.id}`}
-          animeId={anime.id}
-          characters={effectiveCharacters}
-        />
-      </SectionReveal>
+        {/* 2. DUBLADORES */}
+        <SectionReveal minHeight="260px" rootMargin="300px 0px">
+          <DubladoresSection
+            key={`dubladores-${anime.id}`}
+            animeId={anime.id}
+            characters={effectiveCharacters}
+          />
+        </SectionReveal>
 
-      {/* 3. DIREÇÃO E EQUIPE TÉCNICA */}
-      <SectionReveal minHeight="200px" rootMargin="300px 0px">
-        <DirecaoEquipeSection
-          key={`staff-${anime.id}`}
-          animeId={anime.id}
-          studios={effectiveStudios}
-          staff={effectiveStaff}
-        />
-      </SectionReveal>
+        {/* 3. DIREÇÃO E EQUIPE TÉCNICA */}
+        <SectionReveal minHeight="200px" rootMargin="300px 0px">
+          <DirecaoEquipeSection
+            key={`staff-${anime.id}`}
+            animeId={anime.id}
+            studios={effectiveStudios}
+            staff={effectiveStaff}
+          />
+        </SectionReveal>
+      </FavoritesEntityContext.Provider>
 
       {/* 3. INFORMAÇÕES ADICIONAIS */}
       <SectionReveal minHeight="180px" rootMargin="300px 0px">
@@ -3432,6 +3652,7 @@ const ElencoCard = memo(function ElencoCard({
   loadImage: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
+  const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
 
   useEffect(() => {
     setImgError(false);
@@ -3441,6 +3662,23 @@ const ElencoCard = memo(function ElencoCard({
   const isMain = (char.role ?? "").toUpperCase() === "MAIN";
   const roleLabel = isMain ? "Protagonista" : "Secundário";
   const showImage = Boolean(char.image) && !imgError;
+
+  const charTargetId = char.id ? String(char.id) : charName;
+  const isFav = isEntityFavorited("character", charTargetId, charName);
+
+  const handleToggleFav = async () => {
+    await toggleEntityFavorite({
+      targetType: "character",
+      targetId: charTargetId,
+      name: charName,
+      characterSnapshot: {
+        name: charName,
+        nativeName: char.name?.native ?? null,
+        imageUrl: char.image ?? null,
+        role: roleLabel,
+      },
+    });
+  };
 
   return (
     <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
@@ -3466,6 +3704,17 @@ const ElencoCard = memo(function ElencoCard({
         )}
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
+
+        {/* Botão de Favorito com animação padronizada */}
+        <CardFavoriteButton
+          isFavorite={isFav}
+          onToggle={handleToggleFav}
+          ariaLabel={
+            isFav
+              ? `Remover ${charName} dos favoritos`
+              : `Adicionar ${charName} aos favoritos`
+          }
+        />
 
         {/* Linha discreta para a função (Principal / Secundário) protegida contra overflow */}
         <span

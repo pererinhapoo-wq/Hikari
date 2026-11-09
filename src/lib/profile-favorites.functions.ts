@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware, optionalAuthMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
+import { getStudioLogo } from "@/lib/studio-logos";
 import {
   addFavoriteSchema,
   removeFavoriteSchema,
@@ -61,8 +62,8 @@ async function assertCatalogEntityExists(
       let rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_anime" WHERE "id" = ${targetId} LIMIT 1
       `;
-      if (rows.length === 0 && snapshots?.anime) {
-        const titleToUse = snapshots.anime.title?.trim() || targetId;
+      if (rows.length === 0) {
+        const titleToUse = snapshots?.anime?.title?.trim() || targetId;
         await sql.query(
           `INSERT INTO "catalog_anime" (
             "id", "title", "titleRomaji", "titleEnglish", "titleNative",
@@ -78,16 +79,16 @@ async function assertCatalogEntityExists(
           [
             targetId,
             titleToUse,
-            snapshots.anime.titleRomaji ?? null,
-            snapshots.anime.titleEnglish ?? null,
-            snapshots.anime.titleNative ?? null,
-            snapshots.anime.cover ?? null,
-            snapshots.anime.banner ?? null,
-            snapshots.anime.synopsis ?? null,
-            snapshots.anime.format ?? null,
-            snapshots.anime.year ?? null,
-            snapshots.anime.episodesCount ?? null,
-            snapshots.anime.status ?? null,
+            snapshots?.anime?.titleRomaji ?? null,
+            snapshots?.anime?.titleEnglish ?? null,
+            snapshots?.anime?.titleNative ?? null,
+            snapshots?.anime?.cover ?? null,
+            snapshots?.anime?.banner ?? null,
+            snapshots?.anime?.synopsis ?? null,
+            snapshots?.anime?.format ?? null,
+            snapshots?.anime?.year ?? null,
+            snapshots?.anime?.episodesCount ?? null,
+            snapshots?.anime?.status ?? null,
           ],
         );
         rows = await sql<{ id: string }>`
@@ -101,8 +102,8 @@ async function assertCatalogEntityExists(
       let rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_character" WHERE "id" = ${targetId} LIMIT 1
       `;
-      if (rows.length === 0 && snapshots?.character) {
-        const nameToUse = snapshots.character.name?.trim() || targetId;
+      if (rows.length === 0) {
+        const nameToUse = snapshots?.character?.name?.trim() || targetId;
         await sql.query(
           `INSERT INTO "catalog_character" (
             "id", "name", "nativeName", "imageUrl", "description",
@@ -116,9 +117,9 @@ async function assertCatalogEntityExists(
           [
             targetId,
             nameToUse,
-            snapshots.character.nativeName ?? null,
-            snapshots.character.imageUrl ?? null,
-            snapshots.character.description ?? null,
+            snapshots?.character?.nativeName ?? null,
+            snapshots?.character?.imageUrl ?? null,
+            snapshots?.character?.description ?? null,
           ],
         );
         rows = await sql<{ id: string }>`
@@ -132,8 +133,9 @@ async function assertCatalogEntityExists(
       let rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} LIMIT 1
       `;
-      if (rows.length === 0 && snapshots?.studio) {
-        const nameToUse = snapshots.studio.name?.trim() || targetId;
+      if (rows.length === 0) {
+        const nameToUse = snapshots?.studio?.name?.trim() || targetId;
+        const logoToUse = snapshots?.studio?.logoUrl ?? getStudioLogo(nameToUse);
         await sql.query(
           `INSERT INTO "catalog_studio" (
             "id", "name", "logoUrl", "establishedYear", "description",
@@ -147,9 +149,9 @@ async function assertCatalogEntityExists(
           [
             targetId,
             nameToUse,
-            snapshots.studio.logoUrl ?? null,
-            snapshots.studio.establishedYear ?? null,
-            snapshots.studio.description ?? null,
+            logoToUse,
+            snapshots?.studio?.establishedYear ?? null,
+            snapshots?.studio?.description ?? null,
           ],
         );
         rows = await sql<{ id: string }>`
@@ -170,8 +172,8 @@ async function assertCatalogEntityExists(
       let rows = await sql<{ id: string }>`
         SELECT "id" FROM "catalog_person" WHERE "id" = ${targetId} LIMIT 1
       `;
-      if (rows.length === 0 && snapshots?.person) {
-        const nameToUse = snapshots.person.name?.trim() || targetId;
+      if (rows.length === 0) {
+        const nameToUse = snapshots?.person?.name?.trim() || targetId;
         await sql.query(
           `INSERT INTO "catalog_person" (
             "id", "name", "nativeName", "imageUrl", "biography",
@@ -185,9 +187,9 @@ async function assertCatalogEntityExists(
           [
             targetId,
             nameToUse,
-            snapshots.person.nativeName ?? null,
-            snapshots.person.imageUrl ?? null,
-            snapshots.person.biography ?? null,
+            snapshots?.person?.nativeName ?? null,
+            snapshots?.person?.imageUrl ?? null,
+            snapshots?.person?.biography ?? null,
           ],
         );
         rows = await sql<{ id: string }>`
@@ -425,9 +427,31 @@ export const getMyProfileFavorites = createServerFn({
               WHEN ca."year" IS NOT NULL THEN ca."year"::text
               ELSE ca."format"
             END
+          WHEN uf."targetType" = 'character' THEN
+            COALESCE(
+              (SELECT CASE
+                WHEN ac."role" = 'main' THEN 'Protagonista'
+                WHEN ac."role" = 'supporting' THEN 'Secundário'
+                ELSE 'Personagem'
+               END
+               FROM "anime_character" ac
+               WHERE ac."characterId" = cc."id"
+               LIMIT 1
+              ),
+              'Personagem'
+            )
           WHEN uf."targetType" = 'studio' THEN
-            CASE WHEN cs."establishedYear" IS NOT NULL THEN 'Fundado em ' || cs."establishedYear" ELSE NULL END
+            CASE
+              WHEN cs."establishedYear" IS NOT NULL THEN 'Fundado em ' || cs."establishedYear"
+              ELSE 'Estúdio de animação'
+            END
           WHEN uf."targetType" = 'company' THEN cco."website"
+          WHEN uf."targetType" = 'person' THEN
+            COALESCE(
+              (SELECT ans."role" FROM "anime_staff" ans WHERE ans."personId" = cp."id" LIMIT 1),
+              (SELECT 'Dublador(a) (' || cva."language" || ')' FROM "character_voice_actor" cva WHERE cva."personId" = cp."id" LIMIT 1),
+              'Produção & Elenco'
+            )
           ELSE NULL
         END AS "subtitle"
       FROM "user_favorite" uf
@@ -466,7 +490,7 @@ export const getMyProfileFavorites = createServerFn({
       createdAt: row.createdAt,
       title: row.title,
       nativeTitle: row.nativeTitle ?? null,
-      image: row.image ?? null,
+      image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
       banner: row.banner ?? null,
       description: row.description ?? null,
       subtitle: row.subtitle ?? null,
@@ -534,9 +558,31 @@ export const getPublicProfileFavorites = createServerFn({
               WHEN ca."year" IS NOT NULL THEN ca."year"::text
               ELSE ca."format"
             END
+          WHEN uf."targetType" = 'character' THEN
+            COALESCE(
+              (SELECT CASE
+                WHEN ac."role" = 'main' THEN 'Protagonista'
+                WHEN ac."role" = 'supporting' THEN 'Secundário'
+                ELSE 'Personagem'
+               END
+               FROM "anime_character" ac
+               WHERE ac."characterId" = cc."id"
+               LIMIT 1
+              ),
+              'Personagem'
+            )
           WHEN uf."targetType" = 'studio' THEN
-            CASE WHEN cs."establishedYear" IS NOT NULL THEN 'Fundado em ' || cs."establishedYear" ELSE NULL END
+            CASE
+              WHEN cs."establishedYear" IS NOT NULL THEN 'Fundado em ' || cs."establishedYear"
+              ELSE 'Estúdio de animação'
+            END
           WHEN uf."targetType" = 'company' THEN cco."website"
+          WHEN uf."targetType" = 'person' THEN
+            COALESCE(
+              (SELECT ans."role" FROM "anime_staff" ans WHERE ans."personId" = cp."id" LIMIT 1),
+              (SELECT 'Dublador(a) (' || cva."language" || ')' FROM "character_voice_actor" cva WHERE cva."personId" = cp."id" LIMIT 1),
+              'Produção & Elenco'
+            )
           ELSE NULL
         END AS "subtitle"
       FROM "user_favorite" uf
@@ -574,7 +620,7 @@ export const getPublicProfileFavorites = createServerFn({
       createdAt: row.createdAt,
       title: row.title,
       nativeTitle: row.nativeTitle ?? null,
-      image: row.image ?? null,
+      image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
       banner: row.banner ?? null,
       description: row.description ?? null,
       subtitle: row.subtitle ?? null,

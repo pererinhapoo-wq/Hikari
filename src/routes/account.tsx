@@ -22,7 +22,10 @@ import {
   rejectFollowRequest,
 } from "@/lib/profile.functions";
 
-import { getMyProfileFavorites } from "@/lib/profile-favorites.functions";
+import {
+  getMyProfileFavorites,
+  removeProfileFavorite,
+} from "@/lib/profile-favorites.functions";
 import { getMyProfileLists } from "@/lib/profile-lists.functions";
 import {
   getMyAnimeTracking,
@@ -106,6 +109,7 @@ function AccountProfile() {
   const getCommentsFn = useServerFn(getMyComments);
   const getTrackingFn = useServerFn(getMyAnimeTracking);
   const getFavoritesFn = useServerFn(getMyProfileFavorites);
+  const removeFavoriteFn = useServerFn(removeProfileFavorite);
   const getListsFn = useServerFn(getMyProfileLists);
   const getActivitiesFn = useServerFn(getMyActivities);
 
@@ -359,6 +363,29 @@ function AccountProfile() {
     setTrackingItems((prev) =>
       prev.map((item) => (item.animeId === updated.animeId ? updated : item)),
     );
+  };
+
+  const handleRemoveFavorite = async (item: ProfileFavoriteItem) => {
+    try {
+      await removeFavoriteFn({
+        data: {
+          favoriteId: item.id,
+          targetType: item.targetType,
+          targetId: item.targetId,
+        },
+      });
+      setFavoritesGrouped((prev) => ({
+        ...prev,
+        [item.targetType]: (prev[item.targetType] ?? []).filter(
+          (f) => f.id !== item.id && f.targetId !== item.targetId,
+        ),
+      }));
+      setFavoritesItems((prev) => prev.filter((f) => f.id !== item.id));
+      toast.info(`"${item.title}" removido dos favoritos.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao remover favorito.";
+      toast.error(msg);
+    }
   };
 
   // Abrir conexões (Seguidores / Seguindo / Solicitações)
@@ -641,6 +668,7 @@ function AccountProfile() {
               favoritesGrouped={favoritesGrouped}
               loading={trackingLoading || favoritesLoading}
               onUpdateItem={handleUpdateTrackingItem}
+              onRemoveFavorite={handleRemoveFavorite}
             />
           )}
 
