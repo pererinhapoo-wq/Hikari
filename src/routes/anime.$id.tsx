@@ -141,6 +141,10 @@ import {
   type SlimAnime,
 } from "@/lib/types";
 import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
+import {
+  EntityWorksExpansion,
+  type SelectedEntityTarget,
+} from "@/components/anime/EntityWorksExpansion";
 
 const EMPTY_WATCHED_EPISODES: string[] = [];
 const MOBILE_BANNER_MEDIA_QUERY = "(max-width: 639.98px)";
@@ -3821,6 +3825,7 @@ const DubladoresSection = memo(function DubladoresSection({
   characters?: AnimeCharacter[];
 }) {
   const [selectedLang, setSelectedLang] = useState<"ja" | "pt">("ja");
+  const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
 
   const validCharacters = useMemo(() => {
@@ -3991,9 +3996,30 @@ const DubladoresSection = memo(function DubladoresSection({
             key={item.id}
             item={item}
             loadImage={index < visibleImgLimit}
+            isSelected={expandedEntity?.name === item.vaName}
+            onSelect={() => {
+              setExpandedEntity({
+                type: "dublador",
+                id: item.vaId,
+                name: item.vaName,
+                image: item.vaImage,
+                subtitle: item.characterName
+                  ? `Dubla ${item.characterName}`
+                  : undefined,
+              });
+            }}
           />
         ))}
       </div>
+
+      {/* Seção integrada como aba interna com os trabalhos do dublador selecionado */}
+      {expandedEntity && (
+        <div className="mt-4">
+          <EntityWorksExpansion
+            entity={expandedEntity}
+          />
+        </div>
+      )}
     </section>
   );
 });
@@ -4001,9 +4027,13 @@ const DubladoresSection = memo(function DubladoresSection({
 const DubladorCard = memo(function DubladorCard({
   item,
   loadImage,
+  isSelected,
+  onSelect,
 }: {
   item: DubladorItem;
   loadImage: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }) {
   const [imgError, setImgError] = useState(false);
   const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
@@ -4032,7 +4062,22 @@ const DubladorCard = memo(function DubladorCard({
   };
 
   return (
-    <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect?.();
+        }
+      }}
+      className={cn(
+        "group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow,background-color] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)] cursor-pointer text-left select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+        isSelected &&
+          "border-purple-500/80 ring-2 ring-purple-500/90 shadow-[0_0_20px_rgba(168,85,247,0.35)] bg-[#141026]",
+      )}
+    >
       {/* Imagem retangular do dublador (foto real da pessoa) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         {showImage ? (
@@ -4061,16 +4106,18 @@ const DubladorCard = memo(function DubladorCard({
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
 
-        {/* Botão de Favorito com animação padronizada */}
-        <CardFavoriteButton
-          isFavorite={isFav}
-          onToggle={handleToggleFav}
-          ariaLabel={
-            isFav
-              ? `Remover ${item.vaName} dos favoritos`
-              : `Adicionar ${item.vaName} aos favoritos`
-          }
-        />
+        {/* Botão de Favorito com animação padronizada (não propaga clique de seleção) */}
+        <div onClick={(e) => e.stopPropagation()}>
+          <CardFavoriteButton
+            isFavorite={isFav}
+            onToggle={handleToggleFav}
+            ariaLabel={
+              isFav
+                ? `Remover ${item.vaName} dos favoritos`
+                : `Adicionar ${item.vaName} aos favoritos`
+            }
+          />
+        </div>
 
         {/* Badge do idioma da dublagem */}
         {item.language && (
@@ -4149,6 +4196,7 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
   studios: string[];
   staff?: AnimeStaff[];
 }) {
+  const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
 
   const validStaff = useMemo(() => {
@@ -4256,9 +4304,30 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
             key={`${item.role}-${item.name}-${index}`}
             item={item}
             loadImage={index < visibleImgLimit}
+            isSelected={expandedEntity?.name === item.name}
+            onSelect={() => {
+              setExpandedEntity({
+                type: item.isStudio ? "studio" : "staff",
+                id: item.isStudio ? item.name : item.id,
+                name: item.name,
+                image: item.image,
+                subtitle: item.isStudio
+                  ? "Estúdio de animação"
+                  : item.role,
+              });
+            }}
           />
         ))}
       </div>
+
+      {/* Seção integrada como aba interna com os trabalhos do estúdio ou membro da equipe técnica */}
+      {expandedEntity && (
+        <div className="mt-4">
+          <EntityWorksExpansion
+            entity={expandedEntity}
+          />
+        </div>
+      )}
     </section>
   );
 });
@@ -4266,6 +4335,8 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
 const StaffCard = memo(function StaffCard({
   item,
   loadImage,
+  isSelected,
+  onSelect,
 }: {
   item: {
     id?: number | string;
@@ -4275,6 +4346,8 @@ const StaffCard = memo(function StaffCard({
     isStudio?: boolean;
   };
   loadImage: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }) {
   const [imgError, setImgError] = useState(false);
   const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
@@ -4327,7 +4400,22 @@ const StaffCard = memo(function StaffCard({
     : `Adicionar ${item.name} aos favoritos`;
 
   return (
-    <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect?.();
+        }
+      }}
+      className={cn(
+        "group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow,background-color] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)] cursor-pointer text-left select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400",
+        isSelected &&
+          "border-purple-500/80 ring-2 ring-purple-500/90 shadow-[0_0_20px_rgba(168,85,247,0.35)] bg-[#141026]",
+      )}
+    >
       {/* Imagem retangular (logo real para estúdio, retrato real para profissional ou card tipográfico elegante) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         {item.isStudio && showImage ? (
@@ -4369,12 +4457,14 @@ const StaffCard = memo(function StaffCard({
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
 
-        {/* Botão de Favorito com animação padronizada */}
-        <CardFavoriteButton
-          isFavorite={isFav}
-          onToggle={handleToggleFav}
-          ariaLabel={itemAriaLabel}
-        />
+        {/* Botão de Favorito com animação padronizada (não propaga seleção) */}
+        <div onClick={(e) => e.stopPropagation()}>
+          <CardFavoriteButton
+            isFavorite={isFav}
+            onToggle={handleToggleFav}
+            ariaLabel={itemAriaLabel}
+          />
+        </div>
       </div>
 
       {/* Textos abaixo da imagem protegidos com min-w-0 e flexbox */}

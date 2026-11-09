@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Building2,
   ChevronLeft,
@@ -17,6 +17,10 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  EntityWorksExpansion,
+  type SelectedEntityTarget,
+} from "@/components/anime/EntityWorksExpansion";
 import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
@@ -64,8 +68,11 @@ export function ProfileOverviewFavorites({
   grouped,
   onRemoveFavorite,
 }: ProfileOverviewFavoritesProps) {
+  const navigate = useNavigate();
   const [selectedEntity, setSelectedEntity] = useState<ProfileFavoriteItem | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
+  const [expandedCategory, setExpandedCategory] = useState<"dubladores" | "studios" | "people" | null>(null);
 
   // Exibir no máximo 10 itens por categoria (Animes, Personagens, Dubladores, Studios, People)
   const animes = (grouped.anime ?? []).slice(0, 10);
@@ -87,6 +94,43 @@ export function ProfileOverviewFavorites({
     }
   };
 
+  const handleAnimeClick = (item: ProfileFavoriteItem) => {
+    navigate({
+      to: "/anime/$id",
+      params: { id: item.targetId },
+    });
+  };
+
+  const handleDubladorClick = (item: ProfileFavoriteItem) => {
+    setExpandedEntity({
+      type: "dublador",
+      id: item.targetId,
+      name: item.title,
+      image: item.image,
+    });
+    setExpandedCategory("dubladores");
+  };
+
+  const handleStudioClick = (item: ProfileFavoriteItem) => {
+    setExpandedEntity({
+      type: "studio",
+      id: item.targetId,
+      name: item.title,
+      image: item.image,
+    });
+    setExpandedCategory("studios");
+  };
+
+  const handlePeopleClick = (item: ProfileFavoriteItem) => {
+    setExpandedEntity({
+      type: "staff",
+      id: item.targetId,
+      name: item.title,
+      image: item.image,
+    });
+    setExpandedCategory("people");
+  };
+
   return (
     <div className="space-y-10 sm:space-y-12">
       {/* 1. Favoritos — Animes */}
@@ -95,7 +139,7 @@ export function ProfileOverviewFavorites({
         items={animes}
         emptyTitle="Nenhum anime favoritado"
         emptyDescription="Explore o catálogo do Hikari e marque seus animes prediletos para exibi-los em destaque no seu perfil."
-        onCardClick={(item) => setSelectedEntity(item)}
+        onCardClick={handleAnimeClick}
         accentColor="violet"
         icon={Film}
       />
@@ -112,39 +156,63 @@ export function ProfileOverviewFavorites({
       />
 
       {/* 3. Favoritos — Dubladores */}
-      <FavoritesCarouselSection
-        title="Favoritos — Dubladores"
-        items={dubladores}
-        emptyTitle="Nenhum dublador favoritado"
-        emptyDescription="Os dubladores e seiyuus que dão vida aos seus personagens prediletos aparecerão aqui."
-        onCardClick={(item) => setSelectedEntity(item)}
-        accentColor="pink"
-        icon={Mic}
-      />
+      <div className="space-y-4">
+        <FavoritesCarouselSection
+          title="Favoritos — Dubladores"
+          items={dubladores}
+          emptyTitle="Nenhum dublador favoritado"
+          emptyDescription="Os dubladores e seiyuus que dão vida aos seus personagens prediletos aparecerão aqui."
+          onCardClick={handleDubladorClick}
+          selectedItemTitle={expandedCategory === "dubladores" ? expandedEntity?.name : null}
+          accentColor="pink"
+          icon={Mic}
+        />
+        {expandedEntity && expandedCategory === "dubladores" && (
+          <EntityWorksExpansion
+            entity={expandedEntity}
+          />
+        )}
+      </div>
 
       {/* 4. Favoritos — Studios */}
-      <FavoritesCarouselSection
-        title="Favoritos — Studios"
-        items={studios}
-        emptyTitle="Nenhum estúdio favoritado"
-        emptyDescription="Acompanhe os estúdios responsáveis pelas suas animações favoritas no Hikari."
-        onCardClick={(item) => setSelectedEntity(item)}
-        accentColor="indigo"
-        icon={Building2}
-      />
+      <div className="space-y-4">
+        <FavoritesCarouselSection
+          title="Favoritos — Studios"
+          items={studios}
+          emptyTitle="Nenhum estúdio favoritado"
+          emptyDescription="Acompanhe os estúdios responsáveis pelas suas animações favoritas no Hikari."
+          onCardClick={handleStudioClick}
+          selectedItemTitle={expandedCategory === "studios" ? expandedEntity?.name : null}
+          accentColor="indigo"
+          icon={Building2}
+        />
+        {expandedEntity && expandedCategory === "studios" && (
+          <EntityWorksExpansion
+            entity={expandedEntity}
+          />
+        )}
+      </div>
 
       {/* 5. Favoritos — People */}
-      <FavoritesCarouselSection
-        title="Favoritos — People"
-        items={people}
-        emptyTitle="Nenhuma pessoa favoritada"
-        emptyDescription="Diretores, roteiristas, produtores e compositores da indústria que você admira."
-        onCardClick={(item) => setSelectedEntity(item)}
-        accentColor="sky"
-        icon={User}
-      />
+      <div className="space-y-4">
+        <FavoritesCarouselSection
+          title="Favoritos — People"
+          items={people}
+          emptyTitle="Nenhuma pessoa favoritada"
+          emptyDescription="Diretores, roteiristas, produtores e compositores da indústria que você admira."
+          onCardClick={handlePeopleClick}
+          selectedItemTitle={expandedCategory === "people" ? expandedEntity?.name : null}
+          accentColor="sky"
+          icon={User}
+        />
+        {expandedEntity && expandedCategory === "people" && (
+          <EntityWorksExpansion
+            entity={expandedEntity}
+          />
+        )}
+      </div>
 
-      {/* Modal de Detalhes da Entidade Favoritada */}
+      {/* Modal de Detalhes da Entidade Favoritada (para Personagens) */}
       {selectedEntity && (
         <EntityDetailModal
           entity={selectedEntity}
@@ -168,6 +236,7 @@ function FavoritesCarouselSection({
   emptyTitle,
   emptyDescription,
   onCardClick,
+  selectedItemTitle,
   accentColor = "purple",
   icon: Icon,
 }: {
@@ -176,6 +245,7 @@ function FavoritesCarouselSection({
   emptyTitle: string;
   emptyDescription: string;
   onCardClick: (item: ProfileFavoriteItem) => void;
+  selectedItemTitle?: string | null;
   accentColor?: "violet" | "purple" | "pink" | "indigo" | "sky";
   icon: typeof Film;
 }) {
@@ -307,6 +377,7 @@ function FavoritesCarouselSection({
             <FavoriteCarouselCard
               key={item.id}
               item={item}
+              isSelected={selectedItemTitle === item.title}
               onClick={() => onCardClick(item)}
             />
           ))}
@@ -328,9 +399,11 @@ function FavoritesCarouselSection({
 function FavoriteCarouselCard({
   item,
   onClick,
+  isSelected,
 }: {
   item: ProfileFavoriteItem;
   onClick: () => void;
+  isSelected?: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
   const isStudio = item.targetType === "studio";
@@ -360,7 +433,11 @@ function FavoriteCarouselCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative flex w-[112px] min-[380px]:w-[126px] sm:w-[145px] md:w-[160px] lg:w-[172px] shrink-0 flex-col min-w-0 overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-1.5 min-[360px]:p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(168,85,247,0.18)] cursor-pointer text-left focus:outline-none select-none"
+      className={cn(
+        "group relative flex w-[112px] min-[380px]:w-[126px] sm:w-[145px] md:w-[160px] lg:w-[172px] shrink-0 flex-col min-w-0 overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-1.5 min-[360px]:p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(168,85,247,0.18)] cursor-pointer text-left focus:outline-none select-none",
+        isSelected &&
+          "border-purple-500/80 ring-2 ring-purple-500/90 shadow-[0_0_20px_rgba(168,85,247,0.35)] bg-[#151128]",
+      )}
     >
       {/* Imagem com proporção 3/4 */}
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224] flex items-center justify-center">

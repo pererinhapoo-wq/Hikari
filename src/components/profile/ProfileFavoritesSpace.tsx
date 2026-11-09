@@ -9,6 +9,11 @@ import {
   Users,
 } from "lucide-react";
 import { useState } from "react";
+import {
+  EntityWorksExpansion,
+  type SelectedEntityTarget,
+} from "@/components/anime/EntityWorksExpansion";
+import { cn } from "@/lib/utils";
 import type {
   FavoriteTargetType,
   ProfileFavoriteItem,
@@ -65,6 +70,7 @@ export function ProfileFavoritesSpace({
   loading = false,
 }: ProfileFavoritesSpaceProps) {
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
+  const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
 
   const counts: Record<CategoryFilter, number> = {
     all: allItems.length,
@@ -80,13 +86,41 @@ export function ProfileFavoritesSpace({
       ? allItems
       : grouped[activeCategory] || [];
 
+  const handleEntityClick = (item: ProfileFavoriteItem) => {
+    if (item.targetType === "studio" || item.targetType === "company") {
+      setExpandedEntity({
+        type: "studio",
+        id: item.targetId,
+        name: item.title,
+        image: item.image,
+        subtitle: "Estúdio de animação",
+      });
+    } else if (item.targetType === "person") {
+      const isVoiceActor =
+        (item.subtitle || "").toLowerCase().includes("dublador") ||
+        (item.subtitle || "").toLowerCase().includes("voice actor") ||
+        (item.description || "").toLowerCase().includes("dublador");
+
+      setExpandedEntity({
+        type: isVoiceActor ? "dublador" : "staff",
+        id: item.targetId,
+        name: item.title,
+        image: item.image,
+        subtitle: item.subtitle,
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Seletor de Categoria dos Favoritos */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
         <button
           type="button"
-          onClick={() => setActiveCategory("all")}
+          onClick={() => {
+            setActiveCategory("all");
+            setExpandedEntity(null);
+          }}
           className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
             activeCategory === "all"
               ? "bg-violet-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] ring-1 ring-violet-400"
@@ -109,7 +143,10 @@ export function ProfileFavoritesSpace({
             <button
               key={catKey}
               type="button"
-              onClick={() => setActiveCategory(catKey)}
+              onClick={() => {
+                setActiveCategory(catKey);
+                setExpandedEntity(null);
+              }}
               className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all ${
                 isActive
                   ? "bg-white/[0.12] text-white ring-1 ring-white/20 shadow-sm"
@@ -125,6 +162,13 @@ export function ProfileFavoritesSpace({
           );
         })}
       </div>
+
+      {/* Área expandida integrada como aba interna para consulta dos trabalhos */}
+      {expandedEntity && (
+        <EntityWorksExpansion
+          entity={expandedEntity}
+        />
+      )}
 
       {/* Conteúdo: Skeleton, Vazio ou Grade de Favoritos */}
       {loading ? (
@@ -168,10 +212,22 @@ export function ProfileFavoritesSpace({
             const Icon = cfg.icon;
 
             const isAnime = item.targetType === "anime";
+            const isClickableEntity =
+              item.targetType === "studio" ||
+              item.targetType === "person" ||
+              item.targetType === "company";
+
+            const isSelected = expandedEntity?.name === item.title;
             const targetLink = isAnime ? `/anime/${item.targetId}` : undefined;
 
             const cardContent = (
-              <article className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0c16]/80 p-2 transition-all duration-300 hover:border-violet-500/40 hover:bg-[#121020] hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+              <article
+                className={cn(
+                  "group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0c16]/80 p-2 transition-all duration-300 hover:border-violet-500/40 hover:bg-[#121020] hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)]",
+                  isSelected &&
+                    "border-violet-500/90 ring-2 ring-violet-500/90 shadow-[0_0_20px_rgba(168,85,247,0.35)] bg-[#141026]",
+                )}
+              >
                 {/* Mídia: Pôster / Avatar / Logo */}
                 <div className="relative aspect-[3/4.2] w-full overflow-hidden rounded-xl bg-[#161422]">
                   {item.image ? (
@@ -218,7 +274,8 @@ export function ProfileFavoritesSpace({
                       {item.title}
                     </h4>
 
-                    {item.nativeTitle && (
+                    {/* Exibir nome nativo somente se NÃO for person (conforme regra: exibir somente o nome principal da pessoa, sem nomes em japonês) */}
+                    {item.nativeTitle && item.targetType !== "person" && (
                       <p className="mt-0.5 truncate text-[10px] text-zinc-500">
                         {item.nativeTitle}
                       </p>
@@ -239,6 +296,19 @@ export function ProfileFavoritesSpace({
                 <Link key={item.id} to={targetLink} className="block">
                   {cardContent}
                 </Link>
+              );
+            }
+
+            if (isClickableEntity) {
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleEntityClick(item)}
+                  className="w-full text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded-2xl"
+                >
+                  {cardContent}
+                </button>
               );
             }
 
