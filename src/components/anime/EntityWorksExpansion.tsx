@@ -1,14 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import {
-  Briefcase,
-  Building2,
   Calendar,
   ChevronRight,
   Film,
   Layers,
-  Mic,
   Star,
-  Users,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import {
@@ -16,7 +12,6 @@ import {
   getStudioWorks,
   type EntityWorksData,
 } from "@/lib/entity-works";
-import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
 
 export interface SelectedEntityTarget {
@@ -29,19 +24,14 @@ export interface SelectedEntityTarget {
 
 interface EntityWorksExpansionProps {
   entity: SelectedEntityTarget;
-  availableEntities?: SelectedEntityTarget[];
-  onSelectEntity?: (entity: SelectedEntityTarget) => void;
   onClear?: () => void;
-  onClose?: () => void;
-  accentColor?: "purple" | "violet" | "indigo" | "pink";
+  accentColor?: "purple" | "violet" | "indigo" | "pink" | "sky";
   className?: string;
   autoScroll?: boolean;
 }
 
 export const EntityWorksExpansion = memo(function EntityWorksExpansion({
   entity,
-  availableEntities,
-  onSelectEntity,
   onClear,
   className,
   autoScroll = true,
@@ -49,9 +39,9 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
   const containerRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<EntityWorksData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dublador" | "staff">(
-    entity.type === "dublador" ? "dublador" : "staff",
-  );
+
+  const isStudio = entity.type === "studio";
+  const isDublador = entity.type === "dublador";
 
   useEffect(() => {
     let isCancelled = false;
@@ -64,10 +54,8 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
         if (entity.type === "studio") {
           result = await getStudioWorks(entity.name, entity.id);
         } else {
-          const prefer =
-            entity.type === "dublador" ? "dublador" : ("staff" as const);
+          const prefer = isDublador ? "dublador" : ("staff" as const);
           result = await getPersonWorks(entity.name, entity.id, prefer);
-          setActiveTab(prefer);
         }
 
         if (!isCancelled) {
@@ -92,7 +80,7 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
     return () => {
       isCancelled = true;
     };
-  }, [entity.name, entity.id, entity.type]);
+  }, [entity.name, entity.id, entity.type, isDublador]);
 
   const isFirstMountRef = useRef(true);
 
@@ -112,17 +100,9 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
     }
   }, [entity.name, autoScroll]);
 
-  const isStudio = entity.type === "studio";
-  const isDublador = activeTab === "dublador" || entity.type === "dublador";
-
-  const hasBothPersonRoles =
-    !isStudio &&
-    (data?.dubladorWorks?.length ?? 0) > 0 &&
-    (data?.staffWorks?.length ?? 0) > 0;
-
   const totalWorksCount = isStudio
     ? data?.studioAnimes?.length ?? 0
-    : activeTab === "dublador"
+    : isDublador
       ? data?.dubladorWorks?.length ?? 0
       : data?.staffWorks?.length ?? 0;
 
@@ -131,38 +111,50 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
       ref={containerRef}
       aria-label={`Trabalhos e Produções de ${entity.name}`}
       className={cn(
-        "relative w-full space-y-4 transition-all duration-300 animate-in fade-in",
+        "relative w-full space-y-5 transition-all duration-300 animate-in fade-in",
         className,
       )}
     >
-      {/* 1. Cabeçalho no padrão Anime Stats: Indicador luminoso + Título da Categoria e Nome + Contador total */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+      {/* Luz ambiente de fundo violeta sutil conforme padrão Anime Stats */}
+      <div
+        className="pointer-events-none absolute -left-16 -top-10 size-72 rounded-full bg-violet-600/10 blur-[100px]"
+        aria-hidden="true"
+      />
+
+      {/* 1. Cabeçalho com padrão idêntico ao Anime Stats de account.tsx:
+          - Indicador circular luminoso
+          - Título contextual com separador
+          - Contador numérico de resultados
+          - Sem botões Voltar, X ou Fechar
+          - Sem seletores de outras entidades
+      */}
+      <div className="relative flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
         <div
           onClick={() => onClear?.()}
           className={cn(
-            "flex items-center gap-2.5 min-w-0 transition-opacity",
+            "flex items-center gap-3 min-w-0 transition-opacity",
             onClear && "cursor-pointer group",
           )}
-          title={onClear ? "Toque para alternar ou voltar à lista original" : undefined}
+          title={onClear ? "Toque no título para voltar à visualização original" : undefined}
         >
           <span
             className={cn(
-              "size-3 rounded-full shrink-0 transition-transform",
+              "size-3.5 rounded-full shrink-0 transition-transform",
               onClear && "group-hover:scale-110",
               isStudio
-                ? "bg-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.8)]"
+                ? "bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.85)]"
                 : isDublador
-                  ? "bg-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.8)]"
-                  : "bg-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.8)]",
+                  ? "bg-pink-500 shadow-[0_0_12px_rgba(236,72,153,0.85)]"
+                  : "bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.85)]",
             )}
           />
-          <h3 className="font-display text-lg sm:text-2xl font-bold tracking-tight text-white truncate">
+          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white truncate">
             {isStudio
               ? `Produções — ${entity.name}`
               : isDublador
                 ? `Dublagens — ${entity.name}`
                 : `Trabalhos — ${entity.name}`}
-          </h3>
+          </h2>
 
           {!loading && (
             <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
@@ -170,88 +162,9 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
             </span>
           )}
         </div>
-
-        {/* Controles do Cabeçalho: Alternador de Papéis (se a pessoa possuir dublagens E equipe técnica) */}
-        {hasBothPersonRoles && (
-          <div className="inline-flex items-center rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setActiveTab("dublador")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer",
-                activeTab === "dublador"
-                  ? "bg-purple-950 text-purple-200 border border-purple-500/40 shadow-sm"
-                  : "text-zinc-400 hover:text-zinc-200",
-              )}
-            >
-              <Mic className="size-3" />
-              <span>Dublador</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("staff")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer",
-                activeTab === "staff"
-                  ? "bg-purple-950 text-purple-200 border border-purple-500/40 shadow-sm"
-                  : "text-zinc-400 hover:text-zinc-200",
-              )}
-            >
-              <Briefcase className="size-3" />
-              <span>Equipe</span>
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* 2. Seletor de Entidades Relacionadas da Seção (Padrão de Status do Anime Stats) */}
-      {availableEntities && availableEntities.length > 1 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-          {availableEntities.map((item) => {
-            const isCurrent = item.name === entity.name;
-            return (
-              <button
-                key={`${item.type}-${item.name}`}
-                type="button"
-                onClick={() => {
-                  if (isCurrent) {
-                    onClear?.();
-                  } else {
-                    onSelectEntity?.(item);
-                  }
-                }}
-                className={cn(
-                  "flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
-                  isCurrent
-                    ? isStudio
-                      ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/50 ring-1 ring-indigo-500/40 shadow-[0_0_15px_rgba(99,102,241,0.25)]"
-                      : isDublador
-                        ? "bg-pink-500/20 text-pink-200 border border-pink-500/50 ring-1 ring-pink-500/40 shadow-[0_0_15px_rgba(236,72,153,0.25)]"
-                        : "bg-purple-500/20 text-purple-200 border border-purple-500/50 ring-1 ring-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.25)]"
-                    : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white",
-                )}
-                title={
-                  isCurrent
-                    ? "Toque para voltar à visualização original"
-                    : `Ver trabalhos de ${item.name}`
-                }
-              >
-                {item.image && (
-                  <img
-                    src={item.image}
-                    alt=""
-                    className="size-4 rounded-full object-cover shrink-0"
-                    loading="lazy"
-                  />
-                )}
-                <span className="truncate max-w-[140px] sm:max-w-[200px]">{item.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 2. Conteúdo Principal no mesmo espaço */}
+      {/* 2. Conteúdo Principal: Grade Responsiva de Cards de Obras */}
       <div className="relative">
         {loading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
@@ -293,7 +206,6 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
 
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent" />
 
-                    {/* Ano e formato no canto inferior */}
                     {(anime.year || anime.format) && (
                       <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between text-[9px] font-semibold text-zinc-300">
                         <span>
@@ -323,7 +235,7 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
               ))}
             </div>
           )
-        ) : activeTab === "dublador" ? (
+        ) : isDublador ? (
           /* =========================================================
              B. TRABALHOS DE DUBLADORES (Associação: Personagem + Dublador + Anime)
           ========================================================= */
@@ -341,7 +253,7 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
                     key={work.id}
                     className="group relative flex items-stretch gap-3 overflow-hidden rounded-2xl border border-purple-500/15 bg-[#0e0c19] p-2.5 sm:p-3 transition-all duration-300 hover:border-purple-500/40 hover:bg-[#131023] hover:shadow-[0_8px_24px_rgba(168,85,247,0.18)]"
                   >
-                    {/* 1. Capa do Anime clicável */}
+                    {/* Capa do Anime clicável */}
                     <Link
                       to="/anime/$id"
                       params={{ id: work.anime.id }}
@@ -363,10 +275,9 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
                       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-40 group-hover/cover:opacity-60 transition-opacity" />
                     </Link>
 
-                    {/* 2. Informações da Obra e do Personagem Dublado */}
+                    {/* Informações da Obra e do Personagem Dublado */}
                     <div className="flex flex-1 flex-col justify-between min-w-0 py-0.5">
                       <div>
-                        {/* Produção / Anime */}
                         <Link
                           to="/anime/$id"
                           params={{ id: work.anime.id }}
@@ -395,7 +306,6 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
 
                         {/* Personagem que o dublador interpretou */}
                         <div className="mt-2.5 flex items-center gap-2.5 rounded-xl border border-white/[0.05] bg-white/[0.02] p-1.5 min-w-0">
-                          {/* Retrato do Personagem */}
                           <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-[#18152b] border border-purple-500/20">
                             {work.character.image ? (
                               <img
@@ -423,7 +333,6 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
                             </p>
                           </div>
 
-                          {/* Selo Protagonista / Secundário */}
                           <span
                             className={cn(
                               "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold border",
@@ -437,7 +346,6 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
                         </div>
                       </div>
 
-                      {/* Link rápido para abrir o anime */}
                       <Link
                         to="/anime/$id"
                         params={{ id: work.anime.id }}
@@ -465,7 +373,6 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
                   key={work.id}
                   className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-purple-500/15 bg-[#0e0c19] p-2.5 sm:p-3 transition-all duration-300 hover:border-purple-500/40 hover:bg-[#131023] hover:shadow-[0_8px_24px_rgba(168,85,247,0.18)]"
                 >
-                  {/* Pôster do Anime */}
                   <Link
                     to="/anime/$id"
                     params={{ id: work.anime.id }}
@@ -487,10 +394,8 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-40 group-hover/poster:opacity-60 transition-opacity" />
                   </Link>
 
-                  {/* Informações: Função técnica e título da produção */}
                   <div className="flex flex-1 flex-col justify-between min-w-0 py-0.5">
                     <div>
-                      {/* Função destacada (ex: Direção, Roteiro, Design de Personagens) */}
                       <span className="inline-flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-950/70 px-2 py-0.5 text-[10px] font-semibold text-purple-200">
                         <Layers className="size-2.5 text-purple-400" />
                         <span className="truncate">{work.roleLabel}</span>

@@ -7,13 +7,19 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Film,
   Heart,
   Loader2,
   LogIn,
   Pencil,
   Play,
+  Star,
   X,
 } from "lucide-react";
+import {
+  getStudioWorks,
+  type StudioWorkAnime,
+} from "@/lib/entity-works";
 import {
   getMyAnimeTracking,
   upsertAnimeTracking,
@@ -222,10 +228,15 @@ export const Route = createFileRoute("/anime/$id")({
     raw: Record<string, unknown>,
   ): {
     comment?: string;
+    studio?: string;
   } => ({
     comment:
       typeof raw.comment === "string" && raw.comment
         ? raw.comment
+        : undefined,
+    studio:
+      typeof raw.studio === "string" && raw.studio
+        ? raw.studio
         : undefined,
   }),
   staleTime: 1000 * 60 * 5,
@@ -503,11 +514,170 @@ function makeAnimeSnapshot(anime: Anime) {
   };
 }
 
+const StudioProductionsView = memo(function StudioProductionsView({
+  studioName,
+  animeId,
+}: {
+  studioName: string;
+  animeId: string;
+}) {
+  const navigate = useNavigate();
+  const [works, setWorks] = useState<StudioWorkAnime[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+
+    getStudioWorks(studioName)
+      .then((res) => {
+        if (!active) return;
+        setWorks(res.studioAnimes ?? []);
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar produções do estúdio:", err);
+        if (!active) return;
+        setWorks([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [studioName]);
+
+  const handleClearStudio = () => {
+    void navigate({
+      to: "/anime/$id",
+      params: { id: animeId },
+      search: (prev: Record<string, unknown>) => {
+        const next = { ...prev };
+        delete next.studio;
+        return next;
+      },
+    });
+  };
+
+  return (
+    <div className="relative min-h-[80vh] w-full pb-16 pt-16 sm:pt-20 animate-in fade-in duration-300">
+      {/* Luz ambiente de fundo violeta/indigo sutil conforme padrão Anime Stats */}
+      <div
+        className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-indigo-600/10 blur-[120px]"
+        aria-hidden="true"
+      />
+
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
+        {/* Cabeçalho no padrão do Anime Stats:
+            - Indicador circular luminoso
+            - Título contextual com separador ("Produções — Toei Animation")
+            - Contador de resultados
+            - Sem botões Voltar, X ou Fechar (toque no título permite retornar à visualização anterior)
+        */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
+          <div
+            onClick={handleClearStudio}
+            className="flex items-center gap-3 cursor-pointer group select-none min-w-0"
+            title="Voltar aos detalhes do anime"
+          >
+            <span className="size-3.5 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.85)] shrink-0 transition-transform group-hover:scale-110" />
+            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white truncate">
+              Produções — {studioName}
+            </h1>
+            {!loading && (
+              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
+                {works.length}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Grade de produções exclusivas do estúdio */}
+        {loading ? (
+          <div className="grid grid-cols-2 gap-3 min-[480px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
+            {Array.from({ length: 12 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="aspect-[2/3] animate-pulse rounded-xl bg-white/[0.04] border border-white/[0.05]"
+              />
+            ))}
+          </div>
+        ) : works.length === 0 ? (
+          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center text-sm text-zinc-400">
+            Nenhuma produção registrada para este estúdio no catálogo.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 min-[480px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
+            {works.map((item) => (
+              <Link
+                key={item.id}
+                to="/anime/$id"
+                params={{ id: item.id }}
+                className="group relative flex flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#0f0d1a] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)] cursor-pointer"
+              >
+                <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-[#141220]">
+                  {item.cover ? (
+                    <img
+                      src={item.cover}
+                      alt={item.title}
+                      loading="lazy"
+                      decoding="async"
+                      className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex size-full items-center justify-center text-zinc-600">
+                      <Film className="size-6" />
+                    </div>
+                  )}
+
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent" />
+
+                  {(item.year || item.format) && (
+                    <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between text-[9px] font-semibold text-zinc-300">
+                      <span>
+                        {item.year}
+                        {item.year && item.format ? " • " : ""}
+                        {item.format}
+                      </span>
+                      {item.score && (
+                        <span className="flex items-center gap-0.5 text-amber-400">
+                          <Star className="size-2.5 fill-amber-400" />
+                          {item.score.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-2 min-w-0">
+                  <h4
+                    className="line-clamp-2 text-xs font-semibold text-zinc-100 transition-colors group-hover:text-purple-300 leading-snug"
+                    title={item.title}
+                  >
+                    {item.title}
+                  </h4>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
 function AnimePage() {
   const { id } = Route.useParams();
   const { remote } = Route.useLoaderData();
   const search = Route.useSearch();
   const targetCommentId = search?.comment;
+  const rawStudioParam =
+    search?.studio ||
+    (typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("studio") as string | null)
+      : null);
+  const studioParam = rawStudioParam?.trim() || undefined;
   const navigate = useNavigate();
 
   const [hasCommentHash, setHasCommentHash] = useState(() => {
@@ -1616,6 +1786,15 @@ function AnimePage() {
       ),
     [allEpisodes, watchedEpisodeSet],
   );
+
+  if (studioParam) {
+    return (
+      <StudioProductionsView
+        studioName={studioParam}
+        animeId={id}
+      />
+    );
+  }
 
   if (!anime && !hydrated) {
     return null;
@@ -3903,16 +4082,6 @@ const DubladoresSection = memo(function DubladoresSection({
       `${animeId}-vas`,
     );
 
-  const availableVoiceActors = useMemo<SelectedEntityTarget[]>(() => {
-    return displayVoiceActors.map((va) => ({
-      type: "dublador",
-      id: va.vaId,
-      name: va.vaName,
-      image: va.vaImage,
-      subtitle: va.characterName ? `Dubla ${va.characterName}` : undefined,
-    }));
-  }, [displayVoiceActors]);
-
   if (displayVoiceActors.length === 0) {
     return null;
   }
@@ -3926,19 +4095,21 @@ const DubladoresSection = memo(function DubladoresSection({
     railRef.current.scrollBy({ left: offset, behavior: "smooth" });
   };
 
-  return (
-    <section className="mt-12 space-y-4">
-      {expandedEntity ? (
+  if (expandedEntity) {
+    return (
+      <section className="mt-12 space-y-4">
         <EntityWorksExpansion
           entity={expandedEntity}
-          availableEntities={availableVoiceActors}
-          onSelectEntity={(ent) => setExpandedEntity(ent)}
           onClear={() => setExpandedEntity(null)}
           accentColor="pink"
         />
-      ) : (
-        <>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-12 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2.5">
               <span className="h-6 w-1 rounded-full bg-purple-500" />
               <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
@@ -4031,8 +4202,6 @@ const DubladoresSection = memo(function DubladoresSection({
               />
             ))}
           </div>
-        </>
-      )}
     </section>
   );
 });
@@ -4209,6 +4378,7 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
   studios: string[];
   staff?: AnimeStaff[];
 }) {
+  const navigate = useNavigate();
   const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
 
@@ -4263,16 +4433,6 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
       animeId,
     );
 
-  const availableStaffAndStudios = useMemo<SelectedEntityTarget[]>(() => {
-    return allItems.map((item) => ({
-      type: item.isStudio ? "studio" : "staff",
-      id: item.isStudio ? item.name : item.id,
-      name: item.name,
-      image: item.image,
-      subtitle: item.isStudio ? "Estúdio de animação" : item.role,
-    }));
-  }, [allItems]);
-
   if (allItems.length === 0) {
     return null;
   }
@@ -4286,74 +4446,83 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
     railRef.current.scrollBy({ left: offset, behavior: "smooth" });
   };
 
-  return (
-    <section className="mt-12 space-y-4">
-      {expandedEntity ? (
+  if (expandedEntity) {
+    return (
+      <section className="mt-12 space-y-4">
         <EntityWorksExpansion
           entity={expandedEntity}
-          availableEntities={availableStaffAndStudios}
-          onSelectEntity={(ent) => setExpandedEntity(ent)}
           onClear={() => setExpandedEntity(null)}
           accentColor={expandedEntity.type === "studio" ? "indigo" : "purple"}
         />
-      ) : (
-        <>
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              <span className="h-6 w-1 rounded-full bg-purple-500" />
-              <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                Direção e equipe técnica
-              </h2>
-            </div>
+      </section>
+    );
+  }
 
-            {allItems.length > 3 && (
-              <div className="hidden sm:flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => scroll("left")}
-                  aria-label="Rolar equipe para a esquerda"
-                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
-                >
-                  <ChevronLeft className="size-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scroll("right")}
-                  aria-label="Rolar equipe para a direita"
-                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-              </div>
-            )}
-          </div>
+  return (
+    <section className="mt-12 space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2.5">
+          <span className="h-6 w-1 rounded-full bg-purple-500" />
+          <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            Direção e equipe técnica
+          </h2>
+        </div>
 
-          <div
-            ref={railRef}
-            className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
-          >
-            {allItems.map((item, index) => (
-              <StaffCard
-                key={`${item.role}-${item.name}-${index}`}
-                item={item}
-                loadImage={index < visibleImgLimit}
-                isSelected={expandedEntity?.name === item.name}
-                onSelect={() => {
-                  setExpandedEntity({
-                    type: item.isStudio ? "studio" : "staff",
-                    id: item.isStudio ? item.name : item.id,
-                    name: item.name,
-                    image: item.image,
-                    subtitle: item.isStudio
-                      ? "Estúdio de animação"
-                      : item.role,
-                  });
-                }}
-              />
-            ))}
+        {allItems.length > 3 && (
+          <div className="hidden sm:flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => scroll("left")}
+              aria-label="Rolar equipe para a esquerda"
+              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scroll("right")}
+              aria-label="Rolar equipe para a direita"
+              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+            >
+              <ChevronRight className="size-4" />
+            </button>
           </div>
-        </>
-      )}
+        )}
+      </div>
+
+      <div
+        ref={railRef}
+        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
+      >
+        {allItems.map((item, index) => (
+          <StaffCard
+            key={`${item.role}-${item.name}-${index}`}
+            item={item}
+            loadImage={index < visibleImgLimit}
+            isSelected={expandedEntity?.name === item.name}
+            onSelect={() => {
+              if (item.isStudio) {
+                void navigate({
+                  to: "/anime/$id",
+                  params: { id: animeId },
+                  search: (prev: Record<string, unknown>) => ({
+                    ...prev,
+                    studio: item.name,
+                  }),
+                });
+              } else {
+                setExpandedEntity({
+                  type: "staff",
+                  id: item.id,
+                  name: item.name,
+                  image: item.image,
+                  subtitle: item.role,
+                });
+              }
+            }}
+          />
+        ))}
+      </div>
     </section>
   );
 });
@@ -4429,6 +4598,7 @@ const StaffCard = memo(function StaffCard({
     <div
       role="button"
       tabIndex={0}
+      title={item.isStudio ? `Ver produções de ${item.name}` : undefined}
       onClick={onSelect}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {

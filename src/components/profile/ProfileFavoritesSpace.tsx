@@ -8,7 +8,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   EntityWorksExpansion,
   type SelectedEntityTarget,
@@ -115,37 +115,25 @@ export function ProfileFavoritesSpace({
     }
   };
 
-  const availableClickableEntities = useMemo<SelectedEntityTarget[]>(() => {
-    return displayedItems
-      .filter(
-        (item) =>
-          item.targetType === "studio" ||
-          item.targetType === "company" ||
-          item.targetType === "person",
-      )
-      .map((item) => {
-        if (item.targetType === "studio" || item.targetType === "company") {
-          return {
-            type: "studio" as const,
-            id: item.targetId,
-            name: item.title,
-            image: item.image,
-            subtitle: "Estúdio de animação",
-          };
-        }
-        const isVoiceActor =
-          (item.subtitle || "").toLowerCase().includes("dublador") ||
-          (item.subtitle || "").toLowerCase().includes("voice actor") ||
-          (item.description || "").toLowerCase().includes("dublador");
-        return {
-          type: isVoiceActor ? ("dublador" as const) : ("staff" as const),
-          id: item.targetId,
-          name: item.title,
-          image: item.image,
-          subtitle: item.subtitle,
-        };
-      });
-  }, [displayedItems]);
+  // Se uma entidade estiver selecionada, substitui completamente a seção original
+  // pelo padrão Anime Stats, sem cards originais, sem seletores de categoria e sem botões Voltar/Fechar.
+  if (expandedEntity) {
+    return (
+      <div className="relative w-full">
+        <EntityWorksExpansion
+          entity={expandedEntity}
+          onClear={() => setExpandedEntity(null)}
+          accentColor={
+            expandedEntity.type === "studio"
+              ? "indigo"
+              : expandedEntity.type === "dublador"
+                ? "pink"
+                : "purple"
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -199,22 +187,7 @@ export function ProfileFavoritesSpace({
         })}
       </div>
 
-      {/* Conteúdo: Substituição da Grade pela Visualização de Obras quando uma Entidade for Selecionada */}
-      {expandedEntity ? (
-        <EntityWorksExpansion
-          entity={expandedEntity}
-          availableEntities={availableClickableEntities}
-          onSelectEntity={(ent) => setExpandedEntity(ent)}
-          onClear={() => setExpandedEntity(null)}
-          accentColor={
-            expandedEntity.type === "studio"
-              ? "indigo"
-              : expandedEntity.type === "dublador"
-                ? "pink"
-                : "purple"
-          }
-        />
-      ) : loading ? (
+      {loading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
           {Array.from({ length: 6 }).map((_, idx) => (
             <div
