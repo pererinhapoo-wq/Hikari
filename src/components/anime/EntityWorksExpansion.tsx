@@ -29,6 +29,9 @@ export interface SelectedEntityTarget {
 
 interface EntityWorksExpansionProps {
   entity: SelectedEntityTarget;
+  availableEntities?: SelectedEntityTarget[];
+  onSelectEntity?: (entity: SelectedEntityTarget) => void;
+  onClear?: () => void;
   onClose?: () => void;
   accentColor?: "purple" | "violet" | "indigo" | "pink";
   className?: string;
@@ -37,6 +40,9 @@ interface EntityWorksExpansionProps {
 
 export const EntityWorksExpansion = memo(function EntityWorksExpansion({
   entity,
+  availableEntities,
+  onSelectEntity,
+  onClear,
   className,
   autoScroll = true,
 }: EntityWorksExpansionProps) {
@@ -90,23 +96,16 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
 
   const isFirstMountRef = useRef(true);
 
-  // Auto-scroll suave para focar na seção como aba interna, mantendo os seletores visíveis
+  // Auto-scroll suave para focar na seção como substituição de tela, mantendo a visualização confortável
   useEffect(() => {
     if (autoScroll && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       if (isFirstMountRef.current) {
         isFirstMountRef.current = false;
-        if (rect.top > window.innerHeight - 100) {
+        if (rect.top > window.innerHeight - 100 || rect.top < 60) {
           containerRef.current.scrollIntoView({
             behavior: "smooth",
-            block: "nearest",
-          });
-        }
-      } else {
-        if (rect.top < 70) {
-          containerRef.current.scrollIntoView({
-            behavior: "smooth",
-            block: "nearest",
+            block: "start",
           });
         }
       }
@@ -114,11 +113,7 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
   }, [entity.name, autoScroll]);
 
   const isStudio = entity.type === "studio";
-  const displayImage = isStudio
-    ? entity.image || getStudioLogo(entity.name)
-    : data?.image || entity.image;
-
-  const initial = (entity.name || "?").charAt(0).toUpperCase();
+  const isDublador = activeTab === "dublador" || entity.type === "dublador";
 
   const hasBothPersonRoles =
     !isStudio &&
@@ -136,27 +131,35 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
       ref={containerRef}
       aria-label={`Trabalhos e Produções de ${entity.name}`}
       className={cn(
-        "relative mt-5 pt-4 border-t border-white/[0.08] transition-all duration-300 animate-in fade-in",
+        "relative w-full space-y-4 transition-all duration-300 animate-in fade-in",
         className,
       )}
     >
-      {/* 1. Cabeçalho no padrão Anime Stats: Indicador colorido + Título + Contador (sem botão Fechar/X/Voltar) */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex items-center gap-2.5 min-w-0">
+      {/* 1. Cabeçalho no padrão Anime Stats: Indicador luminoso + Título da Categoria e Nome + Contador total */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+        <div
+          onClick={() => onClear?.()}
+          className={cn(
+            "flex items-center gap-2.5 min-w-0 transition-opacity",
+            onClear && "cursor-pointer group",
+          )}
+          title={onClear ? "Toque para alternar ou voltar à lista original" : undefined}
+        >
           <span
             className={cn(
-              "size-2.5 rounded-full shrink-0",
+              "size-3 rounded-full shrink-0 transition-transform",
+              onClear && "group-hover:scale-110",
               isStudio
-                ? "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]"
-                : activeTab === "dublador" || entity.type === "dublador"
-                  ? "bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.5)]"
-                  : "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]",
+                ? "bg-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.8)]"
+                : isDublador
+                  ? "bg-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.8)]"
+                  : "bg-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.8)]",
             )}
           />
-          <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white truncate">
+          <h3 className="font-display text-lg sm:text-2xl font-bold tracking-tight text-white truncate">
             {isStudio
               ? `Produções — ${entity.name}`
-              : activeTab === "dublador" || entity.type === "dublador"
+              : isDublador
                 ? `Dublagens — ${entity.name}`
                 : `Trabalhos — ${entity.name}`}
           </h3>
@@ -168,7 +171,7 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
           )}
         </div>
 
-        {/* Controles do Cabeçalho: Alternador de Papéis (se a pessoa possuir papéis de Dublador e Equipe Técnica) */}
+        {/* Controles do Cabeçalho: Alternador de Papéis (se a pessoa possuir dublagens E equipe técnica) */}
         {hasBothPersonRoles && (
           <div className="inline-flex items-center rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1 shadow-sm">
             <button
@@ -200,6 +203,53 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
           </div>
         )}
       </div>
+
+      {/* 2. Seletor de Entidades Relacionadas da Seção (Padrão de Status do Anime Stats) */}
+      {availableEntities && availableEntities.length > 1 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+          {availableEntities.map((item) => {
+            const isCurrent = item.name === entity.name;
+            return (
+              <button
+                key={`${item.type}-${item.name}`}
+                type="button"
+                onClick={() => {
+                  if (isCurrent) {
+                    onClear?.();
+                  } else {
+                    onSelectEntity?.(item);
+                  }
+                }}
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+                  isCurrent
+                    ? isStudio
+                      ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/50 ring-1 ring-indigo-500/40 shadow-[0_0_15px_rgba(99,102,241,0.25)]"
+                      : isDublador
+                        ? "bg-pink-500/20 text-pink-200 border border-pink-500/50 ring-1 ring-pink-500/40 shadow-[0_0_15px_rgba(236,72,153,0.25)]"
+                        : "bg-purple-500/20 text-purple-200 border border-purple-500/50 ring-1 ring-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.25)]"
+                    : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white",
+                )}
+                title={
+                  isCurrent
+                    ? "Toque para voltar à visualização original"
+                    : `Ver trabalhos de ${item.name}`
+                }
+              >
+                {item.image && (
+                  <img
+                    src={item.image}
+                    alt=""
+                    className="size-4 rounded-full object-cover shrink-0"
+                    loading="lazy"
+                  />
+                )}
+                <span className="truncate max-w-[140px] sm:max-w-[200px]">{item.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* 2. Conteúdo Principal no mesmo espaço */}
       <div className="relative">

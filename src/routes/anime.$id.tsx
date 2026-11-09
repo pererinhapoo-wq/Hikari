@@ -3903,6 +3903,16 @@ const DubladoresSection = memo(function DubladoresSection({
       `${animeId}-vas`,
     );
 
+  const availableVoiceActors = useMemo<SelectedEntityTarget[]>(() => {
+    return displayVoiceActors.map((va) => ({
+      type: "dublador",
+      id: va.vaId,
+      name: va.vaName,
+      image: va.vaImage,
+      subtitle: va.characterName ? `Dubla ${va.characterName}` : undefined,
+    }));
+  }, [displayVoiceActors]);
+
   if (displayVoiceActors.length === 0) {
     return null;
   }
@@ -3918,109 +3928,110 @@ const DubladoresSection = memo(function DubladoresSection({
 
   return (
     <section className="mt-12 space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="h-6 w-1 rounded-full bg-purple-500" />
-          <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Dubladores
-          </h2>
-        </div>
-
-        <div className="flex items-center gap-3 self-start sm:self-auto">
-          {hasPortuguese ? (
-            <div className="inline-flex items-center rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setSelectedLang("ja")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
-                  activeLang === "ja"
-                    ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
-                    : "text-zinc-400 hover:text-zinc-200",
-                )}
-              >
-                <span className="size-1.5 rounded-full bg-purple-400" />
-                <span>Japonês</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedLang("pt")}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
-                  activeLang === "pt"
-                    ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
-                    : "text-zinc-400 hover:text-zinc-200",
-                )}
-              >
-                <span className="size-1.5 rounded-full bg-emerald-400" />
-                <span>Português (BR)</span>
-              </button>
-            </div>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/30 px-2.5 py-1 text-[11px] font-medium text-purple-300">
-              <span className="size-1.5 rounded-full bg-purple-400" />
-              Dublagem original (Japonês)
-            </span>
-          )}
-
-          {displayVoiceActors.length > 3 && (
-            <div className="hidden sm:flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => scroll("left")}
-                aria-label="Rolar dubladores para a esquerda"
-                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => scroll("right")}
-                aria-label="Rolar dubladores para a direita"
-                className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        ref={railRef}
-        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
-      >
-        {displayVoiceActors.map((item, index) => (
-          <DubladorCard
-            key={item.id}
-            item={item}
-            loadImage={index < visibleImgLimit}
-            isSelected={expandedEntity?.name === item.vaName}
-            onSelect={() => {
-              if (expandedEntity?.name === item.vaName) {
-                setExpandedEntity(null);
-                return;
-              }
-              setExpandedEntity({
-                type: "dublador",
-                id: item.vaId,
-                name: item.vaName,
-                image: item.vaImage,
-                subtitle: item.characterName
-                  ? `Dubla ${item.characterName}`
-                  : undefined,
-              });
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Conteúdo integrado no próprio espaço da seção, no padrão de Anime Stats */}
-      {expandedEntity && (
+      {expandedEntity ? (
         <EntityWorksExpansion
           entity={expandedEntity}
+          availableEntities={availableVoiceActors}
+          onSelectEntity={(ent) => setExpandedEntity(ent)}
+          onClear={() => setExpandedEntity(null)}
+          accentColor="pink"
         />
+      ) : (
+        <>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="h-6 w-1 rounded-full bg-purple-500" />
+              <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                Dubladores
+              </h2>
+            </div>
+
+            <div className="flex items-center gap-3 self-start sm:self-auto">
+              {hasPortuguese ? (
+                <div className="inline-flex items-center rounded-xl border border-purple-500/25 bg-[#0f0d18] p-1 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLang("ja")}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
+                      activeLang === "ja"
+                        ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-200",
+                    )}
+                  >
+                    <span className="size-1.5 rounded-full bg-purple-400" />
+                    <span>Japonês</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLang("pt")}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[color,background-color,border-color] cursor-pointer",
+                      activeLang === "pt"
+                        ? "bg-purple-950/90 text-purple-200 border border-purple-500/40 shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-200",
+                    )}
+                  >
+                    <span className="size-1.5 rounded-full bg-emerald-400" />
+                    <span>Português (BR)</span>
+                  </button>
+                </div>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/30 px-2.5 py-1 text-[11px] font-medium text-purple-300">
+                  <span className="size-1.5 rounded-full bg-purple-400" />
+                  Dublagem original (Japonês)
+                </span>
+              )}
+
+              {displayVoiceActors.length > 3 && (
+                <div className="hidden sm:flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => scroll("left")}
+                    aria-label="Rolar dubladores para a esquerda"
+                    className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+                  >
+                    <ChevronLeft className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scroll("right")}
+                    aria-label="Rolar dubladores para a direita"
+                    className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+                  >
+                    <ChevronRight className="size-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div
+            ref={railRef}
+            className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
+          >
+            {displayVoiceActors.map((item, index) => (
+              <DubladorCard
+                key={item.id}
+                item={item}
+                loadImage={index < visibleImgLimit}
+                isSelected={expandedEntity?.name === item.vaName}
+                onSelect={() => {
+                  setExpandedEntity({
+                    type: "dublador",
+                    id: item.vaId,
+                    name: item.vaName,
+                    image: item.vaImage,
+                    subtitle: item.characterName
+                      ? `Dubla ${item.characterName}`
+                      : undefined,
+                  });
+                }}
+              />
+            ))}
+          </div>
+        </>
       )}
     </section>
   );
@@ -4252,6 +4263,16 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
       animeId,
     );
 
+  const availableStaffAndStudios = useMemo<SelectedEntityTarget[]>(() => {
+    return allItems.map((item) => ({
+      type: item.isStudio ? "studio" : "staff",
+      id: item.isStudio ? item.name : item.id,
+      name: item.name,
+      image: item.image,
+      subtitle: item.isStudio ? "Estúdio de animação" : item.role,
+    }));
+  }, [allItems]);
+
   if (allItems.length === 0) {
     return null;
   }
@@ -4267,70 +4288,71 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
 
   return (
     <section className="mt-12 space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5">
-          <span className="h-6 w-1 rounded-full bg-purple-500" />
-          <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Direção e equipe técnica
-          </h2>
-        </div>
-
-        {allItems.length > 3 && (
-          <div className="hidden sm:flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => scroll("left")}
-              aria-label="Rolar equipe para a esquerda"
-              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => scroll("right")}
-              aria-label="Rolar equipe para a direita"
-              className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div
-        ref={railRef}
-        className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
-      >
-        {allItems.map((item, index) => (
-          <StaffCard
-            key={`${item.role}-${item.name}-${index}`}
-            item={item}
-            loadImage={index < visibleImgLimit}
-            isSelected={expandedEntity?.name === item.name}
-            onSelect={() => {
-              if (expandedEntity?.name === item.name) {
-                setExpandedEntity(null);
-                return;
-              }
-              setExpandedEntity({
-                type: item.isStudio ? "studio" : "staff",
-                id: item.isStudio ? item.name : item.id,
-                name: item.name,
-                image: item.image,
-                subtitle: item.isStudio
-                  ? "Estúdio de animação"
-                  : item.role,
-              });
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Conteúdo integrado no próprio espaço da seção, no padrão de Anime Stats */}
-      {expandedEntity && (
+      {expandedEntity ? (
         <EntityWorksExpansion
           entity={expandedEntity}
+          availableEntities={availableStaffAndStudios}
+          onSelectEntity={(ent) => setExpandedEntity(ent)}
+          onClear={() => setExpandedEntity(null)}
+          accentColor={expandedEntity.type === "studio" ? "indigo" : "purple"}
         />
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <span className="h-6 w-1 rounded-full bg-purple-500" />
+              <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                Direção e equipe técnica
+              </h2>
+            </div>
+
+            {allItems.length > 3 && (
+              <div className="hidden sm:flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => scroll("left")}
+                  aria-label="Rolar equipe para a esquerda"
+                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scroll("right")}
+                  aria-label="Rolar equipe para a direita"
+                  className="flex size-8 items-center justify-center rounded-lg border border-purple-500/20 bg-[#0f0d18] text-purple-300 [@media(hover:hover)]:hover:border-purple-500/50 [@media(hover:hover)]:hover:bg-[#19142b] transition-[color,background-color,border-color] cursor-pointer"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div
+            ref={railRef}
+            className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
+          >
+            {allItems.map((item, index) => (
+              <StaffCard
+                key={`${item.role}-${item.name}-${index}`}
+                item={item}
+                loadImage={index < visibleImgLimit}
+                isSelected={expandedEntity?.name === item.name}
+                onSelect={() => {
+                  setExpandedEntity({
+                    type: item.isStudio ? "studio" : "staff",
+                    id: item.isStudio ? item.name : item.id,
+                    name: item.name,
+                    image: item.image,
+                    subtitle: item.isStudio
+                      ? "Estúdio de animação"
+                      : item.role,
+                  });
+                }}
+              />
+            ))}
+          </div>
+        </>
       )}
     </section>
   );

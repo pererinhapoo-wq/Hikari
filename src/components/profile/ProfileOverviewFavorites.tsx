@@ -146,6 +146,27 @@ export function ProfileOverviewFavorites({
     setExpandedCategory("people");
   };
 
+  const availableDubladores = dubladores.map((item) => ({
+    type: "dublador" as const,
+    id: item.targetId,
+    name: item.title,
+    image: item.image,
+  }));
+
+  const availableStudios = studios.map((item) => ({
+    type: "studio" as const,
+    id: item.targetId,
+    name: item.title,
+    image: item.image,
+  }));
+
+  const availablePeople = people.map((item) => ({
+    type: "staff" as const,
+    id: item.targetId,
+    name: item.title,
+    image: item.image,
+  }));
+
   return (
     <div className="space-y-10 sm:space-y-12">
       {/* 1. Favoritos — Animes */}
@@ -172,57 +193,87 @@ export function ProfileOverviewFavorites({
 
       {/* 3. Favoritos — Dubladores */}
       <div className="space-y-4">
-        <FavoritesCarouselSection
-          title="Favoritos — Dubladores"
-          items={dubladores}
-          emptyTitle="Nenhum dublador favoritado"
-          emptyDescription="Os dubladores e seiyuus que dão vida aos seus personagens prediletos aparecerão aqui."
-          onCardClick={handleDubladorClick}
-          selectedItemTitle={expandedCategory === "dubladores" ? expandedEntity?.name : null}
-          accentColor="pink"
-          icon={Mic}
-        />
-        {expandedEntity && expandedCategory === "dubladores" && (
+        {expandedEntity && expandedCategory === "dubladores" ? (
           <EntityWorksExpansion
             entity={expandedEntity}
+            availableEntities={availableDubladores}
+            onSelectEntity={(ent) => {
+              setExpandedEntity(ent);
+              setExpandedCategory("dubladores");
+            }}
+            onClear={() => {
+              setExpandedEntity(null);
+              setExpandedCategory(null);
+            }}
+            accentColor="pink"
+          />
+        ) : (
+          <FavoritesCarouselSection
+            title="Favoritos — Dubladores"
+            items={dubladores}
+            emptyTitle="Nenhum dublador favoritado"
+            emptyDescription="Os dubladores e seiyuus que dão vida aos seus personagens prediletos aparecerão aqui."
+            onCardClick={handleDubladorClick}
+            accentColor="pink"
+            icon={Mic}
           />
         )}
       </div>
 
       {/* 4. Favoritos — Studios */}
       <div className="space-y-4">
-        <FavoritesCarouselSection
-          title="Favoritos — Studios"
-          items={studios}
-          emptyTitle="Nenhum estúdio favoritado"
-          emptyDescription="Acompanhe os estúdios responsáveis pelas suas animações favoritas no Hikari."
-          onCardClick={handleStudioClick}
-          selectedItemTitle={expandedCategory === "studios" ? expandedEntity?.name : null}
-          accentColor="indigo"
-          icon={Building2}
-        />
-        {expandedEntity && expandedCategory === "studios" && (
+        {expandedEntity && expandedCategory === "studios" ? (
           <EntityWorksExpansion
             entity={expandedEntity}
+            availableEntities={availableStudios}
+            onSelectEntity={(ent) => {
+              setExpandedEntity(ent);
+              setExpandedCategory("studios");
+            }}
+            onClear={() => {
+              setExpandedEntity(null);
+              setExpandedCategory(null);
+            }}
+            accentColor="indigo"
+          />
+        ) : (
+          <FavoritesCarouselSection
+            title="Favoritos — Studios"
+            items={studios}
+            emptyTitle="Nenhum estúdio favoritado"
+            emptyDescription="Acompanhe os estúdios responsáveis pelas suas animações favoritas no Hikari."
+            onCardClick={handleStudioClick}
+            accentColor="indigo"
+            icon={Building2}
           />
         )}
       </div>
 
       {/* 5. Favoritos — People */}
       <div className="space-y-4">
-        <FavoritesCarouselSection
-          title="Favoritos — People"
-          items={people}
-          emptyTitle="Nenhuma pessoa favoritada"
-          emptyDescription="Diretores, roteiristas, produtores e compositores da indústria que você admira."
-          onCardClick={handlePeopleClick}
-          selectedItemTitle={expandedCategory === "people" ? expandedEntity?.name : null}
-          accentColor="sky"
-          icon={User}
-        />
-        {expandedEntity && expandedCategory === "people" && (
+        {expandedEntity && expandedCategory === "people" ? (
           <EntityWorksExpansion
             entity={expandedEntity}
+            availableEntities={availablePeople}
+            onSelectEntity={(ent) => {
+              setExpandedEntity(ent);
+              setExpandedCategory("people");
+            }}
+            onClear={() => {
+              setExpandedEntity(null);
+              setExpandedCategory(null);
+            }}
+            accentColor="sky"
+          />
+        ) : (
+          <FavoritesCarouselSection
+            title="Favoritos — People"
+            items={people}
+            emptyTitle="Nenhuma pessoa favoritada"
+            emptyDescription="Diretores, roteiristas, produtores e compositores da indústria que você admira."
+            onCardClick={handlePeopleClick}
+            accentColor="sky"
+            icon={User}
           />
         )}
       </div>
