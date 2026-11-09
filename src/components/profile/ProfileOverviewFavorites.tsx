@@ -1,8 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Building2,
-  ChevronLeft,
-  ChevronRight,
   Film,
   Heart,
   Mic,
@@ -170,8 +168,8 @@ export function ProfileOverviewFavorites({
 
   return (
     <div className="space-y-10 sm:space-y-12">
-      {/* 1. Favoritos — Animes */}
-      <FavoritesCarouselSection
+      {/* 1. Favoritos — Animes: Grade com 3 animes por linha inclusive em mobile */}
+      <FavoritesAnimeGridSection
         title="Favoritos — Animes"
         items={animes}
         emptyTitle="Nenhum anime favoritado"
@@ -240,7 +238,142 @@ export function ProfileOverviewFavorites({
 }
 
 // ==========================================
-// Seção com Carrossel Horizontal
+// Seção Exclusiva: Grade de Animes (3 por linha no mobile)
+// ==========================================
+
+function FavoritesAnimeGridSection({
+  title,
+  items,
+  emptyTitle,
+  emptyDescription,
+  onCardClick,
+  accentColor = "violet",
+  icon: Icon,
+}: {
+  title: string;
+  items: ProfileFavoriteItem[];
+  emptyTitle: string;
+  emptyDescription: string;
+  onCardClick: (item: ProfileFavoriteItem) => void;
+  accentColor?: "violet" | "purple" | "pink" | "indigo" | "sky";
+  icon: typeof Film;
+}) {
+  const colorClasses = {
+    violet: "bg-violet-500",
+    purple: "bg-purple-500",
+    pink: "bg-pink-500",
+    indigo: "bg-indigo-500",
+    sky: "bg-sky-500",
+  }[accentColor];
+
+  return (
+    <section aria-label={title} className="space-y-3.5 sm:space-y-4">
+      {/* Cabeçalho da categoria: sem setas, sem números decorativos, sem emojis */}
+      <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+        <div className="flex items-center gap-2.5">
+          <span className={cn("h-5 w-1 rounded-full", colorClasses)} />
+          <Icon className="size-4 text-zinc-400" />
+          <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
+            {title}
+          </h3>
+        </div>
+      </div>
+
+      {/* Grade de 3 animes por linha inclusive no layout mobile */}
+      {items.length > 0 ? (
+        <div className="grid grid-cols-3 gap-2 min-[360px]:gap-2.5 sm:gap-3.5 md:gap-4 lg:grid-cols-5 xl:grid-cols-6">
+          {items.map((item) => (
+            <FavoriteAnimeGridCard
+              key={item.id}
+              item={item}
+              onClick={() => onCardClick(item)}
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyFavoritesNotice
+          title={emptyTitle}
+          description={emptyDescription}
+        />
+      )}
+    </section>
+  );
+}
+
+// ==========================================
+// Card individual da grade de animes
+// ==========================================
+
+function FavoriteAnimeGridCard({
+  item,
+  onClick,
+}: {
+  item: ProfileFavoriteItem;
+  onClick: () => void;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const initial = (item.title || "?").charAt(0).toUpperCase();
+
+  const cardSubtitle = (() => {
+    if (!item.subtitle) return item.nativeTitle || null;
+    const lower = item.subtitle.toLowerCase().trim();
+    if (lower === "anime" || lower === "obra") {
+      return item.nativeTitle || null;
+    }
+    return item.subtitle;
+  })();
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative flex w-full min-w-0 flex-col overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-1.5 min-[360px]:p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(139,92,246,0.18)] cursor-pointer text-left focus:outline-none select-none"
+    >
+      {/* Capa com proporção 3/4 */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224] flex items-center justify-center">
+        {!imgError && item.image ? (
+          <img
+            src={item.image}
+            alt={item.title}
+            onError={() => setImgError(true)}
+            loading="lazy"
+            className="size-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center font-display text-lg sm:text-2xl font-bold text-violet-400/80">
+            {initial}
+          </div>
+        )}
+
+        {/* Gradiente escuro no hover */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 pointer-events-none" />
+
+        {/* Coração ativo no topo direito */}
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 flex size-5 sm:size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md border border-rose-500/40 text-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.35)] transition-transform duration-300 group-hover:scale-110">
+          <Heart className="size-2.5 sm:size-3 fill-rose-500 text-rose-500" />
+        </div>
+      </div>
+
+      {/* Informações: Título e Subtítulo canônico (sem números decorativos) */}
+      <div className="mt-1.5 sm:mt-2.5 min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+        <h4
+          className="line-clamp-2 text-[11px] min-[360px]:text-xs sm:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white break-words leading-tight sm:leading-snug"
+          title={item.title}
+        >
+          {item.title}
+        </h4>
+        {cardSubtitle && (
+          <p className="truncate text-[10px] sm:text-xs text-zinc-400">
+            {cardSubtitle}
+          </p>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ==========================================
+// Seção com Carrossel Horizontal (Personagens, Dubladores, Studios, People)
 // ==========================================
 
 function FavoritesCarouselSection({
@@ -269,16 +402,7 @@ function FavoritesCarouselSection({
   const hasDraggedRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  const scroll = (direction: "left" | "right") => {
-    if (!railRef.current) return;
-    const distance = railRef.current.clientWidth * 0.75;
-    railRef.current.scrollBy({
-      left: direction === "left" ? -distance : distance,
-      behavior: "smooth",
-    });
-  };
-
-  // Suporte a mouse drag no desktop
+  // Suporte a mouse drag no desktop e toque/gesto mobile
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!railRef.current) return;
     isDownRef.current = true;
@@ -335,7 +459,7 @@ function FavoritesCarouselSection({
 
   return (
     <section aria-label={title} className="space-y-3.5 sm:space-y-4">
-      {/* Cabeçalho da categoria com controles de navegação */}
+      {/* Cabeçalho da categoria: sem setas, sem números decorativos, sem emojis */}
       <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
         <div className="flex items-center gap-2.5">
           <span className={cn("h-5 w-1 rounded-full", colorClasses)} />
@@ -343,36 +467,10 @@ function FavoritesCarouselSection({
           <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
             {title}
           </h3>
-          {items.length > 0 && (
-            <span className="text-xs text-zinc-500 font-mono">
-              ({items.length})
-            </span>
-          )}
         </div>
-
-        {items.length > 2 && (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => scroll("left")}
-              aria-label={`Rolar ${title} para a esquerda`}
-              className="flex size-7 sm:size-8 items-center justify-center rounded-lg border border-white/10 bg-[#0f0d18] text-zinc-400 hover:text-white hover:border-white/20 transition-colors cursor-pointer"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => scroll("right")}
-              aria-label={`Rolar ${title} para a direita`}
-              className="flex size-7 sm:size-8 items-center justify-center rounded-lg border border-white/10 bg-[#0f0d18] text-zinc-400 hover:text-white hover:border-white/20 transition-colors cursor-pointer"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* Conteúdo: Carrossel com Arraste (Desktop) e Deslize (Mobile) */}
+      {/* Conteúdo: Carrossel com Arraste (Desktop) e Deslize/Gesto (Mobile) */}
       {items.length > 0 ? (
         <div
           ref={railRef}

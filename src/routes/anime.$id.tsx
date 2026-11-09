@@ -7,19 +7,13 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Film,
   Heart,
   Loader2,
   LogIn,
   Pencil,
   Play,
-  Star,
   X,
 } from "lucide-react";
-import {
-  getStudioWorks,
-  type StudioWorkAnime,
-} from "@/lib/entity-works";
 import {
   getMyAnimeTracking,
   upsertAnimeTracking,
@@ -151,6 +145,7 @@ import {
   EntityWorksExpansion,
   DubladorWorksView,
   StaffWorksView,
+  StudioProductionsView,
   type SelectedEntityTarget,
 } from "@/components/anime/EntityWorksExpansion";
 
@@ -536,158 +531,6 @@ function makeAnimeSnapshot(anime: Anime) {
   };
 }
 
-const StudioProductionsView = memo(function StudioProductionsView({
-  studioName,
-  animeId,
-}: {
-  studioName: string;
-  animeId: string;
-}) {
-  const navigate = useNavigate();
-  const [works, setWorks] = useState<StudioWorkAnime[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    getStudioWorks(studioName)
-      .then((res) => {
-        if (!active) return;
-        setWorks(res.studioAnimes ?? []);
-      })
-      .catch((err) => {
-        console.warn("Erro ao buscar produções do estúdio:", err);
-        if (!active) return;
-        setWorks([]);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [studioName]);
-
-  const handleClearStudio = () => {
-    void navigate({
-      to: "/anime/$id",
-      params: { id: animeId },
-      search: (prev: Record<string, unknown>) => {
-        const next = { ...prev };
-        delete next.studio;
-        return next;
-      },
-    });
-  };
-
-  return (
-    <div className="relative min-h-[80vh] w-full pb-16 pt-16 sm:pt-20 animate-in fade-in duration-300">
-      {/* Luz ambiente de fundo violeta/indigo sutil conforme padrão Anime Stats */}
-      <div
-        className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-indigo-600/10 blur-[120px]"
-        aria-hidden="true"
-      />
-
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
-        {/* Cabeçalho no padrão do Anime Stats:
-            - Indicador circular luminoso
-            - Título contextual com separador ("Produções — Toei Animation")
-            - Contador de resultados
-            - Sem botões Voltar, X ou Fechar (toque no título permite retornar à visualização anterior)
-        */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
-          <div
-            onClick={handleClearStudio}
-            className="flex items-center gap-3 cursor-pointer group select-none min-w-0"
-            title="Voltar aos detalhes do anime"
-          >
-            <span className="size-3.5 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.85)] shrink-0 transition-transform group-hover:scale-110" />
-            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white truncate">
-              Produções — {studioName}
-            </h1>
-            {!loading && (
-              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
-                {works.length}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Grade de produções exclusivas do estúdio */}
-        {loading ? (
-          <div className="grid grid-cols-2 gap-3 min-[480px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
-            {Array.from({ length: 12 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="aspect-[2/3] animate-pulse rounded-xl bg-white/[0.04] border border-white/[0.05]"
-              />
-            ))}
-          </div>
-        ) : works.length === 0 ? (
-          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center text-sm text-zinc-400">
-            Nenhuma produção registrada para este estúdio no catálogo.
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 min-[480px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
-            {works.map((item) => (
-              <Link
-                key={item.id}
-                to="/anime/$id"
-                params={{ id: item.id }}
-                className="group relative flex flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#0f0d1a] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)] cursor-pointer"
-              >
-                <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-[#141220]">
-                  {item.cover ? (
-                    <img
-                      src={item.cover}
-                      alt={item.title}
-                      loading="lazy"
-                      decoding="async"
-                      className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex size-full items-center justify-center text-zinc-600">
-                      <Film className="size-6" />
-                    </div>
-                  )}
-
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent" />
-
-                  {(item.year || item.format) && (
-                    <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between text-[9px] font-semibold text-zinc-300">
-                      <span>
-                        {item.year}
-                        {item.year && item.format ? " • " : ""}
-                        {item.format}
-                      </span>
-                      {item.score && (
-                        <span className="flex items-center gap-0.5 text-amber-400">
-                          <Star className="size-2.5 fill-amber-400" />
-                          {item.score.toFixed(1)}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-2 min-w-0">
-                  <h4
-                    className="line-clamp-2 text-xs font-semibold text-zinc-100 transition-colors group-hover:text-purple-300 leading-snug"
-                    title={item.title}
-                  >
-                    {item.title}
-                  </h4>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
 
 function AnimePage() {
   const { id } = Route.useParams();

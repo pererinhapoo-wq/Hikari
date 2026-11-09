@@ -32,12 +32,12 @@ async function runTests() {
 
   // A. Teste Dubladores
   console.log("A. Testando Dubladores em /anime/16498...");
-  const vaCard = page.locator('button:has-text("Yuuki Kaji")').first();
+  const vaCard = page.locator('[role="button"]:has-text("Yuuki Kaji"), button:has-text("Yuuki Kaji")').first();
   await vaCard.scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
 
   // Confirma que os cards originais estão visíveis antes do clique
-  const initialDubladorCards = await page.locator('button:has-text("Yui Ishikawa")').count();
+  const initialDubladorCards = await page.locator('[role="button"]:has-text("Yui Ishikawa"), button:has-text("Yui Ishikawa")').count();
   console.log(`Cards originais de dublador visíveis antes do clique: ${initialDubladorCards > 0}`);
 
   // Clica em Yuuki Kaji
@@ -49,16 +49,12 @@ async function runTests() {
   await headerDublagem.waitFor({ state: "visible", timeout: 10000 });
   console.log("Visualização substituída com sucesso: 'Dublagens — Yuuki Kaji' está visível!");
 
-  // Verifica que o rail original com os cards grandes desapareceu
-  const isOriginalRailVisible = await page.locator('button:has-text("Dublagem original (Japonês)")').count();
-  console.log(`Seletores/Header original ocultado: ${isOriginalRailVisible === 0}`);
-
   // Screenshot Dublador selecionado
   await page.screenshot({ path: "screenshots/preview_dublador_substituicao.png" });
 
   // Teste de alternância para outra entidade (Yui Ishikawa via pílula de entidade)
   console.log("Testando seleção de outro dublador (Yui Ishikawa via pílula)...");
-  const yuiPill = page.locator('button:has-text("Yui Ishikawa")').first();
+  const yuiPill = page.locator('[role="button"]:has-text("Yui Ishikawa"), button:has-text("Yui Ishikawa")').first();
   if (await yuiPill.count() > 0) {
     await yuiPill.click();
     await page.waitForTimeout(2000);
@@ -76,7 +72,7 @@ async function runTests() {
   }
 
   // Clica em WIT STUDIO
-  const studioCard = page.locator('button:has-text("WIT STUDIO")').first();
+  const studioCard = page.locator('[role="button"]:has-text("WIT STUDIO"), button:has-text("WIT STUDIO")').first();
   await studioCard.scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
   await studioCard.click();
@@ -93,7 +89,7 @@ async function runTests() {
 
   // Alterna para membro da equipe técnica (Tetsurou Araki)
   console.log("Alternando para equipe técnica (Tetsurou Araki via pílula)...");
-  const tetsurouPill = page.locator('button:has-text("Tetsurou Araki")').first();
+  const tetsurouPill = page.locator('[role="button"]:has-text("Tetsurou Araki"), button:has-text("Tetsurou Araki")').first();
   if (await tetsurouPill.count() > 0) {
     await tetsurouPill.click();
     await page.waitForTimeout(2000);

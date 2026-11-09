@@ -455,6 +455,15 @@ function cleanStudioName(name: string): string {
     .trim();
 }
 
+function escapeXml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 /**
  * Gera um logotipo vetorial oficial dinâmico para estúdios que não possuam
  * um emblema pré-definido, mantendo a estética visual do Hikari e garantindo 100% de confiabilidade de carregamento.
@@ -462,15 +471,17 @@ function cleanStudioName(name: string): string {
 export function generateDynamicStudioLogo(name: string): string {
   const clean = name.replace(/\b(co\.,?\s*ltd\.?|inc\.?|corp\.?|corporation|ltd\.?|llc)\b/gi, "").trim();
   const initial = clean.charAt(0).toUpperCase();
-  const label = clean.length > 17 ? clean.slice(0, 16) + "…" : clean;
+  const label = clean.length > 20 ? clean.slice(0, 19) + "…" : clean;
+  const safeInitial = escapeXml(initial);
+  const safeLabel = escapeXml(label);
 
   return svgUri(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100" fill="none">
       <rect width="240" height="100" rx="12" fill="#0d0c16"/>
       <rect x="2" y="2" width="236" height="96" rx="10" stroke="#a855f7" stroke-width="1.2" stroke-opacity="0.35"/>
       <circle cx="44" cy="50" r="20" fill="#18132d" stroke="#a855f7" stroke-width="1.5" stroke-opacity="0.6"/>
-      <text x="44" y="57" font-family="'Manrope', system-ui, sans-serif" font-weight="900" font-size="20" fill="#c084fc" text-anchor="middle">${initial}</text>
-      <text x="74" y="47" font-family="'Manrope', system-ui, sans-serif" font-weight="800" font-size="16" fill="#ffffff">${label}</text>
+      <text x="44" y="57" font-family="'Manrope', system-ui, sans-serif" font-weight="900" font-size="20" fill="#c084fc" text-anchor="middle">${safeInitial}</text>
+      <text x="74" y="47" font-family="'Manrope', system-ui, sans-serif" font-weight="800" font-size="16" fill="#ffffff">${safeLabel}</text>
       <text x="74" y="65" font-family="'Manrope', system-ui, sans-serif" font-weight="700" font-size="9.5" fill="#a855f7" letter-spacing="1.5">ANIMATION STUDIO</text>
     </svg>
   `);
