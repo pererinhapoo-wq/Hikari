@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Calendar,
   ChevronRight,
@@ -10,7 +10,10 @@ import { memo, useEffect, useRef, useState } from "react";
 import {
   getPersonWorks,
   getStudioWorks,
+  type DubladorWorkItem,
   type EntityWorksData,
+  type StaffWorkItem,
+  type StudioWorkAnime,
 } from "@/lib/entity-works";
 import { cn } from "@/lib/utils";
 
@@ -148,13 +151,13 @@ export const EntityWorksExpansion = memo(function EntityWorksExpansion({
                   : "bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.85)]",
             )}
           />
-          <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white truncate">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white truncate">
             {isStudio
               ? `Produções — ${entity.name}`
               : isDublador
                 ? `Dublagens — ${entity.name}`
                 : `Trabalhos — ${entity.name}`}
-          </h2>
+          </h1>
 
           {!loading && (
             <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
@@ -449,3 +452,546 @@ function EmptyNotice({ message }: { message: string }) {
     </div>
   );
 }
+
+export const DubladorWorksView = memo(function DubladorWorksView({
+  dubladorName,
+  dubladorId,
+  animeId,
+  onClear,
+}: {
+  dubladorName: string;
+  dubladorId?: string | number | null;
+  animeId?: string;
+  onClear?: () => void;
+}) {
+  const navigate = useNavigate();
+  const [works, setWorks] = useState<DubladorWorkItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+
+    getPersonWorks(dubladorName, dubladorId, "dublador")
+      .then((res) => {
+        if (!active) return;
+        setWorks(res.dubladorWorks ?? []);
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar trabalhos de dublagem:", err);
+        if (!active) return;
+        setWorks([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [dubladorName, dubladorId]);
+
+  const handleClear = () => {
+    if (onClear) {
+      onClear();
+      return;
+    }
+    if (animeId) {
+      void navigate({
+        to: "/anime/$id",
+        params: { id: animeId },
+        search: (prev: Record<string, unknown>) => {
+          const next = { ...prev };
+          delete next.dublador;
+          delete next.dubladorId;
+          return next;
+        },
+      });
+    } else {
+      void navigate({
+        search: (prev: Record<string, unknown>) => {
+          const next = { ...prev };
+          delete next.dublador;
+          delete next.dubladorId;
+          return next;
+        },
+      });
+    }
+  };
+
+  return (
+    <div className="relative min-h-[80vh] w-full pb-16 pt-16 sm:pt-20 animate-in fade-in duration-300">
+      <div
+        className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-pink-600/10 blur-[120px]"
+        aria-hidden="true"
+      />
+
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
+          <div
+            onClick={handleClear}
+            className="flex items-center gap-3 cursor-pointer group select-none min-w-0"
+            title="Voltar à visualização anterior"
+          >
+            <span className="size-3.5 rounded-full bg-pink-500 shadow-[0_0_12px_rgba(236,72,153,0.85)] shrink-0 transition-transform group-hover:scale-110" />
+            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white truncate">
+              Dublagens — {dubladorName}
+            </h1>
+            {!loading && (
+              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
+                {works.length}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="h-32 animate-pulse rounded-2xl bg-white/[0.04] border border-white/[0.05]"
+              />
+            ))}
+          </div>
+        ) : works.length === 0 ? (
+          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center text-sm text-zinc-400">
+            Nenhum papel de dublagem encontrado para este profissional.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+            {works.map((work) => {
+              const isMainRole =
+                (work.character.role || "").toUpperCase() === "MAIN";
+              const roleLabel = isMainRole ? "Protagonista" : "Secundário";
+
+              return (
+                <article
+                  key={work.id}
+                  className="group relative flex items-stretch gap-3 overflow-hidden rounded-2xl border border-purple-500/15 bg-[#0e0c19] p-2.5 sm:p-3 transition-all duration-300 hover:border-purple-500/40 hover:bg-[#131023] hover:shadow-[0_8px_24px_rgba(168,85,247,0.18)]"
+                >
+                  <Link
+                    to="/anime/$id"
+                    params={{ id: work.anime.id }}
+                    className="relative w-16 sm:w-20 shrink-0 aspect-[2/3] overflow-hidden rounded-xl bg-[#161328] group/cover cursor-pointer"
+                    title={`Ver ${work.anime.title}`}
+                  >
+                    {work.anime.cover ? (
+                      <img
+                        src={work.anime.cover}
+                        alt={work.anime.title}
+                        loading="lazy"
+                        className="size-full object-cover transition-transform duration-500 group-hover/cover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex size-full items-center justify-center text-zinc-600">
+                        <Film className="size-5" />
+                      </div>
+                    )}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-40 group-hover/cover:opacity-60 transition-opacity" />
+                  </Link>
+
+                  <div className="flex flex-1 flex-col justify-between min-w-0 py-0.5">
+                    <div>
+                      <Link
+                        to="/anime/$id"
+                        params={{ id: work.anime.id }}
+                        className="group/title block min-w-0"
+                      >
+                        <h4
+                          className="line-clamp-1 text-xs sm:text-sm font-bold text-zinc-100 transition-colors group-hover/title:text-purple-300"
+                          title={work.anime.title}
+                        >
+                          {work.anime.title}
+                        </h4>
+                        {(work.anime.year || work.anime.format) && (
+                          <p className="mt-0.5 text-[10px] sm:text-[11px] text-zinc-400 flex items-center gap-1.5">
+                            {work.anime.year && (
+                              <span className="inline-flex items-center gap-1">
+                                <Calendar className="size-2.5 text-zinc-500" />
+                                {work.anime.year}
+                              </span>
+                            )}
+                            {work.anime.format && (
+                              <span>• {work.anime.format}</span>
+                            )}
+                          </p>
+                        )}
+                      </Link>
+
+                      <div className="mt-2.5 flex items-center gap-2.5 rounded-xl border border-white/[0.05] bg-white/[0.02] p-1.5 min-w-0">
+                        <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-[#18152b] border border-purple-500/20">
+                          {work.character.image ? (
+                            <img
+                              src={work.character.image}
+                              alt={work.character.name}
+                              loading="lazy"
+                              className="size-full object-cover object-top"
+                            />
+                          ) : (
+                            <div className="flex size-full items-center justify-center font-display text-xs font-bold text-purple-400">
+                              {work.character.name.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[9px] uppercase tracking-wider font-semibold text-purple-300/80">
+                            Dublou como
+                          </span>
+                          <p
+                            className="truncate text-xs font-semibold text-white"
+                            title={work.character.name}
+                          >
+                            {work.character.name}
+                          </p>
+                        </div>
+
+                        <span
+                          className={cn(
+                            "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold border",
+                            isMainRole
+                              ? "bg-purple-950 text-purple-200 border-purple-500/40"
+                              : "bg-zinc-900 text-zinc-400 border-white/10",
+                          )}
+                        >
+                          {roleLabel}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Link
+                      to="/anime/$id"
+                      params={{ id: work.anime.id }}
+                      className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-purple-400 hover:text-purple-300 transition-colors"
+                    >
+                      <span>Acessar produção</span>
+                      <ChevronRight className="size-3" />
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+export const StaffWorksView = memo(function StaffWorksView({
+  staffName,
+  staffId,
+  animeId,
+  onClear,
+}: {
+  staffName: string;
+  staffId?: string | number | null;
+  animeId?: string;
+  onClear?: () => void;
+}) {
+  const navigate = useNavigate();
+  const [works, setWorks] = useState<StaffWorkItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+
+    getPersonWorks(staffName, staffId, "staff")
+      .then((res) => {
+        if (!active) return;
+        setWorks(res.staffWorks ?? []);
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar trabalhos técnicos:", err);
+        if (!active) return;
+        setWorks([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [staffName, staffId]);
+
+  const handleClear = () => {
+    if (onClear) {
+      onClear();
+      return;
+    }
+    if (animeId) {
+      void navigate({
+        to: "/anime/$id",
+        params: { id: animeId },
+        search: (prev: Record<string, unknown>) => {
+          const next = { ...prev };
+          delete next.staff;
+          delete next.staffId;
+          delete next.person;
+          delete next.personId;
+          return next;
+        },
+      });
+    } else {
+      void navigate({
+        search: (prev: Record<string, unknown>) => {
+          const next = { ...prev };
+          delete next.staff;
+          delete next.staffId;
+          delete next.person;
+          delete next.personId;
+          return next;
+        },
+      });
+    }
+  };
+
+  return (
+    <div className="relative min-h-[80vh] w-full pb-16 pt-16 sm:pt-20 animate-in fade-in duration-300">
+      <div
+        className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-purple-600/10 blur-[120px]"
+        aria-hidden="true"
+      />
+
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
+          <div
+            onClick={handleClear}
+            className="flex items-center gap-3 cursor-pointer group select-none min-w-0"
+            title="Voltar à visualização anterior"
+          >
+            <span className="size-3.5 rounded-full bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.85)] shrink-0 transition-transform group-hover:scale-110" />
+            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white truncate">
+              Trabalhos — {staffName}
+            </h1>
+            {!loading && (
+              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
+                {works.length}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="h-28 animate-pulse rounded-2xl bg-white/[0.04] border border-white/[0.05]"
+              />
+            ))}
+          </div>
+        ) : works.length === 0 ? (
+          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center text-sm text-zinc-400">
+            Nenhum trabalho técnico encontrado para este profissional.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+            {works.map((work) => (
+              <article
+                key={work.id}
+                className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-purple-500/15 bg-[#0e0c19] p-2.5 sm:p-3 transition-all duration-300 hover:border-purple-500/40 hover:bg-[#131023] hover:shadow-[0_8px_24px_rgba(168,85,247,0.18)]"
+              >
+                <Link
+                  to="/anime/$id"
+                  params={{ id: work.anime.id }}
+                  className="relative w-14 sm:w-16 shrink-0 aspect-[2/3] overflow-hidden rounded-xl bg-[#161328] group/poster cursor-pointer"
+                  title={`Ver ${work.anime.title}`}
+                >
+                  {work.anime.cover ? (
+                    <img
+                      src={work.anime.cover}
+                      alt={work.anime.title}
+                      loading="lazy"
+                      className="size-full object-cover transition-transform duration-500 group-hover/poster:scale-105"
+                    />
+                  ) : (
+                    <div className="flex size-full items-center justify-center text-zinc-600">
+                      <Film className="size-5" />
+                    </div>
+                  )}
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-40 group-hover/poster:opacity-60 transition-opacity" />
+                </Link>
+
+                <div className="flex flex-1 flex-col justify-between min-w-0 py-0.5">
+                  <div>
+                    <span className="inline-flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-950/70 px-2 py-0.5 text-[10px] font-semibold text-purple-200">
+                      <Layers className="size-2.5 text-purple-400" />
+                      <span className="truncate">{work.roleLabel}</span>
+                    </span>
+
+                    <Link
+                      to="/anime/$id"
+                      params={{ id: work.anime.id }}
+                      className="block mt-1.5 min-w-0"
+                    >
+                      <h4
+                        className="line-clamp-2 text-xs sm:text-sm font-semibold text-zinc-100 transition-colors group-hover:text-purple-300 leading-snug"
+                        title={work.anime.title}
+                      >
+                        {work.anime.title}
+                      </h4>
+                    </Link>
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-zinc-400">
+                    <span>
+                      {work.anime.year}
+                      {work.anime.year && work.anime.format ? " • " : ""}
+                      {work.anime.format}
+                    </span>
+
+                    <Link
+                      to="/anime/$id"
+                      params={{ id: work.anime.id }}
+                      className="inline-flex items-center gap-0.5 font-medium text-purple-400 hover:text-purple-300"
+                    >
+                      <span>Ver</span>
+                      <ChevronRight className="size-3" />
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+export const ProfileStudioWorksView = memo(function ProfileStudioWorksView({
+  studioName,
+  studioId,
+  onClear,
+}: {
+  studioName: string;
+  studioId?: string | number | null;
+  onClear: () => void;
+}) {
+  const [works, setWorks] = useState<StudioWorkAnime[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+
+    getStudioWorks(studioName, studioId)
+      .then((res) => {
+        if (!active) return;
+        setWorks(res.studioAnimes ?? []);
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar produções do estúdio:", err);
+        if (!active) return;
+        setWorks([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [studioName, studioId]);
+
+  return (
+    <div className="relative min-h-[80vh] w-full pb-16 pt-16 sm:pt-20 animate-in fade-in duration-300">
+      <div
+        className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-indigo-600/10 blur-[120px]"
+        aria-hidden="true"
+      />
+
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
+          <div
+            onClick={onClear}
+            className="flex items-center gap-3 cursor-pointer group select-none min-w-0"
+            title="Voltar à visualização anterior"
+          >
+            <span className="size-3.5 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.85)] shrink-0 transition-transform group-hover:scale-110" />
+            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white truncate">
+              Produções — {studioName}
+            </h1>
+            {!loading && (
+              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
+                {works.length}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-2 gap-3 min-[480px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
+            {Array.from({ length: 12 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="aspect-[2/3] animate-pulse rounded-xl bg-white/[0.04] border border-white/[0.05]"
+              />
+            ))}
+          </div>
+        ) : works.length === 0 ? (
+          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center text-sm text-zinc-400">
+            Nenhuma produção registrada para este estúdio no catálogo.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 min-[480px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
+            {works.map((item) => (
+              <Link
+                key={item.id}
+                to="/anime/$id"
+                params={{ id: item.id }}
+                className="group relative flex flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#0f0d1a] p-2 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)] cursor-pointer"
+              >
+                <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-[#141220]">
+                  {item.cover ? (
+                    <img
+                      src={item.cover}
+                      alt={item.title}
+                      loading="lazy"
+                      className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex size-full items-center justify-center text-zinc-600">
+                      <Film className="size-6" />
+                    </div>
+                  )}
+
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent" />
+
+                  {(item.year || item.format) && (
+                    <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between text-[9px] font-semibold text-zinc-300">
+                      <span>
+                        {item.year}
+                        {item.year && item.format ? " • " : ""}
+                        {item.format}
+                      </span>
+                      {item.score && (
+                        <span className="flex items-center gap-0.5 text-amber-400">
+                          <Star className="size-2.5 fill-amber-400" />
+                          {item.score.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-2 min-w-0">
+                  <h4
+                    className="line-clamp-2 text-xs font-semibold text-zinc-100 transition-colors group-hover:text-purple-300 leading-snug"
+                    title={item.title}
+                  >
+                    {item.title}
+                  </h4>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});

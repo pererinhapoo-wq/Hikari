@@ -59,10 +59,24 @@ import { ProfileHistorySpace } from "@/components/profile/ProfileHistorySpace";
 import { ProfileEditModal } from "@/components/profile/ProfileEditModal";
 import { ProfileConnectionsModal } from "@/components/profile/ProfileConnectionsModal";
 import { ProfilePrivacyModal } from "@/components/profile/ProfilePrivacyModal";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  DubladorWorksView,
+  ProfileStudioWorksView,
+  StaffWorksView,
+} from "@/components/anime/EntityWorksExpansion";
 
 interface AccountSearchParams {
   status?: TrackingStatus;
   edit?: string;
+  studio?: string;
+  studioId?: string;
+  dublador?: string;
+  dubladorId?: string;
+  staff?: string;
+  staffId?: string;
+  person?: string;
+  personId?: string;
 }
 
 export const Route = createFileRoute("/account")({
@@ -82,12 +96,59 @@ export const Route = createFileRoute("/account")({
 
     const edit = typeof raw.edit === "string" ? raw.edit : undefined;
 
-    return { status, edit };
+    const studio =
+      typeof raw.studio === "string" && raw.studio ? raw.studio : undefined;
+    const studioId =
+      typeof raw.studioId === "string" && raw.studioId
+        ? raw.studioId
+        : typeof raw.studioId === "number"
+          ? String(raw.studioId)
+          : undefined;
+
+    const dublador =
+      typeof raw.dublador === "string" && raw.dublador ? raw.dublador : undefined;
+    const dubladorId =
+      typeof raw.dubladorId === "string" && raw.dubladorId
+        ? raw.dubladorId
+        : typeof raw.dubladorId === "number"
+          ? String(raw.dubladorId)
+          : undefined;
+
+    const staff =
+      typeof raw.staff === "string" && raw.staff
+        ? raw.staff
+        : typeof raw.person === "string" && raw.person
+          ? raw.person
+          : undefined;
+    const staffId =
+      typeof raw.staffId === "string" && raw.staffId
+        ? raw.staffId
+        : typeof raw.staffId === "number"
+          ? String(raw.staffId)
+          : typeof raw.personId === "string" && raw.personId
+            ? raw.personId
+            : typeof raw.personId === "number"
+              ? String(raw.personId)
+              : undefined;
+
+    return {
+      status,
+      edit,
+      studio,
+      studioId,
+      dublador,
+      dubladorId,
+      staff,
+      staffId,
+      person: staff,
+      personId: staffId,
+    };
   },
   component: AccountProfile,
 });
 
 function AccountProfile() {
+  const navigate = useNavigate();
   const search = Route.useSearch();
   const urlStatus =
     search.status ||
@@ -96,6 +157,45 @@ function AccountProfile() {
       : null);
   const statusParam =
     urlStatus && STATUS_ORDER.includes(urlStatus) ? urlStatus : undefined;
+
+  const studioParam =
+    search.studio ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("studio") || undefined
+      : undefined);
+  const studioIdParam =
+    search.studioId ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("studioId") || undefined
+      : undefined);
+
+  const dubladorParam =
+    search.dublador ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("dublador") || undefined
+      : undefined);
+  const dubladorIdParam =
+    search.dubladorId ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("dubladorId") || undefined
+      : undefined);
+
+  const staffParam =
+    search.staff ||
+    search.person ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("staff") ||
+        new URLSearchParams(window.location.search).get("person") ||
+        undefined
+      : undefined);
+  const staffIdParam =
+    search.staffId ||
+    search.personId ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("staffId") ||
+        new URLSearchParams(window.location.search).get("personId") ||
+        undefined
+      : undefined);
 
   const { user, isPending } = useCurrentUserState();
 
@@ -560,6 +660,68 @@ function AccountProfile() {
 
   if (!user) {
     return <RedirectToSignIn to="/login" />;
+  }
+
+  if (studioParam) {
+    return (
+      <ProfileStudioWorksView
+        studioName={studioParam}
+        studioId={studioIdParam}
+        onClear={() => {
+          void navigate({
+            to: "/account",
+            search: (prev) => {
+              const next = { ...prev };
+              delete next.studio;
+              delete next.studioId;
+              return next;
+            },
+          });
+        }}
+      />
+    );
+  }
+
+  if (dubladorParam) {
+    return (
+      <DubladorWorksView
+        dubladorName={dubladorParam}
+        dubladorId={dubladorIdParam}
+        onClear={() => {
+          void navigate({
+            to: "/account",
+            search: (prev) => {
+              const next = { ...prev };
+              delete next.dublador;
+              delete next.dubladorId;
+              return next;
+            },
+          });
+        }}
+      />
+    );
+  }
+
+  if (staffParam) {
+    return (
+      <StaffWorksView
+        staffName={staffParam}
+        staffId={staffIdParam}
+        onClear={() => {
+          void navigate({
+            to: "/account",
+            search: (prev) => {
+              const next = { ...prev };
+              delete next.staff;
+              delete next.staffId;
+              delete next.person;
+              delete next.personId;
+              return next;
+            },
+          });
+        }}
+      />
+    );
   }
 
   // Se a rota for aberta com parâmetro de status (ex: vindo do clique em Anime Stats na Visão Geral),

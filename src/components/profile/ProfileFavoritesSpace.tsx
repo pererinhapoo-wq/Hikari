@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Briefcase,
   Building2,
@@ -69,6 +69,7 @@ export function ProfileFavoritesSpace({
   allItems,
   loading = false,
 }: ProfileFavoritesSpaceProps) {
+  const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
   const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
 
@@ -87,17 +88,19 @@ export function ProfileFavoritesSpace({
       : grouped[activeCategory] || [];
 
   const handleEntityClick = (item: ProfileFavoriteItem) => {
-    if (expandedEntity?.name === item.title) {
-      setExpandedEntity(null);
-      return;
-    }
     if (item.targetType === "studio" || item.targetType === "company") {
-      setExpandedEntity({
-        type: "studio",
-        id: item.targetId,
-        name: item.title,
-        image: item.image,
-        subtitle: "Estúdio de animação",
+      void navigate({
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          studio: item.title,
+          studioId: item.targetId,
+          dublador: undefined,
+          dubladorId: undefined,
+          staff: undefined,
+          staffId: undefined,
+          person: undefined,
+          personId: undefined,
+        }),
       });
     } else if (item.targetType === "person") {
       const isVoiceActor =
@@ -105,13 +108,35 @@ export function ProfileFavoritesSpace({
         (item.subtitle || "").toLowerCase().includes("voice actor") ||
         (item.description || "").toLowerCase().includes("dublador");
 
-      setExpandedEntity({
-        type: isVoiceActor ? "dublador" : "staff",
-        id: item.targetId,
-        name: item.title,
-        image: item.image,
-        subtitle: item.subtitle,
-      });
+      if (isVoiceActor) {
+        void navigate({
+          search: (prev: Record<string, unknown>) => ({
+            ...prev,
+            dublador: item.title,
+            dubladorId: item.targetId,
+            studio: undefined,
+            studioId: undefined,
+            staff: undefined,
+            staffId: undefined,
+            person: undefined,
+            personId: undefined,
+          }),
+        });
+      } else {
+        void navigate({
+          search: (prev: Record<string, unknown>) => ({
+            ...prev,
+            staff: item.title,
+            staffId: item.targetId,
+            dublador: undefined,
+            dubladorId: undefined,
+            studio: undefined,
+            studioId: undefined,
+            person: undefined,
+            personId: undefined,
+          }),
+        });
+      }
     }
   };
 

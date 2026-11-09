@@ -534,14 +534,46 @@ export async function getPersonWorks(
       });
     }
 
+    // Filtragem estrita conforme a função real da pessoa:
+    // 1. Se preferCategory for 'dublador', retorna exclusivamente dublagens, sem misturar funções técnicas.
+    // 2. Se preferCategory for 'staff', retorna exclusivamente produções técnicas, sem misturar dublagens.
+    // 3. Se for genérico, avalia occupations e preenchimento para escolher a categoria real predominante, mantendo estrita separação.
+    let finalKind: "dublador" | "staff" = preferCategory === "dublador" ? "dublador" : "staff";
+    let finalDubladorWorks: DubladorWorkItem[] = [];
+    let finalStaffWorks: StaffWorkItem[] = [];
+
+    if (preferCategory === "dublador") {
+      finalKind = "dublador";
+      finalDubladorWorks = dubladorWorks;
+      finalStaffWorks = [];
+    } else if (preferCategory === "staff") {
+      finalKind = "staff";
+      finalDubladorWorks = [];
+      finalStaffWorks = staffWorks;
+    } else {
+      const isVoice = occupations.some((o) =>
+        /voice actor|seiyuu|dublador/i.test(o),
+      ) || (dubladorWorks.length > 0 && staffWorks.length === 0);
+
+      if (isVoice) {
+        finalKind = "dublador";
+        finalDubladorWorks = dubladorWorks;
+        finalStaffWorks = [];
+      } else {
+        finalKind = "staff";
+        finalDubladorWorks = [];
+        finalStaffWorks = staffWorks;
+      }
+    }
+
     const result: EntityWorksData = {
-      kind: preferCategory,
+      kind: finalKind,
       targetId: staff?.id ?? personId,
       name: displayName,
       image: displayImage,
       occupations: occupations.filter(Boolean),
-      dubladorWorks,
-      staffWorks,
+      dubladorWorks: finalDubladorWorks,
+      staffWorks: finalStaffWorks,
     };
 
     clientEntityWorksCache.set(cacheKey, result);

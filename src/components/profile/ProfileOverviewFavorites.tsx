@@ -101,29 +101,50 @@ export function ProfileOverviewFavorites({
   };
 
   const handleDubladorClick = (item: ProfileFavoriteItem) => {
-    setExpandedEntity({
-      type: "dublador",
-      id: item.targetId,
-      name: item.title,
-      image: item.image,
+    void navigate({
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        dublador: item.title,
+        dubladorId: item.targetId,
+        studio: undefined,
+        studioId: undefined,
+        staff: undefined,
+        staffId: undefined,
+        person: undefined,
+        personId: undefined,
+      }),
     });
   };
 
   const handleStudioClick = (item: ProfileFavoriteItem) => {
-    setExpandedEntity({
-      type: "studio",
-      id: item.targetId,
-      name: item.title,
-      image: item.image,
+    void navigate({
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        studio: item.title,
+        studioId: item.targetId,
+        dublador: undefined,
+        dubladorId: undefined,
+        staff: undefined,
+        staffId: undefined,
+        person: undefined,
+        personId: undefined,
+      }),
     });
   };
 
   const handlePeopleClick = (item: ProfileFavoriteItem) => {
-    setExpandedEntity({
-      type: "staff",
-      id: item.targetId,
-      name: item.title,
-      image: item.image,
+    void navigate({
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        staff: item.title,
+        staffId: item.targetId,
+        dublador: undefined,
+        dubladorId: undefined,
+        studio: undefined,
+        studioId: undefined,
+        person: undefined,
+        personId: undefined,
+      }),
     });
   };
 

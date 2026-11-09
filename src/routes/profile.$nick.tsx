@@ -42,11 +42,86 @@ import {
   type PublicProfileComment,
   type UserActivityItem,
 } from "@/lib/profile.functions";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  DubladorWorksView,
+  ProfileStudioWorksView,
+  StaffWorksView,
+} from "@/components/anime/EntityWorksExpansion";
+import { ProfileOverviewFavorites } from "@/components/profile/ProfileOverviewFavorites";
+import { getPublicProfileFavorites } from "@/lib/profile-favorites.functions";
+import type { ProfileFavoritesGrouped } from "@/types/favorite";
+
+interface PublicProfileSearchParams {
+  tab?: "comments" | "activity" | "favorites";
+  studio?: string;
+  studioId?: string;
+  dublador?: string;
+  dubladorId?: string;
+  staff?: string;
+  staffId?: string;
+  person?: string;
+  personId?: string;
+}
 
 export const Route =
   createFileRoute(
     "/profile/$nick",
   )({
+    validateSearch: (raw: Record<string, unknown>): PublicProfileSearchParams => ({
+      tab:
+        raw.tab === "comments" || raw.tab === "activity" || raw.tab === "favorites"
+          ? (raw.tab as "comments" | "activity" | "favorites")
+          : undefined,
+      studio:
+        typeof raw.studio === "string" && raw.studio ? raw.studio : undefined,
+      studioId:
+        typeof raw.studioId === "string" && raw.studioId
+          ? raw.studioId
+          : typeof raw.studioId === "number"
+            ? String(raw.studioId)
+            : undefined,
+      dublador:
+        typeof raw.dublador === "string" && raw.dublador ? raw.dublador : undefined,
+      dubladorId:
+        typeof raw.dubladorId === "string" && raw.dubladorId
+          ? raw.dubladorId
+          : typeof raw.dubladorId === "number"
+            ? String(raw.dubladorId)
+            : undefined,
+      staff:
+        typeof raw.staff === "string" && raw.staff
+          ? raw.staff
+          : typeof raw.person === "string" && raw.person
+            ? raw.person
+            : undefined,
+      staffId:
+        typeof raw.staffId === "string" && raw.staffId
+          ? raw.staffId
+          : typeof raw.staffId === "number"
+            ? String(raw.staffId)
+            : typeof raw.personId === "string" && raw.personId
+              ? raw.personId
+              : typeof raw.personId === "number"
+                ? String(raw.personId)
+                : undefined,
+      person:
+        typeof raw.staff === "string" && raw.staff
+          ? raw.staff
+          : typeof raw.person === "string" && raw.person
+            ? raw.person
+            : undefined,
+      personId:
+        typeof raw.staffId === "string" && raw.staffId
+          ? raw.staffId
+          : typeof raw.staffId === "number"
+            ? String(raw.staffId)
+            : typeof raw.personId === "string" && raw.personId
+              ? raw.personId
+              : typeof raw.personId === "number"
+                ? String(raw.personId)
+                : undefined,
+    }),
     component: PublicProfile,
   });
 
@@ -158,8 +233,48 @@ async function getProfileBackgroundColor(
 }
 
 function PublicProfile() {
-  const { nick } =
-    Route.useParams();
+  const { nick } = Route.useParams();
+  const navigate = useNavigate();
+  const search = Route.useSearch();
+
+  const studioParam =
+    search.studio ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("studio") || undefined
+      : undefined);
+  const studioIdParam =
+    search.studioId ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("studioId") || undefined
+      : undefined);
+
+  const dubladorParam =
+    search.dublador ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("dublador") || undefined
+      : undefined);
+  const dubladorIdParam =
+    search.dubladorId ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("dubladorId") || undefined
+      : undefined);
+
+  const staffParam =
+    search.staff ||
+    search.person ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("staff") ||
+        new URLSearchParams(window.location.search).get("person") ||
+        undefined
+      : undefined);
+  const staffIdParam =
+    search.staffId ||
+    search.personId ||
+    (typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("staffId") ||
+        new URLSearchParams(window.location.search).get("personId") ||
+        undefined
+      : undefined);
 
   const getPublicProfileFn =
     useServerFn(getPublicProfile);
@@ -169,6 +284,9 @@ function PublicProfile() {
 
   const getPublicActivitiesFn =
     useServerFn(getPublicActivities);
+
+  const getPublicFavoritesFn =
+    useServerFn(getPublicProfileFavorites);
 
   const [profile, setProfile] =
     useState<
@@ -180,7 +298,17 @@ function PublicProfile() {
     >(null);
 
   const [activeTab, setActiveTab] =
-    useState<"comments" | "activity">("comments");
+    useState<"comments" | "activity" | "favorites">("comments");
+
+  // Favoritos
+  const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>({
+    anime: [],
+    character: [],
+    studio: [],
+    company: [],
+    person: [],
+  });
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
 
   // Comentários paginados
   const [comments, setComments] =
@@ -355,6 +483,44 @@ function PublicProfile() {
         } else {
           setActivities([]);
           setActivityLoading(false);
+        }
+
+        // Carrega favoritos se permitido
+        if (result.canViewFavorites && result.canViewContent) {
+          setFavoritesLoading(true);
+          void getPublicFavoritesFn({
+            data: {
+              userId: result.userId,
+            },
+          })
+            .then((favRes) => {
+              if (!active) return;
+              setFavoritesGrouped(favRes.grouped);
+            })
+            .catch(() => {
+              if (!active) return;
+              setFavoritesGrouped({
+                anime: [],
+                character: [],
+                studio: [],
+                company: [],
+                person: [],
+              });
+            })
+            .finally(() => {
+              if (active) {
+                setFavoritesLoading(false);
+              }
+            });
+        } else {
+          setFavoritesGrouped({
+            anime: [],
+            character: [],
+            studio: [],
+            company: [],
+            person: [],
+          });
+          setFavoritesLoading(false);
         }
       })
       .catch((err) => {
@@ -687,6 +853,71 @@ function PublicProfile() {
           : "Não foi possível curtir o comentário.",
       );
     }
+  }
+
+  if (studioParam) {
+    return (
+      <ProfileStudioWorksView
+        studioName={studioParam}
+        studioId={studioIdParam}
+        onClear={() => {
+          void navigate({
+            to: "/profile/$nick",
+            params: { nick },
+            search: (prev) => {
+              const next = { ...prev };
+              delete next.studio;
+              delete next.studioId;
+              return next;
+            },
+          });
+        }}
+      />
+    );
+  }
+
+  if (dubladorParam) {
+    return (
+      <DubladorWorksView
+        dubladorName={dubladorParam}
+        dubladorId={dubladorIdParam}
+        onClear={() => {
+          void navigate({
+            to: "/profile/$nick",
+            params: { nick },
+            search: (prev) => {
+              const next = { ...prev };
+              delete next.dublador;
+              delete next.dubladorId;
+              return next;
+            },
+          });
+        }}
+      />
+    );
+  }
+
+  if (staffParam) {
+    return (
+      <StaffWorksView
+        staffName={staffParam}
+        staffId={staffIdParam}
+        onClear={() => {
+          void navigate({
+            to: "/profile/$nick",
+            params: { nick },
+            search: (prev) => {
+              const next = { ...prev };
+              delete next.staff;
+              delete next.staffId;
+              delete next.person;
+              delete next.personId;
+              return next;
+            },
+          });
+        }}
+      />
+    );
   }
 
   if (loading) {
@@ -1024,6 +1255,27 @@ function PublicProfile() {
                   {profile.canViewHistory ? activityTotal : "—"}
                 </span>
               </button>
+
+              {profile.canViewFavorites && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("favorites")}
+                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                    activeTab === "favorites"
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "text-zinc-400 hover:bg-white/[0.05] hover:text-white"
+                  }`}
+                >
+                  <Heart className="size-4" />
+                  <span>Favoritos</span>
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs tabular-nums text-zinc-300">
+                    {favoritesGrouped.anime.length +
+                      favoritesGrouped.character.length +
+                      favoritesGrouped.studio.length +
+                      favoritesGrouped.person.length}
+                  </span>
+                </button>
+              )}
             </div>
 
             {/* Conteúdo da Aba Comentários */}
@@ -1132,6 +1384,27 @@ function PublicProfile() {
                       isOwner={false}
                     />
                   </>
+                )}
+              </div>
+            )}
+
+            {/* Conteúdo da Aba Favoritos */}
+            {activeTab === "favorites" && (
+              <div className="mt-5 space-y-4">
+                {!profile.canViewFavorites ? (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-10 text-center">
+                    <Lock className="mx-auto size-8 text-zinc-500" />
+                    <p className="mt-3 text-sm text-zinc-400 font-medium">
+                      Os favoritos deste usuário são privados.
+                    </p>
+                  </div>
+                ) : favoritesLoading ? (
+                  <div className="space-y-4">
+                    <div className="h-44 animate-pulse rounded-2xl bg-white/[0.04]" />
+                    <div className="h-44 animate-pulse rounded-2xl bg-white/[0.04]" />
+                  </div>
+                ) : (
+                  <ProfileOverviewFavorites grouped={favoritesGrouped} />
                 )}
               </div>
             )}

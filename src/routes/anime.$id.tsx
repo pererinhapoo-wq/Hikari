@@ -149,6 +149,8 @@ import {
 import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
 import {
   EntityWorksExpansion,
+  DubladorWorksView,
+  StaffWorksView,
   type SelectedEntityTarget,
 } from "@/components/anime/EntityWorksExpansion";
 
@@ -229,6 +231,10 @@ export const Route = createFileRoute("/anime/$id")({
   ): {
     comment?: string;
     studio?: string;
+    dublador?: string;
+    dubladorId?: string;
+    staff?: string;
+    staffId?: string;
   } => ({
     comment:
       typeof raw.comment === "string" && raw.comment
@@ -237,6 +243,22 @@ export const Route = createFileRoute("/anime/$id")({
     studio:
       typeof raw.studio === "string" && raw.studio
         ? raw.studio
+        : undefined,
+    dublador:
+      typeof raw.dublador === "string" && raw.dublador
+        ? raw.dublador
+        : undefined,
+    dubladorId:
+      typeof raw.dubladorId === "string" || typeof raw.dubladorId === "number"
+        ? String(raw.dubladorId)
+        : undefined,
+    staff:
+      typeof raw.staff === "string" && raw.staff
+        ? raw.staff
+        : undefined,
+    staffId:
+      typeof raw.staffId === "string" || typeof raw.staffId === "number"
+        ? String(raw.staffId)
         : undefined,
   }),
   staleTime: 1000 * 60 * 5,
@@ -678,6 +700,30 @@ function AnimePage() {
       ? (new URLSearchParams(window.location.search).get("studio") as string | null)
       : null);
   const studioParam = rawStudioParam?.trim() || undefined;
+
+  const rawDubladorParam =
+    search?.dublador ||
+    (typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("dublador") as string | null)
+      : null);
+  const dubladorParam = rawDubladorParam?.trim() || undefined;
+  const dubladorIdParam =
+    search?.dubladorId ||
+    (typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("dubladorId") as string | null)
+      : null);
+
+  const rawStaffParam =
+    search?.staff ||
+    (typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("staff") as string | null)
+      : null);
+  const staffParam = rawStaffParam?.trim() || undefined;
+  const staffIdParam =
+    search?.staffId ||
+    (typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("staffId") as string | null)
+      : null);
   const navigate = useNavigate();
 
   const [hasCommentHash, setHasCommentHash] = useState(() => {
@@ -1791,6 +1837,26 @@ function AnimePage() {
     return (
       <StudioProductionsView
         studioName={studioParam}
+        animeId={id}
+      />
+    );
+  }
+
+  if (dubladorParam) {
+    return (
+      <DubladorWorksView
+        dubladorName={dubladorParam}
+        dubladorId={dubladorIdParam}
+        animeId={id}
+      />
+    );
+  }
+
+  if (staffParam) {
+    return (
+      <StaffWorksView
+        staffName={staffParam}
+        staffId={staffIdParam}
         animeId={id}
       />
     );
@@ -4003,6 +4069,7 @@ const DubladoresSection = memo(function DubladoresSection({
   animeId: string;
   characters?: AnimeCharacter[];
 }) {
+  const navigate = useNavigate();
   const [selectedLang, setSelectedLang] = useState<"ja" | "pt">("ja");
   const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
@@ -4189,14 +4256,14 @@ const DubladoresSection = memo(function DubladoresSection({
                 loadImage={index < visibleImgLimit}
                 isSelected={expandedEntity?.name === item.vaName}
                 onSelect={() => {
-                  setExpandedEntity({
-                    type: "dublador",
-                    id: item.vaId,
-                    name: item.vaName,
-                    image: item.vaImage,
-                    subtitle: item.characterName
-                      ? `Dubla ${item.characterName}`
-                      : undefined,
+                  void navigate({
+                    to: "/anime/$id",
+                    params: { id: animeId },
+                    search: (prev: Record<string, unknown>) => ({
+                      ...prev,
+                      dublador: item.vaName,
+                      ...(item.vaId ? { dubladorId: String(item.vaId) } : {}),
+                    }),
                   });
                 }}
               />
@@ -4511,12 +4578,14 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
                   }),
                 });
               } else {
-                setExpandedEntity({
-                  type: "staff",
-                  id: item.id,
-                  name: item.name,
-                  image: item.image,
-                  subtitle: item.role,
+                void navigate({
+                  to: "/anime/$id",
+                  params: { id: animeId },
+                  search: (prev: Record<string, unknown>) => ({
+                    ...prev,
+                    staff: item.name,
+                    ...(item.id ? { staffId: String(item.id) } : {}),
+                  }),
                 });
               }
             }}
