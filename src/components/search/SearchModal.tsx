@@ -95,6 +95,12 @@ export function SearchModal({
     };
   }, [isOpen]);
 
+  const handleClose = useCallback(() => {
+    // Desfoca o input antes de fechar para o navegador não alterar o scroll
+    inputRef.current?.blur();
+    onClose();
+  }, [onClose]);
+
   // Tecla Escape para fechar a busca
   useEffect(() => {
     if (!isOpen) return;
@@ -109,12 +115,6 @@ export function SearchModal({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleClose]);
-
-  const handleClose = useCallback(() => {
-    // Desfoca o input antes de fechar para o navegador não alterar o scroll
-    inputRef.current?.blur();
-    onClose();
-  }, [onClose]);
 
   // Limpeza de texto da busca ao tocar no botão X
   const handleClear = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -533,7 +533,9 @@ export function SearchModal({
                             {anime.score && (
                               <span className="inline-flex items-center gap-1 font-semibold text-amber-400">
                                 <Star className="size-3 fill-amber-400 text-amber-400" />
-                                {anime.score.toFixed(1)}
+                                {Number.isInteger(anime.score)
+                                  ? anime.score
+                                  : Number(anime.score.toFixed(1))}
                               </span>
                             )}
 
@@ -721,12 +723,8 @@ export function SearchModal({
           )}
         </div>
 
-        {/* Rodapé discreto com atalho ESC para fechar */}
-        <div className="flex items-center justify-between border-t border-purple-500/15 bg-elevated/40 px-4 py-2 text-[11px] text-subtle">
-          <span>
-            Pressione <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">ESC</kbd> ou toque fora para fechar
-          </span>
-
+        {/* Rodapé discreto */}
+        <div className="flex items-center justify-end border-t border-purple-500/15 bg-elevated/40 px-4 py-2 text-[11px] text-subtle">
           <span className="text-[10px] text-muted">Hikari Search</span>
         </div>
       </div>

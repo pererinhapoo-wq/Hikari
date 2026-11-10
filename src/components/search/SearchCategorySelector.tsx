@@ -64,7 +64,12 @@ export function SearchCategorySelector({
       {/* Botão seletor com a seta para baixo integrada */}
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsOpen((prev) => !prev);
+        }}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-label={`Categoria de busca: ${isAnimes ? "Animes" : "Usuários"}. Clique na seta para alterar.`}
@@ -113,6 +118,7 @@ export function SearchCategorySelector({
         <div
           role="listbox"
           aria-label="Selecione a categoria de busca"
+          onClick={(e) => e.stopPropagation()}
           className={cn(
             "absolute top-full mt-2 z-50 w-56 sm:w-60 overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0e0d19]/98 p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.18)] backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-150",
             align === "right" ? "right-0 origin-top-right" : "left-0 origin-top-left",
@@ -128,7 +134,12 @@ export function SearchCategorySelector({
               type="button"
               role="option"
               aria-selected={isAnimes}
-              onClick={() => selectCategory("animes")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectCategory("animes");
+              }}
               className={cn(
                 "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all",
                 isAnimes
@@ -166,7 +177,12 @@ export function SearchCategorySelector({
               type="button"
               role="option"
               aria-selected={!isAnimes}
-              onClick={() => selectCategory("users")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectCategory("users");
+              }}
               className={cn(
                 "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all",
                 !isAnimes
