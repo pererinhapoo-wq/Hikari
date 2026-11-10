@@ -916,20 +916,22 @@ function SearchPage() {
       </div>
 
       {/* =====================================================
-          BARRA DE PESQUISA REFORMULADA COM SELETOR DE CATEGORIA INTEGRADO
+          BARRA DE PESQUISA COMPACTA E ELEGANTE (INSPIRADA NO BINGEBANG)
       ====================================================== */}
-      <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-        <div className="relative flex flex-1 items-center gap-2 rounded-2xl border border-purple-500/25 bg-surface/90 p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.5)] focus-within:border-purple-500/50 focus-within:ring-2 focus-within:ring-purple-500/25 transition-all">
+      <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <div className="relative flex flex-1 items-center gap-1.5 sm:gap-2 rounded-xl border border-white/10 bg-surface/80 p-1 sm:p-1.5 shadow-sm transition-colors focus-within:border-purple-400/40 focus-within:bg-elevated/90">
+          {/* Seletor de Categoria com alinhamento à esquerda correto para evitar corte fora da tela */}
           <SearchCategorySelector
             category={activeTab}
             onChange={(nextCat) => handleTabChange(nextCat)}
             size="md"
+            align="left"
           />
 
-          <div className="h-6 w-px bg-white/10 shrink-0" aria-hidden="true" />
+          <div className="h-5 w-px bg-white/10 shrink-0" aria-hidden="true" />
 
-          <div className="relative flex-1">
-            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+          <div className="relative flex-1 flex items-center">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 sm:size-4 -translate-y-1/2 text-zinc-400" />
             <input
               type="search"
               enterKeyHint="go"
@@ -938,6 +940,8 @@ function SearchPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
+                  // Desfoca o input imediatamente para remover foco e evitar anel roxo preso no mobile
+                  (e.currentTarget as HTMLInputElement).blur();
                   const q = draft.trim();
                   void navigate({
                     search: {
@@ -954,7 +958,7 @@ function SearchPage() {
                   ? "Buscar animes por título em português, inglês ou japonês…"
                   : "Buscar usuários por @username ou nome…"
               }
-              className="h-10 sm:h-11 w-full rounded-xl border-0 bg-transparent pl-9.5 pr-9 text-xs sm:text-sm text-fg outline-none placeholder:text-muted transition-all [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+              className="h-9 sm:h-10 w-full rounded-lg border-0 bg-transparent pl-8 sm:pl-9 pr-8 text-xs sm:text-sm text-zinc-100 outline-none placeholder:text-zinc-500 transition-colors [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
               aria-label={
                 activeTab === "users" ? "Buscar usuários" : "Buscar animes"
               }
@@ -963,10 +967,10 @@ function SearchPage() {
               <button
                 type="button"
                 onClick={() => setDraft("")}
-                className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-lg text-muted hover:bg-white/10 hover:text-fg transition-colors"
+                className="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-fg transition-colors"
                 aria-label="Limpar busca"
               >
-                <X className="size-4" />
+                <X className="size-3.5" />
               </button>
             )}
           </div>
@@ -978,17 +982,17 @@ function SearchPage() {
             variant="outline"
             onClick={() => setFiltersOpen((value) => !value)}
             className={cn(
-              "h-12 sm:h-14 shrink-0 rounded-2xl px-4 text-xs sm:text-sm font-semibold transition-all border",
+              "h-9 sm:h-11 shrink-0 rounded-xl px-3 sm:px-3.5 text-xs sm:text-sm font-semibold transition-all border",
               filtersOpen || activeFilterCount > 0
-                ? "border-purple-500/40 bg-purple-500/15 text-[#c084fc] shadow-[0_0_15px_rgba(168,85,247,0.2)]"
-                : "border-purple-500/20 bg-surface/90 text-muted hover:bg-elevated hover:text-fg",
+                ? "border-purple-500/40 bg-purple-500/15 text-[#c084fc] shadow-[0_0_12px_rgba(168,85,247,0.15)]"
+                : "border-white/10 bg-surface/80 text-zinc-300 hover:bg-elevated hover:text-fg",
             )}
             aria-label="Filtros do catálogo"
           >
-            <SlidersHorizontal className="size-4 mr-2" />
+            <SlidersHorizontal className="size-3.5 sm:size-4 mr-1.5" />
             <span>Filtros</span>
             {activeFilterCount > 0 && (
-              <span className="ml-2 flex size-5 items-center justify-center rounded-full bg-[#a855f7] text-[10px] font-bold text-white">
+              <span className="ml-1.5 flex size-4.5 items-center justify-center rounded-full bg-[#a855f7] text-[9px] font-bold text-white">
                 {activeFilterCount}
               </span>
             )}
@@ -1322,15 +1326,15 @@ function SearchPage() {
                   return (
                     <div
                       key={person.userId}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-purple-500/20 bg-surface/80 p-3 sm:p-4 transition-all hover:border-purple-500/40 hover:bg-elevated hover:shadow-[0_0_24px_rgba(168,85,247,0.15)]"
+                      className="flex items-center justify-between gap-2.5 rounded-xl border border-white/10 bg-surface/70 p-2.5 sm:p-3 transition-all hover:border-purple-500/30 hover:bg-elevated hover:shadow-[0_0_20px_rgba(168,85,247,0.12)]"
                     >
                       {/* Ao selecionar um usuário, abrir o Perfil novo do Hikari (/profile/$nick) */}
                       <Link
                         to="/profile/$nick"
                         params={{ nick: person.nick }}
-                        className="flex items-center gap-3 min-w-0 flex-1 group"
+                        className="flex items-center gap-2.5 min-w-0 flex-1 group"
                       >
-                        <div className="flex size-11 sm:size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm sm:text-base text-[#c084fc] ring-1 ring-purple-500/25 group-hover:ring-purple-500/50 transition-all">
+                        <div className="flex size-10 sm:size-10.5 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-xs sm:text-sm text-[#c084fc] ring-1 ring-purple-500/20 group-hover:ring-purple-500/40 transition-all">
                           {person.avatarUrl ? (
                             <img
                               src={person.avatarUrl}
@@ -1349,25 +1353,25 @@ function SearchPage() {
                             </p>
                             {person.accountType === "private" && (
                               <span
-                                className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 border border-white/[0.08]"
+                                className="inline-flex items-center gap-0.5 rounded bg-white/[0.06] px-1 py-0.2 text-[9px] font-medium text-zinc-400 border border-white/[0.08]"
                                 title="Conta privada"
                               >
-                                <Lock className="size-2.5 text-zinc-400" />
+                                <Lock className="size-2 text-zinc-400" />
                                 <span>Privada</span>
                               </span>
                             )}
                             {person.isFollowing && (
-                              <span className="inline-flex items-center rounded-md bg-[#a855f7]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#c084fc] border border-purple-500/20">
+                              <span className="inline-flex items-center rounded bg-[#a855f7]/15 px-1 py-0.2 text-[9px] font-semibold text-[#c084fc] border border-purple-500/20">
                                 Seguindo
                               </span>
                             )}
                             {person.isOwner && (
-                              <span className="inline-flex items-center rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
+                              <span className="inline-flex items-center rounded bg-white/10 px-1 py-0.2 text-[9px] font-semibold text-zinc-300">
                                 Você
                               </span>
                             )}
                           </div>
-                          <p className="truncate text-[11px] sm:text-xs text-muted">
+                          <p className="truncate text-[10px] sm:text-xs text-muted">
                             @{person.nick}
                           </p>
                         </div>
@@ -1376,7 +1380,7 @@ function SearchPage() {
                       <Link
                         to="/profile/$nick"
                         params={{ nick: person.nick }}
-                        className="shrink-0 rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-[#c084fc] transition-all hover:bg-[#a855f7] hover:text-white"
+                        className="shrink-0 rounded-lg border border-purple-500/25 bg-purple-500/10 px-2.5 py-1 text-xs font-semibold text-[#c084fc] transition-all hover:bg-[#a855f7] hover:text-white"
                       >
                         Ver perfil
                       </Link>

@@ -9,7 +9,7 @@ interface SearchCategorySelectorProps {
   onChange: (category: SearchCategory) => void;
   className?: string;
   size?: "sm" | "md";
-  align?: "left" | "right";
+  align?: "left" | "right" | "auto";
 }
 
 export function SearchCategorySelector({
@@ -17,12 +17,52 @@ export function SearchCategorySelector({
   onChange,
   className,
   size = "md",
-  align = "right",
+  align = "auto",
 }: SearchCategorySelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<"left" | "right">(
+    align === "auto" ? "right" : align,
+  );
 
-  // Fecha o dropdown ao clicar fora
+  // Calcula o posicionamento para nunca vazar os limites da tela
+  useEffect(() => {
+    if (!isOpen || !containerRef.current) return;
+
+    const updatePlacement = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const screenWidth = window.innerWidth;
+      const menuWidth = 176; // w-44 = 176px
+
+      if (align === "left") {
+        if (rect.left + menuWidth > screenWidth - 8 && rect.right - menuWidth >= 8) {
+          setPlacement("right");
+        } else {
+          setPlacement("left");
+        }
+      } else if (align === "right") {
+        if (rect.right - menuWidth < 8 && rect.left + menuWidth <= screenWidth - 8) {
+          setPlacement("left");
+        } else {
+          setPlacement("right");
+        }
+      } else {
+        // Modo auto: alinha à esquerda se estiver na metade esquerda da tela, senão à direita
+        if (rect.left < screenWidth / 2) {
+          setPlacement("left");
+        } else {
+          setPlacement("right");
+        }
+      }
+    };
+
+    updatePlacement();
+    window.addEventListener("resize", updatePlacement);
+    return () => window.removeEventListener("resize", updatePlacement);
+  }, [isOpen, align]);
+
+  // Fecha o dropdown ao clicar fora ou pressionar Escape
   useEffect(() => {
     if (!isOpen) return;
 
@@ -61,7 +101,7 @@ export function SearchCategorySelector({
 
   return (
     <div ref={containerRef} className={cn("relative shrink-0", className)}>
-      {/* Botão seletor com a seta para baixo integrada */}
+      {/* Botão seletor compacto e moderno inspirado na referência BingeBang */}
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
@@ -72,63 +112,57 @@ export function SearchCategorySelector({
         }}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        aria-label={`Categoria de busca: ${isAnimes ? "Animes" : "Usuários"}. Clique na seta para alterar.`}
+        aria-label={`Categoria de busca: ${isAnimes ? "Animes" : "Usuários"}`}
         className={cn(
-          "group relative flex items-center gap-1.5 sm:gap-2 rounded-xl font-medium transition-all select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+          "group relative flex items-center gap-1.5 rounded-lg font-medium transition-all select-none outline-none focus-visible:ring-1 focus-visible:ring-purple-400/50 active:scale-[0.98]",
           size === "sm"
-            ? "h-9 px-2.5 text-xs"
-            : "h-9 sm:h-10 px-2.5 sm:px-3 text-xs sm:text-sm",
+            ? "h-7 sm:h-7.5 px-2 sm:px-2.5 text-xs"
+            : "h-8 sm:h-8.5 px-2.5 sm:px-3 text-xs sm:text-[13px]",
           isOpen
-            ? "border-purple-500/50 bg-[#1e1b30] text-fg shadow-[0_0_15px_rgba(168,85,247,0.25)]"
-            : "border border-purple-500/20 bg-elevated/90 text-zinc-200 hover:border-purple-500/40 hover:bg-elevated hover:text-fg shadow-sm",
+            ? "border border-purple-500/40 bg-[#1d1932] text-fg shadow-[0_0_12px_rgba(168,85,247,0.18)]"
+            : "border border-white/10 bg-white/[0.05] text-zinc-300 hover:border-white/20 hover:bg-white/[0.08] hover:text-fg",
         )}
       >
-        {/* Ícone da categoria ativa */}
+        {/* Ícone discreto */}
         <span
           className={cn(
-            "flex size-4.5 sm:size-5 items-center justify-center rounded-lg transition-colors",
-            isAnimes
-              ? "bg-purple-500/15 text-[#c084fc] group-hover:bg-purple-500/25"
-              : "bg-blue-500/15 text-blue-400 group-hover:bg-blue-500/25",
+            "flex items-center justify-center transition-colors",
+            isAnimes ? "text-[#c084fc]" : "text-blue-400",
           )}
         >
           {isAnimes ? (
-            <Film className="size-3.5 sm:size-4" />
+            <Film className="size-3.5" />
           ) : (
-            <Users className="size-3.5 sm:size-4" />
+            <Users className="size-3.5" />
           )}
         </span>
 
-        {/* Nome da categoria identificada visualmente no campo */}
-        <span className="font-semibold text-fg tracking-tight">
+        {/* Nome da categoria */}
+        <span className="font-semibold text-fg tracking-tight text-[11px] sm:text-xs">
           {isAnimes ? "Animes" : "Usuários"}
         </span>
 
-        {/* Seta para baixo com rotação suave ao abrir */}
+        {/* Seta discreta com rotação suave */}
         <ChevronDown
           className={cn(
-            "size-3.5 sm:size-4 text-muted transition-transform duration-200",
+            "size-3 text-zinc-400 transition-transform duration-200",
             isOpen && "rotate-180 text-[#c084fc]",
           )}
         />
       </button>
 
-      {/* Menu dropdown aberto ao clicar na seta */}
+      {/* Menu dropdown compacto e posicionado abaixo do botão sem vazar a tela */}
       {isOpen && (
         <div
           role="listbox"
           aria-label="Selecione a categoria de busca"
           onClick={(e) => e.stopPropagation()}
           className={cn(
-            "absolute top-full mt-2 z-50 w-56 sm:w-60 overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0e0d19]/98 p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.18)] backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-150",
-            align === "right" ? "right-0 origin-top-right" : "left-0 origin-top-left",
+            "absolute top-full mt-1.5 z-50 w-40 sm:w-44 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-white/10 bg-[#131020]/98 p-1 shadow-[0_12px_32px_rgba(0,0,0,0.85),0_0_16px_rgba(168,85,247,0.12)] backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-150",
+            placement === "right" ? "right-0 origin-top-right" : "left-0 origin-top-left",
           )}
         >
-          <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-subtle">
-            Categoria da busca
-          </div>
-
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {/* Opção 1: Animes */}
             <button
               type="button"
@@ -141,35 +175,17 @@ export function SearchCategorySelector({
                 selectCategory("animes");
               }}
               className={cn(
-                "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all",
+                "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
                 isAnimes
-                  ? "bg-purple-500/15 text-fg shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                  : "text-muted hover:bg-elevated hover:text-fg",
+                  ? "bg-purple-500/15 font-semibold text-[#d8b4fe]"
+                  : "text-zinc-300 hover:bg-white/[0.06] hover:text-fg",
               )}
             >
-              <div
-                className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-lg",
-                  isAnimes
-                    ? "bg-[#a855f7] text-white shadow-[0_0_12px_rgba(168,85,247,0.4)]"
-                    : "bg-surface text-muted",
-                )}
-              >
-                <Film className="size-4" />
+              <div className="flex items-center gap-2 min-w-0">
+                <Film className={cn("size-3.5 shrink-0", isAnimes ? "text-[#c084fc]" : "text-zinc-400")} />
+                <span className="truncate">Animes</span>
               </div>
-
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-semibold text-fg">
-                  Animes
-                </p>
-                <p className="text-[11px] text-muted truncate">
-                  Catálogo, filmes e séries
-                </p>
-              </div>
-
-              {isAnimes && (
-                <Check className="size-4 shrink-0 text-[#c084fc]" />
-              )}
+              {isAnimes && <Check className="size-3.5 shrink-0 text-[#c084fc]" />}
             </button>
 
             {/* Opção 2: Usuários */}
@@ -184,35 +200,17 @@ export function SearchCategorySelector({
                 selectCategory("users");
               }}
               className={cn(
-                "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all",
+                "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
                 !isAnimes
-                  ? "bg-purple-500/15 text-fg shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                  : "text-muted hover:bg-elevated hover:text-fg",
+                  ? "bg-purple-500/15 font-semibold text-[#d8b4fe]"
+                  : "text-zinc-300 hover:bg-white/[0.06] hover:text-fg",
               )}
             >
-              <div
-                className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-lg",
-                  !isAnimes
-                    ? "bg-[#a855f7] text-white shadow-[0_0_12px_rgba(168,85,247,0.4)]"
-                    : "bg-surface text-muted",
-                )}
-              >
-                <Users className="size-4" />
+              <div className="flex items-center gap-2 min-w-0">
+                <Users className={cn("size-3.5 shrink-0", !isAnimes ? "text-[#c084fc]" : "text-zinc-400")} />
+                <span className="truncate">Usuários</span>
               </div>
-
-              <div className="min-w-0 flex-1">
-                <p className="text-xs sm:text-sm font-semibold text-fg">
-                  Usuários
-                </p>
-                <p className="text-[11px] text-muted truncate">
-                  Perfis da comunidade Hikari
-                </p>
-              </div>
-
-              {!isAnimes && (
-                <Check className="size-4 shrink-0 text-[#c084fc]" />
-              )}
+              {!isAnimes && <Check className="size-3.5 shrink-0 text-[#c084fc]" />}
             </button>
           </div>
         </div>

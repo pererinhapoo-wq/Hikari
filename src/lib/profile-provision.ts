@@ -1,4 +1,11 @@
-import { randomBytes } from "node:crypto";
+function getRandomHex(bytesCount: number): string {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.getRandomValues) {
+    const arr = new Uint8Array(bytesCount);
+    globalThis.crypto.getRandomValues(arr);
+    return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  return Math.random().toString(16).slice(2, 2 + bytesCount * 2).padEnd(bytesCount * 2, "0");
+}
 import type { Sql } from "@/lib/db";
 
 /**
@@ -17,7 +24,7 @@ export function generateCandidateNick(name?: string | null): string {
     .slice(0, 15);
 
   const base = clean.length >= 3 ? clean : "ren";
-  const suffix = randomBytes(3).toString("hex"); // 6 caracteres hexadecimais aleatórios
+  const suffix = getRandomHex(3); // 6 caracteres hexadecimais aleatórios
   return `${base}_${suffix}`.slice(0, 30);
 }
 
@@ -145,7 +152,7 @@ export async function ensureUserProfile(
   }
 
   // Fallback seguro caso atinja max tentativas de colisão (altamente improvável)
-  const fallbackNick = `user_${Date.now().toString(36)}_${randomBytes(2).toString("hex")}`.slice(0, 30);
+  const fallbackNick = `user_${Date.now().toString(36)}_${getRandomHex(2)}`.slice(0, 30);
   await sql`
     insert into "profile" (
       "userId",
