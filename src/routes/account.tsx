@@ -132,9 +132,17 @@ export const Route = createFileRoute("/account")({
               ? String(raw.personId)
               : undefined;
 
+    const connections =
+      raw.connections === "followers" ||
+      raw.connections === "following" ||
+      raw.connections === "requests"
+        ? (raw.connections as "followers" | "following" | "requests")
+        : undefined;
+
     return {
       status,
       edit,
+      connections,
       studio,
       studioId,
       dublador,
@@ -296,6 +304,31 @@ function AccountProfile() {
       window.removeEventListener("hikari:open-profile-edit", handleOpenEdit);
     };
   }, []);
+
+  // Escuta requisição para abrir modal de conexões (ex: vindo de notificação de novos seguidores)
+  useEffect(() => {
+    const handleOpenConn = (e: Event) => {
+      const custom = e as CustomEvent<{ tab?: "followers" | "following" | "requests" }>;
+      const tab = custom.detail?.tab || "followers";
+      void handleOpenConnections(tab);
+    };
+
+    window.addEventListener("hikari:open-connections", handleOpenConn);
+
+    if (search.connections) {
+      void handleOpenConnections(search.connections);
+    } else if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const conn = params.get("connections");
+      if (conn === "followers" || conn === "following" || conn === "requests") {
+        void handleOpenConnections(conn);
+      }
+    }
+
+    return () => {
+      window.removeEventListener("hikari:open-connections", handleOpenConn);
+    };
+  }, [search.connections]);
 
   // Carregamento inicial do perfil
   useEffect(() => {

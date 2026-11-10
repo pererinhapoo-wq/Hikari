@@ -10,8 +10,10 @@ import {
   Calendar,
   CalendarDays,
   CheckCheck,
+  ChevronRight,
   Compass,
   House,
+  Loader2,
   LogIn,
   LogOut,
   Menu,
@@ -43,40 +45,12 @@ import {
   useState,
 } from "react";
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
 function useNotificationPanelPresence(open: boolean, exitMs = 170) {
   const [mounted, setMounted] = useState(open);
-  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (open) {
       setMounted(true);
-      if (prefersReducedMotion()) {
-        setVisible(true);
-        return;
-      }
-      let raf2 = 0;
-      const raf1 = window.requestAnimationFrame(() => {
-        raf2 = window.requestAnimationFrame(() => {
-          setVisible(true);
-        });
-      });
-      return () => {
-        window.cancelAnimationFrame(raf1);
-        if (raf2) window.cancelAnimationFrame(raf2);
-      };
-    }
-
-    setVisible(false);
-    if (prefersReducedMotion()) {
-      setMounted(false);
       return;
     }
     const timer = window.setTimeout(() => {
@@ -87,7 +61,7 @@ function useNotificationPanelPresence(open: boolean, exitMs = 170) {
 
   return {
     mounted: open || mounted,
-    visible: open && visible,
+    visible: open,
     closing: !open && mounted,
   };
 }
@@ -304,24 +278,7 @@ export function Shell() {
   }, [notificationsOpen]);
 
   /* =========================================================
-     TRAVA ROLAGEM DO FUNDO AO ABRIR NOTIFICAÇÕES
-  ========================================================== */
 
-  useEffect(() => {
-    if (!notificationsOpen) {
-      return;
-    }
-
-    const previousOverflow =
-      document.body.style.overflow;
-
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow =
-        previousOverflow;
-    };
-  }, [notificationsOpen]);
 
   /* =========================================================
      TRAVA ROLAGEM DO FUNDO AO ABRIR O MENU LATERAL
@@ -520,6 +477,12 @@ export function Shell() {
 
       const targetIdSet = new Set<string>();
       for (const item of targets) {
+        if (item.groupedIds && item.groupedIds.length > 0) {
+          for (const gid of item.groupedIds) {
+            targetIdSet.add(gid);
+            pendingReadTokensRef.current.set(gid, item.createdAt);
+          }
+        }
         targetIdSet.add(item.id);
         pendingReadTokensRef.current.set(item.id, item.createdAt);
       }
@@ -610,17 +573,28 @@ export function Shell() {
       if (!user) return;
       const target = notifications.find((i) => i.id === id);
       const wasUnread = target ? !target.read : false;
+      const removedCount = wasUnread ? (target?.groupedIds?.length || 1) : 0;
       setNotifications((prev) => prev.filter((item) => item.id !== id));
-      if (wasUnread) {
-        setUnreadCount((c) => Math.max(0, c - 1));
+      if (removedCount > 0) {
+        setUnreadCount((c) => Math.max(0, c - removedCount));
       }
       try {
         const bearer = getBearerToken();
-        const res = await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, {
-          method: "DELETE",
-          credentials: "include",
-          headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
-        });
+        const res = target?.groupedIds?.length
+          ? await fetch("/api/notifications", {
+              method: "DELETE",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+                ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+              },
+              body: JSON.stringify({ ids: target.groupedIds }),
+            })
+          : await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, {
+              method: "DELETE",
+              credentials: "include",
+              headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+            });
         if (res.ok) {
           const data = (await res.json()) as { unreadCount?: number };
           if (typeof data.unreadCount === "number") {
@@ -648,14 +622,19 @@ export function Shell() {
       return;
     }
 
-    const displayedUnreadIds = notifications
-      .slice(0, 7)
-      .filter(
-        (item) =>
-          !item.read &&
-          pendingReadTokensRef.current.get(item.id) !== item.createdAt,
-      )
-      .map((item) => item.id);
+    const displayedUnreadIds: string[] = [];
+    for (const item of notifications.slice(0, 10)) {
+      if (
+        !item.read &&
+        pendingReadTokensRef.current.get(item.id) !== item.createdAt
+      ) {
+        if (item.groupedIds && item.groupedIds.length > 0) {
+          displayedUnreadIds.push(...item.groupedIds);
+        } else {
+          displayedUnreadIds.push(item.id);
+        }
+      }
+    }
 
     if (displayedUnreadIds.length > 0) {
       void markNotificationsAsRead(displayedUnreadIds);
@@ -886,31 +865,25 @@ export function Shell() {
       />
 
       {/* =========================================================
-          PAINEL DE NOTIFICAÇÕES
+          PAINEL FLUTUANTE DE NOTIFICAÇÕES (COMPACTO E DISCRETO)
       ========================================================== */}
       {notificationsPanel.mounted && (
         <>
-          <button
-            type="button"
-            onClick={() =>
-              setNotificationsOpen(
-                false,
-              )
-            }
+          {/* Backdrop invisível para clique fora sem cobrir ou escurecer a página de trás */}
+          <div
             className={cn(
-              "fixed inset-0 z-40 bg-black/25 md:bg-transparent",
-              "motion-safe:transition-opacity motion-safe:duration-150 motion-reduce:transition-none",
-              notificationsPanel.visible ? "opacity-100" : "opacity-0",
+              "fixed inset-0 z-40 bg-transparent",
               notificationsPanel.closing && "pointer-events-none",
             )}
-            aria-label="Fechar notificações"
+            onClick={() => setNotificationsOpen(false)}
+            aria-hidden="true"
           />
 
           <div
             role="dialog"
             aria-label="Painel de notificações"
             className={cn(
-              "fixed right-4 top-16 z-50 flex max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-sm origin-top-right flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:right-6 md:top-20",
+              "fixed right-3 sm:right-6 top-14 sm:top-16 z-50 flex w-[calc(100vw-1.5rem)] max-w-[360px] sm:max-w-[380px] origin-top-right flex-col overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0e0c18]/95 shadow-[0_16px_48px_rgba(0,0,0,0.7),0_0_24px_rgba(168,85,247,0.12)] backdrop-blur-xl",
               "motion-safe:transition-[opacity,transform] motion-safe:duration-[170ms] motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
               notificationsPanel.visible
                 ? "opacity-100 translate-y-0 scale-100"
@@ -918,72 +891,76 @@ export function Shell() {
               notificationsPanel.closing && "pointer-events-none",
             )}
           >
-
-            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
-              <div className="min-w-0">
-                <h2 className="font-semibold text-fg">
-                  Notificações
-                </h2>
-
-                <p className="mt-0.5 text-xs text-muted">
-                  Suas atividades recentes
-                </p>
+            {/* CABEÇALHO COMPACTO */}
+            <div className="flex shrink-0 items-center justify-between border-b border-purple-500/15 px-3.5 py-2.5 bg-white/[0.02]">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex size-7 items-center justify-center rounded-lg bg-purple-500/15 text-[#c084fc] shrink-0">
+                  <Bell className="size-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <h2 className="text-xs font-bold text-fg tracking-tight">
+                      Notificações
+                    </h2>
+                    {unreadCount > 0 && (
+                      <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-purple-500/25 px-1 text-[9px] font-bold text-[#c084fc] tabular-nums">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted truncate">
+                    Suas atividades recentes
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 shrink-0">
                 {unreadCount > 0 && (
                   <button
                     type="button"
                     onClick={markAllNotificationsAsReadAction}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-[#c084fc] hover:bg-[#a855f7]/15 transition-colors active:scale-95"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold text-[#c084fc] hover:bg-purple-500/15 transition-colors active:scale-95"
                     title="Marcar todas como lidas"
                   >
-                    <CheckCheck className="size-3.5" />
+                    <CheckCheck className="size-3" />
                     <span>Lidas</span>
                   </button>
                 )}
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setNotificationsOpen(
-                      false,
-                    )
-                  }
-                  className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none"
+                  onClick={() => setNotificationsOpen(false)}
+                  className="flex size-7 items-center justify-center rounded-lg text-muted hover:bg-white/5 hover:text-fg transition-colors"
                   aria-label="Fechar notificações"
                 >
-                  <X className="size-4" />
+                  <X className="size-3.5" />
                 </button>
               </div>
             </div>
 
+            {/* CORPO DO PAINEL COM ROLAGEM INTERNA */}
             {notificationsLoading ? (
-              <div className="flex min-h-32 flex-1 items-center justify-center px-5 py-8 text-center">
-                <p className="text-sm text-muted">
-                  Carregando...
-                </p>
+              <div className="flex min-h-36 flex-1 items-center justify-center px-4 py-8 text-center">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="size-5 animate-spin text-[#c084fc]" />
+                  <p className="text-xs text-muted">Carregando notificações...</p>
+                </div>
               </div>
-            ) : notifications.length ===
-              0 ? (
-
-              <div className="flex min-h-32 flex-1 items-center justify-center px-5 py-8 text-center">
+            ) : notifications.length === 0 ? (
+              <div className="flex min-h-36 flex-1 items-center justify-center px-4 py-8 text-center">
                 <div>
-                  <Bell className="mx-auto mb-3 size-7 text-muted" />
-
-                  <p className="text-sm font-medium">
-                    Nenhuma notificação
-                  </p>
-
-                  <p className="mt-1 text-xs text-muted">
-                    Quando alguém interagir com seu perfil, aparecerá aqui.
+                  <div className="mx-auto mb-2 flex size-10 items-center justify-center rounded-xl bg-purple-500/10 text-[#c084fc]/70">
+                    <Bell className="size-5" />
+                  </div>
+                  <p className="text-xs font-semibold text-fg">Nenhuma notificação</p>
+                  <p className="mt-0.5 text-[11px] text-muted max-w-[220px]">
+                    Novos seguidores, comentários e curtidas aparecerão aqui.
                   </p>
                 </div>
               </div>
             ) : (
-
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                {notifications.slice(0, 7).map((notification) => (
+              <div className="max-h-[min(380px,calc(100dvh-12rem))] min-h-0 flex-1 overflow-y-auto overscroll-contain divide-y divide-purple-500/10">
+                {notifications.slice(0, 10).map((notification) => (
                   <NotificationItemCard
                     key={notification.id}
                     notification={notification}
@@ -997,22 +974,17 @@ export function Shell() {
               </div>
             )}
 
-            {/* VER TODAS AS NOTIFICAÇÕES */}
-            {!notificationsLoading &&
-              notifications.length > 0 && (
-                <Link
-                  to="/notifications"
-                  onClick={() =>
-                    setNotificationsOpen(
-                      false,
-                    )
-                  }
-                  className="block shrink-0 border-t border-border px-4 py-3.5 text-center text-sm font-medium text-fg hover:bg-elevated active:bg-elevated/80 motion-safe:transition-colors motion-safe:duration-150 motion-reduce:transition-none"
-                >
-                  Ver todas as notificações
-                </Link>
-              )}
-
+            {/* ACESSO A TODAS AS NOTIFICAÇÕES */}
+            {!notificationsLoading && notifications.length > 0 && (
+              <Link
+                to="/notifications"
+                onClick={() => setNotificationsOpen(false)}
+                className="flex shrink-0 items-center justify-center gap-1.5 border-t border-purple-500/15 bg-white/[0.02] py-2.5 text-center text-xs font-semibold text-[#c084fc] hover:bg-purple-500/10 hover:text-[#d8b4fe] transition-colors"
+              >
+                <span>Ver todas as notificações</span>
+                <ChevronRight className="size-3.5" />
+              </Link>
+            )}
           </div>
         </>
       )}

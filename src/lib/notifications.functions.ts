@@ -45,8 +45,19 @@ export type NotificationItem = {
   likeAvatars?: Array<{
     id: string;
     name: string | null;
+    nick?: string | null;
     image: string | null;
   }>;
+
+  isFollowingActor?: boolean;
+  groupedIds?: string[];
+  groupedFollowers?: Array<{
+    id: string;
+    name: string | null;
+    nick: string | null;
+    image: string | null;
+  }>;
+  totalFollowersCount?: number;
 };
 
 export type GetNotificationsParams = {
@@ -708,6 +719,30 @@ export async function executeGetNotifications(
   `;
   const totalCount = Number(totalRows[0]?.count ?? "0") || 0;
 
+  // Verifica se o usuário atual já segue os atores das notificações
+  const actorIds: string[] = Array.from(
+    new Set<string>(
+      items
+        .map((r: RawNotificationRow) => r.actorId)
+        .filter((id): id is string => Boolean(id) && id !== userId),
+    ),
+  );
+
+  const followingActorIdSet = new Set<string>();
+  if (actorIds.length > 0) {
+    const followRows = await sql<{ followingId: string }>`
+      select "followingId"
+      from "user_follow"
+      where "followerId" = ${userId}
+        and "followingId" = any(${actorIds}::text[])
+    `;
+    for (const row of followRows) {
+      if (row.followingId) {
+        followingActorIdSet.add(row.followingId);
+      }
+    }
+  }
+
   // Carrega avatares de likes
   const likeCommentIds: string[] = Array.from(
     new Set<string>(
@@ -719,7 +754,7 @@ export async function executeGetNotifications(
 
   const avatarsByCommentId = new Map<
     string,
-    Array<{ id: string; name: string | null; image: string | null }>
+    Array<{ id: string; name: string | null; nick: string | null; image: string | null }>
   >();
 
   if (likeCommentIds.length > 0) {
@@ -727,17 +762,20 @@ export async function executeGetNotifications(
       commentId: string;
       id: string;
       name: string | null;
+      nick: string | null;
       image: string | null;
     }>`
       select
         cl."commentId",
         u."id",
         coalesce(
+          nullif(trim(p."displayName"), ''),
           nullif(trim(p."nick"), ''),
           nullif(trim(u."name"), ''),
           'Usuário'
         ) as "name",
-        u."image"
+        p."nick",
+        coalesce(p."avatarUrl", u."image") as "image"
       from "comment_like" cl
       inner join "user" u on u."id" = cl."userId"
       left join "profile" p on p."userId" = u."id"
@@ -750,10 +788,11 @@ export async function executeGetNotifications(
     for (const row of avatarRows) {
       const cid = String(row.commentId);
       const list = avatarsByCommentId.get(cid) ?? [];
-      if (list.length < 4 && !list.some((item) => item.id === String(row.id))) {
+      if (list.length < 5 && !list.some((item) => item.id === String(row.id))) {
         list.push({
           id: String(row.id),
           name: row.name ? String(row.name) : null,
+          nick: row.nick ? String(row.nick) : null,
           image: row.image ? String(row.image) : null,
         });
         avatarsByCommentId.set(cid, list);
@@ -771,10 +810,11 @@ export async function executeGetNotifications(
   );
   const animeMetaMap = await resolveAnimeMetadataMap(distinctAnimeIds);
 
-  const notifications: NotificationItem[] = items.map((r: RawNotificationRow) => {
+  const unbundledNotifications: NotificationItem[] = items.map((r: RawNotificationRow) => {
     const animeId = r.animeId ? String(r.animeId) : null;
     const commentId = r.commentId ? String(r.commentId) : null;
     const animeMeta = animeId ? animeMetaMap.get(animeId) : undefined;
+    const isFollowingActor = Boolean(r.actorId && followingActorIdSet.has(r.actorId));
 
     return {
       id: r.id,
@@ -805,8 +845,81 @@ export async function executeGetNotifications(
         r.type === "comment_like" && commentId
           ? avatarsByCommentId.get(commentId) ?? []
           : [],
+      isFollowingActor,
     };
   });
+
+  // Agrupamento de novos seguidores:
+  // Quando houver 1 ou 2 novos seguidores, mostrar notificações individuais.
+  // A partir de 3 novos seguidores, agrupar em uma notificação.
+  const followerItems = unbundledNotifications.filter((n) => n.type === "new_follower");
+  let notifications: NotificationItem[] = unbundledNotifications;
+
+  if (followerItems.length >= 3) {
+    const newest = followerItems[0];
+    const groupedIds = followerItems.map((f) => f.id);
+    const allRead = followerItems.every((f) => f.read);
+
+    const distinctFollowers = Array.from(
+      new Map(
+        followerItems
+          .filter((f) => Boolean(f.actorId))
+          .map((f) => [
+            f.actorId!,
+            {
+              id: f.actorId!,
+              name: f.actorName,
+              nick: f.actorNick,
+              image: f.actorImage,
+            },
+          ]),
+      ).values(),
+    );
+
+    const firstNames = distinctFollowers
+      .slice(0, 2)
+      .map((f) => f.name || (f.nick ? `@${f.nick}` : "Usuário"))
+      .join(", ");
+    const remainingCount = followerItems.length - 2;
+    const groupMessage =
+      remainingCount > 0
+        ? `${firstNames} e mais ${remainingCount} pessoas começaram a seguir você.`
+        : `Você tem ${followerItems.length} novos seguidores.`;
+
+    const groupedItem: NotificationItem = {
+      id: `grouped-followers-${newest.id}`,
+      type: "grouped_followers",
+      message: groupMessage,
+      read: allRead,
+      createdAt: newest.createdAt,
+      actorId: newest.actorId,
+      actorName: newest.actorName,
+      actorNick: newest.actorNick,
+      actorImage: newest.actorImage,
+      commentId: null,
+      animeId: null,
+      episodeId: null,
+      commentLikes: 0,
+      likeAvatars: [],
+      groupedIds,
+      groupedFollowers: distinctFollowers,
+      totalFollowersCount: followerItems.length,
+    };
+
+    let inserted = false;
+    const collapsed: NotificationItem[] = [];
+    for (const item of unbundledNotifications) {
+      if (item.type === "new_follower") {
+        if (!inserted) {
+          collapsed.push(groupedItem);
+          inserted = true;
+        }
+      } else {
+        collapsed.push(item);
+      }
+    }
+    notifications = collapsed;
+  }
 
   return {
     notifications,
@@ -871,6 +984,18 @@ export async function executeMarkNotificationAsRead(
   userId: string,
   notificationId: string,
 ): Promise<{ success: boolean }> {
+  if (notificationId.startsWith("grouped-followers-")) {
+    const result = await sql`
+      update "notification"
+      set "read" = true
+      where "userId" = ${userId}
+        and "type" = 'new_follower'
+        and "read" = false
+      returning "id"
+    `;
+    return { success: result.length > 0 };
+  }
+
   const result = await sql`
     update "notification"
     set "read" = true
@@ -907,6 +1032,16 @@ export async function executeDeleteNotification(
   userId: string,
   notificationId: string,
 ): Promise<{ success: boolean }> {
+  if (notificationId.startsWith("grouped-followers-")) {
+    const result = await sql`
+      delete from "notification"
+      where "userId" = ${userId}
+        and "type" = 'new_follower'
+      returning "id"
+    `;
+    return { success: result.length > 0 };
+  }
+
   const result = await sql`
     delete from "notification"
     where "id" = ${notificationId}

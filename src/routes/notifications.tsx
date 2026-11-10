@@ -153,6 +153,7 @@ function NotificationsPage() {
   const handleMarkAsRead = async (id: string) => {
     if (!user) return;
 
+    const target = notifications.find((i) => i.id === id);
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, read: true } : item)),
     );
@@ -160,6 +161,10 @@ function NotificationsPage() {
 
     try {
       const bearer = getBearerToken();
+      const payload = target?.groupedIds?.length
+        ? { ids: target.groupedIds }
+        : { id };
+
       const response = await fetch("/api/notifications", {
         method: "PATCH",
         credentials: "include",
@@ -167,7 +172,7 @@ function NotificationsPage() {
           "Content-Type": "application/json",
           ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
         },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -213,20 +218,31 @@ function NotificationsPage() {
 
     const target = notifications.find((i) => i.id === id);
     const wasUnread = target ? !target.read : false;
+    const removedCount = target?.groupedIds?.length || 1;
 
     setNotifications((prev) => prev.filter((item) => item.id !== id));
-    setTotalCount((t) => Math.max(0, t - 1));
+    setTotalCount((t) => Math.max(0, t - removedCount));
     if (wasUnread) {
       setUnreadCount((c) => Math.max(0, c - 1));
     }
 
     try {
       const bearer = getBearerToken();
-      const response = await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
-        credentials: "include",
-        headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
-      });
+      const response = target?.groupedIds?.length
+        ? await fetch("/api/notifications", {
+            method: "DELETE",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+            },
+            body: JSON.stringify({ ids: target.groupedIds }),
+          })
+        : await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, {
+            method: "DELETE",
+            credentials: "include",
+            headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+          });
 
       if (response.ok) {
         const data = (await response.json()) as { unreadCount?: number };
