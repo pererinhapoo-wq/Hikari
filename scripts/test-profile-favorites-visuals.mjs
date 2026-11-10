@@ -40,9 +40,9 @@ async function run() {
     const mobilePage = await mobileContext.newPage();
 
     await mobilePage.goto("http://127.0.0.1:3000/account", {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
     });
-    await mobilePage.waitForTimeout(2000);
+    await mobilePage.waitForTimeout(2500);
 
     // Encontrar a seção Favoritos — Animes
     const animeSection = mobilePage.locator('section[aria-label="Favoritos — Animes"]');
@@ -197,8 +197,8 @@ async function run() {
       viewport: { width: 1280, height: 800 },
     });
     const desktopPage = await desktopContext.newPage();
-    await desktopPage.goto("http://127.0.0.1:3000/account", { waitUntil: "networkidle" });
-    await desktopPage.waitForTimeout(2000);
+    await desktopPage.goto("http://127.0.0.1:3000/account", { waitUntil: "domcontentloaded" });
+    await desktopPage.waitForTimeout(2500);
 
     const charSection = desktopPage.locator('section[aria-label="Favoritos — Personagens"]');
     const charRail = charSection.locator(".rail");

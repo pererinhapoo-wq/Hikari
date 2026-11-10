@@ -4,17 +4,22 @@ import {
   Bookmark,
   Calendar,
   CheckCircle,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Film,
   Heart,
   ListPlus,
   Play,
-  Sparkles,
-  Tv,
+  XCircle,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { UserActivityItem } from "@/lib/profile.functions";
-import type { WatchedEpisodeItem } from "@/types/profile-tracking";
+import type {
+  TrackingStatus,
+  WatchedEpisodeItem,
+} from "@/types/profile-tracking";
 
 interface ProfileHistorySpaceProps {
   items: (UserActivityItem | WatchedEpisodeItem)[];
@@ -24,6 +29,153 @@ interface ProfileHistorySpaceProps {
   onPageChange: (newPage: number) => void;
   loading?: boolean;
   isOwner?: boolean;
+}
+
+/**
+ * Identifica o status real de acompanhamento a partir do metadata ou da descrição registrada.
+ */
+function resolveTrackingStatus(entry: UserActivityItem): TrackingStatus {
+  const rawStatus = (entry.metadata?.status as string | undefined)?.toLowerCase().trim();
+  if (
+    rawStatus === "watching" ||
+    rawStatus === "completed" ||
+    rawStatus === "on_hold" ||
+    rawStatus === "dropped" ||
+    rawStatus === "planning"
+  ) {
+    return rawStatus;
+  }
+  if (rawStatus === "onhold" || rawStatus === "hold") return "on_hold";
+  if (rawStatus === "drop") return "dropped";
+  if (rawStatus === "plan") return "planning";
+  if (rawStatus === "watch") return "watching";
+  if (rawStatus === "complete") return "completed";
+
+  const desc = (entry.description || "").toLowerCase();
+  if (desc.includes("começou a assistir") || desc.includes("assistindo")) return "watching";
+  if (desc.includes("concluído") || desc.includes("assistido")) return "completed";
+  if (desc.includes("em espera")) return "on_hold";
+  if (desc.includes("abandonado") || desc.includes("abandonou")) return "dropped";
+  if (desc.includes("interesse") || desc.includes("planejado") || desc.includes("planeja")) return "planning";
+
+  return "watching";
+}
+
+/**
+ * Mapeamento visual canônico para etiquetas de status:
+ * - Watching → Assistindo (Emerald)
+ * - Completed → Assistido (Violet)
+ * - On Hold → Em espera (Amber)
+ * - Dropped → Abandonado (Rose)
+ * - Planning → Planejado (Sky)
+ */
+const TRACKING_STATUS_CONFIG: Record<
+  TrackingStatus,
+  {
+    label: string;
+    icon: typeof Play;
+    className: string;
+    iconClassName?: string;
+  }
+> = {
+  watching: {
+    label: "Assistindo",
+    icon: Play,
+    className: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25",
+    iconClassName: "size-2.5 fill-current",
+  },
+  completed: {
+    label: "Assistido",
+    icon: CheckCircle2,
+    className: "bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/25",
+    iconClassName: "size-3",
+  },
+  on_hold: {
+    label: "Em espera",
+    icon: Clock,
+    className: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/25",
+    iconClassName: "size-3",
+  },
+  dropped: {
+    label: "Abandonado",
+    icon: XCircle,
+    className: "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/25",
+    iconClassName: "size-3",
+  },
+  planning: {
+    label: "Planejado",
+    icon: Bookmark,
+    className: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/25",
+    iconClassName: "size-3 fill-current",
+  },
+};
+
+/**
+ * Remove textos redundantes que apenas repetem o que já está expresso na etiqueta do item.
+ */
+function getMeaningfulDescription(
+  entry: UserActivityItem,
+  isEpisode: boolean,
+  isFavorite: boolean,
+  isTracking: boolean,
+): string | null {
+  // 1. Episódio já possui etiqueta "Episódio X", omitir descrição redundante "Assistiu ao episódio X"
+  if (isEpisode) {
+    return null;
+  }
+
+  // 2. Favorito já possui etiqueta "Favorito", omitir descrições redundantes como "Adicionou aos favoritos", etc.
+  if (isFavorite) {
+    return null;
+  }
+
+  // 3. Status de anime já possui etiqueta real ("Assistindo", "Assistido", "Em espera", "Abandonado", "Planejado")
+  // Não exibir descrições redundantes como "Marcou como concluído", "Começou a assistir o anime", etc.
+  if (isTracking) {
+    const rawDesc = (entry.description || "").toLowerCase().trim();
+    if (
+      rawDesc.includes("marcou como concluído") ||
+      rawDesc.includes("concluído") ||
+      rawDesc.includes("começou a assistir") ||
+      rawDesc.includes("assistindo") ||
+      rawDesc.includes("colocou em espera") ||
+      rawDesc.includes("em espera") ||
+      rawDesc.includes("marcou como abandonado") ||
+      rawDesc.includes("abandonado") ||
+      rawDesc.includes("lista de interesse") ||
+      rawDesc.includes("planejado") ||
+      rawDesc.includes("lista de animes")
+    ) {
+      const score = entry.metadata?.score;
+      if (typeof score === "number" && score > 0) {
+        return `Nota: ${score}/10`;
+      }
+      return null;
+    }
+  }
+
+  if (entry.description) {
+    const raw = entry.description.trim().toLowerCase();
+    if (
+      raw.includes("adicionou aos favoritos") ||
+      raw.includes("adicionou anime aos favoritos") ||
+      raw.includes("adicionou personagem aos favoritos") ||
+      raw.includes("adicionou estúdio aos favoritos") ||
+      raw.includes("adicionou produtora aos favoritos") ||
+      raw.includes("adicionou pessoa aos favoritos") ||
+      raw.includes("marcou como concluído") ||
+      raw.includes("começou a assistir") ||
+      raw.includes("colocou em espera") ||
+      raw.includes("marcou como abandonado") ||
+      raw.includes("lista de interesse") ||
+      raw.startsWith("assistiu ao episódio")
+    ) {
+      return null;
+    }
+    return entry.description;
+  }
+
+  return null;
 }
 
 export function ProfileHistorySpace({
@@ -147,6 +299,13 @@ export function ProfileHistorySpace({
               entry.type === "list_item_added";
 
             const epNum = entry.metadata?.episodeNumber ?? 1;
+            const trackingStatus = isTracking ? resolveTrackingStatus(entry) : null;
+            const meaningfulDescription = getMeaningfulDescription(
+              entry,
+              isEpisode,
+              isFavorite,
+              isTracking,
+            );
 
             return (
               <article
@@ -171,7 +330,17 @@ export function ProfileHistorySpace({
                         ) : isList ? (
                           <ListPlus className="size-6 text-amber-400" />
                         ) : isTracking ? (
-                          <Tv className="size-6 text-violet-400" />
+                          trackingStatus === "watching" ? (
+                            <Play className="size-6 text-emerald-400" />
+                          ) : trackingStatus === "completed" ? (
+                            <CheckCircle2 className="size-6 text-violet-400" />
+                          ) : trackingStatus === "on_hold" ? (
+                            <Clock className="size-6 text-amber-400" />
+                          ) : trackingStatus === "dropped" ? (
+                            <XCircle className="size-6 text-rose-400" />
+                          ) : (
+                            <Bookmark className="size-6 text-sky-400" />
+                          )
                         ) : (
                           <Film className="size-6" />
                         )}
@@ -199,7 +368,7 @@ export function ProfileHistorySpace({
                         </span>
                       )}
 
-                      {/* Badges de Categoria */}
+                      {/* Badges de Categoria: Status Real com Cores Canônicas Preservadas */}
                       {isEpisode && (
                         <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[11px] font-bold text-violet-300 ring-1 ring-violet-500/30">
                           Episódio {epNum}
@@ -213,10 +382,22 @@ export function ProfileHistorySpace({
                         </span>
                       )}
 
-                      {isTracking && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2 py-0.5 text-[11px] font-semibold text-indigo-300 ring-1 ring-indigo-500/25">
-                          <Bookmark className="size-3" />
-                          <span>Acompanhamento</span>
+                      {isTracking && trackingStatus && (
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                            TRACKING_STATUS_CONFIG[trackingStatus].className,
+                          )}
+                        >
+                          {(() => {
+                            const StatusIcon = TRACKING_STATUS_CONFIG[trackingStatus].icon;
+                            return (
+                              <StatusIcon
+                                className={TRACKING_STATUS_CONFIG[trackingStatus].iconClassName}
+                              />
+                            );
+                          })()}
+                          <span>{TRACKING_STATUS_CONFIG[trackingStatus].label}</span>
                         </span>
                       )}
 
@@ -229,11 +410,14 @@ export function ProfileHistorySpace({
                     </div>
 
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                      <span className="font-medium text-zinc-300">
-                        {entry.description}
-                      </span>
-
-                      <span className="text-zinc-600">•</span>
+                      {meaningfulDescription && (
+                        <>
+                          <span className="font-medium text-zinc-300">
+                            {meaningfulDescription}
+                          </span>
+                          <span className="text-zinc-600">•</span>
+                        </>
+                      )}
 
                       <span
                         className="flex items-center gap-1 text-zinc-400 hover:text-zinc-300 cursor-default"
@@ -256,7 +440,7 @@ export function ProfileHistorySpace({
                   </div>
                 </div>
 
-                {/* Ação contextual */}
+                {/* Ação contextual funcional — sem ícone decorativo Sparkles */}
                 {isEpisode && (
                   <Link
                     to="/watch/$id/$ep"
@@ -277,8 +461,7 @@ export function ProfileHistorySpace({
                     params={{ id: entry.resourceId }}
                     className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-zinc-200 transition-all group-hover:border-violet-500/40 group-hover:bg-violet-600 group-hover:text-white"
                   >
-                    <Sparkles className="size-3.5" />
-                    <span className="hidden sm:inline">Ver Detalhes</span>
+                    <span>Ver Detalhes</span>
                   </Link>
                 )}
               </article>
