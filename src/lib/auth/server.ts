@@ -252,9 +252,27 @@ export const auth = betterAuth({
 
   database,
 
-  // CSRF / origin check for credentialed auth POSTs (email sign-up/sign-in, …).
-  // See `trustedOrigins` construction above — must cover live preview hosts AND
-  // local loopback variants, or clients get "Invalid origin".
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          try {
+            const { getSql } = await import("../db");
+            const { ensureUserProfile } = await import("../profile-provision");
+            const sql = await getSql();
+            await ensureUserProfile(sql, {
+              id: user.id,
+              name: user.name,
+              image: user.image,
+            });
+          } catch (err) {
+            console.error("[auth] Erro no databaseHook ao provisionar perfil:", err);
+          }
+        },
+      },
+    },
+  },
+
   trustedOrigins,
 
   ...(hasGoogleOAuth

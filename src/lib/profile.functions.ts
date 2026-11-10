@@ -5,6 +5,7 @@ import { authMiddleware, optionalAuthMiddleware } from "@/lib/auth/middleware";
 import { getSql, type Sql } from "@/lib/db";
 import { executeCreateNotification } from "@/lib/notifications.functions";
 import { FALLBACK_ANIMES } from "@/lib/fallback-catalog";
+import { ensureUserProfile } from "@/lib/profile-provision";
 
 export type SectionPrivacyLevel = "public" | "followers" | "private";
 export type AccountType = "public" | "private";
@@ -245,7 +246,7 @@ function normalizeNick(
     .trim()
     .replace(/^@+/, "")
     .toLowerCase()
-    .slice(0, 30);
+    .slice(0, 100);
 }
 
 function isValidNick(
@@ -511,7 +512,52 @@ export const getProfile =
       `;
 
       const userRow = userRows[0];
-      const row = rows[0];
+      let row = rows[0];
+
+      // Auto-provisionamento seguro e idempotente para contas existentes sem perfil ou sem nick
+      if (!row || !row.nick) {
+        const { ensureUserProfile } = await import("./profile-provision");
+        await ensureUserProfile(sql, {
+          id: context.userId,
+          name: userRow?.name,
+          image: userRow?.image,
+        });
+
+        const refreshedRows = await sql<{
+          nick: string | null;
+          bio: string | null;
+          favorites: string | null;
+          displayName: string | null;
+          avatarUrl: string | null;
+          bannerUrl: string | null;
+          accountType: string | null;
+          allowFollowers: boolean | null;
+          privacyLists: string | null;
+          privacyFavorites: string | null;
+          privacyHistory: string | null;
+          privacyComments: string | null;
+          privacyFollowers: string | null;
+        }>`
+          select
+            "nick",
+            "bio",
+            "favorites",
+            "displayName",
+            "avatarUrl",
+            "bannerUrl",
+            "accountType",
+            "allowFollowers",
+            "privacyLists",
+            "privacyFavorites",
+            "privacyHistory",
+            "privacyComments",
+            "privacyFollowers"
+          from "profile"
+          where "userId" = ${context.userId}
+          limit 1
+        `;
+        row = refreshedRows[0];
+      }
 
       return {
         userId: context.userId,
@@ -547,190 +593,190 @@ export const getProfile =
 /* PERFIL PÚBLICO                                                  */
 /* ============================================================ */
 
+export async function executeGetPublicProfile(
+  sql: Sql,
+  rawNick: unknown,
+  viewerUserId: string | null,
+): Promise<PublicUserProfile> {
+  const nick = normalizeNick(rawNick);
+  if (!nick) {
+    throw new Error("Nick não informado.");
+  }
+
+  const rows = await sql<{
+    userId: string;
+    userName: string | null;
+    userImage: string | null;
+    name: string | null;
+    nick: string | null;
+    bio: string | null;
+    image: string | null;
+    bannerUrl: string | null;
+  }>`
+    select
+      u."id" as "userId",
+      u."name" as "userName",
+      u."image" as "userImage",
+      coalesce(p."displayName", u."name") as "name",
+      p."nick",
+      p."bio",
+      coalesce(p."avatarUrl", u."image") as "image",
+      p."bannerUrl"
+    from "user" u
+    left join "profile" p on p."userId" = u."id"
+    where (p."nick" is not null and lower(trim(p."nick")) = lower(${nick}))
+       or lower(u."id") = lower(${nick})
+    limit 1
+  `;
+
+  let row = rows[0];
+  if (!row) {
+    throw new Error("Esse perfil não existe.");
+  }
+
+  if (!row.nick || row.nick === "usuario") {
+    const provisioned = await ensureUserProfile(sql, {
+      id: row.userId,
+      name: row.userName || row.name,
+      image: row.userImage || row.image,
+    });
+    row = {
+      ...row,
+      nick: provisioned.nick,
+    };
+  }
+
+  // Avaliação estrita de privacidade no servidor
+  const privacy = await evaluateUserPrivacy(sql, row.userId, viewerUserId);
+
+  let commentCount = 0;
+  if (privacy.canViewComments) {
+    const commentRows = await sql<{
+      count: string;
+    }>`
+      select count(*)::text as count
+      from "comment"
+      where "userId" = ${row.userId}
+    `;
+    commentCount = Number(commentRows[0]?.count ?? "0");
+  }
+
+  let followersCount = 0;
+  if (privacy.canViewFollowers) {
+    const followerRows = await sql<{
+      count: string;
+    }>`
+      select count(*)::text as count
+      from "user_follow"
+      where "followingId" = ${row.userId}
+    `;
+    followersCount = Number(followerRows[0]?.count ?? "0");
+  }
+
+  let followingCount = 0;
+  if (privacy.canViewFollowers) {
+    const followingRows = await sql<{
+      count: string;
+    }>`
+      select count(*)::text as count
+      from "user_follow"
+      where "followerId" = ${row.userId}
+    `;
+    followingCount = Number(followingRows[0]?.count ?? "0");
+  }
+
+  let isBlockedByMe = false;
+  let isBlockedByTarget = false;
+  let isBlocked = false;
+
+  if (viewerUserId && viewerUserId !== row.userId) {
+    const blockRows = await sql<{
+      isBlockedByMe: boolean;
+      isBlockedByTarget: boolean;
+    }>`
+      select
+        exists (
+          select 1 from "user_block"
+          where "blockerId" = ${viewerUserId} and "blockedId" = ${row.userId}
+        ) as "isBlockedByMe",
+        exists (
+          select 1 from "user_block"
+          where "blockerId" = ${row.userId} and "blockedId" = ${viewerUserId}
+        ) as "isBlockedByTarget"
+    `;
+    const b = blockRows[0];
+    isBlockedByMe = Boolean(b?.isBlockedByMe);
+    isBlockedByTarget = Boolean(b?.isBlockedByTarget);
+    isBlocked = isBlockedByMe || isBlockedByTarget;
+  }
+
+  let hasPendingRequest = false;
+  if (viewerUserId && !privacy.isOwner && !privacy.isFollower && !isBlocked) {
+    const reqRows = await sql<{ count: string }>`
+      select count(*)::text as count
+      from "user_follow_request"
+      where "requesterId" = ${viewerUserId}
+        and "targetId" = ${row.userId}
+        and "status" = 'pending'
+      limit 1
+    `;
+    hasPendingRequest = Number(reqRows[0]?.count ?? "0") > 0;
+  }
+
+  let relationStatus: FollowRelationshipStatus = "none";
+  if (privacy.isOwner) {
+    relationStatus = "self";
+  } else if (isBlocked) {
+    relationStatus = "none";
+  } else if (privacy.isFollower) {
+    relationStatus = "following";
+  } else if (hasPendingRequest) {
+    relationStatus = "requested";
+  }
+
+  return {
+    userId: row.userId,
+    name: row.name || row.nick || "Usuário",
+    nick: row.nick || row.userId,
+    bio: privacy.canViewAccount ? (row.bio ?? "") : "",
+    image: row.image,
+    bannerUrl: privacy.canViewAccount ? (row.bannerUrl ?? null) : null,
+    commentCount,
+    followersCount,
+    followingCount,
+    isFollowing: isBlocked ? false : privacy.isFollower,
+    hasPendingRequest,
+    relationStatus,
+    isBlocked,
+    isBlockedByMe,
+    isBlockedByTarget,
+    accountType: privacy.accountType,
+    allowFollowers: privacy.allowFollowers,
+    privacyLists: privacy.privacyLists,
+    privacyFavorites: privacy.privacyFavorites,
+    privacyHistory: privacy.privacyHistory,
+    privacyComments: privacy.privacyComments,
+    privacyFollowers: privacy.privacyFollowers,
+    isOwner: privacy.isOwner,
+    canViewContent: privacy.canViewAccount,
+    canViewLists: privacy.canViewLists,
+    canViewFavorites: privacy.canViewFavorites,
+    canViewHistory: privacy.canViewHistory,
+    canViewComments: privacy.canViewComments,
+    canViewFollowers: privacy.canViewFollowers,
+  };
+}
+
 export const getPublicProfile =
   createServerFn({
     method: "GET",
   })
     .middleware([optionalAuthMiddleware])
     .validator((d: { nick: string }) => d)
-    .handler(async ({
-      context,
-      data,
-    }) => {
+    .handler(async ({ context, data }) => {
       const viewerUserId = context?.userId ?? null;
-      const input = data as {
-        nick?: unknown;
-      };
-
-      const nick = normalizeNick(
-        input.nick,
-      );
-
-      if (!nick) {
-        throw new Error(
-          "Nick não informado.",
-        );
-      }
-
       const sql = await getSql();
-
-      const rows = await sql<{
-        userId: string;
-        name: string | null;
-        nick: string | null;
-        bio: string | null;
-        image: string | null;
-        bannerUrl: string | null;
-      }>`
-        select
-          u."id" as "userId",
-          coalesce(p."displayName", u."name") as "name",
-          coalesce(p."nick", u."name", 'usuario') as "nick",
-          p."bio",
-          coalesce(p."avatarUrl", u."image") as "image",
-          p."bannerUrl"
-        from "user" u
-
-        left join "profile" p
-          on p."userId" = u."id"
-
-        where (p."nick" is not null and lower(p."nick") = lower(${nick}))
-           or lower(u."id") = lower(${nick})
-        limit 1
-      `;
-
-      const row = rows[0];
-
-      if (!row) {
-        throw new Error(
-          "Esse perfil não existe.",
-        );
-      }
-
-      // Avaliação estrita de privacidade no servidor
-      const privacy = await evaluateUserPrivacy(sql, row.userId, viewerUserId);
-
-      let commentCount = 0;
-      if (privacy.canViewComments) {
-        const commentRows = await sql<{
-          count: string;
-        }>`
-          select count(*)::text as count
-          from "comment"
-          where "userId" =
-            ${row.userId}
-        `;
-        commentCount = Number(commentRows[0]?.count ?? "0");
-      }
-
-      let followersCount = 0;
-      if (privacy.canViewFollowers) {
-        const followerRows = await sql<{
-          count: string;
-        }>`
-          select count(*)::text as count
-          from "user_follow"
-          where "followingId" =
-            ${row.userId}
-        `;
-        followersCount = Number(followerRows[0]?.count ?? "0");
-      }
-
-      let followingCount = 0;
-      if (privacy.canViewFollowers) {
-        const followingRows = await sql<{
-          count: string;
-        }>`
-          select count(*)::text as count
-          from "user_follow"
-          where "followerId" =
-            ${row.userId}
-        `;
-        followingCount = Number(followingRows[0]?.count ?? "0");
-      }
-
-      let isBlockedByMe = false;
-      let isBlockedByTarget = false;
-      let isBlocked = false;
-
-      if (viewerUserId && viewerUserId !== row.userId) {
-        const blockRows = await sql<{
-          isBlockedByMe: boolean;
-          isBlockedByTarget: boolean;
-        }>`
-          select
-            exists (
-              select 1 from "user_block"
-              where "blockerId" = ${viewerUserId} and "blockedId" = ${row.userId}
-            ) as "isBlockedByMe",
-            exists (
-              select 1 from "user_block"
-              where "blockerId" = ${row.userId} and "blockedId" = ${viewerUserId}
-            ) as "isBlockedByTarget"
-        `;
-        const b = blockRows[0];
-        isBlockedByMe = Boolean(b?.isBlockedByMe);
-        isBlockedByTarget = Boolean(b?.isBlockedByTarget);
-        isBlocked = isBlockedByMe || isBlockedByTarget;
-      }
-
-      let hasPendingRequest = false;
-      if (viewerUserId && !privacy.isOwner && !privacy.isFollower && !isBlocked) {
-        const reqRows = await sql<{ count: string }>`
-          select count(*)::text as count
-          from "user_follow_request"
-          where "requesterId" = ${viewerUserId}
-            and "targetId" = ${row.userId}
-            and "status" = 'pending'
-          limit 1
-        `;
-        hasPendingRequest = Number(reqRows[0]?.count ?? "0") > 0;
-      }
-
-      let relationStatus: FollowRelationshipStatus = "none";
-      if (privacy.isOwner) {
-        relationStatus = "self";
-      } else if (isBlocked) {
-        relationStatus = "none";
-      } else if (privacy.isFollower) {
-        relationStatus = "following";
-      } else if (hasPendingRequest) {
-        relationStatus = "requested";
-      }
-
-      const profileResult: PublicUserProfile = {
-        userId: row.userId,
-        name: row.name || row.nick || "Usuário",
-        nick: row.nick ?? "",
-        bio: privacy.canViewAccount ? (row.bio ?? "") : "",
-        image: row.image,
-        bannerUrl: privacy.canViewAccount ? (row.bannerUrl ?? null) : null,
-        commentCount,
-        followersCount,
-        followingCount,
-        isFollowing: isBlocked ? false : privacy.isFollower,
-        hasPendingRequest,
-        relationStatus,
-        isBlocked,
-        isBlockedByMe,
-        isBlockedByTarget,
-        accountType: privacy.accountType,
-        allowFollowers: privacy.allowFollowers,
-        privacyLists: privacy.privacyLists,
-        privacyFavorites: privacy.privacyFavorites,
-        privacyHistory: privacy.privacyHistory,
-        privacyComments: privacy.privacyComments,
-        privacyFollowers: privacy.privacyFollowers,
-        isOwner: privacy.isOwner,
-        canViewContent: privacy.canViewAccount,
-        canViewLists: privacy.canViewLists,
-        canViewFavorites: privacy.canViewFavorites,
-        canViewHistory: privacy.canViewHistory,
-        canViewComments: privacy.canViewComments,
-        canViewFollowers: privacy.canViewFollowers,
-      };
-
-      return profileResult;
+      return executeGetPublicProfile(sql, data?.nick, viewerUserId);
     });
 
 /* ============================================================ */
@@ -762,9 +808,9 @@ export const getProfileFollowers =
         }>`
           select
             u."id" as "userId",
-            p."nick",
-            u."name",
-            u."image",
+            coalesce(p."nick", u."id") as "nick",
+            coalesce(p."displayName", u."name", 'Usuário') as "name",
+            coalesce(p."avatarUrl", u."image") as "image",
             exists (
               select 1
               from "user_follow" f
@@ -777,7 +823,7 @@ export const getProfileFollowers =
             on u."id" =
               uf."followerId"
 
-          inner join "profile" p
+          left join "profile" p
             on p."userId" =
               u."id"
 
@@ -791,15 +837,11 @@ export const getProfileFollowers =
       const result: ProfileUser[] = [];
 
       for (const row of rows) {
-        if (!row.nick) {
-          continue;
-        }
-
         result.push({
           userId: row.userId,
-          nick: row.nick,
+          nick: row.nick || row.userId,
           name:
-            row.name ??
+            row.name ||
             "Usuário",
           image: row.image,
           isFollowing: Boolean(row.isFollowing),
@@ -838,9 +880,9 @@ export const getProfileFollowing =
         }>`
           select
             u."id" as "userId",
-            p."nick",
-            u."name",
-            u."image",
+            coalesce(p."nick", u."id") as "nick",
+            coalesce(p."displayName", u."name", 'Usuário') as "name",
+            coalesce(p."avatarUrl", u."image") as "image",
             exists (
               select 1
               from "user_follow" f
@@ -853,7 +895,7 @@ export const getProfileFollowing =
             on u."id" =
               uf."followingId"
 
-          inner join "profile" p
+          left join "profile" p
             on p."userId" =
               u."id"
 
@@ -867,15 +909,11 @@ export const getProfileFollowing =
       const result: ProfileUser[] = [];
 
       for (const row of rows) {
-        if (!row.nick) {
-          continue;
-        }
-
         result.push({
           userId: row.userId,
-          nick: row.nick,
+          nick: row.nick || row.userId,
           name:
-            row.name ??
+            row.name ||
             "Usuário",
           image: row.image,
           isFollowing: Boolean(row.isFollowing),
@@ -1418,6 +1456,50 @@ export const getPublicActivities = createServerFn({
 /* SEGUIDORES E SEGUINDO PÚBLICOS COM CONTROLE DE PRIVACIDADE    */
 /* ============================================================ */
 
+export async function executeGetPublicProfileFollowers(
+  sql: Sql,
+  targetUserId: string,
+  viewerUserId: string | null,
+) {
+  const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerUserId);
+  if (!privacy.canViewFollowers) {
+    throw new Error("A lista de seguidores deste perfil é privada.");
+  }
+
+  const rows = await sql<{
+    userId: string;
+    nick: string | null;
+    name: string | null;
+    image: string | null;
+    isFollowing: boolean;
+  }>`
+    select
+      u."id" as "userId",
+      coalesce(p."nick", u."id") as "nick",
+      coalesce(p."displayName", u."name", 'Usuário') as "name",
+      coalesce(p."avatarUrl", u."image") as "image",
+      exists (
+        select 1
+        from "user_follow" f
+        where f."followerId" = ${viewerUserId}
+          and f."followingId" = u."id"
+      ) as "isFollowing"
+    from "user_follow" uf
+    inner join "user" u on u."id" = uf."followerId"
+    left join "profile" p on p."userId" = u."id"
+    where uf."followingId" = ${targetUserId}
+    order by uf."createdAt" desc
+  `;
+
+  return rows.map((r) => ({
+    userId: r.userId,
+    nick: r.nick || r.userId,
+    name: r.name ?? "Usuário",
+    image: r.image,
+    isFollowing: Boolean(r.isFollowing),
+  }));
+}
+
 export const getPublicProfileFollowers =
   createServerFn({
     method: "GET",
@@ -1430,46 +1512,52 @@ export const getPublicProfileFollowers =
       if (!targetUserId) throw new Error("Usuário não informado.");
 
       const sql = await getSql();
-      const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerUserId);
-      if (!privacy.canViewFollowers) {
-        throw new Error("A lista de seguidores deste perfil é privada.");
-      }
-
-      const rows = await sql<{
-        userId: string;
-        nick: string | null;
-        name: string | null;
-        image: string | null;
-        isFollowing: boolean;
-      }>`
-        select
-          u."id" as "userId",
-          p."nick",
-          u."name",
-          u."image",
-          exists (
-            select 1
-            from "user_follow" f
-            where f."followerId" = ${viewerUserId}
-              and f."followingId" = u."id"
-          ) as "isFollowing"
-        from "user_follow" uf
-        inner join "user" u on u."id" = uf."followerId"
-        inner join "profile" p on p."userId" = u."id"
-        where uf."followingId" = ${targetUserId}
-        order by uf."createdAt" desc
-      `;
-
-      return rows
-        .filter((r) => Boolean(r.nick))
-        .map((r) => ({
-          userId: r.userId,
-          nick: r.nick!,
-          name: r.name ?? "Usuário",
-          image: r.image,
-          isFollowing: Boolean(r.isFollowing),
-        }));
+      return executeGetPublicProfileFollowers(sql, targetUserId, viewerUserId);
     });
+
+export async function executeGetPublicProfileFollowing(
+  sql: Sql,
+  targetUserId: string,
+  viewerUserId: string | null,
+) {
+  const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerUserId);
+  if (!privacy.canViewFollowers) {
+    throw new Error("A lista de seguidos deste perfil é privada.");
+  }
+
+  const rows = await sql<{
+    userId: string;
+    nick: string | null;
+    name: string | null;
+    image: string | null;
+    isFollowing: boolean;
+  }>`
+    select
+      u."id" as "userId",
+      coalesce(p."nick", u."id") as "nick",
+      coalesce(p."displayName", u."name", 'Usuário') as "name",
+      coalesce(p."avatarUrl", u."image") as "image",
+      exists (
+        select 1
+        from "user_follow" f
+        where f."followerId" = ${viewerUserId}
+          and f."followingId" = u."id"
+      ) as "isFollowing"
+    from "user_follow" uf
+    inner join "user" u on u."id" = uf."followingId"
+    left join "profile" p on p."userId" = u."id"
+    where uf."followerId" = ${targetUserId}
+    order by uf."createdAt" desc
+  `;
+
+  return rows.map((r) => ({
+    userId: r.userId,
+    nick: r.nick || r.userId,
+    name: r.name ?? "Usuário",
+    image: r.image,
+    isFollowing: Boolean(r.isFollowing),
+  }));
+}
 
 export const getPublicProfileFollowing =
   createServerFn({
@@ -1483,45 +1571,7 @@ export const getPublicProfileFollowing =
       if (!targetUserId) throw new Error("Usuário não informado.");
 
       const sql = await getSql();
-      const privacy = await evaluateUserPrivacy(sql, targetUserId, viewerUserId);
-      if (!privacy.canViewFollowers) {
-        throw new Error("A lista de seguidos deste perfil é privada.");
-      }
-
-      const rows = await sql<{
-        userId: string;
-        nick: string | null;
-        name: string | null;
-        image: string | null;
-        isFollowing: boolean;
-      }>`
-        select
-          u."id" as "userId",
-          p."nick",
-          u."name",
-          u."image",
-          exists (
-            select 1
-            from "user_follow" f
-            where f."followerId" = ${viewerUserId}
-              and f."followingId" = u."id"
-          ) as "isFollowing"
-        from "user_follow" uf
-        inner join "user" u on u."id" = uf."followingId"
-        inner join "profile" p on p."userId" = u."id"
-        where uf."followerId" = ${targetUserId}
-        order by uf."createdAt" desc
-      `;
-
-      return rows
-        .filter((r) => Boolean(r.nick))
-        .map((r) => ({
-          userId: r.userId,
-          nick: r.nick!,
-          name: r.name ?? "Usuário",
-          image: r.image,
-          isFollowing: Boolean(r.isFollowing),
-        }));
+      return executeGetPublicProfileFollowing(sql, targetUserId, viewerUserId);
     });
 
 /* ============================================================ */
@@ -1880,11 +1930,15 @@ export async function executeFollowUser(sql: Sql, viewerId: string, targetId: st
   // 1. Verificar se o alvo existe e obter preferências de privacidade
   const targetRows = await sql<{
     id: string;
+    name: string | null;
+    image: string | null;
     accountType: string | null;
     allowFollowers: boolean | null;
   }>`
     select
       u."id",
+      u."name",
+      u."image",
       p."accountType",
       p."allowFollowers"
     from "user" u
@@ -1897,6 +1951,12 @@ export async function executeFollowUser(sql: Sql, viewerId: string, targetId: st
   if (!targetUser) {
     throw new Error("Usuário alvo não encontrado.");
   }
+
+  // Garantir que tanto o alvo quanto o seguidor tenham perfil provisionado
+  await Promise.all([
+    ensureUserProfile(sql, { id: targetId, name: targetUser.name, image: targetUser.image }),
+    ensureUserProfile(sql, { id: viewerId }),
+  ]);
 
   // 2. Verificar bloqueio mútuo
   const blockRows = await sql<{ count: string }>`
@@ -2756,7 +2816,7 @@ export async function executeSearchUsers(
   const rows = viewerUserId
     ? await sql<{
         userId: string;
-        nick: string;
+        nick: string | null;
         displayName: string | null;
         avatarUrl: string | null;
         accountType: string;
@@ -2765,8 +2825,8 @@ export async function executeSearchUsers(
       }>`
         select
           u."id" as "userId",
-          p."nick",
-          coalesce(p."displayName", u."name", p."nick") as "displayName",
+          coalesce(p."nick", u."id") as "nick",
+          coalesce(p."displayName", u."name", p."nick", 'Usuário') as "displayName",
           coalesce(p."avatarUrl", u."image") as "avatarUrl",
           coalesce(p."accountType", 'public') as "accountType",
           exists (
@@ -2775,13 +2835,13 @@ export async function executeSearchUsers(
               and f."followingId" = u."id"
           ) as "isFollowing",
           (u."id" = ${viewerUserId}) as "isOwner"
-        from "profile" p
-        inner join "user" u on u."id" = p."userId"
-        where p."nick" is not null and trim(p."nick") <> ''
-          and (
-            p."nick" ilike ${searchPattern} escape '\\'
+        from "user" u
+        left join "profile" p on p."userId" = u."id"
+        where (
+            coalesce(p."nick", '') ilike ${searchPattern} escape '\\'
             or coalesce(p."displayName", '') ilike ${searchPattern} escape '\\'
             or coalesce(u."name", '') ilike ${searchPattern} escape '\\'
+            or lower(u."id") = lower(${cleanQuery})
           )
           and not exists (
             select 1 from "user_block" ub
@@ -2789,15 +2849,18 @@ export async function executeSearchUsers(
                or (ub."blockerId" = u."id" and ub."blockedId" = ${viewerUserId})
           )
         order by
-          case when lower(trim(p."nick")) = lower(${cleanQuery}) then 0 else 1 end asc,
-          lower(p."nick") asc,
+          case
+            when lower(trim(coalesce(p."nick", ''))) = lower(${cleanQuery}) or lower(trim(u."id")) = lower(${cleanQuery}) then 0
+            else 1
+          end asc,
+          lower(coalesce(p."nick", u."name", u."id")) asc,
           u."id" asc
         limit ${limit}
         offset ${offset}
       `
     : await sql<{
         userId: string;
-        nick: string;
+        nick: string | null;
         displayName: string | null;
         avatarUrl: string | null;
         accountType: string;
@@ -2806,23 +2869,26 @@ export async function executeSearchUsers(
       }>`
         select
           u."id" as "userId",
-          p."nick",
-          coalesce(p."displayName", u."name", p."nick") as "displayName",
+          coalesce(p."nick", u."id") as "nick",
+          coalesce(p."displayName", u."name", p."nick", 'Usuário') as "displayName",
           coalesce(p."avatarUrl", u."image") as "avatarUrl",
           coalesce(p."accountType", 'public') as "accountType",
           false as "isFollowing",
           false as "isOwner"
-        from "profile" p
-        inner join "user" u on u."id" = p."userId"
-        where p."nick" is not null and trim(p."nick") <> ''
-          and (
-            p."nick" ilike ${searchPattern} escape '\\'
+        from "user" u
+        left join "profile" p on p."userId" = u."id"
+        where (
+            coalesce(p."nick", '') ilike ${searchPattern} escape '\\'
             or coalesce(p."displayName", '') ilike ${searchPattern} escape '\\'
             or coalesce(u."name", '') ilike ${searchPattern} escape '\\'
+            or lower(u."id") = lower(${cleanQuery})
           )
         order by
-          case when lower(trim(p."nick")) = lower(${cleanQuery}) then 0 else 1 end asc,
-          lower(p."nick") asc,
+          case
+            when lower(trim(coalesce(p."nick", ''))) = lower(${cleanQuery}) or lower(trim(u."id")) = lower(${cleanQuery}) then 0
+            else 1
+          end asc,
+          lower(coalesce(p."nick", u."name", u."id")) asc,
           u."id" asc
         limit ${limit}
         offset ${offset}
@@ -2830,7 +2896,7 @@ export async function executeSearchUsers(
 
   return rows.map((r) => ({
     userId: r.userId,
-    nick: r.nick,
+    nick: r.nick || r.userId,
     displayName: r.displayName || r.nick || "Usuário",
     avatarUrl: r.avatarUrl,
     accountType: (r.accountType === "private" ? "private" : "public") as AccountType,

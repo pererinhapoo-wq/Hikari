@@ -295,6 +295,20 @@ export function gateIdentitySessions() {
                 return;
               }
 
+              // Garantir perfil provisionado para o usuário da sessão gate
+              try {
+                const { getSql } = await import("../db");
+                const { ensureUserProfile } = await import("../profile-provision");
+                const sql = await getSql();
+                await ensureUserProfile(sql, {
+                  id: result.data.user.id,
+                  name: result.data.user.name,
+                  image: result.data.user.image,
+                });
+              } catch (profileErr) {
+                console.error(`${LOG} auto-provision profile failed`, profileErr);
+              }
+
               // Persist session rows + internal newSession state.
               await setSessionCookie(ctx, result.data);
 

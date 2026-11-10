@@ -209,7 +209,14 @@ async function createSql(): Promise<Sql> {
         "or a server route loader, never from client code.",
     );
   }
-  return dbSource === "neon" ? createNeonSql() : createPgliteSql();
+  const client = await (dbSource === "neon" ? createNeonSql() : createPgliteSql());
+  try {
+    const { provisionMissingProfiles } = await import("./profile-provision");
+    await provisionMissingProfiles(client);
+  } catch (err) {
+    console.error("[db] Background profile provisioning warning:", err);
+  }
+  return client;
 }
 
 /**
