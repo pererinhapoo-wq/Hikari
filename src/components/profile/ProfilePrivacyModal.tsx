@@ -217,19 +217,19 @@ export function ProfilePrivacyModal({
       aria-modal="true"
       aria-labelledby="privacy-modal-title"
     >
-      <div className="relative flex max-h-[94vh] sm:max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0918] shadow-[0_25px_70px_rgba(0,0,0,0.85)]">
+      <div className="relative flex h-full max-h-[calc(100dvh-1rem)] sm:h-auto sm:max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0918] shadow-[0_25px_70px_rgba(0,0,0,0.85)]">
         {/* Cabeçalho do Modal Original */}
-        <div className="flex items-center justify-between border-b border-white/[0.08] bg-[#140e24]/70 px-3.5 py-3 sm:px-6 sm:py-4">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <div className="shrink-0 flex items-center justify-between border-b border-white/[0.08] bg-[#140e24] px-3.5 py-2.5 sm:px-6 sm:py-4 z-10">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
             <div className="flex size-8 sm:size-10 shrink-0 items-center justify-center rounded-lg sm:rounded-2xl border border-violet-500/30 bg-violet-600/20 text-violet-300">
               <Shield className="size-4 sm:size-5" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2
                 id="privacy-modal-title"
-                className="font-display text-sm sm:text-xl font-bold text-white flex items-center gap-2 truncate"
+                className="font-display text-sm sm:text-xl font-bold text-white flex items-center gap-1.5 sm:gap-2"
               >
-                <span>Privacidade do Perfil</span>
+                <span className="truncate">Privacidade do Perfil</span>
                 {isDirty && (
                   <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/15 px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] font-semibold text-amber-300">
                     Não salvo
@@ -255,14 +255,14 @@ export function ProfilePrivacyModal({
 
         {/* Feedback de Erro ou Sucesso */}
         {error && (
-          <div className="mx-3.5 sm:mx-5 mt-3 sm:mt-4 flex items-center gap-2 rounded-xl sm:rounded-2xl border border-red-500/30 bg-red-500/10 px-3 sm:px-4 py-2.5 sm:py-3 text-xs text-red-200">
+          <div className="shrink-0 mx-3.5 sm:mx-5 mt-2.5 sm:mt-4 flex items-center gap-2 rounded-xl sm:rounded-2xl border border-red-500/30 bg-red-500/10 px-3 sm:px-4 py-2.5 sm:py-3 text-xs text-red-200">
             <AlertCircle className="size-4 shrink-0 text-red-400" />
             <span>{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="mx-3.5 sm:mx-5 mt-3 sm:mt-4 flex items-center gap-2 rounded-xl sm:rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 sm:px-4 py-2.5 sm:py-3 text-xs font-medium text-emerald-300">
+          <div className="shrink-0 mx-3.5 sm:mx-5 mt-2.5 sm:mt-4 flex items-center gap-2 rounded-xl sm:rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 sm:px-4 py-2.5 sm:py-3 text-xs font-medium text-emerald-300">
             <Check className="size-4 shrink-0 text-emerald-400" />
             <span>Preferências de privacidade atualizadas com sucesso!</span>
           </div>
@@ -271,7 +271,7 @@ export function ProfilePrivacyModal({
         {/* Formulário de Configurações com Rolagem Suave */}
         <form
           onSubmit={handleSubmit}
-          className="flex-1 overflow-y-auto px-3.5 py-3.5 sm:px-6 sm:py-5 space-y-4 sm:space-y-6 text-sm overscroll-contain"
+          className="flex-1 min-h-0 overflow-y-auto px-3.5 py-3.5 sm:px-6 sm:py-5 pb-8 sm:pb-6 space-y-4 sm:space-y-6 text-sm overscroll-contain"
         >
           {/* 1. Visibilidade Geral da Conta */}
           <section className="space-y-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
@@ -561,7 +561,7 @@ export function ProfilePrivacyModal({
         </form>
 
         {/* Rodapé de Ações Original */}
-        <div className="flex items-center justify-between border-t border-white/[0.08] bg-[#140e24]/70 px-3.5 py-2.5 sm:px-6 sm:py-4 gap-2">
+        <div className="shrink-0 flex items-center justify-between border-t border-white/[0.08] bg-[#140e24] px-3.5 py-2.5 sm:px-6 sm:py-4 gap-2 z-10 shadow-[0_-8px_20px_rgba(0,0,0,0.5)]">
           <button
             type="button"
             onClick={onClose}

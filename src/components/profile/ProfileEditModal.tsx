@@ -376,7 +376,7 @@ export function ProfileEditModal({
         }
       }}
     >
-      <div className="relative flex flex-col w-full max-w-2xl max-h-[94vh] sm:max-h-[90vh] overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0c18] shadow-[0_25px_60px_rgba(0,0,0,0.9)]">
+      <div className="relative flex flex-col w-full max-w-2xl h-full max-h-[calc(100dvh-1rem)] sm:h-auto sm:max-h-[90vh] overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-[#0d0c18] shadow-[0_25px_60px_rgba(0,0,0,0.9)]">
         {/* Luzes decorativas sutis de fundo */}
         <div
           className="pointer-events-none absolute -right-20 -top-20 size-60 rounded-full bg-violet-600/15 blur-3xl"
@@ -388,13 +388,13 @@ export function ProfileEditModal({
         />
 
         {/* 1. Cabeçalho Fixo do Modal */}
-        <div className="relative shrink-0 flex items-center justify-between px-3.5 sm:px-7 py-2.5 sm:py-4 border-b border-white/[0.08] bg-[#0d0c18]/90 backdrop-blur-md z-20">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <div className="relative shrink-0 flex items-center justify-between px-3.5 sm:px-7 py-2.5 sm:py-4 border-b border-white/[0.08] bg-[#0d0c18] z-20">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
             <div className="flex size-8 sm:size-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl border border-violet-500/30 bg-violet-500/15 text-violet-300 shadow-[0_0_15px_rgba(168,85,247,0.25)]">
               <Pencil className="size-4 sm:size-5" />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <h2 id="profile-edit-modal-title" className="font-display text-sm sm:text-lg font-bold text-white truncate">
                   Editar Perfil
                 </h2>
@@ -422,7 +422,7 @@ export function ProfileEditModal({
         </div>
 
         {/* 2. Conteúdo Rolável */}
-        <div className="relative flex-1 overflow-y-auto px-3.5 sm:px-7 py-3 sm:py-5 space-y-3.5 sm:space-y-6 overscroll-contain">
+        <div className="relative flex-1 min-h-0 overflow-y-auto px-3.5 sm:px-7 py-3 sm:py-5 pb-8 sm:pb-6 space-y-3.5 sm:space-y-6 overscroll-contain">
           {/* Mensagens de Sucesso e Erro */}
           {saveSuccess && (
             <div className="flex items-center gap-2 rounded-xl sm:rounded-2xl border border-emerald-500/30 bg-emerald-500/15 p-2.5 sm:p-3.5 text-xs sm:text-sm font-semibold text-emerald-200 animate-in fade-in duration-200">
@@ -827,7 +827,7 @@ export function ProfileEditModal({
         </div>
 
         {/* 3. Rodapé Fixo com Botões de Ação */}
-        <div className="relative shrink-0 flex items-center justify-between px-3.5 sm:px-7 py-2.5 sm:py-4 border-t border-white/[0.08] bg-[#0d0c18]/95 backdrop-blur-md z-20 gap-2">
+        <div className="relative shrink-0 flex items-center justify-between px-3.5 sm:px-7 py-2.5 sm:py-4 border-t border-white/[0.08] bg-[#0d0c18] z-20 gap-2 shadow-[0_-8px_20px_rgba(0,0,0,0.5)]">
           <div className="text-[11px] sm:text-xs text-zinc-500 truncate max-w-[130px] sm:max-w-none">
             {isDirty ? (
               <span className="text-amber-300/90 font-medium">

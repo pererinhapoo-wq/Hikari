@@ -1,11 +1,15 @@
 import { ProfileAnimeStats } from "@/components/profile/ProfileAnimeStats";
 import { ProfileOverviewFavorites } from "@/components/profile/ProfileOverviewFavorites";
+import { ProfileRecentActivities } from "@/components/profile/ProfileRecentActivities";
+import type { MyProfileComment, UserActivityItem } from "@/lib/profile.functions";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
 import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
 
 interface ProfileOverviewSpaceProps {
   trackingItems: UserAnimeTrackingItem[];
   favoritesGrouped: ProfileFavoritesGrouped;
+  activityItems?: UserActivityItem[];
+  comments?: MyProfileComment[];
   loading?: boolean;
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
   onRemoveFavorite?: (item: ProfileFavoriteItem) => Promise<void> | void;
@@ -14,6 +18,8 @@ interface ProfileOverviewSpaceProps {
 export function ProfileOverviewSpace({
   trackingItems,
   favoritesGrouped,
+  activityItems = [],
+  comments = [],
   loading = false,
   onUpdateItem,
   onRemoveFavorite,
@@ -26,6 +32,8 @@ export function ProfileOverviewSpace({
         {/* Placeholder para Seções de Favoritos */}
         <div className="h-44 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
         <div className="h-44 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
+        {/* Placeholder para Atividades Recentes */}
+        <div className="h-32 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
       </div>
     );
   }
@@ -39,6 +47,13 @@ export function ProfileOverviewSpace({
       <ProfileOverviewFavorites
         grouped={favoritesGrouped}
         onRemoveFavorite={onRemoveFavorite}
+      />
+
+      {/* Nova Seção Independente: Atividades recentes (exclusivamente no final da Visão Geral) */}
+      <ProfileRecentActivities
+        activityItems={activityItems}
+        comments={comments}
+        loading={loading}
       />
     </div>
   );

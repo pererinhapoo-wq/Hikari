@@ -824,11 +824,13 @@ function AccountProfile() {
 
         {/* Área de Conteúdo da Aba Selecionada */}
         <section aria-label="Conteúdo da Aba Ativa" className="relative z-10">
-          {/* Aba 1: Visão geral (Anime Stats + Favoritos Animes, Personagens, Studios, People) */}
+          {/* Aba 1: Visão geral (Anime Stats + Favoritos Animes, Personagens, Studios, People + Atividades recentes) */}
           {activeSpace === "overview" && (
             <ProfileOverviewSpace
               trackingItems={trackingItems}
               favoritesGrouped={favoritesGrouped}
+              activityItems={activityItems}
+              comments={comments}
               loading={trackingLoading || favoritesLoading}
               onUpdateItem={handleUpdateTrackingItem}
               onRemoveFavorite={handleRemoveFavorite}

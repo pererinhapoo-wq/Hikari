@@ -454,16 +454,6 @@ export function ProfileHistorySpace({
                     <span className="hidden sm:inline">Assistir</span>
                   </Link>
                 )}
-
-                {entry.resourceType === "anime" && !isEpisode && (
-                  <Link
-                    to="/anime/$id"
-                    params={{ id: entry.resourceId }}
-                    className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-zinc-200 transition-all group-hover:border-violet-500/40 group-hover:bg-violet-600 group-hover:text-white"
-                  >
-                    <span>Ver Detalhes</span>
-                  </Link>
-                )}
               </article>
             );
           })}

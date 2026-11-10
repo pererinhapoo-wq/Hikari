@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import {
   BadgeCheck,
   Camera,
   Clock,
-  ExternalLink,
   Lock,
   MoreHorizontal,
   Pencil,
@@ -285,20 +283,6 @@ export function ProfileIdentityHeader({
                       )}
                       <span>Privacidade do Perfil</span>
                     </button>
-                  )}
-
-                  {/* Ver Página Pública */}
-                  {nick && (
-                    <Link
-                      to="/profile/$nick"
-                      params={{ nick }}
-                      role="menuitem"
-                      onClick={() => setMoreMenuOpen(false)}
-                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-fg/90 hover:bg-white/[0.08] hover:text-white transition-colors text-left"
-                    >
-                      <ExternalLink className="size-4 text-sky-400 shrink-0" />
-                      <span>Ver Perfil Público</span>
-                    </Link>
                   )}
                 </div>
               </div>
