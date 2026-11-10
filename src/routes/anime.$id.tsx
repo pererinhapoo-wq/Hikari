@@ -648,7 +648,77 @@ function AnimePage() {
   const hasStaff = (anime?.staff?.length ?? 0) > 0;
   const hasStudios = (anime?.studios?.length ?? 0) > 0;
 
+  // Proximidade sob demanda: não inicia carregamentos pesados enquanto as seções estiverem distantes
+  const [shouldLoadCredits, setShouldLoadCredits] = useState(() => {
+    if (
+      dubladorParam ||
+      staffParam ||
+      studioParam ||
+      dubladorIdParam ||
+      staffIdParam
+    ) {
+      return true;
+    }
+    if (id && clientCreditsCache.has(id)) {
+      return true;
+    }
+    return false;
+  });
+  const creditsSentinelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
+    if (
+      dubladorParam ||
+      staffParam ||
+      studioParam ||
+      dubladorIdParam ||
+      staffIdParam
+    ) {
+      setShouldLoadCredits(true);
+      return;
+    }
+    if (id && clientCreditsCache.has(id)) {
+      setShouldLoadCredits(true);
+      return;
+    }
+    setShouldLoadCredits(false);
+  }, [id, dubladorParam, staffParam, studioParam, dubladorIdParam, staffIdParam]);
+
+  useEffect(() => {
+    if (shouldLoadCredits) return;
+    if (hasCharacters && hasStaff && hasStudios) return;
+    if (typeof window === "undefined" || !("IntersectionObserver" in window)) {
+      setShouldLoadCredits(true);
+      return;
+    }
+
+    const node = creditsSentinelRef.current;
+    if (!node) return;
+
+    let unmounted = false;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && !unmounted) {
+          setShouldLoadCredits(true);
+          observer.disconnect();
+        }
+      },
+      {
+        threshold: 0,
+        rootMargin: "450px 0px",
+      },
+    );
+
+    observer.observe(node);
+
+    return () => {
+      unmounted = true;
+      observer.disconnect();
+    };
+  }, [shouldLoadCredits, hasCharacters, hasStaff, hasStudios]);
+
+  useEffect(() => {
+    if (!shouldLoadCredits) return;
     if (!animeId) return;
     if (hasCharacters && hasStaff && hasStudios) return;
 
@@ -752,6 +822,7 @@ function AnimePage() {
       clientCreditsInFlight.delete(animeId);
     };
   }, [
+    shouldLoadCredits,
     animeId,
     animeAnilistId,
     animeMalId,
@@ -2286,6 +2357,14 @@ function AnimePage() {
         </section>
       )}
 
+      {/* Sentinela de proximidade para carregamento sob demanda dos créditos */}
+      <div
+        id="credits-sentinel"
+        ref={creditsSentinelRef}
+        className="h-px w-full pointer-events-none"
+        aria-hidden="true"
+      />
+
       {/* 1. PERSONAGENS, DUBLADORES, ESTÚDIOS E EQUIPE TÉCNICA COM SUPORTE A FAVORITOS */}
       <FavoritesEntityContext.Provider
         value={{
@@ -2294,30 +2373,33 @@ function AnimePage() {
         }}
       >
         {/* 1. PERSONAGENS (ELENCO) */}
-        <SectionReveal minHeight="260px" rootMargin="300px 0px">
+        <SectionReveal minHeight="260px" rootMargin="350px 0px" delayMs={0}>
           <ElencoSection
             key={`elenco-${anime.id}`}
             animeId={anime.id}
             characters={effectiveCharacters}
+            isMobile={isMobileViewport}
           />
         </SectionReveal>
 
         {/* 2. DUBLADORES */}
-        <SectionReveal minHeight="260px" rootMargin="300px 0px">
+        <SectionReveal minHeight="260px" rootMargin="250px 0px" delayMs={80}>
           <DubladoresSection
             key={`dubladores-${anime.id}`}
             animeId={anime.id}
             characters={effectiveCharacters}
+            isMobile={isMobileViewport}
           />
         </SectionReveal>
 
         {/* 3. DIREÇÃO E EQUIPE TÉCNICA */}
-        <SectionReveal minHeight="200px" rootMargin="300px 0px">
+        <SectionReveal minHeight="200px" rootMargin="200px 0px" delayMs={160}>
           <DirecaoEquipeSection
             key={`staff-${anime.id}`}
             animeId={anime.id}
             studios={effectiveStudios}
             staff={effectiveStaff}
+            isMobile={isMobileViewport}
           />
         </SectionReveal>
       </FavoritesEntityContext.Provider>
@@ -2873,6 +2955,148 @@ function SeasonSelector({
   );
 }
 
+interface UseProgressiveRailOptions {
+  railRef: RefObject<HTMLDivElement | null>;
+  totalCount: number;
+  itemStridePx?: number;
+  initialRenderCount?: number;
+  initialImageCount?: number;
+  strideBatch?: number;
+  resetKey?: string;
+  isMobile?: boolean;
+}
+
+function useProgressiveRail({
+  railRef,
+  totalCount,
+  itemStridePx = 128,
+  initialRenderCount,
+  initialImageCount,
+  strideBatch = 8,
+  resetKey,
+  isMobile = false,
+}: UseProgressiveRailOptions) {
+  // Limites iniciais otimizados: renderização progressiva leve (mobile: 6, desktop: 8)
+  // e imagens antecipadas apenas para o que cabe na tela (mobile: 4, desktop: 7)
+  const defaultRender = isMobile ? 6 : 8;
+  const defaultImage = isMobile ? 4 : 7;
+  const initRender = Math.min(totalCount, initialRenderCount ?? defaultRender);
+  const initImage = Math.min(totalCount, initialImageCount ?? defaultImage);
+
+  const [renderedLimit, setRenderedLimit] = useState(initRender);
+  const [imageLimit, setImageLimit] = useState(initImage);
+  const prevResetKeyRef = useRef(resetKey);
+
+  if (prevResetKeyRef.current !== resetKey) {
+    prevResetKeyRef.current = resetKey;
+    setRenderedLimit(initRender);
+    setImageLimit(initImage);
+  }
+
+  const effectiveRenderLimit = Math.max(renderedLimit, initRender);
+  const effectiveImageLimit = Math.max(imageLimit, initImage);
+
+  useIsomorphicLayoutEffect(() => {
+    if (railRef.current && railRef.current.scrollLeft !== 0) {
+      railRef.current.scrollTo({ left: 0, top: 0, behavior: "instant" });
+    }
+  }, [railRef, resetKey]);
+
+  // Avança cards e imagens sob demanda ao rolar o trilho ou clicar na seta
+  const advance = useCallback(
+    (extraPx = 0) => {
+      const el = railRef.current;
+      if (!el) {
+        startTransition(() => {
+          setRenderedLimit((prev) => Math.min(totalCount, prev + strideBatch));
+          setImageLimit((prev) => Math.min(totalCount, prev + strideBatch));
+        });
+        return;
+      }
+      const scrollPos = el.scrollLeft;
+      const clientWidth = el.clientWidth;
+      const neededRendered = Math.ceil(
+        (scrollPos + clientWidth * 2.5 + extraPx) / itemStridePx,
+      );
+      const neededImages = Math.ceil(
+        (scrollPos + clientWidth * 1.5 + extraPx) / itemStridePx,
+      );
+
+      startTransition(() => {
+        setRenderedLimit((prev) =>
+          neededRendered > prev ? Math.min(totalCount, neededRendered) : prev,
+        );
+        setImageLimit((prev) =>
+          neededImages > prev ? Math.min(totalCount, neededImages) : prev,
+        );
+      });
+    },
+    [railRef, totalCount, itemStridePx, strideBatch],
+  );
+
+  // Escuta o arraste/scroll horizontal do trilho para materializar os próximos cards
+  useEffect(() => {
+    const el = railRef.current;
+    if (!el) return;
+
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        advance(0);
+      });
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [railRef, advance]);
+
+  // Carrega progressivamente os próximos grupos em background após o primeiro frame pintar
+  useEffect(() => {
+    if (effectiveRenderLimit >= totalCount) return;
+
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    let idleId: number | null = null;
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = (window as Window & { requestIdleCallback: any }).requestIdleCallback(
+        () => {
+          startTransition(() => {
+            setRenderedLimit((prev) => Math.min(totalCount, prev + strideBatch));
+          });
+        },
+        { timeout: 350 },
+      );
+    } else {
+      timerId = setTimeout(() => {
+        startTransition(() => {
+          setRenderedLimit((prev) => Math.min(totalCount, prev + strideBatch));
+        });
+      }, 120);
+    }
+
+    return () => {
+      if (idleId !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        (window as Window & { cancelIdleCallback: any }).cancelIdleCallback(idleId);
+      }
+      if (timerId !== null) {
+        clearTimeout(timerId);
+      }
+    };
+  }, [effectiveRenderLimit, totalCount, strideBatch]);
+
+  return {
+    renderedLimit: Math.min(totalCount, effectiveRenderLimit),
+    imageLimit: Math.min(totalCount, effectiveImageLimit),
+    advance,
+  };
+}
 
 function useHorizontalRailImageLimit(
   railRef: RefObject<HTMLDivElement | null>,
@@ -3655,9 +3879,11 @@ const ImagensSection = memo(function ImagensSection({
 const ElencoSection = memo(function ElencoSection({
   animeId,
   characters,
+  isMobile,
 }: {
   animeId: string;
   characters?: AnimeCharacter[];
+  isMobile?: boolean;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
 
@@ -3667,14 +3893,17 @@ const ElencoSection = memo(function ElencoSection({
     );
   }, [characters]);
 
-  const { limit: visibleImgLimit, advance: advanceImgLimit } =
-    useHorizontalRailImageLimit(
-      railRef,
-      validCharacters.length,
-      128,
-      12,
-      animeId,
-    );
+  const {
+    renderedLimit,
+    imageLimit: visibleImgLimit,
+    advance: advanceImgLimit,
+  } = useProgressiveRail({
+    railRef,
+    totalCount: validCharacters.length,
+    itemStridePx: 128,
+    isMobile,
+    resetKey: animeId,
+  });
 
   if (validCharacters.length === 0) {
     return null;
@@ -3725,7 +3954,7 @@ const ElencoSection = memo(function ElencoSection({
         ref={railRef}
         className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
       >
-        {validCharacters.map((char, index) => (
+        {validCharacters.slice(0, renderedLimit).map((char, index) => (
           <ElencoCard
             key={`${char.id || char.name.full || char.name.native}-${index}`}
             char={char}
@@ -3907,9 +4136,11 @@ type DubladorItem = {
 const DubladoresSection = memo(function DubladoresSection({
   animeId,
   characters,
+  isMobile,
 }: {
   animeId: string;
   characters?: AnimeCharacter[];
+  isMobile?: boolean;
 }) {
   const navigate = useNavigate();
   const [selectedLang, setSelectedLang] = useState<"ja" | "pt">("ja");
@@ -3982,14 +4213,17 @@ const DubladoresSection = memo(function DubladoresSection({
     return japanese.length > 0 ? japanese : allVoiceActors;
   }, [allVoiceActors, hasPortuguese, activeLang]);
 
-  const { limit: visibleImgLimit, advance: advanceImgLimit } =
-    useHorizontalRailImageLimit(
-      railRef,
-      displayVoiceActors.length,
-      128,
-      12,
-      `${animeId}-vas`,
-    );
+  const {
+    renderedLimit,
+    imageLimit: visibleImgLimit,
+    advance: advanceImgLimit,
+  } = useProgressiveRail({
+    railRef,
+    totalCount: displayVoiceActors.length,
+    itemStridePx: 128,
+    isMobile,
+    resetKey: `${animeId}-vas-${activeLang}`,
+  });
 
   if (displayVoiceActors.length === 0) {
     return null;
@@ -4091,7 +4325,7 @@ const DubladoresSection = memo(function DubladoresSection({
             ref={railRef}
             className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
           >
-            {displayVoiceActors.map((item, index) => (
+            {displayVoiceActors.slice(0, renderedLimit).map((item, index) => (
               <DubladorCard
                 key={item.id}
                 item={item}
@@ -4282,10 +4516,12 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
   animeId,
   studios,
   staff,
+  isMobile,
 }: {
   animeId: string;
   studios: string[];
   staff?: AnimeStaff[];
+  isMobile?: boolean;
 }) {
   const navigate = useNavigate();
   const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
@@ -4333,14 +4569,17 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
     return [...studioItems, ...validStaff];
   }, [studioItems, validStaff]);
 
-  const { limit: visibleImgLimit, advance: advanceImgLimit } =
-    useHorizontalRailImageLimit(
-      railRef,
-      allItems.length,
-      128,
-      12,
-      animeId,
-    );
+  const {
+    renderedLimit,
+    imageLimit: visibleImgLimit,
+    advance: advanceImgLimit,
+  } = useProgressiveRail({
+    railRef,
+    totalCount: allItems.length,
+    itemStridePx: 128,
+    isMobile,
+    resetKey: `${animeId}-staff`,
+  });
 
   if (allItems.length === 0) {
     return null;
@@ -4403,7 +4642,7 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
         ref={railRef}
         className="rail -mx-4 flex gap-2.5 sm:gap-3 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2"
       >
-        {allItems.map((item, index) => (
+        {allItems.slice(0, renderedLimit).map((item, index) => (
           <StaffCard
             key={`${item.role}-${item.name}-${index}`}
             item={item}
