@@ -22,8 +22,8 @@ import {
   getPublicProfile,
   unblockUser,
   unfollowUser,
-  getProfileFollowers,
-  getProfileFollowing,
+  getPublicProfileFollowers,
+  getPublicProfileFollowing,
   type PublicProfileComment,
   type UserActivityItem,
   type ProfileUser,
@@ -166,8 +166,8 @@ function PublicProfile() {
   const getPublicCommentsFn = useServerFn(getPublicComments);
   const getPublicActivitiesFn = useServerFn(getPublicActivities);
   const getPublicFavoritesFn = useServerFn(getPublicProfileFavorites);
-  const getFollowersFn = useServerFn(getProfileFollowers);
-  const getFollowingFn = useServerFn(getProfileFollowing);
+  const getFollowersFn = useServerFn(getPublicProfileFollowers);
+  const getFollowingFn = useServerFn(getPublicProfileFollowing);
 
   const followUserFn = useServerFn(followUser);
   const unfollowUserFn = useServerFn(unfollowUser);
@@ -438,37 +438,65 @@ function PublicProfile() {
   };
 
   const handleOpenConnections = async (tab: "followers" | "following") => {
+    if (!profile?.userId) return;
     setConnectionsTab(tab);
     setConnectionsOpen(true);
     setConnectionsLoading(true);
     try {
       if (tab === "followers") {
-        const data = await getFollowersFn();
-        setFollowersList(data);
+        const data = await getFollowersFn({
+          data: {
+            userId: profile.userId,
+          },
+        });
+        setFollowersList(data || []);
       } else {
-        const data = await getFollowingFn();
-        setFollowingList(data);
+        const data = await getFollowingFn({
+          data: {
+            userId: profile.userId,
+          },
+        });
+        setFollowingList(data || []);
       }
     } catch (err) {
       console.warn("Erro ao buscar conexões:", err);
+      if (tab === "followers") {
+        setFollowersList([]);
+      } else {
+        setFollowingList([]);
+      }
     } finally {
       setConnectionsLoading(false);
     }
   };
 
   const handleConnectionsTabChange = async (tab: "followers" | "following" | "requests") => {
+    if (!profile?.userId) return;
     setConnectionsTab(tab);
     setConnectionsLoading(true);
     try {
       if (tab === "followers") {
-        const data = await getFollowersFn();
-        setFollowersList(data);
+        const data = await getFollowersFn({
+          data: {
+            userId: profile.userId,
+          },
+        });
+        setFollowersList(data || []);
       } else if (tab === "following") {
-        const data = await getFollowingFn();
-        setFollowingList(data);
+        const data = await getFollowingFn({
+          data: {
+            userId: profile.userId,
+          },
+        });
+        setFollowingList(data || []);
       }
     } catch (err) {
       console.warn("Erro ao alternar conexões:", err);
+      if (tab === "followers") {
+        setFollowersList([]);
+      } else if (tab === "following") {
+        setFollowingList([]);
+      }
     } finally {
       setConnectionsLoading(false);
     }
