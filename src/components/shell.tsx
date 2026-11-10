@@ -338,7 +338,7 @@ export function Shell() {
   const isBannerPage =
     pathname === "/" || pathname.startsWith("/anime/");
 
-  const isAccountPage = pathname.startsWith("/account");
+  const isHomePage = pathname === "/";
 
   /* =========================================================
      NOTIFICAÇÕES
@@ -1267,12 +1267,11 @@ export function Shell() {
       )}
 
       {/* =========================================================
-          FOOTER COMPLETO E RESPONSIVO
-          - Visível em todas as páginas (exceto /watch no cinema mode e /account no Perfil)
-          - Colunas Institucional, Legal e Catálogo
-          - Linha de copyright e aviso de conteúdo de terceiros
+          RODAPÉ INSTITUCIONAL EXCLUSIVO DA PÁGINA INICIAL ("/")
+          - Visível exclusivamente na rota inicial ("/")
+          - Ocultado em todas as demais rotas sem deixar espaços ou margens vazias
       ========================================================== */}
-      {!isAccountPage && (
+      {isHomePage && (
         <footer className="relative mt-12 w-full border-t border-purple-500/15 bg-gradient-to-b from-[#08070d] via-[#0d0b17] to-[#05040a] text-xs text-muted shadow-[0_-4px_24px_rgba(0,0,0,0.5)]">
           {/* Brilho decorativo sutil no topo do rodapé */}
           <div
