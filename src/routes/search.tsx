@@ -6,12 +6,12 @@ import {
 import {
   ChevronLeft,
   ChevronRight,
-  Film,
   Loader2,
   Lock,
   Search as SearchIcon,
   SlidersHorizontal,
   Users,
+  X,
 } from "lucide-react";
 
 import {
@@ -43,9 +43,10 @@ import {
   AnimeCard,
   AnimeCardSkeleton,
 } from "@/components/anime-card";
+import { SearchCategorySelector } from "@/components/search/SearchCategorySelector";
+import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 
@@ -771,6 +772,14 @@ function SearchPage() {
       search.genre,
     );
 
+  const activeFilterCount = [
+    search.genre,
+    search.year,
+    search.format,
+    search.status,
+    search.sort,
+  ].filter(Boolean).length;
+
   /*
    * =========================================================
    * PAGINAÇÃO
@@ -907,73 +916,67 @@ function SearchPage() {
       </div>
 
       {/* =====================================================
-          ABAS DISCRETAS: ANIMES E USUÁRIOS
+          BARRA DE PESQUISA REFORMULADA COM SELETOR DE CATEGORIA INTEGRADO
       ====================================================== */}
-
-      <div className="flex items-center gap-2 border-b border-white/[0.08] pb-2">
-        <button
-          type="button"
-          onClick={() => handleTabChange("animes")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all ${
-            activeTab === "animes"
-              ? "bg-violet-600/20 text-violet-300 border border-violet-500/30 shadow-sm"
-              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
-          }`}
-        >
-          <Film className="size-4" />
-          <span>Animes</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleTabChange("users")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all ${
-            activeTab === "users"
-              ? "bg-violet-600/20 text-violet-300 border border-violet-500/30 shadow-sm"
-              : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]"
-          }`}
-        >
-          <Users className="size-4" />
-          <span>Usuários</span>
-        </button>
-      </div>
-
-      {/* =====================================================
-          BUSCA
-      ====================================================== */}
-
-      <div className="relative flex gap-2">
-        <div className="relative flex-1">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-subtle" />
-
-          <Input
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-            }}
-            placeholder={
-              activeTab === "users"
-                ? "Buscar usuários por @username ou nome…"
-                : "Buscar animes…"
-            }
-            className="pl-10"
-            aria-label={
-              activeTab === "users" ? "Buscar usuários" : "Buscar animes"
-            }
+      <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+        <div className="relative flex flex-1 items-center gap-2 rounded-2xl border border-purple-500/25 bg-surface/90 p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.5)] focus-within:border-purple-500/50 focus-within:ring-2 focus-within:ring-purple-500/25 transition-all">
+          <SearchCategorySelector
+            category={activeTab}
+            onChange={(nextCat) => handleTabChange(nextCat)}
+            size="md"
           />
+
+          <div className="h-6 w-px bg-white/10 shrink-0" aria-hidden="true" />
+
+          <div className="relative flex-1">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+            <input
+              type="search"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder={
+                activeTab === "animes"
+                  ? "Buscar animes por título em português, inglês ou japonês…"
+                  : "Buscar usuários por @username ou nome…"
+              }
+              className="h-10 sm:h-11 w-full rounded-xl border-0 bg-transparent pl-9.5 pr-9 text-xs sm:text-sm text-fg outline-none placeholder:text-muted transition-all [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+              aria-label={
+                activeTab === "users" ? "Buscar usuários" : "Buscar animes"
+              }
+            />
+            {draft.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setDraft("")}
+                className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-lg text-muted hover:bg-white/10 hover:text-fg transition-colors"
+                aria-label="Limpar busca"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {activeTab === "animes" && (
           <Button
             type="button"
             variant="outline"
-            size="icon"
-            aria-label="Filtros"
-            onClick={() =>
-              setFiltersOpen((value) => !value)
-            }
+            onClick={() => setFiltersOpen((value) => !value)}
+            className={cn(
+              "h-12 sm:h-14 shrink-0 rounded-2xl px-4 text-xs sm:text-sm font-semibold transition-all border",
+              filtersOpen || activeFilterCount > 0
+                ? "border-purple-500/40 bg-purple-500/15 text-[#c084fc] shadow-[0_0_15px_rgba(168,85,247,0.2)]"
+                : "border-purple-500/20 bg-surface/90 text-muted hover:bg-elevated hover:text-fg",
+            )}
+            aria-label="Filtros do catálogo"
           >
-            <SlidersHorizontal className="size-4" />
+            <SlidersHorizontal className="size-4 mr-2" />
+            <span>Filtros</span>
+            {activeFilterCount > 0 && (
+              <span className="ml-2 flex size-5 items-center justify-center rounded-full bg-[#a855f7] text-[10px] font-bold text-white">
+                {activeFilterCount}
+              </span>
+            )}
           </Button>
         )}
       </div>
@@ -1304,109 +1307,64 @@ function SearchPage() {
                   return (
                     <div
                       key={person.userId}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 sm:p-4 transition-colors hover:border-violet-500/30 hover:bg-white/[0.04]"
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-purple-500/20 bg-surface/80 p-3 sm:p-4 transition-all hover:border-purple-500/40 hover:bg-elevated hover:shadow-[0_0_24px_rgba(168,85,247,0.15)]"
                     >
-                      {person.isOwner ? (
-                        <Link
-                          to="/account"
-                          className="flex items-center gap-3 min-w-0 flex-1 group"
-                        >
-                          <div className="flex size-11 sm:size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm sm:text-base text-violet-300 ring-1 ring-white/10">
-                            {person.avatarUrl ? (
-                              <img
-                                src={person.avatarUrl}
-                                alt=""
-                                className="size-full object-cover"
-                              />
-                            ) : (
-                              <span>{avatarLetter}</span>
-                            )}
-                          </div>
+                      {/* Ao selecionar um usuário, abrir o Perfil novo do Hikari (/profile/$nick) */}
+                      <Link
+                        to="/profile/$nick"
+                        params={{ nick: person.nick }}
+                        className="flex items-center gap-3 min-w-0 flex-1 group"
+                      >
+                        <div className="flex size-11 sm:size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm sm:text-base text-[#c084fc] ring-1 ring-purple-500/25 group-hover:ring-purple-500/50 transition-all">
+                          {person.avatarUrl ? (
+                            <img
+                              src={person.avatarUrl}
+                              alt=""
+                              className="size-full object-cover"
+                            />
+                          ) : (
+                            <span>{avatarLetter}</span>
+                          )}
+                        </div>
 
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="truncate text-xs sm:text-sm font-semibold text-zinc-100 transition-colors group-hover:text-violet-300">
-                                {person.displayName || person.nick}
-                              </p>
-                              {person.accountType === "private" && (
-                                <span
-                                  className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 border border-white/[0.08]"
-                                  title="Conta privada"
-                                >
-                                  <Lock className="size-2.5 text-zinc-400" />
-                                  <span>Privada</span>
-                                </span>
-                              )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="truncate text-xs sm:text-sm font-semibold text-fg transition-colors group-hover:text-[#c084fc]">
+                              {person.displayName || person.nick}
+                            </p>
+                            {person.accountType === "private" && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 border border-white/[0.08]"
+                                title="Conta privada"
+                              >
+                                <Lock className="size-2.5 text-zinc-400" />
+                                <span>Privada</span>
+                              </span>
+                            )}
+                            {person.isFollowing && (
+                              <span className="inline-flex items-center rounded-md bg-[#a855f7]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#c084fc] border border-purple-500/20">
+                                Seguindo
+                              </span>
+                            )}
+                            {person.isOwner && (
                               <span className="inline-flex items-center rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
                                 Você
                               </span>
-                            </div>
-                            <p className="truncate text-[11px] sm:text-xs text-zinc-500">
-                              @{person.nick}
-                            </p>
-                          </div>
-                        </Link>
-                      ) : (
-                        <Link
-                          to="/profile/$nick"
-                          params={{ nick: person.nick }}
-                          className="flex items-center gap-3 min-w-0 flex-1 group"
-                        >
-                          <div className="flex size-11 sm:size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm sm:text-base text-violet-300 ring-1 ring-white/10">
-                            {person.avatarUrl ? (
-                              <img
-                                src={person.avatarUrl}
-                                alt=""
-                                className="size-full object-cover"
-                              />
-                            ) : (
-                              <span>{avatarLetter}</span>
                             )}
                           </div>
+                          <p className="truncate text-[11px] sm:text-xs text-muted">
+                            @{person.nick}
+                          </p>
+                        </div>
+                      </Link>
 
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="truncate text-xs sm:text-sm font-semibold text-zinc-100 transition-colors group-hover:text-violet-300">
-                                {person.displayName || person.nick}
-                              </p>
-                              {person.accountType === "private" && (
-                                <span
-                                  className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 border border-white/[0.08]"
-                                  title="Conta privada"
-                                >
-                                  <Lock className="size-2.5 text-zinc-400" />
-                                  <span>Privada</span>
-                                </span>
-                              )}
-                              {person.isFollowing && (
-                                <span className="inline-flex items-center rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300 border border-violet-500/20">
-                                  Seguindo
-                                </span>
-                              )}
-                            </div>
-                            <p className="truncate text-[11px] sm:text-xs text-zinc-500">
-                              @{person.nick}
-                            </p>
-                          </div>
-                        </Link>
-                      )}
-
-                      {person.isOwner ? (
-                        <Link
-                          to="/account"
-                          className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
-                        >
-                          Meu Perfil
-                        </Link>
-                      ) : (
-                        <Link
-                          to="/profile/$nick"
-                          params={{ nick: person.nick }}
-                          className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
-                        >
-                          Ver perfil
-                        </Link>
-                      )}
+                      <Link
+                        to="/profile/$nick"
+                        params={{ nick: person.nick }}
+                        className="shrink-0 rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-[#c084fc] transition-all hover:bg-[#a855f7] hover:text-white"
+                      >
+                        Ver perfil
+                      </Link>
                     </div>
                   );
                 })}

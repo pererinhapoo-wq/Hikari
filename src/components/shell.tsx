@@ -1,7 +1,6 @@
 import {
   Link,
   Outlet,
-  useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
 
@@ -11,7 +10,6 @@ import {
   Calendar,
   CalendarDays,
   CheckCheck,
-  Clapperboard,
   Compass,
   House,
   LogIn,
@@ -32,15 +30,9 @@ import {
   type NotificationItem,
 } from "@/components/notifications/notification-item-card";
 import { isHikariAdmin } from "@/lib/auth/admin";
+import { SearchModal } from "@/components/search/SearchModal";
 import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { searchCatalog } from "@/lib/api";
-import {
-  displayTitle,
-  type SlimAnime,
-} from "@/lib/types";
-import { overlayList } from "@/lib/overlay";
-import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import {
@@ -240,9 +232,6 @@ function ShellHeaderWrapper({
 }
 
 export function Shell() {
-  const navigate = useNavigate();
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
   const pathname =
     useRouterState({
       select: (s) =>
@@ -360,270 +349,27 @@ export function Shell() {
      BUSCA
   ========================================================== */
 
-  const [
-    searchOpen,
-    setSearchOpen,
-  ] = useState(false);
-
-  const [
-    searchQuery,
-    setSearchQuery,
-  ] = useState("");
-
-  const [
-    searchResults,
-    setSearchResults,
-  ] = useState<SlimAnime[]>([]);
-
-  const [
-    searchLoading,
-    setSearchLoading,
-  ] = useState(false);
-
-  const localAnimes =
-    useHikariStore(
-      (s) => s.animes,
-    );
-
-  /* =========================================================
-     TRAVA ROLAGEM DO FUNDO AO ABRIR A BUSCA
-  ========================================================== */
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
-    if (!searchOpen) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [searchOpen]);
-
-  /* Fecha busca ao pressionar a tecla Escape */
-  useEffect(() => {
-    if (!searchOpen) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSearchOpen(false);
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
       }
     };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [searchOpen]);
+  const localAnimes = useHikariStore((s) => s.animes);
 
-  const executeSearch = useCallback(
-    (queryToSearch?: string) => {
-      const q = (queryToSearch !== undefined ? queryToSearch : searchQuery).trim();
-      if (!q) {
-        return;
-      }
-
-      setSearchOpen(false);
-      void navigate({
-        to: "/search",
-        search: {
-          q,
-          genre: undefined,
-          year: undefined,
-          format: undefined,
-          status: undefined,
-          sort: undefined,
-          page: undefined,
-          adult: window.location.pathname.startsWith("/adult") ? true : undefined,
-        },
-      });
-    },
-    [searchQuery, navigate],
-  );
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    executeSearch();
-  };
-
-  const handleClearSearch = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setSearchQuery("");
-    setSearchResults([]);
-    searchInputRef.current?.focus();
-  };
-
-  const cinema =
-    pathname.startsWith(
-      "/watch",
-    );
+  const cinema = pathname.startsWith("/watch");
 
   const isBannerPage =
-    pathname === "/" ||
-    pathname.startsWith("/anime/");
+    pathname === "/" || pathname.startsWith("/anime/");
 
-  const isAccountPage =
-    pathname.startsWith("/account");
-
-
-  /* =========================================================
-     BUSCA AUTOMÁTICA
-  ========================================================== */
-
-  useEffect(() => {
-    const q = searchQuery.trim();
-
-    if (!searchOpen || !q) {
-      setSearchResults([]);
-      setSearchLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const timer = window.setTimeout(async () => {
-      setSearchLoading(true);
-
-      try {
-        const isAdultArea =
-          window.location.pathname.startsWith(
-            "/adult",
-          );
-
-        const result = await searchCatalog({
-          data: {
-            q,
-            page: 1,
-            adult: isAdultArea,
-          },
-        });
-
-        if (cancelled) return;
-
-        const normalized = q
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase();
-
-        const localHits = overlayList(
-          [],
-          localAnimes,
-        ).filter((anime) => {
-          const isHentai =
-            anime.genres?.some(
-              (genre) =>
-                genre.trim().toLowerCase() ===
-                "hentai",
-            ) ?? false;
-
-          if (
-            isAdultArea
-              ? !isHentai
-              : isHentai
-          ) {
-            return false;
-          }
-
-          const title =
-            `${anime.titles?.romaji || ""} ${anime.titles?.english || ""} ${anime.titles?.native || ""}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
-
-          const matchesDirect = title.includes(normalized);
-          const matchesWords = normalized
-            .split(/\s+/)
-            .every((word) => title.includes(word));
-
-          return matchesDirect || matchesWords;
-        });
-
-        const remote = overlayList(
-          result.items ?? [],
-          localAnimes,
-        );
-
-        const seen = new Set<string>();
-        const merged: SlimAnime[] = [];
-
-        for (const anime of [
-          ...localHits,
-          ...remote,
-        ]) {
-          if (seen.has(anime.id)) continue;
-
-          seen.add(anime.id);
-          merged.push(anime);
-        }
-
-        const ranked = merged.sort((a, b) => {
-          const aTitle =
-            `${a.titles.romaji} ${a.titles.english} ${a.titles.native}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
-
-          const bTitle =
-            `${b.titles.romaji} ${b.titles.english} ${b.titles.native}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
-
-          const aStarts =
-            aTitle.startsWith(
-              normalized,
-            );
-
-          const bStarts =
-            bTitle.startsWith(
-              normalized,
-            );
-
-          if (aStarts && !bStarts) return -1;
-          if (!aStarts && bStarts) return 1;
-
-          const aContains =
-            aTitle.includes(
-              normalized,
-            );
-
-          const bContains =
-            bTitle.includes(
-              normalized,
-            );
-
-          if (aContains && !bContains) return -1;
-          if (!aContains && bContains) return 1;
-
-          return 0;
-        });
-
-        setSearchResults(ranked);
-      } catch {
-        if (!cancelled) {
-          setSearchResults([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setSearchLoading(false);
-        }
-      }
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    searchOpen,
-    searchQuery,
-    localAnimes,
-  ]);
+  const isAccountPage = pathname.startsWith("/account");
 
   /* =========================================================
      NOTIFICAÇÕES
@@ -1078,7 +824,8 @@ export function Shell() {
                   setSearchOpen((value) => !value);
                 }}
                 className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
-                aria-label="Buscar animes"
+                aria-label="Buscar"
+                title="Buscar (Ctrl+K)"
                 aria-expanded={searchOpen}
               >
                 <Search className="size-4 sm:size-5" />
@@ -1131,196 +878,12 @@ export function Shell() {
       </ShellHeaderWrapper>
 
       {/* =========================================================
-          PAINEL DE BUSCA
+          PAINEL DE BUSCA REFORMULADO (ANIMES E USUÁRIOS)
       ========================================================== */}
-      {searchOpen && (
-        <>
-          <button
-            type="button"
-            onClick={() =>
-              setSearchOpen(false)
-            }
-            className="fixed inset-0 z-40 touch-none"
-            aria-label="Fechar busca"
-          />
-
-          <div className="fixed left-4 right-4 top-16 z-50 mx-auto max-w-2xl overflow-hidden rounded-xl border border-border bg-bg shadow-2xl">
-
-            <form
-              action=""
-              role="search"
-              onSubmit={handleSearchSubmit}
-              className="border-b border-border p-3"
-            >
-              <div className="relative">
-
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
-
-                <input
-                  ref={searchInputRef}
-                  type="search"
-                  enterKeyHint="go"
-                  autoFocus
-                  value={searchQuery}
-                  onChange={(e) =>
-                    setSearchQuery(
-                      e.target.value,
-                    )
-                  }
-                  placeholder="Buscar animes…"
-                  className="h-11 w-full rounded-lg border border-border bg-elevated pl-10 pr-10 text-sm text-fg outline-none placeholder:text-muted focus:border-fg/30 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck="false"
-                />
-
-                {searchQuery.length > 0 && (
-                  <button
-                    type="button"
-                    onMouseDown={(e) => {
-                      // Evita perda de foco do input ao clicar no X
-                      e.preventDefault();
-                    }}
-                    onClick={handleClearSearch}
-                    className="absolute right-2.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:text-fg hover:bg-elevated/70 transition-colors"
-                    aria-label="Limpar busca"
-                  >
-                    <X className="size-4" />
-                  </button>
-                )}
-
-              </div>
-            </form>
-
-            {searchQuery.trim() && (
-              <div className="max-h-[70vh] overflow-y-auto overscroll-contain">
-
-                {searchLoading ? (
-                  <div className="px-4 py-8 text-center text-sm text-muted">
-                    Buscando...
-                  </div>
-                ) : searchResults.length ===
-                  0 ? (
-
-                  <div className="px-4 py-8 text-center text-sm text-muted">
-                    Nenhum anime encontrado.
-                  </div>
-                ) : (
-
-                  <div>
-
-                    {searchResults
-                      .slice(0, 6)
-                      .map(
-                        (anime) => (
-                          <Link
-                            key={
-                              anime.id
-                            }
-                            to="/anime/$id"
-                            params={{
-                              id:
-                                anime.id,
-                            }}
-                            onClick={() =>
-                              setSearchOpen(
-                                false,
-                              )
-                            }
-                            className="flex items-center gap-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-elevated"
-                          >
-
-                            {anime.cover ? (() => {
-                              const coverAttrs = getResponsiveCoverAttrs(
-                                anime.cover,
-                                "thumb",
-                              );
-                              return (
-                                <img
-                                  src={coverAttrs.src}
-                                  srcSet={coverAttrs.srcSet}
-                                  sizes="48px"
-                                  alt=""
-                                  width={48}
-                                  height={48}
-                                  loading="lazy"
-                                  decoding="async"
-                                  className="size-12 shrink-0 rounded-md object-cover"
-                                />
-                              );
-                            })() : (
-                              <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-elevated text-muted">
-                                <Clapperboard className="size-5" />
-                              </div>
-                            )}
-
-                            <div className="min-w-0 flex-1">
-
-                              <p className="truncate text-sm font-medium text-fg">
-                                {displayTitle(
-                                  anime,
-                                )}
-                              </p>
-
-                              <p className="mt-0.5 text-xs text-muted">
-                                {anime.year ??
-                                  ""}
-                                {anime.year &&
-                                anime.format
-                                  ? " · "
-                                  : ""}
-                                {anime.format ===
-                                "TV"
-                                  ? "Série"
-                                  : anime.format ===
-                                      "MOVIE"
-                                    ? "Filme"
-                                    : ""}
-                              </p>
-
-                            </div>
-
-                          </Link>
-                        ),
-                      )}
-
-                    <Link
-                      to="/search"
-                      search={{
-                        q: searchQuery.trim(),
-                        genre: undefined,
-                        year: undefined,
-                        format: undefined,
-                        status: undefined,
-                        sort: undefined,
-                        page: undefined,
-                        adult:
-                          window.location.pathname.startsWith(
-                            "/adult",
-                          )
-                            ? true
-                            : undefined,
-                      }}
-                      onClick={() =>
-                        setSearchOpen(
-                          false,
-                        )
-                      }
-                      className="block border-t border-border px-4 py-4 text-center text-sm font-medium text-fg hover:bg-elevated"
-                    >
-                      Ver todos os resultados
-                    </Link>
-
-                  </div>
-                )}
-
-              </div>
-            )}
-
-          </div>
-        </>
-      )}
+      <SearchModal
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+      />
 
       {/* =========================================================
           PAINEL DE NOTIFICAÇÕES
