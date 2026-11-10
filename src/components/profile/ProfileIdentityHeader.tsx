@@ -10,6 +10,7 @@ import {
   Sparkles,
   Trash2,
   Users,
+  UserX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +28,9 @@ interface ProfileIdentityHeaderProps {
   commentCount?: number;
   totalTrackingCount?: number;
   favorites: string[];
+  actions?: React.ReactNode;
+  onBlockAction?: () => void;
+  isBlockedByMe?: boolean;
   onOpenEdit?: () => void;
   onRemoveBanner?: () => void;
   onOpenPrivacy?: () => void;
@@ -47,6 +51,9 @@ export function ProfileIdentityHeader({
   followingCount,
   requestsCount = 0,
   favorites,
+  actions,
+  onBlockAction,
+  isBlockedByMe = false,
   onOpenEdit,
   onRemoveBanner,
   onOpenPrivacy,
@@ -216,77 +223,97 @@ export function ProfileIdentityHeader({
             )}
           </div>
 
-          {/* Menu de Três Pontinhos Horizontal (···) no extremo direito da área de identidade */}
-          <div ref={moreMenuRef} className="relative inline-block text-left mb-1 sm:mb-2">
-            <button
-              type="button"
-              onClick={() => setMoreMenuOpen((prev) => !prev)}
-              className={cn(
-                "inline-flex size-9 sm:size-10 items-center justify-center rounded-xl border transition-all duration-200 select-none cursor-pointer",
-                moreMenuOpen
-                  ? "border-violet-500/60 bg-violet-600/25 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)]"
-                  : "border-white/10 bg-white/[0.05] text-zinc-300 hover:border-white/20 hover:bg-white/[0.1] hover:text-white active:scale-95",
-              )}
-              aria-label="Mais opções do perfil"
-              aria-haspopup="menu"
-              aria-expanded={moreMenuOpen}
-              title="Mais opções do perfil"
-            >
-              <MoreHorizontal className="size-4 sm:size-5" />
-            </button>
+          {/* Botões de Ações e Menu de Três Pontinhos no extremo direito */}
+          <div className="flex items-center gap-2 mb-1 sm:mb-2">
+            {actions}
 
-            {/* Menu Suspenso de Três Pontinhos */}
-            {moreMenuOpen && (
-              <div
-                role="menu"
-                aria-label="Opções do perfil"
-                className="absolute right-0 top-full mt-2 w-56 sm:w-60 origin-top-right overflow-hidden rounded-2xl border border-white/10 bg-[#12101e]/98 p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl z-40 animate-in fade-in zoom-in-95 duration-150"
+            <div ref={moreMenuRef} className="relative inline-block text-left">
+              <button
+                type="button"
+                onClick={() => setMoreMenuOpen((prev) => !prev)}
+                className={cn(
+                  "inline-flex size-9 sm:size-10 items-center justify-center rounded-xl border transition-all duration-200 select-none cursor-pointer",
+                  moreMenuOpen
+                    ? "border-violet-500/60 bg-violet-600/25 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)]"
+                    : "border-white/10 bg-white/[0.05] text-zinc-300 hover:border-white/20 hover:bg-white/[0.1] hover:text-white active:scale-95",
+                )}
+                aria-label="Mais opções do perfil"
+                aria-haspopup="menu"
+                aria-expanded={moreMenuOpen}
+                title="Mais opções do perfil"
               >
-                <div className="px-3 py-1.5 border-b border-white/[0.08] mb-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                    Ações do Perfil
-                  </p>
-                </div>
+                <MoreHorizontal className="size-4 sm:size-5" />
+              </button>
 
-                <div className="space-y-0.5">
-                  {/* Personalizar Perfil (somente dono) */}
-                  {isOwner && onOpenEdit && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreMenuOpen(false);
-                        onOpenEdit();
-                      }}
-                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-fg/90 hover:bg-white/[0.08] hover:text-white transition-colors text-left cursor-pointer"
-                    >
-                      <Pencil className="size-4 text-violet-400 shrink-0" />
-                      <span>Personalizar Perfil</span>
-                    </button>
-                  )}
+              {/* Menu Suspenso de Três Pontinhos */}
+              {moreMenuOpen && (
+                <div
+                  role="menu"
+                  aria-label="Opções do perfil"
+                  className="absolute right-0 top-full mt-2 w-56 sm:w-60 origin-top-right overflow-hidden rounded-2xl border border-white/10 bg-[#12101e]/98 p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl z-40 animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <div className="px-3 py-1.5 border-b border-white/[0.08] mb-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                      Ações do Perfil
+                    </p>
+                  </div>
 
-                  {/* Privacidade do Perfil */}
-                  {onOpenPrivacy && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreMenuOpen(false);
-                        onOpenPrivacy();
-                      }}
-                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-fg/90 hover:bg-white/[0.08] hover:text-white transition-colors text-left cursor-pointer"
-                    >
-                      {accountType === "private" ? (
-                        <Lock className="size-4 text-amber-400 shrink-0" />
-                      ) : (
-                        <Shield className="size-4 text-emerald-400 shrink-0" />
-                      )}
-                      <span>Privacidade do Perfil</span>
-                    </button>
-                  )}
+                  <div className="space-y-0.5">
+                    {/* Personalizar Perfil (somente dono) */}
+                    {isOwner && onOpenEdit && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          onOpenEdit();
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-fg/90 hover:bg-white/[0.08] hover:text-white transition-colors text-left cursor-pointer"
+                      >
+                        <Pencil className="size-4 text-violet-400 shrink-0" />
+                        <span>Personalizar Perfil</span>
+                      </button>
+                    )}
+
+                    {/* Privacidade do Perfil */}
+                    {isOwner && onOpenPrivacy && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          onOpenPrivacy();
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-fg/90 hover:bg-white/[0.08] hover:text-white transition-colors text-left cursor-pointer"
+                      >
+                        {accountType === "private" ? (
+                          <Lock className="size-4 text-amber-400 shrink-0" />
+                        ) : (
+                          <Shield className="size-4 text-emerald-400 shrink-0" />
+                        )}
+                        <span>Privacidade do Perfil</span>
+                      </button>
+                    )}
+
+                    {/* Bloquear / Desbloquear Usuário (quando não é dono) */}
+                    {!isOwner && onBlockAction && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          onBlockAction();
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors text-left cursor-pointer"
+                      >
+                        <UserX className="size-4 text-rose-400 shrink-0" />
+                        <span>{isBlockedByMe ? "Desbloquear Usuário" : "Bloquear Usuário"}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 

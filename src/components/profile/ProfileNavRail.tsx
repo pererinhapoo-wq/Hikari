@@ -19,14 +19,16 @@ interface ProfileNavRailProps {
     comments: number;
     activity: number;
   };
+  spaces?: ProfileSpaceItem[];
 }
 
 export function ProfileNavRail({
   activeSpace,
   onChangeSpace,
   counts,
+  spaces: customSpaces,
 }: ProfileNavRailProps) {
-  const spaces: ProfileSpaceItem[] = [
+  const defaultSpaces: ProfileSpaceItem[] = [
     {
       id: "overview",
       label: "Visão Geral",
@@ -51,6 +53,8 @@ export function ProfileNavRail({
       count: counts.activity,
     },
   ];
+
+  const spaces = customSpaces ?? defaultSpaces;
 
   return (
     <nav

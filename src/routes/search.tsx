@@ -1306,61 +1306,107 @@ function SearchPage() {
                       key={person.userId}
                       className="flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 sm:p-4 transition-colors hover:border-violet-500/30 hover:bg-white/[0.04]"
                     >
-                      <Link
-                        to="/profile/$nick"
-                        params={{ nick: person.nick }}
-                        className="flex items-center gap-3 min-w-0 flex-1 group"
-                      >
-                        <div className="flex size-11 sm:size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm sm:text-base text-violet-300 ring-1 ring-white/10">
-                          {person.avatarUrl ? (
-                            <img
-                              src={person.avatarUrl}
-                              alt=""
-                              className="size-full object-cover"
-                            />
-                          ) : (
-                            <span>{avatarLetter}</span>
-                          )}
-                        </div>
+                      {person.isOwner ? (
+                        <Link
+                          to="/account"
+                          className="flex items-center gap-3 min-w-0 flex-1 group"
+                        >
+                          <div className="flex size-11 sm:size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm sm:text-base text-violet-300 ring-1 ring-white/10">
+                            {person.avatarUrl ? (
+                              <img
+                                src={person.avatarUrl}
+                                alt=""
+                                className="size-full object-cover"
+                              />
+                            ) : (
+                              <span>{avatarLetter}</span>
+                            )}
+                          </div>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="truncate text-xs sm:text-sm font-semibold text-zinc-100 transition-colors group-hover:text-violet-300">
-                              {person.displayName || person.nick}
-                            </p>
-                            {person.accountType === "private" && (
-                              <span
-                                className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 border border-white/[0.08]"
-                                title="Conta privada"
-                              >
-                                <Lock className="size-2.5 text-zinc-400" />
-                                <span>Privada</span>
-                              </span>
-                            )}
-                            {person.isFollowing && (
-                              <span className="inline-flex items-center rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300 border border-violet-500/20">
-                                Seguindo
-                              </span>
-                            )}
-                            {person.isOwner && (
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="truncate text-xs sm:text-sm font-semibold text-zinc-100 transition-colors group-hover:text-violet-300">
+                                {person.displayName || person.nick}
+                              </p>
+                              {person.accountType === "private" && (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 border border-white/[0.08]"
+                                  title="Conta privada"
+                                >
+                                  <Lock className="size-2.5 text-zinc-400" />
+                                  <span>Privada</span>
+                                </span>
+                              )}
                               <span className="inline-flex items-center rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
                                 Você
                               </span>
+                            </div>
+                            <p className="truncate text-[11px] sm:text-xs text-zinc-500">
+                              @{person.nick}
+                            </p>
+                          </div>
+                        </Link>
+                      ) : (
+                        <Link
+                          to="/profile/$nick"
+                          params={{ nick: person.nick }}
+                          className="flex items-center gap-3 min-w-0 flex-1 group"
+                        >
+                          <div className="flex size-11 sm:size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm sm:text-base text-violet-300 ring-1 ring-white/10">
+                            {person.avatarUrl ? (
+                              <img
+                                src={person.avatarUrl}
+                                alt=""
+                                className="size-full object-cover"
+                              />
+                            ) : (
+                              <span>{avatarLetter}</span>
                             )}
                           </div>
-                          <p className="truncate text-[11px] sm:text-xs text-zinc-500">
-                            @{person.nick}
-                          </p>
-                        </div>
-                      </Link>
 
-                      <Link
-                        to="/profile/$nick"
-                        params={{ nick: person.nick }}
-                        className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
-                      >
-                        Ver perfil
-                      </Link>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="truncate text-xs sm:text-sm font-semibold text-zinc-100 transition-colors group-hover:text-violet-300">
+                                {person.displayName || person.nick}
+                              </p>
+                              {person.accountType === "private" && (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 border border-white/[0.08]"
+                                  title="Conta privada"
+                                >
+                                  <Lock className="size-2.5 text-zinc-400" />
+                                  <span>Privada</span>
+                                </span>
+                              )}
+                              {person.isFollowing && (
+                                <span className="inline-flex items-center rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300 border border-violet-500/20">
+                                  Seguindo
+                                </span>
+                              )}
+                            </div>
+                            <p className="truncate text-[11px] sm:text-xs text-zinc-500">
+                              @{person.nick}
+                            </p>
+                          </div>
+                        </Link>
+                      )}
+
+                      {person.isOwner ? (
+                        <Link
+                          to="/account"
+                          className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
+                        >
+                          Meu Perfil
+                        </Link>
+                      ) : (
+                        <Link
+                          to="/profile/$nick"
+                          params={{ nick: person.nick }}
+                          className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
+                        >
+                          Ver perfil
+                        </Link>
+                      )}
                     </div>
                   );
                 })}

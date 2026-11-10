@@ -2257,18 +2257,15 @@ export function CommentsSection({
                               userDropdownMenu.closing && "pointer-events-none",
                             )}
                           >
-                            {userNick && (
-                              <Link
-                                to="/profile/$nick"
-                                params={{ nick: userNick }}
-                                role="menuitem"
-                                onClick={() => setUserMenuOpen(false)}
-                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
-                              >
-                                <UserCircle className="size-4 text-purple-400" />
-                                <span>Meu Perfil</span>
-                              </Link>
-                            )}
+                            <Link
+                              to="/account"
+                              role="menuitem"
+                              onClick={() => setUserMenuOpen(false)}
+                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
+                            >
+                              <UserCircle className="size-4 text-purple-400" />
+                              <span>Meu Perfil</span>
+                            </Link>
                             <button
                               type="button"
                               role="menuitem"
@@ -2583,18 +2580,15 @@ export function CommentsSection({
                               userDropdownMenu.closing && "pointer-events-none",
                             )}
                           >
-                            {userNick && (
-                              <Link
-                                to="/profile/$nick"
-                                params={{ nick: userNick }}
-                                role="menuitem"
-                                onClick={() => setUserMenuOpen(false)}
-                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
-                              >
-                                <UserCircle className="size-4 text-purple-400" />
-                                <span>Meu Perfil</span>
-                              </Link>
-                            )}
+                            <Link
+                              to="/account"
+                              role="menuitem"
+                              onClick={() => setUserMenuOpen(false)}
+                              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white hover:bg-white/10 active:bg-white/15 active:[transform:scale(0.985)] transition-[color,background-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none"
+                            >
+                              <UserCircle className="size-4 text-purple-400" />
+                              <span>Meu Perfil</span>
+                            </Link>
                             <button
                               type="button"
                               role="menuitem"

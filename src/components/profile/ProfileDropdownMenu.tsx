@@ -102,7 +102,7 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
     .charAt(0)
     .toUpperCase();
 
-  const isProfileActive = pathname.startsWith("/account");
+  const isProfileActive = pathname.startsWith("/account") || pathname.startsWith("/profile");
 
   return (
     <div ref={menuRef} className="relative inline-block text-left">

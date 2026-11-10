@@ -2795,8 +2795,7 @@ export function EpisodeCommentsSection({
 
                         {/* 1. Seu perfil */}
                         <Link
-                          to={userNick ? "/profile/$nick" : "/account"}
-                          params={userNick ? { nick: userNick } : undefined}
+                          to="/account"
                           onClick={() => setUserMenuOpen(false)}
                           className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
                         >
