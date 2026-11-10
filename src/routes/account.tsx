@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 
@@ -29,10 +29,7 @@ import {
   removeProfileFavorite,
 } from "@/lib/profile-favorites.functions";
 import { getMyProfileLists } from "@/lib/profile-lists.functions";
-import {
-  getMyAnimeTracking,
-  getMyWatchedEpisodes,
-} from "@/lib/profile-tracking.functions";
+import { getMyAnimeTracking } from "@/lib/profile-tracking.functions";
 
 import type {
   ProfileFavoriteItem,
@@ -44,7 +41,6 @@ import {
   STATUS_ORDER,
   type TrackingStatus,
   type UserAnimeTrackingItem,
-  type WatchedEpisodeItem,
 } from "@/types/profile-tracking";
 
 import { ProfileIdentityHeader } from "@/components/profile/ProfileIdentityHeader";
@@ -53,19 +49,172 @@ import {
   type ProfileSpace,
 } from "@/components/profile/ProfileNavRail";
 import { ProfileOverviewSpace } from "@/components/profile/ProfileOverviewSpace";
-import { ProfileTrackingSpace } from "@/components/profile/ProfileTrackingSpace";
-import { ProfileCommentsSpace } from "@/components/profile/ProfileCommentsSpace";
-import { ProfileAboutSpace } from "@/components/profile/ProfileAboutSpace";
-import { ProfileHistorySpace } from "@/components/profile/ProfileHistorySpace";
-import { ProfileEditModal } from "@/components/profile/ProfileEditModal";
-import { ProfileConnectionsModal } from "@/components/profile/ProfileConnectionsModal";
-import { ProfilePrivacyModal } from "@/components/profile/ProfilePrivacyModal";
-import { useNavigate } from "@tanstack/react-router";
-import {
-  DubladorWorksView,
-  ProfileStudioWorksView,
-  StaffWorksView,
-} from "@/components/anime/EntityWorksExpansion";
+
+// Code-splitting dos componentes pesados das abas e modais
+const LazyProfileTrackingSpace = lazy(() =>
+  import("@/components/profile/ProfileTrackingSpace").then((m) => ({
+    default: m.ProfileTrackingSpace,
+  })),
+);
+
+const LazyProfileCommentsSpace = lazy(() =>
+  import("@/components/profile/ProfileCommentsSpace").then((m) => ({
+    default: m.ProfileCommentsSpace,
+  })),
+);
+
+const LazyProfileAboutSpace = lazy(() =>
+  import("@/components/profile/ProfileAboutSpace").then((m) => ({
+    default: m.ProfileAboutSpace,
+  })),
+);
+
+const LazyProfileHistorySpace = lazy(() =>
+  import("@/components/profile/ProfileHistorySpace").then((m) => ({
+    default: m.ProfileHistorySpace,
+  })),
+);
+
+const LazyProfileEditModal = lazy(() =>
+  import("@/components/profile/ProfileEditModal").then((m) => ({
+    default: m.ProfileEditModal,
+  })),
+);
+
+const LazyProfileConnectionsModal = lazy(() =>
+  import("@/components/profile/ProfileConnectionsModal").then((m) => ({
+    default: m.ProfileConnectionsModal,
+  })),
+);
+
+const LazyProfilePrivacyModal = lazy(() =>
+  import("@/components/profile/ProfilePrivacyModal").then((m) => ({
+    default: m.ProfilePrivacyModal,
+  })),
+);
+
+const LazyProfileStudioWorksView = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((m) => ({
+    default: m.ProfileStudioWorksView,
+  })),
+);
+
+const LazyDubladorWorksView = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((m) => ({
+    default: m.DubladorWorksView,
+  })),
+);
+
+const LazyStaffWorksView = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((m) => ({
+    default: m.StaffWorksView,
+  })),
+);
+
+// Skeletons específicos com dimensões e espaçamentos equivalentes aos componentes reais
+function TrackingSpaceSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="flex flex-wrap gap-2">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-9 w-24 rounded-xl border border-white/[0.05] bg-white/[0.04]"
+          />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        {Array.from({ length: 12 }).map((_, i) => (
+          <div
+            key={i}
+            className="aspect-[3/4] rounded-2xl border border-white/[0.05] bg-white/[0.04]"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CommentsSpaceSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-7 w-48 rounded-lg bg-white/[0.05]" />
+      <div className="space-y-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="space-y-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 sm:p-5"
+          >
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-full bg-white/[0.05]" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-4 w-32 rounded bg-white/[0.05]" />
+                <div className="h-3 w-20 rounded bg-white/[0.04]" />
+              </div>
+            </div>
+            <div className="space-y-1.5 pt-1">
+              <div className="h-4 w-full rounded bg-white/[0.04]" />
+              <div className="h-4 w-3/4 rounded bg-white/[0.04]" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AboutSpaceSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="space-y-3 rounded-3xl border border-white/[0.08] bg-white/[0.02] p-5 sm:p-6">
+        <div className="h-5 w-48 rounded bg-white/[0.05]" />
+        <div className="flex flex-wrap gap-2 pt-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-7 w-20 rounded-xl bg-white/[0.04]" />
+          ))}
+        </div>
+      </div>
+      <div className="rounded-3xl border border-white/[0.08] bg-white/[0.02] p-5 sm:p-6">
+        <div className="h-12 w-48 rounded-xl bg-white/[0.04]" />
+      </div>
+    </div>
+  );
+}
+
+function HistorySpaceSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-7 w-44 rounded-lg bg-white/[0.05]" />
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+          >
+            <div className="size-9 shrink-0 rounded-full bg-white/[0.05]" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-4 w-40 rounded bg-white/[0.05]" />
+              <div className="h-3 w-24 rounded bg-white/[0.04]" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WorksViewSkeleton() {
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-8 space-y-6 animate-pulse">
+      <div className="h-10 w-64 rounded-xl bg-white/[0.05]" />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="aspect-[3/4] rounded-2xl bg-white/[0.04]" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface AccountSearchParams {
   status?: TrackingStatus;
@@ -78,6 +227,7 @@ interface AccountSearchParams {
   staffId?: string;
   person?: string;
   personId?: string;
+  connections?: "followers" | "following" | "requests";
 }
 
 export const Route = createFileRoute("/account")({
@@ -232,11 +382,11 @@ function AccountProfile() {
   // "overview" (Visão geral) como espaço inicial obrigatório
   const [activeSpace, setActiveSpace] = useState<ProfileSpace>("overview");
 
-  // Acompanhamento de Animes
+  // Acompanhamento de Animes (Necessário para a visão geral e contadores)
   const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>([]);
   const [trackingLoading, setTrackingLoading] = useState(true);
 
-  // Favoritos Canônicos
+  // Favoritos Canônicos (Necessário para a visão geral)
   const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>({
     anime: [],
     character: [],
@@ -247,22 +397,28 @@ function AccountProfile() {
   const [, setFavoritesItems] = useState<ProfileFavoriteItem[]>([]);
   const [favoritesLoading, setFavoritesLoading] = useState(true);
 
-  // Listas Personalizadas
+  // Listas Personalizadas (Carregadas sob demanda na aba "about")
   const [lists, setLists] = useState<ProfileListSummary[]>([]);
+  const [listsLoaded, setListsLoaded] = useState(false);
+  const listsFetchingRef = useRef(false);
 
-  // Feed de Atividades Unificado (Etapa 11)
+  // Feed de Atividades Unificado (Carregado sob demanda na aba "activity")
   const [activityItems, setActivityItems] = useState<UserActivityItem[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
   const [activityPage, setActivityPage] = useState(1);
   const [activityTotalPages, setActivityTotalPages] = useState(1);
-  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityLoaded, setActivityLoaded] = useState(false);
+  const activityFetchingRef = useRef(false);
 
-  // Comentários da Comunidade (Paginados)
+  // Comentários da Comunidade (Carregados sob demanda na aba "comments")
   const [comments, setComments] = useState<MyProfileComment[]>([]);
   const [commentsTotal, setCommentsTotal] = useState(0);
   const [commentsPage, setCommentsPage] = useState(1);
   const [commentsTotalPages, setCommentsTotalPages] = useState(1);
-  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const commentsFetchingRef = useRef(false);
 
   // Modais
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -274,6 +430,33 @@ function AccountProfile() {
   const [requestsList, setRequestsList] = useState<FollowRequestItem[]>([]);
   const [connectionsLoading, setConnectionsLoading] = useState(false);
 
+  // Abrir conexões (Seguidores / Seguindo / Solicitações)
+  const handleOpenConnections = useCallback(
+    async (tab: "followers" | "following" | "requests") => {
+      setConnectionsTab(tab);
+      setConnectionsModalOpen(true);
+      setConnectionsLoading(true);
+
+      try {
+        if (tab === "followers") {
+          const data = await getFollowersFn();
+          setFollowersList(data);
+        } else if (tab === "following") {
+          const data = await getFollowingFn();
+          setFollowingList(data);
+        } else {
+          const data = await getRequestsFn();
+          setRequestsList(data);
+        }
+      } catch (err) {
+        console.warn("Erro ao buscar conexões:", err);
+      } finally {
+        setConnectionsLoading(false);
+      }
+    },
+    [getFollowersFn, getFollowingFn, getRequestsFn],
+  );
+
   // Escuta requisição para abrir modal de edição (ex: vindo de "Configurações do Perfil" no menu da foto)
   useEffect(() => {
     const handleOpenEdit = () => {
@@ -282,7 +465,6 @@ function AccountProfile() {
 
     window.addEventListener("hikari:open-profile-edit", handleOpenEdit);
 
-    // Se navegou com o marcador de abertura automática
     try {
       if (sessionStorage.getItem("hikari:open-profile-edit-on-load") === "true") {
         sessionStorage.removeItem("hikari:open-profile-edit-on-load");
@@ -292,7 +474,6 @@ function AccountProfile() {
       // ignore storage access errors
     }
 
-    // Se veio com query param ?edit=1 ou ?edit=true
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("edit") === "true" || params.get("edit") === "1") {
@@ -328,7 +509,7 @@ function AccountProfile() {
     return () => {
       window.removeEventListener("hikari:open-connections", handleOpenConn);
     };
-  }, [search.connections]);
+  }, [search.connections, handleOpenConnections]);
 
   // Carregamento inicial do perfil
   useEffect(() => {
@@ -352,14 +533,14 @@ function AccountProfile() {
     return () => {
       active = false;
     };
-  }, [user?.id]);
+  }, [user?.id, getProfileFn]);
 
-  // Carregamento de acompanhamento, favoritos, listas, atividades e comentários
+  // Carregamento essencial da montagem inicial: Acompanhamento, Favoritos Canônicos e Solicitações de Seguidores
   useEffect(() => {
     if (!user?.id) return;
     let active = true;
 
-    // 1. Acompanhamento
+    // 1. Acompanhamento (usado nas estatísticas da Visão Geral e contadores)
     setTrackingLoading(true);
     void getTrackingFn({ data: {} })
       .then((items) => {
@@ -371,7 +552,7 @@ function AccountProfile() {
         if (active) setTrackingLoading(false);
       });
 
-    // 2. Favoritos
+    // 2. Favoritos Canônicos (usados nas seções da Visão Geral)
     setFavoritesLoading(true);
     void getFavoritesFn({ data: {} })
       .then((res) => {
@@ -384,45 +565,7 @@ function AccountProfile() {
         if (active) setFavoritesLoading(false);
       });
 
-    // 3. Listas
-    void getListsFn({ data: {} })
-      .then((res) => {
-        if (!active) return;
-        setLists(res);
-      })
-      .catch((err) => console.warn("Erro ao buscar listas:", err));
-
-    // 4. Feed de Atividades Unificado (Etapa 11)
-    setActivityLoading(true);
-    void getActivitiesFn({ data: { page: 1, limit: 15 } })
-      .then((res) => {
-        if (!active) return;
-        setActivityItems(res.items);
-        setActivityTotal(res.total);
-        setActivityPage(res.page);
-        setActivityTotalPages(res.totalPages);
-      })
-      .catch((err) => console.warn("Erro ao buscar atividades:", err))
-      .finally(() => {
-        if (active) setActivityLoading(false);
-      });
-
-    // 5. Comentários (Paginados)
-    setCommentsLoading(true);
-    void getCommentsFn({ data: { page: 1, limit: 15 } })
-      .then((res) => {
-        if (!active) return;
-        setComments(res.items);
-        setCommentsTotal(res.total);
-        setCommentsPage(res.page);
-        setCommentsTotalPages(res.totalPages);
-      })
-      .catch((err) => console.warn("Erro ao buscar comentários:", err))
-      .finally(() => {
-        if (active) setCommentsLoading(false);
-      });
-
-    // 6. Solicitações de seguidores recebidas
+    // 3. Solicitações de seguidores (necessárias para o indicador de badge do cabeçalho)
     void getRequestsFn()
       .then((res) => {
         if (!active) return;
@@ -433,7 +576,92 @@ function AccountProfile() {
     return () => {
       active = false;
     };
-  }, [user?.id]);
+  }, [user?.id, getTrackingFn, getFavoritesFn, getRequestsFn]);
+
+  // Carregamento sob demanda para a aba de Comentários (Cache por aba e trava contra cliques rápidos)
+  useEffect(() => {
+    if (!user?.id || activeSpace !== "comments" || commentsLoaded || commentsFetchingRef.current) {
+      return;
+    }
+
+    let active = true;
+    commentsFetchingRef.current = true;
+    setCommentsLoading(true);
+
+    void getCommentsFn({ data: { page: 1, limit: 15 } })
+      .then((res) => {
+        if (!active) return;
+        setComments(res.items);
+        setCommentsTotal(res.total);
+        setCommentsPage(res.page);
+        setCommentsTotalPages(res.totalPages);
+        setCommentsLoaded(true);
+      })
+      .catch((err) => console.warn("Erro ao buscar comentários:", err))
+      .finally(() => {
+        commentsFetchingRef.current = false;
+        if (active) setCommentsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, activeSpace, commentsLoaded, getCommentsFn]);
+
+  // Carregamento sob demanda para a aba de Atividades (Cache por aba e trava contra cliques rápidos)
+  useEffect(() => {
+    if (!user?.id || activeSpace !== "activity" || activityLoaded || activityFetchingRef.current) {
+      return;
+    }
+
+    let active = true;
+    activityFetchingRef.current = true;
+    setActivityLoading(true);
+
+    void getActivitiesFn({ data: { page: 1, limit: 15 } })
+      .then((res) => {
+        if (!active) return;
+        setActivityItems(res.items);
+        setActivityTotal(res.total);
+        setActivityPage(res.page);
+        setActivityTotalPages(res.totalPages);
+        setActivityLoaded(true);
+      })
+      .catch((err) => console.warn("Erro ao buscar atividades:", err))
+      .finally(() => {
+        activityFetchingRef.current = false;
+        if (active) setActivityLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, activeSpace, activityLoaded, getActivitiesFn]);
+
+  // Carregamento sob demanda para a aba Sobre (listas personalizadas)
+  useEffect(() => {
+    if (!user?.id || activeSpace !== "about" || listsLoaded || listsFetchingRef.current) {
+      return;
+    }
+
+    let active = true;
+    listsFetchingRef.current = true;
+
+    void getListsFn({ data: {} })
+      .then((res) => {
+        if (!active) return;
+        setLists(res);
+        setListsLoaded(true);
+      })
+      .catch((err) => console.warn("Erro ao buscar listas:", err))
+      .finally(() => {
+        listsFetchingRef.current = false;
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, activeSpace, listsLoaded, getListsFn]);
 
   // Troca de página no feed de atividades
   const handleActivityPageChange = async (newPage: number) => {
@@ -524,30 +752,6 @@ function AccountProfile() {
     }
   };
 
-  // Abrir conexões (Seguidores / Seguindo / Solicitações)
-  const handleOpenConnections = async (tab: "followers" | "following" | "requests") => {
-    setConnectionsTab(tab);
-    setConnectionsModalOpen(true);
-    setConnectionsLoading(true);
-
-    try {
-      if (tab === "followers") {
-        const data = await getFollowersFn();
-        setFollowersList(data);
-      } else if (tab === "following") {
-        const data = await getFollowingFn();
-        setFollowingList(data);
-      } else {
-        const data = await getRequestsFn();
-        setRequestsList(data);
-      }
-    } catch (err) {
-      console.warn("Erro ao buscar conexões:", err);
-    } finally {
-      setConnectionsLoading(false);
-    }
-  };
-
   // Alternar aba dentro do modal de conexões
   const handleConnectionsTabChange = async (tab: "followers" | "following" | "requests") => {
     setConnectionsTab(tab);
@@ -577,7 +781,6 @@ function AccountProfile() {
       setProfile((prev) =>
         prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev,
       );
-      // Atualizar lista de seguidores
       const freshFollowers = await getFollowersFn();
       setFollowersList(freshFollowers);
     } catch (err) {
@@ -726,82 +929,85 @@ function AccountProfile() {
 
   if (studioParam) {
     return (
-      <ProfileStudioWorksView
-        studioName={studioParam}
-        studioId={studioIdParam}
-        onClear={() => {
-          void navigate({
-            to: "/account",
-            search: (prev) => {
-              const next = { ...prev };
-              delete next.studio;
-              delete next.studioId;
-              return next;
-            },
-          });
-        }}
-      />
+      <Suspense fallback={<WorksViewSkeleton />}>
+        <LazyProfileStudioWorksView
+          studioName={studioParam}
+          studioId={studioIdParam}
+          onClear={() => {
+            void navigate({
+              to: "/account",
+              search: (prev) => {
+                const next = { ...prev };
+                delete next.studio;
+                delete next.studioId;
+                return next;
+              },
+            });
+          }}
+        />
+      </Suspense>
     );
   }
 
   if (dubladorParam) {
     return (
-      <DubladorWorksView
-        dubladorName={dubladorParam}
-        dubladorId={dubladorIdParam}
-        onClear={() => {
-          void navigate({
-            to: "/account",
-            search: (prev) => {
-              const next = { ...prev };
-              delete next.dublador;
-              delete next.dubladorId;
-              return next;
-            },
-          });
-        }}
-      />
+      <Suspense fallback={<WorksViewSkeleton />}>
+        <LazyDubladorWorksView
+          dubladorName={dubladorParam}
+          dubladorId={dubladorIdParam}
+          onClear={() => {
+            void navigate({
+              to: "/account",
+              search: (prev) => {
+                const next = { ...prev };
+                delete next.dublador;
+                delete next.dubladorId;
+                return next;
+              },
+            });
+          }}
+        />
+      </Suspense>
     );
   }
 
   if (staffParam) {
     return (
-      <StaffWorksView
-        staffName={staffParam}
-        staffId={staffIdParam}
-        onClear={() => {
-          void navigate({
-            to: "/account",
-            search: (prev) => {
-              const next = { ...prev };
-              delete next.staff;
-              delete next.staffId;
-              delete next.person;
-              delete next.personId;
-              return next;
-            },
-          });
-        }}
-      />
+      <Suspense fallback={<WorksViewSkeleton />}>
+        <LazyStaffWorksView
+          staffName={staffParam}
+          staffId={staffIdParam}
+          onClear={() => {
+            void navigate({
+              to: "/account",
+              search: (prev) => {
+                const next = { ...prev };
+                delete next.staff;
+                delete next.staffId;
+                delete next.person;
+                delete next.personId;
+                return next;
+              },
+            });
+          }}
+        />
+      </Suspense>
     );
   }
 
-  // Se a rota for aberta com parâmetro de status (ex: vindo do clique em Anime Stats na Visão Geral),
-  // exibe diretamente a lista de animes correspondente ao status selecionado na nova guia, sem botão de voltar.
+  // Se a rota for aberta com parâmetro de status, exibe diretamente a lista de animes correspondente
   if (statusParam && STATUS_CONFIG[statusParam]) {
     const cfg = STATUS_CONFIG[statusParam];
     const filteredCount = trackingItems.filter((i) => i.status === statusParam).length;
 
     return (
       <div className="relative min-h-[80vh] w-full pb-16 pt-6 sm:pt-8">
-        {/* Luz ambiente de fundo violeta sutil */}
         <div
           className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-violet-600/10 blur-[120px]"
           aria-hidden="true"
         />
 
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
-          {/* 2. Cabeçalho com o título correspondente (ex: "Animes — Assistindo") e 4. Sem botão de voltar */}
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
             <div className="flex items-center gap-3">
               <span className={`size-3.5 rounded-full ${cfg.indicatorDot}`} />
@@ -816,14 +1022,15 @@ function AccountProfile() {
             </div>
           </div>
 
-          {/* 1 e 3. Lista de animes filtrada usando dados reais e componentes de cards já existentes */}
-          <ProfileTrackingSpace
-            items={trackingItems}
-            loading={trackingLoading}
-            activeFilter={statusParam}
-            hideFilterBar={true}
-            onUpdateItem={handleUpdateTrackingItem}
-          />
+          <Suspense fallback={<TrackingSpaceSkeleton />}>
+            <LazyProfileTrackingSpace
+              items={trackingItems}
+              loading={trackingLoading}
+              activeFilter={statusParam}
+              hideFilterBar={true}
+              onUpdateItem={handleUpdateTrackingItem}
+            />
+          </Suspense>
         </div>
       </div>
     );
@@ -836,7 +1043,7 @@ function AccountProfile() {
   const userImage = profile?.image || user.profileImageUrl || null;
   const followersCount = profile?.followersCount ?? 0;
   const followingCount = profile?.followingCount ?? 0;
-  const commentCount = profile?.commentCount ?? comments.length;
+  const commentCount = profile?.commentCount ?? commentsTotal;
   const userFavoritesList = profile?.favorites ?? [];
 
   return (
@@ -874,13 +1081,13 @@ function AccountProfile() {
           onOpenRequests={() => void handleOpenConnections("requests")}
         />
 
-        {/* Navegação Horizontal: Visão geral | Animes | Comentários | Sobre | Atividade */}
+        {/* Navegação Horizontal: Visão geral | Animes | Comentários | Sobre | Atividades */}
         <ProfileNavRail
           activeSpace={activeSpace}
           onChangeSpace={setActiveSpace}
           counts={{
             animes: trackingItems.length,
-            comments: commentsTotal,
+            comments: commentsTotal || profile?.commentCount || 0,
             activity: activityTotal,
           }}
         />
@@ -902,96 +1109,116 @@ function AccountProfile() {
 
           {/* Aba 2: Animes (Acompanhamento completo com filtros) */}
           {activeSpace === "animes" && (
-            <ProfileTrackingSpace
-              items={trackingItems}
-              loading={trackingLoading}
-              onUpdateItem={handleUpdateTrackingItem}
-            />
+            <Suspense fallback={<TrackingSpaceSkeleton />}>
+              <LazyProfileTrackingSpace
+                items={trackingItems}
+                loading={trackingLoading}
+                onUpdateItem={handleUpdateTrackingItem}
+              />
+            </Suspense>
           )}
 
           {/* Aba 3: Comentários */}
           {activeSpace === "comments" && (
-            <ProfileCommentsSpace
-              comments={comments}
-              total={commentsTotal}
-              page={commentsPage}
-              totalPages={commentsTotalPages}
-              onPageChange={(p) => void handleCommentsPageChange(p)}
-              onCommentDeleted={handleCommentDeleted}
-              onCommentUpdated={handleCommentUpdated}
-              isOwner={true}
-              loading={commentsLoading}
-            />
+            <Suspense fallback={<CommentsSpaceSkeleton />}>
+              <LazyProfileCommentsSpace
+                comments={comments}
+                total={commentsTotal}
+                page={commentsPage}
+                totalPages={commentsTotalPages}
+                onPageChange={(p) => void handleCommentsPageChange(p)}
+                onCommentDeleted={handleCommentDeleted}
+                onCommentUpdated={handleCommentUpdated}
+                isOwner={true}
+                loading={commentsLoading}
+              />
+            </Suspense>
           )}
 
           {/* Aba 4: Sobre */}
           {activeSpace === "about" && (
-            <ProfileAboutSpace
-              name={displayName}
-              nick={userNick}
-              bio={userBio}
-              favorites={userFavoritesList}
-              lists={lists}
-              onOpenEdit={() => setEditModalOpen(true)}
-            />
+            <Suspense fallback={<AboutSpaceSkeleton />}>
+              <LazyProfileAboutSpace
+                name={displayName}
+                nick={userNick}
+                bio={userBio}
+                favorites={userFavoritesList}
+                lists={lists}
+                onOpenEdit={() => setEditModalOpen(true)}
+              />
+            </Suspense>
           )}
 
           {/* Aba 5: Atividade (Feed unificado da Etapa 11) */}
           {activeSpace === "activity" && (
-            <ProfileHistorySpace
-              items={activityItems}
-              total={activityTotal}
-              page={activityPage}
-              totalPages={activityTotalPages}
-              onPageChange={(p) => void handleActivityPageChange(p)}
-              isOwner={true}
-              loading={activityLoading}
-            />
+            <Suspense fallback={<HistorySpaceSkeleton />}>
+              <LazyProfileHistorySpace
+                items={activityItems}
+                total={activityTotal}
+                page={activityPage}
+                totalPages={activityTotalPages}
+                onPageChange={(p) => void handleActivityPageChange(p)}
+                isOwner={true}
+                loading={activityLoading}
+              />
+            </Suspense>
           )}
         </section>
       </div>
 
       {/* Modal de Personalização do Perfil */}
-      <ProfileEditModal
-        isOpen={editModalOpen}
-        initialName={profile?.name || user.displayName || profile?.nick || ""}
-        initialNick={userNick}
-        initialBio={userBio}
-        initialImage={userImage}
-        initialBannerUrl={profile?.bannerUrl || null}
-        initialFavorites={userFavoritesList}
-        onClose={() => setEditModalOpen(false)}
-        onSave={handleSaveProfile}
-      />
+      {editModalOpen && (
+        <Suspense fallback={null}>
+          <LazyProfileEditModal
+            isOpen={editModalOpen}
+            initialName={profile?.name || user.displayName || profile?.nick || ""}
+            initialNick={userNick}
+            initialBio={userBio}
+            initialImage={userImage}
+            initialBannerUrl={profile?.bannerUrl || null}
+            initialFavorites={userFavoritesList}
+            onClose={() => setEditModalOpen(false)}
+            onSave={handleSaveProfile}
+          />
+        </Suspense>
+      )}
 
       {/* Modal de Conexões da Comunidade (Seguidores / Seguindo / Solicitações) */}
-      <ProfileConnectionsModal
-        isOpen={connectionsModalOpen}
-        initialTab={connectionsTab}
-        activeTab={connectionsTab}
-        onTabChange={(t) => void handleConnectionsTabChange(t)}
-        followers={followersList}
-        following={followingList}
-        requests={requestsList}
-        followersCount={followersCount}
-        followingCount={followingCount}
-        requestsCount={requestsList.length}
-        loading={connectionsLoading}
-        onClose={() => setConnectionsModalOpen(false)}
-        onAcceptRequest={handleAcceptRequest}
-        onRejectRequest={handleRejectRequest}
-        onFollowBack={handleFollowBack}
-        currentUserId={user?.id ?? null}
-        profileOwnerId={profile?.userId || user?.id || null}
-      />
+      {connectionsModalOpen && (
+        <Suspense fallback={null}>
+          <LazyProfileConnectionsModal
+            isOpen={connectionsModalOpen}
+            initialTab={connectionsTab}
+            activeTab={connectionsTab}
+            onTabChange={(t) => void handleConnectionsTabChange(t)}
+            followers={followersList}
+            following={followingList}
+            requests={requestsList}
+            followersCount={followersCount}
+            followingCount={followingCount}
+            requestsCount={requestsList.length}
+            loading={connectionsLoading}
+            onClose={() => setConnectionsModalOpen(false)}
+            onAcceptRequest={handleAcceptRequest}
+            onRejectRequest={handleRejectRequest}
+            onFollowBack={handleFollowBack}
+            currentUserId={user?.id ?? null}
+            profileOwnerId={profile?.userId || user?.id || null}
+          />
+        </Suspense>
+      )}
 
       {/* Modal de Configurações de Privacidade do Perfil */}
-      <ProfilePrivacyModal
-        isOpen={privacyModalOpen}
-        profile={profile}
-        onClose={() => setPrivacyModalOpen(false)}
-        onSave={handleSavePrivacy}
-      />
+      {privacyModalOpen && (
+        <Suspense fallback={null}>
+          <LazyProfilePrivacyModal
+            isOpen={privacyModalOpen}
+            profile={profile}
+            onClose={() => setPrivacyModalOpen(false)}
+            onSave={handleSavePrivacy}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -23,7 +23,6 @@ import {
   UserCircle,
   X,
 } from "lucide-react";
-import { LoginMenu } from "@/components/LoginMenu";
 import { Logo } from "@/components/logo";
 import { ProfileDropdownMenu } from "@/components/profile/ProfileDropdownMenu";
 import { signOut } from "@/lib/auth/client";
@@ -32,19 +31,48 @@ import {
   type NotificationItem,
 } from "@/components/notifications/notification-item-card";
 import { isHikariAdmin } from "@/lib/auth/admin";
-import { SearchModal } from "@/components/search/SearchModal";
 import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useScrollLock } from "@/lib/scroll-lock";
 import {
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
+
+let searchModalModulePromise: Promise<
+  typeof import("@/components/search/SearchModal")
+> | null = null;
+function prefetchSearchModal() {
+  if (!searchModalModulePromise) {
+    searchModalModulePromise = import("@/components/search/SearchModal");
+  }
+  return searchModalModulePromise;
+}
+
+const LazySearchModal = lazy(() =>
+  prefetchSearchModal().then((mod) => ({ default: mod.SearchModal })),
+);
+
+let loginMenuModulePromise: Promise<
+  typeof import("@/components/LoginMenu")
+> | null = null;
+function prefetchLoginMenu() {
+  if (!loginMenuModulePromise) {
+    loginMenuModulePromise = import("@/components/LoginMenu");
+  }
+  return loginMenuModulePromise;
+}
+
+const LazyLoginMenu = lazy(() =>
+  prefetchLoginMenu().then((mod) => ({ default: mod.LoginMenu })),
+);
 
 function useNotificationPanelPresence(open: boolean, exitMs = 170) {
   const [mounted, setMounted] = useState(open);
@@ -295,6 +323,7 @@ export function Shell() {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        void prefetchSearchModal();
         setSearchOpen((prev) => !prev);
       }
     };
@@ -785,6 +814,8 @@ export function Shell() {
                 onClick={() => {
                   setSearchOpen((value) => !value);
                 }}
+                onMouseEnter={() => void prefetchSearchModal()}
+                onFocus={() => void prefetchSearchModal()}
                 className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
                 aria-label="Buscar"
                 title="Buscar (Ctrl+K)"
@@ -828,6 +859,8 @@ export function Shell() {
               <button
                 type="button"
                 onClick={() => setLoginModalOpen(true)}
+                onMouseEnter={() => void prefetchLoginMenu()}
+                onFocus={() => void prefetchLoginMenu()}
                 className="flex items-center gap-1.5 sm:gap-2 rounded-xl border border-[#a855f7]/40 bg-[#a855f7] px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#9333ea] hover:shadow-[0_0_20px_rgba(168,85,247,0.35)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
                 aria-label="Entrar na conta"
               >
@@ -842,10 +875,14 @@ export function Shell() {
       {/* =========================================================
           PAINEL DE BUSCA REFORMULADO (ANIMES E USUÁRIOS)
       ========================================================== */}
-      <SearchModal
-        isOpen={searchOpen}
-        onClose={() => setSearchOpen(false)}
-      />
+      {searchOpen && (
+        <Suspense fallback={null}>
+          <LazySearchModal
+            isOpen={searchOpen}
+            onClose={() => setSearchOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* =========================================================
           PAINEL FLUTUANTE DE NOTIFICAÇÕES (COMPACTO E DISCRETO)
@@ -1102,6 +1139,8 @@ export function Shell() {
                         setMenuOpen(false);
                         setLoginModalOpen(true);
                       }}
+                      onMouseEnter={() => void prefetchLoginMenu()}
+                      onFocus={() => void prefetchLoginMenu()}
                       className="flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-base font-semibold text-[#c084fc] hover:bg-elevated transition-colors text-left"
                     >
                       <LogIn className="size-5" />
@@ -1218,11 +1257,13 @@ export function Shell() {
           MODAL DE ENTRAR NA CONTA
       ========================================================== */}
       {loginModalOpen && (
-        <LoginMenu
-          isOpen={loginModalOpen}
-          onClose={() => setLoginModalOpen(false)}
-          isModal={true}
-        />
+        <Suspense fallback={null}>
+          <LazyLoginMenu
+            isOpen={loginModalOpen}
+            onClose={() => setLoginModalOpen(false)}
+            isModal={true}
+          />
+        </Suspense>
       )}
 
       {/* =========================================================

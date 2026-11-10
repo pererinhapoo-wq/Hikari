@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -40,15 +40,131 @@ import {
   type ProfileSpaceItem,
 } from "@/components/profile/ProfileNavRail";
 import { ProfileOverviewSpace } from "@/components/profile/ProfileOverviewSpace";
-import { ProfileCommentsSpace } from "@/components/profile/ProfileCommentsSpace";
-import { ProfileAboutSpace } from "@/components/profile/ProfileAboutSpace";
-import { ProfileHistorySpace } from "@/components/profile/ProfileHistorySpace";
-import { ProfileConnectionsModal } from "@/components/profile/ProfileConnectionsModal";
-import {
-  DubladorWorksView,
-  ProfileStudioWorksView,
-  StaffWorksView,
-} from "@/components/anime/EntityWorksExpansion";
+
+// Code-splitting dos componentes de abas, modais e visualizações secundárias
+const LazyProfileCommentsSpace = lazy(() =>
+  import("@/components/profile/ProfileCommentsSpace").then((m) => ({
+    default: m.ProfileCommentsSpace,
+  })),
+);
+
+const LazyProfileAboutSpace = lazy(() =>
+  import("@/components/profile/ProfileAboutSpace").then((m) => ({
+    default: m.ProfileAboutSpace,
+  })),
+);
+
+const LazyProfileHistorySpace = lazy(() =>
+  import("@/components/profile/ProfileHistorySpace").then((m) => ({
+    default: m.ProfileHistorySpace,
+  })),
+);
+
+const LazyProfileConnectionsModal = lazy(() =>
+  import("@/components/profile/ProfileConnectionsModal").then((m) => ({
+    default: m.ProfileConnectionsModal,
+  })),
+);
+
+const LazyProfileStudioWorksView = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((m) => ({
+    default: m.ProfileStudioWorksView,
+  })),
+);
+
+const LazyDubladorWorksView = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((m) => ({
+    default: m.DubladorWorksView,
+  })),
+);
+
+const LazyStaffWorksView = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((m) => ({
+    default: m.StaffWorksView,
+  })),
+);
+
+// Skeletons específicos mantendo o layout e as dimensões dos componentes reais
+function CommentsSpaceSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-7 w-48 rounded-lg bg-white/[0.05]" />
+      <div className="space-y-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="space-y-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 sm:p-5"
+          >
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-full bg-white/[0.05]" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-4 w-32 rounded bg-white/[0.05]" />
+                <div className="h-3 w-20 rounded bg-white/[0.04]" />
+              </div>
+            </div>
+            <div className="space-y-1.5 pt-1">
+              <div className="h-4 w-full rounded bg-white/[0.04]" />
+              <div className="h-4 w-3/4 rounded bg-white/[0.04]" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AboutSpaceSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="space-y-3 rounded-3xl border border-white/[0.08] bg-white/[0.02] p-5 sm:p-6">
+        <div className="h-5 w-48 rounded bg-white/[0.05]" />
+        <div className="flex flex-wrap gap-2 pt-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-7 w-20 rounded-xl bg-white/[0.04]" />
+          ))}
+        </div>
+      </div>
+      <div className="rounded-3xl border border-white/[0.08] bg-white/[0.02] p-5 sm:p-6">
+        <div className="h-12 w-48 rounded-xl bg-white/[0.04]" />
+      </div>
+    </div>
+  );
+}
+
+function HistorySpaceSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-7 w-44 rounded-lg bg-white/[0.05]" />
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+          >
+            <div className="size-9 shrink-0 rounded-full bg-white/[0.05]" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-4 w-40 rounded bg-white/[0.05]" />
+              <div className="h-3 w-24 rounded bg-white/[0.04]" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WorksViewSkeleton() {
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-8 space-y-6 animate-pulse">
+      <div className="h-10 w-64 rounded-xl bg-white/[0.05]" />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="aspect-[3/4] rounded-2xl bg-white/[0.04]" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface PublicProfileSearchParams {
   tab?: "comments" | "activity" | "favorites";
@@ -187,7 +303,7 @@ function PublicProfile() {
 
   const [activeSpace, setActiveSpace] = useState<ProfileSpace>("overview");
 
-  // Favoritos agrupados
+  // Favoritos agrupados (necessários para a Visão Geral)
   const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>({
     anime: [],
     character: [],
@@ -197,19 +313,23 @@ function PublicProfile() {
   });
   const [favoritesLoading, setFavoritesLoading] = useState(false);
 
-  // Comentários
+  // Comentários (Carregados sob demanda na aba "comments")
   const [comments, setComments] = useState<PublicProfileComment[]>([]);
   const [commentsTotal, setCommentsTotal] = useState(0);
   const [commentsPage, setCommentsPage] = useState(1);
   const [commentsTotalPages, setCommentsTotalPages] = useState(1);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const commentsFetchingRef = useRef(false);
 
-  // Atividades
+  // Atividades (Carregadas sob demanda na aba "activity")
   const [activities, setActivities] = useState<UserActivityItem[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
   const [activityPage, setActivityPage] = useState(1);
   const [activityTotalPages, setActivityTotalPages] = useState(1);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [activityLoaded, setActivityLoaded] = useState(false);
+  const activityFetchingRef = useRef(false);
 
   // Ações sociais
   const [following, setFollowing] = useState(false);
@@ -229,13 +349,23 @@ function PublicProfile() {
   const [followersList, setFollowersList] = useState<ProfileUser[]>([]);
   const [followingList, setFollowingList] = useState<ProfileUser[]>([]);
 
+  // Sincroniza aba inicial caso venha via URL search ?tab=
+  useEffect(() => {
+    if (search.tab === "comments") setActiveSpace("comments");
+    else if (search.tab === "activity") setActiveSpace("activity");
+    else if (search.tab === "favorites") setActiveSpace("overview");
+  }, [search.tab]);
+
+  // Carregamento inicial obrigatório do perfil e favoritos da Visão Geral
   useEffect(() => {
     let active = true;
 
     setLoading(true);
     setError("");
     setComments([]);
+    setCommentsLoaded(false);
     setActivities([]);
+    setActivityLoaded(false);
 
     void getPublicProfileFn({
       data: {
@@ -245,7 +375,7 @@ function PublicProfile() {
       .then(async (result) => {
         if (!active) return;
 
-        // Se for o próprio usuário, redireciona imediatamente para o Perfil novo canônico (/account)
+        // Se for o próprio usuário, redireciona imediatamente para o Perfil próprio (/account)
         if (result.isOwner) {
           void navigate({ to: "/account", replace: true });
           return;
@@ -258,9 +388,8 @@ function PublicProfile() {
         setIsBlockedByMe(Boolean(result.isBlockedByMe));
         setIsBlockedByTarget(Boolean(result.isBlockedByTarget));
 
-        // Carrega dados se permitido
+        // Carrega Favoritos da Visão Geral se o conteúdo for público ou acessível
         if (result.canViewContent && !result.isBlockedByMe && !result.isBlockedByTarget) {
-          // Carregar Favoritos
           setFavoritesLoading(true);
           getPublicFavoritesFn({
             data: {
@@ -276,58 +405,6 @@ function PublicProfile() {
             .finally(() => {
               if (active) setFavoritesLoading(false);
             });
-
-          // Carregar Comentários
-          if (result.canViewComments) {
-            setCommentsLoading(true);
-            getPublicCommentsFn({
-              data: {
-                userId: result.userId,
-                page: 1,
-                limit: 15,
-              },
-            })
-              .then((res) => {
-                if (active) {
-                  setComments(res.items);
-                  setCommentsTotal(res.total);
-                  setCommentsPage(res.page);
-                  setCommentsTotalPages(res.totalPages);
-                }
-              })
-              .catch((err) => {
-                console.warn("Erro ao buscar comentários públicos:", err);
-              })
-              .finally(() => {
-                if (active) setCommentsLoading(false);
-              });
-          }
-
-          // Carregar Atividades
-          if (result.canViewHistory) {
-            setActivityLoading(true);
-            getPublicActivitiesFn({
-              data: {
-                userId: result.userId,
-                page: 1,
-                limit: 15,
-              },
-            })
-              .then((act) => {
-                if (active) {
-                  setActivities(act.items);
-                  setActivityTotal(act.total);
-                  setActivityPage(act.page);
-                  setActivityTotalPages(act.totalPages);
-                }
-              })
-              .catch((err) => {
-                console.warn("Erro ao buscar atividades públicas:", err);
-              })
-              .finally(() => {
-                if (active) setActivityLoading(false);
-              });
-          }
         }
       })
       .catch((err) => {
@@ -341,7 +418,107 @@ function PublicProfile() {
     return () => {
       active = false;
     };
-  }, [nick]);
+  }, [nick, getPublicProfileFn, getPublicFavoritesFn, navigate]);
+
+  // Carregamento sob demanda para a aba de Comentários (Cache e trava contra cliques rápidos)
+  useEffect(() => {
+    if (
+      !profile?.userId ||
+      !profile.canViewComments ||
+      activeSpace !== "comments" ||
+      commentsLoaded ||
+      commentsFetchingRef.current
+    ) {
+      return;
+    }
+
+    let active = true;
+    commentsFetchingRef.current = true;
+    setCommentsLoading(true);
+
+    void getPublicCommentsFn({
+      data: {
+        userId: profile.userId,
+        page: 1,
+        limit: 15,
+      },
+    })
+      .then((res) => {
+        if (!active) return;
+        setComments(res.items);
+        setCommentsTotal(res.total);
+        setCommentsPage(res.page);
+        setCommentsTotalPages(res.totalPages);
+        setCommentsLoaded(true);
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar comentários públicos:", err);
+      })
+      .finally(() => {
+        commentsFetchingRef.current = false;
+        if (active) setCommentsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    profile?.userId,
+    profile?.canViewComments,
+    activeSpace,
+    commentsLoaded,
+    getPublicCommentsFn,
+  ]);
+
+  // Carregamento sob demanda para a aba de Atividades (Cache e trava contra cliques rápidos)
+  useEffect(() => {
+    if (
+      !profile?.userId ||
+      !profile.canViewHistory ||
+      activeSpace !== "activity" ||
+      activityLoaded ||
+      activityFetchingRef.current
+    ) {
+      return;
+    }
+
+    let active = true;
+    activityFetchingRef.current = true;
+    setActivityLoading(true);
+
+    void getPublicActivitiesFn({
+      data: {
+        userId: profile.userId,
+        page: 1,
+        limit: 15,
+      },
+    })
+      .then((act) => {
+        if (!active) return;
+        setActivities(act.items);
+        setActivityTotal(act.total);
+        setActivityPage(act.page);
+        setActivityTotalPages(act.totalPages);
+        setActivityLoaded(true);
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar atividades públicas:", err);
+      })
+      .finally(() => {
+        activityFetchingRef.current = false;
+        if (active) setActivityLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    profile?.userId,
+    profile?.canViewHistory,
+    activeSpace,
+    activityLoaded,
+    getPublicActivitiesFn,
+  ]);
 
   const handleFollowToggle = async () => {
     if (!profile || followLoading) return;
@@ -558,66 +735,72 @@ function PublicProfile() {
 
   if (studioParam) {
     return (
-      <ProfileStudioWorksView
-        studioName={studioParam}
-        studioId={studioIdParam}
-        onClear={() => {
-          void navigate({
-            to: "/profile/$nick",
-            params: { nick },
-            search: (prev) => {
-              const next = { ...prev };
-              delete next.studio;
-              delete next.studioId;
-              return next;
-            },
-          });
-        }}
-      />
+      <Suspense fallback={<WorksViewSkeleton />}>
+        <LazyProfileStudioWorksView
+          studioName={studioParam}
+          studioId={studioIdParam}
+          onClear={() => {
+            void navigate({
+              to: "/profile/$nick",
+              params: { nick },
+              search: (prev) => {
+                const next = { ...prev };
+                delete next.studio;
+                delete next.studioId;
+                return next;
+              },
+            });
+          }}
+        />
+      </Suspense>
     );
   }
 
   if (dubladorParam) {
     return (
-      <DubladorWorksView
-        dubladorName={dubladorParam}
-        dubladorId={dubladorIdParam}
-        onClear={() => {
-          void navigate({
-            to: "/profile/$nick",
-            params: { nick },
-            search: (prev) => {
-              const next = { ...prev };
-              delete next.dublador;
-              delete next.dubladorId;
-              return next;
-            },
-          });
-        }}
-      />
+      <Suspense fallback={<WorksViewSkeleton />}>
+        <LazyDubladorWorksView
+          dubladorName={dubladorParam}
+          dubladorId={dubladorIdParam}
+          onClear={() => {
+            void navigate({
+              to: "/profile/$nick",
+              params: { nick },
+              search: (prev) => {
+                const next = { ...prev };
+                delete next.dublador;
+                delete next.dubladorId;
+                return next;
+              },
+            });
+          }}
+        />
+      </Suspense>
     );
   }
 
   if (staffParam) {
     return (
-      <StaffWorksView
-        staffName={staffParam}
-        staffId={staffIdParam}
-        onClear={() => {
-          void navigate({
-            to: "/profile/$nick",
-            params: { nick },
-            search: (prev) => {
-              const next = { ...prev };
-              delete next.staff;
-              delete next.staffId;
-              delete next.person;
-              delete next.personId;
-              return next;
-            },
-          });
-        }}
-      />
+      <Suspense fallback={<WorksViewSkeleton />}>
+        <LazyStaffWorksView
+          staffName={staffParam}
+          staffId={staffIdParam}
+          onClear={() => {
+            void navigate({
+              to: "/profile/$nick",
+              params: { nick },
+              search: (prev) => {
+                const next = { ...prev };
+                delete next.staff;
+                delete next.staffId;
+                delete next.person;
+                delete next.personId;
+                return next;
+              },
+            });
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -686,7 +869,7 @@ function PublicProfile() {
   return (
     <div className="w-full text-zinc-100 pt-1 sm:pt-3">
       <div className="mx-auto w-full max-w-6xl px-1 sm:px-2 space-y-7">
-        {/* Cabeçalho do Perfil novo: Banner, Avatar, Nome, Username, Bio, Seguidores e Ações */}
+        {/* Cabeçalho do Perfil: Banner, Avatar, Nome, Username, Bio, Seguidores e Ações */}
         <ProfileIdentityHeader
           name={displayName}
           nick={userNick}
@@ -769,7 +952,7 @@ function PublicProfile() {
               type="button"
               onClick={handleToggleBlock}
               disabled={blockLoading}
-              className="rounded-xl bg-violet-600 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white transition hover:bg-violet-500"
+              className="rounded-xl bg-violet-600 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white transition hover:bg-violet-500 cursor-pointer"
             >
               Desbloquear Usuário
             </button>
@@ -778,7 +961,7 @@ function PublicProfile() {
 
         {!isBlockedByTarget && !isBlockedByMe && (
           <>
-            {/* Navegação Horizontal do Perfil novo */}
+            {/* Navegação Horizontal do Perfil */}
             <ProfileNavRail
               activeSpace={activeSpace}
               onChangeSpace={setActiveSpace}
@@ -792,7 +975,7 @@ function PublicProfile() {
 
             {/* Conteúdo da Aba Ativa */}
             <section aria-label="Conteúdo da Aba Ativa" className="relative z-10">
-              {/* Se o perfil for privado e o usuário não seguir */}
+              {/* Se o perfil for privado e o visitante não seguir */}
               {!profile.canViewContent ? (
                 <div className="flex flex-col items-center justify-center rounded-3xl border border-white/[0.08] bg-[#0c0b14]/70 p-12 text-center backdrop-blur-xl">
                   <div className="flex size-16 items-center justify-center rounded-2xl bg-white/[0.05] ring-1 ring-white/10 mb-4">
@@ -833,33 +1016,39 @@ function PublicProfile() {
 
                   {/* Aba 2: Comentários */}
                   {activeSpace === "comments" && (
-                    <ProfileCommentsSpace
-                      comments={comments}
-                      total={commentsTotal}
-                      page={commentsPage}
-                      totalPages={commentsTotalPages}
-                      onPageChange={(p) => void handleCommentsPageChange(p)}
-                      isOwner={false}
-                      loading={commentsLoading}
-                    />
+                    <Suspense fallback={<CommentsSpaceSkeleton />}>
+                      <LazyProfileCommentsSpace
+                        comments={comments}
+                        total={commentsTotal}
+                        page={commentsPage}
+                        totalPages={commentsTotalPages}
+                        onPageChange={(p) => void handleCommentsPageChange(p)}
+                        isOwner={false}
+                        loading={commentsLoading}
+                      />
+                    </Suspense>
                   )}
 
                   {/* Aba 3: Sobre */}
                   {activeSpace === "about" && (
-                    <ProfileAboutSpace favorites={userFavoritesList} />
+                    <Suspense fallback={<AboutSpaceSkeleton />}>
+                      <LazyProfileAboutSpace favorites={userFavoritesList} />
+                    </Suspense>
                   )}
 
                   {/* Aba 4: Atividades */}
                   {activeSpace === "activity" && (
-                    <ProfileHistorySpace
-                      items={activities}
-                      total={activityTotal}
-                      page={activityPage}
-                      totalPages={activityTotalPages}
-                      onPageChange={(p) => void handleActivityPageChange(p)}
-                      isOwner={false}
-                      loading={activityLoading}
-                    />
+                    <Suspense fallback={<HistorySpaceSkeleton />}>
+                      <LazyProfileHistorySpace
+                        items={activities}
+                        total={activityTotal}
+                        page={activityPage}
+                        totalPages={activityTotalPages}
+                        onPageChange={(p) => void handleActivityPageChange(p)}
+                        isOwner={false}
+                        loading={activityLoading}
+                      />
+                    </Suspense>
                   )}
                 </>
               )}
@@ -869,20 +1058,24 @@ function PublicProfile() {
       </div>
 
       {/* Modal de Conexões */}
-      <ProfileConnectionsModal
-        isOpen={connectionsOpen}
-        activeTab={connectionsTab}
-        onTabChange={handleConnectionsTabChange}
-        followers={followersList}
-        following={followingList}
-        followersCount={followersCount}
-        followingCount={followingCount}
-        loading={connectionsLoading}
-        onClose={() => setConnectionsOpen(false)}
-        onFollowBack={handleFollowBack}
-        currentUserId={currentUser?.id ?? null}
-        profileOwnerId={profile?.userId ?? null}
-      />
+      {connectionsOpen && (
+        <Suspense fallback={null}>
+          <LazyProfileConnectionsModal
+            isOpen={connectionsOpen}
+            activeTab={connectionsTab}
+            onTabChange={handleConnectionsTabChange}
+            followers={followersList}
+            following={followingList}
+            followersCount={followersCount}
+            followingCount={followingCount}
+            loading={connectionsLoading}
+            onClose={() => setConnectionsOpen(false)}
+            onFollowBack={handleFollowBack}
+            currentUserId={currentUser?.id ?? null}
+            profileOwnerId={profile?.userId ?? null}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
