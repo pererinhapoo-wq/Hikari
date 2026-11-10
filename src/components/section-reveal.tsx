@@ -71,14 +71,10 @@ export function SectionReveal({
       ref={ref}
       style={revealed ? undefined : { minHeight }}
       className={`
-        transition-all
-        duration-500
-        ease-[cubic-bezier(0.16,1,0.3,1)]
-        ${
-          revealed
-            ? "opacity-100 translate-y-0"
-            : "opacity-0 translate-y-3 will-change-[opacity,transform]"
-        }
+        transition-opacity
+        duration-300
+        motion-reduce:transition-none
+        ${revealed ? "opacity-100" : "opacity-0"}
         ${className}
       `}
     >
