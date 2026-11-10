@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
 import {
   blockUser,
@@ -123,6 +124,7 @@ function PublicProfile() {
   const { nick } = Route.useParams();
   const navigate = useNavigate();
   const search = Route.useSearch();
+  const { user: currentUser } = useCurrentUserState();
 
   const studioParam =
     search.studio ||
@@ -428,6 +430,11 @@ function PublicProfile() {
       const res = await followUserFn({ data: { targetUserId } });
       if (res.status === "following") {
         setFollowersList((prev) =>
+          prev.map((p) =>
+            p.userId === targetUserId ? { ...p, isFollowing: true } : p,
+          ),
+        );
+        setFollowingList((prev) =>
           prev.map((p) =>
             p.userId === targetUserId ? { ...p, isFollowing: true } : p,
           ),
@@ -873,6 +880,8 @@ function PublicProfile() {
         loading={connectionsLoading}
         onClose={() => setConnectionsOpen(false)}
         onFollowBack={handleFollowBack}
+        currentUserId={currentUser?.id ?? null}
+        profileOwnerId={profile?.userId ?? null}
       />
     </div>
   );

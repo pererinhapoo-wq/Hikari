@@ -143,6 +143,8 @@ export type ProfileUser = {
   image: string | null;
   isFollowing: boolean;
   isVerified?: boolean;
+  followsViewer?: boolean;
+  followsOpenProfile?: boolean;
 };
 
 export type MyProfileComment = {
@@ -873,6 +875,8 @@ export const getProfileFollowers =
           image: row.image,
           isFollowing: Boolean(row.isFollowing),
           isVerified: Boolean(row.isVerified),
+          followsOpenProfile: true,
+          followsViewer: true,
         });
       }
 
@@ -906,6 +910,7 @@ export const getProfileFollowing =
           image: string | null;
           isFollowing: boolean;
           isVerified: boolean;
+          followsViewer: boolean;
         }>`
           select
             u."id" as "userId",
@@ -913,12 +918,13 @@ export const getProfileFollowing =
             coalesce(p."displayName", u."name", 'Usuário') as "name",
             coalesce(p."avatarUrl", u."image") as "image",
             coalesce(p."isVerified", false) as "isVerified",
+            true as "isFollowing",
             exists (
               select 1
               from "user_follow" f
-              where f."followerId" = ${currentUserId}
-                and f."followingId" = u."id"
-            ) as "isFollowing"
+              where f."followerId" = u."id"
+                and f."followingId" = ${currentUserId}
+            ) as "followsViewer"
           from "user_follow" uf
 
           inner join "user" u
@@ -946,8 +952,10 @@ export const getProfileFollowing =
             row.name ||
             "Usuário",
           image: row.image,
-          isFollowing: Boolean(row.isFollowing),
+          isFollowing: true,
           isVerified: Boolean(row.isVerified),
+          followsOpenProfile: Boolean(row.followsViewer),
+          followsViewer: Boolean(row.followsViewer),
         });
       }
 
@@ -1504,6 +1512,7 @@ export async function executeGetPublicProfileFollowers(
     image: string | null;
     isFollowing: boolean;
     isVerified: boolean;
+    followsViewer: boolean;
   }>`
     select
       u."id" as "userId",
@@ -1516,7 +1525,13 @@ export async function executeGetPublicProfileFollowers(
         from "user_follow" f
         where f."followerId" = ${viewerUserId}
           and f."followingId" = u."id"
-      ) as "isFollowing"
+      ) as "isFollowing",
+      exists (
+        select 1
+        from "user_follow" f
+        where f."followerId" = u."id"
+          and f."followingId" = ${viewerUserId}
+      ) as "followsViewer"
     from "user_follow" uf
     inner join "user" u on u."id" = uf."followerId"
     left join "profile" p on p."userId" = u."id"
@@ -1531,6 +1546,8 @@ export async function executeGetPublicProfileFollowers(
     image: r.image,
     isFollowing: Boolean(r.isFollowing),
     isVerified: Boolean(r.isVerified),
+    followsOpenProfile: true,
+    followsViewer: Boolean(r.followsViewer),
   }));
 }
 
@@ -1566,6 +1583,8 @@ export async function executeGetPublicProfileFollowing(
     image: string | null;
     isFollowing: boolean;
     isVerified: boolean;
+    followsOpenProfile: boolean;
+    followsViewer: boolean;
   }>`
     select
       u."id" as "userId",
@@ -1578,7 +1597,19 @@ export async function executeGetPublicProfileFollowing(
         from "user_follow" f
         where f."followerId" = ${viewerUserId}
           and f."followingId" = u."id"
-      ) as "isFollowing"
+      ) as "isFollowing",
+      exists (
+        select 1
+        from "user_follow" f
+        where f."followerId" = u."id"
+          and f."followingId" = ${targetUserId}
+      ) as "followsOpenProfile",
+      exists (
+        select 1
+        from "user_follow" f
+        where f."followerId" = u."id"
+          and f."followingId" = ${viewerUserId}
+      ) as "followsViewer"
     from "user_follow" uf
     inner join "user" u on u."id" = uf."followingId"
     left join "profile" p on p."userId" = u."id"
@@ -1593,6 +1624,8 @@ export async function executeGetPublicProfileFollowing(
     image: r.image,
     isFollowing: Boolean(r.isFollowing),
     isVerified: Boolean(r.isVerified),
+    followsOpenProfile: Boolean(r.followsOpenProfile),
+    followsViewer: Boolean(r.followsViewer),
   }));
 }
 

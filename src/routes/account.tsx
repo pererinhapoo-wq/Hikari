@@ -603,6 +603,11 @@ function AccountProfile() {
             p.userId === targetUserId ? { ...p, isFollowing: true } : p,
           ),
         );
+        setFollowingList((prev) =>
+          prev.map((p) =>
+            p.userId === targetUserId ? { ...p, isFollowing: true } : p,
+          ),
+        );
         setProfile((prev) =>
           prev ? { ...prev, followingCount: prev.followingCount + 1 } : prev,
         );
@@ -976,6 +981,8 @@ function AccountProfile() {
         onAcceptRequest={handleAcceptRequest}
         onRejectRequest={handleRejectRequest}
         onFollowBack={handleFollowBack}
+        currentUserId={user?.id ?? null}
+        profileOwnerId={profile?.userId || user?.id || null}
       />
 
       {/* Modal de Configurações de Privacidade do Perfil */}

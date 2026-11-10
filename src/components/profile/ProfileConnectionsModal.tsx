@@ -26,6 +26,8 @@ interface ProfileConnectionsModalProps {
   onAcceptRequest?: (requesterId: string) => Promise<void>;
   onRejectRequest?: (requesterId: string) => Promise<void>;
   onFollowBack?: (userId: string) => Promise<void>;
+  currentUserId?: string | null;
+  profileOwnerId?: string | null;
 }
 
 export function ProfileConnectionsModal({
@@ -43,6 +45,8 @@ export function ProfileConnectionsModal({
   onAcceptRequest,
   onRejectRequest,
   onFollowBack,
+  currentUserId,
+  profileOwnerId,
 }: ProfileConnectionsModalProps) {
   const [followingActionId, setFollowingActionId] = useState<string | null>(null);
 
@@ -315,25 +319,63 @@ export function ProfileConnectionsModal({
                   </Link>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    {/* Opção Seguir de volta na lista de Seguidores */}
-                    {activeTab === "followers" && onFollowBack && (
-                      person.isFollowing ? (
-                        <span className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
-                          Seguindo
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={followingActionId === person.userId}
-                          onClick={() => void handleFollowBack(person.userId)}
-                          className="flex items-center gap-1.5 rounded-xl border border-violet-500/40 bg-violet-600/20 px-3 py-1.5 text-[11px] font-semibold text-violet-300 transition-all hover:bg-violet-600 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
-                          title="Seguir este membro de volta"
-                        >
-                          <UserPlus className="size-3.5" />
-                          <span>{followingActionId === person.userId ? "Seguindo..." : "Seguir de volta"}</span>
-                        </button>
-                      )
-                    )}
+                    {/* Relacionamento: Seguindo / Seguir de volta */}
+                    {(() => {
+                      // 1. Não mostrar botão de seguir para a própria conta
+                      if (currentUserId && person.userId === currentUserId) {
+                        return null;
+                      }
+
+                      // 2. Mostrar "Seguindo" quando o usuário que está visualizando já segue a pessoa exibida
+                      if (person.isFollowing) {
+                        return (
+                          <span className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
+                            Seguindo
+                          </span>
+                        );
+                      }
+
+                      // 3. Mostrar "Seguir de volta" somente quando:
+                      // - a pessoa exibida segue o perfil aberto
+                      // - o usuário que está visualizando ainda não segue essa pessoa
+                      // - existe o relacionamento que justifica essa ação (o perfil aberto é do próprio usuário visualizando, ou a pessoa segue o usuário visualizando)
+                      const isViewerTheProfileOwner = Boolean(
+                        currentUserId && profileOwnerId && currentUserId === profileOwnerId
+                      );
+                      const personFollowsOpenProfile =
+                        activeTab === "followers" || Boolean(person.followsOpenProfile);
+                      const personFollowsViewer =
+                        isViewerTheProfileOwner || Boolean(person.followsViewer);
+
+                      const canFollowBack =
+                        Boolean(currentUserId) &&
+                        !person.isFollowing &&
+                        personFollowsOpenProfile &&
+                        personFollowsViewer &&
+                        Boolean(onFollowBack);
+
+                      if (canFollowBack) {
+                        return (
+                          <button
+                            type="button"
+                            disabled={followingActionId === person.userId}
+                            onClick={() => void handleFollowBack(person.userId)}
+                            className="flex items-center gap-1.5 rounded-xl border border-violet-500/40 bg-violet-600/20 px-3 py-1.5 text-[11px] font-semibold text-violet-300 transition-all hover:bg-violet-600 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
+                            title="Seguir este membro de volta"
+                          >
+                            <UserPlus className="size-3.5" />
+                            <span>
+                              {followingActionId === person.userId
+                                ? "Seguindo..."
+                                : "Seguir de volta"}
+                            </span>
+                          </button>
+                        );
+                      }
+
+                      // Não exibir "Seguir de volta" quando não existir o relacionamento que justifica essa ação
+                      return null;
+                    })()}
 
                     <Link
                       to="/profile/$nick"
