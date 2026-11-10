@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   BadgeCheck,
@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import type { FollowRequestItem, ProfileUser } from "@/lib/profile.functions";
+import { useScrollLock } from "@/lib/scroll-lock";
 
 interface ProfileConnectionsModalProps {
   isOpen: boolean;
@@ -48,38 +49,8 @@ export function ProfileConnectionsModal({
   currentUserId,
   profileOwnerId,
 }: ProfileConnectionsModalProps) {
+  useScrollLock(isOpen);
   const [followingActionId, setFollowingActionId] = useState<string | null>(null);
-
-  // Correção de rolagem: travar a página de fundo sem deixá-la rolar ou mudar de posição
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // Salvar posição original de rolagem
-    const scrollY = window.scrollY;
-    const originalStyles = {
-      position: document.body.style.position,
-      top: document.body.style.top,
-      width: document.body.style.width,
-      overflow: document.body.style.overflow,
-    };
-
-    // Fixar o body na posição exata para impedir qualquer movimento no fundo (mobile e desktop)
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      // Restaurar estilos originais do body
-      document.body.style.position = originalStyles.position;
-      document.body.style.top = originalStyles.top;
-      document.body.style.width = originalStyles.width;
-      document.body.style.overflow = originalStyles.overflow;
-
-      // Restaurar exatamente a posição de rolagem original
-      window.scrollTo(0, scrollY);
-    };
-  }, [isOpen]);
 
   if (!isOpen) return null;
 

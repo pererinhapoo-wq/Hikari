@@ -19,6 +19,7 @@ import {
   SearchCategorySelector,
   type SearchCategory,
 } from "@/components/search/SearchCategorySelector";
+import { useScrollLock } from "@/lib/scroll-lock";
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export function SearchModal({
   onClose,
   initialCategory = "animes",
 }: SearchModalProps) {
+  useScrollLock(isOpen);
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const savedScrollYRef = useRef<number>(0);

@@ -41,6 +41,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getProfile } from "@/lib/profile.functions";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { cn } from "@/lib/utils";
+import { useScrollLock } from "@/lib/scroll-lock";
 
 /* ========================================================= */
 /* TIPO DO COMENTÁRIO                                        */
@@ -807,33 +808,7 @@ export function EpisodeCommentsSection({
   const activeReportingComment = reportModal.item;
   const activeSpamComment = spamModal.item;
 
-  useEffect(() => {
-    if (!isAnyModalOpen) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    const previousPaddingRight = document.body.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.paddingRight = previousPaddingRight;
-    };
-  }, [isAnyModalOpen]);
-
-  // Garante a restauração da rolagem caso o componente seja desmontado
-  useEffect(() => {
-    return () => {
-      document.body.style.overflow = "";
-      document.body.style.paddingRight = "";
-    };
-  }, []);
+  useScrollLock(isAnyModalOpen);
 
   const handleCancelEdit = () => {
     if (!editSaving) {

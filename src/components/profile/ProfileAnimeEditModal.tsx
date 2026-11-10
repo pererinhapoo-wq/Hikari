@@ -13,6 +13,7 @@ import type {
   TrackingStatus,
   UserAnimeTrackingItem,
 } from "@/types/profile-tracking";
+import { useScrollLock } from "@/lib/scroll-lock";
 
 interface ProfileAnimeEditModalProps {
   isOpen: boolean;
@@ -121,24 +122,7 @@ export function ProfileAnimeEditModal({
     }
   }, [item]);
 
-  // Bloqueio de rolagem do fundo (background scroll lock)
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const previousPaddingRight = document.body.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.paddingRight = previousPaddingRight;
-    };
-  }, [isOpen]);
+  useScrollLock(isOpen);
 
   // Fechar no Escape
   useEffect(() => {

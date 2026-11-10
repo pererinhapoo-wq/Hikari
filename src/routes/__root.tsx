@@ -96,6 +96,13 @@ export const Route = createRootRoute({
         href: "/assets/fonts/playfair-display-latin.woff2",
         crossOrigin: "anonymous",
       },
+      {
+        rel: "preload",
+        as: "font",
+        type: "font/woff2",
+        href: "/assets/fonts/noto-serif-jp-latin.woff2",
+        crossOrigin: "anonymous",
+      },
     ],
 
     scripts: [
@@ -111,29 +118,27 @@ export const Route = createRootRoute({
     <html
       lang="pt-BR"
       className="antialiased"
+      style={{ backgroundColor: "#08070d", color: "#f4f4f1" }}
       suppressHydrationWarning
     >
       <head>
-        <HeadContent />
-
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function () {
                 function applyTheme() {
                   try {
-                    var theme =
-                      localStorage.getItem("hikari-theme");
-
+                    var theme = localStorage.getItem("hikari-theme");
                     if (theme === "Claro") {
-                      document.documentElement.setAttribute(
-                        "data-theme",
-                        "light"
-                      );
+                      document.documentElement.setAttribute("data-theme", "light");
+                      document.documentElement.style.backgroundColor = "#f7f7f5";
+                      document.documentElement.style.color = "#171717";
+                      document.documentElement.style.colorScheme = "light";
                     } else {
-                      document.documentElement.removeAttribute(
-                        "data-theme"
-                      );
+                      document.documentElement.removeAttribute("data-theme");
+                      document.documentElement.style.backgroundColor = "#08070d";
+                      document.documentElement.style.color = "#f4f4f1";
+                      document.documentElement.style.colorScheme = "dark";
                     }
                   } catch (e) {}
                 }
@@ -150,9 +155,11 @@ export const Route = createRootRoute({
             `,
           }}
         />
+
+        <HeadContent />
       </head>
 
-      <body>
+      <body style={{ backgroundColor: "inherit", color: "inherit" }}>
         <PreviewHostBridge />
 
         <AuthProvider>

@@ -11,6 +11,7 @@ import {
   Bookmark,
 } from "lucide-react";
 import type { TrackingStatus } from "@/types/profile-tracking";
+import { useScrollLock } from "@/lib/scroll-lock";
 
 export const TRACKING_STATUS_CONFIG: Record<
   TrackingStatus,
@@ -129,6 +130,7 @@ export function AnimeCollectionModal({
   onSave,
   onRemove,
 }: AnimeCollectionModalProps) {
+  useScrollLock(isOpen);
   const [selectedStatus, setSelectedStatus] = useState<TrackingStatus>(
     initialStatus ?? "watching",
   );

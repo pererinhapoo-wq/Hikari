@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { useScrollLock } from "@/lib/scroll-lock";
 
 interface ProfileEditModalProps {
   isOpen: boolean;
@@ -133,6 +134,7 @@ export function ProfileEditModal({
   onClose,
   onSave,
 }: ProfileEditModalProps) {
+  useScrollLock(isOpen);
   // Estados dos campos
   const [name, setName] = useState(initialName);
   const [nick, setNick] = useState(initialNick);

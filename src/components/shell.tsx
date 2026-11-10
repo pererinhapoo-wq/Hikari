@@ -37,6 +37,7 @@ import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { useScrollLock } from "@/lib/scroll-lock";
 import {
   memo,
   useCallback,
@@ -278,27 +279,9 @@ export function Shell() {
   }, [notificationsOpen]);
 
   /* =========================================================
-
-
-  /* =========================================================
      TRAVA ROLAGEM DO FUNDO AO ABRIR O MENU LATERAL
   ========================================================== */
-
-  useEffect(() => {
-    if (!menuOpen) {
-      return;
-    }
-
-    const previousOverflow =
-      document.body.style.overflow;
-
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow =
-        previousOverflow;
-    };
-  }, [menuOpen]);
+  useScrollLock(menuOpen);
 
 
 

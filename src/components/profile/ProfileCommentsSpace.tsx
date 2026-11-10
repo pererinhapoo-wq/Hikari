@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import type { MyProfileComment } from "@/lib/profile.functions";
+import { useScrollLock } from "@/lib/scroll-lock";
 
 interface ProfileCommentsSpaceProps {
   comments: MyProfileComment[];
@@ -52,6 +53,7 @@ export function ProfileCommentsSpace({
   // Estado para exclusão
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  useScrollLock(Boolean(deletingCommentId));
 
   const formatRelativeDate = (isoString: string): string => {
     const d = new Date(isoString);

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useState } from "react";
+import { useScrollLock } from "@/lib/scroll-lock";
 import {
   getMyBlockedUsers,
   unblockUser,
@@ -73,6 +74,7 @@ export function ProfilePrivacyModal({
   onClose,
   onSave,
 }: ProfilePrivacyModalProps) {
+  useScrollLock(isOpen);
   const getMyBlockedUsersFn = useServerFn(getMyBlockedUsers);
   const unblockUserFn = useServerFn(unblockUser);
 

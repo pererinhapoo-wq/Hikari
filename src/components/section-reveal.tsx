@@ -55,60 +55,9 @@ export function SectionReveal({
       },
     );
 
-    const checkOrObserve = () => {
-      if (unmounted || !node) return;
-      observer.observe(node);
-    };
-
-    // Se o usuário já tiver rolagem ativa (ex.: restauração de histórico ou reload no meio da página)
-    if (window.scrollY > 0) {
-      checkOrObserve();
-    } else {
-      // No topo exato da página (scrollY === 0), prioriza somente Banner e Episódios de Hoje na abertura.
-      // Observa assim que o usuário iniciar rolagem/interação ou em momento ocioso do navegador.
-      let idleTimer: ReturnType<typeof setTimeout> | null = null;
-      let idleCallbackId: number | null = null;
-
-      const triggerObserve = () => {
-        cleanup();
-        checkOrObserve();
-      };
-
-      const cleanup = () => {
-        if (idleTimer) {
-          clearTimeout(idleTimer);
-          idleTimer = null;
-        }
-        if (idleCallbackId !== null && typeof cancelIdleCallback === "function") {
-          cancelIdleCallback(idleCallbackId);
-          idleCallbackId = null;
-        }
-        window.removeEventListener("scroll", triggerObserve);
-        window.removeEventListener("wheel", triggerObserve);
-        window.removeEventListener("touchmove", triggerObserve);
-        window.removeEventListener("keydown", triggerObserve);
-        window.removeEventListener("pointerdown", triggerObserve);
-      };
-
-      if (typeof requestIdleCallback === "function") {
-        idleCallbackId = requestIdleCallback(triggerObserve, { timeout: 2500 });
-      } else {
-        idleTimer = setTimeout(triggerObserve, 2500);
-      }
-
-      window.addEventListener("scroll", triggerObserve, { passive: true });
-      window.addEventListener("wheel", triggerObserve, { passive: true });
-      window.addEventListener("touchmove", triggerObserve, { passive: true });
-      window.addEventListener("keydown", triggerObserve, { passive: true });
-      window.addEventListener("pointerdown", triggerObserve, { passive: true });
-
-      return () => {
-        unmounted = true;
-        if (timer) clearTimeout(timer);
-        cleanup();
-        observer.disconnect();
-      };
-    }
+    // Observa o elemento imediatamente para que conteúdos na viewport inicial apareçam sem atraso,
+    // enquanto seções abaixo da dobra permanecem com lazy loading progressivo via rootMargin.
+    observer.observe(node);
 
     return () => {
       unmounted = true;

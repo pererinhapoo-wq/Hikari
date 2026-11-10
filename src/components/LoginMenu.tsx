@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { AlertCircle, LogIn, X } from "lucide-react";
 import { authEnabled, signIn } from "@/lib/auth/client";
 import { Logo } from "@/components/logo";
+import { useScrollLock } from "@/lib/scroll-lock";
 
 interface LoginMenuProps {
   isOpen?: boolean;
@@ -17,6 +18,7 @@ export function LoginMenu({
   callbackURL = "/",
   isModal = true,
 }: LoginMenuProps) {
+  useScrollLock(Boolean(isModal && isOpen));
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<{
     type: "info" | "error" | "warning";

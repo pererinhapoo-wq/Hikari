@@ -94,6 +94,7 @@ const CommentsSection = lazy(() =>
   })),
 );
 import { SectionReveal } from "@/components/section-reveal";
+import { useScrollLock } from "@/lib/scroll-lock";
 import { warmBannerImage } from "@/lib/anime-banner-warmup";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import {
@@ -2394,6 +2395,7 @@ function AuthPromptModal({
   isOpen: boolean;
   onClose: () => void;
 }) {
+  useScrollLock(isOpen);
   const navigate = useNavigate();
   if (!isOpen) return null;
 
@@ -3511,12 +3513,10 @@ const ImagensSection = memo(function ImagensSection({
     });
   }, []);
 
+  useScrollLock(Boolean(selectedImage));
+
   useEffect(() => {
     if (!selectedImage) return;
-
-    // Preserva o scroll original da página sem saltos
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
 
     // Suporte ao botão voltar nativo do celular
     window.history.pushState({ hikariGalleryModal: true }, "");
@@ -3535,7 +3535,6 @@ const ImagensSection = memo(function ImagensSection({
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = prevOverflow;
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("keydown", handleKeyDown);
     };
@@ -4097,7 +4096,7 @@ const DubladoresSection = memo(function DubladoresSection({
                 key={item.id}
                 item={item}
                 loadImage={index < visibleImgLimit}
-                isSelected={expandedEntity?.name === item.vaName}
+                isSelected={false}
                 onSelect={() => {
                   void navigate({
                     to: "/anime/$id",
@@ -4409,9 +4408,9 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
             key={`${item.role}-${item.name}-${index}`}
             item={item}
             loadImage={index < visibleImgLimit}
-            isSelected={expandedEntity?.name === item.name}
+            isSelected={false}
             onSelect={() => {
-              if (item.isStudio) {
+              if ("isStudio" in item && Boolean((item as { isStudio?: boolean }).isStudio)) {
                 void navigate({
                   to: "/anime/$id",
                   params: { id: animeId },

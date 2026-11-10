@@ -337,10 +337,7 @@ export function TodayEpisodesSection({
             <AnimeCard
               key={anime.id}
               anime={anime}
-              priority={
-                index < (visibleImgLimit >= 4 ? 4 : 3) &&
-                index < visibleImgLimit
-              }
+              priority={false}
               showBookmark={false}
               showGenre={false}
               loadImage={index < visibleImgLimit}
