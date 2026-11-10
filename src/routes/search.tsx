@@ -932,8 +932,23 @@ function SearchPage() {
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
             <input
               type="search"
+              enterKeyHint="go"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const q = draft.trim();
+                  void navigate({
+                    search: {
+                      ...search,
+                      q: q || undefined,
+                      page: 1,
+                    },
+                    replace: true,
+                  });
+                }
+              }}
               placeholder={
                 activeTab === "animes"
                   ? "Buscar animes por título em português, inglês ou japonês…"

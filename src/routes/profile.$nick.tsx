@@ -24,6 +24,7 @@ import {
   unfollowUser,
   getPublicProfileFollowers,
   getPublicProfileFollowing,
+  setUserVerification,
   type PublicProfileComment,
   type UserActivityItem,
   type ProfileUser,
@@ -174,6 +175,7 @@ function PublicProfile() {
   const cancelFollowRequestFn = useServerFn(cancelFollowRequest);
   const blockUserFn = useServerFn(blockUser);
   const unblockUserFn = useServerFn(unblockUser);
+  const setUserVerificationFn = useServerFn(setUserVerification);
 
   const [profile, setProfile] = useState<
     Awaited<ReturnType<typeof getPublicProfileFn>> | null
@@ -392,6 +394,51 @@ function PublicProfile() {
       toast.error(err instanceof Error ? err.message : "Não foi possível alterar o bloqueio.");
     } finally {
       setBlockLoading(false);
+    }
+  };
+
+  const handleToggleVerification = async () => {
+    if (!profile) return;
+    const newVerified = !profile.isVerified;
+    try {
+      await setUserVerificationFn({
+        data: {
+          targetUserId: profile.userId,
+          isVerified: newVerified,
+        },
+      });
+      setProfile((prev) => (prev ? { ...prev, isVerified: newVerified } : prev));
+      toast.success(
+        newVerified
+          ? `Selo de verificado concedido a @${profile.nick}.`
+          : `Selo de verificado removido de @${profile.nick}.`,
+      );
+    } catch (err) {
+      console.error("Erro ao alterar verificação:", err);
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível alterar o selo de verificação.",
+      );
+    }
+  };
+
+  const handleFollowBack = async (targetUserId: string) => {
+    try {
+      const res = await followUserFn({ data: { targetUserId } });
+      if (res.status === "following") {
+        setFollowersList((prev) =>
+          prev.map((p) =>
+            p.userId === targetUserId ? { ...p, isFollowing: true } : p,
+          ),
+        );
+        toast.success("Você agora está seguindo este usuário.");
+      } else if (res.status === "requested") {
+        toast.info("Solicitação para seguir enviada.");
+      }
+    } catch (err) {
+      console.error("Erro ao seguir de volta:", err);
+      toast.error("Não foi possível seguir o usuário.");
     }
   };
 
@@ -641,6 +688,9 @@ function PublicProfile() {
           bannerUrl={profile.bannerUrl || null}
           accountType={profile.accountType}
           isOwner={false}
+          isVerified={Boolean(profile.isVerified)}
+          canManageVerification={Boolean(profile.canManageVerification)}
+          onToggleVerification={handleToggleVerification}
           followersCount={followersCount}
           followingCount={followingCount}
           commentCount={commentsTotal}
@@ -822,6 +872,7 @@ function PublicProfile() {
         followingCount={followingCount}
         loading={connectionsLoading}
         onClose={() => setConnectionsOpen(false)}
+        onFollowBack={handleFollowBack}
       />
     </div>
   );

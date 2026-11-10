@@ -273,79 +273,35 @@ export function ProfilePrivacyModal({
           onSubmit={handleSubmit}
           className="flex-1 min-h-0 overflow-y-auto px-3.5 py-3.5 sm:px-6 sm:py-5 pb-8 sm:pb-6 space-y-4 sm:space-y-6 text-sm overscroll-contain"
         >
-          {/* 1. Visibilidade Geral da Conta */}
-          <section className="space-y-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-violet-300">
-                  Visibilidade da Conta
-                </span>
-                <h3 className="font-semibold text-white">
-                  Conta Privada vs Pública
-                </h3>
+          {/* 1. Visibilidade Geral da Conta: Somente Perfil Privado */}
+          <section className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+            <div className="space-y-0.5 pr-4">
+              <div className="flex items-center gap-2">
+                <Lock className="size-4 text-violet-400" />
+                <h4 className="font-semibold text-white text-xs sm:text-sm">
+                  Perfil privado
+                </h4>
               </div>
+              <p className="text-xs text-zinc-400">
+                Quando ativado, suas listas, favoritos, comentários e histórico ficam protegidos contra visitantes e somente seguidores aprovados podem vê-los.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={accountType === "private"}
+              onClick={() => setAccountType(accountType === "private" ? "public" : "private")}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                accountType === "private" ? "bg-violet-600" : "bg-white/10"
+              }`}
+            >
               <span
-                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  accountType === "private"
-                    ? "border border-amber-500/30 bg-amber-500/15 text-amber-300"
-                    : "border border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                className={`pointer-events-none inline-block size-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  accountType === "private" ? "translate-x-5" : "translate-x-0"
                 }`}
-              >
-                {accountType === "private" ? "Conta Privada" : "Conta Pública"}
-              </span>
-            </div>
-
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Quando a conta é privada, seu perfil básico é exibido, mas suas
-              listas, favoritos, comentários e histórico ficam protegidos contra
-              visitantes e somente seguidores aprovados podem vê-los.
-            </p>
-
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setAccountType("public")}
-                className={`flex items-center gap-2 rounded-xl border p-3 text-left transition-all ${
-                  accountType === "public"
-                    ? "border-emerald-500/50 bg-emerald-500/10 text-white shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-                    : "border-white/10 bg-white/[0.02] text-zinc-400 hover:border-white/20 hover:text-white"
-                }`}
-              >
-                <Globe
-                  className={`size-4 ${
-                    accountType === "public" ? "text-emerald-400" : "text-zinc-500"
-                  }`}
-                />
-                <div>
-                  <div className="font-semibold text-xs">Pública</div>
-                  <div className="text-[11px] text-zinc-400">
-                    Acesso normal ao perfil
-                  </div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAccountType("private")}
-                className={`flex items-center gap-2 rounded-xl border p-3 text-left transition-all ${
-                  accountType === "private"
-                    ? "border-violet-500/60 bg-violet-600/20 text-white shadow-[0_0_15px_rgba(168,85,247,0.2)]"
-                    : "border-white/10 bg-white/[0.02] text-zinc-400 hover:border-white/20 hover:text-white"
-                }`}
-              >
-                <Lock
-                  className={`size-4 ${
-                    accountType === "private" ? "text-violet-400" : "text-zinc-500"
-                  }`}
-                />
-                <div>
-                  <div className="font-semibold text-xs">Privada</div>
-                  <div className="text-[11px] text-zinc-400">
-                    Apenas seguidores aprovados
-                  </div>
-                </div>
-              </button>
-            </div>
+              />
+            </button>
           </section>
 
           {/* 2. Permissão de Novos Seguidores */}

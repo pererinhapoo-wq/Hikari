@@ -48,6 +48,7 @@ export type UserProfile = {
   privacyHistory: SectionPrivacyLevel;
   privacyComments: SectionPrivacyLevel;
   privacyFollowers: SectionPrivacyLevel;
+  isVerified?: boolean;
 };
 
 export type FollowRelationshipStatus =
@@ -131,6 +132,8 @@ export type PublicUserProfile = {
   canViewHistory: boolean;
   canViewComments: boolean;
   canViewFollowers: boolean;
+  isVerified: boolean;
+  canManageVerification?: boolean;
 };
 
 export type ProfileUser = {
@@ -139,6 +142,7 @@ export type ProfileUser = {
   name: string;
   image: string | null;
   isFollowing: boolean;
+  isVerified?: boolean;
 };
 
 export type MyProfileComment = {
@@ -452,6 +456,7 @@ export const getProfile =
         privacyHistory: string | null;
         privacyComments: string | null;
         privacyFollowers: string | null;
+        isVerified: boolean | null;
       }>`
         select
           "nick",
@@ -466,7 +471,8 @@ export const getProfile =
           "privacyFavorites",
           "privacyHistory",
           "privacyComments",
-          "privacyFollowers"
+          "privacyFollowers",
+          coalesce("isVerified", false) as "isVerified"
         from "profile"
         where "userId" =
           ${context.userId}
@@ -537,6 +543,7 @@ export const getProfile =
           privacyHistory: string | null;
           privacyComments: string | null;
           privacyFollowers: string | null;
+          isVerified: boolean | null;
         }>`
           select
             "nick",
@@ -551,7 +558,8 @@ export const getProfile =
             "privacyFavorites",
             "privacyHistory",
             "privacyComments",
-            "privacyFollowers"
+            "privacyFollowers",
+            coalesce("isVerified", false) as "isVerified"
           from "profile"
           where "userId" = ${context.userId}
           limit 1
@@ -586,6 +594,7 @@ export const getProfile =
         privacyHistory: (row?.privacyHistory as SectionPrivacyLevel) || "public",
         privacyComments: (row?.privacyComments as SectionPrivacyLevel) || "public",
         privacyFollowers: (row?.privacyFollowers as SectionPrivacyLevel) || "public",
+        isVerified: Boolean(row?.isVerified),
       } satisfies UserProfile;
     });
 
@@ -612,6 +621,7 @@ export async function executeGetPublicProfile(
     bio: string | null;
     image: string | null;
     bannerUrl: string | null;
+    isVerified: boolean | null;
   }>`
     select
       u."id" as "userId",
@@ -621,7 +631,8 @@ export async function executeGetPublicProfile(
       p."nick",
       p."bio",
       coalesce(p."avatarUrl", u."image") as "image",
-      p."bannerUrl"
+      p."bannerUrl",
+      coalesce(p."isVerified", false) as "isVerified"
     from "user" u
     left join "profile" p on p."userId" = u."id"
     where (p."nick" is not null and lower(trim(p."nick")) = lower(${nick}))
@@ -734,6 +745,18 @@ export async function executeGetPublicProfile(
     relationStatus = "requested";
   }
 
+  let canManageVerification = false;
+  if (viewerUserId) {
+    const vRows = await sql<{ nick: string | null }>`
+      select p."nick"
+      from "profile" p
+      where p."userId" = ${viewerUserId}
+      limit 1
+    `;
+    const vNick = (vRows[0]?.nick || "").trim().toLowerCase();
+    canManageVerification = vNick === "pererinha";
+  }
+
   return {
     userId: row.userId,
     name: row.name || row.nick || "Usuário",
@@ -764,6 +787,8 @@ export async function executeGetPublicProfile(
     canViewHistory: privacy.canViewHistory,
     canViewComments: privacy.canViewComments,
     canViewFollowers: privacy.canViewFollowers,
+    isVerified: Boolean(row.isVerified),
+    canManageVerification,
   };
 }
 
@@ -805,12 +830,14 @@ export const getProfileFollowers =
           name: string | null;
           image: string | null;
           isFollowing: boolean;
+          isVerified: boolean;
         }>`
           select
             u."id" as "userId",
             coalesce(p."nick", u."id") as "nick",
             coalesce(p."displayName", u."name", 'Usuário') as "name",
             coalesce(p."avatarUrl", u."image") as "image",
+            coalesce(p."isVerified", false) as "isVerified",
             exists (
               select 1
               from "user_follow" f
@@ -845,6 +872,7 @@ export const getProfileFollowers =
             "Usuário",
           image: row.image,
           isFollowing: Boolean(row.isFollowing),
+          isVerified: Boolean(row.isVerified),
         });
       }
 
@@ -877,12 +905,14 @@ export const getProfileFollowing =
           name: string | null;
           image: string | null;
           isFollowing: boolean;
+          isVerified: boolean;
         }>`
           select
             u."id" as "userId",
             coalesce(p."nick", u."id") as "nick",
             coalesce(p."displayName", u."name", 'Usuário') as "name",
             coalesce(p."avatarUrl", u."image") as "image",
+            coalesce(p."isVerified", false) as "isVerified",
             exists (
               select 1
               from "user_follow" f
@@ -917,6 +947,7 @@ export const getProfileFollowing =
             "Usuário",
           image: row.image,
           isFollowing: Boolean(row.isFollowing),
+          isVerified: Boolean(row.isVerified),
         });
       }
 
@@ -1472,12 +1503,14 @@ export async function executeGetPublicProfileFollowers(
     name: string | null;
     image: string | null;
     isFollowing: boolean;
+    isVerified: boolean;
   }>`
     select
       u."id" as "userId",
       coalesce(p."nick", u."id") as "nick",
       coalesce(p."displayName", u."name", 'Usuário') as "name",
       coalesce(p."avatarUrl", u."image") as "image",
+      coalesce(p."isVerified", false) as "isVerified",
       exists (
         select 1
         from "user_follow" f
@@ -1497,6 +1530,7 @@ export async function executeGetPublicProfileFollowers(
     name: r.name ?? "Usuário",
     image: r.image,
     isFollowing: Boolean(r.isFollowing),
+    isVerified: Boolean(r.isVerified),
   }));
 }
 
@@ -1531,12 +1565,14 @@ export async function executeGetPublicProfileFollowing(
     name: string | null;
     image: string | null;
     isFollowing: boolean;
+    isVerified: boolean;
   }>`
     select
       u."id" as "userId",
       coalesce(p."nick", u."id") as "nick",
       coalesce(p."displayName", u."name", 'Usuário') as "name",
       coalesce(p."avatarUrl", u."image") as "image",
+      coalesce(p."isVerified", false) as "isVerified",
       exists (
         select 1
         from "user_follow" f
@@ -1556,6 +1592,7 @@ export async function executeGetPublicProfileFollowing(
     name: r.name ?? "Usuário",
     image: r.image,
     isFollowing: Boolean(r.isFollowing),
+    isVerified: Boolean(r.isVerified),
   }));
 }
 
@@ -2780,6 +2817,7 @@ export interface SearchUserItem {
   accountType: AccountType;
   isFollowing: boolean;
   isOwner: boolean;
+  isVerified?: boolean;
 }
 
 export const searchUsersSchema = z.object({
@@ -2822,6 +2860,7 @@ export async function executeSearchUsers(
         accountType: string;
         isFollowing: boolean;
         isOwner: boolean;
+        isVerified: boolean;
       }>`
         select
           u."id" as "userId",
@@ -2829,6 +2868,7 @@ export async function executeSearchUsers(
           coalesce(p."displayName", u."name", p."nick", 'Usuário') as "displayName",
           coalesce(p."avatarUrl", u."image") as "avatarUrl",
           coalesce(p."accountType", 'public') as "accountType",
+          coalesce(p."isVerified", false) as "isVerified",
           exists (
             select 1 from "user_follow" f
             where f."followerId" = ${viewerUserId}
@@ -2866,6 +2906,7 @@ export async function executeSearchUsers(
         accountType: string;
         isFollowing: boolean;
         isOwner: boolean;
+        isVerified: boolean;
       }>`
         select
           u."id" as "userId",
@@ -2873,6 +2914,7 @@ export async function executeSearchUsers(
           coalesce(p."displayName", u."name", p."nick", 'Usuário') as "displayName",
           coalesce(p."avatarUrl", u."image") as "avatarUrl",
           coalesce(p."accountType", 'public') as "accountType",
+          coalesce(p."isVerified", false) as "isVerified",
           false as "isFollowing",
           false as "isOwner"
         from "user" u
@@ -2902,6 +2944,7 @@ export async function executeSearchUsers(
     accountType: (r.accountType === "private" ? "private" : "public") as AccountType,
     isFollowing: Boolean(r.isFollowing),
     isOwner: Boolean(r.isOwner),
+    isVerified: Boolean(r.isVerified),
   }));
 }
 
@@ -2920,6 +2963,58 @@ export const searchUsers = createServerFn({
     const sql = await getSql();
     const viewerUserId = context?.userId ?? null;
     return executeSearchUsers(sql, viewerUserId, data);
+  });
+
+/* ============================================================ */
+/* GESTÃO DE SELO DE VERIFICAÇÃO (EXCLUSIVO @pererinha)         */
+/* ============================================================ */
+
+export const setUserVerification = createServerFn({
+  method: "POST",
+})
+  .middleware([authMiddleware])
+  .validator((d: { targetUserId: string; isVerified: boolean }) =>
+    z
+      .object({
+        targetUserId: z.string().trim().min(1, "ID do usuário é obrigatório"),
+        isVerified: z.boolean(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ context, data }) => {
+    const viewerUserId = context.userId;
+    const sql = await getSql();
+
+    // 1. Autorização estrita no servidor: apenas @pererinha pode conceder/remover o selo
+    const viewerRows = await sql<{ nick: string | null }>`
+      select p."nick"
+      from "profile" p
+      where p."userId" = ${viewerUserId}
+      limit 1
+    `;
+    const viewerNick = (viewerRows[0]?.nick || "").trim().toLowerCase();
+    if (viewerNick !== "pererinha") {
+      throw new Error(
+        "Apenas o usuário @pererinha tem permissão para alterar selos de verificação.",
+      );
+    }
+
+    const { targetUserId, isVerified } = data;
+
+    // 2. Atualizar selo no perfil do usuário alvo
+    await sql`
+      update "profile"
+      set
+        "isVerified" = ${isVerified},
+        "updatedAt" = current_timestamp
+      where "userId" = ${targetUserId}
+    `;
+
+    return {
+      success: true,
+      targetUserId,
+      isVerified,
+    };
   });
 
 

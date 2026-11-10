@@ -1,7 +1,10 @@
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
+  BadgeCheck,
   Check,
   Clock,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
@@ -22,6 +25,7 @@ interface ProfileConnectionsModalProps {
   onClose: () => void;
   onAcceptRequest?: (requesterId: string) => Promise<void>;
   onRejectRequest?: (requesterId: string) => Promise<void>;
+  onFollowBack?: (userId: string) => Promise<void>;
 }
 
 export function ProfileConnectionsModal({
@@ -38,8 +42,52 @@ export function ProfileConnectionsModal({
   onClose,
   onAcceptRequest,
   onRejectRequest,
+  onFollowBack,
 }: ProfileConnectionsModalProps) {
+  const [followingActionId, setFollowingActionId] = useState<string | null>(null);
+
+  // Correção de rolagem: travar a página de fundo sem deixá-la rolar ou mudar de posição
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Salvar posição original de rolagem
+    const scrollY = window.scrollY;
+    const originalStyles = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+      overflow: document.body.style.overflow,
+    };
+
+    // Fixar o body na posição exata para impedir qualquer movimento no fundo (mobile e desktop)
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      // Restaurar estilos originais do body
+      document.body.style.position = originalStyles.position;
+      document.body.style.top = originalStyles.top;
+      document.body.style.width = originalStyles.width;
+      document.body.style.overflow = originalStyles.overflow;
+
+      // Restaurar exatamente a posição de rolagem original
+      window.scrollTo(0, scrollY);
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const handleFollowBack = async (userId: string) => {
+    if (!onFollowBack || followingActionId) return;
+    setFollowingActionId(userId);
+    try {
+      await onFollowBack(userId);
+    } finally {
+      setFollowingActionId(null);
+    }
+  };
 
   return (
     <div
@@ -63,7 +111,7 @@ export function ProfileConnectionsModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-8 items-center justify-center rounded-xl text-zinc-400 hover:bg-white/10 hover:text-white transition-colors"
+            className="flex size-8 items-center justify-center rounded-xl text-zinc-400 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
             aria-label="Fechar janela"
           >
             <X className="size-4" />
@@ -75,7 +123,7 @@ export function ProfileConnectionsModal({
           <button
             type="button"
             onClick={() => onTabChange("followers")}
-            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all ${
+            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer ${
               activeTab === "followers"
                 ? "bg-violet-600 text-white shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -90,7 +138,7 @@ export function ProfileConnectionsModal({
           <button
             type="button"
             onClick={() => onTabChange("following")}
-            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all ${
+            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer ${
               activeTab === "following"
                 ? "bg-violet-600 text-white shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
@@ -106,7 +154,7 @@ export function ProfileConnectionsModal({
             <button
               type="button"
               onClick={() => onTabChange("requests")}
-              className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all ${
+              className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === "requests"
                   ? "bg-violet-600 text-white shadow-sm"
                   : "text-amber-400 hover:text-amber-300"
@@ -120,7 +168,7 @@ export function ProfileConnectionsModal({
           )}
         </div>
 
-        {/* Lista de Membros / Solicitações com Rolagem */}
+        {/* Lista de Membros / Solicitações com Rolagem interna preservada */}
         <div className="mt-4 min-h-[220px] flex-1 overflow-y-auto no-scrollbar space-y-2.5 pr-1">
           {loading ? (
             <div className="space-y-2.5">
@@ -186,7 +234,7 @@ export function ProfileConnectionsModal({
                         <button
                           type="button"
                           onClick={() => void onAcceptRequest(req.requesterId)}
-                          className="flex size-8 items-center justify-center rounded-xl bg-violet-600 text-white transition hover:bg-violet-500 shadow-sm"
+                          className="flex size-8 items-center justify-center rounded-xl bg-violet-600 text-white transition hover:bg-violet-500 shadow-sm cursor-pointer"
                           title="Aceitar solicitação"
                         >
                           <Check className="size-4" />
@@ -197,7 +245,7 @@ export function ProfileConnectionsModal({
                         <button
                           type="button"
                           onClick={() => void onRejectRequest(req.requesterId)}
-                          className="flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-zinc-400 transition hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/30"
+                          className="flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-zinc-400 transition hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/30 cursor-pointer"
                           title="Recusar solicitação"
                         >
                           <X className="size-4" />
@@ -252,23 +300,50 @@ export function ProfileConnectionsModal({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs sm:text-sm font-semibold text-zinc-100 transition-colors group-hover:text-violet-300">
-                        {person.name || person.nick}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate text-xs sm:text-sm font-semibold text-zinc-100 transition-colors group-hover:text-violet-300">
+                          {person.name || person.nick}
+                        </p>
+                        {person.isVerified && (
+                          <BadgeCheck className="size-3.5 text-violet-400 shrink-0 fill-violet-500/20" />
+                        )}
+                      </div>
                       <p className="truncate text-[11px] text-zinc-500">
                         @{person.nick}
                       </p>
                     </div>
                   </Link>
 
-                  <Link
-                    to="/profile/$nick"
-                    params={{ nick: person.nick }}
-                    onClick={onClose}
-                    className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
-                  >
-                    Ver perfil
-                  </Link>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Opção Seguir de volta na lista de Seguidores */}
+                    {activeTab === "followers" && onFollowBack && (
+                      person.isFollowing ? (
+                        <span className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
+                          Seguindo
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={followingActionId === person.userId}
+                          onClick={() => void handleFollowBack(person.userId)}
+                          className="flex items-center gap-1.5 rounded-xl border border-violet-500/40 bg-violet-600/20 px-3 py-1.5 text-[11px] font-semibold text-violet-300 transition-all hover:bg-violet-600 hover:text-white disabled:opacity-50 cursor-pointer shadow-sm"
+                          title="Seguir este membro de volta"
+                        >
+                          <UserPlus className="size-3.5" />
+                          <span>{followingActionId === person.userId ? "Seguindo..." : "Seguir de volta"}</span>
+                        </button>
+                      )
+                    )}
+
+                    <Link
+                      to="/profile/$nick"
+                      params={{ nick: person.nick }}
+                      onClick={onClose}
+                      className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
+                    >
+                      Ver perfil
+                    </Link>
+                  </div>
                 </div>
               );
             })

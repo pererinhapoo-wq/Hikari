@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Clapperboard,
   Film,
@@ -31,6 +31,7 @@ export function SearchModal({
   onClose,
   initialCategory = "animes",
 }: SearchModalProps) {
+  const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const savedScrollYRef = useRef<number>(0);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
@@ -351,9 +352,37 @@ export function SearchModal({
             <input
               ref={inputRef}
               type="text"
-              enterKeyHint="search"
+              enterKeyHint="go"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const clean = query.trim();
+                  if (!clean) return;
+                  if (category === "animes") {
+                    onClose();
+                    void navigate({
+                      to: "/search",
+                      search: { q: clean },
+                    });
+                  } else if (category === "users") {
+                    if (userResults.length > 0) {
+                      onClose();
+                      void navigate({
+                        to: "/profile/$nick",
+                        params: { nick: userResults[0].nick },
+                      });
+                    } else {
+                      onClose();
+                      void navigate({
+                        to: "/search",
+                        search: { q: clean, tab: "users" },
+                      });
+                    }
+                  }
+                }
+              }}
               placeholder={
                 isAnimes
                   ? "Buscar animes, filmes, títulos..."

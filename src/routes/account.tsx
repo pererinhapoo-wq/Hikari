@@ -13,6 +13,7 @@ import {
   getProfileFollowers,
   getProfileFollowing,
   updateProfile,
+  followUser,
   type MyProfileComment,
   type UserActivityItem,
   type ProfileUser,
@@ -202,6 +203,7 @@ function AccountProfile() {
   // Server Functions
   const getProfileFn = useServerFn(getProfile);
   const updateProfileFn = useServerFn(updateProfile);
+  const followUserFn = useServerFn(followUser);
   const getFollowersFn = useServerFn(getProfileFollowers);
   const getFollowingFn = useServerFn(getProfileFollowing);
   const getRequestsFn = useServerFn(getReceivedFollowRequests);
@@ -559,6 +561,28 @@ function AccountProfile() {
     }
   };
 
+  const handleFollowBack = async (targetUserId: string) => {
+    try {
+      const res = await followUserFn({ data: { targetUserId } });
+      if (res.status === "following") {
+        setFollowersList((prev) =>
+          prev.map((p) =>
+            p.userId === targetUserId ? { ...p, isFollowing: true } : p,
+          ),
+        );
+        setProfile((prev) =>
+          prev ? { ...prev, followingCount: prev.followingCount + 1 } : prev,
+        );
+        toast.success("Você agora está seguindo este usuário.");
+      } else if (res.status === "requested") {
+        toast.info("Solicitação para seguir enviada.");
+      }
+    } catch (err) {
+      console.error("Erro ao seguir de volta:", err);
+      toast.error("Não foi possível seguir o usuário.");
+    }
+  };
+
   // Salvar perfil editado
   const handleSaveProfile = async (data: {
     name: string;
@@ -788,6 +812,7 @@ function AccountProfile() {
           image={userImage}
           bannerUrl={profile?.bannerUrl || null}
           accountType={profile?.accountType}
+          isVerified={Boolean(profile?.isVerified)}
           followersCount={followersCount}
           followingCount={followingCount}
           requestsCount={requestsList.length}
@@ -917,6 +942,7 @@ function AccountProfile() {
         onClose={() => setConnectionsModalOpen(false)}
         onAcceptRequest={handleAcceptRequest}
         onRejectRequest={handleRejectRequest}
+        onFollowBack={handleFollowBack}
       />
 
       {/* Modal de Configurações de Privacidade do Perfil */}

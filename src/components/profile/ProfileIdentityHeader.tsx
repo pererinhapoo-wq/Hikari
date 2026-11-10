@@ -7,7 +7,6 @@ import {
   MoreHorizontal,
   Pencil,
   Shield,
-  Sparkles,
   Trash2,
   Users,
   UserX,
@@ -37,6 +36,9 @@ interface ProfileIdentityHeaderProps {
   onOpenFollowers: () => void;
   onOpenFollowing: () => void;
   onOpenRequests?: () => void;
+  isVerified?: boolean;
+  canManageVerification?: boolean;
+  onToggleVerification?: () => void;
 }
 
 export function ProfileIdentityHeader({
@@ -60,6 +62,9 @@ export function ProfileIdentityHeader({
   onOpenFollowers,
   onOpenFollowing,
   onOpenRequests,
+  isVerified = false,
+  canManageVerification = false,
+  onToggleVerification,
 }: ProfileIdentityHeaderProps) {
   const displayHandle = nick ? `@${nick}` : "@hikari_membro";
   const initial = (nick || name || "U").charAt(0).toUpperCase();
@@ -158,28 +163,19 @@ export function ProfileIdentityHeader({
             </>
           )}
 
-          <button
-            type="button"
-            onClick={onOpenPrivacy}
-            className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium backdrop-blur-md shadow-md transition-all ${
-              accountType === "private"
-                ? "border-amber-500/30 bg-black/60 text-amber-300 hover:border-amber-500/50 hover:bg-black/80"
-                : "border-emerald-500/30 bg-black/60 text-emerald-300 hover:border-emerald-500/50 hover:bg-black/80"
-            } ${onOpenPrivacy ? "cursor-pointer" : "cursor-default"}`}
-            title={onOpenPrivacy ? "Clique para gerenciar a privacidade do seu perfil" : undefined}
-          >
-            {accountType === "private" ? (
-              <>
-                <Lock className="size-3 text-amber-400" />
-                <span>Perfil Privado</span>
-              </>
-            ) : (
-              <>
-                <Shield className="size-3 text-emerald-400" />
-                <span>Perfil Público</span>
-              </>
-            )}
-          </button>
+          {accountType === "private" && (
+            <button
+              type="button"
+              onClick={onOpenPrivacy}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium backdrop-blur-md shadow-md transition-all border-amber-500/30 bg-black/60 text-amber-300 hover:border-amber-500/50 hover:bg-black/80 ${
+                onOpenPrivacy ? "cursor-pointer" : "cursor-default"
+              }`}
+              title={onOpenPrivacy ? "Clique para gerenciar a privacidade do seu perfil" : undefined}
+            >
+              <Lock className="size-3 text-amber-400" />
+              <span>Perfil Privado</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -295,6 +291,22 @@ export function ProfileIdentityHeader({
                       </button>
                     )}
 
+                    {/* Conceder / Remover Verificação (exclusivo conta pererinha para terceiros) */}
+                    {canManageVerification && !isOwner && onToggleVerification && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          onToggleVerification();
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-violet-300 hover:bg-violet-500/10 hover:text-white transition-colors text-left cursor-pointer"
+                      >
+                        <BadgeCheck className="size-4 text-violet-400 shrink-0" />
+                        <span>{isVerified ? "Remover Selo de Verificado" : "Conceder Selo de Verificado"}</span>
+                      </button>
+                    )}
+
                     {/* Bloquear / Desbloquear Usuário (quando não é dono) */}
                     {!isOwner && onBlockAction && (
                       <button
@@ -325,16 +337,23 @@ export function ProfileIdentityHeader({
               {name || nick || "Membro do Hikari"}
             </h1>
 
-            {nick && (
+            {isVerified && (
               <span title="Perfil Verificado">
                 <BadgeCheck className="size-5 sm:size-5.5 text-violet-400 fill-violet-500/20" />
               </span>
             )}
 
-            <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-violet-300">
-              <Sparkles className="size-3" />
-              <span>Hikari Persona</span>
-            </span>
+            {canManageVerification && !isOwner && onToggleVerification && (
+              <button
+                type="button"
+                onClick={onToggleVerification}
+                className="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-violet-300 hover:bg-violet-500/30 transition-all cursor-pointer"
+                title={isVerified ? "Remover selo de verificado" : "Conceder selo de verificado"}
+              >
+                <BadgeCheck className="size-3 text-violet-400" />
+                <span>{isVerified ? "Remover Verificado" : "Verificar"}</span>
+              </button>
+            )}
           </div>
 
           {/* Username (@handle) isolado abaixo do nome */}
