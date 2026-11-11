@@ -618,8 +618,8 @@ function AnimePage() {
   const watchedEpisodes = useHikariStore(
     (s) =>
       user
-        ? (s.watchedEpisodes[id] ?? EMPTY_WATCHED_EPISODES)
-        : EMPTY_WATCHED_EPISODES,
+        ? (s.userWatchedEpisodes?.[user.id]?.[id] ?? s.watchedEpisodes[id] ?? EMPTY_WATCHED_EPISODES)
+        : (s.anonymousWatchedEpisodes?.[id] ?? s.watchedEpisodes[id] ?? EMPTY_WATCHED_EPISODES),
   );
 
   const baseAnime = useMemo(

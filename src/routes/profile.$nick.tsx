@@ -443,7 +443,7 @@ function PublicProfile() {
             },
           })
             .then((favs) => {
-              if (active) setFavoritesGrouped(favs);
+              if (active) setFavoritesGrouped(favs.grouped);
             })
             .catch((err) => {
               console.warn("Erro ao buscar favoritos públicos:", err);
@@ -979,10 +979,10 @@ function PublicProfile() {
           studioName={studioParam}
           studioId={studioIdParam}
           onClear={() => {
-            void navigate({
+            void (navigate as any)({
               to: "/profile/$nick",
               params: { nick },
-              search: (prev) => {
+              search: (prev: any) => {
                 const next = { ...prev };
                 delete next.studio;
                 delete next.studioId;
@@ -1002,10 +1002,10 @@ function PublicProfile() {
           dubladorName={dubladorParam}
           dubladorId={dubladorIdParam}
           onClear={() => {
-            void navigate({
+            void (navigate as any)({
               to: "/profile/$nick",
               params: { nick },
-              search: (prev) => {
+              search: (prev: any) => {
                 const next = { ...prev };
                 delete next.dublador;
                 delete next.dubladorId;
@@ -1025,10 +1025,10 @@ function PublicProfile() {
           staffName={staffParam}
           staffId={staffIdParam}
           onClear={() => {
-            void navigate({
+            void (navigate as any)({
               to: "/profile/$nick",
               params: { nick },
-              search: (prev) => {
+              search: (prev: any) => {
                 const next = { ...prev };
                 delete next.staff;
                 delete next.staffId;

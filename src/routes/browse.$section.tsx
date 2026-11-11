@@ -557,10 +557,10 @@ function BrowsePage() {
         const entry = entries[0];
         if (entry?.isIntersecting && !isNavigatingRef.current && hasNextPage) {
           isNavigatingRef.current = true;
-          void navigate({
-            search: (prev) => ({
+          void (navigate as any)({
+            search: (prev: any) => ({
               ...prev,
-              page: (prev.page ?? 1) + 1,
+              page: (prev?.page ?? 1) + 1,
             }),
             replace: true,
           });

@@ -46,6 +46,8 @@ import { Route as AdultNewsRouteImport } from './routes/adult_.news'
 import { Route as AnimeIdRouteImport } from './routes/anime.$id'
 import { Route as ApiCommentsRouteImport } from './routes/api/comments'
 import { Route as ApiNotificationsRouteImport } from './routes/api/notifications'
+import { Route as ApiUploadCommentImageRouteImport } from './routes/api/upload-comment-image'
+import { Route as ApiUploadImageRouteImport } from './routes/api/upload-image'
 import { Route as BrowseSectionRouteImport } from './routes/browse.$section'
 import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
@@ -55,6 +57,7 @@ import { Route as ApiAdminCatalogAnimeRouteImport } from './routes/api/admin/cat
 import { Route as ApiAdminCatalogEpisodeRouteImport } from './routes/api/admin/catalog-episode'
 import { Route as ApiAdminCatalogImportRouteImport } from './routes/api/admin/catalog-import'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
+import { Route as ApiAdminUploadThumbnailRouteImport } from './routes/api/admin/upload-thumbnail'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCommentsEditRouteImport } from './routes/api/comments.edit'
 import { Route as ApiCommentsLikeRouteImport } from './routes/api/comments.like'
@@ -247,6 +250,16 @@ const ApiNotificationsRoute = ApiNotificationsRouteImport.update({
   path: '/api/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiUploadCommentImageRoute = ApiUploadCommentImageRouteImport.update({
+  id: '/api/upload-comment-image',
+  path: '/api/upload-comment-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiUploadImageRoute = ApiUploadImageRouteImport.update({
+  id: '/api/upload-image',
+  path: '/api/upload-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrowseSectionRoute = BrowseSectionRouteImport.update({
   id: '/browse/$section',
   path: '/browse/$section',
@@ -290,6 +303,11 @@ const ApiAdminCatalogImportRoute = ApiAdminCatalogImportRouteImport.update({
 const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
   id: '/api/admin/comment-reports',
   path: '/api/admin/comment-reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminUploadThumbnailRoute = ApiAdminUploadThumbnailRouteImport.update({
+  id: '/api/admin/upload-thumbnail',
+  path: '/api/admin/upload-thumbnail',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -359,6 +377,8 @@ export interface FileRoutesByFullPath {
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
   '/api/notifications': typeof ApiNotificationsRoute
+  '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
+  '/api/upload-image': typeof ApiUploadImageRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -370,6 +390,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
@@ -411,6 +432,8 @@ export interface FileRoutesByTo {
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
   '/api/notifications': typeof ApiNotificationsRoute
+  '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
+  '/api/upload-image': typeof ApiUploadImageRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news/$id': typeof NewsIdRoute
   '/news/search': typeof NewsSearchRoute
@@ -422,6 +445,7 @@ export interface FileRoutesByTo {
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
@@ -466,6 +490,8 @@ export interface FileRoutesById {
   '/anime/$id': typeof AnimeIdRoute
   '/api/comments': typeof ApiCommentsRouteWithChildren
   '/api/notifications': typeof ApiNotificationsRoute
+  '/api/upload-comment-image': typeof ApiUploadCommentImageRoute
+  '/api/upload-image': typeof ApiUploadImageRoute
   '/browse/$section': typeof BrowseSectionRoute
   '/news_/$id': typeof NewsIdRoute
   '/news_/search': typeof NewsSearchRoute
@@ -477,6 +503,7 @@ export interface FileRoutesById {
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
+  '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
   '/api/comments/like': typeof ApiCommentsLikeRoute
@@ -522,6 +549,8 @@ export interface FileRouteTypes {
     | '/anime/$id'
     | '/api/comments'
     | '/api/notifications'
+    | '/api/upload-comment-image'
+    | '/api/upload-image'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -533,6 +562,7 @@ export interface FileRouteTypes {
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
     | '/api/admin/comment-reports'
+    | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
     | '/api/comments/edit'
     | '/api/comments/like'
@@ -574,6 +604,8 @@ export interface FileRouteTypes {
     | '/anime/$id'
     | '/api/comments'
     | '/api/notifications'
+    | '/api/upload-comment-image'
+    | '/api/upload-image'
     | '/browse/$section'
     | '/news/$id'
     | '/news/search'
@@ -585,6 +617,7 @@ export interface FileRouteTypes {
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
     | '/api/admin/comment-reports'
+    | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
     | '/api/comments/edit'
     | '/api/comments/like'
@@ -628,6 +661,8 @@ export interface FileRouteTypes {
     | '/anime/$id'
     | '/api/comments'
     | '/api/notifications'
+    | '/api/upload-comment-image'
+    | '/api/upload-image'
     | '/browse/$section'
     | '/news_/$id'
     | '/news_/search'
@@ -639,6 +674,7 @@ export interface FileRouteTypes {
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
     | '/api/admin/comment-reports'
+    | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
     | '/api/comments/edit'
     | '/api/comments/like'
@@ -677,6 +713,8 @@ export interface RootRouteChildren {
   AnimeIdRoute: typeof AnimeIdRoute
   ApiCommentsRoute: typeof ApiCommentsRouteWithChildren
   ApiNotificationsRoute: typeof ApiNotificationsRoute
+  ApiUploadCommentImageRoute: typeof ApiUploadCommentImageRoute
+  ApiUploadImageRoute: typeof ApiUploadImageRoute
   BrowseSectionRoute: typeof BrowseSectionRoute
   NewsIdRoute: typeof NewsIdRoute
   NewsSearchRoute: typeof NewsSearchRoute
@@ -686,6 +724,7 @@ export interface RootRouteChildren {
   ApiAdminCatalogEpisodeRoute: typeof ApiAdminCatalogEpisodeRoute
   ApiAdminCatalogImportRoute: typeof ApiAdminCatalogImportRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
+  ApiAdminUploadThumbnailRoute: typeof ApiAdminUploadThumbnailRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
   WatchIdEpRoute: typeof WatchIdEpRoute
@@ -952,6 +991,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiNotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/upload-comment-image': {
+      id: '/api/upload-comment-image'
+      path: '/api/upload-comment-image'
+      fullPath: '/api/upload-comment-image'
+      preLoaderRoute: typeof ApiUploadCommentImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/upload-image': {
+      id: '/api/upload-image'
+      path: '/api/upload-image'
+      fullPath: '/api/upload-image'
+      preLoaderRoute: typeof ApiUploadImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/browse/$section': {
       id: '/browse/$section'
       path: '/browse/$section'
@@ -1013,6 +1066,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/comment-reports'
       fullPath: '/api/admin/comment-reports'
       preLoaderRoute: typeof ApiAdminCommentReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/upload-thumbnail': {
+      id: '/api/admin/upload-thumbnail'
+      path: '/api/admin/upload-thumbnail'
+      fullPath: '/api/admin/upload-thumbnail'
+      preLoaderRoute: typeof ApiAdminUploadThumbnailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -1138,6 +1198,8 @@ const rootRouteChildren: RootRouteChildren = {
   AnimeIdRoute: AnimeIdRoute,
   ApiCommentsRoute: ApiCommentsRouteWithChildren,
   ApiNotificationsRoute: ApiNotificationsRoute,
+  ApiUploadCommentImageRoute: ApiUploadCommentImageRoute,
+  ApiUploadImageRoute: ApiUploadImageRoute,
   BrowseSectionRoute: BrowseSectionRoute,
   NewsIdRoute: NewsIdRoute,
   NewsSearchRoute: NewsSearchRoute,
@@ -1147,6 +1209,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminCatalogEpisodeRoute: ApiAdminCatalogEpisodeRoute,
   ApiAdminCatalogImportRoute: ApiAdminCatalogImportRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
+  ApiAdminUploadThumbnailRoute: ApiAdminUploadThumbnailRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiProfileFollowRoute: ApiProfileFollowRoute,
   WatchIdEpRoute: WatchIdEpRoute,

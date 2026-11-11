@@ -34,6 +34,7 @@ const seasonImportSchema = z.object({
   id: z.string().optional().nullable(),
   number: z.number().int().min(1),
   title: z.string().max(255).optional().nullable(),
+  position: z.number().int().min(0).optional().nullable(),
   episodes: z.array(episodeImportSchema).default([]),
 });
 
@@ -172,6 +173,10 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
               // 3.2 Upsert de cada temporada em catalog_season
               for (const season of anime.seasons) {
                 const sTitle = season.title?.trim() || `Temporada ${season.number}`;
+                const sPos =
+                  season.position !== undefined && season.position !== null
+                    ? season.position
+                    : season.number - 1;
                 await sql.query(
                   `INSERT INTO "catalog_season" ("animeId", "number", "title", "position", "createdAt")
                    VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
@@ -179,7 +184,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    SET
                      "title" = COALESCE(EXCLUDED."title", "catalog_season"."title"),
                      "position" = EXCLUDED."position";`,
-                  [anime.id, season.number, sTitle, season.number - 1],
+                  [anime.id, season.number, sTitle, sPos],
                 );
                 seasonProcessedCount++;
 

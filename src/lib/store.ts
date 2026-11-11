@@ -155,7 +155,7 @@ export const useHikariStore = create<HikariState>()(
 
       setHydrated: (v) => set({ hydrated: v }),
 
-      setCurrentUserId: (userId) =>
+      setCurrentUserId: (userId) => {
         set((s) => {
           // Se estava logado antes, guarda o progresso do usuário anterior
           const prevUserWatched = s.currentUserId
@@ -199,7 +199,13 @@ export const useHikariStore = create<HikariState>()(
             userWatchedEpisodes: prevUserWatched,
             watchedEpisodes: existingUserWatched,
           };
-        }),
+        });
+
+        // Dispara sincronização autoritativa com o servidor para o usuário logado
+        if (userId && typeof window !== "undefined") {
+          void syncAuthenticatedWatchedEpisodes(userId);
+        }
+      },
 
       upsertAnime: (anime) =>
         set((s) => {
@@ -395,9 +401,20 @@ export const useHikariStore = create<HikariState>()(
         }),
 
       isEpisodeWatched: (animeId, episodeId) => {
-        // Usuários anônimos e autenticados consultam a visão ativa atual de watchedEpisodes
+        const s = get();
+        if (s.currentUserId) {
+          // Usuário autenticado: o servidor é a fonte da verdade (cache de sessão particionado por usuário)
+          const userEpisodes = s.userWatchedEpisodes?.[s.currentUserId]?.[animeId];
+          if (userEpisodes) {
+            return userEpisodes.includes(episodeId);
+          }
+          return s.watchedEpisodes[animeId]?.includes(episodeId) ?? false;
+        }
+        // Usuário anônimo: isolamento exclusivo no progresso local anônimo
         return (
-          get().watchedEpisodes[animeId]?.includes(episodeId) ?? false
+          s.anonymousWatchedEpisodes?.[animeId]?.includes(episodeId) ??
+          s.watchedEpisodes[animeId]?.includes(episodeId) ??
+          false
         );
       },
     }),
@@ -437,6 +454,65 @@ export const useHikariStore = create<HikariState>()(
     },
   ),
 );
+
+let isSyncingUserProgress = false;
+
+/**
+ * Sincroniza o progresso assistido do usuário autenticado a partir do PostgreSQL (user_watched_episode).
+ * O servidor é a fonte autoritativa de verdade para contas autenticadas.
+ */
+export async function syncAuthenticatedWatchedEpisodes(
+  userId: string,
+  animeId?: string,
+): Promise<void> {
+  if (typeof window === "undefined" || !userId) return;
+
+  try {
+    if (animeId) {
+      const { getAnimeWatchedEpisodes } = await import("@/lib/profile-playback.functions");
+      const epIds = await getAnimeWatchedEpisodes({ data: { animeId } });
+      if (useHikariStore.getState().currentUserId === userId) {
+        useHikariStore.setState((s) => {
+          const prevUserMap = s.userWatchedEpisodes?.[userId] ?? {};
+          const nextUserMap = {
+            ...prevUserMap,
+            [animeId]: epIds,
+          };
+          return {
+            watchedEpisodes: {
+              ...s.watchedEpisodes,
+              [animeId]: epIds,
+            },
+            userWatchedEpisodes: {
+              ...(s.userWatchedEpisodes ?? {}),
+              [userId]: nextUserMap,
+            },
+          };
+        });
+      }
+    } else {
+      if (isSyncingUserProgress) return;
+      isSyncingUserProgress = true;
+      try {
+        const { getUserWatchedEpisodesCatalog } = await import("@/lib/profile-playback.functions");
+        const serverCatalog = await getUserWatchedEpisodesCatalog();
+        if (useHikariStore.getState().currentUserId === userId) {
+          useHikariStore.setState((s) => ({
+            watchedEpisodes: serverCatalog,
+            userWatchedEpisodes: {
+              ...(s.userWatchedEpisodes ?? {}),
+              [userId]: serverCatalog,
+            },
+          }));
+        }
+      } finally {
+        isSyncingUserProgress = false;
+      }
+    }
+  } catch (err) {
+    console.warn("[Hikari] Falha não impeditiva ao sincronizar progresso com o servidor:", err);
+  }
+}
 
 let ensureCatalogPromise: Promise<void> | null = null;
 

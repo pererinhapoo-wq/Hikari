@@ -504,3 +504,28 @@ export async function persistEpisodeDelete(
     return { confirmed: false, queued: true };
   }
 }
+
+/**
+ * Consulta o status de um episódio na fila local do outbox:
+ * - "conflict": falhou com erro de validação ou conflito (400, 404, 409).
+ * - "pending": alteração aguardando envio na rede.
+ * - "synced": sem operações pendentes no outbox para este episódio.
+ */
+export function getEpisodeOutboxStatus(
+  animeId: string,
+  episodeId: string,
+): "synced" | "pending" | "conflict" {
+  const ops = readOutbox();
+  const op = ops.find((o) => o.episodeId === episodeId && o.animeId === animeId);
+  if (!op) return "synced";
+  return op.status === "conflict" ? "conflict" : "pending";
+}
+
+/**
+ * Descarta uma operação específica do Outbox (usado para intervenção em conflitos permanentes).
+ */
+export function dismissOutboxOperation(operationId: string): void {
+  const ops = readOutbox();
+  const filtered = ops.filter((o) => o.id !== operationId);
+  writeOutbox(filtered);
+}

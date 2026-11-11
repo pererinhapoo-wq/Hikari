@@ -18,7 +18,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
 import { FORMAT_PT, STATUS_PT, SEASON_PT } from "@/lib/labels";
-import { persistEpisode, persistEpisodeDelete } from "@/lib/episode-writer";
+import {
+  persistEpisode,
+  persistEpisodeDelete,
+  readOutbox,
+  flushOutbox,
+  type OutboxOperation,
+} from "@/lib/episode-writer";
 
 export const Route = createFileRoute("/admin/$id")({
   validateSearch: (raw: Record<string, unknown>): { importId?: string } => ({
@@ -85,6 +91,15 @@ function AdminEditor() {
   const [captureStatus, setCaptureStatus] = useState<
     Record<string, { status: "loading" | "error" | "success"; message?: string }>
   >({});
+  const [outboxOps, setOutboxOps] = useState<OutboxOperation[]>(() =>
+    typeof window !== "undefined" ? readOutbox() : [],
+  );
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOutboxOps(readOutbox());
+    }
+  }, []);
 
   async function handleCaptureEpisodeFrame(
     sid: string,
@@ -296,6 +311,10 @@ function AdminEditor() {
       }
     } catch (err) {
       console.warn("[admin] Erro ao sincronizar episódios:", err);
+    } finally {
+      if (typeof window !== "undefined") {
+        setOutboxOps(readOutbox());
+      }
     }
   }
 
@@ -679,6 +698,50 @@ function AdminEditor() {
         </div>
       </div>
 
+      {(() => {
+        const animeOutboxOps = outboxOps.filter((o) => o.animeId === form.id);
+        const conflictCount = animeOutboxOps.filter((o) => o.status === "conflict").length;
+        const pendingCount = animeOutboxOps.filter((o) => o.status !== "conflict").length;
+
+        if (animeOutboxOps.length === 0) return null;
+
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+            <div className="space-y-0.5">
+              <p className="font-semibold text-amber-300">
+                Outbox: {animeOutboxOps.length} operação(ões) pendente(s) neste anime
+              </p>
+              <p className="text-xs text-amber-200/80">
+                {conflictCount > 0
+                  ? `${conflictCount} em conflito (aguardando correção) e ${pendingCount} pendente(s) de envio.`
+                  : `${pendingCount} operação(ões) prontas para sincronização com o banco.`}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                toast.info("Sincronizando operações do outbox...");
+                const res = await flushOutbox();
+                if (typeof window !== "undefined") {
+                  setOutboxOps(readOutbox());
+                }
+                if (res.processed > 0) {
+                  toast.success(`${res.processed} operação(ões) sincronizada(s) com sucesso!`);
+                }
+                if (res.error) {
+                  toast.error(res.error);
+                }
+              }}
+              className="border-amber-500/40 text-amber-200 hover:bg-amber-500/20"
+            >
+              Sincronizar agora
+            </Button>
+          </div>
+        );
+      })()}
+
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-2xl">
@@ -746,23 +809,55 @@ function AdminEditor() {
             </div>
 
             <ul className="mt-4 space-y-3">
-              {season.episodes.map((ep) => (
-                <li
-                  key={ep.id}
-                  className="rounded-lg bg-elevated p-3"
-                >
-                  <div className="grid gap-2 sm:grid-cols-12">
-                    <Field
-                      label={
-                        <span className="flex items-center gap-1">
-                          <span>#</span>
-                          {isEpisodePublished(ep) && (
-                            <span className="size-1.5 rounded-full bg-emerald-400" title="Publicado no Hikari" />
-                          )}
-                        </span>
-                      }
-                      className="sm:col-span-1"
-                    >
+              {season.episodes.map((ep) => {
+                const outboxOp = outboxOps.find(
+                  (o) => o.episodeId === ep.id && o.animeId === form.id,
+                );
+                return (
+                  <li
+                    key={ep.id}
+                    className="rounded-lg bg-elevated p-3"
+                  >
+                    <div className="grid gap-2 sm:grid-cols-12">
+                      <Field
+                        label={
+                          <span className="flex items-center gap-1.5 flex-wrap">
+                            <span>#</span>
+                            {outboxOp ? (
+                              outboxOp.status === "conflict" ? (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-medium text-red-400"
+                                  title={outboxOp.lastError || "Conflito de integridade no servidor"}
+                                >
+                                  Conflito
+                                </span>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
+                                  title="Operação pendente na fila local do outbox"
+                                >
+                                  Pendente
+                                </span>
+                              )
+                            ) : isEpisodePublished(ep) ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400"
+                                title="Publicação confirmada e sincronizada no servidor"
+                              >
+                                Sincronizado
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-muted"
+                                title="Rascunho local (adicione um player para publicar)"
+                              >
+                                Rascunho
+                              </span>
+                            )}
+                          </span>
+                        }
+                        className="sm:col-span-1"
+                      >
                       <Input
                         type="number"
                         value={ep.number}
@@ -1140,7 +1235,8 @@ function AdminEditor() {
                     </Button>
                   </div>
                 </li>
-              ))}
+              );
+            })}
             </ul>
 
             <Button

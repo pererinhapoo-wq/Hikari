@@ -565,3 +565,68 @@ export const clearEpisodeProgress = createServerFn({
   .handler(async ({ context, data }): Promise<ClearEpisodeProgressResponse> => {
     return executeClearEpisodeProgress(context.userId, data);
   });
+
+/**
+ * 5. getUserWatchedEpisodesCatalog — Retorna todos os episódios assistidos do usuário autenticado agrupados por anime.
+ * Utilizado para hidratação e sincronização autoritativa no cliente.
+ */
+export const getUserWatchedEpisodesCatalog = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<Record<string, string[]>> => {
+    try {
+      const sql = await getSql();
+      const rows = await sql.query<{ animeId: string; episodeId: string }>(
+        `SELECT "animeId", "episodeId"
+         FROM "user_watched_episode"
+         WHERE "userId" = $1
+         ORDER BY "watchedAt" ASC;`,
+        [context.userId],
+      );
+
+      const map: Record<string, string[]> = {};
+      for (const r of rows) {
+        if (!map[r.animeId]) {
+          map[r.animeId] = [];
+        }
+        if (!map[r.animeId].includes(r.episodeId)) {
+          map[r.animeId].push(r.episodeId);
+        }
+      }
+      return map;
+    } catch (err) {
+      console.warn("[profile-playback] Falha ao consultar episódios assistidos do usuário:", err);
+      return {};
+    }
+  });
+
+/**
+ * 6. getAnimeWatchedEpisodes — Retorna a lista autoritativa de IDs de episódios assistidos para um anime específico.
+ */
+export const getAnimeWatchedEpisodes = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .validator((d: unknown): { animeId: string } => {
+    if (typeof d === "object" && d !== null && "animeId" in d && typeof (d as { animeId: unknown }).animeId === "string") {
+      return { animeId: (d as { animeId: string }).animeId };
+    }
+    throw new Error("animeId é obrigatório");
+  })
+  .handler(async ({ context, data }): Promise<string[]> => {
+    try {
+      const sql = await getSql();
+      const rows = await sql.query<{ episodeId: string }>(
+        `SELECT "episodeId"
+         FROM "user_watched_episode"
+         WHERE "userId" = $1 AND "animeId" = $2
+         ORDER BY "watchedAt" ASC;`,
+        [context.userId, data.animeId],
+      );
+      return rows.map((r) => r.episodeId);
+    } catch (err) {
+      console.warn("[profile-playback] Falha ao consultar episódios assistidos do anime:", err);
+      return [];
+    }
+  });
