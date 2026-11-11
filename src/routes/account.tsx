@@ -344,6 +344,8 @@ export const Route = createFileRoute("/account")({
   component: AccountProfile,
 });
 
+const EMPTY_FAVORITES: string[] = [];
+
 function AccountProfile() {
   const navigate = useNavigate();
   const search = Route.useSearch();
@@ -554,13 +556,34 @@ function AccountProfile() {
     [],
   );
 
+  // Callbacks estabilizados para o cabeçalho e modais do perfil
+  const handleOpenEdit = useCallback(() => {
+    setEditModalOpen(true);
+  }, []);
+
+  const handleOpenPrivacy = useCallback(() => {
+    setPrivacyModalOpen(true);
+  }, []);
+
+  const handleOpenFollowers = useCallback(() => {
+    void handleOpenConnections("followers");
+  }, [handleOpenConnections]);
+
+  const handleOpenFollowing = useCallback(() => {
+    void handleOpenConnections("following");
+  }, [handleOpenConnections]);
+
+  const handleOpenRequests = useCallback(() => {
+    void handleOpenConnections("requests");
+  }, [handleOpenConnections]);
+
   // Escuta requisição para abrir modal de edição (ex: vindo de "Configurações do Perfil" no menu da foto)
   useEffect(() => {
-    const handleOpenEdit = () => {
+    const handleOpenEditEvent = () => {
       setEditModalOpen(true);
     };
 
-    window.addEventListener("hikari:open-profile-edit", handleOpenEdit);
+    window.addEventListener("hikari:open-profile-edit", handleOpenEditEvent);
 
     try {
       if (sessionStorage.getItem("hikari:open-profile-edit-on-load") === "true") {
@@ -579,7 +602,7 @@ function AccountProfile() {
     }
 
     return () => {
-      window.removeEventListener("hikari:open-profile-edit", handleOpenEdit);
+      window.removeEventListener("hikari:open-profile-edit", handleOpenEditEvent);
     };
   }, []);
 
@@ -976,59 +999,79 @@ function AccountProfile() {
   };
 
   // Salvar perfil editado
-  const handleSaveProfile = async (data: {
-    name: string;
-    nick: string;
-    bio: string;
-    image: string | null;
-    bannerUrl: string | null;
-    favorites: string[];
-  }) => {
-    const updated = await updateProfileFn({
-      data: {
-        name: data.name,
-        nick: data.nick,
-        bio: data.bio,
-        image: data.image,
-        bannerUrl: data.bannerUrl,
-        favorites: data.favorites,
-      },
-    });
+  const handleSaveProfile = useCallback(
+    async (data: {
+      name: string;
+      nick: string;
+      bio: string;
+      image: string | null;
+      bannerUrl: string | null;
+      favorites: string[];
+    }) => {
+      const updated = await updateProfileFn({
+        data: {
+          name: data.name,
+          nick: data.nick,
+          bio: data.bio,
+          image: data.image,
+          bannerUrl: data.bannerUrl,
+          favorites: data.favorites,
+        },
+      });
 
-    setProfile((prev) =>
-      prev
-        ? {
-            ...prev,
-            name: updated.name || prev.name,
-            nick: updated.nick,
-            bio: updated.bio,
-            image: updated.image !== undefined ? updated.image : prev.image,
-            bannerUrl:
-              updated.bannerUrl !== undefined
-                ? updated.bannerUrl
-                : prev.bannerUrl,
-            favorites: updated.favorites,
-          }
-        : {
-            ...updated,
-            name: updated.name || user?.displayName || "",
-            email: user?.primaryEmail || "",
-            image: updated.image ?? user?.profileImageUrl ?? null,
-            bannerUrl: updated.bannerUrl ?? null,
-          },
-    );
-
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("hikari:profile-updated", {
-          detail: {
-            image: updated.image !== undefined ? updated.image : null,
-            nick: updated.nick,
-          },
-        }),
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: updated.name || prev.name,
+              nick: updated.nick,
+              bio: updated.bio,
+              image: updated.image !== undefined ? updated.image : prev.image,
+              bannerUrl:
+                updated.bannerUrl !== undefined
+                  ? updated.bannerUrl
+                  : prev.bannerUrl,
+              favorites: updated.favorites,
+            }
+          : {
+              ...updated,
+              name: updated.name || user?.displayName || "",
+              email: user?.primaryEmail || "",
+              image: updated.image ?? user?.profileImageUrl ?? null,
+              bannerUrl: updated.bannerUrl ?? null,
+            },
       );
-    }
-  };
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("hikari:profile-updated", {
+            detail: {
+              image: updated.image !== undefined ? updated.image : null,
+              nick: updated.nick,
+            },
+          }),
+        );
+      }
+    },
+    [updateProfileFn, user?.displayName, user?.primaryEmail, user?.profileImageUrl],
+  );
+
+  const handleRemoveBanner = useCallback(async () => {
+    const currentDisplayName = profile?.name || user?.displayName || profile?.nick || "Membro";
+    const currentNick = profile?.nick || "";
+    const currentBio = profile?.bio || "";
+    const currentImage = profile?.image !== undefined ? profile.image : (user?.profileImageUrl || null);
+    const currentFavorites = profile?.favorites || EMPTY_FAVORITES;
+
+    await handleSaveProfile({
+      name: currentDisplayName,
+      nick: currentNick,
+      bio: currentBio,
+      image: currentImage,
+      favorites: currentFavorites,
+      bannerUrl: null,
+    });
+  }, [handleSaveProfile, profile, user?.displayName, user?.profileImageUrl]);
 
   // Salvar configurações de privacidade
   const handleSavePrivacy = async (data: {
@@ -1227,7 +1270,7 @@ function AccountProfile() {
   const followersCount = profile?.followersCount ?? 0;
   const followingCount = profile?.followingCount ?? 0;
   const commentCount = profile?.commentCount ?? commentsTotal;
-  const userFavoritesList = profile?.favorites ?? [];
+  const userFavoritesList = profile?.favorites ?? EMPTY_FAVORITES;
 
   return (
     <div className="w-full text-zinc-100 pt-1 sm:pt-3">
@@ -1247,21 +1290,12 @@ function AccountProfile() {
           commentCount={commentCount}
           totalTrackingCount={trackingItems.length}
           favorites={userFavoritesList}
-          onOpenEdit={() => setEditModalOpen(true)}
-          onRemoveBanner={async () => {
-            await handleSaveProfile({
-              name: profile?.name || displayName,
-              nick: profile?.nick || userNick,
-              bio: profile?.bio || userBio,
-              image: profile?.image !== undefined ? profile.image : userImage,
-              favorites: profile?.favorites || userFavoritesList,
-              bannerUrl: null,
-            });
-          }}
-          onOpenPrivacy={() => setPrivacyModalOpen(true)}
-          onOpenFollowers={() => void handleOpenConnections("followers")}
-          onOpenFollowing={() => void handleOpenConnections("following")}
-          onOpenRequests={() => void handleOpenConnections("requests")}
+          onOpenEdit={handleOpenEdit}
+          onRemoveBanner={handleRemoveBanner}
+          onOpenPrivacy={handleOpenPrivacy}
+          onOpenFollowers={handleOpenFollowers}
+          onOpenFollowing={handleOpenFollowing}
+          onOpenRequests={handleOpenRequests}
         />
 
         {/* Navegação Horizontal: Visão geral | Animes | Comentários | Sobre | Atividades */}
@@ -1333,7 +1367,7 @@ function AccountProfile() {
                 nick={userNick}
                 bio={userBio}
                 favorites={userFavoritesList}
-                onOpenEdit={() => setEditModalOpen(true)}
+                onOpenEdit={handleOpenEdit}
               />
             </Suspense>
           )}

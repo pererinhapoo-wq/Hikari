@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import {
   BadgeCheck,
   Camera,
@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface ProfileIdentityHeaderProps {
+export interface ProfileIdentityHeaderProps {
   name: string;
   nick: string;
   bio: string;
@@ -41,7 +41,7 @@ interface ProfileIdentityHeaderProps {
   onToggleVerification?: () => void;
 }
 
-export function ProfileIdentityHeader({
+export const ProfileIdentityHeader = memo(function ProfileIdentityHeader({
   name,
   nick,
   bio,
@@ -452,4 +452,6 @@ export function ProfileIdentityHeader({
       </div>
     </header>
   );
-}
+});
+
+ProfileIdentityHeader.displayName = "ProfileIdentityHeader";

@@ -1,4 +1,4 @@
-import { lazy, startTransition, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -275,6 +275,8 @@ export const Route = createFileRoute("/profile/$nick")({
   }),
   component: PublicProfile,
 });
+
+const EMPTY_FAVORITES: string[] = [];
 
 function PublicProfile() {
   const { nick } = Route.useParams();
@@ -566,7 +568,7 @@ function PublicProfile() {
     getPublicActivitiesFn,
   ]);
 
-  const handleFollowToggle = async () => {
+  const handleFollowToggle = useCallback(async () => {
     if (!profile || followLoading) return;
     setFollowLoading(true);
 
@@ -597,9 +599,17 @@ function PublicProfile() {
     } finally {
       setFollowLoading(false);
     }
-  };
+  }, [
+    profile,
+    followLoading,
+    following,
+    hasPendingRequest,
+    unfollowUserFn,
+    cancelFollowRequestFn,
+    followUserFn,
+  ]);
 
-  const handleToggleBlock = async () => {
+  const handleToggleBlock = useCallback(async () => {
     if (!profile || blockLoading) return;
     setBlockLoading(true);
 
@@ -620,9 +630,9 @@ function PublicProfile() {
     } finally {
       setBlockLoading(false);
     }
-  };
+  }, [profile, blockLoading, isBlockedByMe, unblockUserFn, blockUserFn]);
 
-  const handleToggleVerification = async () => {
+  const handleToggleVerification = useCallback(async () => {
     if (!profile) return;
     const newVerified = !profile.isVerified;
     try {
@@ -646,7 +656,7 @@ function PublicProfile() {
           : "Não foi possível alterar o selo de verificação.",
       );
     }
-  };
+  }, [profile, setUserVerificationFn]);
 
   const handleFollowBack = async (targetUserId: string) => {
     try {
@@ -814,38 +824,92 @@ function PublicProfile() {
     [profile, activityLoading, getPublicActivitiesFn],
   );
 
-  const handleOpenConnections = async (tab: "followers" | "following") => {
-    if (!profile?.userId) return;
-    setConnectionsTab(tab);
-    setConnectionsOpen(true);
-    setConnectionsLoading(true);
-    try {
-      if (tab === "followers") {
-        const data = await getFollowersFn({
-          data: {
-            userId: profile.userId,
-          },
-        });
-        setFollowersList(data || []);
-      } else {
-        const data = await getFollowingFn({
-          data: {
-            userId: profile.userId,
-          },
-        });
-        setFollowingList(data || []);
+  const handleOpenConnections = useCallback(
+    async (tab: "followers" | "following") => {
+      if (!profile?.userId) return;
+      setConnectionsTab(tab);
+      setConnectionsOpen(true);
+      setConnectionsLoading(true);
+      try {
+        if (tab === "followers") {
+          const data = await getFollowersFn({
+            data: {
+              userId: profile.userId,
+            },
+          });
+          setFollowersList(data || []);
+        } else {
+          const data = await getFollowingFn({
+            data: {
+              userId: profile.userId,
+            },
+          });
+          setFollowingList(data || []);
+        }
+      } catch (err) {
+        console.warn("Erro ao buscar conexões:", err);
+        if (tab === "followers") {
+          setFollowersList([]);
+        } else {
+          setFollowingList([]);
+        }
+      } finally {
+        setConnectionsLoading(false);
       }
-    } catch (err) {
-      console.warn("Erro ao buscar conexões:", err);
-      if (tab === "followers") {
-        setFollowersList([]);
-      } else {
-        setFollowingList([]);
-      }
-    } finally {
-      setConnectionsLoading(false);
-    }
-  };
+    },
+    [profile?.userId, getFollowersFn, getFollowingFn],
+  );
+
+  const handleOpenFollowers = useCallback(() => {
+    void handleOpenConnections("followers");
+  }, [handleOpenConnections]);
+
+  const handleOpenFollowing = useCallback(() => {
+    void handleOpenConnections("following");
+  }, [handleOpenConnections]);
+
+  const headerActions = useMemo(() => {
+    if (isBlockedByMe || isBlockedByTarget) return null;
+    return (
+      <button
+        type="button"
+        onClick={handleFollowToggle}
+        disabled={followLoading}
+        className={cn(
+          "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all duration-200 select-none shadow-sm cursor-pointer",
+          following
+            ? "border border-white/15 bg-white/[0.08] text-zinc-200 hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-300"
+            : hasPendingRequest
+              ? "border border-amber-500/30 bg-amber-500/15 text-amber-300 hover:border-amber-500/50 hover:bg-amber-500/20"
+              : "bg-violet-600 text-white hover:bg-violet-500 active:scale-95 shadow-[0_0_15px_rgba(139,92,246,0.3)]",
+        )}
+      >
+        {following ? (
+          <>
+            <UserCheck className="size-4 text-emerald-400" />
+            <span>Seguindo</span>
+          </>
+        ) : hasPendingRequest ? (
+          <>
+            <Clock className="size-4 text-amber-400" />
+            <span>Solicitado</span>
+          </>
+        ) : (
+          <>
+            <UserPlus className="size-4" />
+            <span>Seguir</span>
+          </>
+        )}
+      </button>
+    );
+  }, [
+    isBlockedByMe,
+    isBlockedByTarget,
+    handleFollowToggle,
+    followLoading,
+    following,
+    hasPendingRequest,
+  ]);
 
   const handleConnectionsTabChange = async (tab: "followers" | "following" | "requests") => {
     if (!profile?.userId) return;
@@ -1027,7 +1091,7 @@ function PublicProfile() {
   const userBio = profile.bio || "";
   const userImage = profile.image;
   const followingCount = profile.followingCount ?? 0;
-  const userFavoritesList = profile.favorites ?? [];
+  const userFavoritesList = (profile as { favorites?: string[] }).favorites ?? EMPTY_FAVORITES;
 
   // Espaços públicos baseados em permissões de privacidade
   const publicSpaces: ProfileSpaceItem[] = [
@@ -1063,42 +1127,9 @@ function PublicProfile() {
           favorites={userFavoritesList}
           isBlockedByMe={isBlockedByMe}
           onBlockAction={handleToggleBlock}
-          actions={
-            !isBlockedByMe && !isBlockedByTarget ? (
-              <button
-                type="button"
-                onClick={handleFollowToggle}
-                disabled={followLoading}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold transition-all duration-200 select-none shadow-sm cursor-pointer",
-                  following
-                    ? "border border-white/15 bg-white/[0.08] text-zinc-200 hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-300"
-                    : hasPendingRequest
-                      ? "border border-amber-500/30 bg-amber-500/15 text-amber-300 hover:border-amber-500/50 hover:bg-amber-500/20"
-                      : "bg-violet-600 text-white hover:bg-violet-500 active:scale-95 shadow-[0_0_15px_rgba(139,92,246,0.3)]",
-                )}
-              >
-                {following ? (
-                  <>
-                    <UserCheck className="size-4 text-emerald-400" />
-                    <span>Seguindo</span>
-                  </>
-                ) : hasPendingRequest ? (
-                  <>
-                    <Clock className="size-4 text-amber-400" />
-                    <span>Solicitado</span>
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="size-4" />
-                    <span>Seguir</span>
-                  </>
-                )}
-              </button>
-            ) : null
-          }
-          onOpenFollowers={() => void handleOpenConnections("followers")}
-          onOpenFollowing={() => void handleOpenConnections("following")}
+          actions={headerActions}
+          onOpenFollowers={handleOpenFollowers}
+          onOpenFollowing={handleOpenFollowing}
         />
 
         {/* Notificação se o usuário estiver bloqueado */}

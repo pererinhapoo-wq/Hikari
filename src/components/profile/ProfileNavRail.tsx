@@ -61,7 +61,7 @@ export function ProfileNavRail({
   return (
     <nav
       aria-label="Navegação Horizontal do Perfil"
-      className="relative z-10 w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0b14]/90 p-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+      className="relative z-10 w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0b14] p-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.45)]"
     >
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
         {spaces.map((space) => {

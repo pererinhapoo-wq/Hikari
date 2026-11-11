@@ -49,12 +49,14 @@ export function ProfileOverviewSpace({
         onRemoveFavorite={onRemoveFavorite}
       />
 
-      {/* Nova Seção Independente: Atividades recentes (exclusivamente no final da Visão Geral) */}
-      <ProfileRecentActivities
-        activityItems={activityItems}
-        comments={comments}
-        loading={loading}
-      />
+      {/* Nova Seção Independente: Atividades recentes (exclusivamente no final da Visão Geral, abaixo da dobra) */}
+      <div className="[content-visibility:auto] [contain-intrinsic-size:auto_360px]">
+        <ProfileRecentActivities
+          activityItems={activityItems}
+          comments={comments}
+          loading={loading}
+        />
+      </div>
     </div>
   );
 }

@@ -138,15 +138,15 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }
   return (
     <section
       aria-label="Anime Stats do Usuário"
-      className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-br from-[#100e1f] via-[#0b0915] to-[#07060c] p-5 sm:p-7 shadow-[0_16px_50px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
+      className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-br from-[#100e1f] via-[#0b0915] to-[#07060c] p-5 sm:p-7 shadow-[0_16px_50px_rgba(0,0,0,0.6)]"
     >
-      {/* Luz ambiente de fundo violeta sutil */}
+      {/* Luz ambiente de fundo violeta sutil (otimizada com gradientes radiais em vez de filtros gaussianos) */}
       <div
-        className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-violet-600/10 blur-[100px]"
+        className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-[radial-gradient(circle,rgba(139,92,246,0.10)_0%,rgba(139,92,246,0.05)_45%,transparent_70%)]"
         aria-hidden="true"
       />
       <div
-        className="pointer-events-none absolute -bottom-24 -left-20 size-72 rounded-full bg-purple-900/15 blur-[90px]"
+        className="pointer-events-none absolute -bottom-24 -left-20 size-72 rounded-full bg-[radial-gradient(circle,rgba(88,28,135,0.15)_0%,rgba(88,28,135,0.07)_45%,transparent_70%)]"
         aria-hidden="true"
       />
 

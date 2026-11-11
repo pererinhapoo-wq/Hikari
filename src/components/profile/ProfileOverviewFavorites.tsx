@@ -454,54 +454,60 @@ const FavoritesCarouselSection = React.memo(function FavoritesCarouselSection({
   const startXRef = useRef(0);
   const startScrollLeftRef = useRef(0);
   const hasDraggedRef = useRef(false);
-  const [isDragging, setIsDragging] = useState(false);
 
-  // Suporte a mouse drag no desktop e toque/gesto mobile
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Suporte a mouse drag no desktop sem causar re-renderizações no React
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!railRef.current) return;
     isDownRef.current = true;
     hasDraggedRef.current = false;
     startXRef.current = e.pageX - railRef.current.offsetLeft;
     startScrollLeftRef.current = railRef.current.scrollLeft;
-  };
+  }, []);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!isDownRef.current || !railRef.current) return;
     const x = e.pageX - railRef.current.offsetLeft;
     const walk = x - startXRef.current;
     if (Math.abs(walk) > 5) {
       if (!hasDraggedRef.current) {
         hasDraggedRef.current = true;
-        setIsDragging(true);
+        railRef.current.classList.add("cursor-grabbing");
+        railRef.current.classList.remove("cursor-grab");
       }
       railRef.current.scrollLeft = startScrollLeftRef.current - walk;
     }
-  };
+  }, []);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     isDownRef.current = false;
-    setIsDragging(false);
+    if (railRef.current) {
+      railRef.current.classList.remove("cursor-grabbing");
+      railRef.current.classList.add("cursor-grab");
+    }
     setTimeout(() => {
       hasDraggedRef.current = false;
     }, 60);
-  };
+  }, []);
 
-  const handleMouseLeave = () => {
+  const handleMouseLeave = useCallback(() => {
     if (isDownRef.current) {
       isDownRef.current = false;
-      setIsDragging(false);
+      if (railRef.current) {
+        railRef.current.classList.remove("cursor-grabbing");
+        railRef.current.classList.add("cursor-grab");
+      }
       setTimeout(() => {
         hasDraggedRef.current = false;
       }, 60);
     }
-  };
+  }, []);
 
-  const handleClickCapture = (e: React.MouseEvent) => {
+  const handleClickCapture = useCallback((e: React.MouseEvent) => {
     if (hasDraggedRef.current) {
       e.preventDefault();
       e.stopPropagation();
     }
-  };
+  }, []);
 
   const colorClasses = {
     violet: "bg-violet-500",
@@ -512,7 +518,10 @@ const FavoritesCarouselSection = React.memo(function FavoritesCarouselSection({
   }[accentColor];
 
   return (
-    <section aria-label={title} className="space-y-3.5 sm:space-y-4">
+    <section
+      aria-label={title}
+      className="space-y-3.5 sm:space-y-4 [content-visibility:auto] [contain-intrinsic-size:auto_280px]"
+    >
       {/* Cabeçalho da categoria: sem setas, sem números decorativos, sem emojis */}
       <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
         <div className="flex items-center gap-2.5">
@@ -524,7 +533,7 @@ const FavoritesCarouselSection = React.memo(function FavoritesCarouselSection({
         </div>
       </div>
 
-      {/* Conteúdo: Carrossel com Arraste (Desktop) e Deslize/Gesto (Mobile) */}
+      {/* Conteúdo: Carrossel com Arraste (Desktop) e Deslize/Gesto (Mobile) com touch-action: pan-y */}
       {items.length > 0 ? (
         <div
           ref={railRef}
@@ -533,10 +542,7 @@ const FavoritesCarouselSection = React.memo(function FavoritesCarouselSection({
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
           onClickCapture={handleClickCapture}
-          className={cn(
-            "rail -mx-4 flex gap-2.5 sm:gap-3.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 pt-1 select-none",
-            isDragging ? "cursor-grabbing" : "cursor-grab",
-          )}
+          className="rail -mx-4 flex gap-2.5 sm:gap-3.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 pb-2 pt-1 select-none cursor-grab touch-pan-y"
         >
           {items.map((item) => (
             <FavoriteCarouselCard
