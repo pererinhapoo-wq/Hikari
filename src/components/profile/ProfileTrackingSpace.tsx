@@ -5,10 +5,13 @@ import {
   Pencil,
   Plus,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
-import { upsertAnimeTracking } from "@/lib/profile-tracking.functions";
+import {
+  getMyAnimeTrackingPaginated,
+  upsertAnimeTracking,
+} from "@/lib/profile-tracking.functions";
 import { cn } from "@/lib/utils";
 import {
   STATUS_CONFIG,
@@ -20,21 +23,25 @@ import {
 export type FilterOption = "all" | TrackingStatus;
 
 export interface ProfileTrackingSpaceProps {
-  items: UserAnimeTrackingItem[];
+  items?: UserAnimeTrackingItem[];
   loading?: boolean;
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
   activeFilter?: FilterOption;
   onFilterChange?: (filter: FilterOption) => void;
   hideFilterBar?: boolean;
+  onCountsChange?: (counts: Record<FilterOption, number>) => void;
 }
 
+const PAGE_SIZE = 24;
+
 export function ProfileTrackingSpace({
-  items,
-  loading = false,
+  items: initialItems,
+  loading: initialLoadingProp = false,
   onUpdateItem,
   activeFilter,
   onFilterChange,
   hideFilterBar = false,
+  onCountsChange,
 }: ProfileTrackingSpaceProps) {
   const [internalFilter, setInternalFilter] = useState<FilterOption>("all");
   const filter = activeFilter !== undefined ? activeFilter : internalFilter;
@@ -87,6 +94,162 @@ export function ProfileTrackingSpace({
   };
 
   const upsertTrackingFn = useServerFn(upsertAnimeTracking);
+  const getPaginatedTrackingFn = useServerFn(getMyAnimeTrackingPaginated);
+
+  // Estados de Paginação Real
+  const [items, setItems] = useState<UserAnimeTrackingItem[]>(() => initialItems || []);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [dataLoading, setDataLoading] = useState(() => !(initialItems && initialItems.length > 0));
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [counts, setCounts] = useState<Record<FilterOption, number>>({
+    all: 0,
+    watching: 0,
+    completed: 0,
+    on_hold: 0,
+    dropped: 0,
+    planning: 0,
+  });
+
+  // Trava para impedir requisições simultâneas da mesma página
+  const fetchingRef = useRef(false);
+
+  // Cache por filtro para alternância instantânea sem perder itens carregados
+  const filterCacheRef = useRef<
+    Partial<
+      Record<
+        FilterOption,
+        {
+          items: UserAnimeTrackingItem[];
+          page: number;
+          hasMore: boolean;
+        }
+      >
+    >
+  >({});
+
+  const animeSentinelRef = useRef<HTMLDivElement>(null);
+
+  // Busca inicial (lote de 24) por filtro
+  useEffect(() => {
+    let active = true;
+
+    // Se já foi carregado para este filtro na sessão do componente, restaura do cache
+    const cached = filterCacheRef.current[filter];
+    if (cached) {
+      setItems(cached.items);
+      setPage(cached.page);
+      setHasMore(cached.hasMore);
+      setDataLoading(false);
+      return;
+    }
+
+    setDataLoading(true);
+    setItems([]);
+    setPage(1);
+    setHasMore(true);
+    fetchingRef.current = true;
+
+    void getPaginatedTrackingFn({
+      data: {
+        status: filter === "all" ? undefined : filter,
+        page: 1,
+        limit: PAGE_SIZE,
+      },
+    })
+      .then((res) => {
+        if (!active) return;
+        setItems(res.items);
+        setPage(1);
+        setHasMore(res.hasMore);
+        setCounts(res.counts);
+        onCountsChange?.(res.counts);
+
+        filterCacheRef.current[filter] = {
+          items: res.items,
+          page: 1,
+          hasMore: res.hasMore,
+        };
+      })
+      .catch((err) => {
+        console.warn("Erro ao buscar registros de animes paginados:", err);
+      })
+      .finally(() => {
+        fetchingRef.current = false;
+        if (active) setDataLoading(false);
+      });
+
+    return () => {
+      active = false;
+      fetchingRef.current = false;
+    };
+  }, [filter, getPaginatedTrackingFn, onCountsChange]);
+
+  // Carrega a próxima página (lote de 24) ao se aproximar do fim da lista
+  const loadNextPage = useCallback(() => {
+    if (fetchingRef.current || !hasMore || dataLoading) return;
+
+    fetchingRef.current = true;
+    setLoadingMore(true);
+
+    const nextPage = page + 1;
+
+    void getPaginatedTrackingFn({
+      data: {
+        status: filter === "all" ? undefined : filter,
+        page: nextPage,
+        limit: PAGE_SIZE,
+      },
+    })
+      .then((res) => {
+        setItems((prev) => {
+          // Prevenção estrita de registros duplicados
+          const existingIds = new Set(prev.map((i) => i.animeId));
+          const uniqueNew = res.items.filter((i) => !existingIds.has(i.animeId));
+          const combined = [...prev, ...uniqueNew];
+
+          filterCacheRef.current[filter] = {
+            items: combined,
+            page: nextPage,
+            hasMore: res.hasMore,
+          };
+
+          return combined;
+        });
+
+        setPage(nextPage);
+        setHasMore(res.hasMore);
+        setCounts(res.counts);
+        onCountsChange?.(res.counts);
+      })
+      .catch((err) => {
+        console.warn("Erro ao paginar mais animes:", err);
+      })
+      .finally(() => {
+        fetchingRef.current = false;
+        setLoadingMore(false);
+      });
+  }, [filter, getPaginatedTrackingFn, hasMore, dataLoading, onCountsChange, page]);
+
+  // IntersectionObserver com rootMargin entre 300px e 400px (350px) para rolagem suave
+  useEffect(() => {
+    const sentinel = animeSentinelRef.current;
+    if (!sentinel || !hasMore || dataLoading || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          loadNextPage();
+        }
+      },
+      { rootMargin: "350px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, dataLoading, loadNextPage]);
 
   const handleQuickIncrement = async (item: UserAnimeTrackingItem) => {
     const currentWatched = item.episodesWatched ?? 0;
@@ -109,6 +272,10 @@ export function ProfileTrackingSpace({
       episodesWatched: nextWatched,
       status: nextStatus,
     };
+
+    setItems((prev) =>
+      prev.map((i) => (i.animeId === updatedItem.animeId ? updatedItem : i)),
+    );
     onUpdateItem?.(updatedItem);
 
     try {
@@ -122,7 +289,7 @@ export function ProfileTrackingSpace({
         },
       });
 
-      onUpdateItem?.({
+      const finalItem: UserAnimeTrackingItem = {
         ...updatedItem,
         status: res.status,
         score: res.score,
@@ -130,10 +297,25 @@ export function ProfileTrackingSpace({
         startedAt: res.startedAt,
         completedAt: res.completedAt,
         updatedAt: res.updatedAt,
-      });
+      };
 
+      setItems((prev) =>
+        prev.map((i) => (i.animeId === finalItem.animeId ? finalItem : i)),
+      );
+
+      // Sincroniza cache por filtro
+      if (filterCacheRef.current[filter]) {
+        filterCacheRef.current[filter]!.items = filterCacheRef.current[filter]!.items.map((i) =>
+          i.animeId === finalItem.animeId ? finalItem : i,
+        );
+      }
+
+      onUpdateItem?.(finalItem);
       toast.success(`Episódio ${nextWatched}${maxEps ? ` de ${maxEps}` : ""} marcado!`);
     } catch (err) {
+      setItems((prev) =>
+        prev.map((i) => (i.animeId === previousItem.animeId ? previousItem : i)),
+      );
       onUpdateItem?.(previousItem);
       toast.error(err instanceof Error ? err.message : "Erro ao atualizar episódios.");
     } finally {
@@ -151,7 +333,6 @@ export function ProfileTrackingSpace({
     const targetItem = editingItem;
     const previousItem = { ...targetItem };
 
-    // Ao marcar como Concluído, preenche automaticamente com o total real de episódios do anime
     const maxEps =
       targetItem.episodesCount ?? targetItem.animeSnapshot?.episodesCount ?? null;
     const resolvedEpisodes =
@@ -165,6 +346,10 @@ export function ProfileTrackingSpace({
       score: data.score,
       episodesWatched: resolvedEpisodes,
     };
+
+    setItems((prev) =>
+      prev.map((i) => (i.animeId === optimisticItem.animeId ? optimisticItem : i)),
+    );
     onUpdateItem?.(optimisticItem);
 
     try {
@@ -178,7 +363,7 @@ export function ProfileTrackingSpace({
         },
       });
 
-      onUpdateItem?.({
+      const finalItem: UserAnimeTrackingItem = {
         ...targetItem,
         status: res.status,
         score: res.score,
@@ -186,61 +371,30 @@ export function ProfileTrackingSpace({
         startedAt: res.startedAt,
         completedAt: res.completedAt,
         updatedAt: res.updatedAt,
-      });
+      };
 
+      setItems((prev) =>
+        prev.map((i) => (i.animeId === finalItem.animeId ? finalItem : i)),
+      );
+
+      if (filterCacheRef.current[filter]) {
+        filterCacheRef.current[filter]!.items = filterCacheRef.current[filter]!.items.map((i) =>
+          i.animeId === finalItem.animeId ? finalItem : i,
+        );
+      }
+
+      onUpdateItem?.(finalItem);
       toast.success("Coleção atualizada com sucesso!");
     } catch (err) {
+      setItems((prev) =>
+        prev.map((i) => (i.animeId === previousItem.animeId ? previousItem : i)),
+      );
       onUpdateItem?.(previousItem);
       throw err;
     }
   };
 
-  // Paginação automática (infinite scroll) para todas as categorias
-  const PAGE_SIZE = 18;
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const animeSentinelRef = useRef<HTMLDivElement>(null);
-
-  // Reseta a quantidade visível ao alterar o filtro
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [filter]);
-
-  const counts: Record<FilterOption, number> = {
-    all: items.length,
-    watching: items.filter((i) => i.status === "watching").length,
-    completed: items.filter((i) => i.status === "completed").length,
-    planning: items.filter((i) => i.status === "planning").length,
-    on_hold: items.filter((i) => i.status === "on_hold").length,
-    dropped: items.filter((i) => i.status === "dropped").length,
-  };
-
-  const filteredItems =
-    filter === "all"
-      ? items
-      : items.filter((item) => item.status === filter);
-
-  const displayedItems = filteredItems.slice(0, visibleCount);
-  const hasMoreToLoad = visibleCount < filteredItems.length;
-
-  // IntersectionObserver para carregamento automático conforme o usuário rola
-  useEffect(() => {
-    const sentinel = animeSentinelRef.current;
-    if (!sentinel || !hasMoreToLoad || typeof IntersectionObserver === "undefined") {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredItems.length));
-        }
-      },
-      { rootMargin: "400px 0px" },
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMoreToLoad, filteredItems.length]);
+  const isLoading = initialLoadingProp || dataLoading;
 
   return (
     <div className="space-y-6">
@@ -299,7 +453,7 @@ export function ProfileTrackingSpace({
       )}
 
       {/* Conteúdo: Skeleton, Vazio ou Grade de Obras (Exatamente 3 cards por linha no mobile) */}
-      {loading ? (
+      {isLoading ? (
         <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
           {Array.from({ length: 12 }).map((_, idx) => (
             <div key={idx} className="min-w-0">
@@ -309,7 +463,7 @@ export function ProfileTrackingSpace({
             </div>
           ))}
         </div>
-      ) : filteredItems.length === 0 ? (
+      ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-8 sm:p-12 text-center">
           <div className="flex size-12 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-400 mb-3">
             <Film className="size-6" />
@@ -324,7 +478,7 @@ export function ProfileTrackingSpace({
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-            {displayedItems.map((item) => {
+            {items.map((item) => {
               const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.planning;
               const maxEps = item.episodesCount ?? null;
               const watched = item.episodesWatched ?? 0;
@@ -510,7 +664,7 @@ export function ProfileTrackingSpace({
 
           {/* Sentinela de carregamento automático na rolagem (sem botão Carregar mais) */}
           <div ref={animeSentinelRef} className="h-6" aria-hidden="true" />
-          {hasMoreToLoad && (
+          {loadingMore && (
             <div className="py-4 flex items-center justify-center gap-2 text-xs text-zinc-400">
               <div className="size-3.5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
               <span>Carregando mais animes...</span>

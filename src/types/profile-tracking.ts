@@ -92,6 +92,31 @@ export type GetMyAnimeTrackingInput = z.infer<
 >;
 
 /**
+ * 2b. Schema e tipo para consulta com paginação real da aba Animes (lotes de 24).
+ */
+export const getMyAnimeTrackingPaginatedSchema = z
+  .object({
+    status: trackingStatusSchema.optional(),
+    page: z.number().int().min(1).optional().default(1),
+    limit: z.number().int().min(1).max(100).optional().default(24),
+  })
+  .optional();
+
+export type GetMyAnimeTrackingPaginatedInput = z.infer<
+  typeof getMyAnimeTrackingPaginatedSchema
+>;
+
+export interface PaginatedAnimeTrackingResponse {
+  items: UserAnimeTrackingItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasMore: boolean;
+  counts: Record<"all" | TrackingStatus, number>;
+}
+
+/**
  * 3. Schema e tipo para consultar acompanhamento filtrado por status.
  */
 export const getAnimeTrackingByStatusSchema = z.object({

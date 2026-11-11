@@ -773,6 +773,16 @@ function PublicProfile() {
     }
   };
 
+  const handleSpaceChange = useCallback((nextSpace: ProfileSpace) => {
+    startTransition(() => {
+      setActiveSpace(nextSpace);
+    });
+  }, []);
+
+  const handlePrefetchSpace = useCallback((space: ProfileSpace) => {
+    TAB_PREFETCHERS[space]?.();
+  }, []);
+
   if (studioParam) {
     return (
       <Suspense fallback={<WorksViewSkeleton />}>
@@ -886,16 +896,6 @@ function PublicProfile() {
       </div>
     );
   }
-
-  const handleSpaceChange = useCallback((nextSpace: ProfileSpace) => {
-    startTransition(() => {
-      setActiveSpace(nextSpace);
-    });
-  }, []);
-
-  const handlePrefetchSpace = useCallback((space: ProfileSpace) => {
-    TAB_PREFETCHERS[space]?.();
-  }, []);
 
   const displayName = profile.name || profile.nick;
   const userNick = profile.nick;

@@ -4,6 +4,7 @@ import { getSql } from "@/lib/db";
 import {
   upsertAnimeTrackingSchema,
   getMyAnimeTrackingSchema,
+  getMyAnimeTrackingPaginatedSchema,
   getAnimeTrackingByStatusSchema,
   removeAnimeTrackingSchema,
   getMyWatchedEpisodesSchema,
@@ -11,6 +12,7 @@ import {
   unmarkEpisodeWatchedSchema,
   type UserAnimeTrackingRecord,
   type UserAnimeTrackingItem,
+  type PaginatedAnimeTrackingResponse,
   type WatchedEpisodesResponse,
   type WatchedEpisodeItem,
   type AnimeSnapshot,
@@ -327,6 +329,194 @@ export const getMyAnimeTracking = createServerFn({
         animeSnapshot: snapshotObj,
       };
     });
+  });
+
+/**
+ * 2b. getMyAnimeTrackingPaginated — Consultar acompanhamentos com paginação real
+ * no banco de dados em lotes configuráveis (padrão 24).
+ * Retorna itens da página requisitada, contagens completas por status e metadados de paginação.
+ */
+export const getMyAnimeTrackingPaginated = createServerFn({
+  method: "GET",
+})
+  .middleware([authMiddleware])
+  .validator(getMyAnimeTrackingPaginatedSchema)
+  .handler(async ({ context, data }): Promise<PaginatedAnimeTrackingResponse> => {
+    const userId = context.userId;
+    const statusFilter = data?.status && data.status !== ("all" as unknown) ? data.status : null;
+    const page = Math.max(1, data?.page ?? 1);
+    const limit = Math.min(100, Math.max(1, data?.limit ?? 24));
+    const offset = (page - 1) * limit;
+
+    const sql = await getSql();
+
+    // 1. Contagens totais agrupadas por status em uma consulta rápida única
+    const countRows = await sql.query<{ status: TrackingStatus; count: number }>(
+      `SELECT "status", count(*)::int AS count
+       FROM "user_anime_tracking"
+       WHERE "userId" = $1
+       GROUP BY "status"`,
+      [userId],
+    );
+
+    const counts: Record<"all" | TrackingStatus, number> = {
+      all: 0,
+      watching: 0,
+      completed: 0,
+      on_hold: 0,
+      dropped: 0,
+      planning: 0,
+    };
+
+    let totalAll = 0;
+    for (const r of countRows) {
+      if (r.status in counts) {
+        const c = Number(r.count) || 0;
+        counts[r.status] = c;
+        totalAll += c;
+      }
+    }
+    counts.all = totalAll;
+
+    const currentTotal = statusFilter ? counts[statusFilter] ?? 0 : totalAll;
+    const totalPages = Math.ceil(currentTotal / limit) || 1;
+
+    // 2. Consulta paginada das obras com LIMIT e OFFSET reais na fonte de dados
+    const itemsQuery = `
+      SELECT
+        uat."userId",
+        uat."animeId",
+        uat."status",
+        uat."score",
+        uat."episodesWatched",
+        uat."animeSnapshot",
+        uat."startedAt",
+        uat."completedAt",
+        uat."createdAt",
+        uat."updatedAt",
+        ca."title" AS "catalogTitle",
+        ca."titleRomaji" AS "catalogTitleRomaji",
+        ca."titleEnglish" AS "catalogTitleEnglish",
+        ca."titleNative" AS "catalogTitleNative",
+        ca."cover" AS "catalogCover",
+        ca."banner" AS "catalogBanner",
+        ca."format" AS "catalogFormat",
+        ca."year" AS "catalogYear",
+        ca."episodesCount" AS "catalogEpisodesCount",
+        ca."status" AS "catalogStatus"
+      FROM "user_anime_tracking" uat
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+      WHERE uat."userId" = $1
+        AND ($2::text IS NULL OR uat."status" = $2)
+      ORDER BY uat."updatedAt" DESC
+      LIMIT $3 OFFSET $4;
+    `;
+
+    const rows = await sql.query<{
+      userId: string;
+      animeId: string;
+      status: TrackingStatus;
+      score: string | number | null;
+      episodesWatched: number;
+      animeSnapshot: unknown;
+      startedAt: string | null;
+      completedAt: string | null;
+      createdAt: string;
+      updatedAt: string;
+      catalogTitle: string | null;
+      catalogTitleRomaji: string | null;
+      catalogTitleEnglish: string | null;
+      catalogTitleNative: string | null;
+      catalogCover: string | null;
+      catalogBanner: string | null;
+      catalogFormat: string | null;
+      catalogYear: number | null;
+      catalogEpisodesCount: number | null;
+      catalogStatus: string | null;
+    }>(itemsQuery, [userId, statusFilter, limit, offset]);
+
+    const items: UserAnimeTrackingItem[] = rows.map((row) => {
+      let snapshotObj: AnimeSnapshot | null = null;
+      if (row.animeSnapshot && typeof row.animeSnapshot === "object" && !Array.isArray(row.animeSnapshot)) {
+        snapshotObj = row.animeSnapshot as AnimeSnapshot;
+      } else if (typeof row.animeSnapshot === "string") {
+        try {
+          snapshotObj = JSON.parse(row.animeSnapshot) as AnimeSnapshot;
+        } catch {
+          snapshotObj = null;
+        }
+      }
+
+      const title =
+        row.catalogTitle ||
+        (typeof snapshotObj?.title === "string" ? snapshotObj.title : null) ||
+        "Sem título";
+
+      const cover =
+        row.catalogCover ||
+        (typeof snapshotObj?.cover === "string" ? snapshotObj.cover : null);
+
+      const banner =
+        row.catalogBanner ||
+        (typeof snapshotObj?.banner === "string" ? snapshotObj.banner : null);
+
+      const format =
+        row.catalogFormat ||
+        (typeof snapshotObj?.format === "string" ? snapshotObj.format : null);
+
+      const year =
+        row.catalogYear !== null && row.catalogYear !== undefined
+          ? Number(row.catalogYear)
+          : typeof snapshotObj?.year === "number"
+            ? snapshotObj.year
+            : null;
+
+      const episodesCount =
+        row.catalogEpisodesCount !== null && row.catalogEpisodesCount !== undefined
+          ? Number(row.catalogEpisodesCount)
+          : typeof snapshotObj?.episodesCount === "number"
+            ? snapshotObj.episodesCount
+            : null;
+
+      const animeStatus =
+        row.catalogStatus ||
+        (typeof snapshotObj?.status === "string" ? snapshotObj.status : null);
+
+      return {
+        userId: row.userId,
+        animeId: row.animeId,
+        status: row.status,
+        score: row.score !== null && row.score !== undefined ? Number(row.score) : null,
+        episodesWatched: Number(row.episodesWatched) || 0,
+        title,
+        titleRomaji: row.catalogTitleRomaji || snapshotObj?.titleRomaji || null,
+        titleEnglish: row.catalogTitleEnglish || snapshotObj?.titleEnglish || null,
+        titleNative: row.catalogTitleNative || snapshotObj?.titleNative || null,
+        cover,
+        banner,
+        format,
+        year,
+        episodesCount,
+        animeStatus,
+        startedAt: row.startedAt ? String(row.startedAt) : null,
+        completedAt: row.completedAt ? String(row.completedAt) : null,
+        createdAt: String(row.createdAt),
+        updatedAt: String(row.updatedAt),
+        animeSnapshot: snapshotObj,
+      };
+    });
+
+    const hasMore = offset + items.length < currentTotal;
+
+    return {
+      items,
+      total: currentTotal,
+      page,
+      limit,
+      totalPages,
+      hasMore,
+      counts,
+    };
   });
 
 /**

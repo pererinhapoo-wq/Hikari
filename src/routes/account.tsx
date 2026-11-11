@@ -997,6 +997,19 @@ function AccountProfile() {
     setProfile((prev) => (prev ? { ...prev, ...updated } : null));
   };
 
+  // Filtro selecionado na aba Animes (preservado entre trocas de abas)
+  const [trackingFilter, setTrackingFilter] = useState<"all" | TrackingStatus>("all");
+
+  const handleSpaceChange = useCallback((nextSpace: ProfileSpace) => {
+    startTransition(() => {
+      setActiveSpace(nextSpace);
+    });
+  }, []);
+
+  const handlePrefetchSpace = useCallback((space: ProfileSpace) => {
+    TAB_PREFETCHERS[space]?.();
+  }, []);
+
   if (isPending || (!statusParam && profileLoading && !profile)) {
     return (
       <div className="w-full px-4 py-8 text-white">
@@ -1129,16 +1142,6 @@ function AccountProfile() {
     );
   }
 
-  const handleSpaceChange = useCallback((nextSpace: ProfileSpace) => {
-    startTransition(() => {
-      setActiveSpace(nextSpace);
-    });
-  }, []);
-
-  const handlePrefetchSpace = useCallback((space: ProfileSpace) => {
-    TAB_PREFETCHERS[space]?.();
-  }, []);
-
   // Dados consolidados
   const displayName = profile?.name || user.displayName || profile?.nick || "Membro";
   const userNick = profile?.nick || "";
@@ -1219,6 +1222,8 @@ function AccountProfile() {
               <LazyProfileTrackingSpace
                 items={trackingItems}
                 loading={trackingLoading}
+                activeFilter={trackingFilter}
+                onFilterChange={setTrackingFilter}
                 onUpdateItem={handleUpdateTrackingItem}
               />
             </Suspense>
