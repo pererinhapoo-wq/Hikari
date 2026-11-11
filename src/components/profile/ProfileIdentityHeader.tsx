@@ -97,7 +97,7 @@ export function ProfileIdentityHeader({
   }, [moreMenuOpen]);
 
   return (
-    <header className="relative z-10 w-full overflow-hidden rounded-2xl border border-purple-900/30 bg-[#130E24] shadow-[0_16px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
+    <header className="relative z-10 w-full overflow-hidden rounded-2xl border border-purple-900/30 bg-[#130E24] shadow-[0_16px_50px_rgba(0,0,0,0.7)]">
       {/* 1. Banner Panorâmico do Perfil */}
       <div className="relative h-[192px] sm:h-[256px] md:h-[320px] min-h-[192px] sm:min-h-[256px] md:min-h-[320px] w-full overflow-hidden bg-gradient-to-br from-purple-950 via-[#18112e] to-[#0A0713]">
         {bannerUrl ? (
@@ -105,6 +105,8 @@ export function ProfileIdentityHeader({
             <img
               src={bannerUrl}
               alt="Banner do perfil"
+              decoding="async"
+              fetchPriority="high"
               referrerPolicy="no-referrer"
               className="h-full w-full object-cover object-center"
             />
@@ -119,11 +121,11 @@ export function ProfileIdentityHeader({
             {/* Luzes dinâmicas e texturas no banner padrão */}
             <div className="h-full w-full bg-gradient-to-r from-purple-950/70 via-indigo-950/50 to-[#130E24]" />
             <div
-              className="pointer-events-none absolute -left-12 -top-12 size-60 rounded-full bg-violet-500/25 blur-[70px]"
+              className="pointer-events-none absolute -left-12 -top-12 size-60 rounded-full bg-[radial-gradient(circle,rgba(139,92,246,0.25)_0%,rgba(139,92,246,0.12)_45%,transparent_70%)]"
               aria-hidden="true"
             />
             <div
-              className="pointer-events-none absolute right-10 top-0 size-72 rounded-full bg-purple-600/20 blur-[80px]"
+              className="pointer-events-none absolute right-10 top-0 size-72 rounded-full bg-[radial-gradient(circle,rgba(147,51,234,0.20)_0%,rgba(147,51,234,0.08)_45%,transparent_70%)]"
               aria-hidden="true"
             />
             <div

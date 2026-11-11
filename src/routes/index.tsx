@@ -154,7 +154,7 @@ export const Route = createFileRoute("/")({
   component: Home,
 });
 
-function HomePending() {
+export function HomePending() {
   return (
     <div className="space-y-6 pt-1 sm:space-y-8">
       <div className="-mx-4 h-56 animate-pulse rounded-2xl border border-purple-500/10 bg-elevated/70 sm:-mx-6 sm:h-72 md:mx-0 md:h-[480px] lg:h-[520px]" />

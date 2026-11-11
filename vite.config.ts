@@ -147,6 +147,21 @@ export default defineConfig(({ command, isPreview }) => {
       port: 8081,
       strictPort: true,
     },
+    build: {
+      rollupOptions: {
+        onwarn(warning, defaultHandler) {
+          if (
+            warning.code === "MODULE_LEVEL_DIRECTIVE" ||
+            warning.code === "EVAL" ||
+            warning.message?.includes("MODULE_LEVEL_DIRECTIVE") ||
+            warning.message?.includes("use client")
+          ) {
+            return;
+          }
+          defaultHandler(warning);
+        },
+      },
+    },
     plugins: [
       appEnvPlugin(),
       sitemapPlugin(),
@@ -156,7 +171,36 @@ export default defineConfig(({ command, isPreview }) => {
       tanstackStart(),
       viteReact(),
       ...(isBuildOrPreview && !process.env.CLOUDFLARE
-        ? [nitro({ preset: "vercel", serverDir: "./server" })]
+        ? [
+            nitro({
+              preset: "vercel",
+              serverDir: "./server",
+              rolldownConfig: {
+                onwarn(warning: any, warn: any) {
+                  if (
+                    warning.code === "MODULE_LEVEL_DIRECTIVE" ||
+                    warning.code === "EVAL" ||
+                    warning.message?.includes("use client")
+                  ) {
+                    return;
+                  }
+                  warn(warning);
+                },
+              },
+              rollupConfig: {
+                onwarn(warning: any, warn: any) {
+                  if (
+                    warning.code === "MODULE_LEVEL_DIRECTIVE" ||
+                    warning.code === "EVAL" ||
+                    warning.message?.includes("use client")
+                  ) {
+                    return;
+                  }
+                  warn(warning);
+                },
+              },
+            }),
+          ]
         : []),
     ],
   };
