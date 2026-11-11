@@ -8,7 +8,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   EntityWorksExpansion,
   type SelectedEntityTarget,
@@ -73,6 +73,15 @@ export function ProfileFavoritesSpace({
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
   const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
 
+  // Paginação automática (infinite scroll)
+  const PAGE_SIZE = 18;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const favoritesSentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [activeCategory]);
+
   const counts: Record<CategoryFilter, number> = {
     all: allItems.length,
     anime: grouped.anime.length,
@@ -86,6 +95,28 @@ export function ProfileFavoritesSpace({
     activeCategory === "all"
       ? allItems
       : grouped[activeCategory] || [];
+
+  const paginatedItems = displayedItems.slice(0, visibleCount);
+  const hasMoreToLoad = visibleCount < displayedItems.length;
+
+  useEffect(() => {
+    const sentinel = favoritesSentinelRef.current;
+    if (!sentinel || !hasMoreToLoad || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, displayedItems.length));
+        }
+      },
+      { rootMargin: "400px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreToLoad, displayedItems.length]);
 
   const handleEntityClick = (item: ProfileFavoriteItem) => {
     if (item.targetType === "studio" || item.targetType === "company") {
@@ -170,9 +201,9 @@ export function ProfileFavoritesSpace({
             setActiveCategory("all");
             setExpandedEntity(null);
           }}
-          className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+          className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer ${
             activeCategory === "all"
-              ? "bg-violet-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] ring-1 ring-violet-400"
+              ? "bg-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] ring-1 ring-purple-400"
               : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
           }`}
         >
@@ -196,7 +227,7 @@ export function ProfileFavoritesSpace({
                 setActiveCategory(catKey);
                 setExpandedEntity(null);
               }}
-              className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all ${
+              className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
                 isActive
                   ? "bg-white/[0.12] text-white ring-1 ring-white/20 shadow-sm"
                   : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
@@ -213,17 +244,18 @@ export function ProfileFavoritesSpace({
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <div
-              key={idx}
-              className="aspect-[3/4.2] animate-pulse rounded-2xl bg-white/[0.04]"
-            />
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+          {Array.from({ length: 12 }).map((_, idx) => (
+            <div key={idx} className="min-w-0">
+              <div className="aspect-[2/3] w-full rounded-none bg-[#141224] animate-pulse border border-white/5" />
+              <div className="mt-2 h-3.5 w-3/4 rounded-none bg-white/5 animate-pulse" />
+              <div className="mt-1 h-2.5 w-1/2 rounded-none bg-white/5 animate-pulse" />
+            </div>
           ))}
         </div>
       ) : displayedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-10 sm:p-14 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 shadow-inner">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-400 shadow-inner">
             <Heart className="size-7" />
           </div>
 
@@ -240,121 +272,127 @@ export function ProfileFavoritesSpace({
           <Link
             to="/browse/$section"
             params={{ section: "popular" }}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all hover:bg-violet-500 active:scale-95"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all hover:bg-purple-500 active:scale-95"
           >
             <Sparkles className="size-4" />
             <span>Descobrir Obras</span>
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
-          {displayedItems.map((item) => {
-            const cfg = CATEGORY_CONFIG[item.targetType] || CATEGORY_CONFIG.anime;
-            const Icon = cfg.icon;
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+            {paginatedItems.map((item) => {
+              const cfg = CATEGORY_CONFIG[item.targetType] || CATEGORY_CONFIG.anime;
+              const Icon = cfg.icon;
+              const isAnime = item.targetType === "anime";
+              const isStudio = item.targetType === "studio" || item.targetType === "company";
+              const isClickableEntity = isStudio || item.targetType === "person";
+              const targetLink = isAnime ? `/anime/${item.targetId}` : undefined;
 
-            const isAnime = item.targetType === "anime";
-            const isClickableEntity =
-              item.targetType === "studio" ||
-              item.targetType === "person" ||
-              item.targetType === "company";
+              const cardContent = (
+                <article className="group relative flex flex-col min-w-0">
+                  {/* Pôster com proporção 2:3 vertical retangular com cantos retos */}
+                  <div className="
+                    relative
+                    aspect-[2/3]
+                    w-full
+                    overflow-hidden
+                    rounded-none
+                    bg-[#0d0c16]
+                    border
+                    border-white/10
+                    shadow-sm
+                    transition-all
+                    duration-200
+                    ease-out
+                    group-hover:border-purple-500/50
+                    group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+                    group-active:border-purple-400
+                    group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
+                    flex
+                    items-center
+                    justify-center
+                  ">
+                    {item.image ? (
+                      <img
+                        src={item.image}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className={cn(
+                          "size-full transition-transform duration-300 ease-out group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none",
+                          isStudio ? "object-contain p-3" : "object-cover object-top",
+                        )}
+                      />
+                    ) : (
+                      <div className="flex size-full items-center justify-center text-zinc-600">
+                        <Icon className="size-8" />
+                      </div>
+                    )}
 
-            const isSelected = expandedEntity?.name === item.title;
-            const targetLink = isAnime ? `/anime/${item.targetId}` : undefined;
-
-            const cardContent = (
-              <article
-                className={cn(
-                  "group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0c16]/80 p-2 transition-all duration-300 hover:border-violet-500/40 hover:bg-[#121020] hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)]",
-                  isSelected &&
-                    "border-violet-500/90 ring-2 ring-violet-500/90 shadow-[0_0_20px_rgba(168,85,247,0.35)] bg-[#141026]",
-                )}
-              >
-                {/* Mídia: Pôster / Avatar / Logo */}
-                <div className="relative aspect-[3/4.2] w-full overflow-hidden rounded-xl bg-[#161422]">
-                  {item.image ? (
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      loading="lazy"
-                      className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex size-full items-center justify-center text-zinc-600">
-                      <Icon className="size-8" />
+                    {/* Indicador de favorito discreto */}
+                    <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-black/80 backdrop-blur-md border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 group-hover:scale-105">
+                      <Heart className="size-3 fill-rose-500 text-rose-500" />
                     </div>
-                  )}
-
-                  {/* Gradiente escuro protetor */}
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/30" />
-
-                  {/* Badge da Categoria no Topo */}
-                  <div className="absolute left-2 top-2">
-                    <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-zinc-300 backdrop-blur-md">
-                      <Icon className="size-2.5 text-violet-400" />
-                      <span>{cfg.singular}</span>
-                    </span>
                   </div>
 
-                  {/* Subtítulo / Ano na base da imagem */}
-                  {item.subtitle && (
-                    <div className="absolute bottom-2 left-2 right-2">
-                      <p className="truncate text-[10px] font-medium text-zinc-300">
-                        {item.subtitle}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Dados da Entidade */}
-                <div className="flex flex-1 flex-col justify-between pt-2.5 pb-1 px-1">
-                  <div>
+                  {/* Informações estritamente FORA do pôster */}
+                  <div className="mt-2 flex flex-col px-0.5 min-w-0">
                     <h4
-                      className="line-clamp-2 text-xs font-semibold text-zinc-100 transition-colors group-hover:text-violet-300"
+                      className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
                       title={item.title}
                     >
                       {item.title}
                     </h4>
 
-                    {/* Exibir nome nativo somente se NÃO for person (conforme regra: exibir somente o nome principal da pessoa, sem nomes em japonês) */}
-                    {item.nativeTitle && item.targetType !== "person" && (
-                      <p className="mt-0.5 truncate text-[10px] text-zinc-500">
-                        {item.nativeTitle}
-                      </p>
-                    )}
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] sm:text-xs text-zinc-400 truncate">
+                      <span className="font-medium shrink-0 text-purple-400">
+                        {cfg.singular}
+                      </span>
+                      {item.subtitle && (
+                        <>
+                          <span>·</span>
+                          <span className="truncate">{item.subtitle}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
-
-                  {item.description && (
-                    <p className="mt-2 line-clamp-2 text-[11px] leading-tight text-zinc-400/80">
-                      {item.description}
-                    </p>
-                  )}
-                </div>
-              </article>
-            );
-
-            if (targetLink) {
-              return (
-                <Link key={item.id} to={targetLink} className="block">
-                  {cardContent}
-                </Link>
+                </article>
               );
-            }
 
-            if (isClickableEntity) {
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleEntityClick(item)}
-                  className="w-full text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 rounded-2xl"
-                >
-                  {cardContent}
-                </button>
-              );
-            }
+              if (targetLink) {
+                return (
+                  <Link key={item.id} to={targetLink} className="block outline-none">
+                    {cardContent}
+                  </Link>
+                );
+              }
 
-            return <div key={item.id}>{cardContent}</div>;
-          })}
+              if (isClickableEntity) {
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleEntityClick(item)}
+                    className="w-full text-left cursor-pointer outline-none"
+                  >
+                    {cardContent}
+                  </button>
+                );
+              }
+
+              return <div key={item.id}>{cardContent}</div>;
+            })}
+          </div>
+
+          {/* Sentinela de carregamento automático na rolagem (sem botão Carregar mais) */}
+          <div ref={favoritesSentinelRef} className="h-6" aria-hidden="true" />
+          {hasMoreToLoad && (
+            <div className="py-4 flex items-center justify-center gap-2 text-xs text-zinc-400">
+              <div className="size-3.5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              <span>Carregando mais favoritos...</span>
+            </div>
+          )}
         </div>
       )}
     </div>

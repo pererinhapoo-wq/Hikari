@@ -327,43 +327,67 @@ function FavoriteAnimeGridCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative flex w-full min-w-0 flex-col overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-1.5 min-[360px]:p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(139,92,246,0.18)] cursor-pointer text-left focus:outline-none select-none"
+      className="group relative flex w-full min-w-0 flex-col text-left focus:outline-none select-none cursor-pointer outline-none"
     >
-      {/* Capa com proporção 3/4 */}
-      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224] flex items-center justify-center">
+      {/* Capa com proporção 2:3 vertical retangular com cantos retos */}
+      <div className="
+        relative
+        aspect-[2/3]
+        w-full
+        overflow-hidden
+        rounded-none
+        bg-[#0d0c16]
+        border
+        border-white/10
+        shadow-sm
+        transition-all
+        duration-200
+        ease-out
+        group-hover:border-purple-500/50
+        group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+        group-active:border-purple-400
+        group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
+      ">
         {!imgError && item.image ? (
           <img
             src={item.image}
-            alt={item.title}
+            alt=""
             onError={() => setImgError(true)}
             loading="lazy"
-            className="size-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+            decoding="async"
+            className="
+              size-full
+              object-cover
+              transition-transform
+              duration-300
+              ease-out
+              group-hover:scale-[1.03]
+              group-active:scale-[1.01]
+              motion-reduce:transform-none
+            "
           />
         ) : (
-          <div className="flex size-full items-center justify-center font-display text-lg sm:text-2xl font-bold text-violet-400/80">
+          <div className="flex size-full items-center justify-center font-display text-base sm:text-lg text-zinc-600">
             {initial}
           </div>
         )}
 
-        {/* Gradiente escuro no hover */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 pointer-events-none" />
-
-        {/* Coração ativo no topo direito */}
-        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 flex size-5 sm:size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md border border-rose-500/40 text-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.35)] transition-transform duration-300 group-hover:scale-110">
-          <Heart className="size-2.5 sm:size-3 fill-rose-500 text-rose-500" />
+        {/* Indicador sutil de favorito no topo direito */}
+        <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-black/80 backdrop-blur-md border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 group-hover:scale-105">
+          <Heart className="size-3 fill-rose-500 text-rose-500" />
         </div>
       </div>
 
-      {/* Informações: Título e Subtítulo canônico (sem números decorativos) */}
-      <div className="mt-1.5 sm:mt-2.5 min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+      {/* Informações estritamente FORA do pôster */}
+      <div className="mt-2 flex flex-col px-0.5 min-w-0">
         <h4
-          className="line-clamp-2 text-[11px] min-[360px]:text-xs sm:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white break-words leading-tight sm:leading-snug"
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
           title={item.title}
         >
           {item.title}
         </h4>
         {cardSubtitle && (
-          <p className="truncate text-[10px] sm:text-xs text-zinc-400">
+          <p className="mt-0.5 truncate text-[10.5px] sm:text-xs text-zinc-400">
             {cardSubtitle}
           </p>
         )}
@@ -504,7 +528,7 @@ function FavoritesCarouselSection({
 }
 
 // ==========================================
-// Card individual do carrossel
+// Card individual do carrossel (Personagens, Dubladores, Studios, People)
 // ==========================================
 
 function FavoriteCarouselCard({
@@ -525,9 +549,9 @@ function FavoriteCarouselCard({
 
   const initial = (item.title || "?").charAt(0).toUpperCase();
 
-  // Subtítulo limpo para o card: oculta termos redundantes ("Personagem", "Estúdio de animação", etc.)
+  // Subtítulo limpo para o card: oculta termos redundantes
   const cardSubtitle = (() => {
-    if (!item.subtitle) return item.nativeTitle || null;
+    if (!item.subtitle) return item.nativeTitle || (isStudio ? "Estúdio" : null);
     const lower = item.subtitle.toLowerCase().trim();
     if (
       lower === "personagem" ||
@@ -535,7 +559,7 @@ function FavoriteCarouselCard({
       lower === "estúdio de animação" ||
       lower.includes("estúdio de animação")
     ) {
-      return item.nativeTitle || null;
+      return item.nativeTitle || (isStudio ? "Estúdio" : null);
     }
     return item.subtitle;
   })();
@@ -545,22 +569,42 @@ function FavoriteCarouselCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative flex w-[112px] min-[380px]:w-[126px] sm:w-[145px] md:w-[160px] lg:w-[172px] shrink-0 flex-col min-w-0 overflow-hidden rounded-xl sm:rounded-2xl border border-white/[0.07] bg-[#0d0b17] p-1.5 min-[360px]:p-2 sm:p-2.5 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#120f21] hover:shadow-[0_12px_30px_rgba(168,85,247,0.18)] cursor-pointer text-left focus:outline-none select-none",
-        isSelected &&
-          "border-purple-500/80 ring-2 ring-purple-500/90 shadow-[0_0_20px_rgba(168,85,247,0.35)] bg-[#151128]",
+        "group relative flex w-[108px] min-[380px]:w-[122px] sm:w-[138px] md:w-[150px] lg:w-[162px] shrink-0 flex-col min-w-0 text-left outline-none cursor-pointer select-none",
+        isSelected && "ring-2 ring-purple-500",
       )}
     >
-      {/* Imagem com proporção 3/4 */}
-      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg sm:rounded-xl bg-[#151224] flex items-center justify-center">
+      {/* Imagem com proporção 2:3 vertical retangular com cantos retos */}
+      <div className="
+        relative
+        aspect-[2/3]
+        w-full
+        overflow-hidden
+        rounded-none
+        bg-[#0d0c16]
+        border
+        border-white/10
+        shadow-sm
+        transition-all
+        duration-200
+        ease-out
+        group-hover:border-purple-500/50
+        group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+        group-active:border-purple-400
+        group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
+        flex
+        items-center
+        justify-center
+      ">
         {displayImage ? (
           <img
             src={displayImage}
-            alt={item.title}
+            alt=""
             onError={() => setImgError(true)}
             loading="lazy"
+            decoding="async"
             className={cn(
-              "size-full transition-transform duration-500 group-hover:scale-105",
-              isStudio ? "object-contain p-2.5" : "object-cover object-top",
+              "size-full transition-transform duration-300 ease-out group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none",
+              isStudio ? "object-contain p-3" : "object-cover object-top",
             )}
           />
         ) : isStudio ? (
@@ -568,30 +612,27 @@ function FavoriteCarouselCard({
             <Building2 className="size-6 sm:size-8 text-indigo-400" />
           </div>
         ) : (
-          <div className="flex size-full items-center justify-center font-display text-xl sm:text-2xl font-bold text-purple-400/80">
+          <div className="flex size-full items-center justify-center font-display text-lg sm:text-xl font-bold text-purple-400/80">
             {initial}
           </div>
         )}
 
-        {/* Gradiente escuro no hover */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-
-        {/* Coração animado ativo no topo direito */}
-        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 flex size-5 sm:size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md border border-rose-500/40 text-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.35)] transition-transform duration-300 group-hover:scale-110">
-          <Heart className="size-2.5 sm:size-3 fill-rose-500 text-rose-500" />
+        {/* Indicador sutil de favorito no topo direito */}
+        <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-black/80 backdrop-blur-md border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 group-hover:scale-105">
+          <Heart className="size-3 fill-rose-500 text-rose-500" />
         </div>
       </div>
 
-      {/* Informações: Título e Subtítulo */}
-      <div className="mt-1.5 sm:mt-2.5 min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+      {/* Informações estritamente FORA do pôster: Título e Subtítulo */}
+      <div className="mt-2 flex flex-col px-0.5 min-w-0">
         <h4
-          className="line-clamp-2 text-[11px] sm:text-xs md:text-sm font-semibold text-zinc-200 transition-colors group-hover:text-white break-words leading-tight sm:leading-snug"
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
           title={item.title}
         >
           {item.title}
         </h4>
         {cardSubtitle && (
-          <p className="truncate text-[10px] sm:text-xs text-zinc-400">
+          <p className="mt-0.5 truncate text-[10.5px] sm:text-xs text-zinc-400">
             {cardSubtitle}
           </p>
         )}

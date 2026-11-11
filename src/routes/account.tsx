@@ -578,9 +578,14 @@ function AccountProfile() {
     };
   }, [user?.id, getTrackingFn, getFavoritesFn, getRequestsFn]);
 
-  // Carregamento sob demanda para a aba de Comentários (Cache por aba e trava contra cliques rápidos)
+  // Carregamento sob demanda para a aba de Comentários ou Visão Geral (Cache por aba e trava contra cliques rápidos)
   useEffect(() => {
-    if (!user?.id || activeSpace !== "comments" || commentsLoaded || commentsFetchingRef.current) {
+    if (
+      !user?.id ||
+      (activeSpace !== "comments" && activeSpace !== "overview") ||
+      commentsLoaded ||
+      commentsFetchingRef.current
+    ) {
       return;
     }
 
@@ -608,9 +613,14 @@ function AccountProfile() {
     };
   }, [user?.id, activeSpace, commentsLoaded, getCommentsFn]);
 
-  // Carregamento sob demanda para a aba de Atividades (Cache por aba e trava contra cliques rápidos)
+  // Carregamento sob demanda para a aba de Atividades ou Visão Geral (Cache por aba e trava contra cliques rápidos)
   useEffect(() => {
-    if (!user?.id || activeSpace !== "activity" || activityLoaded || activityFetchingRef.current) {
+    if (
+      !user?.id ||
+      (activeSpace !== "activity" && activeSpace !== "overview") ||
+      activityLoaded ||
+      activityFetchingRef.current
+    ) {
       return;
     }
 

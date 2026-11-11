@@ -425,7 +425,7 @@ function PublicProfile() {
     if (
       !profile?.userId ||
       !profile.canViewComments ||
-      activeSpace !== "comments" ||
+      (activeSpace !== "comments" && activeSpace !== "overview") ||
       commentsLoaded ||
       commentsFetchingRef.current
     ) {
@@ -470,12 +470,12 @@ function PublicProfile() {
     getPublicCommentsFn,
   ]);
 
-  // Carregamento sob demanda para a aba de Atividades (Cache e trava contra cliques rápidos)
+  // Carregamento sob demanda para a aba de Atividades ou Visão Geral (Cache e trava contra cliques rápidos)
   useEffect(() => {
     if (
       !profile?.userId ||
       !profile.canViewHistory ||
-      activeSpace !== "activity" ||
+      (activeSpace !== "activity" && activeSpace !== "overview") ||
       activityLoaded ||
       activityFetchingRef.current
     ) {

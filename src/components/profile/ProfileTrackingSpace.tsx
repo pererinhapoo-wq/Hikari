@@ -1,16 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  CheckCircle2,
   Film,
   Pencil,
-  Play,
   Plus,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
 import { upsertAnimeTracking } from "@/lib/profile-tracking.functions";
+import { cn } from "@/lib/utils";
 import {
   STATUS_CONFIG,
   STATUS_ORDER,
@@ -196,6 +195,16 @@ export function ProfileTrackingSpace({
     }
   };
 
+  // Paginação automática (infinite scroll) para todas as categorias
+  const PAGE_SIZE = 18;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const animeSentinelRef = useRef<HTMLDivElement>(null);
+
+  // Reseta a quantidade visível ao alterar o filtro
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filter]);
+
   const counts: Record<FilterOption, number> = {
     all: items.length,
     watching: items.filter((i) => i.status === "watching").length,
@@ -210,6 +219,29 @@ export function ProfileTrackingSpace({
       ? items
       : items.filter((item) => item.status === filter);
 
+  const displayedItems = filteredItems.slice(0, visibleCount);
+  const hasMoreToLoad = visibleCount < filteredItems.length;
+
+  // IntersectionObserver para carregamento automático conforme o usuário rola
+  useEffect(() => {
+    const sentinel = animeSentinelRef.current;
+    if (!sentinel || !hasMoreToLoad || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredItems.length));
+        }
+      },
+      { rootMargin: "400px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreToLoad, filteredItems.length]);
+
   return (
     <div className="space-y-6">
       {/* Barra de Filtros e Contadores de Status Clicáveis */}
@@ -223,7 +255,7 @@ export function ProfileTrackingSpace({
             }}
             className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
               filter === "all"
-                ? "bg-violet-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] ring-1 ring-violet-400"
+                ? "bg-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] ring-1 ring-purple-400"
                 : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
             }`}
           >
@@ -266,19 +298,20 @@ export function ProfileTrackingSpace({
         </div>
       )}
 
-      {/* Conteúdo: Skeleton, Vazio ou Grade de Obras (Exatamente 3 cards por linha) */}
+      {/* Conteúdo: Skeleton, Vazio ou Grade de Obras (Exatamente 3 cards por linha no mobile) */}
       {loading ? (
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-4 lg:gap-5">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <div
-              key={idx}
-              className="aspect-[3/4.2] animate-pulse rounded-2xl bg-white/[0.04]"
-            />
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+          {Array.from({ length: 12 }).map((_, idx) => (
+            <div key={idx} className="min-w-0">
+              <div className="aspect-[2/3] w-full rounded-none bg-[#141224] animate-pulse border border-white/5" />
+              <div className="mt-2 h-3.5 w-3/4 rounded-none bg-white/5 animate-pulse" />
+              <div className="mt-1 h-2.5 w-1/2 rounded-none bg-white/5 animate-pulse" />
+            </div>
           ))}
         </div>
       ) : filteredItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-8 sm:p-12 text-center">
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-400 mb-3">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-400 mb-3">
             <Film className="size-6" />
           </div>
           <h4 className="text-sm font-semibold text-zinc-300">Nenhum anime encontrado</h4>
@@ -289,60 +322,30 @@ export function ProfileTrackingSpace({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-4 lg:gap-5">
-          {filteredItems.map((item) => {
-            const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.planning;
-            const maxEps = item.episodesCount ?? null;
-            const watched = item.episodesWatched ?? 0;
-            const progressPct =
-              maxEps && maxEps > 0
-                ? Math.min(100, Math.round((watched / maxEps) * 100))
-                : null;
-            const isMobileActive = activeMobileCardId === item.animeId;
-            const isCompletedOrMax =
-              maxEps !== null && maxEps > 0 && watched >= maxEps;
-            const isUpdating = updatingId === item.animeId;
-            const isButtonDisabled = isUpdating || isCompletedOrMax;
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+            {displayedItems.map((item) => {
+              const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.planning;
+              const maxEps = item.episodesCount ?? null;
+              const watched = item.episodesWatched ?? 0;
+              const progressPct =
+                maxEps && maxEps > 0
+                  ? Math.min(100, Math.round((watched / maxEps) * 100))
+                  : null;
+              const isMobileActive = activeMobileCardId === item.animeId;
+              const isCompletedOrMax =
+                maxEps !== null && maxEps > 0 && watched >= maxEps;
+              const isUpdating = updatingId === item.animeId;
+              const isButtonDisabled = isUpdating || isCompletedOrMax;
 
-            return (
-              <article
-                key={item.animeId}
-                data-card-id={item.animeId}
-                onClick={(e) => handleCardClick(e, item.animeId)}
-                className={`group relative flex flex-col min-w-0 overflow-hidden rounded-2xl border p-1.5 sm:p-2.5 transition-all duration-300 hover:border-violet-500/40 hover:bg-[#121020] hover:shadow-[0_12px_30px_rgba(0,0,0,0.5)] ${
-                  isMobileActive
-                    ? "border-violet-500/50 bg-[#121020] shadow-[0_8px_25px_rgba(0,0,0,0.5)]"
-                    : "border-white/[0.07] bg-[#0d0c16]/80"
-                }`}
-              >
-                {/* Imagem de Capa com Proporção Cinematográfica 3/4.2 */}
-                <div className="relative aspect-[3/4.2] w-full overflow-hidden rounded-xl bg-[#161422]">
-                  {item.cover ? (
-                    <img
-                      src={item.cover}
-                      alt={item.title}
-                      loading="lazy"
-                      className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex size-full items-center justify-center text-zinc-600">
-                      <Film className="size-6 sm:size-8" />
-                    </div>
-                  )}
-
-                  {/* Gradiente escuro para legibilidade */}
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/35" />
-
-                  {/* Top badge: Status do anime (sem exibição de nota ou média pessoal) */}
-                  <div className="pointer-events-none absolute left-1.5 top-1.5 sm:left-2 sm:top-2">
-                    <span
-                      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border ${cfg.badgeBg} ${cfg.badgeText} ${cfg.badgeBorder}`}
-                    >
-                      {cfg.label}
-                    </span>
-                  </div>
-
-                  {/* Botão Hover de Play / Acesso Rápido — primeiro toque no mobile revela controles */}
+              return (
+                <article
+                  key={item.animeId}
+                  data-card-id={item.animeId}
+                  onClick={(e) => handleCardClick(e, item.animeId)}
+                  className="group relative flex flex-col min-w-0"
+                >
+                  {/* Pôster vertical retangular com cantos retos (sem cantos arredondados, sem textos/estrelas sobrepostos) */}
                   <Link
                     to="/anime/$id"
                     params={{ id: item.animeId }}
@@ -353,135 +356,166 @@ export function ProfileTrackingSpace({
                         setActiveMobileCardId(item.animeId);
                       }
                     }}
-                    className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-black/40 backdrop-blur-[2px]"
-                    aria-label={`Ver ${item.title}`}
+                    className="
+                      block
+                      outline-none
+                      focus-visible:ring-2
+                      focus-visible:ring-purple-400
+                      transition-all
+                      duration-150
+                      ease-out
+                      active:scale-[0.96]
+                      active:brightness-110
+                      [@media(hover:hover)]:hover:brightness-105
+                      motion-reduce:transition-none
+                      motion-reduce:transform-none
+                      -webkit-tap-highlight-color-transparent
+                    "
                   >
-                    <span className="flex size-8 sm:size-11 items-center justify-center rounded-full bg-violet-600 text-white shadow-xl transition-transform duration-300 group-hover:scale-110">
-                      <Play className="size-3.5 sm:size-5 fill-white ml-0.5" />
-                    </span>
+                    <div className="
+                      relative
+                      aspect-[2/3]
+                      w-full
+                      overflow-hidden
+                      rounded-none
+                      bg-[#0d0c16]
+                      border
+                      border-white/10
+                      shadow-sm
+                      transition-all
+                      duration-200
+                      ease-out
+                      group-hover:border-purple-500/50
+                      group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+                      group-active:border-purple-400
+                      group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
+                    ">
+                      {item.cover ? (
+                        <img
+                          src={item.cover}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="
+                            size-full
+                            object-cover
+                            transition-transform
+                            duration-300
+                            ease-out
+                            group-hover:scale-[1.03]
+                            group-active:scale-[1.01]
+                            motion-reduce:transform-none
+                          "
+                        />
+                      ) : (
+                        <div className="flex size-full items-center justify-center font-display text-base text-zinc-600">
+                          {item.title.slice(0, 1)}
+                        </div>
+                      )}
+                    </div>
                   </Link>
 
-                  {/* Informações na base do pôster */}
-                  <div className="pointer-events-none absolute bottom-1.5 sm:bottom-2 inset-x-1.5 sm:inset-x-2">
-                    <div className="flex items-center justify-between text-[9px] sm:text-[10px] font-medium text-zinc-300">
-                      <span className="truncate">{item.format || "Anime"}</span>
-                      {item.year && <span className="shrink-0">{item.year}</span>}
+                  {/* Informações estritamente FORA do pôster */}
+                  <div className="mt-2 flex flex-col px-0.5 min-w-0">
+                    {/* Título abaixo do pôster */}
+                    <Link
+                      to="/anime/$id"
+                      params={{ id: item.animeId }}
+                      onClick={(e) => {
+                        if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveMobileCardId(item.animeId);
+                        }
+                      }}
+                      className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+                      title={item.title}
+                    >
+                      {item.title}
+                    </Link>
+
+                    {/* Informações secundárias: Status · Episódios (sem notas nem estrelas) */}
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] sm:text-xs text-zinc-400 truncate">
+                      <span className={cn("font-medium shrink-0", cfg.badgeText || "text-purple-400")}>
+                        {cfg.label}
+                      </span>
+                      <span>·</span>
+                      <span className="tabular-nums truncate">
+                        {watched}{maxEps ? ` / ${maxEps}` : " eps"}
+                      </span>
                     </div>
 
-                    {/* Barra de Progresso se houver episódios conhecidos */}
+                    {/* Barra de Progresso minimalista se houver episódios conhecidos */}
                     {progressPct !== null && (
-                      <div className="mt-1 sm:mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/20">
+                      <div className="mt-1 h-1 w-full overflow-hidden rounded-none bg-white/10">
                         <div
-                          className="h-full bg-violet-400 transition-all duration-300"
+                          className="h-full bg-purple-500 transition-all duration-300"
                           style={{ width: `${progressPct}%` }}
                         />
                       </div>
                     )}
-                  </div>
-                </div>
 
-                {/* Título e Progresso do Anime: legível em 3 colunas, sem corte nem sobreposição */}
-                <div className="mt-2 min-w-0 flex flex-1 flex-col justify-between pt-0.5 pb-0.5 px-0.5 sm:px-1">
-                  <Link
-                    to="/anime/$id"
-                    params={{ id: item.animeId }}
-                    onClick={(e) => {
-                      if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setActiveMobileCardId(item.animeId);
-                      }
-                    }}
-                    className="line-clamp-2 text-[11px] sm:text-xs md:text-sm font-semibold text-zinc-100 transition-colors hover:text-violet-300 break-words leading-tight sm:leading-snug"
-                    title={item.title}
-                  >
-                    {item.title}
-                  </Link>
-
-                  <div className="mt-1.5 sm:mt-2.5 flex items-center justify-between gap-1 text-[10px] sm:text-xs text-zinc-400 min-w-0">
-                    <span className="tabular-nums truncate">
-                      {watched}
-                      {maxEps ? ` / ${maxEps}` : " eps"}
-                    </span>
-
-                    {item.status === "completed" ? (
-                      <span className="flex shrink-0 items-center gap-0.5 sm:gap-1 text-emerald-400 font-medium text-[9px] sm:text-xs">
-                        <CheckCircle2 className="size-2.5 sm:size-3" />
-                        <span className="hidden min-[400px]:inline">Concluído</span>
-                      </span>
-                    ) : progressPct !== null ? (
-                      <span className="shrink-0 text-zinc-400 font-mono text-[9px] sm:text-[11px]">
-                        {progressPct}%
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {/* 3. Controles de Edição Direta e Incremento Rápido com Revelação Animada (Hover no desktop, toque no mobile) */}
-                  <div
-                    className={`mt-2 pt-1.5 sm:mt-3 sm:pt-2 border-t border-white/[0.06] flex items-center justify-between gap-1 sm:gap-2 transition-all duration-200 ease-out ${
-                      isMobileActive
-                        ? "opacity-100 translate-y-0 pointer-events-auto"
-                        : "opacity-0 translate-y-1 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto"
-                    }`}
-                  >
-                    {/* 2. Botão +1 ep com alto contraste, legibilidade nítida e estado desabilitado discreto */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
-                          setActiveMobileCardId(item.animeId);
-                          return;
-                        }
-                        handleQuickIncrement(item);
-                      }}
-                      disabled={isButtonDisabled}
-                      className={`inline-flex items-center justify-center gap-0.5 sm:gap-1 rounded-lg px-1.5 sm:px-2 py-1 text-[10px] sm:text-[11px] font-semibold transition-all shrink-0 ${
-                        isButtonDisabled
-                          ? "border border-white/10 bg-white/[0.04] text-zinc-400 opacity-65 cursor-not-allowed pointer-events-none"
-                          : "border border-violet-500/35 bg-violet-500/15 text-zinc-100 shadow-[0_2px_8px_rgba(139,92,246,0.12)] hover:border-violet-400/60 hover:bg-violet-600/30 hover:text-white active:scale-95 cursor-pointer"
+                    {/* Controles de Incremento Rápido e Edição */}
+                    <div
+                      className={`mt-2 flex items-center justify-between gap-1 pt-1 border-t border-white/[0.06] transition-all duration-200 ${
+                        isMobileActive
+                          ? "opacity-100"
+                          : "opacity-80 sm:opacity-0 sm:group-hover:opacity-100"
                       }`}
-                      title={
-                        isCompletedOrMax
-                          ? "Todos os episódios assistidos"
-                          : isUpdating
-                          ? "Atualizando episódio..."
-                          : "Adicionar 1 episódio assistido (+1)"
-                      }
                     >
-                      <Plus
-                        className={`size-2.5 sm:size-3 shrink-0 ${
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleQuickIncrement(item);
+                        }}
+                        disabled={isButtonDisabled}
+                        className={`inline-flex items-center justify-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-all shrink-0 ${
                           isButtonDisabled
-                            ? "text-zinc-500 stroke-[2]"
-                            : "text-violet-300 stroke-[2.5]"
+                            ? "border border-white/10 bg-white/[0.04] text-zinc-500 cursor-not-allowed opacity-60"
+                            : "border border-purple-500/35 bg-purple-500/15 text-purple-200 hover:border-purple-400/60 hover:bg-purple-600/30 hover:text-white active:scale-95 cursor-pointer"
                         }`}
-                      />
-                      <span>1 ep</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
-                          setActiveMobileCardId(item.animeId);
-                          return;
+                        title={
+                          isCompletedOrMax
+                            ? "Todos os episódios assistidos"
+                            : isUpdating
+                              ? "Atualizando..."
+                              : "Adicionar 1 episódio assistido (+1)"
                         }
-                        setEditingItem(item);
-                      }}
-                      className="inline-flex items-center justify-center gap-0.5 sm:gap-1.5 rounded-lg border border-white/15 bg-white/[0.06] px-1.5 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-zinc-200 transition-all hover:border-violet-500/40 hover:bg-violet-600/20 hover:text-white active:scale-95 cursor-pointer shrink-0"
-                      title="Editar status, nota e episódios"
-                    >
-                      <Pencil className="size-2.5 sm:size-3 text-violet-300 shrink-0 stroke-[2]" />
-                      <span>Editar</span>
-                    </button>
+                      >
+                        <Plus className="size-2.5 shrink-0 stroke-[2.5]" />
+                        <span>1 ep</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingItem(item);
+                        }}
+                        className="inline-flex items-center justify-center gap-0.5 rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200 transition-all hover:border-purple-500/40 hover:bg-purple-600/20 hover:text-white active:scale-95 cursor-pointer shrink-0"
+                        title="Editar status e episódios"
+                      >
+                        <Pencil className="size-2.5 text-purple-300 shrink-0" />
+                        <span>Editar</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            );
-          })}
+                </article>
+              );
+            })}
+          </div>
+
+          {/* Sentinela de carregamento automático na rolagem (sem botão Carregar mais) */}
+          <div ref={animeSentinelRef} className="h-6" aria-hidden="true" />
+          {hasMoreToLoad && (
+            <div className="py-4 flex items-center justify-center gap-2 text-xs text-zinc-400">
+              <div className="size-3.5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              <span>Carregando mais animes...</span>
+            </div>
+          )}
         </div>
       )}
 

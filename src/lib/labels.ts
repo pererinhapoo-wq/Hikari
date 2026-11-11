@@ -78,8 +78,9 @@ export function seasonLabel(season: string | null | undefined, year?: number | n
 }
 
 export function scoreLabel(score: number | null | undefined): string {
-  if (score == null || Number.isNaN(score)) return "—";
-  return (score / 10).toFixed(1);
+  if (score == null || Number.isNaN(score) || score <= 0) return "—";
+  const normalized = score > 10 ? score / 10 : score;
+  return normalized.toFixed(1);
 }
 
 export const SOURCE_PT: Record<string, string> = {

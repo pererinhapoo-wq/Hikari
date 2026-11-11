@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
@@ -159,30 +160,25 @@ export function ProfileRecentActivities({
   comments = [],
   loading = false,
 }: ProfileRecentActivitiesProps) {
-  // 1. Atividades de Animes: até 5 registros mais recentes relacionados a animes
-  const recentAnimeActivities = activityItems
-    .filter(
-      (item) =>
-        item.resourceType === "anime" ||
-        item.type === "watched_episode" ||
-        item.type === "tracking_added" ||
-        item.type === "tracking_updated" ||
-        (item.type === "favorite_added" && item.resourceType === "anime"),
-    )
-    .slice(0, 5);
+  // 1. Atividades de Animes: todas as atividades reais do usuário relacionadas a animes
+  const animeActivities = activityItems.filter(
+    (item) =>
+      item.resourceType === "anime" ||
+      item.type === "watched_episode" ||
+      item.type === "tracking_added" ||
+      item.type === "tracking_updated" ||
+      (item.type === "favorite_added" && item.resourceType === "anime"),
+  );
 
-  // 2. Comentários: até 3 comentários mais recentes
-  const recentComments = comments.slice(0, 3);
-
-  // 3. Ordenação Conjunta: unir ambas as categorias e ordenar por data decrescente
+  // 2. Ordenação Conjunta: unir ambas as categorias sem registros duplicados e ordenar cronologicamente por data decrescente
   const unifiedItems: UnifiedActivityItem[] = [
-    ...recentAnimeActivities.map((act) => ({
+    ...animeActivities.map((act) => ({
       kind: "anime_activity" as const,
       id: `act-${act.id}`,
       date: act.createdAt,
       activity: act,
     })),
-    ...recentComments.map((comm) => ({
+    ...comments.map((comm) => ({
       kind: "comment" as const,
       id: `comm-${comm.id}`,
       date: comm.createdAt,
@@ -194,6 +190,33 @@ export function ProfileRecentActivities({
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
+  // Paginação automática (infinite scroll) para Visão Geral
+  const PAGE_SIZE = 6;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const activitySentinelRef = useRef<HTMLDivElement>(null);
+
+  const displayedItems = unifiedItems.slice(0, visibleCount);
+  const hasMoreToLoad = visibleCount < unifiedItems.length;
+
+  useEffect(() => {
+    const sentinel = activitySentinelRef.current;
+    if (!sentinel || !hasMoreToLoad || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, unifiedItems.length));
+        }
+      },
+      { rootMargin: "400px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreToLoad, unifiedItems.length]);
+
   return (
     <section
       aria-label="Atividades recentes"
@@ -202,8 +225,8 @@ export function ProfileRecentActivities({
       {/* Cabeçalho da Seção Independente */}
       <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
         <div className="flex items-center gap-2.5">
-          <span className="h-5 w-1 rounded-full bg-violet-500" />
-          <Activity className="size-4 text-violet-400" />
+          <span className="h-5 w-1 rounded-full bg-purple-500" />
+          <Activity className="size-4 text-purple-400" />
           <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-white">
             Atividades recentes
           </h3>
@@ -216,13 +239,13 @@ export function ProfileRecentActivities({
         )}
       </div>
 
-      {/* Conteúdo: Skeleton de carregamento, estado vazio ou lista ordenada */}
+      {/* Conteúdo: Skeleton de carregamento, estado vazio ou lista ordenada com carregamento automático */}
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, idx) => (
             <div
               key={idx}
-              className="h-20 animate-pulse rounded-2xl bg-white/[0.04] border border-white/[0.04]"
+              className="h-20 animate-pulse rounded-none bg-white/[0.04] border border-white/[0.04]"
             />
           ))}
         </div>
@@ -238,7 +261,7 @@ export function ProfileRecentActivities({
         </div>
       ) : (
         <div className="space-y-3">
-          {unifiedItems.map((item) => {
+          {displayedItems.map((item) => {
             if (item.kind === "comment") {
               const comm = item.comment;
               const epNum =
@@ -257,7 +280,7 @@ export function ProfileRecentActivities({
                 >
                   <div className="flex items-start gap-3.5 sm:gap-4 min-w-0 flex-1">
                     {/* Capa / Ícone */}
-                    <div className="relative size-12 sm:size-14 shrink-0 overflow-hidden rounded-xl bg-[#161424] mt-0.5">
+                    <div className="relative aspect-[2/3] w-12 sm:w-14 shrink-0 overflow-hidden rounded-none border border-white/10 bg-[#161424] mt-0.5">
                       {comm.animeCover ? (
                         <img
                           src={comm.animeCover}
@@ -382,7 +405,7 @@ export function ProfileRecentActivities({
               >
                 <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
                   {/* Capa / Ícone */}
-                  <div className="relative size-12 sm:size-14 shrink-0 overflow-hidden rounded-xl bg-[#161424]">
+                  <div className="relative aspect-[2/3] w-12 sm:w-14 shrink-0 overflow-hidden rounded-none border border-white/10 bg-[#161424]">
                     {act.resourceCover ? (
                       <img
                         src={act.resourceCover}
@@ -467,17 +490,8 @@ export function ProfileRecentActivities({
                       )}
                     </div>
 
-                    {/* Metadados: Data (sem textos duplicados de descrição) */}
+                    {/* Metadados: Data (sem estrelas/notas e sem textos duplicados) */}
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                      {typeof act.metadata?.score === "number" && act.metadata.score > 0 && (
-                        <>
-                          <span className="font-semibold text-amber-300 text-[11px]">
-                            ★ {act.metadata.score}/10
-                          </span>
-                          <span className="text-zinc-600">•</span>
-                        </>
-                      )}
-
                       <span
                         className="flex items-center gap-1 text-zinc-400 text-[11px] cursor-default"
                         title={formatFullDate(act.createdAt)}
@@ -506,6 +520,15 @@ export function ProfileRecentActivities({
               </article>
             );
           })}
+
+          {hasMoreToLoad && (
+            <div
+              ref={activitySentinelRef}
+              className="flex justify-center py-4"
+            >
+              <div className="size-5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+            </div>
+          )}
         </div>
       )}
     </section>

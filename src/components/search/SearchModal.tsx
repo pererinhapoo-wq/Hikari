@@ -5,12 +5,19 @@ import {
   Film,
   Lock,
   Search as SearchIcon,
+  Sparkles,
   Star,
   Users,
   X,
 } from "lucide-react";
 import { searchCatalog } from "@/lib/api";
 import { searchUsers, type SearchUserItem } from "@/lib/profile.functions";
+import {
+  searchCharacters,
+  searchPeople,
+  type SearchCharacterItem,
+  type SearchPersonItem,
+} from "@/lib/search-entities";
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { overlayList } from "@/lib/overlay";
 import { getResponsiveCoverAttrs } from "@/lib/image-utils";
@@ -18,7 +25,6 @@ import { useHikariStore } from "@/lib/store";
 import {
   SearchCategorySelector,
   type SearchCategory,
-  CATEGORIES,
 } from "@/components/search/SearchCategorySelector";
 import { useScrollLock } from "@/lib/scroll-lock";
 
@@ -26,6 +32,18 @@ interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialCategory?: SearchCategory;
+}
+
+/**
+ * Normaliza e formata a nota real do anime de acordo com a escala da fonte de dados:
+ * - A API AniList e o catálogo base do Hikari utilizam a escala 0 a 100 (ex: 84 = 8.4)
+ * - Avaliações locais ou manuais podem vir na escala 0 a 10 (ex: 8.5)
+ * - Converte valores > 10 dividindo por 10 e formata com 1 casa decimal (ex: 8.4)
+ */
+function formatAnimeScore(score: number | null | undefined): string | null {
+  if (score == null || Number.isNaN(score) || score <= 0) return null;
+  const normalized = score > 10 ? score / 10 : score;
+  return normalized.toFixed(1);
 }
 
 export function SearchModal({
@@ -36,6 +54,8 @@ export function SearchModal({
   useScrollLock(isOpen);
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const savedScrollYRef = useRef<number>(0);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
@@ -45,30 +65,44 @@ export function SearchModal({
   // Resultados de Animes
   const [animeResults, setAnimeResults] = useState<SlimAnime[]>([]);
   const [animeLoading, setAnimeLoading] = useState(false);
+  const [animeLoadingMore, setAnimeLoadingMore] = useState(false);
+  const [animePage, setAnimePage] = useState(1);
+  const [animeHasNext, setAnimeHasNext] = useState(false);
 
   // Resultados de Usuários
   const [userResults, setUserResults] = useState<SearchUserItem[]>([]);
   const [userLoading, setUserLoading] = useState(false);
+  const [userLoadingMore, setUserLoadingMore] = useState(false);
+  const [userPage, setUserPage] = useState(1);
+  const [userHasNext, setUserHasNext] = useState(false);
+
+  // Resultados de Personagens
+  const [characterResults, setCharacterResults] = useState<SearchCharacterItem[]>([]);
+  const [characterLoading, setCharacterLoading] = useState(false);
+  const [characterLoadingMore, setCharacterLoadingMore] = useState(false);
+  const [characterPage, setCharacterPage] = useState(1);
+  const [characterHasNext, setCharacterHasNext] = useState(false);
+
+  // Resultados de People
+  const [peopleResults, setPeopleResults] = useState<SearchPersonItem[]>([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [peopleLoadingMore, setPeopleLoadingMore] = useState(false);
+  const [peoplePage, setPeoplePage] = useState(1);
+  const [peopleHasNext, setPeopleHasNext] = useState(false);
 
   const localAnimes = useHikariStore((s) => s.animes);
 
   /* =========================================================
      PROTEÇÃO DA PÁGINA QUE ESTÁ ATRÁS DA BUSCA
-     - Preserva posição exata de rolagem
-     - Preserva conteúdo, estado e filtros
-     - Não causa recarregamento ou navegação indevida
-     - Ao fechar, retorna exatamente ao ponto anterior
   ========================================================== */
   useEffect(() => {
     if (!isOpen) return;
 
-    // Salva o ponto exato de rolagem antes de qualquer interação com o modal
     const currentScrollY =
       window.scrollY || document.documentElement.scrollTop || 0;
     savedScrollYRef.current = currentScrollY;
     previousActiveElementRef.current = document.activeElement as HTMLElement | null;
 
-    // Foco automático no input de busca sem rolar a página
     const timer = window.setTimeout(() => {
       inputRef.current?.focus({ preventScroll: true });
     }, 40);
@@ -77,7 +111,6 @@ export function SearchModal({
       window.clearTimeout(timer);
       const targetScroll = savedScrollYRef.current;
 
-      // Restaura a rolagem imediatamente e no próximo frame de animação
       window.scrollTo({
         top: targetScroll,
         behavior: "instant" as ScrollBehavior,
@@ -90,7 +123,6 @@ export function SearchModal({
         });
       });
 
-      // Restaura o foco sem provocar scroll
       try {
         previousActiveElementRef.current?.focus({ preventScroll: true });
       } catch {
@@ -100,7 +132,6 @@ export function SearchModal({
   }, [isOpen]);
 
   const handleClose = useCallback(() => {
-    // Desfoca o input antes de fechar para o navegador não alterar o scroll
     inputRef.current?.blur();
     onClose();
   }, [onClose]);
@@ -127,6 +158,16 @@ export function SearchModal({
     setQuery("");
     setAnimeResults([]);
     setUserResults([]);
+    setCharacterResults([]);
+    setPeopleResults([]);
+    setAnimePage(1);
+    setUserPage(1);
+    setCharacterPage(1);
+    setPeoplePage(1);
+    setAnimeHasNext(false);
+    setUserHasNext(false);
+    setCharacterHasNext(false);
+    setPeopleHasNext(false);
     inputRef.current?.focus({ preventScroll: true });
   };
 
@@ -137,12 +178,10 @@ export function SearchModal({
   };
 
   /* =========================================================
-     BUSCA DE ANIMES (Exclusivamente catálogo)
+     1. BUSCA DE ANIMES (Catálogo + Infinite Scroll)
   ========================================================== */
   useEffect(() => {
     if (!isOpen || category !== "animes") {
-      setAnimeResults([]);
-      setAnimeLoading(false);
       return;
     }
 
@@ -150,6 +189,8 @@ export function SearchModal({
     if (!trimmed) {
       setAnimeResults([]);
       setAnimeLoading(false);
+      setAnimeHasNext(false);
+      setAnimePage(1);
       return;
     }
 
@@ -157,6 +198,7 @@ export function SearchModal({
 
     const timer = window.setTimeout(async () => {
       setAnimeLoading(true);
+      setAnimePage(1);
 
       try {
         const isAdultArea =
@@ -194,16 +236,13 @@ export function SearchModal({
               .replace(/[\u0300-\u036f]/g, "")
               .toLowerCase();
 
-          const matchesDirect = title.includes(normalized);
-          const matchesWords = normalized
-            .split(/\s+/)
-            .every((word) => title.includes(word));
-
-          return matchesDirect || matchesWords;
+          return (
+            title.includes(normalized) ||
+            normalized.split(/\s+/).every((w) => title.includes(w))
+          );
         });
 
         const remote = overlayList(result.items ?? [], localAnimes);
-
         const seen = new Set<string>();
         const merged: SlimAnime[] = [];
 
@@ -213,40 +252,14 @@ export function SearchModal({
           merged.push(anime);
         }
 
-        const ranked = merged.sort((a, b) => {
-          const aTitle =
-            `${a.titles.romaji} ${a.titles.english} ${a.titles.native}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
-
-          const bTitle =
-            `${b.titles.romaji} ${b.titles.english} ${b.titles.native}`
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase();
-
-          const aStarts = aTitle.startsWith(normalized);
-          const bStarts = bTitle.startsWith(normalized);
-
-          if (aStarts && !bStarts) return -1;
-          if (!aStarts && bStarts) return 1;
-
-          const aContains = aTitle.includes(normalized);
-          const bContains = bTitle.includes(normalized);
-
-          if (aContains && !bContains) return -1;
-          if (!aContains && bContains) return 1;
-
-          return 0;
-        });
-
         if (!cancelled) {
-          setAnimeResults(ranked);
+          setAnimeResults(merged);
+          setAnimeHasNext(result.page < result.totalPages);
         }
       } catch {
         if (!cancelled) {
           setAnimeResults([]);
+          setAnimeHasNext(false);
         }
       } finally {
         if (!cancelled) {
@@ -261,13 +274,54 @@ export function SearchModal({
     };
   }, [isOpen, category, query, localAnimes]);
 
+  const loadMoreAnimes = useCallback(async () => {
+    if (animeLoading || animeLoadingMore || !animeHasNext) return;
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    setAnimeLoadingMore(true);
+    const nextPage = animePage + 1;
+
+    try {
+      const isAdultArea =
+        typeof window !== "undefined" &&
+        window.location.pathname.startsWith("/adult");
+
+      const result = await searchCatalog({
+        data: {
+          q: trimmed,
+          page: nextPage,
+          adult: isAdultArea,
+        },
+      });
+
+      const remote = overlayList(result.items ?? [], localAnimes);
+      setAnimeResults((prev) => {
+        const seen = new Set(prev.map((a) => a.id));
+        const additions: SlimAnime[] = [];
+        for (const item of remote) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            additions.push(item);
+          }
+        }
+        return [...prev, ...additions];
+      });
+
+      setAnimePage(nextPage);
+      setAnimeHasNext(result.page < result.totalPages);
+    } catch {
+      setAnimeHasNext(false);
+    } finally {
+      setAnimeLoadingMore(false);
+    }
+  }, [animeLoading, animeLoadingMore, animeHasNext, query, animePage, localAnimes]);
+
   /* =========================================================
-     BUSCA DE USUÁRIOS (Exclusivamente membros)
+     2. BUSCA DE USUÁRIOS (Membros + Infinite Scroll)
   ========================================================== */
   useEffect(() => {
     if (!isOpen || category !== "users") {
-      setUserResults([]);
-      setUserLoading(false);
       return;
     }
 
@@ -279,6 +333,8 @@ export function SearchModal({
     if (clean.length < 2) {
       setUserResults([]);
       setUserLoading(false);
+      setUserHasNext(false);
+      setUserPage(1);
       return;
     }
 
@@ -286,22 +342,25 @@ export function SearchModal({
 
     const timer = window.setTimeout(async () => {
       setUserLoading(true);
+      setUserPage(1);
 
       try {
         const users = await searchUsers({
           data: {
             query: clean,
             page: 1,
-            limit: 20,
+            limit: 18,
           },
         });
 
         if (!cancelled) {
           setUserResults(users);
+          setUserHasNext(users.length >= 18);
         }
       } catch {
         if (!cancelled) {
           setUserResults([]);
+          setUserHasNext(false);
         }
       } finally {
         if (!cancelled) {
@@ -316,10 +375,305 @@ export function SearchModal({
     };
   }, [isOpen, category, query]);
 
+  const loadMoreUsers = useCallback(async () => {
+    if (userLoading || userLoadingMore || !userHasNext) return;
+    let clean = query.trim();
+    if (clean.startsWith("@")) clean = clean.slice(1).trim();
+    if (clean.length < 2) return;
+
+    setUserLoadingMore(true);
+    const nextPage = userPage + 1;
+
+    try {
+      const users = await searchUsers({
+        data: {
+          query: clean,
+          page: nextPage,
+          limit: 18,
+        },
+      });
+
+      setUserResults((prev) => {
+        const seen = new Set(prev.map((u) => u.userId));
+        const additions: SearchUserItem[] = [];
+        for (const u of users) {
+          if (!seen.has(u.userId)) {
+            seen.add(u.userId);
+            additions.push(u);
+          }
+        }
+        return [...prev, ...additions];
+      });
+
+      setUserPage(nextPage);
+      setUserHasNext(users.length >= 18);
+    } catch {
+      setUserHasNext(false);
+    } finally {
+      setUserLoadingMore(false);
+    }
+  }, [userLoading, userLoadingMore, userHasNext, query, userPage]);
+
+  /* =========================================================
+     3. BUSCA DE PERSONAGENS (Characters + Infinite Scroll)
+  ========================================================== */
+  useEffect(() => {
+    if (!isOpen || category !== "characters") {
+      return;
+    }
+
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setCharacterResults([]);
+      setCharacterLoading(false);
+      setCharacterHasNext(false);
+      setCharacterPage(1);
+      return;
+    }
+
+    let cancelled = false;
+
+    const timer = window.setTimeout(async () => {
+      setCharacterLoading(true);
+      setCharacterPage(1);
+
+      try {
+        const result = await searchCharacters(trimmed, 1, 18);
+        if (!cancelled) {
+          setCharacterResults(result.items);
+          setCharacterHasNext(result.hasNext);
+        }
+      } catch {
+        if (!cancelled) {
+          setCharacterResults([]);
+          setCharacterHasNext(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setCharacterLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isOpen, category, query]);
+
+  const loadMoreCharacters = useCallback(async () => {
+    if (characterLoading || characterLoadingMore || !characterHasNext) return;
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    setCharacterLoadingMore(true);
+    const nextPage = characterPage + 1;
+
+    try {
+      const result = await searchCharacters(trimmed, nextPage, 18);
+      setCharacterResults((prev) => {
+        const seen = new Set(prev.map((c) => c.id));
+        const additions: SearchCharacterItem[] = [];
+        for (const item of result.items) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            additions.push(item);
+          }
+        }
+        return [...prev, ...additions];
+      });
+      setCharacterPage(nextPage);
+      setCharacterHasNext(result.hasNext);
+    } catch {
+      setCharacterHasNext(false);
+    } finally {
+      setCharacterLoadingMore(false);
+    }
+  }, [characterLoading, characterLoadingMore, characterHasNext, query, characterPage]);
+
+  /* =========================================================
+     4. BUSCA DE PEOPLE / STAFF (Profissionais + Infinite Scroll)
+  ========================================================== */
+  useEffect(() => {
+    if (!isOpen || category !== "people") {
+      return;
+    }
+
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setPeopleResults([]);
+      setPeopleLoading(false);
+      setPeopleHasNext(false);
+      setPeoplePage(1);
+      return;
+    }
+
+    let cancelled = false;
+
+    const timer = window.setTimeout(async () => {
+      setPeopleLoading(true);
+      setPeoplePage(1);
+
+      try {
+        const result = await searchPeople(trimmed, 1, 18);
+        if (!cancelled) {
+          setPeopleResults(result.items);
+          setPeopleHasNext(result.hasNext);
+        }
+      } catch {
+        if (!cancelled) {
+          setPeopleResults([]);
+          setPeopleHasNext(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setPeopleLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isOpen, category, query]);
+
+  const loadMorePeople = useCallback(async () => {
+    if (peopleLoading || peopleLoadingMore || !peopleHasNext) return;
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    setPeopleLoadingMore(true);
+    const nextPage = peoplePage + 1;
+
+    try {
+      const result = await searchPeople(trimmed, nextPage, 18);
+      setPeopleResults((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        const additions: SearchPersonItem[] = [];
+        for (const item of result.items) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            additions.push(item);
+          }
+        }
+        return [...prev, ...additions];
+      });
+      setPeoplePage(nextPage);
+      setPeopleHasNext(result.hasNext);
+    } catch {
+      setPeopleHasNext(false);
+    } finally {
+      setPeopleLoadingMore(false);
+    }
+  }, [peopleLoading, peopleLoadingMore, peopleHasNext, query, peoplePage]);
+
+  /* =========================================================
+     CARREGAMENTO AUTOMÁTICO (INFINITE SCROLL VIA OBSERVER)
+  ========================================================== */
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          if (category === "animes" && animeHasNext && !animeLoading && !animeLoadingMore) {
+            void loadMoreAnimes();
+          } else if (category === "users" && userHasNext && !userLoading && !userLoadingMore) {
+            void loadMoreUsers();
+          } else if (category === "characters" && characterHasNext && !characterLoading && !characterLoadingMore) {
+            void loadMoreCharacters();
+          } else if (category === "people" && peopleHasNext && !peopleLoading && !peopleLoadingMore) {
+            void loadMorePeople();
+          }
+        }
+      },
+      {
+        root: scrollContainerRef.current,
+        rootMargin: "300px 0px",
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    category,
+    animeHasNext,
+    animeLoading,
+    animeLoadingMore,
+    loadMoreAnimes,
+    userHasNext,
+    userLoading,
+    userLoadingMore,
+    loadMoreUsers,
+    characterHasNext,
+    characterLoading,
+    characterLoadingMore,
+    loadMoreCharacters,
+    peopleHasNext,
+    peopleLoading,
+    peopleLoadingMore,
+    loadMorePeople,
+  ]);
+
   if (!isOpen) return null;
 
-  const isAnimes = category === "animes";
   const userQueryClean = query.trim().replace(/^@/, "").trim();
+
+  const isCurrentLoading =
+    category === "animes"
+      ? animeLoading
+      : category === "users"
+        ? userLoading
+        : category === "characters"
+          ? characterLoading
+          : peopleLoading;
+
+  const isCurrentLoadingMore =
+    category === "animes"
+      ? animeLoadingMore
+      : category === "users"
+        ? userLoadingMore
+        : category === "characters"
+          ? characterLoadingMore
+          : peopleLoadingMore;
+
+  const currentCount =
+    category === "animes"
+      ? animeResults.length
+      : category === "users"
+        ? userResults.length
+        : category === "characters"
+          ? characterResults.length
+          : peopleResults.length;
+
+  const currentHasMore =
+    category === "animes"
+      ? animeHasNext
+      : category === "users"
+        ? userHasNext
+        : category === "characters"
+          ? characterHasNext
+          : peopleHasNext;
+
+  const categoryLabel =
+    category === "animes"
+      ? "animes"
+      : category === "users"
+        ? "usuários"
+        : category === "characters"
+          ? "personagens"
+          : "people";
+
+  const placeholderText =
+    category === "animes"
+      ? "Buscar animes, filmes, títulos..."
+      : category === "users"
+        ? "Buscar membros por @username ou nome..."
+        : category === "characters"
+          ? "Buscar personagens de animes..."
+          : "Buscar dubladores, diretores, equipe...";
 
   return (
     <div
@@ -335,25 +689,18 @@ export function SearchModal({
         aria-hidden="true"
       />
 
-      {/* Janela modal compacta e moderna inspirada na proporção do BingeBang */}
+      {/* Janela modal: dimensões e proporções originais rigorosamente preservadas */}
       <div
         onClick={(e) => e.stopPropagation()}
         className="relative z-10 flex w-full max-w-lg max-h-[78vh] sm:max-h-[82vh] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#12101e]/98 shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_25px_rgba(168,85,247,0.12)] backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-200"
       >
         {/* =========================================================
             CAMPO DE PESQUISA COMPACTO
-            - Ícone à esquerda
-            - Input moderno
-            - Botão X para limpar
-            - Seletor compacto Animes / Usuários à direita
-            - Sem efeito roxo preso ao teclar Ir no celular
         ========================================================== */}
         <div className="relative border-b border-white/5 bg-white/[0.02] p-2 sm:p-2.5">
           <div className="relative flex items-center rounded-xl border border-white/10 bg-white/[0.04] px-2.5 sm:px-3 h-10 sm:h-10.5 transition-colors focus-within:border-purple-400/40 focus-within:bg-[#181528]">
-            {/* Ícone de busca discreto */}
             <SearchIcon className="pointer-events-none size-4 shrink-0 text-zinc-400 mr-2" />
 
-            {/* Input de texto */}
             <input
               ref={inputRef}
               type="text"
@@ -363,10 +710,10 @@ export function SearchModal({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  // Desfoca imediatamente para remover o foco e evitar anel roxo preso no celular
                   (e.currentTarget as HTMLInputElement).blur();
                   const clean = query.trim();
                   if (!clean) return;
+
                   if (category === "animes") {
                     onClose();
                     void navigate({
@@ -387,14 +734,22 @@ export function SearchModal({
                         search: { q: clean, tab: "users" },
                       });
                     }
+                  } else if (category === "characters") {
+                    onClose();
+                    void navigate({
+                      to: "/search",
+                      search: { q: clean, tab: "characters" },
+                    });
+                  } else if (category === "people") {
+                    onClose();
+                    void navigate({
+                      to: "/search",
+                      search: { q: clean, tab: "people" },
+                    });
                   }
                 }
               }}
-              placeholder={
-                isAnimes
-                  ? "Buscar animes, filmes, títulos..."
-                  : "Buscar membros por @username ou nome..."
-              }
+              placeholder={placeholderText}
               className="h-full w-full flex-1 bg-transparent text-xs sm:text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
               autoComplete="off"
               autoCorrect="off"
@@ -402,14 +757,14 @@ export function SearchModal({
               spellCheck="false"
             />
 
-            {/* Controles da direita: [X] + [Seletor] */}
+            {/* Controles da direita: [X] + [Seletor com as 4 categorias] */}
             <div className="flex items-center gap-1.5 shrink-0 ml-1">
               {query.length > 0 && (
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleClear}
-                  className="flex size-6 items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-fg transition-colors"
+                  className="flex size-6 items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white transition-colors"
                   aria-label="Limpar pesquisa"
                   title="Limpar pesquisa"
                 >
@@ -417,43 +772,37 @@ export function SearchModal({
                 </button>
               )}
 
-              {/* Seletor compacto Animes / Usuários */}
+              {/* Seletor dropdown com setinha exibindo as 4 categorias (Animes, Usuários, Personagens, People) */}
               <SearchCategorySelector
                 category={category}
                 onChange={handleCategoryChange}
                 align="right"
                 size="sm"
-                options={CATEGORIES.filter((option) => option.id === "animes" || option.id === "users")}
               />
             </div>
           </div>
         </div>
 
         {/* =========================================================
-            HEADER DE CONTAGEM DE RESULTADOS (Estilo BingeBang)
+            HEADER DE CONTAGEM DE RESULTADOS
         ========================================================== */}
         {query.trim().length > 0 && (
           <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.015] px-3.5 py-1.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-            <span>
-              {isAnimes ? "Resultados de animes" : "Resultados de usuários"}
-            </span>
+            <span>Resultados de {categoryLabel}</span>
 
             <span className="text-[#c084fc] font-bold">
-              {isAnimes
-                ? animeLoading
-                  ? "Buscando..."
-                  : `${animeResults.length} ${animeResults.length === 1 ? "resultado" : "resultados"}`
-                : userLoading
-                  ? "Buscando..."
-                  : `${userResults.length} ${userResults.length === 1 ? "resultado" : "resultados"}`}
+              {isCurrentLoading
+                ? "Buscando..."
+                : `${currentCount} ${currentCount === 1 ? "resultado" : "resultados"}`}
             </span>
           </div>
         )}
 
         {/* =========================================================
-            LISTA VERTICAL DE RESULTADOS COMPACTA
+            ÁREA DE RESULTADOS COMPACTA COM CARREGAMENTO AUTOMÁTICO
         ========================================================== */}
         <div
+          ref={scrollContainerRef}
           data-search-scroll-container
           className="flex-1 overflow-y-auto overscroll-contain p-1.5 sm:p-2"
         >
@@ -461,27 +810,39 @@ export function SearchModal({
           {!query.trim() && (
             <div className="px-4 py-8 text-center">
               <div className="mx-auto flex size-9 items-center justify-center rounded-xl bg-purple-500/10 text-[#c084fc] ring-1 ring-purple-500/20">
-                {isAnimes ? (
+                {category === "animes" ? (
                   <Film className="size-4.5" />
-                ) : (
+                ) : category === "users" ? (
                   <Users className="size-4.5" />
+                ) : category === "characters" ? (
+                  <Sparkles className="size-4.5" />
+                ) : (
+                  <Clapperboard className="size-4.5" />
                 )}
               </div>
               <p className="mt-2.5 text-xs sm:text-sm font-semibold text-zinc-200">
-                {isAnimes
+                {category === "animes"
                   ? "Pesquise por qualquer anime do catálogo"
-                  : "Encontre usuários e amigos na comunidade"}
+                  : category === "users"
+                    ? "Encontre usuários e amigos na comunidade"
+                    : category === "characters"
+                      ? "Pesquise personagens de animes"
+                      : "Pesquise dubladores e equipe de produção"}
               </p>
               <p className="mt-0.5 text-[11px] text-zinc-400 max-w-xs mx-auto leading-normal">
-                {isAnimes
+                {category === "animes"
                   ? "Digite títulos em português, inglês ou japonês para ver notas e detalhes."
-                  : "Digite o @username ou nome de exibição para acessar o perfil."}
+                  : category === "users"
+                    ? "Digite o @username ou nome de exibição para acessar o perfil."
+                    : category === "characters"
+                      ? "Digite o nome do personagem em romaji ou kanji."
+                      : "Digite o nome do dublador ou profissional."}
               </p>
             </div>
           )}
 
-          {/* RESULTADOS DE ANIMES */}
-          {isAnimes && query.trim().length > 0 && (
+          {/* 1. RESULTADOS DE ANIMES — Com notas corrigidas e animação suave ao clicar */}
+          {category === "animes" && query.trim().length > 0 && (
             <div>
               {animeLoading ? (
                 <div className="space-y-1.5 p-1">
@@ -515,12 +876,8 @@ export function SearchModal({
                     const coverAttrs = anime.cover
                       ? getResponsiveCoverAttrs(anime.cover, "thumb")
                       : null;
-
-                    const scoreValue = anime.score
-                      ? Number.isInteger(anime.score)
-                        ? anime.score
-                        : Number(anime.score.toFixed(1))
-                      : null;
+                    const scoreFormatted = formatAnimeScore(anime.score);
+                    const title = displayTitle(anime);
 
                     return (
                       <Link
@@ -528,7 +885,26 @@ export function SearchModal({
                         to="/anime/$id"
                         params={{ id: anime.id }}
                         onClick={handleClose}
-                        className="group flex items-center gap-2.5 sm:gap-3 rounded-xl p-1.5 sm:p-2 transition-all hover:bg-white/[0.04]"
+                        className="
+                          group
+                          flex
+                          items-center
+                          gap-2.5
+                          sm:gap-3
+                          rounded-xl
+                          p-1.5
+                          sm:p-2
+                          transition-all
+                          duration-150
+                          ease-out
+                          hover:bg-white/[0.04]
+                          active:scale-[0.98]
+                          active:bg-purple-500/15
+                          active:brightness-105
+                          motion-reduce:transition-none
+                          motion-reduce:transform-none
+                          select-none
+                        "
                       >
                         {/* Capa compacta */}
                         {coverAttrs ? (
@@ -541,7 +917,7 @@ export function SearchModal({
                             height={56}
                             loading="lazy"
                             decoding="async"
-                            className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 rounded-md object-cover ring-1 ring-white/10 transition-transform group-hover:scale-105"
+                            className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 rounded-md object-cover ring-1 ring-white/10 transition-transform duration-150 group-hover:scale-105"
                           />
                         ) : (
                           <div className="flex h-13 w-9 sm:h-14 sm:w-10 shrink-0 items-center justify-center rounded-md bg-white/[0.04] text-zinc-500 ring-1 ring-white/10">
@@ -553,19 +929,19 @@ export function SearchModal({
                         <div className="min-w-0 flex-1">
                           {/* Título */}
                           <p className="text-xs sm:text-[13px] font-semibold text-zinc-100 group-hover:text-[#c084fc] transition-colors line-clamp-1">
-                            {displayTitle(anime)}
+                            {title}
                           </p>
 
-                          {/* Linha de info: Estrela + Nota · Ano · Gêneros */}
+                          {/* Linha de info: Estrela + Nota Real Corrigida · Ano · Gêneros */}
                           <div className="mt-0.5 flex items-center gap-1.5 text-[10px] sm:text-[11px] text-zinc-400">
-                            {scoreValue && (
+                            {scoreFormatted && (
                               <span className="inline-flex items-center gap-1 font-bold text-amber-400">
                                 <Star className="size-2.5 sm:size-3 fill-amber-400 text-amber-400" />
-                                {scoreValue}
+                                {scoreFormatted}
                               </span>
                             )}
 
-                            {scoreValue && anime.year && (
+                            {scoreFormatted && anime.year && (
                               <span className="text-zinc-600">·</span>
                             )}
 
@@ -585,7 +961,7 @@ export function SearchModal({
                             )}
                           </div>
 
-                          {/* Badge de formato */}
+                          {/* Badges de formato e episódios */}
                           <div className="mt-1 flex items-center gap-1.5">
                             {anime.format && (
                               <span className="rounded bg-purple-500/15 border border-purple-500/25 px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider text-purple-300">
@@ -612,8 +988,8 @@ export function SearchModal({
             </div>
           )}
 
-          {/* RESULTADOS DE USUÁRIOS */}
-          {!isAnimes && query.trim().length > 0 && (
+          {/* 2. RESULTADOS DE USUÁRIOS */}
+          {category === "users" && query.trim().length > 0 && (
             <div>
               {userQueryClean.length < 2 && (
                 <div className="px-4 py-8 text-center">
@@ -677,10 +1053,28 @@ export function SearchModal({
                           to="/profile/$nick"
                           params={{ nick: person.nick }}
                           onClick={handleClose}
-                          className="group flex items-center justify-between gap-2.5 rounded-xl p-1.5 sm:p-2 transition-all hover:bg-white/[0.04]"
+                          className="
+                            group
+                            flex
+                            items-center
+                            justify-between
+                            gap-2.5
+                            rounded-xl
+                            p-1.5
+                            sm:p-2
+                            transition-all
+                            duration-150
+                            ease-out
+                            hover:bg-white/[0.04]
+                            active:scale-[0.98]
+                            active:bg-purple-500/15
+                            active:brightness-105
+                            motion-reduce:transition-none
+                            motion-reduce:transform-none
+                            select-none
+                          "
                         >
                           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            {/* Avatar compacto */}
                             <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-xs sm:text-sm text-[#c084fc] ring-1 ring-purple-500/20 group-hover:ring-purple-500/40 transition-all">
                               {person.avatarUrl ? (
                                 <img
@@ -693,7 +1087,6 @@ export function SearchModal({
                               )}
                             </div>
 
-                            {/* Informações */}
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <p className="truncate text-xs sm:text-[13px] font-semibold text-zinc-100 group-hover:text-[#c084fc] transition-colors">
@@ -737,6 +1130,248 @@ export function SearchModal({
                     })}
                   </div>
                 )}
+            </div>
+          )}
+
+          {/* 3. RESULTADOS DE PERSONAGENS */}
+          {category === "characters" && query.trim().length > 0 && (
+            <div>
+              {characterLoading ? (
+                <div className="space-y-1.5 p-1">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-2 animate-pulse"
+                    >
+                      <div className="h-13 w-9 shrink-0 rounded-md bg-white/10" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3.5 w-40 rounded bg-white/10" />
+                        <div className="h-2.5 w-24 rounded bg-white/5" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : characterResults.length === 0 ? (
+                <div className="px-4 py-8 text-center">
+                  <Sparkles className="mx-auto size-7 text-zinc-500" />
+                  <p className="mt-2 text-xs sm:text-sm font-semibold text-zinc-200">
+                    Nenhum personagem encontrado
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-zinc-400">
+                    Não encontramos personagens para &quot;{query.trim()}&quot;.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {characterResults.map((character) => {
+                    const imageSrc =
+                      character.image?.large || character.image?.medium || "";
+                    const animeId = character.anime?.id;
+
+                    const itemContent = (
+                      <>
+                        <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#161424] ring-1 ring-white/10">
+                          {imageSrc ? (
+                            <img
+                              src={imageSrc}
+                              alt=""
+                              loading="lazy"
+                              className="size-full object-cover transition-transform duration-150 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="flex size-full items-center justify-center text-zinc-500">
+                              <Sparkles className="size-4 text-amber-400" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs sm:text-[13px] font-semibold text-zinc-100 group-hover:text-[#c084fc] transition-colors line-clamp-1">
+                            {character.name.full}
+                          </p>
+
+                          <p className="mt-0.5 text-[10px] sm:text-[11px] text-zinc-400 truncate">
+                            {character.role || "Personagem"}
+                            {character.anime?.title ? ` · ${character.anime.title}` : ""}
+                          </p>
+
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <span className="rounded bg-amber-500/15 border border-amber-500/25 px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider text-amber-300">
+                              Personagem
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    );
+
+                    return animeId ? (
+                      <Link
+                        key={character.id}
+                        to="/anime/$id"
+                        params={{ id: String(animeId) }}
+                        onClick={handleClose}
+                        className="
+                          group
+                          flex
+                          items-center
+                          gap-2.5
+                          sm:gap-3
+                          rounded-xl
+                          p-1.5
+                          sm:p-2
+                          transition-all
+                          duration-150
+                          ease-out
+                          hover:bg-white/[0.04]
+                          active:scale-[0.98]
+                          active:bg-purple-500/15
+                          active:brightness-105
+                          motion-reduce:transition-none
+                          motion-reduce:transform-none
+                          select-none
+                        "
+                      >
+                        {itemContent}
+                      </Link>
+                    ) : (
+                      <div
+                        key={character.id}
+                        className="group flex items-center gap-2.5 sm:gap-3 rounded-xl p-1.5 sm:p-2"
+                      >
+                        {itemContent}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 4. RESULTADOS DE PEOPLE */}
+          {category === "people" && query.trim().length > 0 && (
+            <div>
+              {peopleLoading ? (
+                <div className="space-y-1.5 p-1">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-2 animate-pulse"
+                    >
+                      <div className="h-13 w-9 shrink-0 rounded-md bg-white/10" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3.5 w-40 rounded bg-white/10" />
+                        <div className="h-2.5 w-24 rounded bg-white/5" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : peopleResults.length === 0 ? (
+                <div className="px-4 py-8 text-center">
+                  <Clapperboard className="mx-auto size-7 text-zinc-500" />
+                  <p className="mt-2 text-xs sm:text-sm font-semibold text-zinc-200">
+                    Nenhum profissional encontrado
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-zinc-400">
+                    Não encontramos dubladores ou equipe para &quot;{query.trim()}&quot;.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {peopleResults.map((person) => {
+                    const imageSrc =
+                      person.image?.large || person.image?.medium || "";
+                    const animeId = person.anime?.id;
+                    const occupation =
+                      person.primaryOccupations?.[0] || person.role || "Staff";
+
+                    const itemContent = (
+                      <>
+                        <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#161424] ring-1 ring-white/10">
+                          {imageSrc ? (
+                            <img
+                              src={imageSrc}
+                              alt=""
+                              loading="lazy"
+                              className="size-full object-cover transition-transform duration-150 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="flex size-full items-center justify-center text-zinc-500">
+                              <Clapperboard className="size-4 text-rose-400" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs sm:text-[13px] font-semibold text-zinc-100 group-hover:text-[#c084fc] transition-colors line-clamp-1">
+                            {person.name.full}
+                          </p>
+
+                          <p className="mt-0.5 text-[10px] sm:text-[11px] text-zinc-400 truncate">
+                            {occupation}
+                            {person.anime?.title ? ` · ${person.anime.title}` : ""}
+                          </p>
+
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <span className="rounded bg-rose-500/15 border border-rose-500/25 px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider text-rose-300">
+                              Staff
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    );
+
+                    return animeId ? (
+                      <Link
+                        key={person.id}
+                        to="/anime/$id"
+                        params={{ id: String(animeId) }}
+                        onClick={handleClose}
+                        className="
+                          group
+                          flex
+                          items-center
+                          gap-2.5
+                          sm:gap-3
+                          rounded-xl
+                          p-1.5
+                          sm:p-2
+                          transition-all
+                          duration-150
+                          ease-out
+                          hover:bg-white/[0.04]
+                          active:scale-[0.98]
+                          active:bg-purple-500/15
+                          active:brightness-105
+                          motion-reduce:transition-none
+                          motion-reduce:transform-none
+                          select-none
+                        "
+                      >
+                        {itemContent}
+                      </Link>
+                    ) : (
+                      <div
+                        key={person.id}
+                        className="group flex items-center gap-2.5 sm:gap-3 rounded-xl p-1.5 sm:p-2"
+                      >
+                        {itemContent}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sentinel do carregamento automático (sem botão nem texto "Carregar mais") */}
+          {query.trim().length > 0 && currentHasMore && (
+            <div
+              ref={sentinelRef}
+              className="py-3 flex items-center justify-center"
+            >
+              {isCurrentLoadingMore && (
+                <div className="size-5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              )}
             </div>
           )}
         </div>

@@ -161,55 +161,88 @@ export const StudioAnimeCard = memo(function StudioAnimeCard({
 }: {
   anime: StudioWorkAnime;
 }) {
+  const metaText = [anime.format || "Anime", anime.year ? String(anime.year) : ""]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <Link
-      to="/anime/$id"
-      params={{ id: anime.id }}
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#0f0d1a] p-1.5 sm:p-2 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)] cursor-pointer"
-    >
-      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-[#141220]">
-        {anime.cover ? (
-          <img
-            src={anime.cover}
-            alt={anime.title}
-            loading="lazy"
-            decoding="async"
-            className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex size-full items-center justify-center text-zinc-600">
-            <Film className="size-5 sm:size-6" />
-          </div>
-        )}
+    <article className="group flex flex-col min-w-0">
+      <Link
+        to="/anime/$id"
+        params={{ id: anime.id }}
+        className="
+          block
+          outline-none
+          focus-visible:ring-2
+          focus-visible:ring-purple-400
+          transition-all
+          duration-150
+          ease-out
+          active:scale-[0.96]
+          active:brightness-110
+          [@media(hover:hover)]:hover:brightness-105
+          motion-reduce:transition-none
+          motion-reduce:transform-none
+          -webkit-tap-highlight-color-transparent
+        "
+      >
+        <div className="
+          relative
+          aspect-[2/3]
+          w-full
+          overflow-hidden
+          rounded-none
+          bg-[#0d0c16]
+          border
+          border-white/10
+          shadow-sm
+          transition-all
+          duration-200
+          ease-out
+          group-hover:border-purple-500/50
+          group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+          group-active:border-purple-400
+          group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
+        ">
+          {anime.cover ? (
+            <img
+              src={anime.cover}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="
+                size-full
+                object-cover
+                transition-transform
+                duration-300
+                ease-out
+                group-hover:scale-[1.03]
+                group-active:scale-[1.01]
+                motion-reduce:transform-none
+              "
+            />
+          ) : (
+            <div className="flex size-full items-center justify-center text-zinc-600">
+              <Film className="size-6" />
+            </div>
+          )}
+        </div>
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
-
-        {(anime.year || anime.format || anime.score) && (
-          <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between text-[8px] sm:text-[9.5px] font-semibold text-zinc-300 leading-none">
-            <span className="truncate">
-              {anime.year}
-              {anime.year && anime.format ? " • " : ""}
-              {anime.format}
-            </span>
-            {anime.score && (
-              <span className="flex items-center gap-0.5 text-amber-400 shrink-0">
-                <Star className="size-2 sm:size-2.5 fill-amber-400" />
-                {anime.score.toFixed(1)}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-1.5 min-w-0">
-        <h3
-          className="line-clamp-2 min-h-[26px] sm:min-h-[30px] text-[10px] sm:text-xs font-semibold text-zinc-100 transition-colors group-hover:text-purple-300 leading-snug break-words"
-          title={anime.title}
-        >
-          {anime.title}
-        </h3>
-      </div>
-    </Link>
+        <div className="mt-2 flex flex-col px-0.5 min-w-0">
+          <h3
+            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+            title={anime.title}
+          >
+            {anime.title}
+          </h3>
+          {metaText && (
+            <p className="mt-0.5 truncate text-[10.5px] sm:text-xs text-zinc-400">
+              {metaText}
+            </p>
+          )}
+        </div>
+      </Link>
+    </article>
   );
 });
 
@@ -222,82 +255,81 @@ export const DubladorAnimeCard = memo(function DubladorAnimeCard({
   const roleLabel = isMainRole ? "Protagonista" : "Secundário";
 
   return (
-    <Link
-      to="/anime/$id"
-      params={{ id: work.anime.id }}
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#0f0d1a] p-1.5 sm:p-2 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)] cursor-pointer"
-    >
-      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-[#141220]">
-        {work.anime.cover ? (
-          <img
-            src={work.anime.cover}
-            alt={work.anime.title}
-            loading="lazy"
-            decoding="async"
-            className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex size-full items-center justify-center text-zinc-600">
-            <Film className="size-5 sm:size-6" />
-          </div>
-        )}
-
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
-
-        {(work.anime.year || work.anime.format || work.anime.score) && (
-          <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between text-[8px] sm:text-[9.5px] font-semibold text-zinc-300 leading-none">
-            <span className="truncate">
-              {work.anime.year}
-              {work.anime.year && work.anime.format ? " • " : ""}
-              {work.anime.format}
-            </span>
-            {work.anime.score && (
-              <span className="flex items-center gap-0.5 text-amber-400 shrink-0">
-                <Star className="size-2 sm:size-2.5 fill-amber-400" />
-                {work.anime.score.toFixed(1)}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-1.5 min-w-0">
-        <h3
-          className="line-clamp-2 min-h-[26px] sm:min-h-[30px] text-[10px] sm:text-xs font-semibold text-zinc-100 transition-colors group-hover:text-purple-300 leading-snug break-words"
-          title={work.anime.title}
-        >
-          {work.anime.title}
-        </h3>
-      </div>
-
-      <div className="mt-1 flex items-center gap-1.5 rounded-md border border-white/[0.05] bg-white/[0.02] p-1 min-w-0">
-        <div className="relative size-4 sm:size-5 shrink-0 overflow-hidden rounded-full bg-[#18152b] border border-purple-500/20">
-          {work.character.image ? (
+    <article className="group flex flex-col min-w-0">
+      <Link
+        to="/anime/$id"
+        params={{ id: work.anime.id }}
+        className="
+          block
+          outline-none
+          focus-visible:ring-2
+          focus-visible:ring-purple-400
+          transition-all
+          duration-150
+          ease-out
+          active:scale-[0.96]
+          active:brightness-110
+          [@media(hover:hover)]:hover:brightness-105
+          motion-reduce:transition-none
+          motion-reduce:transform-none
+          -webkit-tap-highlight-color-transparent
+        "
+      >
+        <div className="
+          relative
+          aspect-[2/3]
+          w-full
+          overflow-hidden
+          rounded-none
+          bg-[#0d0c16]
+          border
+          border-white/10
+          shadow-sm
+          transition-all
+          duration-200
+          ease-out
+          group-hover:border-purple-500/50
+          group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+          group-active:border-purple-400
+          group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
+        ">
+          {work.anime.cover ? (
             <img
-              src={work.character.image}
-              alt={work.character.name}
+              src={work.anime.cover}
+              alt=""
               loading="lazy"
-              className="size-full object-cover object-top"
+              decoding="async"
+              className="
+                size-full
+                object-cover
+                transition-transform
+                duration-300
+                ease-out
+                group-hover:scale-[1.03]
+                group-active:scale-[1.01]
+                motion-reduce:transform-none
+              "
             />
           ) : (
-            <div className="flex size-full items-center justify-center font-display text-[7.5px] font-bold text-purple-400">
-              {work.character.name.charAt(0)}
+            <div className="flex size-full items-center justify-center text-zinc-600">
+              <Film className="size-6" />
             </div>
           )}
         </div>
-        <div className="min-w-0 flex-1">
-          <p
-            className="truncate text-[8.5px] sm:text-[10px] font-semibold text-zinc-200 leading-tight"
-            title={work.character.name}
+
+        <div className="mt-2 flex flex-col px-0.5 min-w-0">
+          <h3
+            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+            title={work.anime.title}
           >
-            {work.character.name}
+            {work.anime.title}
+          </h3>
+          <p className="mt-0.5 truncate text-[10.5px] sm:text-xs text-zinc-400">
+            {work.character.name} · {roleLabel}
           </p>
-          <span className="text-[7.5px] sm:text-[8.5px] font-medium text-purple-400 leading-none truncate block">
-            {roleLabel}
-          </span>
         </div>
-      </div>
-    </Link>
+      </Link>
+    </article>
   );
 });
 
@@ -307,61 +339,82 @@ export const StaffAnimeCard = memo(function StaffAnimeCard({
   work: StaffWorkItem;
 }) {
   return (
-    <Link
-      to="/anime/$id"
-      params={{ id: work.anime.id }}
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#0f0d1a] p-1.5 sm:p-2 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-[#151224] hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)] cursor-pointer"
-    >
-      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-[#141220]">
-        {work.anime.cover ? (
-          <img
-            src={work.anime.cover}
-            alt={work.anime.title}
-            loading="lazy"
-            decoding="async"
-            className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex size-full items-center justify-center text-zinc-600">
-            <Film className="size-5 sm:size-6" />
-          </div>
-        )}
+    <article className="group flex flex-col min-w-0">
+      <Link
+        to="/anime/$id"
+        params={{ id: work.anime.id }}
+        className="
+          block
+          outline-none
+          focus-visible:ring-2
+          focus-visible:ring-purple-400
+          transition-all
+          duration-150
+          ease-out
+          active:scale-[0.96]
+          active:brightness-110
+          [@media(hover:hover)]:hover:brightness-105
+          motion-reduce:transition-none
+          motion-reduce:transform-none
+          -webkit-tap-highlight-color-transparent
+        "
+      >
+        <div className="
+          relative
+          aspect-[2/3]
+          w-full
+          overflow-hidden
+          rounded-none
+          bg-[#0d0c16]
+          border
+          border-white/10
+          shadow-sm
+          transition-all
+          duration-200
+          ease-out
+          group-hover:border-purple-500/50
+          group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+          group-active:border-purple-400
+          group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
+        ">
+          {work.anime.cover ? (
+            <img
+              src={work.anime.cover}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="
+                size-full
+                object-cover
+                transition-transform
+                duration-300
+                ease-out
+                group-hover:scale-[1.03]
+                group-active:scale-[1.01]
+                motion-reduce:transform-none
+              "
+            />
+          ) : (
+            <div className="flex size-full items-center justify-center text-zinc-600">
+              <Film className="size-6" />
+            </div>
+          )}
+        </div>
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
-
-        {(work.anime.year || work.anime.format || work.anime.score) && (
-          <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between text-[8px] sm:text-[9.5px] font-semibold text-zinc-300 leading-none">
-            <span className="truncate">
-              {work.anime.year}
-              {work.anime.year && work.anime.format ? " • " : ""}
-              {work.anime.format}
-            </span>
-            {work.anime.score && (
-              <span className="flex items-center gap-0.5 text-amber-400 shrink-0">
-                <Star className="size-2 sm:size-2.5 fill-amber-400" />
-                {work.anime.score.toFixed(1)}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-1.5 min-w-0">
-        <h3
-          className="line-clamp-2 min-h-[26px] sm:min-h-[30px] text-[10px] sm:text-xs font-semibold text-zinc-100 transition-colors group-hover:text-purple-300 leading-snug break-words"
-          title={work.anime.title}
-        >
-          {work.anime.title}
-        </h3>
-      </div>
-
-      <div className="mt-1 min-w-0">
-        <span className="inline-flex items-center gap-0.5 max-w-full rounded border border-purple-500/30 bg-purple-950/70 px-1 py-0.5 text-[8px] sm:text-[9px] font-semibold text-purple-200 leading-none">
-          <Layers className="size-2 shrink-0 text-purple-400" />
-          <span className="truncate">{work.roleLabel}</span>
-        </span>
-      </div>
-    </Link>
+        <div className="mt-2 flex flex-col px-0.5 min-w-0">
+          <h3
+            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+            title={work.anime.title}
+          >
+            {work.anime.title}
+          </h3>
+          <p className="mt-0.5 truncate text-[10.5px] sm:text-xs text-zinc-400">
+            {work.roleLabel}
+            {work.anime.year ? ` · ${work.anime.year}` : ""}
+          </p>
+        </div>
+      </Link>
+    </article>
   );
 });
 
