@@ -4,8 +4,10 @@ import {
   Film,
   Pencil,
   Plus,
+  Search,
+  X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
 import {
@@ -21,6 +23,7 @@ import {
 } from "@/types/profile-tracking";
 
 export type FilterOption = "all" | TrackingStatus;
+export type SortOption = "updatedAt" | "title" | "score" | "episodes";
 
 export interface ProfileTrackingSpaceProps {
   items?: UserAnimeTrackingItem[];
@@ -34,7 +37,204 @@ export interface ProfileTrackingSpaceProps {
 
 const PAGE_SIZE = 24;
 
-export function ProfileTrackingSpace({
+interface AnimeTrackingCardProps {
+  item: UserAnimeTrackingItem;
+  isUpdating: boolean;
+  isMobileActive: boolean;
+  onCardClick: (e: React.MouseEvent, animeId: string) => void;
+  onQuickIncrement: (item: UserAnimeTrackingItem) => void;
+  onEdit: (item: UserAnimeTrackingItem) => void;
+}
+
+/**
+ * Card individual de anime memoizado com React.memo.
+ * Impede que a alteração de um único card (ex: +1 ep ou edição) provoque
+ * a re-renderização de toda a lista de 24, 48 ou milhares de itens montados.
+ */
+const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
+  item,
+  isUpdating,
+  isMobileActive,
+  onCardClick,
+  onQuickIncrement,
+  onEdit,
+}: AnimeTrackingCardProps) {
+  const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.planning;
+  const maxEps = item.episodesCount ?? null;
+  const watched = item.episodesWatched ?? 0;
+  const progressPct =
+    maxEps && maxEps > 0
+      ? Math.min(100, Math.round((watched / maxEps) * 100))
+      : null;
+  const isCompletedOrMax =
+    maxEps !== null && maxEps > 0 && watched >= maxEps;
+  const isButtonDisabled = isUpdating || isCompletedOrMax;
+
+  return (
+    <article
+      data-card-id={item.animeId}
+      onClick={(e) => onCardClick(e, item.animeId)}
+      className="group relative flex flex-col min-w-0"
+    >
+      {/* Pôster vertical retangular com cantos retos (sem cantos arredondados, sem textos/estrelas sobrepostos) */}
+      <Link
+        to="/anime/$id"
+        params={{ id: item.animeId }}
+        onClick={(e) => {
+          onCardClick(e, item.animeId);
+        }}
+        className="
+          block
+          outline-none
+          focus-visible:ring-2
+          focus-visible:ring-purple-400
+          transition-transform
+          duration-150
+          ease-out
+          active:scale-[0.96]
+          active:brightness-110
+          [@media(hover:hover)_and_(pointer:fine)]:hover:brightness-105
+          motion-reduce:transition-none
+          motion-reduce:transform-none
+          -webkit-tap-highlight-color-transparent
+        "
+      >
+        <div className="
+          relative
+          aspect-[2/3]
+          w-full
+          overflow-hidden
+          rounded-none
+          bg-[#0d0c16]
+          border
+          border-white/10
+          shadow-sm
+          transition-colors
+          duration-200
+          ease-out
+          [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
+          group-active:border-purple-400
+        ">
+          {item.cover ? (
+            <img
+              src={item.cover}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="
+                size-full
+                object-cover
+                transition-transform
+                duration-300
+                ease-out
+                [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
+                group-active:scale-[1.01]
+                motion-reduce:transform-none
+              "
+            />
+          ) : (
+            <div className="flex size-full items-center justify-center font-display text-base text-zinc-600">
+              {item.title.slice(0, 1)}
+            </div>
+          )}
+
+          {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+          />
+        </div>
+      </Link>
+
+      {/* Informações estritamente FORA do pôster */}
+      <div className="mt-2 flex flex-col px-0.5 min-w-0">
+        {/* Título abaixo do pôster */}
+        <Link
+          to="/anime/$id"
+          params={{ id: item.animeId }}
+          onClick={(e) => {
+            onCardClick(e, item.animeId);
+          }}
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
+          title={item.title}
+        >
+          {item.title}
+        </Link>
+
+        {/* Informações secundárias: Status · Episódios (sem notas nem estrelas) */}
+        <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] sm:text-xs text-zinc-400 truncate">
+          <span className={cn("font-medium shrink-0", cfg.badgeText || "text-purple-400")}>
+            {cfg.label}
+          </span>
+          <span>·</span>
+          <span className="tabular-nums truncate">
+            {watched}{maxEps ? ` / ${maxEps}` : " eps"}
+          </span>
+        </div>
+
+        {/* Barra de Progresso minimalista se houver episódios conhecidos */}
+        {progressPct !== null && (
+          <div className="mt-1 h-1 w-full overflow-hidden rounded-none bg-white/10">
+            <div
+              className="h-full bg-purple-500 transition-all duration-300"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        )}
+
+        {/* Controles de Incremento Rápido e Edição */}
+        <div
+          className={`mt-2 flex items-center justify-between gap-1 pt-1 border-t border-white/[0.06] transition-opacity duration-200 ${
+            isMobileActive
+              ? "opacity-100"
+              : "opacity-80 sm:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:sm:group-hover:opacity-100"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onQuickIncrement(item);
+            }}
+            disabled={isButtonDisabled}
+            className={`inline-flex items-center justify-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-transform duration-100 ease-out shrink-0 ${
+              isButtonDisabled
+                ? "border border-white/10 bg-white/[0.04] text-zinc-500 cursor-not-allowed opacity-60"
+                : "border border-purple-500/35 bg-purple-500/15 text-purple-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-400/60 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/30 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer"
+            }`}
+            title={
+              isCompletedOrMax
+                ? "Todos os episódios assistidos"
+                : isUpdating
+                  ? "Atualizando..."
+                  : "Adicionar 1 episódio assistido (+1)"
+            }
+          >
+            <Plus className="size-2.5 shrink-0 stroke-[2.5]" />
+            <span>1 ep</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onEdit(item);
+            }}
+            className="inline-flex items-center justify-center gap-0.5 rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200 transition-transform duration-100 ease-out [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/40 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/20 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer shrink-0"
+            title="Editar status e episódios"
+          >
+            <Pencil className="size-2.5 text-purple-300 shrink-0" />
+            <span>Editar</span>
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+});
+
+export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   items: initialItems,
   loading: initialLoadingProp = false,
   onUpdateItem,
@@ -46,12 +246,17 @@ export function ProfileTrackingSpace({
   const [internalFilter, setInternalFilter] = useState<FilterOption>("all");
   const filter = activeFilter !== undefined ? activeFilter : internalFilter;
 
-  const handleFilterChange = (newFilter: FilterOption) => {
+  // Busca e Ordenação
+  const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearch = useDeferredValue(searchQuery);
+  const [sortBy, setSortBy] = useState<SortOption>("updatedAt");
+
+  const handleFilterChange = useCallback((newFilter: FilterOption) => {
     if (activeFilter === undefined) {
       setInternalFilter(newFilter);
     }
     onFilterChange?.(newFilter);
-  };
+  }, [activeFilter, onFilterChange]);
 
   const [editingItem, setEditingItem] = useState<UserAnimeTrackingItem | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -74,7 +279,7 @@ export function ProfileTrackingSpace({
     };
   }, [activeMobileCardId]);
 
-  const isMobileOrTouch = (e?: React.SyntheticEvent) => {
+  const isMobileOrTouch = useCallback((e?: React.SyntheticEvent) => {
     if (typeof window === "undefined") return false;
     if (e && "nativeEvent" in e && e.nativeEvent instanceof PointerEvent) {
       if (e.nativeEvent.pointerType === "touch") return true;
@@ -82,16 +287,16 @@ export function ProfileTrackingSpace({
     const isCoarse = window.matchMedia?.("(hover: none), (pointer: coarse)")?.matches;
     const isMobileWidth = window.innerWidth < 768;
     return Boolean(isCoarse || isMobileWidth);
-  };
+  }, []);
 
-  const handleCardClick = (e: React.MouseEvent, animeId: string) => {
+  const handleCardClick = useCallback((e: React.MouseEvent, animeId: string) => {
     if (isMobileOrTouch(e) && activeMobileCardId !== animeId) {
       // Primeiro toque no card no mobile: revela os controles sem acionar ação acidental
       e.preventDefault();
       e.stopPropagation();
       setActiveMobileCardId(animeId);
     }
-  };
+  }, [activeMobileCardId, isMobileOrTouch]);
 
   const upsertTrackingFn = useServerFn(upsertAnimeTracking);
   const getPaginatedTrackingFn = useServerFn(getMyAnimeTrackingPaginated);
@@ -127,6 +332,9 @@ export function ProfileTrackingSpace({
       >
     >
   >({});
+
+  // Índice em memória (Set) de IDs carregados por filtro para deduplicação O(1) sem alocação
+  const loadedIdSetsRef = useRef<Map<FilterOption, Set<string>>>(new Map());
 
   const animeSentinelRef = useRef<HTMLDivElement>(null);
 
@@ -164,6 +372,13 @@ export function ProfileTrackingSpace({
         setHasMore(res.hasMore);
         setCounts(res.counts);
         onCountsChange?.(res.counts);
+
+        // Atualiza índice de IDs
+        const idSet = new Set<string>();
+        for (let i = 0; i < res.items.length; i++) {
+          idSet.add(res.items[i].animeId);
+        }
+        loadedIdSetsRef.current.set(filter, idSet);
 
         filterCacheRef.current[filter] = {
           items: res.items,
@@ -203,9 +418,22 @@ export function ProfileTrackingSpace({
     })
       .then((res) => {
         setItems((prev) => {
-          // Prevenção estrita de registros duplicados
-          const existingIds = new Set(prev.map((i) => i.animeId));
-          const uniqueNew = res.items.filter((i) => !existingIds.has(i.animeId));
+          // Prevenção estrita de registros duplicados com Set index O(1)
+          let idSet = loadedIdSetsRef.current.get(filter);
+          if (!idSet) {
+            idSet = new Set(prev.map((i) => i.animeId));
+            loadedIdSetsRef.current.set(filter, idSet);
+          }
+
+          const uniqueNew: UserAnimeTrackingItem[] = [];
+          for (let i = 0; i < res.items.length; i++) {
+            const it = res.items[i];
+            if (!idSet.has(it.animeId)) {
+              idSet.add(it.animeId);
+              uniqueNew.push(it);
+            }
+          }
+
           const combined = [...prev, ...uniqueNew];
 
           filterCacheRef.current[filter] = {
@@ -251,7 +479,8 @@ export function ProfileTrackingSpace({
     return () => observer.disconnect();
   }, [hasMore, dataLoading, loadNextPage]);
 
-  const handleQuickIncrement = async (item: UserAnimeTrackingItem) => {
+  // Callback estável para incremento rápido (+1 ep)
+  const handleQuickIncrement = useCallback(async (item: UserAnimeTrackingItem) => {
     const currentWatched = item.episodesWatched ?? 0;
     const maxEps = item.episodesCount ?? null;
     if (maxEps !== null && maxEps > 0 && currentWatched >= maxEps) {
@@ -321,9 +550,10 @@ export function ProfileTrackingSpace({
     } finally {
       setUpdatingId(null);
     }
-  };
+  }, [filter, onUpdateItem, upsertTrackingFn]);
 
-  const handleSaveEdit = async (data: {
+  // Callback estável para salvar edição completa
+  const handleSaveEdit = useCallback(async (data: {
     animeId: string;
     status: TrackingStatus;
     score: number | null;
@@ -392,63 +622,142 @@ export function ProfileTrackingSpace({
       onUpdateItem?.(previousItem);
       throw err;
     }
-  };
+  }, [editingItem, filter, onUpdateItem, upsertTrackingFn]);
+
+  // Estrutura de busca e ordenação em memória otimizada com useDeferredValue
+  const processedItems = useMemo(() => {
+    let result = items;
+    const q = deferredSearch.trim().toLowerCase();
+
+    if (q) {
+      result = result.filter((item) => {
+        const title = (item.title || "").toLowerCase();
+        const titleRomaji = (item.titleRomaji || "").toLowerCase();
+        const titleEnglish = (item.titleEnglish || "").toLowerCase();
+        const titleNative = (item.titleNative || "").toLowerCase();
+        return (
+          title.includes(q) ||
+          titleRomaji.includes(q) ||
+          titleEnglish.includes(q) ||
+          titleNative.includes(q)
+        );
+      });
+    }
+
+    if (sortBy === "title") {
+      return [...result].sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    }
+    if (sortBy === "score") {
+      return [...result].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+    }
+    if (sortBy === "episodes") {
+      return [...result].sort(
+        (a, b) => (b.episodesWatched ?? 0) - (a.episodesWatched ?? 0),
+      );
+    }
+
+    // Padrão: "updatedAt" (ordem cronológica decrescente original do banco)
+    return result;
+  }, [items, deferredSearch, sortBy]);
 
   const isLoading = initialLoadingProp || dataLoading;
 
   return (
     <div className="space-y-6">
-      {/* Barra de Filtros e Contadores de Status Clicáveis */}
+      {/* Barra de Filtros, Busca e Ordenação */}
       {!hideFilterBar && (
-        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              handleFilterChange("all");
-            }}
-            className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
-              filter === "all"
-                ? "bg-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] ring-1 ring-purple-400"
-                : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
-            }`}
-          >
-            <span>Todos</span>
-            <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
-              {counts.all}
-            </span>
-          </button>
+        <div className="space-y-3">
+          {/* Linha de Busca e Ordenação */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            {/* Campo de Busca por Título (Otimizado com useDeferredValue) */}
+            <div className="relative flex-1 max-w-sm sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-zinc-400 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar por título na coleção..."
+                className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-500 outline-none transition-all focus:border-purple-500/50 focus:bg-white/[0.06] focus:ring-1 focus:ring-purple-400"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition-colors cursor-pointer p-0.5"
+                  title="Limpar busca"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
 
-          {STATUS_ORDER.map((statusKey) => {
-            const cfg = STATUS_CONFIG[statusKey];
-            const isActive = filter === statusKey;
-            const count = counts[statusKey];
-
-            return (
-              <button
-                key={statusKey}
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleFilterChange(statusKey);
-                }}
-                className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
-                  isActive
-                    ? `${cfg.activeStyle}`
-                    : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
-                }`}
+            {/* Seletor de Ordenação */}
+            <div className="flex items-center gap-1.5 self-start sm:self-auto text-xs text-zinc-400">
+              <span className="text-[11px] font-medium text-zinc-400">Ordenar:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="rounded-xl border border-white/[0.08] bg-[#12101e] px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-all focus:border-purple-500/50 cursor-pointer"
               >
-                <span>{cfg.label}</span>
-                <span
-                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                    isActive ? "bg-white/20 text-white" : "bg-white/10 text-zinc-400"
+                <option value="updatedAt">Atualizados</option>
+                <option value="score">Melhor Nota</option>
+                <option value="title">Título A-Z</option>
+                <option value="episodes">Episódios</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Barra de Filtros e Contadores de Status Clicáveis */}
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                handleFilterChange("all");
+              }}
+              className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+                filter === "all"
+                  ? "bg-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)] ring-1 ring-purple-400"
+                  : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
+              }`}
+            >
+              <span>Todos</span>
+              <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
+                {counts.all}
+              </span>
+            </button>
+
+            {STATUS_ORDER.map((statusKey) => {
+              const cfg = STATUS_CONFIG[statusKey];
+              const isActive = filter === statusKey;
+              const count = counts[statusKey];
+
+              return (
+                <button
+                  key={statusKey}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleFilterChange(statusKey);
+                  }}
+                  className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? `${cfg.activeStyle}`
+                      : "border border-white/[0.06] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-white"
                   }`}
                 >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+                  <span>{cfg.label}</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                      isActive ? "bg-white/20 text-white" : "bg-white/10 text-zinc-400"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -463,207 +772,45 @@ export function ProfileTrackingSpace({
             </div>
           ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : processedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-8 sm:p-12 text-center">
           <div className="flex size-12 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-400 mb-3">
-            <Film className="size-6" />
+            {searchQuery ? <Search className="size-6" /> : <Film className="size-6" />}
           </div>
-          <h4 className="text-sm font-semibold text-zinc-300">Nenhum anime encontrado</h4>
+          <h4 className="text-sm font-semibold text-zinc-300">
+            {searchQuery ? `Nenhum resultado para "${searchQuery}"` : "Nenhum anime encontrado"}
+          </h4>
           <p className="mt-1 max-w-sm text-xs text-zinc-500 leading-relaxed">
-            {filter === "all"
-              ? "Você ainda não adicionou nenhum anime à sua lista de acompanhamento."
-              : `Nenhum anime com status "${STATUS_CONFIG[filter]?.label || filter}".`}
+            {searchQuery
+              ? "Tente buscar por outro termo ou limpe a busca para visualizar os animes disponíveis."
+              : filter === "all"
+                ? "Você ainda não adicionou nenhum anime à sua lista de acompanhamento."
+                : `Nenhum anime com status "${STATUS_CONFIG[filter]?.label || filter}".`}
           </p>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="mt-4 rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-white/10 hover:text-white transition cursor-pointer"
+            >
+              Limpar busca
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-            {items.map((item) => {
-              const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.planning;
-              const maxEps = item.episodesCount ?? null;
-              const watched = item.episodesWatched ?? 0;
-              const progressPct =
-                maxEps && maxEps > 0
-                  ? Math.min(100, Math.round((watched / maxEps) * 100))
-                  : null;
-              const isMobileActive = activeMobileCardId === item.animeId;
-              const isCompletedOrMax =
-                maxEps !== null && maxEps > 0 && watched >= maxEps;
-              const isUpdating = updatingId === item.animeId;
-              const isButtonDisabled = isUpdating || isCompletedOrMax;
-
-              return (
-                <article
-                  key={item.animeId}
-                  data-card-id={item.animeId}
-                  onClick={(e) => handleCardClick(e, item.animeId)}
-                  className="group relative flex flex-col min-w-0"
-                >
-                  {/* Pôster vertical retangular com cantos retos (sem cantos arredondados, sem textos/estrelas sobrepostos) */}
-                  <Link
-                    to="/anime/$id"
-                    params={{ id: item.animeId }}
-                    onClick={(e) => {
-                      if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setActiveMobileCardId(item.animeId);
-                      }
-                    }}
-                    className="
-                      block
-                      outline-none
-                      focus-visible:ring-2
-                      focus-visible:ring-purple-400
-                      transition-transform
-                      duration-150
-                      ease-out
-                      active:scale-[0.96]
-                      active:brightness-110
-                      [@media(hover:hover)_and_(pointer:fine)]:hover:brightness-105
-                      motion-reduce:transition-none
-                      motion-reduce:transform-none
-                      -webkit-tap-highlight-color-transparent
-                    "
-                  >
-                    <div className="
-                      relative
-                      aspect-[2/3]
-                      w-full
-                      overflow-hidden
-                      rounded-none
-                      bg-[#0d0c16]
-                      border
-                      border-white/10
-                      shadow-sm
-                      transition-colors
-                      duration-200
-                      ease-out
-                      [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
-                      group-active:border-purple-400
-                    ">
-                      {item.cover ? (
-                        <img
-                          src={item.cover}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className="
-                            size-full
-                            object-cover
-                            transition-transform
-                            duration-300
-                            ease-out
-                            [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
-                            group-active:scale-[1.01]
-                            motion-reduce:transform-none
-                          "
-                        />
-                      ) : (
-                        <div className="flex size-full items-center justify-center font-display text-base text-zinc-600">
-                          {item.title.slice(0, 1)}
-                        </div>
-                      )}
-
-                      {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
-                      />
-                    </div>
-                  </Link>
-
-                  {/* Informações estritamente FORA do pôster */}
-                  <div className="mt-2 flex flex-col px-0.5 min-w-0">
-                    {/* Título abaixo do pôster */}
-                    <Link
-                      to="/anime/$id"
-                      params={{ id: item.animeId }}
-                      onClick={(e) => {
-                        if (isMobileOrTouch(e) && activeMobileCardId !== item.animeId) {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setActiveMobileCardId(item.animeId);
-                        }
-                      }}
-                      className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
-                      title={item.title}
-                    >
-                      {item.title}
-                    </Link>
-
-                    {/* Informações secundárias: Status · Episódios (sem notas nem estrelas) */}
-                    <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] sm:text-xs text-zinc-400 truncate">
-                      <span className={cn("font-medium shrink-0", cfg.badgeText || "text-purple-400")}>
-                        {cfg.label}
-                      </span>
-                      <span>·</span>
-                      <span className="tabular-nums truncate">
-                        {watched}{maxEps ? ` / ${maxEps}` : " eps"}
-                      </span>
-                    </div>
-
-                    {/* Barra de Progresso minimalista se houver episódios conhecidos */}
-                    {progressPct !== null && (
-                      <div className="mt-1 h-1 w-full overflow-hidden rounded-none bg-white/10">
-                        <div
-                          className="h-full bg-purple-500 transition-all duration-300"
-                          style={{ width: `${progressPct}%` }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Controles de Incremento Rápido e Edição */}
-                    <div
-                      className={`mt-2 flex items-center justify-between gap-1 pt-1 border-t border-white/[0.06] transition-opacity duration-200 ${
-                        isMobileActive
-                          ? "opacity-100"
-                          : "opacity-80 sm:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:sm:group-hover:opacity-100"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleQuickIncrement(item);
-                        }}
-                        disabled={isButtonDisabled}
-                        className={`inline-flex items-center justify-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-transform duration-100 ease-out shrink-0 ${
-                          isButtonDisabled
-                            ? "border border-white/10 bg-white/[0.04] text-zinc-500 cursor-not-allowed opacity-60"
-                            : "border border-purple-500/35 bg-purple-500/15 text-purple-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-400/60 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/30 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer"
-                        }`}
-                        title={
-                          isCompletedOrMax
-                            ? "Todos os episódios assistidos"
-                            : isUpdating
-                              ? "Atualizando..."
-                              : "Adicionar 1 episódio assistido (+1)"
-                        }
-                      >
-                        <Plus className="size-2.5 shrink-0 stroke-[2.5]" />
-                        <span>1 ep</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setEditingItem(item);
-                        }}
-                        className="inline-flex items-center justify-center gap-0.5 rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200 transition-transform duration-100 ease-out [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/40 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/20 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer shrink-0"
-                        title="Editar status e episódios"
-                      >
-                        <Pencil className="size-2.5 text-purple-300 shrink-0" />
-                        <span>Editar</span>
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+            {processedItems.map((item) => (
+              <AnimeTrackingCard
+                key={item.animeId}
+                item={item}
+                isUpdating={updatingId === item.animeId}
+                isMobileActive={activeMobileCardId === item.animeId}
+                onCardClick={handleCardClick}
+                onQuickIncrement={handleQuickIncrement}
+                onEdit={setEditingItem}
+              />
+            ))}
           </div>
 
           {/* Sentinela de carregamento automático na rolagem (sem botão Carregar mais) */}
@@ -689,4 +836,4 @@ export function ProfileTrackingSpace({
       )}
     </div>
   );
-}
+});

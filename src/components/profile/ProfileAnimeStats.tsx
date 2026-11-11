@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { BarChart3 } from "lucide-react";
+import React, { useMemo } from "react";
 import type {
   TrackingStatus,
   UserAnimeTrackingItem,
@@ -10,83 +11,129 @@ interface ProfileAnimeStatsProps {
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
 }
 
-export function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
-  // Contagens mapeadas por status oficial:
-  // "watching" → Assistindo
-  // "completed" → Concluídos
-  // "on_hold" → Em espera
-  // "dropped" → Abandonados
-  // "planning" → Planejados
-  const watchingCount = items.filter((i) => i.status === "watching").length;
-  const completedCount = items.filter((i) => i.status === "completed").length;
-  const onHoldCount = items.filter((i) => i.status === "on_hold").length;
-  const droppedCount = items.filter((i) => i.status === "dropped").length;
-  const planningCount = items.filter((i) => i.status === "planning").length;
+export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
+  // Cálculo em passe único O(N) em memória com useMemo para listas grandes
+  const stats = useMemo(() => {
+    let watching = 0;
+    let completed = 0;
+    let onHold = 0;
+    let dropped = 0;
+    let planning = 0;
+    let episodesSum = 0;
+    let scoreSum = 0;
+    let scoreCount = 0;
 
-  const totalEntries = items.length;
+    const len = items.length;
+    for (let i = 0; i < len; i++) {
+      const item = items[i];
+      switch (item.status) {
+        case "watching":
+          watching++;
+          break;
+        case "completed":
+          completed++;
+          break;
+        case "on_hold":
+          onHold++;
+          break;
+        case "dropped":
+          dropped++;
+          break;
+        case "planning":
+          planning++;
+          break;
+      }
 
-  // Episódios assistidos acumulados reais
-  const episodesWatched = items.reduce(
-    (acc, curr) => acc + (curr.episodesWatched || 0),
-    0,
-  );
+      if (item.episodesWatched) {
+        episodesSum += item.episodesWatched;
+      }
 
-  // Mean Score: calculada exclusivamente sobre entradas com nota válida (> 0)
-  const scoredItems = items.filter(
-    (i) => typeof i.score === "number" && i.score > 0,
-  );
-  const meanScore =
-    scoredItems.length > 0
-      ? (
-          scoredItems.reduce((acc, curr) => acc + (curr.score || 0), 0) /
-          scoredItems.length
-        ).toFixed(1)
-      : null;
+      if (typeof item.score === "number" && item.score > 0) {
+        scoreSum += item.score;
+        scoreCount++;
+      }
+    }
 
-  // Percentuais de distribuição para a barra horizontal
-  const pctWatching = totalEntries > 0 ? (watchingCount / totalEntries) * 100 : 0;
-  const pctCompleted = totalEntries > 0 ? (completedCount / totalEntries) * 100 : 0;
-  const pctOnHold = totalEntries > 0 ? (onHoldCount / totalEntries) * 100 : 0;
-  const pctDropped = totalEntries > 0 ? (droppedCount / totalEntries) * 100 : 0;
-  const pctPlanning = totalEntries > 0 ? (planningCount / totalEntries) * 100 : 0;
+    const mean = scoreCount > 0 ? (scoreSum / scoreCount).toFixed(1) : null;
+    const pctWatching = len > 0 ? (watching / len) * 100 : 0;
+    const pctCompleted = len > 0 ? (completed / len) * 100 : 0;
+    const pctOnHold = len > 0 ? (onHold / len) * 100 : 0;
+    const pctDropped = len > 0 ? (dropped / len) * 100 : 0;
+    const pctPlanning = len > 0 ? (planning / len) * 100 : 0;
+
+    return {
+      watchingCount: watching,
+      completedCount: completed,
+      onHoldCount: onHold,
+      droppedCount: dropped,
+      planningCount: planning,
+      totalEntries: len,
+      episodesWatched: episodesSum,
+      meanScore: mean,
+      pctWatching,
+      pctCompleted,
+      pctOnHold,
+      pctDropped,
+      pctPlanning,
+    };
+  }, [items]);
+
+  const {
+    watchingCount,
+    completedCount,
+    onHoldCount,
+    droppedCount,
+    planningCount,
+    totalEntries,
+    episodesWatched,
+    meanScore,
+    pctWatching,
+    pctCompleted,
+    pctOnHold,
+    pctDropped,
+    pctPlanning,
+  } = stats;
 
   const statusIndicators: Array<{
     status: TrackingStatus;
     label: string;
     count: number;
     dotColor: string;
-  }> = [
-    {
-      status: "watching",
-      label: "Assistindo",
-      count: watchingCount,
-      dotColor: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
-    },
-    {
-      status: "completed",
-      label: "Concluídos",
-      count: completedCount,
-      dotColor: "bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)]",
-    },
-    {
-      status: "on_hold",
-      label: "Em espera",
-      count: onHoldCount,
-      dotColor: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
-    },
-    {
-      status: "dropped",
-      label: "Abandonados",
-      count: droppedCount,
-      dotColor: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]",
-    },
-    {
-      status: "planning",
-      label: "Planejados",
-      count: planningCount,
-      dotColor: "bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]",
-    },
-  ];
+  }> = useMemo(
+    () => [
+      {
+        status: "watching",
+        label: "Assistindo",
+        count: watchingCount,
+        dotColor: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
+      },
+      {
+        status: "completed",
+        label: "Concluídos",
+        count: completedCount,
+        dotColor: "bg-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)]",
+      },
+      {
+        status: "on_hold",
+        label: "Em espera",
+        count: onHoldCount,
+        dotColor: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
+      },
+      {
+        status: "dropped",
+        label: "Abandonados",
+        count: droppedCount,
+        dotColor: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]",
+      },
+      {
+        status: "planning",
+        label: "Planejados",
+        count: planningCount,
+        dotColor: "bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]",
+      },
+    ],
+    [watchingCount, completedCount, onHoldCount, droppedCount, planningCount],
+  );
 
   return (
     <section

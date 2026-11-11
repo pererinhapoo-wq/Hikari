@@ -358,7 +358,9 @@ function PublicProfile() {
   const [commentsTotal, setCommentsTotal] = useState(0);
   const [commentsPage, setCommentsPage] = useState(1);
   const [commentsTotalPages, setCommentsTotalPages] = useState(1);
+  const [commentsHasMore, setCommentsHasMore] = useState(false);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsLoadingMore, setCommentsLoadingMore] = useState(false);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
   const commentsFetchingRef = useRef(false);
 
@@ -367,7 +369,9 @@ function PublicProfile() {
   const [activityTotal, setActivityTotal] = useState(0);
   const [activityPage, setActivityPage] = useState(1);
   const [activityTotalPages, setActivityTotalPages] = useState(1);
+  const [activityHasMore, setActivityHasMore] = useState(false);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [activityLoadingMore, setActivityLoadingMore] = useState(false);
   const [activityLoaded, setActivityLoaded] = useState(false);
   const activityFetchingRef = useRef(false);
 
@@ -489,6 +493,7 @@ function PublicProfile() {
         setCommentsTotal(res.total);
         setCommentsPage(res.page);
         setCommentsTotalPages(res.totalPages);
+        setCommentsHasMore(res.hasMore);
         setCommentsLoaded(true);
       })
       .catch((err) => {
@@ -539,6 +544,7 @@ function PublicProfile() {
         setActivityTotal(act.total);
         setActivityPage(act.page);
         setActivityTotalPages(act.totalPages);
+        setActivityHasMore(act.hasMore);
         setActivityLoaded(true);
       })
       .catch((err) => {
@@ -666,6 +672,98 @@ function PublicProfile() {
     }
   };
 
+  const handleLoadMoreComments = useCallback(async () => {
+    if (
+      !profile?.userId ||
+      !profile.canViewComments ||
+      commentsFetchingRef.current ||
+      !commentsHasMore ||
+      commentsLoadingMore
+    ) {
+      return;
+    }
+    commentsFetchingRef.current = true;
+    setCommentsLoadingMore(true);
+
+    const nextPage = commentsPage + 1;
+    try {
+      const res = await getPublicCommentsFn({
+        data: {
+          userId: profile.userId,
+          page: nextPage,
+          limit: 15,
+        },
+      });
+      setComments((prev) => {
+        const existingIds = new Set(prev.map((c) => c.id));
+        const uniqueNew = res.items.filter((c) => !existingIds.has(c.id));
+        return [...prev, ...uniqueNew];
+      });
+      setCommentsPage(nextPage);
+      setCommentsTotal(res.total);
+      setCommentsTotalPages(res.totalPages);
+      setCommentsHasMore(res.hasMore);
+    } catch (err) {
+      console.warn("Erro ao carregar mais comentários públicos:", err);
+    } finally {
+      commentsFetchingRef.current = false;
+      setCommentsLoadingMore(false);
+    }
+  }, [
+    profile?.userId,
+    profile?.canViewComments,
+    commentsHasMore,
+    commentsLoadingMore,
+    commentsPage,
+    getPublicCommentsFn,
+  ]);
+
+  const handleLoadMoreActivities = useCallback(async () => {
+    if (
+      !profile?.userId ||
+      !profile.canViewHistory ||
+      activityFetchingRef.current ||
+      !activityHasMore ||
+      activityLoadingMore
+    ) {
+      return;
+    }
+    activityFetchingRef.current = true;
+    setActivityLoadingMore(true);
+
+    const nextPage = activityPage + 1;
+    try {
+      const act = await getPublicActivitiesFn({
+        data: {
+          userId: profile.userId,
+          page: nextPage,
+          limit: 15,
+        },
+      });
+      setActivities((prev) => {
+        const existingIds = new Set(prev.map((a) => a.id));
+        const uniqueNew = act.items.filter((a) => !existingIds.has(a.id));
+        return [...prev, ...uniqueNew];
+      });
+      setActivityPage(nextPage);
+      setActivityTotal(act.total);
+      setActivityTotalPages(act.totalPages);
+      setActivityHasMore(act.hasMore);
+    } catch (err) {
+      console.warn("Erro ao carregar mais atividades públicas:", err);
+    } finally {
+      activityFetchingRef.current = false;
+      setActivityLoadingMore(false);
+    }
+  }, [
+    profile?.userId,
+    profile?.canViewHistory,
+    activityHasMore,
+    activityLoadingMore,
+    activityPage,
+    getPublicActivitiesFn,
+  ]);
+
   const handleCommentsPageChange = async (newPage: number) => {
     if (!profile || !profile.canViewComments || commentsLoading) return;
     setCommentsLoading(true);
@@ -680,6 +778,7 @@ function PublicProfile() {
       setComments(res.items);
       setCommentsPage(res.page);
       setCommentsTotalPages(res.totalPages);
+      setCommentsHasMore(res.hasMore);
     } catch (err) {
       console.error("Erro ao paginar comentários:", err);
     } finally {
@@ -701,6 +800,7 @@ function PublicProfile() {
       setActivities(act.items);
       setActivityPage(act.page);
       setActivityTotalPages(act.totalPages);
+      setActivityHasMore(act.hasMore);
     } catch (err) {
       console.error("Erro ao paginar atividades:", err);
     } finally {
@@ -773,11 +873,30 @@ function PublicProfile() {
     }
   };
 
-  const handleSpaceChange = useCallback((nextSpace: ProfileSpace) => {
-    startTransition(() => {
-      setActiveSpace(nextSpace);
-    });
-  }, []);
+  // Preservação de posição de scroll isolada por aba
+  const scrollPositionsRef = useRef<Partial<Record<ProfileSpace, number>>>({});
+
+  const handleSpaceChange = useCallback(
+    (nextSpace: ProfileSpace) => {
+      if (typeof window !== "undefined") {
+        scrollPositionsRef.current[activeSpace] = window.scrollY;
+      }
+      startTransition(() => {
+        setActiveSpace(nextSpace);
+      });
+    },
+    [activeSpace],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const targetY = scrollPositionsRef.current[activeSpace];
+    if (typeof targetY === "number") {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: targetY, behavior: "instant" });
+      });
+    }
+  }, [activeSpace]);
 
   const handlePrefetchSpace = useCallback((space: ProfileSpace) => {
     TAB_PREFETCHERS[space]?.();
@@ -1075,6 +1194,9 @@ function PublicProfile() {
                         total={commentsTotal}
                         page={commentsPage}
                         totalPages={commentsTotalPages}
+                        hasMore={commentsHasMore}
+                        loadingMore={commentsLoadingMore}
+                        onLoadMore={handleLoadMoreComments}
                         onPageChange={(p) => void handleCommentsPageChange(p)}
                         isOwner={false}
                         loading={commentsLoading}
@@ -1097,6 +1219,9 @@ function PublicProfile() {
                         total={activityTotal}
                         page={activityPage}
                         totalPages={activityTotalPages}
+                        hasMore={activityHasMore}
+                        loadingMore={activityLoadingMore}
+                        onLoadMore={handleLoadMoreActivities}
                         onPageChange={(p) => void handleActivityPageChange(p)}
                         isOwner={false}
                         loading={activityLoading}

@@ -84,6 +84,7 @@ export const getMyAnimeTrackingSchema = z
   .object({
     status: trackingStatusSchema.optional(),
     animeId: z.string().trim().min(1).optional(),
+    minimal: z.boolean().optional(),
   })
   .optional();
 

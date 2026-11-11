@@ -8,7 +8,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -62,7 +62,7 @@ function isRedundantInfo(text: string | null | undefined): boolean {
   );
 }
 
-export function ProfileOverviewFavorites({
+export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavorites({
   grouped,
   onRemoveFavorite,
 }: ProfileOverviewFavoritesProps) {
@@ -71,14 +71,32 @@ export function ProfileOverviewFavorites({
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
 
-  // Exibir no máximo 10 itens por categoria (Animes, Personagens, Dubladores, Studios, People)
-  const animes = (grouped.anime ?? []).slice(0, 10);
-  const characters = (grouped.character ?? []).slice(0, 10);
-  const dubladores = (grouped.person ?? []).filter(isVoiceActor).slice(0, 10);
-  const studios = (grouped.studio ?? []).slice(0, 10);
-  const people = (grouped.person ?? []).filter((item) => !isVoiceActor(item)).slice(0, 10);
+  // Exibir no máximo 10 itens por categoria com memoização O(N) única para evitar re-filtros
+  const { animes, characters, dubladores, studios, people } = useMemo(() => {
+    const rawPerson = grouped.person ?? [];
+    const dubList: ProfileFavoriteItem[] = [];
+    const peopleList: ProfileFavoriteItem[] = [];
 
-  const handleModalRemove = async (item: ProfileFavoriteItem) => {
+    for (let i = 0; i < rawPerson.length; i++) {
+      const p = rawPerson[i];
+      if (isVoiceActor(p)) {
+        if (dubList.length < 10) dubList.push(p);
+      } else {
+        if (peopleList.length < 10) peopleList.push(p);
+      }
+      if (dubList.length >= 10 && peopleList.length >= 10) break;
+    }
+
+    return {
+      animes: (grouped.anime ?? []).slice(0, 10),
+      characters: (grouped.character ?? []).slice(0, 10),
+      dubladores: dubList,
+      studios: (grouped.studio ?? []).slice(0, 10),
+      people: peopleList,
+    };
+  }, [grouped]);
+
+  const handleModalRemove = useCallback(async (item: ProfileFavoriteItem) => {
     if (!onRemoveFavorite) return;
     setRemovingId(item.id);
     try {
@@ -89,16 +107,16 @@ export function ProfileOverviewFavorites({
       setRemovingId(null);
       setSelectedEntity(null);
     }
-  };
+  }, [onRemoveFavorite]);
 
-  const handleAnimeClick = (item: ProfileFavoriteItem) => {
+  const handleAnimeClick = useCallback((item: ProfileFavoriteItem) => {
     navigate({
       to: "/anime/$id",
       params: { id: item.targetId },
     });
-  };
+  }, [navigate]);
 
-  const handleDubladorClick = (item: ProfileFavoriteItem) => {
+  const handleDubladorClick = useCallback((item: ProfileFavoriteItem) => {
     void navigate({
       search: (prev: Record<string, unknown>) => ({
         ...prev,
@@ -112,9 +130,9 @@ export function ProfileOverviewFavorites({
         personId: undefined,
       }),
     });
-  };
+  }, [navigate]);
 
-  const handleStudioClick = (item: ProfileFavoriteItem) => {
+  const handleStudioClick = useCallback((item: ProfileFavoriteItem) => {
     void navigate({
       search: (prev: Record<string, unknown>) => ({
         ...prev,
@@ -128,9 +146,9 @@ export function ProfileOverviewFavorites({
         personId: undefined,
       }),
     });
-  };
+  }, [navigate]);
 
-  const handlePeopleClick = (item: ProfileFavoriteItem) => {
+  const handlePeopleClick = useCallback((item: ProfileFavoriteItem) => {
     void navigate({
       search: (prev: Record<string, unknown>) => ({
         ...prev,
@@ -144,7 +162,7 @@ export function ProfileOverviewFavorites({
         personId: undefined,
       }),
     });
-  };
+  }, [navigate]);
 
   // Se uma entidade estiver selecionada, substitui completamente a seção original
   // pelo padrão Anime Stats, sem cards originais, sem seletores de outras entidades e sem botões Voltar/Fechar.
@@ -719,6 +737,8 @@ function EntityDetailModal({
               <img
                 src={displayImage}
                 alt={entity.title}
+                loading="lazy"
+                decoding="async"
                 className={cn(
                   "size-full",
                   isStudio ? "object-contain p-2.5" : "object-cover object-top"

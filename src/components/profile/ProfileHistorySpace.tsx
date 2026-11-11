@@ -311,7 +311,19 @@ export function ProfileHistorySpace({
             />
           ))}
         </div>
-      ) : normalizedItems.length === 0 ? null : (
+      ) : normalizedItems.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.01] p-8 text-center">
+          <Activity className="mx-auto size-8 text-zinc-600 mb-2" />
+          <p className="text-sm font-medium text-zinc-300">
+            Nenhuma atividade registrada ainda
+          </p>
+          <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+            {isOwner
+              ? "Ao interagir com animes, assistir a episódios ou salvar favoritos, seu histórico aparecerá aqui."
+              : "Este usuário ainda não possui atividades públicas registradas."}
+          </p>
+        </div>
+      ) : (
         <div className="space-y-3">
           {normalizedItems.map((entry) => {
             const isEpisode = entry.type === "watched_episode";
@@ -494,6 +506,12 @@ export function ProfileHistorySpace({
 
           {hasMore && !loading && (
             <div ref={sentinelRef} className="h-4 w-full" aria-hidden="true" />
+          )}
+
+          {!hasMore && !loading && normalizedItems.length > 0 && (
+            <p className="text-center py-4 text-xs text-zinc-500">
+              Você chegou ao fim das atividades
+            </p>
           )}
 
           {/* Fallback de Paginação caso onLoadMore não seja provido */}

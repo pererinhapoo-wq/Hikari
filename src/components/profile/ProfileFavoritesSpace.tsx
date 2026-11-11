@@ -8,7 +8,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   EntityWorksExpansion,
   type SelectedEntityTarget,
@@ -64,7 +64,7 @@ const CATEGORY_CONFIG: Record<
   },
 };
 
-export function ProfileFavoritesSpace({
+export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
   grouped,
   allItems,
   loading = false,
@@ -82,21 +82,27 @@ export function ProfileFavoritesSpace({
     setVisibleCount(PAGE_SIZE);
   }, [activeCategory]);
 
-  const counts: Record<CategoryFilter, number> = {
-    all: allItems.length,
-    anime: grouped.anime.length,
-    character: grouped.character.length,
-    studio: grouped.studio.length,
-    company: grouped.company.length,
-    person: grouped.person.length,
-  };
+  const counts: Record<CategoryFilter, number> = useMemo(
+    () => ({
+      all: allItems.length,
+      anime: grouped.anime?.length ?? 0,
+      character: grouped.character?.length ?? 0,
+      studio: grouped.studio?.length ?? 0,
+      company: grouped.company?.length ?? 0,
+      person: grouped.person?.length ?? 0,
+    }),
+    [allItems.length, grouped],
+  );
 
-  const displayedItems =
-    activeCategory === "all"
-      ? allItems
-      : grouped[activeCategory] || [];
+  const displayedItems = useMemo(
+    () => (activeCategory === "all" ? allItems : grouped[activeCategory] || []),
+    [activeCategory, allItems, grouped],
+  );
 
-  const paginatedItems = displayedItems.slice(0, visibleCount);
+  const paginatedItems = useMemo(
+    () => displayedItems.slice(0, visibleCount),
+    [displayedItems, visibleCount],
+  );
   const hasMoreToLoad = visibleCount < displayedItems.length;
 
   useEffect(() => {
@@ -118,58 +124,61 @@ export function ProfileFavoritesSpace({
     return () => observer.disconnect();
   }, [hasMoreToLoad, displayedItems.length]);
 
-  const handleEntityClick = (item: ProfileFavoriteItem) => {
-    if (item.targetType === "studio" || item.targetType === "company") {
-      void navigate({
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          studio: item.title,
-          studioId: item.targetId,
-          dublador: undefined,
-          dubladorId: undefined,
-          staff: undefined,
-          staffId: undefined,
-          person: undefined,
-          personId: undefined,
-        }),
-      });
-    } else if (item.targetType === "person") {
-      const isVoiceActor =
-        (item.subtitle || "").toLowerCase().includes("dublador") ||
-        (item.subtitle || "").toLowerCase().includes("voice actor") ||
-        (item.description || "").toLowerCase().includes("dublador");
-
-      if (isVoiceActor) {
+  const handleEntityClick = useCallback(
+    (item: ProfileFavoriteItem) => {
+      if (item.targetType === "studio" || item.targetType === "company") {
         void navigate({
           search: (prev: Record<string, unknown>) => ({
             ...prev,
-            dublador: item.title,
-            dubladorId: item.targetId,
-            studio: undefined,
-            studioId: undefined,
+            studio: item.title,
+            studioId: item.targetId,
+            dublador: undefined,
+            dubladorId: undefined,
             staff: undefined,
             staffId: undefined,
             person: undefined,
             personId: undefined,
           }),
         });
-      } else {
-        void navigate({
-          search: (prev: Record<string, unknown>) => ({
-            ...prev,
-            staff: item.title,
-            staffId: item.targetId,
-            dublador: undefined,
-            dubladorId: undefined,
-            studio: undefined,
-            studioId: undefined,
-            person: undefined,
-            personId: undefined,
-          }),
-        });
+      } else if (item.targetType === "person") {
+        const isVoiceActor =
+          (item.subtitle || "").toLowerCase().includes("dublador") ||
+          (item.subtitle || "").toLowerCase().includes("voice actor") ||
+          (item.description || "").toLowerCase().includes("dublador");
+
+        if (isVoiceActor) {
+          void navigate({
+            search: (prev: Record<string, unknown>) => ({
+              ...prev,
+              dublador: item.title,
+              dubladorId: item.targetId,
+              studio: undefined,
+              studioId: undefined,
+              staff: undefined,
+              staffId: undefined,
+              person: undefined,
+              personId: undefined,
+            }),
+          });
+        } else {
+          void navigate({
+            search: (prev: Record<string, unknown>) => ({
+              ...prev,
+              staff: item.title,
+              staffId: item.targetId,
+              dublador: undefined,
+              dubladorId: undefined,
+              studio: undefined,
+              studioId: undefined,
+              person: undefined,
+              personId: undefined,
+            }),
+          });
+        }
       }
-    }
-  };
+    },
+    [navigate],
+  );
 
   // Se uma entidade estiver selecionada, substitui completamente a seção original
   // pelo padrão Anime Stats, sem cards originais, sem seletores de categoria e sem botões Voltar/Fechar.

@@ -203,8 +203,63 @@ export const getMyAnimeTracking = createServerFn({
     const userId = context.userId;
     const statusFilter = data?.status ?? null;
     const animeIdFilter = data?.animeId ? data.animeId.trim() : null;
+    const isMinimal = Boolean(data?.minimal);
 
     const sql = await getSql();
+
+    if (isMinimal) {
+      const rows = await sql.query<{
+        userId: string;
+        animeId: string;
+        status: TrackingStatus;
+        score: string | number | null;
+        episodesWatched: number;
+        startedAt: string | null;
+        completedAt: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>(
+        `SELECT
+           uat."userId",
+           uat."animeId",
+           uat."status",
+           uat."score",
+           uat."episodesWatched",
+           uat."startedAt",
+           uat."completedAt",
+           uat."createdAt",
+           uat."updatedAt"
+         FROM "user_anime_tracking" uat
+         WHERE uat."userId" = $1
+           AND ($2::text IS NULL OR uat."status" = $2)
+           AND ($3::text IS NULL OR uat."animeId" = $3)
+         ORDER BY uat."updatedAt" DESC;`,
+        [userId, statusFilter, animeIdFilter],
+      );
+
+      return rows.map((row) => ({
+        userId: row.userId,
+        animeId: row.animeId,
+        status: row.status,
+        score: row.score !== null && row.score !== undefined ? Number(row.score) : null,
+        episodesWatched: Number(row.episodesWatched) || 0,
+        title: "",
+        titleRomaji: null,
+        titleEnglish: null,
+        titleNative: null,
+        cover: null,
+        banner: null,
+        format: null,
+        year: null,
+        episodesCount: null,
+        animeStatus: null,
+        startedAt: row.startedAt ? String(row.startedAt) : null,
+        completedAt: row.completedAt ? String(row.completedAt) : null,
+        createdAt: String(row.createdAt),
+        updatedAt: String(row.updatedAt),
+        animeSnapshot: null,
+      }));
+    }
 
     const query = `
       SELECT
@@ -701,7 +756,7 @@ export const getMyWatchedEpisodes = createServerFn({
     const userId = context.userId;
     const animeId = data?.animeId ? data.animeId.trim() : null;
     const page = data?.page ?? 1;
-    const limit = data?.limit ?? 30;
+    const limit = data?.limit ?? 15;
     const offset = (page - 1) * limit;
 
     const sql = await getSql();
@@ -789,7 +844,7 @@ export const getPublicWatchedEpisodes = createServerFn({
 
     const animeId = data?.animeId ? data.animeId.trim() : null;
     const page = data?.page ?? 1;
-    const limit = data?.limit ?? 30;
+    const limit = data?.limit ?? 15;
     const offset = (page - 1) * limit;
 
     const countQuery = `

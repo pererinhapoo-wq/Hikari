@@ -187,6 +187,8 @@ export function ProfileConnectionsModal({
                           <img
                             src={req.image}
                             alt=""
+                            loading="lazy"
+                            decoding="async"
                             className="size-full object-cover"
                           />
                         ) : (
@@ -267,6 +269,8 @@ export function ProfileConnectionsModal({
                         <img
                           src={person.image}
                           alt=""
+                          loading="lazy"
+                          decoding="async"
                           className="size-full object-cover"
                         />
                       ) : (

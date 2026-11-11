@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -30,6 +30,9 @@ interface ProfileCommentsSpaceProps {
     newContent: string,
     isSpoiler: boolean,
   ) => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export function ProfileCommentsSpace({
@@ -42,7 +45,31 @@ export function ProfileCommentsSpace({
   isOwner = true,
   onCommentDeleted,
   onCommentUpdated,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
 }: ProfileCommentsSpaceProps) {
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!onLoadMore || !hasMore || loadingMore || loading) return;
+
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          onLoadMore();
+        }
+      },
+      { rootMargin: "350px 0px" },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onLoadMore, hasMore, loadingMore, loading]);
+
   // Estado para edição inline
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
@@ -208,7 +235,19 @@ export function ProfileCommentsSpace({
             />
           ))}
         </div>
-      ) : comments.length === 0 ? null : (
+      ) : comments.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.01] p-8 text-center">
+          <MessageSquare className="mx-auto size-8 text-zinc-600 mb-2" />
+          <p className="text-sm font-medium text-zinc-300">
+            Nenhum comentário publicado ainda
+          </p>
+          <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+            {isOwner
+              ? "Seus comentários publicados em episódios aparecerão aqui."
+              : "Este usuário ainda não publicou comentários públicos."}
+          </p>
+        </div>
+      ) : (
         <div className="space-y-3.5">
           {comments.map((comment) => {
             const epNum =
@@ -391,6 +430,7 @@ export function ProfileCommentsSpace({
                           alt="Imagem do comentário"
                           className="max-h-60 w-auto rounded-xl object-contain bg-black/40"
                           loading="lazy"
+                          decoding="async"
                         />
                       </div>
                     )}
@@ -477,8 +517,26 @@ export function ProfileCommentsSpace({
             </div>
           )}
 
-          {/* Paginação de Comentários */}
-          {totalPages > 1 && onPageChange && (
+          {/* Paginação Infinita via IntersectionObserver */}
+          {loadingMore && (
+            <div className="flex items-center justify-center py-4 text-zinc-400 text-xs gap-2">
+              <div className="size-4 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+              <span>Carregando mais comentários...</span>
+            </div>
+          )}
+
+          {hasMore && !loading && (
+            <div ref={sentinelRef} className="h-4 w-full" aria-hidden="true" />
+          )}
+
+          {!hasMore && !loading && comments.length > 0 && (
+            <p className="text-center py-4 text-xs text-zinc-500">
+              Você chegou ao fim dos comentários
+            </p>
+          )}
+
+          {/* Fallback de Paginação com botões caso onLoadMore não seja utilizado */}
+          {!onLoadMore && totalPages > 1 && onPageChange && (
             <div className="flex items-center justify-between border-t border-white/[0.06] pt-4">
               <span className="text-xs text-zinc-400">
                 Página <strong className="text-white">{page}</strong> de{" "}

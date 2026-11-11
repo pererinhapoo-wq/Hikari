@@ -28,14 +28,12 @@ import {
   getMyProfileFavorites,
   removeProfileFavorite,
 } from "@/lib/profile-favorites.functions";
-import { getMyProfileLists } from "@/lib/profile-lists.functions";
 import { getMyAnimeTracking } from "@/lib/profile-tracking.functions";
 
 import type {
   ProfileFavoriteItem,
   ProfileFavoritesGrouped,
 } from "@/types/favorite";
-import type { ProfileListSummary } from "@/types/profile-list";
 import {
   STATUS_CONFIG,
   STATUS_ORDER,
@@ -411,7 +409,6 @@ function AccountProfile() {
   const getTrackingFn = useServerFn(getMyAnimeTracking);
   const getFavoritesFn = useServerFn(getMyProfileFavorites);
   const removeFavoriteFn = useServerFn(removeProfileFavorite);
-  const getListsFn = useServerFn(getMyProfileLists);
   const getActivitiesFn = useServerFn(getMyActivities);
 
   // Estados principais do perfil
@@ -441,26 +438,25 @@ function AccountProfile() {
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const favoritesFetchingRef = useRef(false);
 
-  // Listas Personalizadas (Carregadas sob demanda na aba "about")
-  const [lists, setLists] = useState<ProfileListSummary[]>([]);
-  const [listsLoaded, setListsLoaded] = useState(false);
-  const listsFetchingRef = useRef(false);
-
-  // Feed de Atividades Unificado (Carregado sob demanda na aba "activity")
+  // Feed de Atividades Unificado (Carregado sob demanda na aba "activity" ou Visão Geral)
   const [activityItems, setActivityItems] = useState<UserActivityItem[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
   const [activityPage, setActivityPage] = useState(1);
   const [activityTotalPages, setActivityTotalPages] = useState(1);
+  const [activityHasMore, setActivityHasMore] = useState(false);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [activityLoadingMore, setActivityLoadingMore] = useState(false);
   const [activityLoaded, setActivityLoaded] = useState(false);
   const activityFetchingRef = useRef(false);
 
-  // Comentários da Comunidade (Carregados sob demanda na aba "comments")
+  // Comentários da Comunidade (Carregados sob demanda na aba "comments" ou Visão Geral)
   const [comments, setComments] = useState<MyProfileComment[]>([]);
   const [commentsTotal, setCommentsTotal] = useState(0);
   const [commentsPage, setCommentsPage] = useState(1);
   const [commentsTotalPages, setCommentsTotalPages] = useState(1);
+  const [commentsHasMore, setCommentsHasMore] = useState(false);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsLoadingMore, setCommentsLoadingMore] = useState(false);
   const [commentsLoaded, setCommentsLoaded] = useState(false);
   const commentsFetchingRef = useRef(false);
 
@@ -611,7 +607,7 @@ function AccountProfile() {
     trackingFetchingRef.current = true;
     setTrackingLoading(true);
 
-    void getTrackingFn({ data: {} })
+    void getTrackingFn({ data: { minimal: true } })
       .then((items) => {
         if (!active) return;
         setTrackingItems(items);
@@ -683,6 +679,7 @@ function AccountProfile() {
         setCommentsTotal(res.total);
         setCommentsPage(res.page);
         setCommentsTotalPages(res.totalPages);
+        setCommentsHasMore(res.hasMore);
         setCommentsLoaded(true);
       })
       .catch((err) => console.warn("Erro ao buscar comentários:", err))
@@ -718,6 +715,7 @@ function AccountProfile() {
         setActivityTotal(res.total);
         setActivityPage(res.page);
         setActivityTotalPages(res.totalPages);
+        setActivityHasMore(res.hasMore);
         setActivityLoaded(true);
       })
       .catch((err) => console.warn("Erro ao buscar atividades:", err))
@@ -731,68 +729,61 @@ function AccountProfile() {
     };
   }, [user?.id, activeSpace, activityLoaded, getActivitiesFn]);
 
-  // Carregamento sob demanda para a aba Sobre (listas personalizadas)
-  useEffect(() => {
-    if (!user?.id || activeSpace !== "about" || listsLoaded || listsFetchingRef.current) {
-      return;
-    }
+  // Carregamento contínuo (scroll infinito via IntersectionObserver) no feed de atividades
+  const handleLoadMoreActivities = useCallback(async () => {
+    if (activityFetchingRef.current || !activityHasMore || activityLoadingMore) return;
+    activityFetchingRef.current = true;
+    setActivityLoadingMore(true);
 
-    let active = true;
-    listsFetchingRef.current = true;
-
-    void getListsFn({ data: {} })
-      .then((res) => {
-        if (!active) return;
-        setLists(res);
-        setListsLoaded(true);
-      })
-      .catch((err) => console.warn("Erro ao buscar listas:", err))
-      .finally(() => {
-        listsFetchingRef.current = false;
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id, activeSpace, listsLoaded, getListsFn]);
-
-  // Troca de página no feed de atividades
-  const handleActivityPageChange = async (newPage: number) => {
-    if (newPage < 1 || newPage > activityTotalPages) return;
-    setActivityLoading(true);
+    const nextPage = activityPage + 1;
     try {
       const res = await getActivitiesFn({
-        data: { page: newPage, limit: 15 },
+        data: { page: nextPage, limit: 15 },
       });
-      setActivityItems(res.items);
+      setActivityItems((prev) => {
+        const existingIds = new Set(prev.map((i) => i.id));
+        const uniqueNew = res.items.filter((i) => !existingIds.has(i.id));
+        return [...prev, ...uniqueNew];
+      });
+      setActivityPage(nextPage);
       setActivityTotal(res.total);
-      setActivityPage(res.page);
       setActivityTotalPages(res.totalPages);
+      setActivityHasMore(res.hasMore);
     } catch (err) {
-      console.warn("Erro ao mudar página de atividades:", err);
+      console.warn("Erro ao carregar mais atividades:", err);
     } finally {
-      setActivityLoading(false);
+      activityFetchingRef.current = false;
+      setActivityLoadingMore(false);
     }
-  };
+  }, [activityHasMore, activityLoadingMore, activityPage, getActivitiesFn]);
 
-  // Troca de página nos comentários
-  const handleCommentsPageChange = async (newPage: number) => {
-    if (newPage < 1 || newPage > commentsTotalPages) return;
-    setCommentsLoading(true);
+  // Carregamento contínuo (scroll infinito via IntersectionObserver) nos comentários
+  const handleLoadMoreComments = useCallback(async () => {
+    if (commentsFetchingRef.current || !commentsHasMore || commentsLoadingMore) return;
+    commentsFetchingRef.current = true;
+    setCommentsLoadingMore(true);
+
+    const nextPage = commentsPage + 1;
     try {
       const res = await getCommentsFn({
-        data: { page: newPage, limit: 15 },
+        data: { page: nextPage, limit: 15 },
       });
-      setComments(res.items);
+      setComments((prev) => {
+        const existingIds = new Set(prev.map((c) => c.id));
+        const uniqueNew = res.items.filter((c) => !existingIds.has(c.id));
+        return [...prev, ...uniqueNew];
+      });
+      setCommentsPage(nextPage);
       setCommentsTotal(res.total);
-      setCommentsPage(res.page);
       setCommentsTotalPages(res.totalPages);
+      setCommentsHasMore(res.hasMore);
     } catch (err) {
-      console.warn("Erro ao mudar página de comentários:", err);
+      console.warn("Erro ao carregar mais comentários:", err);
     } finally {
-      setCommentsLoading(false);
+      commentsFetchingRef.current = false;
+      setCommentsLoadingMore(false);
     }
-  };
+  }, [commentsHasMore, commentsLoadingMore, commentsPage, getCommentsFn]);
 
   const handleCommentDeleted = (commentId: string) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
@@ -1000,11 +991,30 @@ function AccountProfile() {
   // Filtro selecionado na aba Animes (preservado entre trocas de abas)
   const [trackingFilter, setTrackingFilter] = useState<"all" | TrackingStatus>("all");
 
-  const handleSpaceChange = useCallback((nextSpace: ProfileSpace) => {
-    startTransition(() => {
-      setActiveSpace(nextSpace);
-    });
-  }, []);
+  // Preservação de posição de scroll isolada por aba
+  const scrollPositionsRef = useRef<Partial<Record<ProfileSpace, number>>>({});
+
+  const handleSpaceChange = useCallback(
+    (nextSpace: ProfileSpace) => {
+      if (typeof window !== "undefined") {
+        scrollPositionsRef.current[activeSpace] = window.scrollY;
+      }
+      startTransition(() => {
+        setActiveSpace(nextSpace);
+      });
+    },
+    [activeSpace],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const targetY = scrollPositionsRef.current[activeSpace];
+    if (typeof targetY === "number") {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: targetY, behavior: "instant" });
+      });
+    }
+  }, [activeSpace]);
 
   const handlePrefetchSpace = useCallback((space: ProfileSpace) => {
     TAB_PREFETCHERS[space]?.();
@@ -1237,7 +1247,9 @@ function AccountProfile() {
                 total={commentsTotal}
                 page={commentsPage}
                 totalPages={commentsTotalPages}
-                onPageChange={(p) => void handleCommentsPageChange(p)}
+                hasMore={commentsHasMore}
+                loadingMore={commentsLoadingMore}
+                onLoadMore={handleLoadMoreComments}
                 onCommentDeleted={handleCommentDeleted}
                 onCommentUpdated={handleCommentUpdated}
                 isOwner={true}
@@ -1254,7 +1266,6 @@ function AccountProfile() {
                 nick={userNick}
                 bio={userBio}
                 favorites={userFavoritesList}
-                lists={lists}
                 onOpenEdit={() => setEditModalOpen(true)}
               />
             </Suspense>
@@ -1268,7 +1279,9 @@ function AccountProfile() {
                 total={activityTotal}
                 page={activityPage}
                 totalPages={activityTotalPages}
-                onPageChange={(p) => void handleActivityPageChange(p)}
+                hasMore={activityHasMore}
+                loadingMore={activityLoadingMore}
+                onLoadMore={handleLoadMoreActivities}
                 isOwner={true}
                 loading={activityLoading}
               />
