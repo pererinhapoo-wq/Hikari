@@ -224,7 +224,7 @@ export function ProfileCommentsSpace({
             return (
               <article
                 key={comment.id}
-                className="group relative flex flex-col rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-4 sm:p-5 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 hover:border-violet-500/35 hover:bg-[#12101e]"
+                className="group relative flex flex-col rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-4 sm:p-5 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-colors duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-violet-500/35 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#12101e]"
               >
                 {/* Cabeçalho do Comentário com Anime e Episódio */}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.05] pb-3 text-xs">
@@ -234,6 +234,8 @@ export function ProfileCommentsSpace({
                       <img
                         src={comment.animeCover}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         className="size-8 shrink-0 rounded-lg object-cover bg-white/5"
                       />
                     ) : (

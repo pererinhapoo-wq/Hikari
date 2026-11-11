@@ -327,7 +327,7 @@ function FavoriteAnimeGridCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative flex w-full min-w-0 flex-col text-left focus:outline-none select-none cursor-pointer outline-none"
+      className="group relative flex w-full min-w-0 flex-col text-left focus:outline-none select-none cursor-pointer outline-none active:scale-[0.98] transition-transform duration-100 ease-out"
     >
       {/* Capa com proporção 2:3 vertical retangular com cantos retos */}
       <div className="
@@ -340,13 +340,11 @@ function FavoriteAnimeGridCard({
         border
         border-white/10
         shadow-sm
-        transition-all
+        transition-colors
         duration-200
         ease-out
-        group-hover:border-purple-500/50
-        group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+        [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
         group-active:border-purple-400
-        group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
       ">
         {!imgError && item.image ? (
           <img
@@ -361,7 +359,7 @@ function FavoriteAnimeGridCard({
               transition-transform
               duration-300
               ease-out
-              group-hover:scale-[1.03]
+              [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
               group-active:scale-[1.01]
               motion-reduce:transform-none
             "
@@ -372,8 +370,14 @@ function FavoriteAnimeGridCard({
           </div>
         )}
 
-        {/* Indicador sutil de favorito no topo direito */}
-        <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-black/80 backdrop-blur-md border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 group-hover:scale-105">
+        {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint contínuo da box-shadow */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+        />
+
+        {/* Indicador sutil de favorito no topo direito (sem backdrop-blur pesado) */}
+        <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
           <Heart className="size-3 fill-rose-500 text-rose-500" />
         </div>
       </div>
@@ -381,7 +385,7 @@ function FavoriteAnimeGridCard({
       {/* Informações estritamente FORA do pôster */}
       <div className="mt-2 flex flex-col px-0.5 min-w-0">
         <h4
-          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
           title={item.title}
         >
           {item.title}
@@ -569,7 +573,7 @@ function FavoriteCarouselCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative flex w-[108px] min-[380px]:w-[122px] sm:w-[138px] md:w-[150px] lg:w-[162px] shrink-0 flex-col min-w-0 text-left outline-none cursor-pointer select-none",
+        "group relative flex w-[108px] min-[380px]:w-[122px] sm:w-[138px] md:w-[150px] lg:w-[162px] shrink-0 flex-col min-w-0 text-left outline-none cursor-pointer select-none active:scale-[0.98] transition-transform duration-100 ease-out",
         isSelected && "ring-2 ring-purple-500",
       )}
     >
@@ -584,13 +588,11 @@ function FavoriteCarouselCard({
         border
         border-white/10
         shadow-sm
-        transition-all
+        transition-colors
         duration-200
         ease-out
-        group-hover:border-purple-500/50
-        group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+        [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
         group-active:border-purple-400
-        group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
         flex
         items-center
         justify-center
@@ -603,7 +605,7 @@ function FavoriteCarouselCard({
             loading="lazy"
             decoding="async"
             className={cn(
-              "size-full transition-transform duration-300 ease-out group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none",
+              "size-full transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none",
               isStudio ? "object-contain p-3" : "object-cover object-top",
             )}
           />
@@ -617,8 +619,14 @@ function FavoriteCarouselCard({
           </div>
         )}
 
-        {/* Indicador sutil de favorito no topo direito */}
-        <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-black/80 backdrop-blur-md border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 group-hover:scale-105">
+        {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint contínuo da box-shadow */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+        />
+
+        {/* Indicador sutil de favorito no topo direito (sem backdrop-blur pesado) */}
+        <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
           <Heart className="size-3 fill-rose-500 text-rose-500" />
         </div>
       </div>
@@ -626,7 +634,7 @@ function FavoriteCarouselCard({
       {/* Informações estritamente FORA do pôster: Título e Subtítulo */}
       <div className="mt-2 flex flex-col px-0.5 min-w-0">
         <h4
-          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
           title={item.title}
         >
           {item.title}
@@ -722,7 +730,7 @@ function EntityDetailModal({
               </div>
             )}
 
-            <div className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-black/60 backdrop-blur-md border border-rose-500/40 shadow-sm">
+            <div className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-[#0c0a18]/90 border border-rose-500/40 shadow-sm">
               <Heart className="size-3 fill-rose-500 text-rose-500" />
             </div>
           </div>

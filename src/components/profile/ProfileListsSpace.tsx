@@ -87,8 +87,14 @@ export function ProfileListsSpace({
             return (
               <article
                 key={list.id}
-                className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#12101e] to-[#0a0914] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.4)] transition-all duration-300 hover:border-violet-500/40 hover:shadow-[0_12px_40px_rgba(168,85,247,0.15)]"
+                className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#12101e] to-[#0a0914] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.4)] transition-colors duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:hover:border-violet-500/40"
               >
+                {/* Camada de sombra acelerada por GPU */}
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 rounded-2xl shadow-[0_12px_40px_rgba(168,85,247,0.15)] opacity-0 transition-opacity duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100"
+                />
+
                 <div>
                   {/* Amostra Visual de Capas (Mosaico com até 4 capas) */}
                   <div className="mb-4 h-28 w-full overflow-hidden rounded-xl bg-[#07060c] p-1.5 ring-1 ring-white/10">
@@ -102,7 +108,9 @@ export function ProfileListsSpace({
                             <img
                               src={coverUrl}
                               alt=""
-                              className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              loading="lazy"
+                              decoding="async"
+                              className="size-full object-cover transition-transform duration-500 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
                             />
                           </div>
                         ))}

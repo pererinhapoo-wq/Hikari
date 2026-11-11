@@ -444,80 +444,68 @@ export const getProfile =
     .handler(async ({ context }) => {
       const sql = await getSql();
 
-      const rows = await sql<{
-        nick: string | null;
-        bio: string | null;
-        favorites: string | null;
-        displayName: string | null;
-        avatarUrl: string | null;
-        bannerUrl: string | null;
-        accountType: string | null;
-        allowFollowers: boolean | null;
-        privacyLists: string | null;
-        privacyFavorites: string | null;
-        privacyHistory: string | null;
-        privacyComments: string | null;
-        privacyFollowers: string | null;
-        isVerified: boolean | null;
-      }>`
-        select
-          "nick",
-          "bio",
-          "favorites",
-          "displayName",
-          "avatarUrl",
-          "bannerUrl",
-          "accountType",
-          "allowFollowers",
-          "privacyLists",
-          "privacyFavorites",
-          "privacyHistory",
-          "privacyComments",
-          "privacyFollowers",
-          coalesce("isVerified", false) as "isVerified"
-        from "profile"
-        where "userId" =
-          ${context.userId}
-        limit 1
-      `;
-
-      const commentRows = await sql<{
-        count: string;
-      }>`
-        select count(*)::text as count
-        from "comment"
-        where "userId" =
-          ${context.userId}
-      `;
-
-      const followerRows = await sql<{
-        count: string;
-      }>`
-        select count(*)::text as count
-        from "user_follow"
-        where "followingId" =
-          ${context.userId}
-      `;
-
-      const followingRows = await sql<{
-        count: string;
-      }>`
-        select count(*)::text as count
-        from "user_follow"
-        where "followerId" =
-          ${context.userId}
-      `;
-
-      const userRows = await sql<{
-        name: string | null;
-        email: string | null;
-        image: string | null;
-      }>`
-        select "name", "email", "image"
-        from "user"
-        where "id" = ${context.userId}
-        limit 1
-      `;
+      const [rows, commentRows, followerRows, followingRows, userRows] = await Promise.all([
+        sql<{
+          nick: string | null;
+          bio: string | null;
+          favorites: string | null;
+          displayName: string | null;
+          avatarUrl: string | null;
+          bannerUrl: string | null;
+          accountType: string | null;
+          allowFollowers: boolean | null;
+          privacyLists: string | null;
+          privacyFavorites: string | null;
+          privacyHistory: string | null;
+          privacyComments: string | null;
+          privacyFollowers: string | null;
+          isVerified: boolean | null;
+        }>`
+          select
+            "nick",
+            "bio",
+            "favorites",
+            "displayName",
+            "avatarUrl",
+            "bannerUrl",
+            "accountType",
+            "allowFollowers",
+            "privacyLists",
+            "privacyFavorites",
+            "privacyHistory",
+            "privacyComments",
+            "privacyFollowers",
+            coalesce("isVerified", false) as "isVerified"
+          from "profile"
+          where "userId" = ${context.userId}
+          limit 1
+        `,
+        sql<{ count: string }>`
+          select count(*)::text as count
+          from "comment"
+          where "userId" = ${context.userId}
+        `,
+        sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow"
+          where "followingId" = ${context.userId}
+        `,
+        sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow"
+          where "followerId" = ${context.userId}
+        `,
+        sql<{
+          name: string | null;
+          email: string | null;
+          image: string | null;
+        }>`
+          select "name", "email", "image"
+          from "user"
+          where "id" = ${context.userId}
+          limit 1
+        `,
+      ]);
 
       const userRow = userRows[0];
       let row = rows[0];
@@ -662,79 +650,51 @@ export async function executeGetPublicProfile(
   // Avaliação estrita de privacidade no servidor
   const privacy = await evaluateUserPrivacy(sql, row.userId, viewerUserId);
 
-  let commentCount = 0;
-  if (privacy.canViewComments) {
-    const commentRows = await sql<{
-      count: string;
-    }>`
-      select count(*)::text as count
-      from "comment"
-      where "userId" = ${row.userId}
-    `;
-    commentCount = Number(commentRows[0]?.count ?? "0");
-  }
+  const [commentRows, followerRows, followingRows, blockRows, reqRows] = await Promise.all([
+    privacy.canViewComments
+      ? sql<{ count: string }>`select count(*)::text as count from "comment" where "userId" = ${row.userId}`
+      : Promise.resolve([]),
+    privacy.canViewFollowers
+      ? sql<{ count: string }>`select count(*)::text as count from "user_follow" where "followingId" = ${row.userId}`
+      : Promise.resolve([]),
+    privacy.canViewFollowers
+      ? sql<{ count: string }>`select count(*)::text as count from "user_follow" where "followerId" = ${row.userId}`
+      : Promise.resolve([]),
+    viewerUserId && viewerUserId !== row.userId
+      ? sql<{ isBlockedByMe: boolean; isBlockedByTarget: boolean }>`
+          select
+            exists (
+              select 1 from "user_block"
+              where "blockerId" = ${viewerUserId} and "blockedId" = ${row.userId}
+            ) as "isBlockedByMe",
+            exists (
+              select 1 from "user_block"
+              where "blockerId" = ${row.userId} and "blockedId" = ${viewerUserId}
+            ) as "isBlockedByTarget"
+        `
+      : Promise.resolve([]),
+    viewerUserId && !privacy.isOwner && !privacy.isFollower
+      ? sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow_request"
+          where "requesterId" = ${viewerUserId}
+            and "targetId" = ${row.userId}
+            and "status" = 'pending'
+          limit 1
+        `
+      : Promise.resolve([]),
+  ]);
 
-  let followersCount = 0;
-  if (privacy.canViewFollowers) {
-    const followerRows = await sql<{
-      count: string;
-    }>`
-      select count(*)::text as count
-      from "user_follow"
-      where "followingId" = ${row.userId}
-    `;
-    followersCount = Number(followerRows[0]?.count ?? "0");
-  }
+  const commentCount = Number(commentRows[0]?.count ?? "0");
+  const followersCount = Number(followerRows[0]?.count ?? "0");
+  const followingCount = Number(followingRows[0]?.count ?? "0");
 
-  let followingCount = 0;
-  if (privacy.canViewFollowers) {
-    const followingRows = await sql<{
-      count: string;
-    }>`
-      select count(*)::text as count
-      from "user_follow"
-      where "followerId" = ${row.userId}
-    `;
-    followingCount = Number(followingRows[0]?.count ?? "0");
-  }
+  const b = blockRows[0];
+  const isBlockedByMe = Boolean(b?.isBlockedByMe);
+  const isBlockedByTarget = Boolean(b?.isBlockedByTarget);
+  const isBlocked = isBlockedByMe || isBlockedByTarget;
 
-  let isBlockedByMe = false;
-  let isBlockedByTarget = false;
-  let isBlocked = false;
-
-  if (viewerUserId && viewerUserId !== row.userId) {
-    const blockRows = await sql<{
-      isBlockedByMe: boolean;
-      isBlockedByTarget: boolean;
-    }>`
-      select
-        exists (
-          select 1 from "user_block"
-          where "blockerId" = ${viewerUserId} and "blockedId" = ${row.userId}
-        ) as "isBlockedByMe",
-        exists (
-          select 1 from "user_block"
-          where "blockerId" = ${row.userId} and "blockedId" = ${viewerUserId}
-        ) as "isBlockedByTarget"
-    `;
-    const b = blockRows[0];
-    isBlockedByMe = Boolean(b?.isBlockedByMe);
-    isBlockedByTarget = Boolean(b?.isBlockedByTarget);
-    isBlocked = isBlockedByMe || isBlockedByTarget;
-  }
-
-  let hasPendingRequest = false;
-  if (viewerUserId && !privacy.isOwner && !privacy.isFollower && !isBlocked) {
-    const reqRows = await sql<{ count: string }>`
-      select count(*)::text as count
-      from "user_follow_request"
-      where "requesterId" = ${viewerUserId}
-        and "targetId" = ${row.userId}
-        and "status" = 'pending'
-      limit 1
-    `;
-    hasPendingRequest = Number(reqRows[0]?.count ?? "0") > 0;
-  }
+  const hasPendingRequest = !isBlocked && Number(reqRows[0]?.count ?? "0") > 0;
 
   let relationStatus: FollowRelationshipStatus = "none";
   if (privacy.isOwner) {
@@ -978,13 +938,6 @@ export async function executeGetComments(
   const safeLimit = Math.max(1, Math.min(50, limit));
   const offset = (safePage - 1) * safeLimit;
 
-  const countRows = await sql.query<{ total: number }>(
-    `SELECT count(*)::int as total FROM "comment" WHERE "userId" = $1`,
-    [targetUserId],
-  );
-  const total = Number(countRows[0]?.total || 0);
-  const totalPages = Math.ceil(total / safeLimit) || 1;
-
   const selectQuery = `
     SELECT
       c."id",
@@ -1025,24 +978,33 @@ export async function executeGetComments(
     LIMIT $3 OFFSET $4
   `;
 
-  const rows = await sql.query<{
-    id: string;
-    animeId: string;
-    episodeId: string;
-    content: string;
-    imageUrl: string | null;
-    parentId: string | null;
-    isSpoiler: boolean;
-    createdAt: Date | string;
-    updatedAt: Date | string;
-    userId: string;
-    userName: string;
-    userImage: string | null;
-    animeTitle: string;
-    animeCover: string | null;
-    likes: number;
-    liked: boolean;
-  }>(selectQuery, [targetUserId, viewerUserId, safeLimit, offset]);
+  const [countRows, rows] = await Promise.all([
+    sql.query<{ total: number }>(
+      `SELECT count(*)::int as total FROM "comment" WHERE "userId" = $1`,
+      [targetUserId],
+    ),
+    sql.query<{
+      id: string;
+      animeId: string;
+      episodeId: string;
+      content: string;
+      imageUrl: string | null;
+      parentId: string | null;
+      isSpoiler: boolean;
+      createdAt: Date | string;
+      updatedAt: Date | string;
+      userId: string;
+      userName: string;
+      userImage: string | null;
+      animeTitle: string;
+      animeCover: string | null;
+      likes: number;
+      liked: boolean;
+    }>(selectQuery, [targetUserId, viewerUserId, safeLimit, offset]),
+  ]);
+
+  const total = Number(countRows[0]?.total || 0);
+  const totalPages = Math.ceil(total / safeLimit) || 1;
 
   const items: MyProfileComment[] = rows.map((comment) => {
     let animeTitle = comment.animeTitle || "Anime indisponível";
@@ -1220,15 +1182,6 @@ export async function executeGetUserActivities(
     SELECT count(*)::int AS total FROM user_activities;
   `;
 
-  const countRes = await sql.query<{ total: number }>(countQuery, [
-    targetUserId,
-    isOwner,
-    canViewLists,
-    canViewFavorites,
-  ]);
-  const total = Number(countRes[0]?.total || 0);
-  const totalPages = Math.ceil(total / safeLimit) || 1;
-
   const selectQuery = `
     WITH user_activities AS (
       -- 1. Episódios assistidos
@@ -1369,24 +1322,35 @@ export async function executeGetUserActivities(
     LIMIT $5 OFFSET $6;
   `;
 
-  const rows = await sql.query<{
-    id: string;
-    type: ActivityType;
-    createdAt: Date | string;
-    description: string;
-    resourceId: string;
-    resourceTitle: string;
-    resourceCover: string | null;
-    resourceType: "anime" | "list" | "character" | "studio" | "company" | "person";
-    metadata: string | null;
-  }>(selectQuery, [
-    targetUserId,
-    isOwner,
-    canViewLists,
-    canViewFavorites,
-    safeLimit,
-    offset,
+  const [countRes, rows] = await Promise.all([
+    sql.query<{ total: number }>(countQuery, [
+      targetUserId,
+      isOwner,
+      canViewLists,
+      canViewFavorites,
+    ]),
+    sql.query<{
+      id: string;
+      type: ActivityType;
+      createdAt: Date | string;
+      description: string;
+      resourceId: string;
+      resourceTitle: string;
+      resourceCover: string | null;
+      resourceType: "anime" | "list" | "character" | "studio" | "company" | "person";
+      metadata: string | null;
+    }>(selectQuery, [
+      targetUserId,
+      isOwner,
+      canViewLists,
+      canViewFavorites,
+      safeLimit,
+      offset,
+    ]),
   ]);
+
+  const total = Number(countRes[0]?.total || 0);
+  const totalPages = Math.ceil(total / safeLimit) || 1;
 
   const items: UserActivityItem[] = rows.map((r) => {
     let parsedMetadata = undefined;

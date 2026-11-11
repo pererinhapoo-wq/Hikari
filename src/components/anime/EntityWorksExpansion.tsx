@@ -175,12 +175,12 @@ export const StudioAnimeCard = memo(function StudioAnimeCard({
           outline-none
           focus-visible:ring-2
           focus-visible:ring-purple-400
-          transition-all
+          transition-transform
           duration-150
           ease-out
           active:scale-[0.96]
           active:brightness-110
-          [@media(hover:hover)]:hover:brightness-105
+          [@media(hover:hover)_and_(pointer:fine)]:hover:brightness-105
           motion-reduce:transition-none
           motion-reduce:transform-none
           -webkit-tap-highlight-color-transparent
@@ -196,13 +196,11 @@ export const StudioAnimeCard = memo(function StudioAnimeCard({
           border
           border-white/10
           shadow-sm
-          transition-all
+          transition-colors
           duration-200
           ease-out
-          group-hover:border-purple-500/50
-          group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+          [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
           group-active:border-purple-400
-          group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
         ">
           {anime.cover ? (
             <img
@@ -216,7 +214,7 @@ export const StudioAnimeCard = memo(function StudioAnimeCard({
                 transition-transform
                 duration-300
                 ease-out
-                group-hover:scale-[1.03]
+                [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
                 group-active:scale-[1.01]
                 motion-reduce:transform-none
               "
@@ -226,11 +224,17 @@ export const StudioAnimeCard = memo(function StudioAnimeCard({
               <Film className="size-6" />
             </div>
           )}
+
+          {/* Camada de sombra/glow acelerada por GPU */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+          />
         </div>
 
         <div className="mt-2 flex flex-col px-0.5 min-w-0">
           <h3
-            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
             title={anime.title}
           >
             {anime.title}
@@ -264,12 +268,12 @@ export const DubladorAnimeCard = memo(function DubladorAnimeCard({
           outline-none
           focus-visible:ring-2
           focus-visible:ring-purple-400
-          transition-all
+          transition-transform
           duration-150
           ease-out
           active:scale-[0.96]
           active:brightness-110
-          [@media(hover:hover)]:hover:brightness-105
+          [@media(hover:hover)_and_(pointer:fine)]:hover:brightness-105
           motion-reduce:transition-none
           motion-reduce:transform-none
           -webkit-tap-highlight-color-transparent
@@ -285,13 +289,11 @@ export const DubladorAnimeCard = memo(function DubladorAnimeCard({
           border
           border-white/10
           shadow-sm
-          transition-all
+          transition-colors
           duration-200
           ease-out
-          group-hover:border-purple-500/50
-          group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+          [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
           group-active:border-purple-400
-          group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
         ">
           {work.anime.cover ? (
             <img
@@ -305,7 +307,7 @@ export const DubladorAnimeCard = memo(function DubladorAnimeCard({
                 transition-transform
                 duration-300
                 ease-out
-                group-hover:scale-[1.03]
+                [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
                 group-active:scale-[1.01]
                 motion-reduce:transform-none
               "
@@ -315,11 +317,17 @@ export const DubladorAnimeCard = memo(function DubladorAnimeCard({
               <Film className="size-6" />
             </div>
           )}
+
+          {/* Camada de sombra/glow acelerada por GPU */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+          />
         </div>
 
         <div className="mt-2 flex flex-col px-0.5 min-w-0">
           <h3
-            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
             title={work.anime.title}
           >
             {work.anime.title}
@@ -348,12 +356,12 @@ export const StaffAnimeCard = memo(function StaffAnimeCard({
           outline-none
           focus-visible:ring-2
           focus-visible:ring-purple-400
-          transition-all
+          transition-transform
           duration-150
           ease-out
           active:scale-[0.96]
           active:brightness-110
-          [@media(hover:hover)]:hover:brightness-105
+          [@media(hover:hover)_and_(pointer:fine)]:hover:brightness-105
           motion-reduce:transition-none
           motion-reduce:transform-none
           -webkit-tap-highlight-color-transparent
@@ -369,13 +377,11 @@ export const StaffAnimeCard = memo(function StaffAnimeCard({
           border
           border-white/10
           shadow-sm
-          transition-all
+          transition-colors
           duration-200
           ease-out
-          group-hover:border-purple-500/50
-          group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+          [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
           group-active:border-purple-400
-          group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
         ">
           {work.anime.cover ? (
             <img
@@ -389,7 +395,7 @@ export const StaffAnimeCard = memo(function StaffAnimeCard({
                 transition-transform
                 duration-300
                 ease-out
-                group-hover:scale-[1.03]
+                [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
                 group-active:scale-[1.01]
                 motion-reduce:transform-none
               "
@@ -399,11 +405,17 @@ export const StaffAnimeCard = memo(function StaffAnimeCard({
               <Film className="size-6" />
             </div>
           )}
+
+          {/* Camada de sombra/glow acelerada por GPU */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+          />
         </div>
 
         <div className="mt-2 flex flex-col px-0.5 min-w-0">
           <h3
-            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+            className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
             title={work.anime.title}
           >
             {work.anime.title}

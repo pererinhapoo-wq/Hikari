@@ -245,7 +245,7 @@ export function ProfileRecentActivities({
               return (
                 <article
                   key={item.id}
-                  className="group relative flex items-center justify-between gap-3.5 sm:gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 hover:border-violet-500/35 hover:bg-[#12101e]"
+                  className="group relative flex items-center justify-between gap-3.5 sm:gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-colors duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-violet-500/35 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#12101e]"
                 >
                   <div className="flex items-start gap-3.5 sm:gap-4 min-w-0 flex-1">
                     {/* Capa / Ícone */}
@@ -255,7 +255,8 @@ export function ProfileRecentActivities({
                           src={comm.animeCover}
                           alt=""
                           loading="lazy"
-                          className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          decoding="async"
+                          className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
                         />
                       ) : (
                         <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
@@ -271,7 +272,7 @@ export function ProfileRecentActivities({
                           <Link
                             to="/anime/$id"
                             params={{ id: comm.animeId }}
-                            className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors hover:text-violet-300"
+                            className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:hover:text-violet-300"
                             title={animeTitle}
                           >
                             {animeTitle}
@@ -370,7 +371,7 @@ export function ProfileRecentActivities({
             return (
               <article
                 key={item.id}
-                className="group relative flex items-center justify-between gap-3.5 sm:gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 hover:border-violet-500/35 hover:bg-[#12101e]"
+                className="group relative flex items-center justify-between gap-3.5 sm:gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-colors duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-violet-500/35 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#12101e]"
               >
                 <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
                   {/* Capa / Ícone */}
@@ -380,7 +381,8 @@ export function ProfileRecentActivities({
                         src={act.resourceCover}
                         alt=""
                         loading="lazy"
-                        className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        decoding="async"
+                        className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
                       />
                     ) : (
                       <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
@@ -411,7 +413,7 @@ export function ProfileRecentActivities({
                       <Link
                         to="/anime/$id"
                         params={{ id: act.resourceId }}
-                        className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors hover:text-violet-300"
+                        className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:hover:text-violet-300"
                         title={act.resourceTitle}
                       >
                         {act.resourceTitle}

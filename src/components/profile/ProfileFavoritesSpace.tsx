@@ -290,7 +290,7 @@ export function ProfileFavoritesSpace({
               const targetLink = isAnime ? `/anime/${item.targetId}` : undefined;
 
               const cardContent = (
-                <article className="group relative flex flex-col min-w-0">
+                <article className="group relative flex flex-col min-w-0 active:scale-[0.98] transition-transform duration-100 ease-out">
                   {/* Pôster com proporção 2:3 vertical retangular com cantos retos */}
                   <div className="
                     relative
@@ -302,13 +302,11 @@ export function ProfileFavoritesSpace({
                     border
                     border-white/10
                     shadow-sm
-                    transition-all
+                    transition-colors
                     duration-200
                     ease-out
-                    group-hover:border-purple-500/50
-                    group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+                    [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
                     group-active:border-purple-400
-                    group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
                     flex
                     items-center
                     justify-center
@@ -320,7 +318,7 @@ export function ProfileFavoritesSpace({
                         loading="lazy"
                         decoding="async"
                         className={cn(
-                          "size-full transition-transform duration-300 ease-out group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none",
+                          "size-full transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none",
                           isStudio ? "object-contain p-3" : "object-cover object-top",
                         )}
                       />
@@ -330,8 +328,14 @@ export function ProfileFavoritesSpace({
                       </div>
                     )}
 
-                    {/* Indicador de favorito discreto */}
-                    <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-black/80 backdrop-blur-md border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 group-hover:scale-105">
+                    {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+                    />
+
+                    {/* Indicador de favorito discreto (sem backdrop-blur pesado) */}
+                    <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
                       <Heart className="size-3 fill-rose-500 text-rose-500" />
                     </div>
                   </div>
@@ -339,7 +343,7 @@ export function ProfileFavoritesSpace({
                   {/* Informações estritamente FORA do pôster */}
                   <div className="mt-2 flex flex-col px-0.5 min-w-0">
                     <h4
-                      className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+                      className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
                       title={item.title}
                     >
                       {item.title}

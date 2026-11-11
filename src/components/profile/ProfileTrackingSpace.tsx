@@ -515,12 +515,12 @@ export function ProfileTrackingSpace({
                       outline-none
                       focus-visible:ring-2
                       focus-visible:ring-purple-400
-                      transition-all
+                      transition-transform
                       duration-150
                       ease-out
                       active:scale-[0.96]
                       active:brightness-110
-                      [@media(hover:hover)]:hover:brightness-105
+                      [@media(hover:hover)_and_(pointer:fine)]:hover:brightness-105
                       motion-reduce:transition-none
                       motion-reduce:transform-none
                       -webkit-tap-highlight-color-transparent
@@ -536,13 +536,11 @@ export function ProfileTrackingSpace({
                       border
                       border-white/10
                       shadow-sm
-                      transition-all
+                      transition-colors
                       duration-200
                       ease-out
-                      group-hover:border-purple-500/50
-                      group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
+                      [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
                       group-active:border-purple-400
-                      group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
                     ">
                       {item.cover ? (
                         <img
@@ -556,7 +554,7 @@ export function ProfileTrackingSpace({
                             transition-transform
                             duration-300
                             ease-out
-                            group-hover:scale-[1.03]
+                            [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
                             group-active:scale-[1.01]
                             motion-reduce:transform-none
                           "
@@ -566,6 +564,12 @@ export function ProfileTrackingSpace({
                           {item.title.slice(0, 1)}
                         </div>
                       )}
+
+                      {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+                      />
                     </div>
                   </Link>
 
@@ -582,7 +586,7 @@ export function ProfileTrackingSpace({
                           setActiveMobileCardId(item.animeId);
                         }
                       }}
-                      className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors group-hover:text-purple-300 group-active:text-purple-200"
+                      className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
                       title={item.title}
                     >
                       {item.title}
@@ -611,10 +615,10 @@ export function ProfileTrackingSpace({
 
                     {/* Controles de Incremento Rápido e Edição */}
                     <div
-                      className={`mt-2 flex items-center justify-between gap-1 pt-1 border-t border-white/[0.06] transition-all duration-200 ${
+                      className={`mt-2 flex items-center justify-between gap-1 pt-1 border-t border-white/[0.06] transition-opacity duration-200 ${
                         isMobileActive
                           ? "opacity-100"
-                          : "opacity-80 sm:opacity-0 sm:group-hover:opacity-100"
+                          : "opacity-80 sm:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:sm:group-hover:opacity-100"
                       }`}
                     >
                       <button
@@ -625,10 +629,10 @@ export function ProfileTrackingSpace({
                           handleQuickIncrement(item);
                         }}
                         disabled={isButtonDisabled}
-                        className={`inline-flex items-center justify-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-all shrink-0 ${
+                        className={`inline-flex items-center justify-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-transform duration-100 ease-out shrink-0 ${
                           isButtonDisabled
                             ? "border border-white/10 bg-white/[0.04] text-zinc-500 cursor-not-allowed opacity-60"
-                            : "border border-purple-500/35 bg-purple-500/15 text-purple-200 hover:border-purple-400/60 hover:bg-purple-600/30 hover:text-white active:scale-95 cursor-pointer"
+                            : "border border-purple-500/35 bg-purple-500/15 text-purple-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-400/60 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/30 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer"
                         }`}
                         title={
                           isCompletedOrMax
@@ -649,7 +653,7 @@ export function ProfileTrackingSpace({
                           e.stopPropagation();
                           setEditingItem(item);
                         }}
-                        className="inline-flex items-center justify-center gap-0.5 rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200 transition-all hover:border-purple-500/40 hover:bg-purple-600/20 hover:text-white active:scale-95 cursor-pointer shrink-0"
+                        className="inline-flex items-center justify-center gap-0.5 rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200 transition-transform duration-100 ease-out [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/40 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/20 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer shrink-0"
                         title="Editar status e episódios"
                       >
                         <Pencil className="size-2.5 text-purple-300 shrink-0" />

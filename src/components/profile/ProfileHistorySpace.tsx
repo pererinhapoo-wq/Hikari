@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
@@ -5,8 +6,6 @@ import {
   Calendar,
   CheckCircle,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   Film,
   Heart,
@@ -24,11 +23,14 @@ import type {
 interface ProfileHistorySpaceProps {
   items: (UserActivityItem | WatchedEpisodeItem)[];
   total: number;
-  page: number;
-  totalPages: number;
-  onPageChange: (newPage: number) => void;
+  page?: number;
+  totalPages?: number;
+  onPageChange?: (newPage: number) => void;
   loading?: boolean;
   isOwner?: boolean;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 /**
@@ -186,7 +188,30 @@ export function ProfileHistorySpace({
   onPageChange,
   loading = false,
   isOwner = true,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
 }: ProfileHistorySpaceProps) {
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!onLoadMore || !hasMore || loadingMore || loading) return;
+
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          onLoadMore();
+        }
+      },
+      { rootMargin: "350px 0px" },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onLoadMore, hasMore, loadingMore, loading]);
   const formatRelativeDate = (isoString: string): string => {
     const d = new Date(isoString);
     if (Number.isNaN(d.getTime())) return "";
@@ -310,7 +335,7 @@ export function ProfileHistorySpace({
             return (
               <article
                 key={entry.id}
-                className="group relative flex items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all duration-200 hover:border-violet-500/35 hover:bg-[#12101e]"
+                className="group relative flex items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0c0b14]/90 p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-colors duration-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-violet-500/35 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[#12101e]"
               >
                 {/* Lado Esquerdo: Ícone/Capa + Descrição e Tempo Relativo */}
                 <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
@@ -321,7 +346,8 @@ export function ProfileHistorySpace({
                         src={entry.resourceCover}
                         alt=""
                         loading="lazy"
-                        className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        decoding="async"
+                        className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
                       />
                     ) : (
                       <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
@@ -354,7 +380,7 @@ export function ProfileHistorySpace({
                         <Link
                           to="/anime/$id"
                           params={{ id: entry.resourceId }}
-                          className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors hover:text-violet-300"
+                          className="truncate font-semibold text-sm sm:text-base text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:hover:text-violet-300"
                           title={entry.resourceTitle}
                         >
                           {entry.resourceTitle}
@@ -458,8 +484,20 @@ export function ProfileHistorySpace({
             );
           })}
 
-          {/* Paginação do Feed */}
-          {totalPages > 1 && (
+          {/* Paginação Infinita via IntersectionObserver */}
+          {loadingMore && (
+            <div className="flex items-center justify-center py-4 text-zinc-400 text-xs gap-2">
+              <div className="size-4 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+              <span>Carregando mais atividades...</span>
+            </div>
+          )}
+
+          {hasMore && !loading && (
+            <div ref={sentinelRef} className="h-4 w-full" aria-hidden="true" />
+          )}
+
+          {/* Fallback de Paginação caso onLoadMore não seja provido */}
+          {!onLoadMore && totalPages && totalPages > 1 && onPageChange && page && (
             <div className="flex items-center justify-between border-t border-white/[0.06] pt-4">
               <span className="text-xs text-zinc-400">
                 Página <strong className="text-white">{page}</strong> de{" "}
@@ -473,7 +511,6 @@ export function ProfileHistorySpace({
                   disabled={page <= 1}
                   className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-all hover:bg-white/[0.08] disabled:opacity-40 disabled:pointer-events-none"
                 >
-                  <ChevronLeft className="size-4" />
                   <span>Anterior</span>
                 </button>
 
@@ -484,7 +521,6 @@ export function ProfileHistorySpace({
                   className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-all hover:bg-white/[0.08] disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <span>Próxima</span>
-                  <ChevronRight className="size-4" />
                 </button>
               </div>
             </div>
