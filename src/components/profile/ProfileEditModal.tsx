@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useScrollLock } from "@/lib/scroll-lock";
+import { uploadImageFile } from "@/lib/storage/image-storage-client";
 
 interface ProfileEditModalProps {
   isOpen: boolean;
@@ -38,7 +39,7 @@ interface ProfileEditModalProps {
  * Valida formato e tamanho, e otimiza a imagem no cliente via Canvas.
  * Produz uma imagem WebP leve de alta fidelidade sem inflar o banco de dados.
  */
-async function processImageFile(
+async function _processImageFile(
   file: File,
   type: "avatar" | "banner",
 ): Promise<string> {
@@ -220,7 +221,7 @@ export function ProfileEditModal({
     onClose();
   };
 
-  // Upload e processamento do Avatar
+  // Upload e processamento do Avatar para armazenamento permanente
   const handleAvatarFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -230,8 +231,8 @@ export function ProfileEditModal({
     try {
       setImageProcessing("avatar");
       setError("");
-      const optimizedDataUrl = await processImageFile(file, "avatar");
-      setImage(optimizedDataUrl);
+      const permanentUrl = await uploadImageFile(file, "profile-avatars");
+      setImage(permanentUrl);
       setShowAvatarUrlInput(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar a foto de perfil.");
@@ -243,7 +244,7 @@ export function ProfileEditModal({
     }
   };
 
-  // Upload e processamento do Banner
+  // Upload e processamento do Banner para armazenamento permanente
   const handleBannerFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -253,8 +254,8 @@ export function ProfileEditModal({
     try {
       setImageProcessing("banner");
       setError("");
-      const optimizedDataUrl = await processImageFile(file, "banner");
-      setBannerUrl(optimizedDataUrl);
+      const permanentUrl = await uploadImageFile(file, "profile-banners");
+      setBannerUrl(permanentUrl);
       setShowBannerUrlInput(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar o banner.");

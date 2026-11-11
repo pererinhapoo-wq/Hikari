@@ -195,7 +195,7 @@ export function generateSafeStoragePath(
     }
   }
 
-  const prefix = actorId ? `${actorId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 16)}-` : "";
+  const prefix = actorId ? `${actorId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}-` : "";
   const filename = `${prefix}${timestamp}-${random}.${ext}`;
   const pathname = `${policy.folder}/${filename}`;
 

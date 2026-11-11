@@ -111,20 +111,29 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                 anime.titleNative?.trim() ||
                 anime.id;
 
+              const cleanCover =
+                anime.cover?.trim() && !anime.cover.startsWith("blob:")
+                  ? anime.cover.trim()
+                  : null;
+              const cleanBanner =
+                anime.banner?.trim() && !anime.banner.startsWith("blob:")
+                  ? anime.banner.trim()
+                  : null;
+
               // 3.1 Upsert do anime em catalog_anime
               await sql.query(
                 `INSERT INTO "catalog_anime" (
                    "id", "title", "titleEnglish", "titleNative",
-                   "cover", "banner", "synopsis", "score",
+                   "cover", "banner", "synopsis",
                    "format", "status", "episodesCount", "season",
-                   "year", "hidden", "genres", "trailerId",
+                   "year", "genres", "trailerId",
                    "createdAt", "updatedAt"
                  )
                  VALUES (
                    $1, $2, $3, $4,
-                   $5, $6, $7, $8,
-                   $9, $10, $11, $12,
-                   $13, $14, $15, $16,
+                   $5, $6, $7,
+                   $8, $9, $10, $11,
+                   $12, $13, $14,
                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                  )
                  ON CONFLICT ("id") DO UPDATE
@@ -132,16 +141,14 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    "title" = COALESCE(EXCLUDED."title", "catalog_anime"."title"),
                    "titleEnglish" = COALESCE(EXCLUDED."titleEnglish", "catalog_anime"."titleEnglish"),
                    "titleNative" = COALESCE(EXCLUDED."titleNative", "catalog_anime"."titleNative"),
-                   "cover" = COALESCE(EXCLUDED."cover", "catalog_anime"."cover"),
-                   "banner" = COALESCE(EXCLUDED."banner", "catalog_anime"."banner"),
+                   "cover" = COALESCE(NULLIF("catalog_anime"."cover", ''), NULLIF(EXCLUDED."cover", '')),
+                   "banner" = COALESCE(NULLIF("catalog_anime"."banner", ''), NULLIF(EXCLUDED."banner", '')),
                    "synopsis" = COALESCE(EXCLUDED."synopsis", "catalog_anime"."synopsis"),
-                   "score" = COALESCE(EXCLUDED."score", "catalog_anime"."score"),
                    "format" = COALESCE(EXCLUDED."format", "catalog_anime"."format"),
                    "status" = COALESCE(EXCLUDED."status", "catalog_anime"."status"),
                    "episodesCount" = COALESCE(EXCLUDED."episodesCount", "catalog_anime"."episodesCount"),
                    "season" = COALESCE(EXCLUDED."season", "catalog_anime"."season"),
                    "year" = COALESCE(EXCLUDED."year", "catalog_anime"."year"),
-                   "hidden" = EXCLUDED."hidden",
                    "genres" = CASE
                      WHEN cardinality(EXCLUDED."genres") > 0 THEN EXCLUDED."genres"
                      ELSE "catalog_anime"."genres"
@@ -153,16 +160,14 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   animeTitle,
                   anime.titleEnglish?.trim() || null,
                   anime.titleNative?.trim() || null,
-                  anime.cover?.trim() || null,
-                  anime.banner?.trim() || null,
+                  cleanCover,
+                  cleanBanner,
                   anime.synopsis?.trim() || null,
-                  anime.score ?? null,
                   anime.format?.trim() || "TV",
                   anime.status?.trim() || "FINISHED",
                   anime.episodesCount ?? null,
                   anime.season?.trim() || null,
                   anime.year ?? null,
-                  anime.hidden ?? false,
                   anime.genres || [],
                   anime.trailerId?.trim() || null,
                 ],

@@ -37,6 +37,20 @@ const animeAdminDeleteSchema = z.object({
   id: z.string().trim().min(1, "id é obrigatório"),
 });
 
+function sanitizeImageUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith("blob:")) {
+    throw new Error("URLs com esquema temporário 'blob:' não são permitidas.");
+  }
+  if (lower.startsWith("data:") && trimmed.length > 2048) {
+    throw new Error("Data URLs em Base64 excedem o limite de 2048 caracteres.");
+  }
+  return trimmed;
+}
+
 export const Route = createFileRoute("/api/admin/catalog-anime")({
   server: {
     handlers: {
@@ -63,6 +77,20 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
           }
 
           const data = parsed.data;
+
+          // Validação e sanitização estrita de imagens
+          let cleanCover: string | null = null;
+          let cleanBanner: string | null = null;
+          try {
+            cleanCover = sanitizeImageUrl(data.cover);
+            cleanBanner = sanitizeImageUrl(data.banner);
+          } catch (imgErr) {
+            return Response.json(
+              { error: imgErr instanceof Error ? imgErr.message : "URL de imagem inválida." },
+              { status: 400 },
+            );
+          }
+
           const sql = await getSql();
 
           const canonicalTitle =
@@ -103,8 +131,8 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                "titleRomaji" = COALESCE(EXCLUDED."titleRomaji", "catalog_anime"."titleRomaji"),
                "titleEnglish" = COALESCE(EXCLUDED."titleEnglish", "catalog_anime"."titleEnglish"),
                "titleNative" = COALESCE(EXCLUDED."titleNative", "catalog_anime"."titleNative"),
-               "cover" = COALESCE(EXCLUDED."cover", "catalog_anime"."cover"),
-               "banner" = COALESCE(EXCLUDED."banner", "catalog_anime"."banner"),
+               "cover" = COALESCE(NULLIF(EXCLUDED."cover", ''), "catalog_anime"."cover"),
+               "banner" = COALESCE(NULLIF(EXCLUDED."banner", ''), "catalog_anime"."banner"),
                "synopsis" = COALESCE(EXCLUDED."synopsis", "catalog_anime"."synopsis"),
                "format" = COALESCE(EXCLUDED."format", "catalog_anime"."format"),
                "status" = COALESCE(EXCLUDED."status", "catalog_anime"."status"),
@@ -130,8 +158,8 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
               data.titleRomaji?.trim() ?? null,
               data.titleEnglish?.trim() ?? null,
               data.titleNative?.trim() ?? null,
-              data.cover?.trim() ?? null,
-              data.banner?.trim() ?? null,
+              cleanCover,
+              cleanBanner,
               data.synopsis?.trim() ?? null,
               data.format?.trim() ?? null,
               data.status?.trim() ?? null,

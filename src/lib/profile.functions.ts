@@ -1765,7 +1765,14 @@ export const updateProfile =
         ) {
           finalAvatar = null;
         } else if (typeof data.image === "string") {
-          finalAvatar = data.image.trim();
+          const trimmed = data.image.trim();
+          if (trimmed.startsWith("blob:")) {
+            throw new Error("URLs temporárias 'blob:' não podem ser persistidas. Utilize o upload permanente.");
+          }
+          if (trimmed.startsWith("data:") && trimmed.length > 2048) {
+            throw new Error("Imagens em Base64 não podem ser gravadas diretamente no banco de dados. Utilize o upload para obter uma URL persistente.");
+          }
+          finalAvatar = trimmed;
         }
       }
 
@@ -1778,7 +1785,14 @@ export const updateProfile =
         ) {
           finalBanner = null;
         } else if (typeof data.bannerUrl === "string") {
-          finalBanner = data.bannerUrl.trim();
+          const trimmed = data.bannerUrl.trim();
+          if (trimmed.startsWith("blob:")) {
+            throw new Error("URLs temporárias 'blob:' não podem ser persistidas. Utilize o upload permanente.");
+          }
+          if (trimmed.startsWith("data:") && trimmed.length > 2048) {
+            throw new Error("Banners em Base64 não podem ser gravados diretamente no banco de dados. Utilize o upload para obter uma URL persistente.");
+          }
+          finalBanner = trimmed;
         }
       }
 
