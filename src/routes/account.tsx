@@ -411,6 +411,63 @@ function AccountProfile() {
   const removeFavoriteFn = useServerFn(removeProfileFavorite);
   const getActivitiesFn = useServerFn(getMyActivities);
 
+  // Estabilização de referências de Server Functions com useRef + useCallback
+  // Evita que novas instâncias recriadas pelo hook useServerFn invalidem requisições em voo
+  const getProfileFnRef = useRef(getProfileFn);
+  getProfileFnRef.current = getProfileFn;
+  const stableGetProfile = useCallback(
+    (...args: Parameters<typeof getProfileFn>) => getProfileFnRef.current(...args),
+    [],
+  );
+
+  const getRequestsFnRef = useRef(getRequestsFn);
+  getRequestsFnRef.current = getRequestsFn;
+  const stableGetRequests = useCallback(
+    (...args: Parameters<typeof getRequestsFn>) => getRequestsFnRef.current(...args),
+    [],
+  );
+
+  const getFollowersFnRef = useRef(getFollowersFn);
+  getFollowersFnRef.current = getFollowersFn;
+  const getFollowingFnRef = useRef(getFollowingFn);
+  getFollowingFnRef.current = getFollowingFn;
+
+  const getTrackingFnRef = useRef(getTrackingFn);
+  getTrackingFnRef.current = getTrackingFn;
+  const stableGetTracking = useCallback(
+    (...args: Parameters<typeof getTrackingFn>) => getTrackingFnRef.current(...args),
+    [],
+  );
+
+  const getFavoritesFnRef = useRef(getFavoritesFn);
+  getFavoritesFnRef.current = getFavoritesFn;
+  const stableGetFavorites = useCallback(
+    (...args: Parameters<typeof getFavoritesFn>) => getFavoritesFnRef.current(...args),
+    [],
+  );
+
+  const getCommentsFnRef = useRef(getCommentsFn);
+  getCommentsFnRef.current = getCommentsFn;
+  const stableGetComments = useCallback(
+    (...args: Parameters<typeof getCommentsFn>) => getCommentsFnRef.current(...args),
+    [],
+  );
+
+  const getActivitiesFnRef = useRef(getActivitiesFn);
+  getActivitiesFnRef.current = getActivitiesFn;
+  const stableGetActivities = useCallback(
+    (...args: Parameters<typeof getActivitiesFn>) => getActivitiesFnRef.current(...args),
+    [],
+  );
+
+  // Contadores de sequência para controle de concorrência e descarte de respostas obsoletas
+  const profileRequestIdRef = useRef(0);
+  const requestsRequestIdRef = useRef(0);
+  const trackingRequestIdRef = useRef(0);
+  const favoritesRequestIdRef = useRef(0);
+  const commentsRequestIdRef = useRef(0);
+  const activitiesRequestIdRef = useRef(0);
+
   // Estados principais do perfil
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -479,13 +536,13 @@ function AccountProfile() {
 
       try {
         if (tab === "followers") {
-          const data = await getFollowersFn();
+          const data = await getFollowersFnRef.current();
           setFollowersList(data);
         } else if (tab === "following") {
-          const data = await getFollowingFn();
+          const data = await getFollowingFnRef.current();
           setFollowingList(data);
         } else {
-          const data = await getRequestsFn();
+          const data = await getRequestsFnRef.current();
           setRequestsList(data);
         }
       } catch (err) {
@@ -494,7 +551,7 @@ function AccountProfile() {
         setConnectionsLoading(false);
       }
     },
-    [getFollowersFn, getFollowingFn, getRequestsFn],
+    [],
   );
 
   // Escuta requisição para abrir modal de edição (ex: vindo de "Configurações do Perfil" no menu da foto)
@@ -554,43 +611,43 @@ function AccountProfile() {
   // Carregamento inicial do perfil
   useEffect(() => {
     if (!user?.id) return;
-    let active = true;
+    const reqId = ++profileRequestIdRef.current;
 
     setProfileLoading(true);
 
-    void getProfileFn()
+    void stableGetProfile()
       .then((data) => {
-        if (!active) return;
+        if (reqId !== profileRequestIdRef.current) return;
         setProfile(data);
       })
       .catch((err) => {
-        console.warn("Erro ao obter dados do perfil:", err);
+        if (reqId === profileRequestIdRef.current) {
+          console.warn("Erro ao obter dados do perfil:", err);
+        }
       })
       .finally(() => {
-        if (active) setProfileLoading(false);
+        if (reqId === profileRequestIdRef.current) {
+          setProfileLoading(false);
+        }
       });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id, getProfileFn]);
+  }, [user?.id, stableGetProfile]);
 
   // Solicitações de seguidores (necessárias para o indicador de badge do cabeçalho)
   useEffect(() => {
     if (!user?.id) return;
-    let active = true;
+    const reqId = ++requestsRequestIdRef.current;
 
-    void getRequestsFn()
+    void stableGetRequests()
       .then((res) => {
-        if (!active) return;
+        if (reqId !== requestsRequestIdRef.current) return;
         setRequestsList(res);
       })
-      .catch((err) => console.warn("Erro ao buscar solicitações:", err));
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id, getRequestsFn]);
+      .catch((err) => {
+        if (reqId === requestsRequestIdRef.current) {
+          console.warn("Erro ao buscar solicitações:", err);
+        }
+      });
+  }, [user?.id, stableGetRequests]);
 
   // Carregamento sob demanda do Acompanhamento de Animes (Visão Geral e Aba Animes)
   useEffect(() => {
@@ -603,26 +660,28 @@ function AccountProfile() {
       return;
     }
 
-    let active = true;
+    const reqId = ++trackingRequestIdRef.current;
     trackingFetchingRef.current = true;
     setTrackingLoading(true);
 
-    void getTrackingFn({ data: { minimal: true } })
+    void stableGetTracking({ data: { minimal: true } })
       .then((items) => {
-        if (!active) return;
+        if (reqId !== trackingRequestIdRef.current) return;
         setTrackingItems(items);
         setTrackingLoaded(true);
       })
-      .catch((err) => console.warn("Erro ao buscar acompanhamento:", err))
+      .catch((err) => {
+        if (reqId === trackingRequestIdRef.current) {
+          console.warn("Erro ao buscar acompanhamento:", err);
+        }
+      })
       .finally(() => {
-        trackingFetchingRef.current = false;
-        if (active) setTrackingLoading(false);
+        if (reqId === trackingRequestIdRef.current) {
+          trackingFetchingRef.current = false;
+          setTrackingLoading(false);
+        }
       });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id, activeSpace, statusParam, trackingLoaded, getTrackingFn]);
+  }, [user?.id, activeSpace, statusParam, trackingLoaded, stableGetTracking]);
 
   // Carregamento sob demanda dos Favoritos Canônicos (Visão Geral)
   useEffect(() => {
@@ -635,27 +694,29 @@ function AccountProfile() {
       return;
     }
 
-    let active = true;
+    const reqId = ++favoritesRequestIdRef.current;
     favoritesFetchingRef.current = true;
     setFavoritesLoading(true);
 
-    void getFavoritesFn({ data: {} })
+    void stableGetFavorites({ data: {} })
       .then((res) => {
-        if (!active) return;
+        if (reqId !== favoritesRequestIdRef.current) return;
         setFavoritesGrouped(res.grouped);
         setFavoritesItems(res.items);
         setFavoritesLoaded(true);
       })
-      .catch((err) => console.warn("Erro ao buscar favoritos:", err))
+      .catch((err) => {
+        if (reqId === favoritesRequestIdRef.current) {
+          console.warn("Erro ao buscar favoritos:", err);
+        }
+      })
       .finally(() => {
-        favoritesFetchingRef.current = false;
-        if (active) setFavoritesLoading(false);
+        if (reqId === favoritesRequestIdRef.current) {
+          favoritesFetchingRef.current = false;
+          setFavoritesLoading(false);
+        }
       });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id, activeSpace, favoritesLoaded, getFavoritesFn]);
+  }, [user?.id, activeSpace, favoritesLoaded, stableGetFavorites]);
 
   // Carregamento sob demanda para a aba de Comentários ou Visão Geral (Cache por aba e trava contra cliques rápidos)
   useEffect(() => {
@@ -668,13 +729,13 @@ function AccountProfile() {
       return;
     }
 
-    let active = true;
+    const reqId = ++commentsRequestIdRef.current;
     commentsFetchingRef.current = true;
     setCommentsLoading(true);
 
-    void getCommentsFn({ data: { page: 1, limit: 15 } })
+    void stableGetComments({ data: { page: 1, limit: 15 } })
       .then((res) => {
-        if (!active) return;
+        if (reqId !== commentsRequestIdRef.current) return;
         setComments(res.items);
         setCommentsTotal(res.total);
         setCommentsPage(res.page);
@@ -682,16 +743,18 @@ function AccountProfile() {
         setCommentsHasMore(res.hasMore);
         setCommentsLoaded(true);
       })
-      .catch((err) => console.warn("Erro ao buscar comentários:", err))
+      .catch((err) => {
+        if (reqId === commentsRequestIdRef.current) {
+          console.warn("Erro ao buscar comentários:", err);
+        }
+      })
       .finally(() => {
-        commentsFetchingRef.current = false;
-        if (active) setCommentsLoading(false);
+        if (reqId === commentsRequestIdRef.current) {
+          commentsFetchingRef.current = false;
+          setCommentsLoading(false);
+        }
       });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id, activeSpace, commentsLoaded, getCommentsFn]);
+  }, [user?.id, activeSpace, commentsLoaded, stableGetComments]);
 
   // Carregamento sob demanda para a aba de Atividades ou Visão Geral (Cache por aba e trava contra cliques rápidos)
   useEffect(() => {
@@ -704,13 +767,13 @@ function AccountProfile() {
       return;
     }
 
-    let active = true;
+    const reqId = ++activitiesRequestIdRef.current;
     activityFetchingRef.current = true;
     setActivityLoading(true);
 
-    void getActivitiesFn({ data: { page: 1, limit: 15 } })
+    void stableGetActivities({ data: { page: 1, limit: 15 } })
       .then((res) => {
-        if (!active) return;
+        if (reqId !== activitiesRequestIdRef.current) return;
         setActivityItems(res.items);
         setActivityTotal(res.total);
         setActivityPage(res.page);
@@ -718,16 +781,18 @@ function AccountProfile() {
         setActivityHasMore(res.hasMore);
         setActivityLoaded(true);
       })
-      .catch((err) => console.warn("Erro ao buscar atividades:", err))
+      .catch((err) => {
+        if (reqId === activitiesRequestIdRef.current) {
+          console.warn("Erro ao buscar atividades:", err);
+        }
+      })
       .finally(() => {
-        activityFetchingRef.current = false;
-        if (active) setActivityLoading(false);
+        if (reqId === activitiesRequestIdRef.current) {
+          activityFetchingRef.current = false;
+          setActivityLoading(false);
+        }
       });
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id, activeSpace, activityLoaded, getActivitiesFn]);
+  }, [user?.id, activeSpace, activityLoaded, stableGetActivities]);
 
   // Carregamento contínuo (scroll infinito via IntersectionObserver) no feed de atividades
   const handleLoadMoreActivities = useCallback(async () => {
@@ -737,7 +802,7 @@ function AccountProfile() {
 
     const nextPage = activityPage + 1;
     try {
-      const res = await getActivitiesFn({
+      const res = await stableGetActivities({
         data: { page: nextPage, limit: 15 },
       });
       setActivityItems((prev) => {
@@ -755,7 +820,7 @@ function AccountProfile() {
       activityFetchingRef.current = false;
       setActivityLoadingMore(false);
     }
-  }, [activityHasMore, activityLoadingMore, activityPage, getActivitiesFn]);
+  }, [activityHasMore, activityLoadingMore, activityPage, stableGetActivities]);
 
   // Carregamento contínuo (scroll infinito via IntersectionObserver) nos comentários
   const handleLoadMoreComments = useCallback(async () => {
@@ -765,7 +830,7 @@ function AccountProfile() {
 
     const nextPage = commentsPage + 1;
     try {
-      const res = await getCommentsFn({
+      const res = await stableGetComments({
         data: { page: nextPage, limit: 15 },
       });
       setComments((prev) => {
@@ -783,7 +848,7 @@ function AccountProfile() {
       commentsFetchingRef.current = false;
       setCommentsLoadingMore(false);
     }
-  }, [commentsHasMore, commentsLoadingMore, commentsPage, getCommentsFn]);
+  }, [commentsHasMore, commentsLoadingMore, commentsPage, stableGetComments]);
 
   const handleCommentDeleted = useCallback((commentId: string) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
