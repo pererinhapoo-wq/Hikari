@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
 import { FORMAT_PT, STATUS_PT, SEASON_PT } from "@/lib/labels";
+import { persistEpisode, persistEpisodeDelete } from "@/lib/episode-writer";
 
 export const Route = createFileRoute("/admin/$id")({
   validateSearch: (raw: Record<string, unknown>): { importId?: string } => ({
@@ -220,7 +221,7 @@ function AdminEditor() {
     void navigate({ to: "/admin/$id", params: { id: newId } });
   }
 
-  function save() {
+  async function save() {
     const genres = genreText
       .split(",")
       .map((g) => g.trim())
@@ -238,9 +239,64 @@ function AdminEditor() {
       return;
     }
 
+    // 1. Local first
     upsertAnime(next);
     toast.success("Salvo neste dispositivo.");
     void navigate({ to: "/admin/$id", params: { id: next.id } });
+
+    // 2. Server persistence & episode outbox
+    try {
+      void fetch("/api/admin/catalog-anime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: next.id,
+          titleRomaji: next.titleRomaji,
+          titleEnglish: next.titleEnglish,
+          titleNative: next.titleNative,
+          cover: next.cover,
+          banner: next.banner,
+          synopsis: next.synopsis,
+          score: next.score,
+          genres: next.genres,
+          format: next.format,
+          status: next.status,
+          episodesCount: next.episodesCount,
+          season: next.season,
+          year: next.year,
+          trailerId: next.trailerId,
+          hidden: next.hidden,
+          seasons: next.seasons.map((s) => ({
+            id: s.id,
+            number: s.number,
+            title: s.title,
+          })),
+        }),
+      }).catch((err) => {
+        console.warn("[admin] Falha ao persistir metadados do anime no servidor:", err);
+      });
+
+      const animeTitle = next.titleRomaji || next.titleEnglish || next.titleNative || "Anime";
+      const promises: ReturnType<typeof persistEpisode>[] = [];
+      for (const season of next.seasons) {
+        for (const ep of season.episodes) {
+          promises.push(persistEpisode(next.id, season.number, ep, animeTitle));
+        }
+      }
+
+      if (promises.length > 0) {
+        const results = await Promise.all(promises);
+        const queued = results.filter((r) => r.queued).length;
+        if (queued > 0) {
+          toast.info(`${queued} episódio(s) na fila do outbox para envio quando online.`);
+        } else {
+          toast.success("Episódios sincronizados com o servidor.");
+        }
+      }
+    } catch (err) {
+      console.warn("[admin] Erro ao sincronizar episódios:", err);
+    }
   }
 
   function addSeason() {
@@ -278,6 +334,12 @@ function AdminEditor() {
   }
 
   function removeSeason(sid: string) {
+    const targetSeason = current.seasons.find((s) => s.id === sid);
+    if (targetSeason) {
+      for (const ep of targetSeason.episodes) {
+        void persistEpisodeDelete(current.id, targetSeason.number, ep.id);
+      }
+    }
     setForm((f) =>
       f
         ? {
@@ -339,6 +401,7 @@ function AdminEditor() {
   }
 
   function removeEpisode(sid: string, eid: string) {
+    const season = current.seasons.find((s) => s.id === sid);
     setForm((f) =>
       f
         ? {
@@ -354,6 +417,9 @@ function AdminEditor() {
           }
         : f,
     );
+    if (season) {
+      void persistEpisodeDelete(current.id, season.number, eid);
+    }
   }
 
   return (
@@ -390,10 +456,18 @@ function AdminEditor() {
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => {
+                onClick={async () => {
                   removeAnime(current.id);
-                  toast.success("Excluído.");
+                  toast.success("Excluído deste dispositivo.");
                   void navigate({ to: "/admin" });
+                  try {
+                    await fetch(`/api/admin/catalog-anime?id=${encodeURIComponent(current.id)}`, {
+                      method: "DELETE",
+                      credentials: "include",
+                    });
+                  } catch (err) {
+                    console.warn("[admin] Falha ao deletar anime no servidor:", err);
+                  }
                 }}
               >
                 Excluir

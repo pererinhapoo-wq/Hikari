@@ -51,6 +51,9 @@ import { Route as NewsIdRouteImport } from './routes/news_.$id'
 import { Route as NewsSearchRouteImport } from './routes/news_.search'
 import { Route as ProfileNickRouteImport } from './routes/profile.$nick'
 import { Route as WatchIdRouteImport } from './routes/watch.$id'
+import { Route as ApiAdminCatalogAnimeRouteImport } from './routes/api/admin/catalog-anime'
+import { Route as ApiAdminCatalogEpisodeRouteImport } from './routes/api/admin/catalog-episode'
+import { Route as ApiAdminCatalogImportRouteImport } from './routes/api/admin/catalog-import'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCommentsEditRouteImport } from './routes/api/comments.edit'
@@ -269,6 +272,21 @@ const WatchIdRoute = WatchIdRouteImport.update({
   path: '/watch/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminCatalogAnimeRoute = ApiAdminCatalogAnimeRouteImport.update({
+  id: '/api/admin/catalog-anime',
+  path: '/api/admin/catalog-anime',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminCatalogEpisodeRoute = ApiAdminCatalogEpisodeRouteImport.update({
+  id: '/api/admin/catalog-episode',
+  path: '/api/admin/catalog-episode',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminCatalogImportRoute = ApiAdminCatalogImportRouteImport.update({
+  id: '/api/admin/catalog-import',
+  path: '/api/admin/catalog-import',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
   id: '/api/admin/comment-reports',
   path: '/api/admin/comment-reports',
@@ -348,6 +366,9 @@ export interface FileRoutesByFullPath {
   '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
+  '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
+  '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
+  '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
@@ -397,6 +418,9 @@ export interface FileRoutesByTo {
   '/watch/$id': typeof WatchIdRoute
   '/admin': typeof AdminIndexRoute
   '/adult': typeof AdultIndexRoute
+  '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
+  '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
+  '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
@@ -449,6 +473,9 @@ export interface FileRoutesById {
   '/watch/$id': typeof WatchIdRoute
   '/admin/': typeof AdminIndexRoute
   '/adult/': typeof AdultIndexRoute
+  '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
+  '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
+  '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/comments/edit': typeof ApiCommentsEditRoute
@@ -502,6 +529,9 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin/'
     | '/adult/'
+    | '/api/admin/catalog-anime'
+    | '/api/admin/catalog-episode'
+    | '/api/admin/catalog-import'
     | '/api/admin/comment-reports'
     | '/api/auth/$'
     | '/api/comments/edit'
@@ -551,6 +581,9 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin'
     | '/adult'
+    | '/api/admin/catalog-anime'
+    | '/api/admin/catalog-episode'
+    | '/api/admin/catalog-import'
     | '/api/admin/comment-reports'
     | '/api/auth/$'
     | '/api/comments/edit'
@@ -602,6 +635,9 @@ export interface FileRouteTypes {
     | '/watch/$id'
     | '/admin/'
     | '/adult/'
+    | '/api/admin/catalog-anime'
+    | '/api/admin/catalog-episode'
+    | '/api/admin/catalog-import'
     | '/api/admin/comment-reports'
     | '/api/auth/$'
     | '/api/comments/edit'
@@ -646,6 +682,9 @@ export interface RootRouteChildren {
   NewsSearchRoute: typeof NewsSearchRoute
   ProfileNickRoute: typeof ProfileNickRoute
   WatchIdRoute: typeof WatchIdRoute
+  ApiAdminCatalogAnimeRoute: typeof ApiAdminCatalogAnimeRoute
+  ApiAdminCatalogEpisodeRoute: typeof ApiAdminCatalogEpisodeRoute
+  ApiAdminCatalogImportRoute: typeof ApiAdminCatalogImportRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiProfileFollowRoute: typeof ApiProfileFollowRoute
@@ -948,6 +987,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/catalog-anime': {
+      id: '/api/admin/catalog-anime'
+      path: '/api/admin/catalog-anime'
+      fullPath: '/api/admin/catalog-anime'
+      preLoaderRoute: typeof ApiAdminCatalogAnimeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/catalog-episode': {
+      id: '/api/admin/catalog-episode'
+      path: '/api/admin/catalog-episode'
+      fullPath: '/api/admin/catalog-episode'
+      preLoaderRoute: typeof ApiAdminCatalogEpisodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/catalog-import': {
+      id: '/api/admin/catalog-import'
+      path: '/api/admin/catalog-import'
+      fullPath: '/api/admin/catalog-import'
+      preLoaderRoute: typeof ApiAdminCatalogImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/comment-reports': {
       id: '/api/admin/comment-reports'
       path: '/api/admin/comment-reports'
@@ -1083,6 +1143,9 @@ const rootRouteChildren: RootRouteChildren = {
   NewsSearchRoute: NewsSearchRoute,
   ProfileNickRoute: ProfileNickRoute,
   WatchIdRoute: WatchIdRoute,
+  ApiAdminCatalogAnimeRoute: ApiAdminCatalogAnimeRoute,
+  ApiAdminCatalogEpisodeRoute: ApiAdminCatalogEpisodeRoute,
+  ApiAdminCatalogImportRoute: ApiAdminCatalogImportRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiProfileFollowRoute: ApiProfileFollowRoute,
@@ -1091,12 +1154,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

@@ -97,11 +97,21 @@ type HikariState = {
   continueWatching: ContinueWatch[];
 
   /**
-   * Episódios que o usuário já abriu/assistiu.
+   * Episódios que o usuário já abriu/assistiu (visão ativa da sessão atual).
    * Chave: animeId
    * Valor: lista de episodeId
    */
   watchedEpisodes: Record<string, string[]>;
+
+  /**
+   * Progresso local isolado de usuários anônimos.
+   */
+  anonymousWatchedEpisodes: Record<string, string[]>;
+
+  /**
+   * Progresso de reprodução particionado por usuário autenticado.
+   */
+  userWatchedEpisodes: Record<string, Record<string, string[]>>;
 
   hydrated: boolean;
 
@@ -139,26 +149,40 @@ export const useHikariStore = create<HikariState>()(
       currentUserId: null,
       continueWatching: [],
       watchedEpisodes: {},
+      anonymousWatchedEpisodes: {},
+      userWatchedEpisodes: {},
       hydrated: false,
 
       setHydrated: (v) => set({ hydrated: v }),
 
       setCurrentUserId: (userId) =>
         set((s) => {
+          // Se estava logado antes, guarda o progresso do usuário anterior
+          const prevUserWatched = s.currentUserId
+            ? {
+                ...(s.userWatchedEpisodes ?? {}),
+                [s.currentUserId]: s.watchedEpisodes ?? {},
+              }
+            : s.userWatchedEpisodes ?? {};
+
           if (!userId) {
+            // Logout: limpa sessão autenticada e restaura progresso anônimo local
             return {
               currentUserId: null,
               myList: [],
               snapshots: {},
+              userWatchedEpisodes: prevUserWatched,
+              watchedEpisodes: s.anonymousWatchedEpisodes ?? {},
             };
           }
 
-          // Recupera lista do usuário ou migra a lista existente (preservando dados)
+          // Login ou troca de conta:
           const existingUserList =
             s.userLists?.[userId] ?? (s.myList.length > 0 ? [...s.myList] : []);
           const existingUserSnapshots =
             s.userSnapshots?.[userId] ??
             (Object.keys(s.snapshots).length > 0 ? { ...s.snapshots } : {});
+          const existingUserWatched = prevUserWatched[userId] ?? {};
 
           return {
             currentUserId: userId,
@@ -172,6 +196,8 @@ export const useHikariStore = create<HikariState>()(
               ...(s.userSnapshots ?? {}),
               [userId]: existingUserSnapshots,
             },
+            userWatchedEpisodes: prevUserWatched,
+            watchedEpisodes: existingUserWatched,
           };
         }),
 
@@ -304,13 +330,27 @@ export const useHikariStore = create<HikariState>()(
                 [entry.animeId]: nextWatched,
               };
 
-          return {
-            continueWatching: [
-              entry,
-              ...s.continueWatching.filter((c) => c.animeId !== entry.animeId),
-            ].slice(0, 12),
-            watchedEpisodes,
-          };
+          const continueWatching = [
+            entry,
+            ...s.continueWatching.filter((c) => c.animeId !== entry.animeId),
+          ].slice(0, 12);
+
+          if (s.currentUserId) {
+            return {
+              continueWatching,
+              watchedEpisodes,
+              userWatchedEpisodes: {
+                ...(s.userWatchedEpisodes ?? {}),
+                [s.currentUserId]: watchedEpisodes,
+              },
+            };
+          } else {
+            return {
+              continueWatching,
+              watchedEpisodes,
+              anonymousWatchedEpisodes: watchedEpisodes,
+            };
+          }
         }),
 
       clearContinue: (animeId) =>
@@ -333,16 +373,29 @@ export const useHikariStore = create<HikariState>()(
               ? updated.slice(updated.length - MAX_WATCHED_PER_ANIME)
               : updated;
 
-          return {
-            watchedEpisodes: {
-              ...s.watchedEpisodes,
-              [animeId]: clamped,
-            },
+          const nextWatched = {
+            ...s.watchedEpisodes,
+            [animeId]: clamped,
           };
+
+          if (s.currentUserId) {
+            return {
+              watchedEpisodes: nextWatched,
+              userWatchedEpisodes: {
+                ...(s.userWatchedEpisodes ?? {}),
+                [s.currentUserId]: nextWatched,
+              },
+            };
+          } else {
+            return {
+              watchedEpisodes: nextWatched,
+              anonymousWatchedEpisodes: nextWatched,
+            };
+          }
         }),
 
       isEpisodeWatched: (animeId, episodeId) => {
-        if (!get().currentUserId) return false;
+        // Usuários anônimos e autenticados consultam a visão ativa atual de watchedEpisodes
         return (
           get().watchedEpisodes[animeId]?.includes(episodeId) ?? false
         );
@@ -378,6 +431,8 @@ export const useHikariStore = create<HikariState>()(
         currentUserId: s.currentUserId,
         continueWatching: (s.continueWatching ?? []).slice(0, 12),
         watchedEpisodes: s.watchedEpisodes,
+        anonymousWatchedEpisodes: s.anonymousWatchedEpisodes ?? {},
+        userWatchedEpisodes: s.userWatchedEpisodes ?? {},
       }),
     },
   ),
@@ -388,7 +443,7 @@ let ensureCatalogPromise: Promise<void> | null = null;
 /**
  * Garante que o catálogo de animes esteja carregado no store.
  * Protegido contra execuções concorrentes ou duplicadas.
- * A hidratação só é considerada concluída após a tentativa de carregar do IndexedDB ou fallback.
+ * Remove de watchedEpisodes animes que não existem no catálogo carregado.
  */
 export function ensureCatalogLoaded(): Promise<void> {
   if (typeof window === "undefined") {
@@ -421,6 +476,37 @@ export function ensureCatalogLoaded(): Promise<void> {
         animes,
         hydrated: true,
       });
+
+      // 4. Limpeza de progresso órfão: remover watchedEpisodes de animes que não existem
+      if (animes.length > 0) {
+        const validIds = new Set(animes.map((a) => a.id));
+        const currentWatched = useHikariStore.getState().watchedEpisodes;
+        let hasOrphan = false;
+        const cleaned: Record<string, string[]> = {};
+
+        for (const [aId, epIds] of Object.entries(currentWatched)) {
+          if (validIds.has(aId)) {
+            cleaned[aId] = epIds;
+          } else {
+            hasOrphan = true;
+          }
+        }
+
+        if (hasOrphan) {
+          useHikariStore.setState((s) => ({
+            watchedEpisodes: cleaned,
+            anonymousWatchedEpisodes: s.currentUserId
+              ? s.anonymousWatchedEpisodes
+              : cleaned,
+            userWatchedEpisodes: s.currentUserId
+              ? {
+                  ...(s.userWatchedEpisodes ?? {}),
+                  [s.currentUserId]: cleaned,
+                }
+              : s.userWatchedEpisodes,
+          }));
+        }
+      }
     } catch (err) {
       console.warn("[Hikari] Erro ao carregar catálogo:", err);
       useHikariStore.setState({ hydrated: true });

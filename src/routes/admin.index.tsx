@@ -28,6 +28,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { QuickPlayerUpdate } from "@/components/admin/QuickPlayerUpdate";
+import {
+  importCatalogInBatches,
+  retryFailedBatches,
+  type BatchImportProgress,
+  type FailedBatchItem,
+} from "@/lib/catalog-import-client";
 
 export const Route = createFileRoute("/admin/")({
   component: AdminIndex,
@@ -45,6 +51,10 @@ function AdminIndex() {
   const [searching, setSearching] = useState(false);
   const [pendingDelete, setPendingDelete] =
     useState<string | null>(null);
+
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<BatchImportProgress | null>(null);
+  const [failedBatches, setFailedBatches] = useState<FailedBatchItem[]>([]);
 
   const filtered = useMemo(() => {
     const n = q.trim().toLowerCase();
@@ -168,7 +178,7 @@ function AdminIndex() {
   function onImportFile(file: File) {
     const reader = new FileReader();
 
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const parsed = JSON.parse(
           String(reader.result),
@@ -177,14 +187,45 @@ function AdminIndex() {
         };
 
         if (!Array.isArray(parsed.animes)) {
-          throw new Error("invalid");
+          throw new Error("Formato inválido de arquivo JSON.");
         }
 
+        // 1. Restauração local prioritária (preserva IndexedDB)
         importAll(parsed.animes);
+        toast.success("Catálogo restaurado neste dispositivo.");
 
-        toast.success("Catálogo restaurado.");
-      } catch {
-        toast.error("Arquivo inválido.");
+        // 2. Inicia sincronização no servidor por lotes de 100
+        setIsImporting(true);
+        setFailedBatches([]);
+        toast.info(`Iniciando sincronização de ${parsed.animes.length} animes no banco em lotes de 100...`);
+
+        try {
+          const res = await importCatalogInBatches(parsed.animes, (progress) => {
+            setImportProgress(progress);
+          });
+
+          if (res.abortedDueToAuth) {
+            toast.error(
+              "Falha de autorização: faça login com conta de administrador para importar no banco.",
+            );
+          } else if (res.ok) {
+            toast.success(
+              `Importação no banco concluída! ${res.importedAnimes} animes e ${res.importedEpisodes} episódios sincronizados.`,
+            );
+            setFailedBatches([]);
+          } else {
+            setFailedBatches(res.failedBatches);
+            toast.warning(
+              `Importação parcialmente concluída. ${res.failedBatches.length} lote(s) pendente(s) de reenvio.`,
+            );
+          }
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Falha na sincronização remota.");
+        } finally {
+          setIsImporting(false);
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Arquivo JSON inválido.");
       }
     };
 
@@ -193,6 +234,82 @@ function AdminIndex() {
 
   return (
     <div className="space-y-8 pt-6">
+      {/* Banner de Progresso da Importação em Lotes */}
+      {isImporting && importProgress && (
+        <div className="rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm text-foreground space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-primary">
+              Sincronizando catálogo no banco de dados...
+            </span>
+            <span className="text-xs text-muted">
+              Lote {importProgress.currentBatchIndex} de {importProgress.totalBatches}
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface">
+            <div
+              className="h-full bg-primary transition-all duration-300"
+              style={{
+                width: `${Math.round(
+                  ((importProgress.completedBatches + importProgress.failedBatches) /
+                    importProgress.totalBatches) *
+                    100,
+                )}%`,
+              }}
+            />
+          </div>
+          <div className="flex flex-wrap justify-between text-xs text-muted">
+            <span>
+              {importProgress.processedAnimes} de {importProgress.totalAnimes} animes processados
+            </span>
+            <span>
+              {importProgress.importedEpisodes} episódios importados
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Banner de Reenvio Seletivo de Lotes com Falha */}
+      {failedBatches.length > 0 && !isImporting && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+          <div className="space-y-0.5">
+            <p className="font-semibold text-amber-300">
+              Importação parcialmente concluída
+            </p>
+            <p className="text-xs text-amber-200/80">
+              {failedBatches.length} lote(s) apresentaram erros (conflitos ou falhas de rede) e foram mantidos para reenvio.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={isImporting}
+            onClick={async () => {
+              setIsImporting(true);
+              toast.info(`Reenviando ${failedBatches.length} lote(s) pendente(s)...`);
+              try {
+                const res = await retryFailedBatches(failedBatches, (p) => setImportProgress(p));
+                if (res.ok) {
+                  setFailedBatches([]);
+                  toast.success("Todos os lotes pendentes foram sincronizados com sucesso!");
+                } else {
+                  setFailedBatches(res.failedBatches);
+                  toast.warning(
+                    `Ainda restam ${res.failedBatches.length} lote(s) com erro.`,
+                  );
+                }
+              } catch {
+                toast.error("Falha ao reenviar lotes.");
+              } finally {
+                setIsImporting(false);
+              }
+            }}
+            className="border-amber-500/40 text-amber-200 hover:bg-amber-500/20"
+          >
+            Reenviar lotes pendentes ({failedBatches.length})
+          </Button>
+        </div>
+      )}
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] tracking-[0.28em] text-muted uppercase">

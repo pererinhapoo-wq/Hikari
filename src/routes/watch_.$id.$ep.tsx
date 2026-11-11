@@ -39,6 +39,7 @@ import { mergeDetail } from "@/lib/overlay";
 import { buildCleanCanonical, buildWatchJsonLd, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { useHikariStore } from "@/lib/store";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { resolveEpisodes, getCachedResolvedSeasons } from "@/lib/catalog-episodes";
 import {
   startEpisodeSession,
   heartbeatEpisodeProgress,
@@ -47,6 +48,7 @@ import {
 import {
   displayTitle,
   type Episode,
+  type Season,
 } from "@/lib/types";
 import { youtubeIdFrom } from "@/lib/utils";
 import playerCss from "@/styles/player.css?url";
@@ -175,11 +177,38 @@ function WatchPage() {
     (s) => s.markContinue,
   );
 
-  const anime = mergeDetail(
-    remote,
-    id,
-    locals,
+  const baseAnime = useMemo(
+    () => mergeDetail(remote, id, locals),
+    [remote, id, locals],
   );
+
+  const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
+    return getCachedResolvedSeasons(baseAnime?.id || id, baseAnime?.seasons);
+  });
+
+  useEffect(() => {
+    const targetId = baseAnime?.id || id;
+    if (!targetId) return;
+
+    let cancelled = false;
+    void resolveEpisodes(targetId, baseAnime?.seasons).then((seasons) => {
+      if (cancelled) return;
+      setResolvedSeasons(seasons);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseAnime?.id, baseAnime?.seasons, id]);
+
+  const anime = useMemo(() => {
+    if (!baseAnime) return null;
+    if (!resolvedSeasons) return baseAnime;
+    return {
+      ...baseAnime,
+      seasons: resolvedSeasons,
+    };
+  }, [baseAnime, resolvedSeasons]);
 
   const episodes = useMemo(() => {
     if (!anime) {

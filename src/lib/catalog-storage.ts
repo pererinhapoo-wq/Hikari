@@ -260,3 +260,69 @@ if (typeof window !== "undefined") {
     }
   });
 }
+
+// ==========================================
+// HIKARI — Tombstones de Episódios Excluídos
+// ==========================================
+export const TOMBSTONE_KEY = "hikari-deleted-episodes-v1";
+const MAX_TOMBSTONES = 500;
+
+/**
+ * Lê a lista de IDs de episódios excluídos (tombstones).
+ * Seguro para SSR (retorna array vazio quando executado no servidor).
+ */
+export function readTombstones(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(TOMBSTONE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((id): id is string => typeof id === "string" && Boolean(id.trim()));
+    }
+  } catch (err) {
+    console.warn("[catalog-storage] Erro ao ler tombstones do localStorage:", err);
+  }
+  return [];
+}
+
+/**
+ * Registra um episódio excluído para evitar que reapareça a partir de fallbacks locais.
+ * Mantém o limite de 500 identificadores preservando os mais recentes.
+ */
+export function addTombstone(episodeId: string): void {
+  if (typeof window === "undefined" || !episodeId || typeof episodeId !== "string") return;
+  const cleanId = episodeId.trim();
+  if (!cleanId) return;
+
+  try {
+    const current = readTombstones();
+    if (current.includes(cleanId)) return;
+
+    const next = [...current, cleanId];
+    const clamped = next.slice(Math.max(0, next.length - MAX_TOMBSTONES));
+    window.localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(clamped));
+  } catch (err) {
+    console.warn("[catalog-storage] Erro ao gravar tombstone:", err);
+  }
+}
+
+/**
+ * Remove o tombstone de um episódio (usado na republicação).
+ */
+export function clearTombstone(episodeId: string): void {
+  if (typeof window === "undefined" || !episodeId || typeof episodeId !== "string") return;
+  const cleanId = episodeId.trim();
+  if (!cleanId) return;
+
+  try {
+    const current = readTombstones();
+    if (!current.includes(cleanId)) return;
+
+    const next = current.filter((id) => id !== cleanId);
+    window.localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(next));
+  } catch (err) {
+    console.warn("[catalog-storage] Erro ao limpar tombstone:", err);
+  }
+}
+

@@ -133,12 +133,14 @@ import {
   selectViewportBanner,
 } from "@/lib/season-banner";
 import { useHikariStore } from "@/lib/store";
+import { resolveEpisodes, getCachedResolvedSeasons } from "@/lib/catalog-episodes";
 import {
   displayTitle,
   type Anime,
   type AnimeCharacter,
   type AnimeStaff,
   type Episode,
+  type Season,
   type SlimAnime,
 } from "@/lib/types";
 import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
@@ -620,10 +622,38 @@ function AnimePage() {
         : EMPTY_WATCHED_EPISODES,
   );
 
-  const anime = useMemo(
+  const baseAnime = useMemo(
     () => mergeDetail(remote, id, locals),
     [remote, id, locals],
   );
+
+  const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
+    return getCachedResolvedSeasons(baseAnime?.id || id, baseAnime?.seasons);
+  });
+
+  useEffect(() => {
+    const targetId = baseAnime?.id || id;
+    if (!targetId) return;
+
+    let cancelled = false;
+    void resolveEpisodes(targetId, baseAnime?.seasons).then((seasons) => {
+      if (cancelled) return;
+      setResolvedSeasons(seasons);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseAnime?.id, baseAnime?.seasons, id]);
+
+  const anime = useMemo(() => {
+    if (!baseAnime) return null;
+    if (!resolvedSeasons) return baseAnime;
+    return {
+      ...baseAnime,
+      seasons: resolvedSeasons,
+    };
+  }, [baseAnime, resolvedSeasons]);
 
   const [extraCredits, setExtraCredits] = useState<{
     forId: string;
