@@ -128,7 +128,8 @@ export const Route = createRootRoute({
               (function () {
                 function applyTheme() {
                   try {
-                    var theme = localStorage.getItem("hikari-theme");
+                    var match = document.cookie.match(/(?:^|;\\s*)hikari-theme=([^;]+)/);
+                    var theme = match ? decodeURIComponent(match[1]) : null;
                     if (theme === "Claro") {
                       document.documentElement.setAttribute("data-theme", "light");
                       document.documentElement.style.backgroundColor = "#f7f7f5";

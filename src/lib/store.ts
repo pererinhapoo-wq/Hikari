@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { LocalAnime, SlimAnime } from "@/lib/types";
+import { flushAnimes, loadAnimes, scheduleSave } from "@/lib/catalog-storage";
 
 export type ContinueWatch = {
   animeId: string;
@@ -11,6 +12,80 @@ export type ContinueWatch = {
   title: string;
   updatedAt: number;
 };
+
+const MAX_WATCHED_PER_ANIME = 1000;
+
+export function slimSnapshot(anime: SlimAnime): SlimAnime {
+  return {
+    id: anime.id,
+    anilistId: anime.anilistId,
+    malId: anime.malId,
+    kitsuId: anime.kitsuId,
+    titles: anime.titles ?? { romaji: "", english: "", native: "" },
+    cover: anime.cover ?? "",
+    banner: anime.banner ?? "",
+    synopsis: "", // sem sinopse completa para otimizar espaço no localStorage
+    score: anime.score ?? null,
+    genres: (anime.genres ?? []).slice(0, 3),
+    format: anime.format ?? "TV",
+    status: anime.status ?? "",
+    episodesCount: anime.episodesCount ?? null,
+    season: anime.season ?? null,
+    year: anime.year ?? null,
+    trailerId: null,
+    color: anime.color,
+    source: anime.source ?? "cache",
+  };
+}
+
+function slimSnapshotsRecord(
+  record: Record<string, SlimAnime> | undefined,
+): Record<string, SlimAnime> {
+  if (!record) return {};
+  const out: Record<string, SlimAnime> = {};
+  for (const [id, anime] of Object.entries(record)) {
+    if (anime) {
+      out[id] = slimSnapshot(anime);
+    }
+  }
+  return out;
+}
+
+function slimUserSnapshotsRecord(
+  record: Record<string, Record<string, SlimAnime>> | undefined,
+): Record<string, Record<string, SlimAnime>> {
+  if (!record) return {};
+  const out: Record<string, Record<string, SlimAnime>> = {};
+  for (const [userId, userSnaps] of Object.entries(record)) {
+    if (userSnaps) {
+      out[userId] = slimSnapshotsRecord(userSnaps);
+    }
+  }
+  return out;
+}
+
+/**
+ * Captura dados existentes de "hikari-catalog-v1" no localStorage antes que
+ * o Zustand possa sobrescrever a chave antiga durante a inicialização.
+ */
+function captureLegacyCatalogFromLocalStorage(): LocalAnime[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem("hikari-catalog-v1");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const candidate = parsed?.state?.animes ?? parsed?.animes;
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      return candidate as LocalAnime[];
+    }
+  } catch (err) {
+    console.warn("[Hikari] Erro ao capturar catálogo legado do localStorage:", err);
+  }
+  return null;
+}
+
+// Capturado imediatamente na avaliação do módulo antes de qualquer gravação do persist
+const initialLegacyCatalog: LocalAnime[] | null = captureLegacyCatalogFromLocalStorage();
 
 type HikariState = {
   animes: LocalAnime[];
@@ -23,12 +98,8 @@ type HikariState = {
 
   /**
    * Episódios que o usuário já abriu/assistiu.
-   *
-   * Chave:
-   *   animeId
-   *
-   * Valor:
-   *   lista de episodeId
+   * Chave: animeId
+   * Valor: lista de episodeId
    */
   watchedEpisodes: Record<string, string[]>;
 
@@ -49,18 +120,12 @@ type HikariState = {
   /**
    * Marca um episódio como assistido.
    */
-  markEpisodeWatched: (
-    animeId: string,
-    episodeId: string,
-  ) => void;
+  markEpisodeWatched: (animeId: string, episodeId: string) => void;
 
   /**
    * Verifica se um episódio foi assistido.
    */
-  isEpisodeWatched: (
-    animeId: string,
-    episodeId: string,
-  ) => boolean;
+  isEpisodeWatched: (animeId: string, episodeId: string) => boolean;
 };
 
 export const useHikariStore = create<HikariState>()(
@@ -112,9 +177,7 @@ export const useHikariStore = create<HikariState>()(
 
       upsertAnime: (anime) =>
         set((s) => {
-          const idx = s.animes.findIndex(
-            (a) => a.id === anime.id,
-          );
+          const idx = s.animes.findIndex((a) => a.id === anime.id);
 
           if (idx === -1) {
             return {
@@ -143,19 +206,9 @@ export const useHikariStore = create<HikariState>()(
           delete watchedEpisodes[id];
 
           return {
-            animes: s.animes.filter(
-              (a) => a.id !== id,
-            ),
-
-            myList: s.myList.filter(
-              (x) => x !== id,
-            ),
-
-            continueWatching:
-              s.continueWatching.filter(
-                (c) => c.animeId !== id,
-              ),
-
+            animes: s.animes.filter((a) => a.id !== id),
+            myList: s.myList.filter((x) => x !== id),
+            continueWatching: s.continueWatching.filter((c) => c.animeId !== id),
             watchedEpisodes,
           };
         }),
@@ -186,8 +239,6 @@ export const useHikariStore = create<HikariState>()(
 
       toggleList: (anime, userId) => {
         const activeUserId = userId ?? get().currentUserId;
-        // REGRA OBRIGATÓRIA 5: Proteção da operação de gravação
-        // Visitantes sem sessão iniciada não conseguem adicionar ou remover animes
         if (!activeUserId) {
           console.warn(
             "[Hikari] Operação de gravação bloqueada: Minha Lista é exclusiva para usuários autenticados.",
@@ -234,124 +285,176 @@ export const useHikariStore = create<HikariState>()(
 
       markContinue: (entry) =>
         set((s) => {
-          const currentWatched =
-            s.watchedEpisodes[
-              entry.animeId
-            ] ?? [];
+          const currentWatched = s.watchedEpisodes[entry.animeId] ?? [];
+          const alreadyWatched = currentWatched.includes(entry.episodeId);
 
-          const alreadyWatched =
-            currentWatched.includes(
-              entry.episodeId,
-            );
+          let nextWatched = currentWatched;
+          if (!alreadyWatched) {
+            const updated = [...currentWatched, entry.episodeId];
+            nextWatched =
+              updated.length > MAX_WATCHED_PER_ANIME
+                ? updated.slice(updated.length - MAX_WATCHED_PER_ANIME)
+                : updated;
+          }
 
-          const watchedEpisodes = {
-            ...s.watchedEpisodes,
-            [entry.animeId]:
-              alreadyWatched
-                ? currentWatched
-                : [
-                    ...currentWatched,
-                    entry.episodeId,
-                  ],
-          };
+          const watchedEpisodes = alreadyWatched
+            ? s.watchedEpisodes
+            : {
+                ...s.watchedEpisodes,
+                [entry.animeId]: nextWatched,
+              };
 
           return {
             continueWatching: [
               entry,
-              ...s.continueWatching.filter(
-                (c) =>
-                  c.animeId !==
-                  entry.animeId,
-              ),
+              ...s.continueWatching.filter((c) => c.animeId !== entry.animeId),
             ].slice(0, 12),
-
             watchedEpisodes,
           };
         }),
 
       clearContinue: (animeId) =>
         set((s) => ({
-          continueWatching:
-            s.continueWatching.filter(
-              (c) => c.animeId !== animeId,
-            ),
+          continueWatching: s.continueWatching.filter((c) => c.animeId !== animeId),
         })),
 
-      markEpisodeWatched: (
-        animeId,
-        episodeId,
-      ) =>
+      markEpisodeWatched: (animeId, episodeId) =>
         set((s) => {
-          const current =
-            s.watchedEpisodes[animeId] ??
-            [];
+          const current = s.watchedEpisodes[animeId] ?? [];
 
+          // Evita recriar watchedEpisodes se o episódio já estiver registrado
           if (current.includes(episodeId)) {
             return s;
           }
 
+          const updated = [...current, episodeId];
+          const clamped =
+            updated.length > MAX_WATCHED_PER_ANIME
+              ? updated.slice(updated.length - MAX_WATCHED_PER_ANIME)
+              : updated;
+
           return {
             watchedEpisodes: {
               ...s.watchedEpisodes,
-              [animeId]: [
-                ...current,
-                episodeId,
-              ],
+              [animeId]: clamped,
             },
           };
         }),
 
-      isEpisodeWatched: (
-        animeId,
-        episodeId,
-      ) => {
+      isEpisodeWatched: (animeId, episodeId) => {
         if (!get().currentUserId) return false;
         return (
-          get().watchedEpisodes[
-            animeId
-          ]?.includes(episodeId) ??
-          false
+          get().watchedEpisodes[animeId]?.includes(episodeId) ?? false
         );
       },
     }),
     {
       name: "hikari-catalog-v1",
+      version: 2,
 
-      onRehydrateStorage: () => (state) => {
-        state?.setHydrated(true);
+      migrate: (persistedState: unknown, version: number) => {
+        if (version < 2 && persistedState && typeof persistedState === "object") {
+          const stateObj = persistedState as {
+            animes?: LocalAnime[];
+            state?: { animes?: LocalAnime[] };
+          };
+          const legacy = stateObj.state?.animes ?? stateObj.animes;
+          if (Array.isArray(legacy) && legacy.length > 0) {
+            scheduleSave(legacy);
+          }
+        }
+        return persistedState as HikariState;
+      },
+
+      onRehydrateStorage: () => () => {
+        // A hidratação só é concluída após carregar o catálogo do IndexedDB ou fallback
       },
 
       partialize: (s) => ({
-        animes: s.animes,
         myList: s.myList,
-        snapshots: s.snapshots,
+        snapshots: slimSnapshotsRecord(s.snapshots),
         userLists: s.userLists,
-        userSnapshots: s.userSnapshots,
+        userSnapshots: slimUserSnapshotsRecord(s.userSnapshots),
         currentUserId: s.currentUserId,
-        continueWatching:
-          s.continueWatching,
-        watchedEpisodes:
-          s.watchedEpisodes,
+        continueWatching: (s.continueWatching ?? []).slice(0, 12),
+        watchedEpisodes: s.watchedEpisodes,
       }),
     },
   ),
 );
 
-if (typeof window !== "undefined") {
-  const persistApi =
-    useHikariStore.persist;
+let ensureCatalogPromise: Promise<void> | null = null;
 
+/**
+ * Garante que o catálogo de animes esteja carregado no store.
+ * Protegido contra execuções concorrentes ou duplicadas.
+ * A hidratação só é considerada concluída após a tentativa de carregar do IndexedDB ou fallback.
+ */
+export function ensureCatalogLoaded(): Promise<void> {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  if (ensureCatalogPromise) {
+    return ensureCatalogPromise;
+  }
+
+  ensureCatalogPromise = (async () => {
+    try {
+      // 1. Tentar ler do IndexedDB (ou fallback configurado em catalog-storage)
+      let animes = await loadAnimes();
+
+      // 2. Se o IndexedDB estiver vazio, tentar migrar dados legados de hikari-catalog-v1
+      if (animes.length === 0) {
+        const legacy = initialLegacyCatalog ?? captureLegacyCatalogFromLocalStorage();
+        if (legacy && legacy.length > 0) {
+          console.log(`[Hikari] Migrando ${legacy.length} animes legados para o IndexedDB...`);
+          animes = legacy;
+          scheduleSave(animes);
+          // Aguarda confirmação da gravação antes de finalizar
+          await flushAnimes();
+        }
+      }
+
+      // 3. Atualizar store Zustand em memória
+      useHikariStore.setState({
+        animes,
+        hydrated: true,
+      });
+    } catch (err) {
+      console.warn("[Hikari] Erro ao carregar catálogo:", err);
+      useHikariStore.setState({ hydrated: true });
+    }
+  })();
+
+  return ensureCatalogPromise;
+}
+
+if (typeof window !== "undefined") {
+  const persistApi = useHikariStore.persist;
+
+  // Carregar catálogo após hidratação do persist ou imediatamente
   persistApi.onFinishHydration(() => {
-    useHikariStore
-      .getState()
-      .setHydrated(true);
+    void ensureCatalogLoaded();
   });
 
   if (persistApi.hasHydrated()) {
-    useHikariStore
-      .getState()
-      .setHydrated(true);
+    void ensureCatalogLoaded();
+  } else {
+    void ensureCatalogLoaded();
   }
+
+  // Subscriber para mudanças na referência de state.animes
+  let prevAnimes = useHikariStore.getState().animes;
+  useHikariStore.subscribe((state) => {
+    if (state.animes !== prevAnimes) {
+      prevAnimes = state.animes;
+      // Somente agenda gravação se a hidratação já tiver ocorrido
+      if (state.hydrated) {
+        scheduleSave(state.animes);
+      }
+    }
+  });
 }
 
 export function overlaySlim<

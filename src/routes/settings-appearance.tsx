@@ -56,10 +56,8 @@ function getSavedTheme() {
     return "Escuro";
   }
 
-  const savedTheme =
-    window.localStorage.getItem(
-      "hikari-theme",
-    );
+  const match = document.cookie.match(/(?:^|;\s*)hikari-theme=([^;]+)/);
+  const savedTheme = match ? decodeURIComponent(match[1]) : null;
 
   if (
     savedTheme === "Claro" ||
@@ -99,20 +97,10 @@ function SettingsAppearance() {
         "light",
       );
 
-      window.localStorage.setItem(
-        "hikari-theme",
-        "Claro",
-      );
-
       saveThemeCookie("Claro");
     } else {
       document.documentElement.removeAttribute(
         "data-theme",
-      );
-
-      window.localStorage.setItem(
-        "hikari-theme",
-        "Escuro",
       );
 
       saveThemeCookie("Escuro");
