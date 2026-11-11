@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, startTransition, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -39,7 +39,47 @@ import {
   type ProfileSpace,
   type ProfileSpaceItem,
 } from "@/components/profile/ProfileNavRail";
-import { ProfileOverviewSpace } from "@/components/profile/ProfileOverviewSpace";
+
+// Code-splitting dos componentes de abas, modais e visualizações secundárias
+const LazyProfileOverviewSpace = lazy(() =>
+  import("@/components/profile/ProfileOverviewSpace").then((m) => ({
+    default: m.ProfileOverviewSpace,
+  })),
+);
+
+const TAB_PREFETCHERS: Record<ProfileSpace, () => void> = {
+  overview: () => {
+    void import("@/components/profile/ProfileOverviewSpace");
+  },
+  animes: () => {
+    // not present on public profile
+  },
+  comments: () => {
+    void import("@/components/profile/ProfileCommentsSpace");
+  },
+  about: () => {
+    void import("@/components/profile/ProfileAboutSpace");
+  },
+  activity: () => {
+    void import("@/components/profile/ProfileHistorySpace");
+  },
+};
+
+function OverviewSpaceSkeleton() {
+  return (
+    <div className="space-y-10 sm:space-y-12 animate-pulse min-h-[520px]">
+      <div className="h-64 sm:h-72 rounded-3xl bg-white/[0.03] border border-white/[0.05]" />
+      <div className="space-y-3">
+        <div className="h-6 w-36 rounded bg-white/[0.05]" />
+        <div className="h-44 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
+      </div>
+      <div className="space-y-3">
+        <div className="h-6 w-44 rounded bg-white/[0.05]" />
+        <div className="h-32 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
+      </div>
+    </div>
+  );
+}
 
 // Code-splitting dos componentes de abas, modais e visualizações secundárias
 const LazyProfileCommentsSpace = lazy(() =>
@@ -847,6 +887,16 @@ function PublicProfile() {
     );
   }
 
+  const handleSpaceChange = useCallback((nextSpace: ProfileSpace) => {
+    startTransition(() => {
+      setActiveSpace(nextSpace);
+    });
+  }, []);
+
+  const handlePrefetchSpace = useCallback((space: ProfileSpace) => {
+    TAB_PREFETCHERS[space]?.();
+  }, []);
+
   const displayName = profile.name || profile.nick;
   const userNick = profile.nick;
   const userBio = profile.bio || "";
@@ -964,7 +1014,8 @@ function PublicProfile() {
             {/* Navegação Horizontal do Perfil */}
             <ProfileNavRail
               activeSpace={activeSpace}
-              onChangeSpace={setActiveSpace}
+              onChangeSpace={handleSpaceChange}
+              onPrefetchSpace={handlePrefetchSpace}
               counts={{
                 animes: 0,
                 comments: commentsTotal,
@@ -1005,13 +1056,15 @@ function PublicProfile() {
                 <>
                   {/* Aba 1: Visão Geral */}
                   {activeSpace === "overview" && (
-                    <ProfileOverviewSpace
-                      trackingItems={[]}
-                      favoritesGrouped={favoritesGrouped}
-                      activityItems={activities}
-                      comments={comments}
-                      loading={favoritesLoading}
-                    />
+                    <Suspense fallback={<OverviewSpaceSkeleton />}>
+                      <LazyProfileOverviewSpace
+                        trackingItems={[]}
+                        favoritesGrouped={favoritesGrouped}
+                        activityItems={activities}
+                        comments={comments}
+                        loading={favoritesLoading}
+                      />
+                    </Suspense>
                   )}
 
                   {/* Aba 2: Comentários */}

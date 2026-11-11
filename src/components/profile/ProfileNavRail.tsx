@@ -14,6 +14,7 @@ export interface ProfileSpaceItem {
 interface ProfileNavRailProps {
   activeSpace: ProfileSpace;
   onChangeSpace: (space: ProfileSpace) => void;
+  onPrefetchSpace?: (space: ProfileSpace) => void;
   counts: {
     animes: number;
     comments: number;
@@ -25,6 +26,7 @@ interface ProfileNavRailProps {
 export function ProfileNavRail({
   activeSpace,
   onChangeSpace,
+  onPrefetchSpace,
   counts,
   spaces: customSpaces,
 }: ProfileNavRailProps) {
@@ -70,6 +72,8 @@ export function ProfileNavRail({
               key={space.id}
               type="button"
               onClick={() => onChangeSpace(space.id)}
+              onMouseEnter={() => onPrefetchSpace?.(space.id)}
+              onFocus={() => onPrefetchSpace?.(space.id)}
               className={`group relative flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
                 isActive
                   ? "bg-gradient-to-r from-violet-600/30 via-purple-600/25 to-violet-500/15 text-white shadow-[0_0_20px_rgba(168,85,247,0.25)] ring-1 ring-violet-500/50"

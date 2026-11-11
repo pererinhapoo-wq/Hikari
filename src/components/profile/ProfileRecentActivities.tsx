@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
@@ -190,39 +189,15 @@ export function ProfileRecentActivities({
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
-  // Paginação automática (infinite scroll) para Visão Geral
-  const PAGE_SIZE = 6;
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const activitySentinelRef = useRef<HTMLDivElement>(null);
-
-  const displayedItems = unifiedItems.slice(0, visibleCount);
-  const hasMoreToLoad = visibleCount < unifiedItems.length;
-
-  useEffect(() => {
-    const sentinel = activitySentinelRef.current;
-    if (!sentinel || !hasMoreToLoad || typeof IntersectionObserver === "undefined") {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, unifiedItems.length));
-        }
-      },
-      { rootMargin: "400px 0px" },
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMoreToLoad, unifiedItems.length]);
+  // Limitação estrita: exibir no máximo 6 registros de atividades recentes na Visão Geral
+  const displayedItems = unifiedItems.slice(0, 6);
 
   return (
     <section
       aria-label="Atividades recentes"
       className="space-y-4 pt-2 sm:pt-4 border-t border-white/[0.06]"
     >
-      {/* Cabeçalho da Seção Independente */}
+      {/* Cabeçalho da Seção Independente (sem texto de contagem de registros nem botão Ver tudo) */}
       <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
         <div className="flex items-center gap-2.5">
           <span className="h-5 w-1 rounded-full bg-purple-500" />
@@ -231,12 +206,6 @@ export function ProfileRecentActivities({
             Atividades recentes
           </h3>
         </div>
-
-        {unifiedItems.length > 0 && (
-          <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-0.5 text-xs font-semibold text-zinc-300 tabular-nums">
-            {unifiedItems.length} {unifiedItems.length === 1 ? "registro" : "registros"}
-          </span>
-        )}
       </div>
 
       {/* Conteúdo: Skeleton de carregamento, estado vazio ou lista ordenada com carregamento automático */}
@@ -520,15 +489,6 @@ export function ProfileRecentActivities({
               </article>
             );
           })}
-
-          {hasMoreToLoad && (
-            <div
-              ref={activitySentinelRef}
-              className="flex justify-center py-4"
-            >
-              <div className="size-5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
-            </div>
-          )}
         </div>
       )}
     </section>

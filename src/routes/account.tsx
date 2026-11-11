@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, startTransition, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -48,9 +48,32 @@ import {
   ProfileNavRail,
   type ProfileSpace,
 } from "@/components/profile/ProfileNavRail";
-import { ProfileOverviewSpace } from "@/components/profile/ProfileOverviewSpace";
 
-// Code-splitting dos componentes pesados das abas e modais
+// Code-splitting de todos os componentes pesados das abas e modais
+const LazyProfileOverviewSpace = lazy(() =>
+  import("@/components/profile/ProfileOverviewSpace").then((m) => ({
+    default: m.ProfileOverviewSpace,
+  })),
+);
+
+const TAB_PREFETCHERS: Record<ProfileSpace, () => void> = {
+  overview: () => {
+    void import("@/components/profile/ProfileOverviewSpace");
+  },
+  animes: () => {
+    void import("@/components/profile/ProfileTrackingSpace");
+  },
+  comments: () => {
+    void import("@/components/profile/ProfileCommentsSpace");
+  },
+  about: () => {
+    void import("@/components/profile/ProfileAboutSpace");
+  },
+  activity: () => {
+    void import("@/components/profile/ProfileHistorySpace");
+  },
+};
+
 const LazyProfileTrackingSpace = lazy(() =>
   import("@/components/profile/ProfileTrackingSpace").then((m) => ({
     default: m.ProfileTrackingSpace,
@@ -112,9 +135,25 @@ const LazyStaffWorksView = lazy(() =>
 );
 
 // Skeletons específicos com dimensões e espaçamentos equivalentes aos componentes reais
+function OverviewSpaceSkeleton() {
+  return (
+    <div className="space-y-10 sm:space-y-12 animate-pulse min-h-[520px]">
+      <div className="h-64 sm:h-72 rounded-3xl bg-white/[0.03] border border-white/[0.05]" />
+      <div className="space-y-3">
+        <div className="h-6 w-36 rounded bg-white/[0.05]" />
+        <div className="h-44 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
+      </div>
+      <div className="space-y-3">
+        <div className="h-6 w-44 rounded bg-white/[0.05]" />
+        <div className="h-32 rounded-2xl bg-white/[0.03] border border-white/[0.05]" />
+      </div>
+    </div>
+  );
+}
+
 function TrackingSpaceSkeleton() {
   return (
-    <div className="space-y-6 animate-pulse">
+    <div className="space-y-6 animate-pulse min-h-[500px]">
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: 6 }).map((_, i) => (
           <div
@@ -123,12 +162,13 @@ function TrackingSpaceSkeleton() {
           />
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
         {Array.from({ length: 12 }).map((_, i) => (
-          <div
-            key={i}
-            className="aspect-[3/4] rounded-2xl border border-white/[0.05] bg-white/[0.04]"
-          />
+          <div key={i} className="min-w-0">
+            <div className="aspect-[2/3] rounded-none border border-white/[0.08] bg-white/[0.04]" />
+            <div className="mt-2 h-3.5 w-3/4 rounded-none bg-white/5" />
+            <div className="mt-1 h-2.5 w-1/2 rounded-none bg-white/5" />
+          </div>
         ))}
       </div>
     </div>
@@ -385,6 +425,8 @@ function AccountProfile() {
   // Acompanhamento de Animes (Necessário para a visão geral e contadores)
   const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>([]);
   const [trackingLoading, setTrackingLoading] = useState(true);
+  const [trackingLoaded, setTrackingLoaded] = useState(false);
+  const trackingFetchingRef = useRef(false);
 
   // Favoritos Canônicos (Necessário para a visão geral)
   const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>({
@@ -396,6 +438,8 @@ function AccountProfile() {
   });
   const [, setFavoritesItems] = useState<ProfileFavoriteItem[]>([]);
   const [favoritesLoading, setFavoritesLoading] = useState(true);
+  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
+  const favoritesFetchingRef = useRef(false);
 
   // Listas Personalizadas (Carregadas sob demanda na aba "about")
   const [lists, setLists] = useState<ProfileListSummary[]>([]);
@@ -535,37 +579,11 @@ function AccountProfile() {
     };
   }, [user?.id, getProfileFn]);
 
-  // Carregamento essencial da montagem inicial: Acompanhamento, Favoritos Canônicos e Solicitações de Seguidores
+  // Solicitações de seguidores (necessárias para o indicador de badge do cabeçalho)
   useEffect(() => {
     if (!user?.id) return;
     let active = true;
 
-    // 1. Acompanhamento (usado nas estatísticas da Visão Geral e contadores)
-    setTrackingLoading(true);
-    void getTrackingFn({ data: {} })
-      .then((items) => {
-        if (!active) return;
-        setTrackingItems(items);
-      })
-      .catch((err) => console.warn("Erro ao buscar acompanhamento:", err))
-      .finally(() => {
-        if (active) setTrackingLoading(false);
-      });
-
-    // 2. Favoritos Canônicos (usados nas seções da Visão Geral)
-    setFavoritesLoading(true);
-    void getFavoritesFn({ data: {} })
-      .then((res) => {
-        if (!active) return;
-        setFavoritesGrouped(res.grouped);
-        setFavoritesItems(res.items);
-      })
-      .catch((err) => console.warn("Erro ao buscar favoritos:", err))
-      .finally(() => {
-        if (active) setFavoritesLoading(false);
-      });
-
-    // 3. Solicitações de seguidores (necessárias para o indicador de badge do cabeçalho)
     void getRequestsFn()
       .then((res) => {
         if (!active) return;
@@ -576,7 +594,72 @@ function AccountProfile() {
     return () => {
       active = false;
     };
-  }, [user?.id, getTrackingFn, getFavoritesFn, getRequestsFn]);
+  }, [user?.id, getRequestsFn]);
+
+  // Carregamento sob demanda do Acompanhamento de Animes (Visão Geral e Aba Animes)
+  useEffect(() => {
+    if (
+      !user?.id ||
+      (activeSpace !== "overview" && activeSpace !== "animes" && !statusParam) ||
+      trackingLoaded ||
+      trackingFetchingRef.current
+    ) {
+      return;
+    }
+
+    let active = true;
+    trackingFetchingRef.current = true;
+    setTrackingLoading(true);
+
+    void getTrackingFn({ data: {} })
+      .then((items) => {
+        if (!active) return;
+        setTrackingItems(items);
+        setTrackingLoaded(true);
+      })
+      .catch((err) => console.warn("Erro ao buscar acompanhamento:", err))
+      .finally(() => {
+        trackingFetchingRef.current = false;
+        if (active) setTrackingLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, activeSpace, statusParam, trackingLoaded, getTrackingFn]);
+
+  // Carregamento sob demanda dos Favoritos Canônicos (Visão Geral)
+  useEffect(() => {
+    if (
+      !user?.id ||
+      activeSpace !== "overview" ||
+      favoritesLoaded ||
+      favoritesFetchingRef.current
+    ) {
+      return;
+    }
+
+    let active = true;
+    favoritesFetchingRef.current = true;
+    setFavoritesLoading(true);
+
+    void getFavoritesFn({ data: {} })
+      .then((res) => {
+        if (!active) return;
+        setFavoritesGrouped(res.grouped);
+        setFavoritesItems(res.items);
+        setFavoritesLoaded(true);
+      })
+      .catch((err) => console.warn("Erro ao buscar favoritos:", err))
+      .finally(() => {
+        favoritesFetchingRef.current = false;
+        if (active) setFavoritesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, activeSpace, favoritesLoaded, getFavoritesFn]);
 
   // Carregamento sob demanda para a aba de Comentários ou Visão Geral (Cache por aba e trava contra cliques rápidos)
   useEffect(() => {
@@ -1046,6 +1129,16 @@ function AccountProfile() {
     );
   }
 
+  const handleSpaceChange = useCallback((nextSpace: ProfileSpace) => {
+    startTransition(() => {
+      setActiveSpace(nextSpace);
+    });
+  }, []);
+
+  const handlePrefetchSpace = useCallback((space: ProfileSpace) => {
+    TAB_PREFETCHERS[space]?.();
+  }, []);
+
   // Dados consolidados
   const displayName = profile?.name || user.displayName || profile?.nick || "Membro";
   const userNick = profile?.nick || "";
@@ -1094,7 +1187,8 @@ function AccountProfile() {
         {/* Navegação Horizontal: Visão geral | Animes | Comentários | Sobre | Atividades */}
         <ProfileNavRail
           activeSpace={activeSpace}
-          onChangeSpace={setActiveSpace}
+          onChangeSpace={handleSpaceChange}
+          onPrefetchSpace={handlePrefetchSpace}
           counts={{
             animes: trackingItems.length,
             comments: commentsTotal || profile?.commentCount || 0,
@@ -1106,15 +1200,17 @@ function AccountProfile() {
         <section aria-label="Conteúdo da Aba Ativa" className="relative z-10">
           {/* Aba 1: Visão geral (Anime Stats + Favoritos Animes, Personagens, Studios, People + Atividades recentes) */}
           {activeSpace === "overview" && (
-            <ProfileOverviewSpace
-              trackingItems={trackingItems}
-              favoritesGrouped={favoritesGrouped}
-              activityItems={activityItems}
-              comments={comments}
-              loading={trackingLoading || favoritesLoading}
-              onUpdateItem={handleUpdateTrackingItem}
-              onRemoveFavorite={handleRemoveFavorite}
-            />
+            <Suspense fallback={<OverviewSpaceSkeleton />}>
+              <LazyProfileOverviewSpace
+                trackingItems={trackingItems}
+                favoritesGrouped={favoritesGrouped}
+                activityItems={activityItems}
+                comments={comments}
+                loading={trackingLoading || favoritesLoading}
+                onUpdateItem={handleUpdateTrackingItem}
+                onRemoveFavorite={handleRemoveFavorite}
+              />
+            </Suspense>
           )}
 
           {/* Aba 2: Animes (Acompanhamento completo com filtros) */}
