@@ -18,6 +18,7 @@ import { useHikariStore } from "@/lib/store";
 import {
   SearchCategorySelector,
   type SearchCategory,
+  CATEGORIES,
 } from "@/components/search/SearchCategorySelector";
 import { useScrollLock } from "@/lib/scroll-lock";
 
@@ -422,6 +423,7 @@ export function SearchModal({
                 onChange={handleCategoryChange}
                 align="right"
                 size="sm"
+                options={CATEGORIES.filter((option) => option.id === "animes" || option.id === "users")}
               />
             </div>
           </div>

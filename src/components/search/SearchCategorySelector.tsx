@@ -54,6 +54,7 @@ interface SearchCategorySelectorProps {
   className?: string;
   size?: "sm" | "md";
   align?: "left" | "right" | "auto";
+  options?: CategoryOption[];
 }
 
 export function SearchCategorySelector({
@@ -62,6 +63,7 @@ export function SearchCategorySelector({
   className,
   size = "md",
   align = "auto",
+  options = CATEGORIES,
 }: SearchCategorySelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -70,7 +72,7 @@ export function SearchCategorySelector({
   );
 
   const currentOption =
-    CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[0];
+    options.find((c) => c.id === category) ?? CATEGORIES[0];
   const CurrentIcon = currentOption.icon;
 
   // Calcula o posicionamento para nunca vazar os limites da tela
@@ -199,7 +201,7 @@ export function SearchCategorySelector({
           )}
         >
           <div className="space-y-1">
-            {CATEGORIES.map((opt) => {
+            {options.map((opt) => {
               const isSelected = opt.id === category;
               const OptIcon = opt.icon;
 

@@ -1,4 +1,10 @@
 import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import {
   createFileRoute,
   Link,
   useNavigate,
@@ -466,7 +472,7 @@ export const Route = createFileRoute(
   },
 
   pendingComponent: () => (
-    <div className="grid grid-cols-2 gap-3 pt-20 sm:grid-cols-4 lg:grid-cols-6">
+    <div className="grid grid-cols-3 gap-2.5 pt-20 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
       {Array.from(
         { length: 12 },
         (_, i) => (
@@ -501,6 +507,71 @@ function BrowsePage() {
     useHikariStore(
       (s) => s.animes,
     );
+
+  // Chave unificada para detectar mudanças de filtro/seção
+  const currentQueryKey = `${section}-${genre ?? ""}-${season ?? ""}-${year ?? ""}`;
+  const [accumulatedItems, setAccumulatedItems] = useState(() => result?.items ?? []);
+  const lastKeyRef = useRef(currentQueryKey);
+  const isNavigatingRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Reseta ou acumula itens sem duplicação
+  useEffect(() => {
+    if (lastKeyRef.current !== currentQueryKey || page === 1) {
+      lastKeyRef.current = currentQueryKey;
+      setAccumulatedItems(result?.items ?? []);
+      isNavigatingRef.current = false;
+      return;
+    }
+
+    if (result?.items && result.items.length > 0) {
+      setAccumulatedItems((prev) => {
+        const existingIds = new Set(prev.map((item) => item.id));
+        const newItems = result.items.filter((item) => !existingIds.has(item.id));
+        return newItems.length > 0 ? [...prev, ...newItems] : prev;
+      });
+    }
+    isNavigatingRef.current = false;
+  }, [result, page, currentQueryKey]);
+
+  // Determina se há próxima página
+  const itemsPerPage = 24;
+  const total =
+    result && "total" in result && typeof result.total === "number"
+      ? result.total
+      : 0;
+  const totalPages = Math.max(1, Math.ceil(total / itemsPerPage));
+
+  const hasNextPage =
+    section === "genres"
+      ? Boolean(result?.hasNext) || (page < totalPages && (result?.items?.length ?? 0) >= itemsPerPage)
+      : Boolean(result?.hasNext);
+
+  // IntersectionObserver para carregamento automático sem clique
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting && !isNavigatingRef.current && hasNextPage) {
+          isNavigatingRef.current = true;
+          void navigate({
+            search: (prev) => ({
+              ...prev,
+              page: (prev.page ?? 1) + 1,
+            }),
+            replace: true,
+          });
+        }
+      },
+      { rootMargin: "600px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, currentQueryKey, page, navigate]);
 
   /*
    * GÊNEROS — LISTA
@@ -582,81 +653,9 @@ function BrowsePage() {
   ) {
     const items =
       overlayList(
-        result?.items ?? [],
+        accumulatedItems,
         locals,
       );
-
-    const itemsPerPage = 24;
-
-    const totalPages = Math.max(
-      1,
-      Math.ceil(
-        ((result && "total" in result && typeof result.total === "number" ? result.total : 0)) /
-          itemsPerPage,
-      ),
-    );
-
-    const currentPage = Math.min(
-      page,
-      totalPages,
-    );
-
-    const showPagination =
-      totalPages > 1;
-
-    const pageNumbers =
-      (() => {
-        const pages: number[] = [];
-
-        const start = Math.min(
-          Math.max(
-            1,
-            currentPage - 2,
-          ),
-          Math.max(
-            1,
-            totalPages - 4,
-          ),
-        );
-
-        for (
-          let value = start;
-          value <=
-            Math.min(
-              totalPages,
-              start + 4,
-            );
-          value += 1
-        ) {
-          pages.push(value);
-        }
-
-        return pages;
-      })();
-
-    function goToGenrePage(
-      nextPage: number,
-    ) {
-      if (
-        nextPage < 1 ||
-        nextPage > totalPages ||
-        nextPage === currentPage
-      ) {
-        return;
-      }
-
-      void navigate({
-        to: "/browse/$section",
-        params: {
-          section:
-            "genres",
-        },
-        search: {
-          genre,
-          page: nextPage,
-        },
-      });
-    }
 
     return (
       <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
@@ -699,7 +698,7 @@ function BrowsePage() {
             Nenhum anime encontrado para este gênero.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {items.map(
               (anime) => (
                 <AnimeCard
@@ -712,119 +711,22 @@ function BrowsePage() {
           </div>
         )}
 
-        {showPagination && (
-          <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
-            <button
-              type="button"
-              onClick={() =>
-                goToGenrePage(
-                  Math.max(1, currentPage - 5),
-                )
-              }
-              disabled={
-                currentPage <= 1
-              }
-              aria-label="Voltar 5 páginas"
-              title="Voltar 5 páginas"
-              className="flex size-10 items-center justify-center rounded-lg border border-border text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-            >
-              «
-            </button>
+        {/* Sentinela de carregamento automático */}
+        <div ref={sentinelRef} className="h-6" aria-hidden="true" />
 
-            <button
-              type="button"
-              onClick={() =>
-                goToGenrePage(
-                  currentPage - 1,
-                )
-              }
-              disabled={
-                currentPage === 1
-              }
-              aria-label="Página anterior"
-              className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-            >
-              <ChevronLeft className="size-5" />
-            </button>
-
-            <div className="flex items-center gap-1">
-              {pageNumbers.map(
-                (
-                  pageNumber,
-                ) => (
-                  <button
-                    key={
-                      pageNumber
-                    }
-                    type="button"
-                    onClick={() =>
-                      goToGenrePage(
-                        pageNumber,
-                      )
-                    }
-                    aria-current={
-                      pageNumber ===
-                      currentPage
-                        ? "page"
-                        : undefined
-                    }
-                    className={
-                      pageNumber ===
-                      currentPage
-                        ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
-                        : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
-                    }
-                  >
-                    {
-                      pageNumber
-                    }
-                  </button>
-                ),
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                goToGenrePage(
-                  currentPage + 1,
-                )
-              }
-              disabled={
-                currentPage >= totalPages
-              }
-              aria-label="Próxima página"
-              className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-            >
-              <ChevronRight className="size-5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                goToGenrePage(
-                  Math.min(totalPages, currentPage + 5),
-                )
-              }
-              disabled={
-                currentPage >= totalPages
-              }
-              aria-label="Avançar 5 páginas"
-              title="Avançar 5 páginas"
-              className="flex size-10 items-center justify-center rounded-lg border border-border text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-            >
-              »
-            </button>
+        {hasNextPage && (
+          <div className="py-6 flex items-center justify-center gap-2 text-xs text-zinc-400">
+            <div className="size-3.5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+            <span>Carregando mais animes...</span>
           </div>
         )}
-
       </div>
     );
   }
 
   const items =
     overlayList(
-      result?.items ?? [],
+      accumulatedItems,
       locals,
     );
 
@@ -903,80 +805,8 @@ function BrowsePage() {
     });
   }
 
-  function goToPage(
-    nextPage: number,
-  ) {
-    if (
-      nextPage < 1 ||
-      nextPage === page
-    ) {
-      return;
-    }
-
-    if (
-      nextPage > page + 1
-    ) {
-      return;
-    }
-
-    void navigate({
-      to: "/browse/$section",
-      params: {
-        section,
-      },
-      search: {
-        season,
-        year,
-        page: nextPage,
-      },
-    });
-  }
-
-  const pageNumbers =
-    (() => {
-      const pages =
-        new Set<number>();
-
-      for (
-        let value = 1;
-        value <=
-          Math.min(page + 1, 5);
-        value += 1
-      ) {
-        pages.add(value);
-      }
-
-      pages.add(page);
-
-      if (result?.hasNext) {
-        pages.add(page + 1);
-      }
-
-      return Array.from(pages).sort(
-        (a, b) => a - b,
-      );
-    })();
-
-  const showPagination =
-    page > 1 ||
-    Boolean(
-      result?.hasNext,
-    );
-
   return (
     <div className="space-y-6 py-5 sm:space-y-8 sm:py-8">
-      {!isSeasonPage && (
-        <div>
-          <Link
-            to="/"
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-muted transition-colors hover:bg-elevated hover:text-fg"
-          >
-            <ChevronLeft className="size-4" />
-            Voltar
-          </Link>
-        </div>
-      )}
-
       {/* CABEÇALHO */}
       <section>
         <div className="flex items-center gap-3">
@@ -1090,7 +920,7 @@ function BrowsePage() {
           </Link>
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
           {items.map(
             (anime) => (
               <AnimeCard
@@ -1103,76 +933,13 @@ function BrowsePage() {
         </div>
       )}
 
-      {/* PAGINAÇÃO */}
-      {showPagination && (
-        <div className="flex flex-wrap items-center justify-center gap-1 pt-2">
-          <button
-            type="button"
-            onClick={() =>
-              goToPage(
-                page - 1,
-              )
-            }
-            disabled={
-              page === 1
-            }
-            aria-label="Página anterior"
-            className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-          >
-            <ChevronLeft className="size-5" />
-          </button>
+      {/* Sentinela de carregamento automático */}
+      <div ref={sentinelRef} className="h-6" aria-hidden="true" />
 
-          <div className="flex items-center gap-1">
-            {pageNumbers.map(
-              (
-                pageNumber,
-              ) => (
-                <button
-                  key={
-                    pageNumber
-                  }
-                  type="button"
-                  onClick={() =>
-                    goToPage(
-                      pageNumber,
-                    )
-                  }
-                  aria-current={
-                    pageNumber ===
-                    page
-                      ? "page"
-                      : undefined
-                  }
-                  className={
-                    pageNumber ===
-                    page
-                      ? "flex size-10 items-center justify-center rounded-lg bg-elevated text-sm font-semibold text-fg"
-                      : "flex size-10 items-center justify-center rounded-lg text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
-                  }
-                >
-                  {
-                    pageNumber
-                  }
-                </button>
-              ),
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              goToPage(
-                page + 1,
-              )
-            }
-            disabled={
-              !result?.hasNext
-            }
-            aria-label="Próxima página"
-            className="flex size-10 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-35"
-          >
-            <ChevronRight className="size-5" />
-          </button>
+      {hasNextPage && (
+        <div className="py-6 flex items-center justify-center gap-2 text-xs text-zinc-400">
+          <div className="size-3.5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+          <span>Carregando mais animes...</span>
         </div>
       )}
     </div>
