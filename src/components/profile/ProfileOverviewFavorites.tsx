@@ -164,6 +164,10 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
     });
   }, [navigate]);
 
+  const handleCharacterClick = useCallback((item: ProfileFavoriteItem) => {
+    setSelectedEntity(item);
+  }, []);
+
   // Se uma entidade estiver selecionada, substitui completamente a seção original
   // pelo padrão Anime Stats, sem cards originais, sem seletores de outras entidades e sem botões Voltar/Fechar.
   if (expandedEntity) {
@@ -203,7 +207,7 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
         items={characters}
         emptyTitle="Nenhum personagem favoritado"
         emptyDescription="Seus personagens icônicos favoritos aparecerão aqui com retratos e detalhes canônicos."
-        onCardClick={(item) => setSelectedEntity(item)}
+        onCardClick={handleCharacterClick}
         accentColor="purple"
         icon={Users}
       />
@@ -253,13 +257,13 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
       )}
     </div>
   );
-}
+});
 
 // ==========================================
 // Seção Exclusiva: Grade de Animes (3 por linha no mobile)
 // ==========================================
 
-function FavoritesAnimeGridSection({
+const FavoritesAnimeGridSection = React.memo(function FavoritesAnimeGridSection({
   title,
   items,
   emptyTitle,
@@ -304,7 +308,7 @@ function FavoritesAnimeGridSection({
             <FavoriteAnimeGridCard
               key={item.id}
               item={item}
-              onClick={() => onCardClick(item)}
+              onCardClick={onCardClick}
             />
           ))}
         </div>
@@ -316,35 +320,39 @@ function FavoritesAnimeGridSection({
       )}
     </section>
   );
-}
+});
 
 // ==========================================
 // Card individual da grade de animes
 // ==========================================
 
-function FavoriteAnimeGridCard({
+const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
   item,
-  onClick,
+  onCardClick,
 }: {
   item: ProfileFavoriteItem;
-  onClick: () => void;
+  onCardClick: (item: ProfileFavoriteItem) => void;
 }) {
   const [imgError, setImgError] = useState(false);
   const initial = (item.title || "?").charAt(0).toUpperCase();
 
-  const cardSubtitle = (() => {
+  const cardSubtitle = useMemo(() => {
     if (!item.subtitle) return item.nativeTitle || null;
     const lower = item.subtitle.toLowerCase().trim();
     if (lower === "anime" || lower === "obra") {
       return item.nativeTitle || null;
     }
     return item.subtitle;
-  })();
+  }, [item.subtitle, item.nativeTitle]);
+
+  const handleClick = useCallback(() => {
+    onCardClick(item);
+  }, [onCardClick, item]);
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={handleClick}
       className="group relative flex w-full min-w-0 flex-col text-left focus:outline-none select-none cursor-pointer outline-none active:scale-[0.98] transition-transform duration-100 ease-out"
     >
       {/* Capa com proporção 2:3 vertical retangular com cantos retos */}
@@ -416,13 +424,13 @@ function FavoriteAnimeGridCard({
       </div>
     </button>
   );
-}
+});
 
 // ==========================================
 // Seção com Carrossel Horizontal (Personagens, Dubladores, Studios, People)
 // ==========================================
 
-function FavoritesCarouselSection({
+const FavoritesCarouselSection = React.memo(function FavoritesCarouselSection({
   title,
   items,
   emptyTitle,
@@ -535,7 +543,7 @@ function FavoritesCarouselSection({
               key={item.id}
               item={item}
               isSelected={selectedItemTitle === item.title}
-              onClick={() => onCardClick(item)}
+              onCardClick={onCardClick}
             />
           ))}
         </div>
@@ -547,19 +555,19 @@ function FavoritesCarouselSection({
       )}
     </section>
   );
-}
+});
 
 // ==========================================
 // Card individual do carrossel (Personagens, Dubladores, Studios, People)
 // ==========================================
 
-function FavoriteCarouselCard({
+const FavoriteCarouselCard = React.memo(function FavoriteCarouselCard({
   item,
-  onClick,
+  onCardClick,
   isSelected,
 }: {
   item: ProfileFavoriteItem;
-  onClick: () => void;
+  onCardClick: (item: ProfileFavoriteItem) => void;
   isSelected?: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
@@ -572,7 +580,7 @@ function FavoriteCarouselCard({
   const initial = (item.title || "?").charAt(0).toUpperCase();
 
   // Subtítulo limpo para o card: oculta termos redundantes
-  const cardSubtitle = (() => {
+  const cardSubtitle = useMemo(() => {
     if (!item.subtitle) return item.nativeTitle || (isStudio ? "Estúdio" : null);
     const lower = item.subtitle.toLowerCase().trim();
     if (
@@ -584,12 +592,16 @@ function FavoriteCarouselCard({
       return item.nativeTitle || (isStudio ? "Estúdio" : null);
     }
     return item.subtitle;
-  })();
+  }, [item.subtitle, item.nativeTitle, isStudio]);
+
+  const handleClick = useCallback(() => {
+    onCardClick(item);
+  }, [onCardClick, item]);
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={handleClick}
       className={cn(
         "group relative flex w-[108px] min-[380px]:w-[122px] sm:w-[138px] md:w-[150px] lg:w-[162px] shrink-0 flex-col min-w-0 text-left outline-none cursor-pointer select-none active:scale-[0.98] transition-transform duration-100 ease-out",
         isSelected && "ring-2 ring-purple-500",
@@ -665,7 +677,7 @@ function FavoriteCarouselCard({
       </div>
     </button>
   );
-}
+});
 
 function EmptyFavoritesNotice({
   title,

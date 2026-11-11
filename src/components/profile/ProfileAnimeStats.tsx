@@ -315,5 +315,5 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }
       </div>
     </section>
   );
-}
+});
 

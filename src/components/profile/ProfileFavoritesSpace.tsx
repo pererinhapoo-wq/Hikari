@@ -64,6 +64,124 @@ const CATEGORY_CONFIG: Record<
   },
 };
 
+interface FavoriteGridCardProps {
+  item: ProfileFavoriteItem;
+  onEntityClick: (item: ProfileFavoriteItem) => void;
+}
+
+const FavoriteGridCard = React.memo(function FavoriteGridCard({
+  item,
+  onEntityClick,
+}: FavoriteGridCardProps) {
+  const cfg = CATEGORY_CONFIG[item.targetType] || CATEGORY_CONFIG.anime;
+  const Icon = cfg.icon;
+  const isAnime = item.targetType === "anime";
+  const isStudio = item.targetType === "studio" || item.targetType === "company";
+  const isClickableEntity = isStudio || item.targetType === "person";
+  const targetLink = isAnime ? `/anime/${item.targetId}` : undefined;
+
+  const handleClick = useCallback(() => {
+    onEntityClick(item);
+  }, [onEntityClick, item]);
+
+  const cardContent = (
+    <article className="group relative flex flex-col min-w-0 active:scale-[0.98] transition-transform duration-100 ease-out">
+      {/* Pôster com proporção 2:3 vertical retangular com cantos retos */}
+      <div className="
+        relative
+        aspect-[2/3]
+        w-full
+        overflow-hidden
+        rounded-none
+        bg-[#0d0c16]
+        border
+        border-white/10
+        shadow-sm
+        transition-colors
+        duration-200
+        ease-out
+        [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
+        group-active:border-purple-400
+        flex
+        items-center
+        justify-center
+      ">
+        {item.image ? (
+          <img
+            src={item.image}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className={cn(
+              "size-full transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none",
+              isStudio ? "object-contain p-3" : "object-cover object-top",
+            )}
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center text-zinc-600">
+            <Icon className="size-8" />
+          </div>
+        )}
+
+        {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
+        />
+
+        {/* Indicador de favorito discreto (sem backdrop-blur pesado) */}
+        <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
+          <Heart className="size-3 fill-rose-500 text-rose-500" />
+        </div>
+      </div>
+
+      {/* Informações estritamente FORA do pôster */}
+      <div className="mt-2 flex flex-col px-0.5 min-w-0">
+        <h4
+          className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
+          title={item.title}
+        >
+          {item.title}
+        </h4>
+
+        <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] sm:text-xs text-zinc-400 truncate">
+          <span className="font-medium shrink-0 text-purple-400">
+            {cfg.singular}
+          </span>
+          {item.subtitle && (
+            <>
+              <span>·</span>
+              <span className="truncate">{item.subtitle}</span>
+            </>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+
+  if (targetLink) {
+    return (
+      <Link to={targetLink} className="block outline-none">
+        {cardContent}
+      </Link>
+    );
+  }
+
+  if (isClickableEntity) {
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        className="w-full text-left cursor-pointer outline-none"
+      >
+        {cardContent}
+      </button>
+    );
+  }
+
+  return <div>{cardContent}</div>;
+});
+
 export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
   grouped,
   allItems,
@@ -290,112 +408,13 @@ export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-            {paginatedItems.map((item) => {
-              const cfg = CATEGORY_CONFIG[item.targetType] || CATEGORY_CONFIG.anime;
-              const Icon = cfg.icon;
-              const isAnime = item.targetType === "anime";
-              const isStudio = item.targetType === "studio" || item.targetType === "company";
-              const isClickableEntity = isStudio || item.targetType === "person";
-              const targetLink = isAnime ? `/anime/${item.targetId}` : undefined;
-
-              const cardContent = (
-                <article className="group relative flex flex-col min-w-0 active:scale-[0.98] transition-transform duration-100 ease-out">
-                  {/* Pôster com proporção 2:3 vertical retangular com cantos retos */}
-                  <div className="
-                    relative
-                    aspect-[2/3]
-                    w-full
-                    overflow-hidden
-                    rounded-none
-                    bg-[#0d0c16]
-                    border
-                    border-white/10
-                    shadow-sm
-                    transition-colors
-                    duration-200
-                    ease-out
-                    [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
-                    group-active:border-purple-400
-                    flex
-                    items-center
-                    justify-center
-                  ">
-                    {item.image ? (
-                      <img
-                        src={item.image}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className={cn(
-                          "size-full transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none",
-                          isStudio ? "object-contain p-3" : "object-cover object-top",
-                        )}
-                      />
-                    ) : (
-                      <div className="flex size-full items-center justify-center text-zinc-600">
-                        <Icon className="size-8" />
-                      </div>
-                    )}
-
-                    {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}
-                    <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
-                    />
-
-                    {/* Indicador de favorito discreto (sem backdrop-blur pesado) */}
-                    <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
-                      <Heart className="size-3 fill-rose-500 text-rose-500" />
-                    </div>
-                  </div>
-
-                  {/* Informações estritamente FORA do pôster */}
-                  <div className="mt-2 flex flex-col px-0.5 min-w-0">
-                    <h4
-                      className="truncate text-xs sm:text-sm font-medium text-zinc-100 transition-colors duration-150 [@media(hover:hover)_and_(pointer:fine)]:group-hover:text-purple-300 group-active:text-purple-200"
-                      title={item.title}
-                    >
-                      {item.title}
-                    </h4>
-
-                    <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] sm:text-xs text-zinc-400 truncate">
-                      <span className="font-medium shrink-0 text-purple-400">
-                        {cfg.singular}
-                      </span>
-                      {item.subtitle && (
-                        <>
-                          <span>·</span>
-                          <span className="truncate">{item.subtitle}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              );
-
-              if (targetLink) {
-                return (
-                  <Link key={item.id} to={targetLink} className="block outline-none">
-                    {cardContent}
-                  </Link>
-                );
-              }
-
-              if (isClickableEntity) {
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleEntityClick(item)}
-                    className="w-full text-left cursor-pointer outline-none"
-                  >
-                    {cardContent}
-                  </button>
-                );
-              }
-
-              return <div key={item.id}>{cardContent}</div>;
-            })}
+            {paginatedItems.map((item) => (
+              <FavoriteGridCard
+                key={item.id}
+                item={item}
+                onEntityClick={handleEntityClick}
+              />
+            ))}
           </div>
 
           {/* Sentinela de carregamento automático na rolagem (sem botão Carregar mais) */}
@@ -410,4 +429,4 @@ export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
       )}
     </div>
   );
-}
+});

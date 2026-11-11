@@ -764,49 +764,55 @@ function PublicProfile() {
     getPublicActivitiesFn,
   ]);
 
-  const handleCommentsPageChange = async (newPage: number) => {
-    if (!profile || !profile.canViewComments || commentsLoading) return;
-    setCommentsLoading(true);
-    try {
-      const res = await getPublicCommentsFn({
-        data: {
-          userId: profile.userId,
-          page: newPage,
-          limit: 15,
-        },
-      });
-      setComments(res.items);
-      setCommentsPage(res.page);
-      setCommentsTotalPages(res.totalPages);
-      setCommentsHasMore(res.hasMore);
-    } catch (err) {
-      console.error("Erro ao paginar comentários:", err);
-    } finally {
-      setCommentsLoading(false);
-    }
-  };
+  const handleCommentsPageChange = useCallback(
+    async (newPage: number) => {
+      if (!profile || !profile.canViewComments || commentsLoading) return;
+      setCommentsLoading(true);
+      try {
+        const res = await getPublicCommentsFn({
+          data: {
+            userId: profile.userId,
+            page: newPage,
+            limit: 15,
+          },
+        });
+        setComments(res.items);
+        setCommentsPage(res.page);
+        setCommentsTotalPages(res.totalPages);
+        setCommentsHasMore(res.hasMore);
+      } catch (err) {
+        console.error("Erro ao paginar comentários:", err);
+      } finally {
+        setCommentsLoading(false);
+      }
+    },
+    [profile, commentsLoading, getPublicCommentsFn],
+  );
 
-  const handleActivityPageChange = async (newPage: number) => {
-    if (!profile || !profile.canViewHistory || activityLoading) return;
-    setActivityLoading(true);
-    try {
-      const act = await getPublicActivitiesFn({
-        data: {
-          userId: profile.userId,
-          page: newPage,
-          limit: 15,
-        },
-      });
-      setActivities(act.items);
-      setActivityPage(act.page);
-      setActivityTotalPages(act.totalPages);
-      setActivityHasMore(act.hasMore);
-    } catch (err) {
-      console.error("Erro ao paginar atividades:", err);
-    } finally {
-      setActivityLoading(false);
-    }
-  };
+  const handleActivityPageChange = useCallback(
+    async (newPage: number) => {
+      if (!profile || !profile.canViewHistory || activityLoading) return;
+      setActivityLoading(true);
+      try {
+        const act = await getPublicActivitiesFn({
+          data: {
+            userId: profile.userId,
+            page: newPage,
+            limit: 15,
+          },
+        });
+        setActivities(act.items);
+        setActivityPage(act.page);
+        setActivityTotalPages(act.totalPages);
+        setActivityHasMore(act.hasMore);
+      } catch (err) {
+        console.error("Erro ao paginar atividades:", err);
+      } finally {
+        setActivityLoading(false);
+      }
+    },
+    [profile, activityLoading, getPublicActivitiesFn],
+  );
 
   const handleOpenConnections = async (tab: "followers" | "following") => {
     if (!profile?.userId) return;

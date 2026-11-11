@@ -785,56 +785,58 @@ function AccountProfile() {
     }
   }, [commentsHasMore, commentsLoadingMore, commentsPage, getCommentsFn]);
 
-  const handleCommentDeleted = (commentId: string) => {
+  const handleCommentDeleted = useCallback((commentId: string) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
     setCommentsTotal((prev) => Math.max(0, prev - 1));
     setProfile((prev) =>
       prev ? { ...prev, commentCount: Math.max(0, prev.commentCount - 1) } : prev,
     );
-  };
+  }, []);
 
-  const handleCommentUpdated = (
-    commentId: string,
-    newContent: string,
-    isSpoiler: boolean,
-  ) => {
-    setComments((prev) =>
-      prev.map((c) =>
-        c.id === commentId
-          ? { ...c, content: newContent, isSpoiler, updatedAt: new Date().toISOString() }
-          : c,
-      ),
-    );
-  };
+  const handleCommentUpdated = useCallback(
+    (commentId: string, newContent: string, isSpoiler: boolean) => {
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === commentId
+            ? { ...c, content: newContent, isSpoiler, updatedAt: new Date().toISOString() }
+            : c,
+        ),
+      );
+    },
+    [],
+  );
 
-  const handleUpdateTrackingItem = (updated: UserAnimeTrackingItem) => {
+  const handleUpdateTrackingItem = useCallback((updated: UserAnimeTrackingItem) => {
     setTrackingItems((prev) =>
       prev.map((item) => (item.animeId === updated.animeId ? updated : item)),
     );
-  };
+  }, []);
 
-  const handleRemoveFavorite = async (item: ProfileFavoriteItem) => {
-    try {
-      await removeFavoriteFn({
-        data: {
-          favoriteId: item.id,
-          targetType: item.targetType,
-          targetId: item.targetId,
-        },
-      });
-      setFavoritesGrouped((prev) => ({
-        ...prev,
-        [item.targetType]: (prev[item.targetType] ?? []).filter(
-          (f) => f.id !== item.id && f.targetId !== item.targetId,
-        ),
-      }));
-      setFavoritesItems((prev) => prev.filter((f) => f.id !== item.id));
-      toast.info(`"${item.title}" removido dos favoritos.`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro ao remover favorito.";
-      toast.error(msg);
-    }
-  };
+  const handleRemoveFavorite = useCallback(
+    async (item: ProfileFavoriteItem) => {
+      try {
+        await removeFavoriteFn({
+          data: {
+            favoriteId: item.id,
+            targetType: item.targetType,
+            targetId: item.targetId,
+          },
+        });
+        setFavoritesGrouped((prev) => ({
+          ...prev,
+          [item.targetType]: (prev[item.targetType] ?? []).filter(
+            (f) => f.id !== item.id && f.targetId !== item.targetId,
+          ),
+        }));
+        setFavoritesItems((prev) => prev.filter((f) => f.id !== item.id));
+        toast.info(`"${item.title}" removido dos favoritos.`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Erro ao remover favorito.";
+        toast.error(msg);
+      }
+    },
+    [removeFavoriteFn],
+  );
 
   // Alternar aba dentro do modal de conexões
   const handleConnectionsTabChange = async (tab: "followers" | "following" | "requests") => {
