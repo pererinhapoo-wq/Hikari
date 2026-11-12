@@ -11,6 +11,7 @@ import {
   Heart,
   ListPlus,
   Play,
+  Star,
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -117,63 +118,23 @@ const TRACKING_STATUS_CONFIG: Record<
  */
 function getMeaningfulDescription(
   entry: UserActivityItem,
-  isEpisode: boolean,
+  _isEpisode: boolean,
   isFavorite: boolean,
-  isTracking: boolean,
+  _isTracking: boolean,
 ): string | null {
-  // 1. Para episódios, exibir descrição real (ex: "Atualizou o progresso para o episódio 6.")
-  if (isEpisode) {
-    if (entry.description) {
-      return entry.description;
-    }
-    return null;
-  }
-
-  // 2. Favorito já possui etiqueta "Favorito", omitir descrições redundantes como "Adicionou aos favoritos", etc.
   if (isFavorite) {
     return null;
-  }
-
-  // 3. Status de anime já possui etiqueta real ("Assistindo", "Completo", "Em espera", "Abandonado", "Planejado")
-  // Não exibir descrições redundantes como "Marcou como concluído", "Começou a assistir o anime", etc.
-  if (isTracking) {
-    const rawDesc = (entry.description || "").toLowerCase().trim();
-    if (
-      rawDesc.includes("marcou como concluído") ||
-      rawDesc.includes("concluído") ||
-      rawDesc.includes("começou a assistir") ||
-      rawDesc.includes("assistindo") ||
-      rawDesc.includes("colocou em espera") ||
-      rawDesc.includes("em espera") ||
-      rawDesc.includes("marcou como abandonado") ||
-      rawDesc.includes("abandonado") ||
-      rawDesc.includes("lista de interesse") ||
-      rawDesc.includes("planejado") ||
-      rawDesc.includes("lista de animes")
-    ) {
-      const score = entry.metadata?.score;
-      if (typeof score === "number" && score > 0) {
-        return `Nota: ${score}/10`;
-      }
-      return null;
-    }
   }
 
   if (entry.description) {
     const raw = entry.description.trim().toLowerCase();
     if (
-      raw.includes("adicionou aos favoritos") ||
-      raw.includes("adicionou anime aos favoritos") ||
-      raw.includes("adicionou personagem aos favoritos") ||
-      raw.includes("adicionou estúdio aos favoritos") ||
-      raw.includes("adicionou produtora aos favoritos") ||
-      raw.includes("adicionou pessoa aos favoritos") ||
-      raw.includes("marcou como concluído") ||
-      raw.includes("começou a assistir") ||
-      raw.includes("colocou em espera") ||
-      raw.includes("marcou como abandonado") ||
-      raw.includes("lista de interesse") ||
-      raw.startsWith("assistiu ao episódio")
+      raw === "adicionou aos favoritos" ||
+      raw === "adicionou anime aos favoritos" ||
+      raw === "adicionou personagem aos favoritos" ||
+      raw === "adicionou estúdio aos favoritos" ||
+      raw === "adicionou produtora aos favoritos" ||
+      raw === "adicionou pessoa aos favoritos"
     ) {
       return null;
     }
@@ -338,8 +299,23 @@ export function ProfileHistorySpace({
               entry.type === "list_created" ||
               entry.type === "list_item_added";
 
-            const epNum = entry.metadata?.episodeNumber ?? 1;
-            const trackingStatus = isTracking ? resolveTrackingStatus(entry) : null;
+            const rawEpNum =
+              typeof entry.metadata?.episodeNumber === "number"
+                ? entry.metadata.episodeNumber
+                : typeof entry.metadata?.episodesWatched === "number"
+                  ? entry.metadata.episodesWatched
+                  : null;
+            const epNum = rawEpNum !== null && rawEpNum > 0 ? rawEpNum : 0;
+
+            const rawScore = entry.metadata?.score;
+            const scoreNum =
+              typeof rawScore === "number"
+                ? rawScore
+                : typeof rawScore === "string"
+                  ? parseFloat(rawScore)
+                  : null;
+
+            const trackingStatus = isTracking || entry.metadata?.status ? resolveTrackingStatus(entry) : null;
             const meaningfulDescription = getMeaningfulDescription(
               entry,
               isEpisode,
@@ -410,20 +386,7 @@ export function ProfileHistorySpace({
                       )}
 
                       {/* Badges de Categoria: Status Real com Cores Canônicas Preservadas */}
-                      {isEpisode && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[11px] font-bold text-violet-300 ring-1 ring-violet-500/30">
-                          Episódio {epNum}
-                        </span>
-                      )}
-
-                      {isFavorite && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300 ring-1 ring-rose-500/25">
-                          <Heart className="size-3 fill-rose-500/80" />
-                          <span>Favorito</span>
-                        </span>
-                      )}
-
-                      {isTracking && trackingStatus && (
+                      {trackingStatus && (
                         <span
                           className={cn(
                             "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold",
@@ -439,6 +402,26 @@ export function ProfileHistorySpace({
                             );
                           })()}
                           <span>{TRACKING_STATUS_CONFIG[trackingStatus].label}</span>
+                        </span>
+                      )}
+
+                      {epNum > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[11px] font-bold text-violet-300 ring-1 ring-violet-500/30">
+                          Episódio {epNum}
+                        </span>
+                      )}
+
+                      {typeof scoreNum === "number" && scoreNum > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300 ring-1 ring-amber-500/25">
+                          <Star className="size-3 fill-amber-400 text-amber-400" />
+                          <span>Nota {Number(scoreNum).toFixed(scoreNum % 1 === 0 ? 0 : 1)}/10</span>
+                        </span>
+                      )}
+
+                      {isFavorite && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300 ring-1 ring-rose-500/25">
+                          <Heart className="size-3 fill-rose-500/80" />
+                          <span>Favorito</span>
                         </span>
                       )}
 
@@ -482,7 +465,7 @@ export function ProfileHistorySpace({
                 </div>
 
                 {/* Ação contextual funcional — sem ícone decorativo Sparkles */}
-                {isEpisode && (
+                {epNum > 0 && (
                   <Link
                     to="/watch/$id/$ep"
                     params={{

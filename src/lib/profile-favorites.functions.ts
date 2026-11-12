@@ -60,18 +60,48 @@ async function assertCatalogEntityExists(
 
   switch (targetType) {
     case "anime": {
+      const titleToUse = snapshots?.anime?.title?.trim() || "";
+      const romajiToUse = snapshots?.anime?.titleRomaji?.trim() || "";
+      const englishToUse = snapshots?.anime?.titleEnglish?.trim() || "";
+
+      const kitsuMatch = targetId.match(/^kitsu-(\d+)$/i);
+      const parsedKitsuId = kitsuMatch ? parseInt(kitsuMatch[1], 10) : null;
+      const isNumeric = /^\d+$/.test(targetId);
+      const parsedNum = isNumeric ? parseInt(targetId, 10) : null;
+
       let rows = await sql<{ id: string }>`
-        SELECT "id" FROM "catalog_anime" WHERE "id" = ${targetId} LIMIT 1
+        SELECT "id" FROM "catalog_anime"
+        WHERE "id" = ${targetId}
+          OR (${parsedKitsuId !== null} AND "kitsuId" = ${parsedKitsuId})
+          OR (${parsedNum !== null} AND ("anilistId" = ${parsedNum} OR "malId" = ${parsedNum}))
+          OR (${titleToUse.length > 0} AND (
+            LOWER("title") = LOWER(${titleToUse}) OR
+            LOWER(COALESCE("titleRomaji", '')) = LOWER(${titleToUse}) OR
+            LOWER(COALESCE("titleEnglish", '')) = LOWER(${titleToUse})
+          ))
+          OR (${romajiToUse.length > 0} AND (
+            LOWER("title") = LOWER(${romajiToUse}) OR
+            LOWER(COALESCE("titleRomaji", '')) = LOWER(${romajiToUse})
+          ))
+          OR (${englishToUse.length > 0} AND (
+            LOWER("title") = LOWER(${englishToUse}) OR
+            LOWER(COALESCE("titleEnglish", '')) = LOWER(${englishToUse})
+          ))
+        ORDER BY
+          CASE WHEN "id" = ${targetId} THEN 1 ELSE 2 END ASC,
+          "createdAt" ASC
+        LIMIT 1
       `;
       if (rows.length === 0) {
-        const titleToUse = snapshots?.anime?.title?.trim() || targetId;
+        const finalTitle = titleToUse || targetId;
         await sql.query(
           `INSERT INTO "catalog_anime" (
             "id", "title", "titleRomaji", "titleEnglish", "titleNative",
             "cover", "banner", "synopsis", "format", "year", "episodesCount", "status",
+            "kitsuId", "anilistId", "malId",
             "createdAt", "updatedAt"
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           ON CONFLICT ("id") DO UPDATE SET
             "title" = COALESCE(EXCLUDED."title", "catalog_anime"."title"),
             "cover" = COALESCE(EXCLUDED."cover", "catalog_anime"."cover"),
@@ -79,7 +109,7 @@ async function assertCatalogEntityExists(
             "updatedAt" = CURRENT_TIMESTAMP`,
           [
             targetId,
-            titleToUse,
+            finalTitle,
             snapshots?.anime?.titleRomaji ?? null,
             snapshots?.anime?.titleEnglish ?? null,
             snapshots?.anime?.titleNative ?? null,
@@ -90,6 +120,9 @@ async function assertCatalogEntityExists(
             snapshots?.anime?.year ?? null,
             snapshots?.anime?.episodesCount ?? null,
             snapshots?.anime?.status ?? null,
+            parsedKitsuId,
+            parsedNum,
+            null,
           ],
         );
         rows = await sql<{ id: string }>`
@@ -103,11 +136,16 @@ async function assertCatalogEntityExists(
       break;
     }
     case "character": {
+      const nameToUse = snapshots?.character?.name?.trim() || "";
       let rows = await sql<{ id: string }>`
-        SELECT "id" FROM "catalog_character" WHERE "id" = ${targetId} LIMIT 1
+        SELECT "id" FROM "catalog_character"
+        WHERE "id" = ${targetId}
+          OR (${nameToUse.length > 0} AND LOWER("name") = LOWER(${nameToUse}))
+        ORDER BY CASE WHEN "id" = ${targetId} THEN 1 ELSE 2 END ASC, "createdAt" ASC
+        LIMIT 1
       `;
       if (rows.length === 0) {
-        const nameToUse = snapshots?.character?.name?.trim() || targetId;
+        const finalName = nameToUse || targetId;
         await sql.query(
           `INSERT INTO "catalog_character" (
             "id", "name", "nativeName", "imageUrl", "description",
@@ -121,7 +159,7 @@ async function assertCatalogEntityExists(
             "updatedAt" = CURRENT_TIMESTAMP`,
           [
             targetId,
-            nameToUse,
+            finalName,
             snapshots?.character?.nativeName ?? null,
             snapshots?.character?.imageUrl ?? null,
             snapshots?.character?.description ?? null,
@@ -140,7 +178,11 @@ async function assertCatalogEntityExists(
     case "studio": {
       const nameToUse = snapshots?.studio?.name?.trim() || targetId;
       let rows = await sql<{ id: string }>`
-        SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} OR "name" = ${nameToUse} LIMIT 1
+        SELECT "id" FROM "catalog_studio"
+        WHERE "id" = ${targetId}
+          OR LOWER("name") = LOWER(${nameToUse})
+        ORDER BY CASE WHEN "id" = ${targetId} THEN 1 ELSE 2 END ASC, "createdAt" ASC
+        LIMIT 1
       `;
       if (rows.length === 0) {
         const logoToUse = snapshots?.studio?.logoUrl ?? getStudioLogo(nameToUse);
@@ -162,7 +204,7 @@ async function assertCatalogEntityExists(
           ],
         );
         rows = await sql<{ id: string }>`
-          SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} OR "name" = ${nameToUse} LIMIT 1
+          SELECT "id" FROM "catalog_studio" WHERE "id" = ${targetId} OR LOWER("name") = LOWER(${nameToUse}) LIMIT 1
         `;
       }
       if (rows.length > 0) {
@@ -173,7 +215,11 @@ async function assertCatalogEntityExists(
     }
     case "company": {
       const rows = await sql<{ id: string }>`
-        SELECT "id" FROM "catalog_company" WHERE "id" = ${targetId} LIMIT 1
+        SELECT "id" FROM "catalog_company"
+        WHERE "id" = ${targetId}
+          OR LOWER("name") = LOWER(${targetId})
+        ORDER BY CASE WHEN "id" = ${targetId} THEN 1 ELSE 2 END ASC, "createdAt" ASC
+        LIMIT 1
       `;
       if (rows.length > 0) {
         canonicalId = rows[0].id;
@@ -182,11 +228,16 @@ async function assertCatalogEntityExists(
       break;
     }
     case "person": {
+      const nameToUse = snapshots?.person?.name?.trim() || "";
       let rows = await sql<{ id: string }>`
-        SELECT "id" FROM "catalog_person" WHERE "id" = ${targetId} LIMIT 1
+        SELECT "id" FROM "catalog_person"
+        WHERE "id" = ${targetId}
+          OR (${nameToUse.length > 0} AND LOWER("name") = LOWER(${nameToUse}))
+        ORDER BY CASE WHEN "id" = ${targetId} THEN 1 ELSE 2 END ASC, "createdAt" ASC
+        LIMIT 1
       `;
       if (rows.length === 0) {
-        const nameToUse = snapshots?.person?.name?.trim() || targetId;
+        const finalName = nameToUse || targetId;
         await sql.query(
           `INSERT INTO "catalog_person" (
             "id", "name", "nativeName", "imageUrl", "biography",
@@ -200,7 +251,7 @@ async function assertCatalogEntityExists(
             "updatedAt" = CURRENT_TIMESTAMP`,
           [
             targetId,
-            nameToUse,
+            finalName,
             snapshots?.person?.nativeName ?? null,
             snapshots?.person?.imageUrl ?? null,
             snapshots?.person?.biography ?? null,
@@ -259,16 +310,60 @@ export const addProfileFavorite = createServerFn({
 
     const sql = await getSql();
 
-    // 2. Pré-validação de duplicata rápida
+    // 2. Pré-validação de duplicata rápida e abrangente (por ID direto, ID canônico e correspondência de catálogo)
     const duplicateCheck = await sql<{ id: string }>`
-      SELECT "id" FROM "user_favorite"
-      WHERE "userId" = ${userId}
+      SELECT uf."id" FROM "user_favorite" uf
+      WHERE uf."userId" = ${userId}
         AND (
-          (${targetType} = 'anime' AND "animeId" = ${finalTargetId}) OR
-          (${targetType} = 'character' AND "characterId" = ${finalTargetId}) OR
-          (${targetType} = 'studio' AND "studioId" = ${finalTargetId}) OR
-          (${targetType} = 'company' AND "companyId" = ${finalTargetId}) OR
-          (${targetType} = 'person' AND "personId" = ${finalTargetId})
+          (${targetType} = 'anime' AND (
+            uf."animeId" = ${finalTargetId} OR
+            uf."animeId" = ${targetId} OR
+            uf."animeId" IN (
+              SELECT ca."id" FROM "catalog_anime" ca
+              WHERE ca."id" = ${finalTargetId}
+                OR (ca."anilistId" IS NOT NULL AND ca."anilistId" = (SELECT ca2."anilistId" FROM "catalog_anime" ca2 WHERE ca2."id" = ${finalTargetId}))
+                OR (ca."kitsuId" IS NOT NULL AND ca."kitsuId" = (SELECT ca2."kitsuId" FROM "catalog_anime" ca2 WHERE ca2."id" = ${finalTargetId}))
+                OR (LOWER(TRIM(ca."title")) = (SELECT LOWER(TRIM(ca3."title")) FROM "catalog_anime" ca3 WHERE ca3."id" = ${finalTargetId}))
+                OR (ca."titleRomaji" IS NOT NULL AND LOWER(TRIM(ca."titleRomaji")) = (SELECT LOWER(TRIM(ca4."titleRomaji")) FROM "catalog_anime" ca4 WHERE ca4."id" = ${finalTargetId}))
+                OR (ca."titleEnglish" IS NOT NULL AND LOWER(TRIM(ca."titleEnglish")) = (SELECT LOWER(TRIM(ca5."titleEnglish")) FROM "catalog_anime" ca5 WHERE ca5."id" = ${finalTargetId}))
+            )
+          )) OR
+          (${targetType} = 'character' AND (
+            uf."characterId" = ${finalTargetId} OR
+            uf."characterId" = ${targetId} OR
+            uf."characterId" IN (
+              SELECT cc."id" FROM "catalog_character" cc
+              WHERE cc."id" = ${finalTargetId}
+                OR (LOWER(TRIM(cc."name")) = (SELECT LOWER(TRIM(cc2."name")) FROM "catalog_character" cc2 WHERE cc2."id" = ${finalTargetId}))
+            )
+          )) OR
+          (${targetType} = 'studio' AND (
+            uf."studioId" = ${finalTargetId} OR
+            uf."studioId" = ${targetId} OR
+            uf."studioId" IN (
+              SELECT cs."id" FROM "catalog_studio" cs
+              WHERE cs."id" = ${finalTargetId}
+                OR (LOWER(TRIM(cs."name")) = (SELECT LOWER(TRIM(cs2."name")) FROM "catalog_studio" cs2 WHERE cs2."id" = ${finalTargetId}))
+            )
+          )) OR
+          (${targetType} = 'company' AND (
+            uf."companyId" = ${finalTargetId} OR
+            uf."companyId" = ${targetId} OR
+            uf."companyId" IN (
+              SELECT cco."id" FROM "catalog_company" cco
+              WHERE cco."id" = ${finalTargetId}
+                OR (LOWER(TRIM(cco."name")) = (SELECT LOWER(TRIM(cco2."name")) FROM "catalog_company" cco2 WHERE cco2."id" = ${finalTargetId}))
+            )
+          )) OR
+          (${targetType} = 'person' AND (
+            uf."personId" = ${finalTargetId} OR
+            uf."personId" = ${targetId} OR
+            uf."personId" IN (
+              SELECT cp."id" FROM "catalog_person" cp
+              WHERE cp."id" = ${finalTargetId}
+                OR (LOWER(TRIM(cp."name")) = (SELECT LOWER(TRIM(cp2."name")) FROM "catalog_person" cp2 WHERE cp2."id" = ${finalTargetId}))
+            )
+          ))
         )
       LIMIT 1
     `;
@@ -371,7 +466,7 @@ export const addProfileFavorite = createServerFn({
 
     const favoriteId = crypto.randomUUID();
 
-    // 4. Executa inserção com bloqueio da linha do usuário e cálculo atômico da próxima posição
+    // 4. Executa inserção com bloqueio da linha do usuário, cálculo atômico da próxima posição e verificação estrita de não-existência
     const insertQuery = `
       WITH user_lock AS (
         SELECT "id" FROM "user" WHERE "id" = $1 FOR UPDATE
@@ -389,6 +484,35 @@ export const addProfileFavorite = createServerFn({
       SELECT $3, ul."id", $2, $4, $5, $6, $7, $8, np.pos
       FROM user_lock ul
       CROSS JOIN next_pos np
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "user_favorite" uf
+        WHERE uf."userId" = $1
+          AND (
+            ($2 = 'anime' AND (uf."animeId" = $4 OR uf."animeId" IN (
+              SELECT ca."id" FROM "catalog_anime" ca
+              WHERE ca."id" = $4
+                OR (ca."anilistId" IS NOT NULL AND ca."anilistId" = (SELECT ca2."anilistId" FROM "catalog_anime" ca2 WHERE ca2."id" = $4))
+                OR (ca."kitsuId" IS NOT NULL AND ca."kitsuId" = (SELECT ca2."kitsuId" FROM "catalog_anime" ca2 WHERE ca2."id" = $4))
+                OR (LOWER(TRIM(ca."title")) = (SELECT LOWER(TRIM(ca3."title")) FROM "catalog_anime" ca3 WHERE ca3."id" = $4))
+            ))) OR
+            ($2 = 'character' AND (uf."characterId" = $5 OR uf."characterId" IN (
+              SELECT cc."id" FROM "catalog_character" cc
+              WHERE cc."id" = $5 OR LOWER(TRIM(cc."name")) = (SELECT LOWER(TRIM(cc2."name")) FROM "catalog_character" cc2 WHERE cc2."id" = $5)
+            ))) OR
+            ($2 = 'studio' AND (uf."studioId" = $6 OR uf."studioId" IN (
+              SELECT cs."id" FROM "catalog_studio" cs
+              WHERE cs."id" = $6 OR LOWER(TRIM(cs."name")) = (SELECT LOWER(TRIM(cs2."name")) FROM "catalog_studio" cs2 WHERE cs2."id" = $6)
+            ))) OR
+            ($2 = 'company' AND (uf."companyId" = $7 OR uf."companyId" IN (
+              SELECT cco."id" FROM "catalog_company" cco
+              WHERE cco."id" = $7 OR LOWER(TRIM(cco."name")) = (SELECT LOWER(TRIM(cco2."name")) FROM "catalog_company" cco2 WHERE cco2."id" = $7)
+            ))) OR
+            ($2 = 'person' AND (uf."personId" = $8 OR uf."personId" IN (
+              SELECT cp."id" FROM "catalog_person" cp
+              WHERE cp."id" = $8 OR LOWER(TRIM(cp."name")) = (SELECT LOWER(TRIM(cp2."name")) FROM "catalog_person" cp2 WHERE cp2."id" = $8)
+            )))
+          )
+      )
       RETURNING "id", "userId", "targetType", "position", "createdAt";
     `;
 
@@ -412,7 +536,7 @@ export const addProfileFavorite = createServerFn({
 
       const record = inserted[0];
       if (!record) {
-        throw new Error("Não foi possível cadastrar o favorito.");
+        throw new Error("Esse item já está nos seus favoritos.");
       }
 
       return {
@@ -428,7 +552,8 @@ export const addProfileFavorite = createServerFn({
       if (
         message.includes("user_favorite_user_") ||
         message.includes("unique constraint") ||
-        message.includes("duplicate key")
+        message.includes("duplicate key") ||
+        message.includes("já está nos seus favoritos")
       ) {
         throw new Error("Esse item já está nos seus favoritos.");
       }
@@ -590,21 +715,36 @@ export const getMyProfileFavorites = createServerFn({
       userScore: number | string | null;
     }>(query, [userId, targetTypeFilter, targetIdFilter]);
 
-    const items: ProfileFavoriteItem[] = rawRows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      targetType: row.targetType,
-      targetId: row.targetId,
-      position: Number(row.position),
-      createdAt: row.createdAt,
-      title: row.title,
-      nativeTitle: row.nativeTitle ?? null,
-      image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
-      banner: row.banner ?? null,
-      description: row.description ?? null,
-      subtitle: row.subtitle ?? null,
-      userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
-    }));
+    const seenEntities = new Set<string>();
+    const items: ProfileFavoriteItem[] = [];
+
+    for (const row of rawRows) {
+      const entityKey = `${row.targetType}:${row.targetId}`;
+      const titleKey = `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
+      if (seenEntities.has(entityKey) || (row.title && row.title !== "Sem título" && seenEntities.has(titleKey))) {
+        continue;
+      }
+      seenEntities.add(entityKey);
+      if (row.title && row.title !== "Sem título") {
+        seenEntities.add(titleKey);
+      }
+
+      items.push({
+        id: row.id,
+        userId: row.userId,
+        targetType: row.targetType,
+        targetId: row.targetId,
+        position: Number(row.position),
+        createdAt: row.createdAt,
+        title: row.title,
+        nativeTitle: row.nativeTitle ?? null,
+        image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
+        banner: row.banner ?? null,
+        description: row.description ?? null,
+        subtitle: row.subtitle ?? null,
+        userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
+      });
+    }
 
     const grouped: ProfileFavoritesGrouped = {
       anime: [],
@@ -725,21 +865,36 @@ export const getPublicProfileFavorites = createServerFn({
       userScore: number | string | null;
     }>(query, [targetUserId, targetTypeFilter]);
 
-    const items: ProfileFavoriteItem[] = rawRows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      targetType: row.targetType,
-      targetId: row.targetId,
-      position: Number(row.position),
-      createdAt: row.createdAt,
-      title: row.title,
-      nativeTitle: row.nativeTitle ?? null,
-      image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
-      banner: row.banner ?? null,
-      description: row.description ?? null,
-      subtitle: row.subtitle ?? null,
-      userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
-    }));
+    const seenEntities = new Set<string>();
+    const items: ProfileFavoriteItem[] = [];
+
+    for (const row of rawRows) {
+      const entityKey = `${row.targetType}:${row.targetId}`;
+      const titleKey = `${row.targetType}:${(row.title || "").toLowerCase().trim()}`;
+      if (seenEntities.has(entityKey) || (row.title && row.title !== "Sem título" && seenEntities.has(titleKey))) {
+        continue;
+      }
+      seenEntities.add(entityKey);
+      if (row.title && row.title !== "Sem título") {
+        seenEntities.add(titleKey);
+      }
+
+      items.push({
+        id: row.id,
+        userId: row.userId,
+        targetType: row.targetType,
+        targetId: row.targetId,
+        position: Number(row.position),
+        createdAt: row.createdAt,
+        title: row.title,
+        nativeTitle: row.nativeTitle ?? null,
+        image: row.image || (row.targetType === "studio" ? getStudioLogo(row.title) : null),
+        banner: row.banner ?? null,
+        description: row.description ?? null,
+        subtitle: row.subtitle ?? null,
+        userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
+      });
+    }
 
     const grouped: ProfileFavoritesGrouped = {
       anime: [],

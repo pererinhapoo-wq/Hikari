@@ -199,6 +199,7 @@ export interface UserActivityItem {
   metadata?: {
     episodeId?: string;
     episodeNumber?: number;
+    episodesWatched?: number;
     origin?: string;
     status?: string;
     score?: number | null;
@@ -1152,15 +1153,27 @@ export async function executeGetUserActivities(
 
   const countQuery = `
     WITH user_activities AS (
-      -- 1. Episódios assistidos
+      -- 1. Episódios assistidos exclusivos (player ou históricos sem correspondência em tracking recente)
       SELECT
         uwe."watchedAt" AS "createdAt"
       FROM "user_watched_episode" uwe
       WHERE uwe."userId" = $1
+        AND (
+          uwe."origin" = 'playback'
+          OR NOT EXISTS (
+            SELECT 1 FROM "user_anime_tracking" uat_chk
+            WHERE uat_chk."userId" = uwe."userId"
+              AND uat_chk."animeId" = uwe."animeId"
+              AND (
+                (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."updatedAt" - uwe."watchedAt"))) < 10)
+                OR (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."createdAt" - uwe."watchedAt"))) < 10)
+              )
+          )
+        )
 
       UNION ALL
 
-      -- 2. Anime adicionado ao acompanhamento
+      -- 2. Anime adicionado ao acompanhamento (consolidado)
       SELECT
         uat."createdAt" AS "createdAt"
       FROM "user_anime_tracking" uat
@@ -1168,19 +1181,12 @@ export async function executeGetUserActivities(
 
       UNION ALL
 
-      -- 2b. Atualizações de progresso de episódios no acompanhamento
+      -- 2b. Atualizações de acompanhamento (progresso, status, nota consolidados)
       SELECT
         uat."updatedAt" AS "createdAt"
       FROM "user_anime_tracking" uat
       WHERE uat."userId" = $1
-        AND uat."episodesWatched" > 0
         AND uat."updatedAt" > (uat."createdAt" + interval '1 second')
-        AND NOT EXISTS (
-          SELECT 1 FROM "user_watched_episode" uwe
-          WHERE uwe."userId" = uat."userId"
-            AND uwe."animeId" = uat."animeId"
-            AND uwe."episodeNumber" = uat."episodesWatched"
-        )
 
       UNION ALL
 
@@ -1217,12 +1223,12 @@ export async function executeGetUserActivities(
 
   const selectQuery = `
     WITH user_activities AS (
-      -- 1. Episódios assistidos
+      -- 1. Episódios assistidos exclusivos (playback ou históricos)
       SELECT
         'watched:' || uwe."animeId" || ':' || uwe."episodeId" || ':' || to_char(uwe."watchedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
         'watched_episode' AS "type",
         uwe."watchedAt" AS "createdAt",
-        'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'este anime') || ' para o episódio ' || uwe."episodeNumber" AS "description",
+        'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'este anime') || ' para o episódio ' || uwe."episodeNumber" || '.' AS "description",
         uwe."animeId" AS "resourceId",
         COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
         COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
@@ -1230,27 +1236,57 @@ export async function executeGetUserActivities(
         json_build_object(
           'episodeId', uwe."episodeId",
           'episodeNumber', uwe."episodeNumber",
-          'origin', uwe."origin"
+          'origin', uwe."origin",
+          'status', uat."status"
         )::text AS "metadata"
       FROM "user_watched_episode" uwe
       LEFT JOIN "catalog_anime" ca ON ca."id" = uwe."animeId"
       LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uwe."userId" AND uat."animeId" = uwe."animeId"
       WHERE uwe."userId" = $1
+        AND (
+          uwe."origin" = 'playback'
+          OR NOT EXISTS (
+            SELECT 1 FROM "user_anime_tracking" uat_chk
+            WHERE uat_chk."userId" = uwe."userId"
+              AND uat_chk."animeId" = uwe."animeId"
+              AND (
+                (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."updatedAt" - uwe."watchedAt"))) < 10)
+                OR (uat_chk."episodesWatched" = uwe."episodeNumber" AND abs(extract(epoch from (uat_chk."createdAt" - uwe."watchedAt"))) < 10)
+              )
+          )
+        )
 
       UNION ALL
 
-      -- 2. Anime adicionado ao acompanhamento
+      -- 2. Anime adicionado ao acompanhamento (consolidado com status, episódio e nota)
       SELECT
         'tracking_add:' || uat."animeId" || ':' || to_char(uat."createdAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
         'tracking_added' AS "type",
         uat."createdAt" AS "createdAt",
-        CASE uat."status"
-          WHEN 'watching' THEN 'Começou a assistir o anime'
-          WHEN 'completed' THEN 'Marcou como concluído'
-          WHEN 'planning' THEN 'Adicionou à lista de interesse'
-          WHEN 'on_hold' THEN 'Colocou em espera'
-          WHEN 'dropped' THEN 'Marcou como abandonado'
-          ELSE 'Adicionou à lista de animes'
+        CASE
+          WHEN uat."status" = 'completed' THEN
+            CASE
+              WHEN uat."episodesWatched" > 0 THEN 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
+              ELSE 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+            END
+          WHEN uat."status" = 'on_hold' THEN
+            CASE
+              WHEN uat."episodesWatched" > 0 THEN 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera no episódio ' || uat."episodesWatched" || '.'
+              ELSE 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera.'
+            END
+          WHEN uat."status" = 'dropped' THEN
+            CASE
+              WHEN uat."episodesWatched" > 0 THEN 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
+              ELSE 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+            END
+          WHEN uat."status" = 'watching' THEN
+            CASE
+              WHEN uat."episodesWatched" > 0 THEN 'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' para o episódio ' || uat."episodesWatched" || '.'
+              ELSE 'Começou a assistir ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+            END
+          WHEN uat."status" = 'planning' THEN
+            'Adicionou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' à lista de interesse.'
+          ELSE 'Atualizou acompanhamento de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
         END AS "description",
         uat."animeId" AS "resourceId",
         COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
@@ -1259,6 +1295,7 @@ export async function executeGetUserActivities(
         json_build_object(
           'status', uat."status",
           'score', uat."score",
+          'episodeNumber', uat."episodesWatched",
           'episodesWatched', uat."episodesWatched"
         )::text AS "metadata"
       FROM "user_anime_tracking" uat
@@ -1267,32 +1304,50 @@ export async function executeGetUserActivities(
 
       UNION ALL
 
-      -- 2b. Atualizações de progresso de episódios no acompanhamento
+      -- 2b. Atualizações de acompanhamento (consolidado com status, episódio e nota)
       SELECT
-        'tracking_progress:' || uat."animeId" || ':' || uat."episodesWatched" || ':' || to_char(uat."updatedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
-        'watched_episode' AS "type",
+        'tracking_upd:' || uat."animeId" || ':' || to_char(uat."updatedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
+        'tracking_updated' AS "type",
         uat."updatedAt" AS "createdAt",
-        'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'este anime') || ' para o episódio ' || uat."episodesWatched" AS "description",
+        CASE
+          WHEN uat."status" = 'completed' THEN
+            CASE
+              WHEN uat."episodesWatched" > 0 THEN 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
+              ELSE 'Completou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+            END
+          WHEN uat."status" = 'on_hold' THEN
+            CASE
+              WHEN uat."episodesWatched" > 0 THEN 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera no episódio ' || uat."episodesWatched" || '.'
+              ELSE 'Colocou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' em espera.'
+            END
+          WHEN uat."status" = 'dropped' THEN
+            CASE
+              WHEN uat."episodesWatched" > 0 THEN 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' no episódio ' || uat."episodesWatched" || '.'
+              ELSE 'Abandonou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+            END
+          WHEN uat."status" = 'watching' THEN
+            CASE
+              WHEN uat."episodesWatched" > 0 THEN 'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' para o episódio ' || uat."episodesWatched" || '.'
+              ELSE 'Começou a assistir ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+            END
+          WHEN uat."status" = 'planning' THEN
+            'Adicionou ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || ' à lista de interesse.'
+          ELSE 'Atualizou acompanhamento de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'o anime') || '.'
+        END AS "description",
         uat."animeId" AS "resourceId",
         COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
         COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
         'anime' AS "resourceType",
         json_build_object(
-          'episodeId', uat."animeId" || '-ep-' || uat."episodesWatched",
+          'status', uat."status",
+          'score', uat."score",
           'episodeNumber', uat."episodesWatched",
-          'origin', 'manual'
+          'episodesWatched', uat."episodesWatched"
         )::text AS "metadata"
       FROM "user_anime_tracking" uat
       LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
       WHERE uat."userId" = $1
-        AND uat."episodesWatched" > 0
         AND uat."updatedAt" > (uat."createdAt" + interval '1 second')
-        AND NOT EXISTS (
-          SELECT 1 FROM "user_watched_episode" uwe
-          WHERE uwe."userId" = uat."userId"
-            AND uwe."animeId" = uat."animeId"
-            AND uwe."episodeNumber" = uat."episodesWatched"
-        )
 
       UNION ALL
 

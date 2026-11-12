@@ -2,7 +2,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Camera,
-  Check,
   ImageIcon,
   Link2,
   Pencil,

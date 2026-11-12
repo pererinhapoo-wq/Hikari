@@ -46,13 +46,14 @@ export function ProfileSaveNotification({
   title: controlledTitle,
   message: controlledMessage,
   onClose: controlledOnClose,
-  autoCloseDurationMs = 4000,
+  autoCloseDurationMs = 3800,
 }: ProfileSaveNotificationProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [data, setData] = useState<{ title: string; message: string }>({
     title: "Salvo com sucesso",
     message: "Alterações salvas com sucesso.",
   });
+  const [animKey, setAnimKey] = useState(0);
 
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -67,17 +68,7 @@ export function ProfileSaveNotification({
   const currentTitle = controlledTitle ?? data.title;
   const currentMessage = controlledMessage ?? data.message;
 
-  const handleDismiss = useCallback(() => {
-    setIsDismissing(true);
-    setTimeout(() => {
-      setIsOpen(false);
-      setIsDismissing(false);
-      setDragOffset(0);
-      controlledOnClose?.();
-    }, 250);
-  }, [controlledOnClose]);
-
-  // Limpa o timer automático
+  // Limpa o timer de fechamento automático
   const clearAutoCloseTimer = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -85,27 +76,50 @@ export function ProfileSaveNotification({
     }
   }, []);
 
+  const handleDismiss = useCallback(
+    (direction: "left" | "right" = "right") => {
+      clearAutoCloseTimer();
+      setDismissDirection(direction);
+      setIsDismissing(true);
+      setTimeout(() => {
+        setIsOpen(false);
+        setIsDismissing(false);
+        setDragOffset(0);
+        controlledOnClose?.();
+      }, 240);
+    },
+    [clearAutoCloseTimer, controlledOnClose],
+  );
+
   // Reinicia o timer de fechamento automático
   const startAutoCloseTimer = useCallback(() => {
     clearAutoCloseTimer();
     if (autoCloseDurationMs > 0) {
       timerRef.current = setTimeout(() => {
-        handleDismiss();
+        handleDismiss("right");
       }, autoCloseDurationMs);
     }
   }, [autoCloseDurationMs, clearAutoCloseTimer, handleDismiss]);
 
-  // Escuta eventos globais de salvamento do Perfil
+  // Escuta eventos de salvamento autorizados do Perfil
   useEffect(() => {
     const handleEvent = (e: Event) => {
       const customEvent = e as CustomEvent<ProfileSaveNotificationDetail>;
+      clearAutoCloseTimer();
+
+      // Substitui a notificação anterior, garantindo apenas UMA visível por vez
       setData({
         title: customEvent.detail?.title || "Salvo com sucesso",
         message: customEvent.detail?.message || "Alterações salvas com sucesso.",
       });
+
       setDragOffset(0);
       setIsDismissing(false);
       setIsOpen(true);
+      // Incrementa a chave para reiniciar a animação de entrada a cada novo salvamento
+      setAnimKey((prev) => prev + 1);
+
+      // Reinicia o tempo de exibição
       startAutoCloseTimer();
     };
 
@@ -120,24 +134,26 @@ export function ProfileSaveNotification({
     if (controlledShow) {
       setDragOffset(0);
       setIsDismissing(false);
+      setAnimKey((prev) => prev + 1);
       startAutoCloseTimer();
     } else if (controlledShow === false) {
       clearAutoCloseTimer();
     }
   }, [controlledShow, startAutoCloseTimer, clearAutoCloseTimer]);
 
-  // Handlers para o gesto de arrastar (Swipe to dismiss)
+  // Gesto de arrastar (Swipe to dismiss) com ponteiro
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isDismissing) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     setIsDragging(true);
     startXRef.current = e.clientX;
     currentXRef.current = e.clientX;
     clearAutoCloseTimer();
-    // Captura ponteiro para manter rastreio fluido mesmo se sair da borda
+
     try {
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     } catch {
-      // Ignora erro em navegadores que não suportam pointerCapture em elementos aninhados
+      // Ignora em caso de incompatibilidade pontual
     }
   };
 
@@ -148,24 +164,41 @@ export function ProfileSaveNotification({
     setDragOffset(diff);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging || isDismissing) return;
     setIsDragging(false);
 
-    const threshold = 75; // Limite de deslocamento para confirmar descarte
-    if (Math.abs(dragOffset) >= threshold) {
-      setDismissDirection(dragOffset > 0 ? "right" : "left");
-      handleDismiss();
+    try {
+      if ((e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      void 0;
+    }
+
+    const diff = currentXRef.current - startXRef.current;
+    const THRESHOLD = 70; // 70px para confirmação do descarte
+
+    if (Math.abs(diff) >= THRESHOLD) {
+      // Ultrapassou o limite: desliza completamente para fora da tela e desaparece de vez
+      handleDismiss(diff > 0 ? "right" : "left");
     } else {
-      // Retorna suavemente à posição original se não atingir o limite
+      // Arrasto insuficiente: retorna suavemente à posição original
       setDragOffset(0);
       startAutoCloseTimer();
     }
   };
 
-  const handlePointerCancel = () => {
+  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging) return;
     setIsDragging(false);
+    try {
+      if ((e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      void 0;
+    }
     setDragOffset(0);
     startAutoCloseTimer();
   };
@@ -174,8 +207,8 @@ export function ProfileSaveNotification({
     return null;
   }
 
-  // Calcula opacidade dinâmica durante o arraste
-  const dragOpacity = Math.max(0.2, 1 - Math.abs(dragOffset) / 220);
+  // Opacidade proporcional ao arrasto horizontal
+  const dragOpacity = Math.max(0.15, 1 - Math.abs(dragOffset) / 200);
 
   return (
     <div
@@ -187,26 +220,26 @@ export function ProfileSaveNotification({
       }}
     >
       <div
+        key={animKey}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onMouseEnter={clearAutoCloseTimer}
         onMouseLeave={() => {
-          if (!isDragging) startAutoCloseTimer();
+          if (!isDragging && !isDismissing) startAutoCloseTimer();
         }}
-        className={`group relative flex items-center gap-3 rounded-2xl border border-purple-500/35 bg-[#0c0a18]/95 p-3.5 sm:p-4 text-white shadow-[0_12px_40px_rgba(0,0,0,0.7),0_0_25px_rgba(168,85,247,0.28)] backdrop-blur-xl cursor-grab active:cursor-grabbing pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-200 ${
-          isDragging
-            ? "transition-none"
-            : isDismissing
-              ? "transition-all duration-200 ease-in"
-              : "transition-all duration-300 ease-out"
-        }`}
+        className="group relative flex items-center gap-3 rounded-2xl border border-purple-500/35 bg-[#0c0a18]/95 p-3.5 sm:p-4 text-white shadow-[0_12px_40px_rgba(0,0,0,0.7),0_0_25px_rgba(168,85,247,0.28)] backdrop-blur-xl cursor-grab active:cursor-grabbing pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-200"
         style={{
           transform: isDismissing
-            ? `translateX(${dismissDirection === "right" ? "120%" : "-120%"})`
+            ? `translateX(${dismissDirection === "right" ? "150%" : "-150%"})`
             : `translateX(${dragOffset}px)`,
           opacity: isDismissing ? 0 : dragOpacity,
+          transition: isDragging
+            ? "none"
+            : isDismissing
+              ? "transform 240ms ease-in, opacity 240ms ease-in"
+              : "transform 250ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 250ms ease-out",
           touchAction: "pan-y",
         }}
       >
@@ -230,8 +263,7 @@ export function ProfileSaveNotification({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            setDismissDirection("right");
-            handleDismiss();
+            handleDismiss("right");
           }}
           className="flex size-6 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
           aria-label="Fechar confirmação"

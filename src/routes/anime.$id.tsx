@@ -1006,9 +1006,26 @@ function AnimePage() {
         }
         setFavoriteEntities(newMap);
 
-        const match = res.items.find(
-          (item) => item.targetType === "anime" && item.targetId === anime.id,
-        );
+        const currentTitle = displayTitle(anime).toLowerCase().trim();
+        const romaji = (anime.titles?.romaji || "").toLowerCase().trim();
+        const english = (anime.titles?.english || "").toLowerCase().trim();
+        const kitsuKey = anime.kitsuId ? `kitsu-${anime.kitsuId}` : null;
+        const anilistKey = anime.anilistId ? String(anime.anilistId) : null;
+        const malKey = anime.malId ? String(anime.malId) : null;
+
+        const match = res.items.find((item) => {
+          if (item.targetType !== "anime") return false;
+          if (item.targetId === anime.id) return true;
+          if (kitsuKey && item.targetId === kitsuKey) return true;
+          if (anilistKey && item.targetId === anilistKey) return true;
+          if (malKey && item.targetId === malKey) return true;
+          if (item.title) {
+            const t = item.title.toLowerCase().trim();
+            if (t && (t === currentTitle || t === romaji || t === english)) return true;
+          }
+          return false;
+        });
+
         if (match) {
           setIsFavorite(true);
           setFavFavoriteId(match.id);

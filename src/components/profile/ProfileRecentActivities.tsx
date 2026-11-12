@@ -9,6 +9,7 @@ import {
   Heart,
   MessageSquare,
   Play,
+  Star,
   XCircle,
 } from "lucide-react";
 import type { MyProfileComment, UserActivityItem } from "@/lib/profile.functions";
@@ -359,14 +360,23 @@ export function ProfileRecentActivities({
             const isTracking =
               act.type === "tracking_added" || act.type === "tracking_updated";
 
-            const epNum =
-              act.metadata?.episodeNumber !== undefined
+            const rawEpNum =
+              typeof act.metadata?.episodeNumber === "number"
                 ? act.metadata.episodeNumber
-                : isEpisode
-                  ? 1
+                : typeof act.metadata?.episodesWatched === "number"
+                  ? act.metadata.episodesWatched
+                  : null;
+            const epNum = rawEpNum !== null && rawEpNum > 0 ? rawEpNum : (isEpisode ? 1 : null);
+
+            const rawScore = act.metadata?.score;
+            const scoreNum =
+              typeof rawScore === "number"
+                ? rawScore
+                : typeof rawScore === "string"
+                  ? parseFloat(rawScore)
                   : null;
 
-            const trackingStatus = isTracking ? resolveTrackingStatus(act) : null;
+            const trackingStatus = isTracking || act.metadata?.status ? resolveTrackingStatus(act) : null;
 
             return (
               <article
@@ -420,7 +430,7 @@ export function ProfileRecentActivities({
                       </Link>
 
                       {/* Status Canônico com Cores Preservadas */}
-                      {isTracking && trackingStatus && (
+                      {trackingStatus && (
                         <span
                           className={cn(
                             "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold",
@@ -439,10 +449,18 @@ export function ProfileRecentActivities({
                         </span>
                       )}
 
-                      {isEpisode && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/15 px-2 py-0.5 text-[11px] font-semibold text-violet-300 ring-1 ring-violet-500/25">
-                          <CheckCircle2 className="size-3" />
-                          <span>Completo</span>
+                      {/* Episódio quando disponível no registro real */}
+                      {typeof epNum === "number" && epNum > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[11px] font-bold text-violet-300 ring-1 ring-violet-500/30">
+                          Episódio {epNum}
+                        </span>
+                      )}
+
+                      {/* Nota pessoal quando disponível */}
+                      {typeof scoreNum === "number" && scoreNum > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300 ring-1 ring-amber-500/25">
+                          <Star className="size-3 fill-amber-400 text-amber-400" />
+                          <span>Nota {Number(scoreNum).toFixed(scoreNum % 1 === 0 ? 0 : 1)}/10</span>
                         </span>
                       )}
 
@@ -450,13 +468,6 @@ export function ProfileRecentActivities({
                         <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300 ring-1 ring-rose-500/25">
                           <Heart className="size-3 fill-rose-500/80" />
                           <span>Favorito</span>
-                        </span>
-                      )}
-
-                      {/* Episódio quando disponível no registro real */}
-                      {typeof epNum === "number" && epNum > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[11px] font-bold text-violet-300 ring-1 ring-violet-500/30">
-                          Episódio {epNum}
                         </span>
                       )}
                     </div>
