@@ -1,6 +1,5 @@
 import {
   Check,
-  Film,
   Minus,
   Plus,
   Star,
@@ -9,6 +8,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { HikariImage } from "@/components/ui/hikari-image";
 import type {
   TrackingStatus,
   UserAnimeTrackingItem,
@@ -226,17 +226,14 @@ export function ProfileAnimeEditModal({
         <div className="flex items-center justify-between border-b border-white/[0.08] bg-[#140e24]/70 px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative size-12 sm:size-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#161226]">
-              {item.cover ? (
-                <img
-                  src={item.cover}
-                  alt={item.title}
-                  className="size-full object-cover"
-                />
-              ) : (
-                <div className="flex size-full items-center justify-center text-zinc-600">
-                  <Film className="size-5" />
-                </div>
-              )}
+              <HikariImage
+                src={item.cover}
+                alt={item.title}
+                loading="eager"
+                decoding="async"
+                fallbackClassName="bg-[#161226]"
+                className="size-full object-cover"
+              />
             </div>
 
             <div className="min-w-0">

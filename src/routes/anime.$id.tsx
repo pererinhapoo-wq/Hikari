@@ -88,6 +88,7 @@ const FavoritesEntityContext = createContext<FavoritesEntityContextType>({
 const useFavoritesEntity = () => useContext(FavoritesEntityContext);
 
 import { AnimeCard } from "@/components/anime-card";
+import { HikariImage } from "@/components/ui/hikari-image";
 const CommentsSection = lazy(() =>
   import("@/components/comments/CommentsSection").then((mod) => ({
     default: mod.CommentsSection,
@@ -1975,27 +1976,32 @@ function AnimePage() {
           <div className="mx-auto flex max-w-6xl flex-col max-sm:gap-3.5 sm:flex-row sm:gap-6">
             {/* CAPA VERTICAL SOBREPOSTA À ESQUERDA */}
             <div className="block">
-              <div className="w-28 max-sm:min-[380px]:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 sm:translate-y-8.5">
-                {anime.cover ? (() => {
-                  const coverAttrs = getResponsiveCoverAttrs(
-                    anime.cover,
-                    "card-lg",
-                  );
+              <div className="relative aspect-2/3 w-28 max-sm:min-[380px]:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 sm:translate-y-8.5">
+                {(() => {
+                  const coverAttrs = anime.cover
+                    ? getResponsiveCoverAttrs(anime.cover, "card-lg")
+                    : null;
                   return (
-                    <img
-                      src={coverAttrs.src}
-                      srcSet={coverAttrs.srcSet}
-                      sizes="(min-width: 640px) 176px, (min-width: 380px) 128px, 112px"
+                    <HikariImage
+                      src={coverAttrs ? coverAttrs.src : null}
+                      srcSet={coverAttrs?.srcSet}
+                      sizes={
+                        coverAttrs
+                          ? "(min-width: 640px) 176px, (min-width: 380px) 128px, 112px"
+                          : undefined
+                      }
+                      fallbackSrc={
+                        coverAttrs?.fallbackSrc ? anime.cover : undefined
+                      }
                       alt={title}
                       loading="eager"
                       decoding="async"
                       fetchPriority={shouldRenderPicture ? "auto" : "high"}
-                      className="aspect-2/3 w-full object-cover"
+                      fallbackClassName="bg-elevated"
+                      className="size-full object-cover"
                     />
                   );
-                })() : (
-                  <div className="aspect-2/3 bg-elevated" />
-                )}
+                })()}
               </div>
             </div>
 
@@ -3344,24 +3350,22 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
 
         {/* THUMBNAIL */}
         <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
-          {imgSrc && loadImage ? (
-            <img
-              src={imgSrc}
-              srcSet={fallbackCoverAttrs?.srcSet}
-              sizes={
-                fallbackCoverAttrs
-                  ? "(min-width: 640px) 144px, 128px"
-                  : undefined
-              }
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className={cn(
-                "size-full object-cover motion-safe:transition-transform motion-safe:duration-300 [@media(hover:hover)]:motion-safe:group-hover:scale-105 motion-reduce:transition-none",
-                watched && "opacity-75",
-              )}
-            />
-          ) : null}
+          <HikariImage
+            src={imgSrc}
+            srcSet={fallbackCoverAttrs?.srcSet}
+            sizes={
+              fallbackCoverAttrs
+                ? "(min-width: 640px) 144px, 128px"
+                : undefined
+            }
+            deferred={Boolean(imgSrc && !loadImage)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            fallbackClassName="bg-elevated"
+            loadedOpacityClass={watched ? "opacity-75" : "opacity-100"}
+            className="size-full object-cover [@media(hover:hover)]:motion-safe:group-hover:scale-105"
+          />
 
           <div className="absolute inset-0 bg-black/20 transition-colors motion-reduce:transition-none [@media(hover:hover)]:group-hover:bg-black/5" />
 
@@ -3868,15 +3872,15 @@ const ImagensSection = memo(function ImagensSection({
               className="group relative h-52 sm:h-60 w-36 sm:w-44 shrink-0 overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0e0c1a] shadow-md [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/60 [@media(hover:hover)]:hover:shadow-[0_8px_30px_rgba(168,85,247,0.25)] cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 p-2 flex flex-col items-center justify-center"
             >
               <div className="relative size-full flex items-center justify-center overflow-hidden rounded-xl bg-[#07060d]">
-                {idx < visibleImgLimit ? (
-                  <img
-                    src={imgUrl}
-                    alt={`Arte promocional de ${title} (${idx + 1})`}
-                    className="size-full object-contain motion-safe:transition-transform motion-safe:duration-500 [@media(hover:hover)]:group-hover:scale-105"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : null}
+                <HikariImage
+                  src={imgUrl}
+                  deferred={idx >= visibleImgLimit}
+                  alt={`Arte promocional de ${title} (${idx + 1})`}
+                  loading="lazy"
+                  decoding="async"
+                  fallbackClassName="bg-[#07060d]"
+                  className="size-full object-contain [@media(hover:hover)]:group-hover:scale-105"
+                />
               </div>
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity flex items-end p-2.5 pointer-events-none">
                 <span className="text-[11px] font-semibold text-purple-200 drop-shadow">
@@ -3907,14 +3911,16 @@ const ImagensSection = memo(function ImagensSection({
 
           {/* Imagem inteira: object-contain, sem cortes, proporção original intacta */}
           <div
-            className="relative flex items-center justify-center max-h-[88vh] max-w-[92vw] select-none"
+            className="relative flex min-h-[220px] min-w-[180px] items-center justify-center overflow-hidden rounded-xl border border-purple-500/20 bg-[#090812] shadow-[0_20px_60px_rgba(0,0,0,0.85)] max-h-[88vh] max-w-[92vw] select-none"
             onClick={(e) => e.stopPropagation()}
           >
-            <img
+            <HikariImage
               src={selectedImage}
               alt={`Visualização completa de ${title}`}
+              loading="eager"
               decoding="async"
-              className="max-h-[88vh] max-w-[92vw] w-auto h-auto object-contain rounded-xl border border-purple-500/20 bg-[#090812] shadow-[0_20px_60px_rgba(0,0,0,0.85)]"
+              fallbackClassName="bg-[#090812]"
+              className="max-h-[88vh] max-w-[92vw] w-auto h-auto object-contain"
             />
           </div>
         </div>
@@ -4020,17 +4026,11 @@ const ElencoCard = memo(function ElencoCard({
   char: AnimeCharacter;
   loadImage: boolean;
 }) {
-  const [imgError, setImgError] = useState(false);
   const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
-
-  useEffect(() => {
-    setImgError(false);
-  }, [char.image]);
 
   const charName = char.name?.full?.trim() || char.name?.native?.trim() || "";
   const isMain = (char.role ?? "").toUpperCase() === "MAIN";
   const roleLabel = isMain ? "Protagonista" : "Secundário";
-  const showImage = Boolean(char.image) && !imgError;
 
   const charTargetId = char.id ? String(char.id) : charName;
   const isFav = isEntityFavorited("character", charTargetId, charName);
@@ -4053,24 +4053,15 @@ const ElencoCard = memo(function ElencoCard({
     <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
       {/* Imagem retangular do personagem (elemento visual principal, nunca circular) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
-        {showImage ? (
-          loadImage ? (
-            <img
-              src={char.image}
-              alt={charName}
-              onError={() => setImgError(true)}
-              loading="lazy"
-              decoding="async"
-              className="size-full object-cover object-top motion-safe:transition-transform motion-safe:duration-500 ease-out [@media(hover:hover)]:group-hover:scale-105"
-            />
-          ) : (
-            <div className="size-full bg-[#0d0c16]" />
-          )
-        ) : (
-          <div className="flex size-full items-center justify-center bg-gradient-to-b from-[#17132a] to-[#0d0b18] font-display text-xl sm:text-2xl font-bold text-purple-400/80">
-            {charName.charAt(0)}
-          </div>
-        )}
+        <HikariImage
+          src={char.image}
+          deferred={Boolean(char.image && !loadImage)}
+          alt={charName}
+          loading="lazy"
+          decoding="async"
+          fallbackClassName="bg-[#0d0c16]"
+          className="size-full object-cover object-top [@media(hover:hover)]:group-hover:scale-105"
+        />
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
 
@@ -4407,14 +4398,8 @@ const DubladorCard = memo(function DubladorCard({
   isSelected?: boolean;
   onSelect?: () => void;
 }) {
-  const [imgError, setImgError] = useState(false);
   const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
 
-  useEffect(() => {
-    setImgError(false);
-  }, [item.vaImage]);
-
-  const showImage = Boolean(item.vaImage) && !imgError;
   const vaTargetId = item.vaId ? String(item.vaId) : item.vaName;
   const isFav = isEntityFavorited("person", vaTargetId, item.vaName);
 
@@ -4452,29 +4437,15 @@ const DubladorCard = memo(function DubladorCard({
     >
       {/* Imagem retangular do dublador (foto real da pessoa) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
-        {showImage ? (
-          loadImage ? (
-            <img
-              src={item.vaImage}
-              alt={item.vaName}
-              onError={() => setImgError(true)}
-              loading="lazy"
-              decoding="async"
-              className="size-full object-cover object-top motion-safe:transition-transform motion-safe:duration-500 ease-out [@media(hover:hover)]:group-hover:scale-105"
-            />
-          ) : (
-            <div className="size-full bg-[#0d0c16]" />
-          )
-        ) : (
-          <div className="flex size-full flex-col items-center justify-center bg-gradient-to-b from-[#18132d] to-[#0c0a15] p-2.5 text-center">
-            <span className="font-display text-xl sm:text-2xl font-black text-purple-400/80">
-              {item.vaName.charAt(0).toUpperCase()}
-            </span>
-            <span className="mt-1 text-[8.5px] sm:text-[9.5px] text-zinc-500 uppercase tracking-widest font-medium">
-              Dublador
-            </span>
-          </div>
-        )}
+        <HikariImage
+          src={item.vaImage}
+          deferred={Boolean(item.vaImage && !loadImage)}
+          alt={item.vaName}
+          loading="lazy"
+          decoding="async"
+          fallbackClassName="bg-[#0d0c16]"
+          className="size-full object-cover object-top [@media(hover:hover)]:group-hover:scale-105"
+        />
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />
 
@@ -4741,15 +4712,9 @@ const StaffCard = memo(function StaffCard({
   isSelected?: boolean;
   onSelect?: () => void;
 }) {
-  const [imgError, setImgError] = useState(false);
   const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
 
-  useEffect(() => {
-    setImgError(false);
-  }, [item.image]);
-
   const roleText = staffRoleLabel(item.role);
-  const showImage = Boolean(item.image) && !imgError;
 
   const isStudio = Boolean(item.isStudio);
   const targetType = isStudio ? "studio" : "person";
@@ -4809,43 +4774,30 @@ const StaffCard = memo(function StaffCard({
           "border-purple-500/80 ring-2 ring-purple-500/90 shadow-[0_0_20px_rgba(168,85,247,0.35)] bg-[#141026]",
       )}
     >
-      {/* Imagem retangular (logo real para estúdio, retrato real para profissional ou card tipográfico elegante) */}
+      {/* Imagem retangular (logo real para estúdio, retrato real para profissional ou fundo chapado) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
-        {item.isStudio && showImage ? (
-          <div className="flex size-full items-center justify-center p-2.5 sm:p-3 bg-[#0d0c16]">
-            {loadImage ? (
-              <img
-                src={item.image}
-                alt={item.name}
-                onError={() => setImgError(true)}
-                loading="lazy"
-                decoding="async"
-                className="max-h-full max-w-full object-contain motion-safe:transition-transform motion-safe:duration-500 [@media(hover:hover)]:group-hover:scale-105"
-              />
-            ) : null}
-          </div>
-        ) : !item.isStudio && showImage ? (
-          loadImage ? (
-            <img
+        {isStudio ? (
+          <div className="relative flex size-full items-center justify-center p-2.5 sm:p-3 bg-[#0d0c16]">
+            <HikariImage
               src={item.image}
+              deferred={Boolean(item.image && !loadImage)}
               alt={item.name}
-              onError={() => setImgError(true)}
-              className="size-full object-cover object-top motion-safe:transition-transform motion-safe:duration-500 [@media(hover:hover)]:group-hover:scale-105"
               loading="lazy"
               decoding="async"
+              fallbackClassName="bg-[#0d0c16]"
+              className="max-h-full max-w-full object-contain [@media(hover:hover)]:group-hover:scale-105"
             />
-          ) : (
-            <div className="size-full bg-[#0d0c16]" />
-          )
-        ) : (
-          <div className="flex size-full flex-col items-center justify-center bg-gradient-to-b from-[#18132d] to-[#0c0a15] p-2.5 text-center">
-            <span className="font-display text-xl sm:text-2xl font-black text-purple-400/80">
-              {item.name.charAt(0).toUpperCase()}
-            </span>
-            <span className="mt-1 text-[8.5px] sm:text-[9.5px] text-zinc-500 uppercase tracking-widest font-medium">
-              {item.isStudio ? "Estúdio" : "Equipe"}
-            </span>
           </div>
+        ) : (
+          <HikariImage
+            src={item.image}
+            deferred={Boolean(item.image && !loadImage)}
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
+            fallbackClassName="bg-[#0d0c16]"
+            className="size-full object-cover object-top [@media(hover:hover)]:group-hover:scale-105"
+          />
         )}
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#100e1b] via-transparent to-black/20 opacity-60" />

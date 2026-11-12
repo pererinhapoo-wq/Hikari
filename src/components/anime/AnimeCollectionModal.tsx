@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import {
   Check,
-  Film,
   Minus,
   Plus,
   Star,
@@ -10,6 +9,7 @@ import {
   Loader2,
   Bookmark,
 } from "lucide-react";
+import { HikariImage } from "@/components/ui/hikari-image";
 import type { TrackingStatus } from "@/types/profile-tracking";
 import { useScrollLock } from "@/lib/scroll-lock";
 
@@ -263,17 +263,14 @@ export function AnimeCollectionModal({
           <div className="flex items-start gap-3.5 pr-8">
             {/* Pôster com proporção 3:4 */}
             <div className="relative aspect-[3/4] w-14 sm:w-16 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#151224] shadow-md">
-              {anime.cover ? (
-                <img
-                  src={anime.cover}
-                  alt={anime.title || "Capa do anime"}
-                  className="size-full object-cover"
-                />
-              ) : (
-                <div className="flex size-full items-center justify-center text-zinc-600">
-                  <Film className="size-5" />
-                </div>
-              )}
+              <HikariImage
+                src={anime.cover}
+                alt={anime.title || "Capa do anime"}
+                loading="eager"
+                decoding="async"
+                fallbackClassName="bg-[#151224]"
+                className="size-full object-cover"
+              />
             </div>
 
             {/* Informações do Anime */}
@@ -311,6 +308,45 @@ export function AnimeCollectionModal({
         </div>
 
         {/* Corpo com scroll suave */}
+        {loading ? (
+          <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto min-h-0">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="h-3.5 w-32 rounded hikari-modal-skeleton-shimmer" />
+                <div className="h-3.5 w-20 rounded hikari-modal-skeleton-shimmer" />
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {Array.from({ length: 5 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="h-10 sm:h-11 rounded-xl hikari-modal-skeleton-shimmer"
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="h-3.5 w-36 rounded hikari-modal-skeleton-shimmer" />
+                <div className="h-3.5 w-24 rounded hikari-modal-skeleton-shimmer" />
+              </div>
+              <div className="h-2 w-full rounded-full hikari-modal-skeleton-shimmer" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="size-10 shrink-0 rounded-xl hikari-modal-skeleton-shimmer" />
+                <div className="h-10 flex-1 rounded-xl hikari-modal-skeleton-shimmer" />
+                <div className="size-10 shrink-0 rounded-xl hikari-modal-skeleton-shimmer" />
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="h-3.5 w-28 rounded hikari-modal-skeleton-shimmer" />
+                <div className="h-3.5 w-24 rounded hikari-modal-skeleton-shimmer" />
+              </div>
+              <div className="h-11 w-full rounded-xl hikari-modal-skeleton-shimmer" />
+            </div>
+          </div>
+        ) : (
         <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto min-h-0">
           {/* 1. SELEÇÃO DE STATUS */}
           <div className="space-y-2.5">
@@ -500,6 +536,7 @@ export function AnimeCollectionModal({
             </div>
           </div>
         </div>
+        )}
 
         {/* Rodapé com Ações */}
         <div className="border-t border-white/[0.07] p-3.5 sm:p-4 bg-gradient-to-t from-white/[0.02] to-transparent shrink-0 flex items-center justify-between gap-2">

@@ -7,7 +7,6 @@ import {
   CheckCircle,
   CheckCircle2,
   Clock,
-  Film,
   Heart,
   ListPlus,
   Play,
@@ -338,30 +337,8 @@ export function ProfileHistorySpace({
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
-                      fallback={
-                        <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
-                          {isFavorite ? (
-                            <Heart className="size-6 text-rose-400" />
-                          ) : isList ? (
-                            <ListPlus className="size-6 text-amber-400" />
-                          ) : isTracking ? (
-                            trackingStatus === "watching" ? (
-                              <Play className="size-6 text-emerald-400" />
-                            ) : trackingStatus === "completed" ? (
-                              <CheckCircle2 className="size-6 text-violet-400" />
-                            ) : trackingStatus === "on_hold" ? (
-                              <Clock className="size-6 text-amber-400" />
-                            ) : trackingStatus === "dropped" ? (
-                              <XCircle className="size-6 text-rose-400" />
-                            ) : (
-                              <Bookmark className="size-6 text-sky-400" />
-                            )
-                          ) : (
-                            <Film className="size-6" />
-                          )}
-                        </div>
-                      }
+                      fallbackClassName="bg-[#161424]"
+                      className="size-full object-cover [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
                     />
                   </div>
 

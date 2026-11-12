@@ -3,7 +3,6 @@ import {
   Check,
   Eye,
   Globe,
-  Loader2,
   Lock,
   MessageSquare,
   Save,
@@ -18,6 +17,7 @@ import {
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { triggerProfileSaveNotification } from "@/components/profile/ProfileSaveNotification";
+import { HikariImage } from "@/components/ui/hikari-image";
 import { useScrollLock } from "@/lib/scroll-lock";
 import {
   getMyBlockedUsers,
@@ -325,9 +325,47 @@ export function ProfilePrivacyModal({
 
         {/* Formulário de Configurações com Rolagem Suave */}
         {!isPrivacyReady ? (
-          <div className="flex-1 min-h-[260px] flex flex-col items-center justify-center gap-3 px-6 py-12 text-zinc-400">
-            <Loader2 className="size-6 animate-spin text-violet-400" />
-            <p className="text-xs sm:text-sm">Carregando configurações de privacidade...</p>
+          <div className="flex-1 min-h-[260px] overflow-y-auto px-3.5 py-3.5 sm:px-6 sm:py-5 pb-8 sm:pb-6 space-y-4 sm:space-y-6">
+            {Array.from({ length: 2 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4"
+              >
+                <div className="space-y-2 pr-4 flex-1">
+                  <div className="h-4 w-36 rounded hikari-modal-skeleton-shimmer" />
+                  <div className="h-3 w-full max-w-sm rounded hikari-modal-skeleton-shimmer" />
+                </div>
+                <div className="h-6 w-11 shrink-0 rounded-full hikari-modal-skeleton-shimmer" />
+              </div>
+            ))}
+
+            <div className="space-y-4">
+              <div className="space-y-1.5 px-1">
+                <div className="h-3 w-28 rounded hikari-modal-skeleton-shimmer" />
+                <div className="h-4 w-44 rounded hikari-modal-skeleton-shimmer" />
+                <div className="h-3 w-64 rounded hikari-modal-skeleton-shimmer" />
+              </div>
+
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3.5 sm:p-4 space-y-3"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className="size-7 shrink-0 rounded-lg hikari-modal-skeleton-shimmer" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3.5 w-36 rounded hikari-modal-skeleton-shimmer" />
+                      <div className="h-3 w-52 rounded hikari-modal-skeleton-shimmer" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div className="h-14 rounded-xl hikari-modal-skeleton-shimmer" />
+                    <div className="h-14 rounded-xl hikari-modal-skeleton-shimmer" />
+                    <div className="h-14 rounded-xl hikari-modal-skeleton-shimmer" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
         <form
@@ -493,9 +531,22 @@ export function ProfilePrivacyModal({
                 )}
 
                 {blockedLoading ? (
-                  <div className="flex items-center justify-center py-6 text-zinc-400 gap-2 text-xs">
-                    <Loader2 className="size-4 animate-spin text-violet-400" />
-                    <span>Carregando usuários bloqueados...</span>
+                  <div className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.06] bg-black/20 p-2 sm:p-3">
+                    {Array.from({ length: 3 }).map((_, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between py-2.5 first:pt-0.5 last:pb-0.5 gap-2.5"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className="size-8 sm:size-9 shrink-0 rounded-full hikari-modal-skeleton-shimmer" />
+                          <div className="space-y-1.5 min-w-0 flex-1">
+                            <div className="h-3.5 w-28 rounded hikari-modal-skeleton-shimmer" />
+                            <div className="h-2.5 w-20 rounded hikari-modal-skeleton-shimmer" />
+                          </div>
+                        </div>
+                        <div className="h-7 w-22 shrink-0 rounded-lg sm:rounded-xl hikari-modal-skeleton-shimmer" />
+                      </div>
+                    ))}
                   </div>
                 ) : blockedUsers.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-white/[0.08] bg-white/[0.01] p-4 sm:p-5 text-center">
@@ -514,11 +565,16 @@ export function ProfilePrivacyModal({
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           {item.image ? (
-                            <img
-                              src={item.image}
-                              alt={item.name || item.username || "Avatar"}
-                              className="size-8 sm:size-9 rounded-full object-cover border border-white/10 bg-zinc-800 shrink-0"
-                            />
+                            <div className="relative size-8 sm:size-9 rounded-full overflow-hidden border border-white/10 bg-zinc-800 shrink-0">
+                              <HikariImage
+                                src={item.image}
+                                alt={item.name || item.username || "Avatar"}
+                                loading="lazy"
+                                decoding="async"
+                                fallbackClassName="bg-zinc-800"
+                                className="size-full object-cover"
+                              />
+                            </div>
                           ) : (
                             <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-full bg-violet-600/30 border border-violet-500/30 text-xs font-bold text-violet-200 uppercase">
                               {(item.name?.[0] || item.username?.[0] || "U")}

@@ -1,6 +1,6 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo } from "react";
 import { Link } from "@tanstack/react-router";
-import { Film } from "lucide-react";
+import { HikariImage } from "@/components/ui/hikari-image";
 import { cleanEpisodeDisplay, type PublishedEpisode } from "@/lib/published-episodes";
 import { cn } from "@/lib/utils";
 
@@ -11,9 +11,6 @@ export const EpisodeCard = memo(function EpisodeCard({
   episode: PublishedEpisode;
   priority?: boolean;
 }) {
-  const [thumbFailed, setThumbFailed] = useState(false);
-  const hasValidThumbnail = Boolean(episode.thumbnail && !thumbFailed);
-
   const formattedSubtitle = useMemo(() => {
     return cleanEpisodeDisplay(
       episode.episodeNumber,
@@ -74,28 +71,17 @@ export const EpisodeCard = memo(function EpisodeCard({
             "group-active:border-purple-400/80",
           )}
         >
-          {hasValidThumbnail ? (
-            /* Imagem real correspondente ao vídeo do episódio */
-            <img
-              src={episode.thumbnail}
-              alt=""
-              width={320}
-              height={180}
-              loading={priority ? "eager" : "lazy"}
-              decoding="async"
-              fetchPriority={priority ? "high" : "auto"}
-              onError={() => setThumbFailed(true)}
-              className="size-full object-cover transition-opacity duration-200 motion-reduce:transition-none"
-            />
-          ) : (
-            /* Tratamento gracioso caso a miniatura do episódio não esteja acessível (nunca substitui por capa/banner) */
-            <div className="relative flex size-full flex-col items-center justify-center bg-gradient-to-br from-[#17122a] via-[#0f0d19] to-[#09080e] p-2 sm:p-3 text-center">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.12)_0%,transparent_70%)]" />
-              <div className="relative flex size-7 sm:size-9 items-center justify-center rounded-full bg-purple-950/80 border border-purple-500/30 text-purple-300 shadow-md">
-                <Film className="size-3.5 sm:size-4 text-purple-300" />
-              </div>
-            </div>
-          )}
+          <HikariImage
+            src={episode.thumbnail}
+            alt=""
+            width={320}
+            height={180}
+            loading={priority ? "eager" : "lazy"}
+            decoding="async"
+            fetchPriority={priority ? "high" : "auto"}
+            fallbackClassName="bg-[#0f0d1a]"
+            className="size-full object-cover"
+          />
 
           {/* Sombra interna com gradiente escuro */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60" />

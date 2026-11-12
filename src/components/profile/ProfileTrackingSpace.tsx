@@ -127,21 +127,14 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
             alt=""
             loading="lazy"
             decoding="async"
+            fallbackClassName="bg-[#0d0c16]"
             className="
               size-full
               object-cover
-              transition-transform
-              duration-300
-              ease-out
               [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
               group-active:scale-[1.01]
               motion-reduce:transform-none
             "
-            fallback={
-              <div className="flex size-full items-center justify-center font-display text-base text-zinc-600">
-                {item.title.slice(0, 1)}
-              </div>
-            }
           />
 
           {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}

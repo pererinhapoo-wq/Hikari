@@ -76,7 +76,6 @@ const FavoriteGridCard = React.memo(function FavoriteGridCard({
   onEntityClick,
 }: FavoriteGridCardProps) {
   const cfg = CATEGORY_CONFIG[item.targetType] || CATEGORY_CONFIG.anime;
-  const Icon = cfg.icon;
   const isAnime = item.targetType === "anime";
   const isStudio = item.targetType === "studio" || item.targetType === "company";
   const isClickableEntity = isStudio || item.targetType === "person";
@@ -108,37 +107,19 @@ const FavoriteGridCard = React.memo(function FavoriteGridCard({
         items-center
         justify-center
       ">
-        {isAnime ? (
-          <ProfileAnimeImage
-            src={item.image}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="size-full transition-transform duration-300 ease-out motion-reduce:transform-none object-cover object-center scale-[0.95] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98] group-active:scale-[0.96]"
-            fallback={
-              <div className="flex size-full items-center justify-center text-zinc-600">
-                <Icon className="size-8" />
-              </div>
-            }
-          />
-        ) : item.image ? (
-          <img
-            src={item.image}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className={cn(
-              "size-full transition-transform duration-300 ease-out motion-reduce:transform-none",
-              isStudio
-                ? "object-contain p-4 scale-[0.94] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.97]"
-                : "object-cover object-center scale-[0.95] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98] group-active:scale-[0.96]",
-            )}
-          />
-        ) : (
-          <div className="flex size-full items-center justify-center text-zinc-600">
-            <Icon className="size-8" />
-          </div>
-        )}
+        <ProfileAnimeImage
+          src={item.image}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          fallbackClassName="bg-[#0d0c16]"
+          className={cn(
+            "size-full motion-reduce:transform-none",
+            !isAnime && isStudio
+              ? "object-contain p-4 scale-[0.94] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.97]"
+              : "object-cover object-center scale-[0.95] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98] group-active:scale-[0.96]",
+          )}
+        />
 
         {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}
         <div

@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit2,
-  Film,
   Heart,
   MessageSquare,
   Trash2,
@@ -276,12 +275,8 @@ export function ProfileCommentsSpace({
                         alt=""
                         loading="lazy"
                         decoding="async"
+                        fallbackClassName="bg-[#131020]"
                         className="size-full object-cover"
-                        fallback={
-                          <div className="grid size-full place-items-center text-zinc-500">
-                            <Film className="size-4" />
-                          </div>
-                        }
                       />
                     </div>
 

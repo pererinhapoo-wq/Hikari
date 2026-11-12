@@ -111,12 +111,8 @@ export function ProfileListsSpace({
                               alt=""
                               loading="lazy"
                               decoding="async"
-                              className="size-full object-cover transition-transform duration-500 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
-                              fallback={
-                                <div className="flex size-full items-center justify-center rounded-lg bg-white/[0.02] text-zinc-700">
-                                  <Film className="size-4" />
-                                </div>
-                              }
+                              fallbackClassName="rounded-lg bg-[#141220]"
+                              className="size-full object-cover [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
                             />
                           </div>
                         ))}

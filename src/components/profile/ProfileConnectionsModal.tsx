@@ -8,6 +8,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { HikariImage } from "@/components/ui/hikari-image";
 import type { FollowRequestItem, ProfileUser } from "@/lib/profile.functions";
 import { useScrollLock } from "@/lib/scroll-lock";
 
@@ -167,8 +168,17 @@ export function ProfileConnectionsModal({
               {Array.from({ length: 4 }).map((_, idx) => (
                 <div
                   key={idx}
-                  className="h-16 animate-pulse rounded-2xl bg-white/[0.04]"
-                />
+                  className="flex h-16 items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="size-10 shrink-0 rounded-xl hikari-modal-skeleton-shimmer" />
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="h-3.5 w-28 rounded hikari-modal-skeleton-shimmer" />
+                      <div className="h-2.5 w-20 rounded hikari-modal-skeleton-shimmer" />
+                    </div>
+                  </div>
+                  <div className="h-7 w-16 shrink-0 rounded-xl hikari-modal-skeleton-shimmer" />
+                </div>
               ))}
             </div>
           ) : activeTab === "requests" ? (
@@ -199,13 +209,14 @@ export function ProfileConnectionsModal({
                       onClick={onClose}
                       className="flex items-center gap-3 min-w-0 flex-1 group"
                     >
-                      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm text-violet-300 ring-1 ring-white/10">
+                      <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm text-violet-300 ring-1 ring-white/10">
                         {req.image ? (
-                          <img
+                          <HikariImage
                             src={req.image}
                             alt=""
                             loading="lazy"
                             decoding="async"
+                            fallbackClassName="bg-[#161424]"
                             className="size-full object-cover"
                           />
                         ) : (
@@ -281,13 +292,14 @@ export function ProfileConnectionsModal({
                     onClick={onClose}
                     className="flex items-center gap-3 min-w-0 flex-1 group"
                   >
-                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm text-violet-300 ring-1 ring-white/10">
+                    <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-sm text-violet-300 ring-1 ring-white/10">
                       {person.image ? (
-                        <img
+                        <HikariImage
                           src={person.image}
                           alt=""
                           loading="lazy"
                           decoding="async"
+                          fallbackClassName="bg-[#161424]"
                           className="size-full object-cover"
                         />
                       ) : (

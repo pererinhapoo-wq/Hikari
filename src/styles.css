@@ -449,12 +449,12 @@ textarea:focus {
   }
 }
 
-@keyframes hikariCoverShimmerSweep {
+@keyframes hikariImageShimmer {
   0% {
-    transform: translate3d(-100%, 0, 0);
+    background-position: 200% 0;
   }
   100% {
-    transform: translate3d(100%, 0, 0);
+    background-position: -200% 0;
   }
 }
 
@@ -482,23 +482,39 @@ textarea:focus {
   will-change: transform;
 }
 
+.hikari-image-shimmer,
 .hikari-anime-cover-loader {
-  overflow: hidden;
-  background: #131020;
+  background-color: #131020;
+  background-image: linear-gradient(
+    90deg,
+    #131020 0%,
+    #1f1935 35%,
+    rgba(168, 85, 247, 0.22) 50%,
+    #1f1935 65%,
+    #131020 100%
+  );
+  background-size: 200% 100%;
+  background-position: 200% 0;
+  animation: hikariImageShimmer 1.4s linear infinite;
 }
 
-.hikari-anime-cover-loader::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    105deg,
-    transparent 20%,
+.hikari-modal-skeleton-shimmer {
+  background-color: rgba(255, 255, 255, 0.04);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
     rgba(168, 85, 247, 0.14) 50%,
-    transparent 80%
+    rgba(255, 255, 255, 0.04) 100%
   );
-  animation: hikariCoverShimmerSweep 1.35s ease-in-out infinite;
-  will-change: transform;
+  background-size: 200% 100%;
+  background-position: 200% 0;
+  animation: hikariImageShimmer 2.2s linear infinite;
+}
+
+.hikari-image-fade {
+  transition-property: opacity, transform;
+  transition-duration: 200ms, 300ms;
+  transition-timing-function: ease-out, ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -513,15 +529,20 @@ textarea:focus {
     opacity: 0.4;
   }
 
+  .hikari-image-shimmer,
   .hikari-anime-cover-loader {
-    background: #161226;
+    animation: none !important;
+    background-image: none !important;
+    background-color: #161226 !important;
   }
 
-  .hikari-anime-cover-loader::after {
+  .hikari-modal-skeleton-shimmer {
     animation: none !important;
-    transform: none !important;
-    background: rgba(168, 85, 247, 0.08);
+    background-image: none !important;
+    background-color: rgba(255, 255, 255, 0.06) !important;
+  }
+
+  .hikari-image-fade {
+    transition: none !important;
   }
 }
-
-

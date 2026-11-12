@@ -1,10 +1,11 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Bookmark,
   BookmarkCheck,
 } from "lucide-react";
 
+import { HikariImage } from "@/components/ui/hikari-image";
 import {
   displayTitle,
   type SlimAnime,
@@ -34,10 +35,6 @@ export const AnimeCard = memo(function AnimeCard({
   priority?: boolean;
   showScoreBadge?: boolean;
 }) {
-  const [failedOptimizedFor, setFailedOptimizedFor] = useState<string | null>(
-    null,
-  );
-
   const { user } = useCurrentUserState();
   const canBookmark = showBookmark && Boolean(user);
 
@@ -59,7 +56,6 @@ export const AnimeCard = memo(function AnimeCard({
   const coverVariant =
     size === "sm" ? "card-sm" : size === "lg" ? "card-lg" : "card-md";
   const coverAttrs = getResponsiveCoverAttrs(anime.cover, coverVariant);
-  const useOriginalFallback = failedOptimizedFor === anime.cover;
 
   const primaryGenre = anime.genres?.[0]
     ? GENRE_PT[anime.genres[0]] || anime.genres[0]
@@ -109,42 +105,27 @@ export const AnimeCard = memo(function AnimeCard({
           group-active:border-purple-400
           group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
         ">
-          {anime.cover ? (
-            loadImage ? (
-              <img
-                src={useOriginalFallback ? anime.cover : coverAttrs.src}
-                srcSet={useOriginalFallback ? undefined : coverAttrs.srcSet}
-                sizes={useOriginalFallback ? undefined : coverAttrs.sizes}
-                alt=""
-                width={230}
-                height={345}
-                onError={() => {
-                  if (!useOriginalFallback && coverAttrs.fallbackSrc) {
-                    setFailedOptimizedFor(anime.cover);
-                  }
-                }}
-                className="
-                  size-full
-                  object-cover
-                  transition-transform
-                  duration-300
-                  ease-out
-                  group-hover:scale-[1.03]
-                  group-active:scale-[1.01]
-                  motion-reduce:transform-none
-                "
-                loading={priority ? "eager" : "lazy"}
-                decoding="async"
-                fetchPriority={priority ? "high" : "auto"}
-              />
-            ) : (
-              <div className="size-full bg-[#0d0c16]" />
-            )
-          ) : (
-            <div className="flex size-full items-center justify-center px-2 text-center font-display text-base text-zinc-600">
-              {title.slice(0, 1)}
-            </div>
-          )}
+          <HikariImage
+            src={anime.cover ? coverAttrs.src : null}
+            srcSet={anime.cover ? coverAttrs.srcSet : undefined}
+            sizes={anime.cover ? coverAttrs.sizes : undefined}
+            fallbackSrc={coverAttrs.fallbackSrc ? anime.cover : undefined}
+            deferred={Boolean(anime.cover && !loadImage)}
+            alt=""
+            width={230}
+            height={345}
+            loading={priority ? "eager" : "lazy"}
+            decoding="async"
+            fetchPriority={priority ? "high" : "auto"}
+            fallbackClassName="bg-[#0d0c16]"
+            className="
+              size-full
+              object-cover
+              group-hover:scale-[1.03]
+              group-active:scale-[1.01]
+              motion-reduce:transform-none
+            "
+          />
         </div>
 
         {/* Informações estritamente FORA do pôster */}

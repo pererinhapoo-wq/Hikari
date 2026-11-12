@@ -26,6 +26,7 @@ import {
   SearchCategorySelector,
   type SearchCategory,
 } from "@/components/search/SearchCategorySelector";
+import { HikariImage } from "@/components/ui/hikari-image";
 import { useScrollLock } from "@/lib/scroll-lock";
 
 interface SearchModalProps {
@@ -849,13 +850,13 @@ export function SearchModal({
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-2 animate-pulse"
+                      className="flex items-center gap-2.5 sm:gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-1.5 sm:p-2"
                     >
-                      <div className="h-13 w-9 shrink-0 rounded-md bg-white/10" />
+                      <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 rounded-md hikari-modal-skeleton-shimmer" />
                       <div className="flex-1 space-y-1.5">
-                        <div className="h-3.5 w-40 rounded bg-white/10" />
-                        <div className="h-2.5 w-24 rounded bg-white/5" />
-                        <div className="h-2.5 w-32 rounded bg-white/5" />
+                        <div className="h-3.5 w-40 rounded hikari-modal-skeleton-shimmer" />
+                        <div className="h-2.5 w-24 rounded hikari-modal-skeleton-shimmer" />
+                        <div className="h-2.5 w-32 rounded hikari-modal-skeleton-shimmer" />
                       </div>
                     </div>
                   ))}
@@ -907,23 +908,23 @@ export function SearchModal({
                         "
                       >
                         {/* Capa compacta */}
-                        {coverAttrs ? (
-                          <img
-                            src={coverAttrs.src}
-                            srcSet={coverAttrs.srcSet}
+                        <div className="relative h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#131020] ring-1 ring-white/10">
+                          <HikariImage
+                            src={coverAttrs?.src}
+                            srcSet={coverAttrs?.srcSet}
                             sizes="40px"
+                            fallbackSrc={
+                              coverAttrs?.fallbackSrc ? anime.cover : undefined
+                            }
                             alt=""
                             width={40}
                             height={56}
                             loading="lazy"
                             decoding="async"
-                            className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 rounded-md object-cover ring-1 ring-white/10 transition-transform duration-150 group-hover:scale-105"
+                            fallbackClassName="bg-[#131020]"
+                            className="size-full object-cover group-hover:scale-105"
                           />
-                        ) : (
-                          <div className="flex h-13 w-9 sm:h-14 sm:w-10 shrink-0 items-center justify-center rounded-md bg-white/[0.04] text-zinc-500 ring-1 ring-white/10">
-                            <Clapperboard className="size-3.5" />
-                          </div>
-                        )}
+                        </div>
 
                         {/* Metadados alinhados e elegantes */}
                         <div className="min-w-0 flex-1">
@@ -1008,12 +1009,12 @@ export function SearchModal({
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-2 animate-pulse"
+                      className="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-1.5 sm:p-2"
                     >
-                      <div className="size-9 shrink-0 rounded-xl bg-white/10" />
+                      <div className="size-9 sm:size-10 shrink-0 rounded-xl hikari-modal-skeleton-shimmer" />
                       <div className="flex-1 space-y-1.5">
-                        <div className="h-3.5 w-32 rounded bg-white/10" />
-                        <div className="h-2.5 w-18 rounded bg-white/5" />
+                        <div className="h-3.5 w-32 rounded hikari-modal-skeleton-shimmer" />
+                        <div className="h-2.5 w-18 rounded hikari-modal-skeleton-shimmer" />
                       </div>
                     </div>
                   ))}
@@ -1075,11 +1076,14 @@ export function SearchModal({
                           "
                         >
                           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-xs sm:text-sm text-[#c084fc] ring-1 ring-purple-500/20 group-hover:ring-purple-500/40 transition-all">
+                            <div className="relative flex size-9 sm:size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-xs sm:text-sm text-[#c084fc] ring-1 ring-purple-500/20 group-hover:ring-purple-500/40 transition-colors">
                               {person.avatarUrl ? (
-                                <img
+                                <HikariImage
                                   src={person.avatarUrl}
                                   alt=""
+                                  loading="lazy"
+                                  decoding="async"
+                                  fallbackClassName="bg-[#161424]"
                                   className="size-full object-cover"
                                 />
                               ) : (
@@ -1141,12 +1145,12 @@ export function SearchModal({
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-2 animate-pulse"
+                      className="flex items-center gap-2.5 sm:gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-1.5 sm:p-2"
                     >
-                      <div className="h-13 w-9 shrink-0 rounded-md bg-white/10" />
+                      <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 rounded-md hikari-modal-skeleton-shimmer" />
                       <div className="flex-1 space-y-1.5">
-                        <div className="h-3.5 w-40 rounded bg-white/10" />
-                        <div className="h-2.5 w-24 rounded bg-white/5" />
+                        <div className="h-3.5 w-40 rounded hikari-modal-skeleton-shimmer" />
+                        <div className="h-2.5 w-24 rounded hikari-modal-skeleton-shimmer" />
                       </div>
                     </div>
                   ))}
@@ -1170,19 +1174,15 @@ export function SearchModal({
 
                     const itemContent = (
                       <>
-                        <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#161424] ring-1 ring-white/10">
-                          {imageSrc ? (
-                            <img
-                              src={imageSrc}
-                              alt=""
-                              loading="lazy"
-                              className="size-full object-cover transition-transform duration-150 group-hover:scale-105"
-                            />
-                          ) : (
-                            <div className="flex size-full items-center justify-center text-zinc-500">
-                              <Sparkles className="size-4 text-amber-400" />
-                            </div>
-                          )}
+                        <div className="relative h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#161424] ring-1 ring-white/10">
+                          <HikariImage
+                            src={imageSrc}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            fallbackClassName="bg-[#161424]"
+                            className="size-full object-cover object-top group-hover:scale-105"
+                          />
                         </div>
 
                         <div className="min-w-0 flex-1">
@@ -1255,12 +1255,12 @@ export function SearchModal({
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-2 animate-pulse"
+                      className="flex items-center gap-2.5 sm:gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-1.5 sm:p-2"
                     >
-                      <div className="h-13 w-9 shrink-0 rounded-md bg-white/10" />
+                      <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 rounded-md hikari-modal-skeleton-shimmer" />
                       <div className="flex-1 space-y-1.5">
-                        <div className="h-3.5 w-40 rounded bg-white/10" />
-                        <div className="h-2.5 w-24 rounded bg-white/5" />
+                        <div className="h-3.5 w-40 rounded hikari-modal-skeleton-shimmer" />
+                        <div className="h-2.5 w-24 rounded hikari-modal-skeleton-shimmer" />
                       </div>
                     </div>
                   ))}
@@ -1286,19 +1286,15 @@ export function SearchModal({
 
                     const itemContent = (
                       <>
-                        <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#161424] ring-1 ring-white/10">
-                          {imageSrc ? (
-                            <img
-                              src={imageSrc}
-                              alt=""
-                              loading="lazy"
-                              className="size-full object-cover transition-transform duration-150 group-hover:scale-105"
-                            />
-                          ) : (
-                            <div className="flex size-full items-center justify-center text-zinc-500">
-                              <Clapperboard className="size-4 text-rose-400" />
-                            </div>
-                          )}
+                        <div className="relative h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#161424] ring-1 ring-white/10">
+                          <HikariImage
+                            src={imageSrc}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            fallbackClassName="bg-[#161424]"
+                            className="size-full object-cover object-top group-hover:scale-105"
+                          />
                         </div>
 
                         <div className="min-w-0 flex-1">

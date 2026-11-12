@@ -1,5 +1,4 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Film, Layers, Star } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import {
   getPersonWorks,
@@ -10,6 +9,7 @@ import {
   type StudioWorkAnime,
 } from "@/lib/entity-works";
 import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
+import { HikariImage } from "@/components/ui/hikari-image";
 import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
 
@@ -53,11 +53,6 @@ export const EntityHeader = memo(function EntityHeader({
 }: EntityHeaderProps) {
   const isStudio = type === "studio";
   const isDublador = type === "dublador";
-  const [imgError, setImgError] = useState(false);
-
-  useEffect(() => {
-    setImgError(false);
-  }, [image, name]);
 
   const categoryPrefix = isStudio
     ? "Produções"
@@ -65,9 +60,8 @@ export const EntityHeader = memo(function EntityHeader({
       ? "Dublagens"
       : "Trabalhos";
 
-  // Para Studios: usar exclusivamente logo oficial de getStudioLogo ou fallback elegante (nunca capa de anime)
+  // Para Studios: usar exclusivamente logo oficial de getStudioLogo (nunca capa de anime)
   const studioLogo = isStudio ? getStudioLogo(name) : null;
-  const initial = (name.trim().charAt(0) || "?").toUpperCase();
 
   return (
     <header className="relative flex items-center justify-between gap-3 sm:gap-4 border-b border-white/[0.08] pb-3.5 sm:pb-4">
@@ -89,40 +83,18 @@ export const EntityHeader = memo(function EntityHeader({
               : "size-11 sm:size-12 md:size-13 rounded-full bg-[#130f24] border border-purple-500/30",
           )}
         >
-          {isStudio ? (
-            studioLogo && !imgError ? (
-              <img
-                src={studioLogo}
-                alt={`Logo oficial de ${name}`}
-                onError={() => setImgError(true)}
-                className="size-full object-contain"
-                loading="eager"
-              />
-            ) : (
-              <div className="flex size-full items-center justify-center font-display text-sm font-bold text-indigo-300">
-                {initial}
-              </div>
-            )
-          ) : image && !imgError ? (
-            <img
-              src={image}
-              alt={`Fotografia de ${name}`}
-              onError={() => setImgError(true)}
-              className="size-full object-cover object-top"
-              loading="eager"
-            />
-          ) : (
-            <div
-              className={cn(
-                "flex size-full items-center justify-center font-display text-base font-bold shadow-inner",
-                isDublador
-                  ? "bg-gradient-to-br from-pink-900/60 to-purple-950/80 text-pink-200"
-                  : "bg-gradient-to-br from-purple-900/60 to-indigo-950/80 text-purple-200",
-              )}
-            >
-              {initial}
-            </div>
-          )}
+          <HikariImage
+            src={isStudio ? studioLogo : image}
+            alt={isStudio ? `Logo oficial de ${name}` : `Fotografia de ${name}`}
+            loading="eager"
+            decoding="async"
+            fallbackClassName={isStudio ? "bg-[#0c0a16]" : "bg-[#130f24]"}
+            className={
+              isStudio
+                ? "size-full object-contain"
+                : "size-full object-cover object-top"
+            }
+          />
         </div>
 
         {/* Textos: Nome completo sem reticências, título proporcional e equilibrado */}
@@ -208,21 +180,14 @@ export const StudioAnimeCard = memo(function StudioAnimeCard({
             alt=""
             loading="lazy"
             decoding="async"
+            fallbackClassName="bg-[#0d0c16]"
             className="
               size-full
               object-cover
-              transition-transform
-              duration-300
-              ease-out
               [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
               group-active:scale-[1.01]
               motion-reduce:transform-none
             "
-            fallback={
-              <div className="flex size-full items-center justify-center text-zinc-600">
-                <Film className="size-6" />
-              </div>
-            }
           />
 
           {/* Camada de sombra/glow acelerada por GPU */}
@@ -300,21 +265,14 @@ export const DubladorAnimeCard = memo(function DubladorAnimeCard({
             alt=""
             loading="lazy"
             decoding="async"
+            fallbackClassName="bg-[#0d0c16]"
             className="
               size-full
               object-cover
-              transition-transform
-              duration-300
-              ease-out
               [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
               group-active:scale-[1.01]
               motion-reduce:transform-none
             "
-            fallback={
-              <div className="flex size-full items-center justify-center text-zinc-600">
-                <Film className="size-6" />
-              </div>
-            }
           />
 
           {/* Camada de sombra/glow acelerada por GPU */}
@@ -387,21 +345,14 @@ export const StaffAnimeCard = memo(function StaffAnimeCard({
             alt=""
             loading="lazy"
             decoding="async"
+            fallbackClassName="bg-[#0d0c16]"
             className="
               size-full
               object-cover
-              transition-transform
-              duration-300
-              ease-out
               [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
               group-active:scale-[1.01]
               motion-reduce:transform-none
             "
-            fallback={
-              <div className="flex size-full items-center justify-center text-zinc-600">
-                <Film className="size-6" />
-              </div>
-            }
           />
 
           {/* Camada de sombra/glow acelerada por GPU */}

@@ -20,6 +20,7 @@ import {
   type SelectedEntityTarget,
 } from "@/components/anime/EntityWorksExpansion";
 import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
+import { HikariImage } from "@/components/ui/hikari-image";
 import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
@@ -347,8 +348,6 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
   onCardClick: (item: ProfileFavoriteItem) => void;
   isOwner?: boolean;
 }) {
-  const initial = (item.title || "?").charAt(0).toUpperCase();
-
   const cardSubtitle = useMemo(() => {
     if (!item.subtitle) return item.nativeTitle || null;
     const lower = item.subtitle.toLowerCase().trim();
@@ -390,23 +389,16 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
           alt=""
           loading="lazy"
           decoding="async"
+          fallbackClassName="bg-[#0d0c16]"
           className="
             size-full
             object-cover
             object-center
             scale-[0.95]
-            transition-transform
-            duration-300
-            ease-out
             [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98]
             group-active:scale-[0.96]
             motion-reduce:transform-none
           "
-          fallback={
-            <div className="flex size-full items-center justify-center font-display text-base sm:text-lg text-zinc-600">
-              {initial}
-            </div>
-          }
         />
 
         {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint contínuo da box-shadow */}
@@ -596,14 +588,9 @@ const FavoriteCarouselCard = React.memo(function FavoriteCarouselCard({
   isSelected?: boolean;
   isOwner?: boolean;
 }) {
-  const [imgError, setImgError] = useState(false);
   const isStudio = item.targetType === "studio";
-
-  const displayImage = isStudio
-    ? (!imgError && item.image ? item.image : getStudioLogo(item.title))
-    : (!imgError ? item.image : null);
-
-  const initial = (item.title || "?").charAt(0).toUpperCase();
+  const studioFallbackLogo = isStudio ? getStudioLogo(item.title) : null;
+  const primaryImage = item.image || studioFallbackLogo;
 
   // Subtítulo limpo para o card: oculta termos redundantes
   const cardSubtitle = useMemo(() => {
@@ -653,29 +640,20 @@ const FavoriteCarouselCard = React.memo(function FavoriteCarouselCard({
         items-center
         justify-center
       ">
-        {displayImage ? (
-          <img
-            src={displayImage}
-            alt=""
-            onError={() => setImgError(true)}
-            loading="lazy"
-            decoding="async"
-            className={cn(
-              "size-full transition-transform duration-300 ease-out motion-reduce:transform-none",
-              isStudio
-                ? "object-contain p-4 scale-[0.94] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.97]"
-                : "object-cover object-center scale-[0.95] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98] group-active:scale-[0.96]",
-            )}
-          />
-        ) : isStudio ? (
-          <div className="flex flex-col items-center justify-center gap-1 text-center">
-            <Building2 className="size-6 sm:size-8 text-indigo-400" />
-          </div>
-        ) : (
-          <div className="flex size-full items-center justify-center font-display text-lg sm:text-xl font-bold text-purple-400/80">
-            {initial}
-          </div>
-        )}
+        <HikariImage
+          src={primaryImage}
+          fallbackSrc={studioFallbackLogo}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          fallbackClassName="bg-[#0d0c16]"
+          className={cn(
+            "size-full motion-reduce:transform-none",
+            isStudio
+              ? "object-contain p-4 scale-[0.94] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.97]"
+              : "object-cover object-center scale-[0.95] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98] group-active:scale-[0.96]",
+          )}
+        />
 
         {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint contínuo da box-shadow */}
         <div
@@ -783,32 +761,26 @@ function EntityDetailModal({
                 alt={entity.title}
                 loading="lazy"
                 decoding="async"
+                fallbackClassName="bg-[#151224]"
                 className="size-full object-cover object-top"
-                fallback={
-                  <div className="flex size-full items-center justify-center font-display text-3xl font-bold text-purple-400">
-                    {(entity.title || "?").charAt(0).toUpperCase()}
-                  </div>
-                }
               />
-            ) : displayImage ? (
-              <img
+            ) : (
+              <HikariImage
                 src={displayImage}
+                fallbackSrc={isStudio ? getStudioLogo(entity.title) : undefined}
                 alt={entity.title}
                 loading="lazy"
                 decoding="async"
+                fallbackClassName="bg-[#151224]"
                 className={cn(
                   "size-full",
-                  isStudio ? "object-contain p-2.5" : "object-cover object-top"
+                  isStudio ? "object-contain p-2.5" : "object-cover object-top",
                 )}
               />
-            ) : (
-              <div className="flex size-full items-center justify-center font-display text-3xl font-bold text-purple-400">
-                {(entity.title || "?").charAt(0).toUpperCase()}
-              </div>
             )}
 
             {isOwner && (
-              <div className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-[#0c0a18]/90 border border-rose-500/40 shadow-sm">
+              <div className="absolute top-2 right-2 z-10 flex size-6 items-center justify-center rounded-full bg-[#0c0a18]/90 border border-rose-500/40 shadow-sm">
                 <Heart className="size-3 fill-rose-500 text-rose-500" />
               </div>
             )}
