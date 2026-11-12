@@ -56,6 +56,7 @@ import { Route as WatchIdRouteImport } from './routes/watch.$id'
 import { Route as ApiAdminCatalogAnimeRouteImport } from './routes/api/admin/catalog-anime'
 import { Route as ApiAdminCatalogEpisodeRouteImport } from './routes/api/admin/catalog-episode'
 import { Route as ApiAdminCatalogImportRouteImport } from './routes/api/admin/catalog-import'
+import { Route as ApiAdminCatalogSeasonRouteImport } from './routes/api/admin/catalog-season'
 import { Route as ApiAdminCommentReportsRouteImport } from './routes/api/admin/comment-reports'
 import { Route as ApiAdminUploadThumbnailRouteImport } from './routes/api/admin/upload-thumbnail'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -300,6 +301,11 @@ const ApiAdminCatalogImportRoute = ApiAdminCatalogImportRouteImport.update({
   path: '/api/admin/catalog-import',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminCatalogSeasonRoute = ApiAdminCatalogSeasonRouteImport.update({
+  id: '/api/admin/catalog-season',
+  path: '/api/admin/catalog-season',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminCommentReportsRoute = ApiAdminCommentReportsRouteImport.update({
   id: '/api/admin/comment-reports',
   path: '/api/admin/comment-reports',
@@ -389,6 +395,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
+  '/api/admin/catalog-season': typeof ApiAdminCatalogSeasonRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -444,6 +451,7 @@ export interface FileRoutesByTo {
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
+  '/api/admin/catalog-season': typeof ApiAdminCatalogSeasonRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -502,6 +510,7 @@ export interface FileRoutesById {
   '/api/admin/catalog-anime': typeof ApiAdminCatalogAnimeRoute
   '/api/admin/catalog-episode': typeof ApiAdminCatalogEpisodeRoute
   '/api/admin/catalog-import': typeof ApiAdminCatalogImportRoute
+  '/api/admin/catalog-season': typeof ApiAdminCatalogSeasonRoute
   '/api/admin/comment-reports': typeof ApiAdminCommentReportsRoute
   '/api/admin/upload-thumbnail': typeof ApiAdminUploadThumbnailRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -561,6 +570,7 @@ export interface FileRouteTypes {
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
+    | '/api/admin/catalog-season'
     | '/api/admin/comment-reports'
     | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
@@ -616,6 +626,7 @@ export interface FileRouteTypes {
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
+    | '/api/admin/catalog-season'
     | '/api/admin/comment-reports'
     | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
@@ -673,6 +684,7 @@ export interface FileRouteTypes {
     | '/api/admin/catalog-anime'
     | '/api/admin/catalog-episode'
     | '/api/admin/catalog-import'
+    | '/api/admin/catalog-season'
     | '/api/admin/comment-reports'
     | '/api/admin/upload-thumbnail'
     | '/api/auth/$'
@@ -723,6 +735,7 @@ export interface RootRouteChildren {
   ApiAdminCatalogAnimeRoute: typeof ApiAdminCatalogAnimeRoute
   ApiAdminCatalogEpisodeRoute: typeof ApiAdminCatalogEpisodeRoute
   ApiAdminCatalogImportRoute: typeof ApiAdminCatalogImportRoute
+  ApiAdminCatalogSeasonRoute: typeof ApiAdminCatalogSeasonRoute
   ApiAdminCommentReportsRoute: typeof ApiAdminCommentReportsRoute
   ApiAdminUploadThumbnailRoute: typeof ApiAdminUploadThumbnailRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -1061,6 +1074,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminCatalogImportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/catalog-season': {
+      id: '/api/admin/catalog-season'
+      path: '/api/admin/catalog-season'
+      fullPath: '/api/admin/catalog-season'
+      preLoaderRoute: typeof ApiAdminCatalogSeasonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/comment-reports': {
       id: '/api/admin/comment-reports'
       path: '/api/admin/comment-reports'
@@ -1208,6 +1228,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminCatalogAnimeRoute: ApiAdminCatalogAnimeRoute,
   ApiAdminCatalogEpisodeRoute: ApiAdminCatalogEpisodeRoute,
   ApiAdminCatalogImportRoute: ApiAdminCatalogImportRoute,
+  ApiAdminCatalogSeasonRoute: ApiAdminCatalogSeasonRoute,
   ApiAdminCommentReportsRoute: ApiAdminCommentReportsRoute,
   ApiAdminUploadThumbnailRoute: ApiAdminUploadThumbnailRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
@@ -1217,12 +1238,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

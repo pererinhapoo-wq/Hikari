@@ -33,9 +33,6 @@ const animeAdminPostSchema = z.object({
   seasons: z.array(seasonItemSchema).optional().nullable(),
 });
 
-const animeAdminDeleteSchema = z.object({
-  id: z.string().trim().min(1, "id é obrigatório"),
-});
 
 function sanitizeImageUrl(url?: string | null): string | null {
   if (!url) return null;
@@ -224,17 +221,23 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
 
           // 3. Obter ID do anime a ser excluído
           let animeId = "";
+          let seasonNumber: number | null = null;
           const url = new URL(request.url);
           const qId = url.searchParams.get("id");
+          const qSeason = url.searchParams.get("seasonNumber");
 
           if (qId) {
             animeId = qId.trim();
+            if (qSeason) {
+              const parsed = parseInt(qSeason, 10);
+              if (!isNaN(parsed) && parsed >= 1) seasonNumber = parsed;
+            }
           } else {
             try {
               const body = await request.json();
-              const parsed = animeAdminDeleteSchema.safeParse(body);
-              if (parsed.success) {
-                animeId = parsed.data.id;
+              if (body?.id) animeId = String(body.id).trim();
+              if (typeof body?.seasonNumber === "number" && body.seasonNumber >= 1) {
+                seasonNumber = body.seasonNumber;
               }
             } catch {
               // Body vazio ou não JSON
@@ -246,6 +249,34 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
           }
 
           const sql = await getSql();
+
+          if (seasonNumber !== null) {
+            // Exclusão pontual de temporada específica
+            const sRes = await sql.query<{ number: number }>(
+              `DELETE FROM "catalog_season"
+               WHERE "animeId" = $1 AND "number" = $2
+               RETURNING "number";`,
+              [animeId, seasonNumber],
+            );
+
+            const epRes = await sql.query<{ id: string }>(
+              `DELETE FROM "catalog_episode"
+               WHERE "animeId" = $1 AND "seasonNumber" = $2
+               RETURNING "id";`,
+              [animeId, seasonNumber],
+            );
+
+            invalidateCatalogEpisodesCache(animeId);
+
+            return Response.json({
+              ok: true,
+              animeId,
+              seasonNumber,
+              found: sRes.length > 0,
+              deletedEpisodesCount: epRes.length,
+              adminId,
+            });
+          }
 
           // Exclusão em cascata (catalog_season e catalog_episode possuem ON DELETE CASCADE)
           const result = await sql.query<{ id: string }>(

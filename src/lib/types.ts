@@ -136,6 +136,7 @@ export type LocalAnime = {
   seasons: Season[];
   createdAt: number;
   updatedAt: number;
+  syncedAt?: number;
   studios?: string[];
   characters?: AnimeCharacter[];
   staff?: AnimeStaff[];
@@ -411,6 +412,7 @@ export function animeToLocal(
         : (existing?.seasons ?? defaultSeasons),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
+    syncedAt: existing?.syncedAt,
     studios:
       existing?.studios ??
       (Array.isArray(fullAnime.studios) && fullAnime.studios.length > 0

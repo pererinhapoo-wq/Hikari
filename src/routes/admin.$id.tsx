@@ -25,7 +25,10 @@ import {
   mergeAdminEpisodesWithServer,
   type CatalogEpisodesResult,
 } from "@/lib/catalog-episodes";
-import { EditorHeader } from "@/components/admin/anime-editor/editor-header";
+import {
+  EditorHeader,
+  type AnimeSyncState,
+} from "@/components/admin/anime-editor/editor-header";
 import { EditorMetadata } from "@/components/admin/anime-editor/editor-metadata";
 import { EditorSeasons } from "@/components/admin/anime-editor/editor-seasons";
 import { EditorMobileBar } from "@/components/admin/anime-editor/editor-mobile-bar";
@@ -107,6 +110,7 @@ function AdminEditor() {
   const removeAnime = useHikariStore((s) => s.removeAnime);
 
   const [form, setForm] = useState<LocalAnime | null>(null);
+  const [animeSyncState, setAnimeSyncState] = useState<AnimeSyncState>("local");
   const [genreText, setGenreText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingEpisode, setUploadingEpisode] = useState<string | null>(null);
@@ -311,6 +315,7 @@ function AdminEditor() {
         seasons: mergeResult.seasons,
       });
       setGenreText(base.genres.join(", "));
+      setAnimeSyncState("synced");
       setRecoveryState({
         status: "success",
         message: `Episódios recuperados com sucesso do PostgreSQL (${serverEpisodes.episodes.length} confirmados no banco).`,
@@ -319,6 +324,11 @@ function AdminEditor() {
     } else {
       setForm(base);
       setGenreText(base.genres.join(", "));
+      if (base.syncedAt && base.syncedAt >= (base.updatedAt ?? 0)) {
+        setAnimeSyncState("synced");
+      } else {
+        setAnimeSyncState("local");
+      }
 
       if (id !== "new") {
         if (serverEpisodes && serverEpisodes.episodes.length === 0) {
@@ -347,6 +357,7 @@ function AdminEditor() {
 
   function set<K extends keyof LocalAnime>(key: K, value: LocalAnime[K]) {
     setForm((f) => (f ? { ...f, [key]: value } : f));
+    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
   }
 
   function duplicateAsDubbed() {
@@ -399,18 +410,61 @@ function AdminEditor() {
   }
 
   async function handleDeleteAnime() {
-    removeAnime(current.id);
-    toast.success("Anime excluído deste dispositivo.");
-    void navigate({ to: "/admin" });
+    const isServerBacked =
+      !current.id.startsWith("local-") &&
+      (animeSyncState === "synced" || !!current.syncedAt);
 
-    try {
-      await fetch(`/api/admin/catalog-anime?id=${encodeURIComponent(current.id)}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-    } catch (err) {
-      console.warn("[admin] Falha ao deletar anime no servidor:", err);
+    if (isServerBacked) {
+      try {
+        const res = await fetch(
+          `/api/admin/catalog-anime?id=${encodeURIComponent(current.id)}`,
+          {
+            method: "DELETE",
+            credentials: "include",
+          },
+        );
+
+        if (!res.ok) {
+          let errMsg = res.statusText;
+          try {
+            const json = await res.json();
+            errMsg = json.error || errMsg;
+          } catch {
+            errMsg = res.statusText || errMsg;
+          }
+          toast.error(
+            `Falha ao excluir anime no servidor (${res.status}): ${errMsg}. O anime foi preservado localmente.`,
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn("[admin] Erro de rede ao deletar anime no servidor:", err);
+        toast.error(
+          "Servidor indisponível. O anime foi preservado localmente para evitar divergência.",
+        );
+        return;
+      }
     }
+
+    // Limpa operações pendentes no outbox para este anime
+    if (typeof window !== "undefined") {
+      try {
+        const existingOps = readOutbox();
+        const filteredOps = existingOps.filter((op) => op.animeId !== current.id);
+        localStorage.setItem("hikari_episode_outbox_v1", JSON.stringify(filteredOps));
+        setOutboxOps(filteredOps);
+      } catch (e) {
+        console.warn("[admin] Erro ao limpar outbox do anime:", e);
+      }
+    }
+
+    removeAnime(current.id);
+    toast.success(
+      isServerBacked
+        ? "Anime excluído com sucesso do servidor e do dispositivo."
+        : "Anime local excluído.",
+    );
+    void navigate({ to: "/admin" });
   }
 
   async function save() {
@@ -434,14 +488,19 @@ function AdminEditor() {
     }
 
     setIsSaving(true);
+    setAnimeSyncState("pending");
 
-    // 1. Persistência local inicial (IndexedDB via Zustand)
+    // 1. Persistência local imediata (IndexedDB via Zustand)
     upsertAnime(next);
     void navigate({ to: "/admin/$id", params: { id: next.id } });
 
-    // 2. Persistência no servidor e reconciliação com o outbox
+    let metadataSavedOnServer = false;
+    let serverErrorStatus: number | null = null;
+    let serverErrorMessage = "";
+
+    // 2. Persistência no servidor (await com validação de status HTTP)
     try {
-      void fetch("/api/admin/catalog-anime", {
+      const res = await fetch("/api/admin/catalog-anime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -471,10 +530,50 @@ function AdminEditor() {
             title: s.title,
           })),
         }),
-      }).catch((err) => {
-        console.warn("[admin] Falha ao persistir metadados do anime no servidor:", err);
       });
 
+      if (res.ok) {
+        metadataSavedOnServer = true;
+      } else {
+        serverErrorStatus = res.status;
+        try {
+          const json = await res.json();
+          serverErrorMessage = json.error || "";
+        } catch {
+          serverErrorMessage = res.statusText || "";
+        }
+      }
+    } catch (err) {
+      console.warn("[admin] Erro de rede ao persistir metadados no servidor:", err);
+      serverErrorStatus = 0;
+    }
+
+    if (!metadataSavedOnServer) {
+      if (serverErrorStatus === 401 || serverErrorStatus === 403) {
+        setAnimeSyncState("conflict");
+        toast.error(
+          "Não autorizado: sessão expirada ou permissão insuficiente no servidor. Alterações salvas localmente.",
+        );
+      } else if (serverErrorStatus === 400 || serverErrorStatus === 409) {
+        setAnimeSyncState("conflict");
+        toast.warning(
+          `Conflito de validação: ${serverErrorMessage || "dados rejeitados pelo servidor"}. Salvo apenas no dispositivo.`,
+        );
+      } else if (serverErrorStatus === 500) {
+        setAnimeSyncState("error");
+        toast.error(
+          `Falha no servidor (500): ${serverErrorMessage || "erro interno"}. Salvo com segurança neste dispositivo.`,
+        );
+      } else {
+        setAnimeSyncState("error");
+        toast.info(
+          "Servidor indisponível: metadados salvos localmente com segurança neste dispositivo.",
+        );
+      }
+    }
+
+    // 3. Persistência de episódios
+    try {
       const animeTitle = next.titleRomaji || next.titleEnglish || next.titleNative || "Anime";
       const promises: ReturnType<typeof persistEpisode>[] = [];
       for (const season of next.seasons) {
@@ -486,7 +585,6 @@ function AdminEditor() {
       if (promises.length > 0) {
         const results = await Promise.all(promises);
 
-        // Reconcilia os IDs no estado local do formulário se o servidor tiver retornado um ID canônico preexistente
         let formNeedsUpdate = false;
         const reconciledSeasons = next.seasons.map((season) => ({
           ...season,
@@ -510,22 +608,36 @@ function AdminEditor() {
         const conflictCount = results.filter((r) => r.status === "conflict").length;
         const pendingCount = results.filter((r) => r.status === "pending").length;
 
-        if (conflictCount > 0) {
+        if (metadataSavedOnServer && confirmedCount === results.length) {
+          const syncedAt = Date.now();
+          const syncedAnime = { ...next, syncedAt };
+          upsertAnime(syncedAnime);
+          setForm((f) => (f ? { ...f, syncedAt } : f));
+          setAnimeSyncState("synced");
+          toast.success("Salvo no servidor: metadados e episódios confirmados no PostgreSQL.");
+        } else if (conflictCount > 0) {
           const firstErr = results.find((r) => r.status === "conflict")?.error;
           toast.warning(
             `Ação necessária: ${conflictCount} episódio(s) preservados localmente com erro de validação (${firstErr || "verifique os dados"}).`,
           );
         } else if (pendingCount > 0) {
+          if (metadataSavedOnServer) {
+            const syncedAnime = { ...next, syncedAt: Date.now() };
+            upsertAnime(syncedAnime);
+          }
           toast.info(
             `Sincronização pendente: ${pendingCount} episódio(s) preservados localmente aguardando conexão com o servidor.`,
           );
-        } else if (confirmedCount === results.length) {
-          toast.success("Salvo no servidor: episódios e alterações confirmados no PostgreSQL.");
-        } else {
-          toast.info("Salvo localmente: aguardando confirmação do servidor.");
         }
       } else {
-        toast.success("Anime salvo com sucesso!");
+        if (metadataSavedOnServer) {
+          const syncedAt = Date.now();
+          const syncedAnime = { ...next, syncedAt };
+          upsertAnime(syncedAnime);
+          setForm((f) => (f ? { ...f, syncedAt } : f));
+          setAnimeSyncState("synced");
+          toast.success("Metadados confirmados e sincronizados com sucesso no PostgreSQL!");
+        }
       }
     } catch (err) {
       console.warn("[admin] Erro ao sincronizar episódios:", err);
@@ -557,6 +669,7 @@ function AdminEditor() {
           }
         : f,
     );
+    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
     toast.success(`Temporada ${n} adicionada.`);
   }
 
@@ -571,24 +684,82 @@ function AdminEditor() {
           }
         : f,
     );
+    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
   }
 
-  function removeSeason(sid: string) {
+  async function removeSeason(sid: string) {
     const targetSeason = current.seasons.find((s) => s.id === sid);
-    if (targetSeason) {
-      for (const ep of targetSeason.episodes) {
-        void persistEpisodeDelete(current.id, targetSeason.number, ep.id, ep.number);
+    if (!targetSeason) return;
+
+    const isServerBacked =
+      !current.id.startsWith("local-") &&
+      (animeSyncState === "synced" || !!current.syncedAt);
+
+    if (isServerBacked) {
+      try {
+        const res = await fetch(
+          `/api/admin/catalog-season?animeId=${encodeURIComponent(current.id)}&seasonNumber=${encodeURIComponent(targetSeason.number)}`,
+          {
+            method: "DELETE",
+            credentials: "include",
+          },
+        );
+
+        if (!res.ok) {
+          let errDetail = res.statusText;
+          try {
+            const errJson = await res.json();
+            errDetail = errJson.error || errDetail;
+          } catch {
+            errDetail = res.statusText || errDetail;
+          }
+          toast.error(
+            `Falha ao remover temporada no servidor (${res.status}): ${errDetail}. A temporada foi mantida localmente.`,
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn("[admin] Erro de rede ao remover temporada no servidor:", err);
+        toast.error(
+          "Servidor indisponível. A temporada não foi removida para evitar inconsistência com o servidor.",
+        );
+        return;
       }
     }
-    setForm((f) =>
-      f
-        ? {
-            ...f,
-            seasons: f.seasons.filter((s) => s.id !== sid),
-          }
-        : f,
-    );
-    toast.info("Temporada removida.");
+
+    // 1. Limpa operações pendentes/conflito no outbox para os episódios desta temporada
+    if (typeof window !== "undefined") {
+      try {
+        const existingOps = readOutbox();
+        const filteredOps = existingOps.filter(
+          (op) => !(op.animeId === current.id && op.seasonNumber === targetSeason.number),
+        );
+        if (filteredOps.length !== existingOps.length) {
+          localStorage.setItem("hikari_episode_outbox_v1", JSON.stringify(filteredOps));
+          setOutboxOps(filteredOps);
+        }
+      } catch (e) {
+        console.warn("[admin] Erro ao limpar outbox de temporada removida:", e);
+      }
+    }
+
+    // 2. Persist tombstone para garantir que qualquer outro nó/cache saiba da exclusão
+    for (const ep of targetSeason.episodes) {
+      void persistEpisodeDelete(current.id, targetSeason.number, ep.id, ep.number);
+    }
+
+    // 3. Atualiza estado local de forma segura
+    const updatedSeasons = current.seasons.filter((s) => s.id !== sid);
+    const updatedAnime: LocalAnime = {
+      ...current,
+      seasons: updatedSeasons,
+      updatedAt: Date.now(),
+    };
+
+    setForm(updatedAnime);
+    upsertAnime(updatedAnime);
+    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+    toast.success(`Temporada ${targetSeason.number} removida com sucesso.`);
   }
 
   function addEpisode(sid: string) {
@@ -683,6 +854,7 @@ function AdminEditor() {
         isReloading={recoveryState.status === "loading"}
         outboxOps={outboxOps}
         canDelete={id !== "new" && stored.some((a) => a.id === current.id)}
+        syncState={animeSyncState}
       />
 
       {/* Banner de Sincronização do Outbox */}
@@ -778,7 +950,10 @@ function AdminEditor() {
         form={current}
         onChange={set}
         genreText={genreText}
-        onGenreTextChange={setGenreText}
+        onGenreTextChange={(val) => {
+          setGenreText(val);
+          setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
+        }}
       />
 
       {/* Gerenciamento Modernizado de Temporadas e Episódios */}

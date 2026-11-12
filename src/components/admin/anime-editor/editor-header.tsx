@@ -27,6 +27,8 @@ import { FORMAT_PT, STATUS_PT } from "@/lib/labels";
 import type { LocalAnime } from "@/lib/types";
 import type { OutboxOperation } from "@/lib/episode-writer";
 
+export type AnimeSyncState = "synced" | "local" | "pending" | "conflict" | "error";
+
 interface EditorHeaderProps {
   anime: LocalAnime;
   isNew: boolean;
@@ -39,6 +41,7 @@ interface EditorHeaderProps {
   isReloading: boolean;
   outboxOps: OutboxOperation[];
   canDelete: boolean;
+  syncState?: AnimeSyncState;
 }
 
 export function EditorHeader({
@@ -53,6 +56,7 @@ export function EditorHeader({
   isReloading,
   outboxOps,
   canDelete,
+  syncState,
 }: EditorHeaderProps) {
   const [copiedId, setCopiedId] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -92,14 +96,22 @@ export function EditorHeader({
       await onDelete();
       setDeleteDialogOpen(false);
     } catch {
-      toast.error("Erro ao excluir anime.");
+      // Falha tratada na ação onDelete; mantém o anime intacto
     } finally {
       setIsDeleting(false);
     }
   };
 
-  // Determina o estado canônico de persistência
-  const isServerRegistered = !anime.id.startsWith("local-");
+  // Determina o estado canônico de persistência sem heurística de prefixo
+  const effectiveSyncState: AnimeSyncState =
+    conflictCount > 0
+      ? "conflict"
+      : pendingCount > 0
+      ? "pending"
+      : syncState ??
+        (anime.syncedAt && anime.syncedAt >= (anime.updatedAt ?? 0)
+          ? "synced"
+          : "local");
 
   return (
     <div className="relative rounded-2xl border border-white/5 bg-surface/80 p-5 shadow-2xl backdrop-blur-xl sm:p-6">
@@ -115,17 +127,22 @@ export function EditorHeader({
 
         {/* Indicador Preciso de Persistência */}
         <div className="flex flex-wrap items-center gap-2">
-          {conflictCount > 0 ? (
+          {effectiveSyncState === "conflict" ? (
             <Badge className="h-6 border border-rose-500/30 bg-rose-500/10 text-[11px] font-medium text-rose-300">
               <AlertTriangle className="mr-1.5 size-3 text-rose-400" />
-              {conflictCount} conflito(s) no Outbox
+              {conflictCount > 0 ? `${conflictCount} conflito(s) no Outbox` : "Conflito / Validação"}
             </Badge>
-          ) : pendingCount > 0 ? (
+          ) : effectiveSyncState === "pending" ? (
             <Badge className="h-6 border border-amber-500/30 bg-amber-500/10 text-[11px] font-medium text-amber-300">
               <Clock className="mr-1.5 size-3 text-amber-400" />
-              {pendingCount} pendência(s) de envio
+              {pendingCount > 0 ? `${pendingCount} pendência(s) de envio` : "Sincronização Pendente"}
             </Badge>
-          ) : isServerRegistered ? (
+          ) : effectiveSyncState === "error" ? (
+            <Badge className="h-6 border border-orange-500/30 bg-orange-500/10 text-[11px] font-medium text-orange-300">
+              <AlertTriangle className="mr-1.5 size-3 text-orange-400" />
+              Erro de comunicação
+            </Badge>
+          ) : effectiveSyncState === "synced" ? (
             <Badge className="h-6 border border-emerald-500/30 bg-emerald-500/10 text-[11px] font-medium text-emerald-300">
               <CheckCircle2 className="mr-1.5 size-3 text-emerald-400" />
               Sincronizado no Servidor
@@ -133,7 +150,7 @@ export function EditorHeader({
           ) : (
             <Badge className="h-6 border border-purple-500/30 bg-purple-500/10 text-[11px] font-medium text-purple-300">
               <HardDrive className="mr-1.5 size-3 text-purple-400" />
-              Salvo Localmente (IndexedDB)
+              Salvo Localmente (Dispositivo)
             </Badge>
           )}
 
