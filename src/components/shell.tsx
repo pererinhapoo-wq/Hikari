@@ -518,6 +518,7 @@ export function Shell() {
   const localAnimes = useHikariStore((s) => s.animes);
 
   const cinema = pathname.startsWith("/watch");
+  const isAdmin = pathname.startsWith("/admin");
 
   const isBannerPage =
     pathname === "/" || pathname.startsWith("/anime/");
@@ -900,7 +901,7 @@ export function Shell() {
       }
     };
 
-  if (cinema) {
+  if (cinema || isAdmin) {
     return <Outlet />;
   }
 

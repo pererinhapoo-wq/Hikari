@@ -5,6 +5,8 @@ import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { flushOutbox, hasPendingWrites } from "@/lib/episode-writer";
 
+import { HikariStudioLayout } from "@/components/admin/studio-layout";
+
 export const Route = createFileRoute("/admin")({ component: AdminGuard });
 
 function AdminGuard() {
@@ -47,5 +49,11 @@ function AdminGuard() {
   if (isPending) return null;
   if (!user) return <Navigate to="/login" />;
   if (!isHikariAdmin(user.primaryEmail)) return <Navigate to="/account" />;
-  return <Outlet />;
+
+  return (
+    <HikariStudioLayout>
+      <Outlet />
+    </HikariStudioLayout>
+  );
 }
+

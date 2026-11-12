@@ -59,8 +59,29 @@ export function useCurrentUserState(): CurrentUserState {
     const isSignedOut =
       typeof window !== "undefined" &&
       window.sessionStorage.getItem("hikari_signed_out") === "true";
+    if (isSignedOut) {
+      return {
+        user: null,
+        isPending: false,
+      };
+    }
+    const adminEmailOverride =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem("hikari_preview_admin_email")
+        : null;
+    if (adminEmailOverride) {
+      return {
+        user: {
+          ...DEV_USER,
+          primaryEmail: adminEmailOverride,
+          displayName: "Admin Hikari",
+          isDevFallback: false,
+        },
+        isPending: false,
+      };
+    }
     return {
-      user: isSignedOut ? null : DEV_USER,
+      user: DEV_USER,
       isPending: false,
     };
   }

@@ -367,7 +367,9 @@ function AdminIndex() {
       </header>
 
       {/* Ferramenta de Atualização Rápida de Players */}
-      <QuickPlayerUpdate />
+      <div id="quick-update" className="scroll-mt-20">
+        <QuickPlayerUpdate />
+      </div>
 
       {/* Hikari AI */}
       <section className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">
@@ -498,7 +500,7 @@ function AdminIndex() {
         )}
       </section>
 
-      <section className="space-y-4">
+      <section id="catalog" className="space-y-4 scroll-mt-20">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-display text-lg">
