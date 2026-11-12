@@ -1187,28 +1187,17 @@ function PublicProfile() {
         />
 
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
-          <div>
-            <Link
-              to="/profile/$nick"
-              params={{ nick: profile.nick }}
-              className="inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-zinc-400 transition hover:text-white mb-4"
-            >
-              <ArrowLeft className="size-4" />
-              Voltar ao perfil de @{profile.nick}
-            </Link>
-
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
-              <div className="flex items-center gap-3">
-                <span className={`size-3.5 rounded-full ${cfg.indicatorDot}`} />
-                <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
-                  Animes — {cfg.label}
-                </h1>
-                {(!trackingLoading || statusCounts !== null) && (
-                  <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
-                    {filteredCount}
-                  </span>
-                )}
-              </div>
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
+            <div className="flex items-center gap-3">
+              <span className={`size-3.5 rounded-full ${cfg.indicatorDot}`} />
+              <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                Animes — {cfg.label}
+              </h1>
+              {(!trackingLoading || statusCounts !== null) && (
+                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
+                  {filteredCount}
+                </span>
+              )}
             </div>
           </div>
 
@@ -1360,6 +1349,7 @@ function PublicProfile() {
                         comments={comments}
                         loading={favoritesLoading || trackingLoading}
                         profileNick={profile.nick}
+                        isOwner={false}
                       />
                     </Suspense>
                   )}

@@ -14,6 +14,7 @@ interface ProfileOverviewSpaceProps {
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
   onRemoveFavorite?: (item: ProfileFavoriteItem) => Promise<void> | void;
   profileNick?: string;
+  isOwner?: boolean;
 }
 
 export function ProfileOverviewSpace({
@@ -25,6 +26,7 @@ export function ProfileOverviewSpace({
   onUpdateItem,
   onRemoveFavorite,
   profileNick,
+  isOwner = true,
 }: ProfileOverviewSpaceProps) {
   if (loading) {
     return (
@@ -53,6 +55,7 @@ export function ProfileOverviewSpace({
       <ProfileOverviewFavorites
         grouped={favoritesGrouped}
         onRemoveFavorite={onRemoveFavorite}
+        isOwner={isOwner}
       />
 
       {/* Nova Seção Independente: Atividades recentes (exclusivamente no final da Visão Geral, abaixo da dobra) */}

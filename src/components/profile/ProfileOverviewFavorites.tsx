@@ -4,7 +4,6 @@ import {
   Film,
   Heart,
   Mic,
-  Star,
   Trash2,
   User,
   Users,
@@ -27,6 +26,7 @@ import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favor
 interface ProfileOverviewFavoritesProps {
   grouped: ProfileFavoritesGrouped;
   onRemoveFavorite?: (item: ProfileFavoriteItem) => Promise<void> | void;
+  isOwner?: boolean;
 }
 
 /**
@@ -66,6 +66,7 @@ function isRedundantInfo(text: string | null | undefined): boolean {
 export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavorites({
   grouped,
   onRemoveFavorite,
+  isOwner = true,
 }: ProfileOverviewFavoritesProps) {
   const navigate = useNavigate();
   const [selectedEntity, setSelectedEntity] = useState<ProfileFavoriteItem | null>(null);
@@ -200,6 +201,7 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
         onCardClick={handleAnimeClick}
         accentColor="violet"
         icon={Film}
+        isOwner={isOwner}
       />
 
       {/* 2. Favoritos — Personagens */}
@@ -211,6 +213,7 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
         onCardClick={handleCharacterClick}
         accentColor="purple"
         icon={Users}
+        isOwner={isOwner}
       />
 
       {/* 3. Favoritos — Dubladores */}
@@ -222,6 +225,7 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
         onCardClick={handleDubladorClick}
         accentColor="pink"
         icon={Mic}
+        isOwner={isOwner}
       />
 
       {/* 4. Favoritos — Studios */}
@@ -233,6 +237,7 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
         onCardClick={handleStudioClick}
         accentColor="indigo"
         icon={Building2}
+        isOwner={isOwner}
       />
 
       {/* 5. Favoritos — People */}
@@ -244,6 +249,7 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
         onCardClick={handlePeopleClick}
         accentColor="sky"
         icon={User}
+        isOwner={isOwner}
       />
 
       {/* Modal de Detalhes da Entidade Favoritada (para Personagens) */}
@@ -254,6 +260,7 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
           onClose={() => setSelectedEntity(null)}
           onRemove={onRemoveFavorite ? handleModalRemove : undefined}
           isRemoving={removingId === selectedEntity.id}
+          isOwner={isOwner}
         />
       )}
     </div>
@@ -272,6 +279,7 @@ const FavoritesAnimeGridSection = React.memo(function FavoritesAnimeGridSection(
   onCardClick,
   accentColor = "violet",
   icon: Icon,
+  isOwner = true,
 }: {
   title: string;
   items: ProfileFavoriteItem[];
@@ -280,6 +288,7 @@ const FavoritesAnimeGridSection = React.memo(function FavoritesAnimeGridSection(
   onCardClick: (item: ProfileFavoriteItem) => void;
   accentColor?: "violet" | "purple" | "pink" | "indigo" | "sky";
   icon: typeof Film;
+  isOwner?: boolean;
 }) {
   const colorClasses = {
     violet: "bg-violet-500",
@@ -310,6 +319,7 @@ const FavoritesAnimeGridSection = React.memo(function FavoritesAnimeGridSection(
               key={item.id}
               item={item}
               onCardClick={onCardClick}
+              isOwner={isOwner}
             />
           ))}
         </div>
@@ -330,9 +340,11 @@ const FavoritesAnimeGridSection = React.memo(function FavoritesAnimeGridSection(
 const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
   item,
   onCardClick,
+  isOwner = true,
 }: {
   item: ProfileFavoriteItem;
   onCardClick: (item: ProfileFavoriteItem) => void;
+  isOwner?: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
   const initial = (item.title || "?").charAt(0).toUpperCase();
@@ -405,21 +417,10 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
           className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
         />
 
-        {/* Indicador sutil de favorito no topo direito (sem backdrop-blur pesado) */}
-        <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
-          <Heart className="size-3 fill-rose-500 text-rose-500" />
-        </div>
-
-        {/* Indicador discreto de nota sobreposto à imagem do anime */}
-        {typeof item.userScore === "number" && item.userScore > 0 && (
-          <div
-            className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 rounded bg-[#0b0914]/90 border border-purple-500/35 px-1.5 py-0.5 text-[10px] font-bold text-purple-200 backdrop-blur-md shadow-sm select-none"
-            title={`Nota pessoal: ${item.userScore}/10`}
-          >
-            <Star className="size-2.5 text-[#c084fc] fill-[#c084fc]/50" />
-            <span className="tabular-nums leading-none">
-              {Number(item.userScore).toFixed(item.userScore % 1 === 0 ? 0 : 1)}
-            </span>
+        {/* Indicador sutil de favorito no topo direito (exibido apenas para o proprietário) */}
+        {isOwner && (
+          <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
+            <Heart className="size-3 fill-rose-500 text-rose-500" />
           </div>
         )}
       </div>
@@ -455,6 +456,7 @@ const FavoritesCarouselSection = React.memo(function FavoritesCarouselSection({
   selectedItemTitle,
   accentColor = "purple",
   icon: Icon,
+  isOwner = true,
 }: {
   title: string;
   items: ProfileFavoriteItem[];
@@ -464,6 +466,7 @@ const FavoritesCarouselSection = React.memo(function FavoritesCarouselSection({
   selectedItemTitle?: string | null;
   accentColor?: "violet" | "purple" | "pink" | "indigo" | "sky";
   icon: typeof Film;
+  isOwner?: boolean;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
   const isDownRef = useRef(false);
@@ -566,6 +569,7 @@ const FavoritesCarouselSection = React.memo(function FavoritesCarouselSection({
               item={item}
               isSelected={selectedItemTitle === item.title}
               onCardClick={onCardClick}
+              isOwner={isOwner}
             />
           ))}
         </div>
@@ -587,10 +591,12 @@ const FavoriteCarouselCard = React.memo(function FavoriteCarouselCard({
   item,
   onCardClick,
   isSelected,
+  isOwner = true,
 }: {
   item: ProfileFavoriteItem;
   onCardClick: (item: ProfileFavoriteItem) => void;
   isSelected?: boolean;
+  isOwner?: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
   const isStudio = item.targetType === "studio";
@@ -679,10 +685,12 @@ const FavoriteCarouselCard = React.memo(function FavoriteCarouselCard({
           className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
         />
 
-        {/* Indicador sutil de favorito no topo direito (sem backdrop-blur pesado) */}
-        <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
-          <Heart className="size-3 fill-rose-500 text-rose-500" />
-        </div>
+        {/* Indicador sutil de favorito no topo direito (exibido apenas para o proprietário) */}
+        {isOwner && (
+          <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
+            <Heart className="size-3 fill-rose-500 text-rose-500" />
+          </div>
+        )}
       </div>
 
       {/* Informações estritamente FORA do pôster: Título e Subtítulo */}
@@ -732,12 +740,14 @@ function EntityDetailModal({
   onClose,
   onRemove,
   isRemoving = false,
+  isOwner = true,
 }: {
   entity: ProfileFavoriteItem;
   open: boolean;
   onClose: () => void;
   onRemove?: (item: ProfileFavoriteItem) => Promise<void> | void;
   isRemoving?: boolean;
+  isOwner?: boolean;
 }) {
   const isStudio = entity.targetType === "studio";
   const isAnime = entity.targetType === "anime";
@@ -786,9 +796,11 @@ function EntityDetailModal({
               </div>
             )}
 
-            <div className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-[#0c0a18]/90 border border-rose-500/40 shadow-sm">
-              <Heart className="size-3 fill-rose-500 text-rose-500" />
-            </div>
+            {isOwner && (
+              <div className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-[#0c0a18]/90 border border-rose-500/40 shadow-sm">
+                <Heart className="size-3 fill-rose-500 text-rose-500" />
+              </div>
+            )}
           </div>
 
           {/* Dados descritivos: limpos de redundâncias */}
