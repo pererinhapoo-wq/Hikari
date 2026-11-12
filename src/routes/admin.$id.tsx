@@ -1,6 +1,6 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Trash2, Camera, Loader2, AlertCircle, CheckCircle2, Film, Copy, RefreshCw } from "lucide-react";
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Loader2, CheckCircle2, Film, AlertCircle, RefreshCw } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
 import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/types";
@@ -10,14 +10,8 @@ import { uploadVideoToB2 } from "@/lib/b2";
 import {
   captureAndUploadThumbnail,
   isHikariPlayableUrl,
-  isEpisodePublished,
 } from "@/lib/published-episodes";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { NativeSelect } from "@/components/ui/native-select";
-import { FORMAT_PT, STATUS_PT, SEASON_PT } from "@/lib/labels";
 import {
   persistEpisode,
   persistEpisodeDelete,
@@ -31,6 +25,10 @@ import {
   mergeAdminEpisodesWithServer,
   type CatalogEpisodesResult,
 } from "@/lib/catalog-episodes";
+import { EditorHeader } from "@/components/admin/anime-editor/editor-header";
+import { EditorMetadata } from "@/components/admin/anime-editor/editor-metadata";
+import { EditorSeasons } from "@/components/admin/anime-editor/editor-seasons";
+import { EditorMobileBar } from "@/components/admin/anime-editor/editor-mobile-bar";
 
 export const Route = createFileRoute("/admin/$id")({
   validateSearch: (raw: Record<string, unknown>): { importId?: string } => ({
@@ -107,8 +105,10 @@ function AdminEditor() {
   const hydrated = useHikariStore((s) => s.hydrated);
   const upsertAnime = useHikariStore((s) => s.upsertAnime);
   const removeAnime = useHikariStore((s) => s.removeAnime);
+
   const [form, setForm] = useState<LocalAnime | null>(null);
   const [genreText, setGenreText] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [uploadingEpisode, setUploadingEpisode] = useState<string | null>(null);
   const [captureStatus, setCaptureStatus] = useState<
     Record<string, { status: "loading" | "error" | "success"; message?: string }>
@@ -199,9 +199,7 @@ function AdminEditor() {
       ep.videoUrl5;
 
     if (!videoUrl || !isHikariPlayableUrl(videoUrl)) {
-      toast.error(
-        "Insira uma URL de vídeo válida antes de capturar a miniatura.",
-      );
+      toast.error("Insira uma URL de vídeo válida antes de capturar a miniatura.");
       return;
     }
 
@@ -229,9 +227,7 @@ function AdminEditor() {
       toast.success(`Miniatura do Episódio ${ep.number} salva!`);
     } catch (err) {
       const errMsg =
-        err instanceof Error
-          ? err.message
-          : "Falha na captura do quadro do vídeo.";
+        err instanceof Error ? err.message : "Falha na captura do quadro do vídeo.";
       setCaptureStatus((prev) => ({
         ...prev,
         [ep.id]: {
@@ -243,16 +239,53 @@ function AdminEditor() {
     }
   }
 
+  async function handleUploadVideoToB2(
+    sid: string,
+    ep: Episode,
+    key: "videoUrl" | "videoUrl2" | "videoUrl3",
+  ) {
+    const uploadId = `${ep.id}-${key}`;
+    setUploadingEpisode(uploadId);
+    try {
+      await uploadVideoToB2((url, file) => {
+        patchEpisode(sid, ep.id, { [key]: url });
+        toast.success(`Vídeo enviado com sucesso para ${key}!`);
+
+        if (!ep.thumbnail) {
+          const frameSource = file ? URL.createObjectURL(file) : url;
+          captureAndUploadThumbnail(frameSource, {
+            episodeTitle: ep.title || `Episódio ${ep.number}`,
+          })
+            .then((res) => {
+              patchEpisode(sid, ep.id, { thumbnail: res.url });
+              toast.success("Miniatura capturada e salva automaticamente!");
+            })
+            .catch((err) => {
+              console.warn("Falha na captura automática do upload:", err);
+            })
+            .finally(() => {
+              if (file) {
+                URL.revokeObjectURL(frameSource);
+              }
+            });
+        }
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha no upload.");
+    } finally {
+      setUploadingEpisode(null);
+    }
+  }
+
   useEffect(() => {
     if (!hydrated) return;
 
-    const locals = useHikariStore.getState().animes;
     const existing =
       id === "new"
         ? undefined
-        : locals.find((a) => a.id === id) ||
+        : stored.find((a) => a.id === id) ||
           (remote?.anilistId
-            ? locals.find((a) => a.anilistId === remote.anilistId)
+            ? stored.find((a) => a.anilistId === remote.anilistId)
             : undefined);
 
     const base =
@@ -264,7 +297,6 @@ function AdminEditor() {
             id: id !== "new" ? id : `local-${crypto.randomUUID()}`,
           });
 
-    // Se episódios do servidor já foram carregados pelo loader, realiza a recuperação e mesclagem imediata
     if (id !== "new" && serverEpisodes && serverEpisodes.episodes.length > 0) {
       const currentOps = typeof window !== "undefined" ? readOutbox() : [];
       const mergeResult = mergeAdminEpisodesWithServer({
@@ -300,10 +332,15 @@ function AdminEditor() {
         }
       }
     }
-  }, [hydrated, id, remote, serverEpisodes, recoverEpisodesFromServer]);
+  }, [hydrated, stored, id, remote, serverEpisodes, recoverEpisodesFromServer]);
 
   if (!form) {
-    return <div className="h-64 animate-pulse rounded-xl bg-elevated" />;
+    return (
+      <div className="space-y-6 pt-6 pb-12">
+        <div className="h-28 animate-pulse rounded-2xl bg-surface/60 border border-white/5" />
+        <div className="h-96 animate-pulse rounded-2xl bg-surface/60 border border-white/5" />
+      </div>
+    );
   }
 
   const current = form;
@@ -361,7 +398,24 @@ function AdminEditor() {
     void navigate({ to: "/admin/$id", params: { id: newId } });
   }
 
+  async function handleDeleteAnime() {
+    removeAnime(current.id);
+    toast.success("Anime excluído deste dispositivo.");
+    void navigate({ to: "/admin" });
+
+    try {
+      await fetch(`/api/admin/catalog-anime?id=${encodeURIComponent(current.id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.warn("[admin] Falha ao deletar anime no servidor:", err);
+    }
+  }
+
   async function save() {
+    if (isSaving) return;
+
     const genres = genreText
       .split(",")
       .map((g) => g.trim())
@@ -379,7 +433,9 @@ function AdminEditor() {
       return;
     }
 
-    // 1. Persistência local inicial
+    setIsSaving(true);
+
+    // 1. Persistência local inicial (IndexedDB via Zustand)
     upsertAnime(next);
     void navigate({ to: "/admin/$id", params: { id: next.id } });
 
@@ -406,6 +462,9 @@ function AdminEditor() {
           year: next.year,
           trailerId: next.trailerId,
           hidden: next.hidden,
+          anilistId: next.anilistId,
+          malId: next.malId,
+          kitsuId: next.kitsuId,
           seasons: next.seasons.map((s) => ({
             id: s.id,
             number: s.number,
@@ -466,12 +525,13 @@ function AdminEditor() {
           toast.info("Salvo localmente: aguardando confirmação do servidor.");
         }
       } else {
-        toast.success("Salvo com sucesso!");
+        toast.success("Anime salvo com sucesso!");
       }
     } catch (err) {
       console.warn("[admin] Erro ao sincronizar episódios:", err);
       toast.info("Salvo localmente: alterações preservadas neste dispositivo.");
     } finally {
+      setIsSaving(false);
       if (typeof window !== "undefined") {
         setOutboxOps(readOutbox());
       }
@@ -497,6 +557,7 @@ function AdminEditor() {
           }
         : f,
     );
+    toast.success(`Temporada ${n} adicionada.`);
   }
 
   function patchSeason(sid: string, patch: Partial<Season>) {
@@ -527,6 +588,7 @@ function AdminEditor() {
           }
         : f,
     );
+    toast.info("Temporada removida.");
   }
 
   function addEpisode(sid: string) {
@@ -603,263 +665,27 @@ function AdminEditor() {
     }
   }
 
+  const animeTitle =
+    current.titleRomaji || current.titleEnglish || current.titleNative || "Anime";
+
   return (
-    <div className="space-y-8 pt-6 pb-10">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <Link
-            to="/admin"
-            className="text-xs text-muted hover:text-fg"
-          >
-            ← Painel
-          </Link>
+    <div className="space-y-8 pt-4 pb-20 sm:pb-12">
+      {/* Cabeçalho do Editor Modernizado */}
+      <EditorHeader
+        anime={current}
+        isNew={id === "new" && !importId}
+        importId={importId}
+        isSaving={isSaving}
+        onSave={save}
+        onDuplicateAsDubbed={duplicateAsDubbed}
+        onDelete={handleDeleteAnime}
+        onReloadFromServer={() => recoverEpisodesFromServer(id)}
+        isReloading={recoveryState.status === "loading"}
+        outboxOps={outboxOps}
+        canDelete={id !== "new" && stored.some((a) => a.id === current.id)}
+      />
 
-          <h1 className="mt-1 font-display text-3xl tracking-tight">
-            {id === "new" && !importId ? "Novo anime" : "Editar anime"}
-          </h1>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {id !== "new" && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={duplicateAsDubbed}
-              title="Cria um cadastro independente para a versão dublada"
-            >
-              <Copy className="mr-1.5 size-4" />
-              Duplicar como dublado
-            </Button>
-          )}
-
-          {id !== "new" &&
-            stored.some((a) => a.id === current.id) && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={async () => {
-                  removeAnime(current.id);
-                  toast.success("Excluído deste dispositivo.");
-                  void navigate({ to: "/admin" });
-                  try {
-                    await fetch(`/api/admin/catalog-anime?id=${encodeURIComponent(current.id)}`, {
-                      method: "DELETE",
-                      credentials: "include",
-                    });
-                  } catch (err) {
-                    console.warn("[admin] Falha ao deletar anime no servidor:", err);
-                  }
-                }}
-              >
-                Excluir
-              </Button>
-            )}
-
-          <Button type="button" onClick={save}>
-            Salvar
-          </Button>
-        </div>
-      </header>
-
-      <div className="grid gap-6 lg:grid-cols-[12rem_1fr]">
-        <div className="space-y-3">
-          <div className="overflow-hidden rounded-lg bg-elevated shadow-[var(--shadow-border)]">
-            {form.cover ? (
-              <img
-                src={form.cover}
-                alt=""
-                className="aspect-2/3 w-full object-cover"
-              />
-            ) : (
-              <div className="flex aspect-2/3 items-center justify-center text-xs text-subtle">
-                Sem capa
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Título (romaji)" className="sm:col-span-2">
-            <Input
-              value={form.titleRomaji}
-              onChange={(e) =>
-                set("titleRomaji", e.target.value)
-              }
-            />
-          </Field>
-
-          <Field label="Título em inglês">
-            <Input
-              value={form.titleEnglish}
-              onChange={(e) =>
-                set("titleEnglish", e.target.value)
-              }
-            />
-          </Field>
-
-          <Field label="Título original">
-            <Input
-              value={form.titleNative}
-              onChange={(e) =>
-                set("titleNative", e.target.value)
-              }
-            />
-          </Field>
-
-          <Field
-            label="URL da capa"
-            className="sm:col-span-2"
-          >
-            <Input
-              value={form.cover}
-              onChange={(e) =>
-                set("cover", e.target.value)
-              }
-            />
-          </Field>
-
-          <Field
-            label="URL do banner"
-            className="sm:col-span-2"
-          >
-            <Input
-              value={form.banner}
-              onChange={(e) =>
-                set("banner", e.target.value)
-              }
-            />
-          </Field>
-
-          <Field
-            label="Sinopse"
-            className="sm:col-span-2"
-          >
-            <Textarea
-              value={form.synopsis}
-              onChange={(e) =>
-                set("synopsis", e.target.value)
-              }
-            />
-          </Field>
-
-          <Field
-            label="Gêneros (vírgula)"
-            className="sm:col-span-2"
-          >
-            <Input
-              value={genreText}
-              onChange={(e) =>
-                setGenreText(e.target.value)
-              }
-            />
-          </Field>
-
-          <Field label="Nota (0–100)">
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              value={form.score ?? ""}
-              onChange={(e) =>
-                set(
-                  "score",
-                  e.target.value === ""
-                    ? null
-                    : Number(e.target.value),
-                )
-              }
-            />
-          </Field>
-
-          <Field label="Ano">
-            <Input
-              type="number"
-              value={form.year ?? ""}
-              onChange={(e) =>
-                set(
-                  "year",
-                  e.target.value === ""
-                    ? null
-                    : Number(e.target.value),
-                )
-              }
-            />
-          </Field>
-
-          <Field label="Formato">
-            <NativeSelect
-              value={form.format}
-              onChange={(e) =>
-                set("format", e.target.value)
-              }
-            >
-              {Object.entries(FORMAT_PT).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-
-          <Field label="Status">
-            <NativeSelect
-              value={form.status}
-              onChange={(e) =>
-                set("status", e.target.value)
-              }
-            >
-              {Object.entries(STATUS_PT).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-
-          <Field label="Temporada">
-            <NativeSelect
-              value={form.season ?? ""}
-              onChange={(e) =>
-                set("season", e.target.value || null)
-              }
-            >
-              <option value="">—</option>
-
-              {Object.entries(SEASON_PT).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-
-          <Field label="Trailer (YouTube URL ou ID)">
-            <Input
-              value={form.trailerId ?? ""}
-              onChange={(e) =>
-                set(
-                  "trailerId",
-                  e.target.value || null,
-                )
-              }
-            />
-          </Field>
-
-          <label className="flex h-11 items-center gap-2 text-sm text-muted sm:col-span-2">
-            <input
-              type="checkbox"
-              checked={form.hidden}
-              onChange={(e) =>
-                set("hidden", e.target.checked)
-              }
-              className="size-4 accent-primary"
-            />
-
-            Ocultar do catálogo público
-          </label>
-        </div>
-      </div>
-
+      {/* Banner de Sincronização do Outbox */}
       {(() => {
         const animeOutboxOps = outboxOps.filter((o) => o.animeId === form.id);
         const conflictCount = animeOutboxOps.filter((o) => o.status === "conflict").length;
@@ -868,15 +694,15 @@ function AdminEditor() {
         if (animeOutboxOps.length === 0) return null;
 
         return (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs sm:text-sm text-amber-200 backdrop-blur-md">
             <div className="space-y-0.5">
               <p className="font-semibold text-amber-300">
-                Outbox: {animeOutboxOps.length} operação(ões) pendente(s) neste anime
+                Fila de Envio (Outbox): {animeOutboxOps.length} operação(ões) pendente(s)
               </p>
               <p className="text-xs text-amber-200/80">
                 {conflictCount > 0
-                  ? `${conflictCount} em conflito (aguardando correção) e ${pendingCount} pendente(s) de envio.`
-                  : `${pendingCount} operação(ões) prontas para sincronização com o banco.`}
+                  ? `${conflictCount} em conflito (aguardando correção) e ${pendingCount} pendente(s) de envio ao PostgreSQL.`
+                  : `${pendingCount} operação(ões) aguardando sincronização com o banco.`}
               </p>
             </div>
             <Button
@@ -907,13 +733,13 @@ function AdminEditor() {
       {/* Banner de Feedback da Recuperação de Episódios do Servidor PostgreSQL */}
       {id !== "new" && recoveryState.status !== "idle" && (
         <div
-          className={`flex flex-wrap items-center justify-between gap-3 rounded-xl p-3.5 text-xs sm:text-sm border transition-colors ${
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4 text-xs sm:text-sm border transition-colors backdrop-blur-md ${
             recoveryState.status === "loading"
               ? "border-sky-500/30 bg-sky-500/10 text-sky-200"
               : recoveryState.status === "success"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
               : recoveryState.status === "empty"
-              ? "border-border/60 bg-surface/80 text-muted"
+              ? "border-white/10 bg-surface/60 text-muted"
               : "border-amber-500/30 bg-amber-500/10 text-amber-200"
           }`}
         >
@@ -939,7 +765,7 @@ function AdminEditor() {
             variant="ghost"
             disabled={recoveryState.status === "loading"}
             onClick={() => void recoverEpisodesFromServer(id)}
-            className="h-7 text-xs gap-1.5 hover:bg-white/10"
+            className="h-8 text-xs gap-1.5 hover:bg-white/10"
           >
             <RefreshCw className={`size-3.5 ${recoveryState.status === "loading" ? "animate-spin" : ""}`} />
             Recarregar do servidor
@@ -947,537 +773,39 @@ function AdminEditor() {
         </div>
       )}
 
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-2xl">
-            Temporadas e episódios
-          </h2>
+      {/* Metadados Organizados do Anime */}
+      <EditorMetadata
+        form={current}
+        onChange={set}
+        genreText={genreText}
+        onGenreTextChange={setGenreText}
+      />
 
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addSeason}
-          >
-            <Plus className="size-4" />
-            Temporada
-          </Button>
-        </div>
+      {/* Gerenciamento Modernizado de Temporadas e Episódios */}
+      <EditorSeasons
+        animeId={current.id}
+        seasons={current.seasons}
+        onAddSeason={addSeason}
+        onPatchSeason={patchSeason}
+        onRemoveSeason={removeSeason}
+        onAddEpisode={addEpisode}
+        onPatchEpisode={patchEpisode}
+        onRemoveEpisode={removeEpisode}
+        onCaptureFrame={handleCaptureEpisodeFrame}
+        onUploadVideoToB2={handleUploadVideoToB2}
+        uploadingEpisode={uploadingEpisode}
+        captureStatus={captureStatus}
+        outboxOps={outboxOps}
+      />
 
-        {form.seasons.map((season) => (
-          <div
-            key={season.id}
-            className="rounded-xl bg-surface p-4 shadow-[var(--shadow-border)]"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Field
-                label="Nome"
-                className="flex-1"
-              >
-                <Input
-                  value={season.title}
-                  onChange={(e) =>
-                    patchSeason(season.id, {
-                      title: e.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field
-                label="Nº"
-                className="w-24"
-              >
-                <Input
-                  type="number"
-                  value={season.number}
-                  onChange={(e) =>
-                    patchSeason(season.id, {
-                      number: Number(e.target.value),
-                    })
-                  }
-                />
-              </Field>
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="self-end"
-                aria-label="Remover temporada"
-                onClick={() =>
-                  removeSeason(season.id)
-                }
-              >
-                <Trash2 className="size-4 text-danger" />
-              </Button>
-            </div>
-
-            <ul className="mt-4 space-y-3">
-              {season.episodes.map((ep) => {
-                const outboxOp = outboxOps.find(
-                  (o) => o.episodeId === ep.id && o.animeId === form.id,
-                );
-                return (
-                  <li
-                    key={ep.id}
-                    className="rounded-lg bg-elevated p-3"
-                  >
-                    <div className="grid gap-2 sm:grid-cols-12">
-                      <Field
-                        label={
-                          <span className="flex items-center gap-1.5 flex-wrap">
-                            <span>#</span>
-                            {outboxOp ? (
-                              outboxOp.status === "conflict" ? (
-                                <span
-                                  className="inline-flex items-center gap-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-medium text-red-400"
-                                  title={`Ação necessária: ${outboxOp.lastError || "Erro de validação ou conflito no servidor"}`}
-                                >
-                                  Ação necessária
-                                </span>
-                              ) : (
-                                <span
-                                  className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
-                                  title="Sincronização pendente: episódio preservado aguardando envio ao servidor"
-                                >
-                                  Pendente
-                                </span>
-                              )
-                            ) : isEpisodePublished(ep) ? (
-                              <span
-                                className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400"
-                                title="Salvo no servidor: gravação confirmada no PostgreSQL"
-                              >
-                                Sincronizado
-                              </span>
-                            ) : (
-                              <span
-                                className="inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-muted"
-                                title="Salvo no servidor: rascunho sem player de vídeo"
-                              >
-                                Rascunho
-                              </span>
-                            )}
-                          </span>
-                        }
-                        className="sm:col-span-1"
-                      >
-                      <Input
-                        type="number"
-                        value={ep.number}
-                        onChange={(e) =>
-                          patchEpisode(
-                            season.id,
-                            ep.id,
-                            {
-                              number: Number(
-                                e.target.value,
-                              ),
-                            },
-                          )
-                        }
-                      />
-                    </Field>
-
-                    <Field
-                      label="Título"
-                      className="sm:col-span-5"
-                    >
-                      <Input
-                        value={ep.title}
-                        onChange={(e) =>
-                          patchEpisode(
-                            season.id,
-                            ep.id,
-                            {
-                              title: e.target.value,
-                            },
-                          )
-                        }
-                      />
-                    </Field>
-
-                    <Field
-                      label="Duração"
-                      className="sm:col-span-2"
-                    >
-                      <Input
-                        value={ep.duration ?? ""}
-                        onChange={(e) =>
-                          patchEpisode(
-                            season.id,
-                            ep.id,
-                            {
-                              duration:
-                                e.target.value,
-                            },
-                          )
-                        }
-                        placeholder="24 min"
-                      />
-                    </Field>
-
-                    {[
-                      {
-                        key: "videoUrl" as const,
-                        label: "Player 1",
-                      },
-                      {
-                        key: "videoUrl2" as const,
-                        label: "Player 2",
-                      },
-                      {
-                        key: "videoUrl3" as const,
-                        label: "Player 3",
-                      },
-                    ].map(({ key, label }) => (
-                      <Field
-                        key={key}
-                        label={`${label} — URL do vídeo`}
-                        className="sm:col-span-4"
-                      >
-                        <div className="flex gap-2">
-                          <Input
-                            value={ep[key] ?? ""}
-                            onChange={(e) =>
-                              patchEpisode(
-                                season.id,
-                                ep.id,
-                                {
-                                  [key]:
-                                    e.target.value,
-                                },
-                              )
-                            }
-                            onBlur={(e) => {
-                              const val = e.target.value.trim();
-                              if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
-                                void handleCaptureEpisodeFrame(season.id, ep, val);
-                              }
-                            }}
-                            onPaste={(e) => {
-                              const val = e.clipboardData.getData("text").trim();
-                              if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
-                                setTimeout(() => {
-                                  void handleCaptureEpisodeFrame(season.id, ep, val);
-                                }, 100);
-                              }
-                            }}
-                            placeholder="URL do vídeo (MP4 / R2)"
-                          />
-
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="shrink-0"
-                            disabled={
-                              uploadingEpisode ===
-                              `${ep.id}-${key}`
-                            }
-                            onClick={async () => {
-                              const uploadId = `${ep.id}-${key}`;
-
-                              setUploadingEpisode(
-                                uploadId,
-                              );
-
-                              try {
-                                await uploadVideoToB2(
-                                  (url, file) => {
-                                    patchEpisode(
-                                      season.id,
-                                      ep.id,
-                                      {
-                                        [key]: url,
-                                      },
-                                    );
-
-                                    toast.success(
-                                      `${label} enviado com sucesso.`,
-                                    );
-
-                                    if (!ep.thumbnail) {
-                                      const frameSource = file
-                                        ? URL.createObjectURL(file)
-                                        : url;
-
-                                      captureAndUploadThumbnail(frameSource, {
-                                        episodeTitle: ep.title || `Episódio ${ep.number}`,
-                                      })
-                                        .then((res) => {
-                                          patchEpisode(
-                                            season.id,
-                                            ep.id,
-                                            {
-                                              thumbnail: res.url,
-                                            },
-                                          );
-                                          toast.success(
-                                            "Miniatura capturada e salva automaticamente!",
-                                          );
-                                        })
-                                        .catch((err) => {
-                                          console.warn("Falha na captura automática do upload:", err);
-                                        })
-                                        .finally(() => {
-                                          if (file) {
-                                            URL.revokeObjectURL(frameSource);
-                                          }
-                                        });
-                                    }
-                                  },
-                                );
-                              } catch (error) {
-                                toast.error(
-                                  error instanceof Error
-                                    ? error.message
-                                    : "Falha no upload.",
-                                );
-                              } finally {
-                                setUploadingEpisode(
-                                  null,
-                                );
-                              }
-                            }}
-                          >
-                            {uploadingEpisode ===
-                            `${ep.id}-${key}`
-                              ? "Abrindo…"
-                              : "Enviar"}
-                          </Button>
-                        </div>
-                      </Field>
-                    ))}
-
-                    <Field
-                      label="Player 4 — URL do vídeo"
-                      className="sm:col-span-4"
-                    >
-                      <div className="flex gap-2">
-                        <Input
-                          value={ep.videoUrl4 ?? ""}
-                          onChange={(e) =>
-                            patchEpisode(
-                              season.id,
-                              ep.id,
-                              {
-                                videoUrl4:
-                                  e.target.value,
-                              },
-                            )
-                          }
-                          onBlur={(e) => {
-                            const val = e.target.value.trim();
-                            if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
-                              void handleCaptureEpisodeFrame(season.id, ep, val);
-                            }
-                          }}
-                          onPaste={(e) => {
-                            const val = e.clipboardData.getData("text").trim();
-                            if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
-                              setTimeout(() => {
-                                void handleCaptureEpisodeFrame(season.id, ep, val);
-                              }, 100);
-                            }
-                          }}
-                          placeholder="URL do vídeo (MP4 / R2)"
-                        />
-
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="shrink-0"
-                          disabled
-                        >
-                          Enviar
-                        </Button>
-                      </div>
-                    </Field>
-
-                    <Field
-                      label="Player 5 — URL do vídeo"
-                      className="sm:col-span-4"
-                    >
-                      <div className="flex gap-2">
-                        <Input
-                          value={ep.videoUrl5 ?? ""}
-                          onChange={(e) =>
-                            patchEpisode(
-                              season.id,
-                              ep.id,
-                              {
-                                videoUrl5:
-                                  e.target.value,
-                              },
-                            )
-                          }
-                          onBlur={(e) => {
-                            const val = e.target.value.trim();
-                            if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
-                              void handleCaptureEpisodeFrame(season.id, ep, val);
-                            }
-                          }}
-                          onPaste={(e) => {
-                            const val = e.clipboardData.getData("text").trim();
-                            if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
-                              setTimeout(() => {
-                                void handleCaptureEpisodeFrame(season.id, ep, val);
-                              }, 100);
-                            }
-                          }}
-                          placeholder="URL do vídeo (HLS / MP4)"
-                        />
-                      </div>
-                    </Field>
-
-                    <Field
-                      label="Thumb do Episódio (Miniatura Real do Vídeo)"
-                      className="sm:col-span-11"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          {ep.thumbnail ? (
-                            <div className="relative size-10 shrink-0 overflow-hidden rounded-md border border-purple-500/30 bg-black">
-                              <img
-                                src={ep.thumbnail}
-                                alt=""
-                                className="size-full object-cover"
-                              />
-                            </div>
-                          ) : (
-                            <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-dashed border-zinc-700 bg-black/40 text-zinc-500">
-                              <Film className="size-4" />
-                            </div>
-                          )}
-                          <Input
-                            value={ep.thumbnail ?? ""}
-                            onChange={(e) =>
-                              patchEpisode(
-                                season.id,
-                                ep.id,
-                                {
-                                  thumbnail:
-                                    e.target.value,
-                                },
-                              )
-                            }
-                            placeholder="URL da miniatura do episódio (capturada ou manual)"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={captureStatus[ep.id]?.status === "loading"}
-                            onClick={() =>
-                              handleCaptureEpisodeFrame(
-                                season.id,
-                                ep,
-                              )
-                            }
-                            className="shrink-0 gap-1.5 text-xs text-purple-300 hover:text-white"
-                            title="Capturar quadro do vídeo agora"
-                          >
-                            {captureStatus[ep.id]?.status === "loading" ? (
-                              <>
-                                <Loader2 className="size-3.5 animate-spin" />
-                                <span>Capturando…</span>
-                              </>
-                            ) : (
-                              <>
-                                <Camera className="size-3.5" />
-                                <span>{ep.thumbnail ? "Recapturar" : "Capturar"}</span>
-                              </>
-                            )}
-                          </Button>
-                        </div>
-
-                        {/* Feedback em tempo real do estado da captura */}
-                        {captureStatus[ep.id]?.status === "loading" && (
-                          <div className="flex items-center gap-2 rounded-md bg-purple-950/40 border border-purple-500/30 px-2.5 py-1.5 text-xs text-purple-300">
-                            <Loader2 className="size-3.5 animate-spin shrink-0 text-purple-400" />
-                            <span>Capturando quadro real e salvando miniatura persistente…</span>
-                          </div>
-                        )}
-
-                        {captureStatus[ep.id]?.status === "error" && (
-                          <div className="rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-200 space-y-1">
-                            <div className="flex items-center gap-1.5 font-medium text-amber-300">
-                              <AlertCircle className="size-3.5 shrink-0" />
-                              <span>Captura automática indisponível para este vídeo:</span>
-                            </div>
-                            <p className="text-[11px] text-amber-200/90 pl-5">
-                              {captureStatus[ep.id]?.message}
-                            </p>
-                            <p className="text-[10px] text-amber-300/70 pl-5">
-                              Dica: Para Cloudflare R2, ative a regra de CORS no bucket (AllowedOrigins: [&quot;*&quot;]). Você também pode colar uma URL de imagem diretamente no campo acima.
-                            </p>
-                          </div>
-                        )}
-
-                        {captureStatus[ep.id]?.status === "success" && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
-                            <CheckCircle2 className="size-3.5 shrink-0" />
-                            <span>Miniatura própria capturada e salva com sucesso!</span>
-                          </div>
-                        )}
-                      </div>
-                    </Field>
-
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="sm:col-span-1 sm:self-end"
-                      aria-label="Remover episódio"
-                      onClick={() =>
-                        removeEpisode(
-                          season.id,
-                          ep.id,
-                        )
-                      }
-                    >
-                      <Trash2 className="size-4 text-danger" />
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-            </ul>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              onClick={() =>
-                addEpisode(season.id)
-              }
-            >
-              <Plus className="size-4" />
-              Episódio
-            </Button>
-          </div>
-        ))}
-      </section>
+      {/* Barra de Ação Mobile Fixa */}
+      <EditorMobileBar
+        title={animeTitle}
+        isSaving={isSaving}
+        onSave={save}
+        canDuplicate={id !== "new"}
+        onDuplicate={duplicateAsDubbed}
+      />
     </div>
   );
 }
-
-function Field({
-  label,
-  children,
-  className,
-}: {
-  label: ReactNode;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <label className={className}>
-      <Label className="mb-1.5 block">
-        {label}
-      </Label>
-      {children}
-    </label>
-  );
-    }
