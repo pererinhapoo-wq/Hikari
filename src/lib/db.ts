@@ -211,7 +211,7 @@ async function createSql(): Promise<Sql> {
   }
   const client = await (dbSource === "neon" ? createNeonSql() : createPgliteSql());
   try {
-    const { provisionMissingProfiles } = await import("./profile-provision");
+    const { provisionMissingProfiles } = await import("./profile-provision.ts");
     await provisionMissingProfiles(client);
   } catch (err) {
     console.error("[db] Background profile provisioning warning:", err);
