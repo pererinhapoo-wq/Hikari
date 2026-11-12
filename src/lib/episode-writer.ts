@@ -1,5 +1,7 @@
 import type { Episode } from "@/lib/types";
 import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
+import { isHikariPlayableUrl } from "@/lib/published-episodes";
+import { useHikariStore } from "@/lib/store";
 
 export const OUTBOX_STORAGE_KEY = "hikari-episode-outbox-v1";
 const MAX_OUTBOX_SIZE = 40;
@@ -44,6 +46,14 @@ export interface OutboxOperationInput {
   seasonNumber: number;
   episodeNumber?: number;
   payload?: EpisodePayload;
+}
+
+export interface PersistEpisodeResult {
+  confirmed: boolean;
+  queued: boolean;
+  canonicalId?: string;
+  status: "synced" | "pending" | "conflict";
+  error?: string;
 }
 
 let isFlushing = false;
@@ -95,16 +105,98 @@ export function hasPendingWrites(): boolean {
 }
 
 /**
- * Enfileira uma operação no Outbox com coalescência inteligente por episódio.
+ * Reconcilia o identificador do episódio no estado local (Zustand/IndexedDB)
+ * e nas operações pendentes relacionadas no Outbox quando o servidor retorna
+ * um ID canônico preexistente no PostgreSQL.
+ */
+export function reconcileLocalEpisode(
+  animeId: string,
+  seasonNumber: number,
+  oldId: string,
+  canonicalId: string,
+): void {
+  if (!oldId || !canonicalId || oldId === canonicalId) return;
+
+  // 1. Atualizar referências locais no Outbox
+  const ops = readOutbox();
+  let opsChanged = false;
+  const updatedOps = ops.map((op) => {
+    if (op.animeId === animeId && op.episodeId === oldId) {
+      opsChanged = true;
+      return {
+        ...op,
+        episodeId: canonicalId,
+        payload: op.payload
+          ? {
+              ...op.payload,
+              id: canonicalId,
+            }
+          : undefined,
+      };
+    }
+    return op;
+  });
+
+  if (opsChanged) {
+    writeOutbox(updatedOps);
+  }
+
+  // 2. Atualizar store Zustand em memória e IndexedDB
+  if (typeof window !== "undefined") {
+    try {
+      useHikariStore.setState((s) => {
+        const animeIdx = s.animes.findIndex((a) => a.id === animeId);
+        if (animeIdx === -1) return s;
+
+        const anime = s.animes[animeIdx];
+        let epFound = false;
+
+        const updatedSeasons = anime.seasons.map((season) => {
+          if (season.number !== seasonNumber) return season;
+          return {
+            ...season,
+            episodes: season.episodes.map((ep) => {
+              if (ep.id === oldId) {
+                epFound = true;
+                return { ...ep, id: canonicalId };
+              }
+              return ep;
+            }),
+          };
+        });
+
+        if (!epFound) return s;
+
+        const nextAnimes = [...s.animes];
+        nextAnimes[animeIdx] = {
+          ...anime,
+          seasons: updatedSeasons,
+        };
+
+        return { animes: nextAnimes };
+      });
+    } catch (err) {
+      console.warn("[episode-writer] Falha ao reconciliar ID no store Zustand:", err);
+    }
+  }
+}
+
+/**
+ * Enfileira uma operação no Outbox com coalescência inteligente por episódio e slot.
  * Se a fila atingir o limite de 40 operações, não descarta silenciosamente as anteriores:
- * retorna null para indicar que a capacidade máxima foi atingida.
+ * retorna null para indicar que a capacidade máxima foi atingida e preserva os registros.
  */
 export function enqueue(input: OutboxOperationInput): OutboxOperation | null {
   const currentOps = readOutbox();
 
-  // Coalescência: busca operação pendente existente para o mesmo episódio
+  // Coalescência: busca operação pendente existente para o mesmo episódio ou mesmo slot
   const existingIdx = currentOps.findIndex(
-    (op) => op.episodeId === input.episodeId && op.animeId === input.animeId,
+    (op) =>
+      op.animeId === input.animeId &&
+      (op.episodeId === input.episodeId ||
+        (input.episodeNumber !== undefined &&
+          op.seasonNumber === input.seasonNumber &&
+          op.episodeNumber === input.episodeNumber)),
   );
 
   // Se a fila estiver cheia e for uma nova operação independente, não descarta as pendências
@@ -138,6 +230,7 @@ export function enqueue(input: OutboxOperationInput): OutboxOperation | null {
     else if (existing.type === "upsert" && input.type === "upsert") {
       operation = {
         ...existing,
+        episodeId: input.episodeId,
         payload: input.payload,
         createdAt: now,
         attempts: 0,
@@ -151,6 +244,7 @@ export function enqueue(input: OutboxOperationInput): OutboxOperation | null {
       operation = {
         ...existing,
         type: input.type,
+        episodeId: input.episodeId,
         payload: input.payload,
         createdAt: now,
         attempts: 0,
@@ -182,9 +276,11 @@ export function enqueue(input: OutboxOperationInput): OutboxOperation | null {
 
 /**
  * Executa o reenvio sequencial de todas as operações pendentes no Outbox.
- * Protegido contra execuções concorrentes.
+ * Protegido contra execuções concorrentes e loops infinitos em erros de conflito.
  */
-export async function flushOutbox(): Promise<{
+export async function flushOutbox(options?: {
+  forceConflicts?: boolean;
+}): Promise<{
   processed: number;
   remaining: number;
   error?: string;
@@ -209,6 +305,12 @@ export async function flushOutbox(): Promise<{
   try {
     for (let i = 0; i < ops.length; i++) {
       const op = ops[i];
+
+      // Erros permanentes/conflitos não devem entrar em ciclo infinito de tentativas automáticas
+      if (op.status === "conflict" && !options?.forceConflicts) {
+        continue;
+      }
+
       let res: Response | null = null;
       let networkFailed = false;
 
@@ -243,6 +345,18 @@ export async function flushOutbox(): Promise<{
       // 1. Sucesso na operação (2xx)
       if (res && res.ok) {
         processedCount++;
+
+        // Reconcilia ID canônico caso o servidor tenha retornado um ID preexistente diferente
+        try {
+          const json = await res.json();
+          const canonicalId = json?.episodeId || json?.canonicalId;
+          if (canonicalId && canonicalId !== op.episodeId) {
+            reconcileLocalEpisode(op.animeId, op.seasonNumber, op.episodeId, canonicalId);
+          }
+        } catch {
+          // ignore
+        }
+
         // Remove da lista de pendências
         const idx = remainingOps.findIndex((o) => o.id === op.id);
         if (idx !== -1) {
@@ -274,7 +388,7 @@ export async function flushOutbox(): Promise<{
         };
       }
 
-      // 4. Erros de validação ou conflito (400, 404, 409)
+      // 4. Erros de validação ou conflito (400, 404, 409): preserva na fila como conflict
       if (res && (res.status === 400 || res.status === 404 || res.status === 409)) {
         op.attempts = (op.attempts || 0) + 1;
         op.status = "conflict";
@@ -286,6 +400,7 @@ export async function flushOutbox(): Promise<{
           // ignore
         }
         op.lastError = errMsg;
+        op.lastAttemptAt = Date.now();
 
         // Preserva a operação em conflito na fila para inspeção/correção sem bloqueio
         writeOutbox(remainingOps);
@@ -295,6 +410,7 @@ export async function flushOutbox(): Promise<{
       // 5. Falha de rede ou erro do servidor (5xx): mantém na fila e pausa o lote
       if (networkFailed || (res && res.status >= 500)) {
         op.attempts = (op.attempts || 0) + 1;
+        op.status = "pending";
         op.lastAttemptAt = Date.now();
         writeOutbox(remainingOps);
         console.warn("[episode-writer] Servidor ou rede indisponível. Operações mantidas no Outbox.");
@@ -317,17 +433,38 @@ export async function flushOutbox(): Promise<{
 
 /**
  * Tenta persistir a criação ou edição de um episódio no servidor.
- * Se falhar por rede/servidor, enfileira no Outbox.
- * Se o episódio estava marcado como excluído (tombstone), limpa o tombstone na republicação.
+ * Se falhar por rede/servidor ou validação, preserva o episódio no Outbox sem descartar.
+ * Reconcilia o ID canônico se retornado pelo PostgreSQL.
  */
 export async function persistEpisode(
   animeId: string,
   seasonNumber: number,
   episode: Episode,
   animeTitle?: string,
-): Promise<{ confirmed: boolean; queued: boolean; error?: string }> {
+): Promise<PersistEpisodeResult> {
   // Limpa tombstone do episódio na republicação ou salvamento
-  clearTombstone(episode.id);
+  clearTombstone(episode.id, {
+    animeId,
+    seasonNumber,
+    episodeNumber: episode.number,
+  });
+
+  // Se o episódio não possui player válido e não foi explicitamente publicado como true,
+  // representa corretamente como rascunho (published = false)
+  const hasPlayableSource = Boolean(
+    (episode.videoUrl && isHikariPlayableUrl(episode.videoUrl)) ||
+      (episode.videoUrl2 && isHikariPlayableUrl(episode.videoUrl2)) ||
+      (episode.videoUrl3 && isHikariPlayableUrl(episode.videoUrl3)) ||
+      (episode.videoUrl4 && isHikariPlayableUrl(episode.videoUrl4)) ||
+      (episode.videoUrl5 && isHikariPlayableUrl(episode.videoUrl5)),
+  );
+
+  const isPublished =
+    episode.published === true
+      ? true
+      : episode.published === false
+        ? false
+        : hasPlayableSource;
 
   const payload: EpisodePayload = {
     id: episode.id,
@@ -343,7 +480,7 @@ export async function persistEpisode(
     videoUrl3: episode.videoUrl3 || null,
     videoUrl4: episode.videoUrl4 || null,
     videoUrl5: episode.videoUrl5 || null,
-    published: episode.published !== false,
+    published: isPublished,
     animeTitle: animeTitle || null,
   };
 
@@ -358,7 +495,38 @@ export async function persistEpisode(
     });
 
     if (res.ok) {
-      return { confirmed: true, queued: false };
+      let canonicalId = episode.id;
+      try {
+        const j = await res.json();
+        if (j?.episodeId || j?.canonicalId) {
+          canonicalId = j.episodeId || j.canonicalId;
+        }
+      } catch {
+        // ignore
+      }
+
+      // Reconcilia o ID se for diferente do ID local
+      if (canonicalId !== episode.id) {
+        reconcileLocalEpisode(animeId, seasonNumber, episode.id, canonicalId);
+      }
+
+      // Limpa qualquer pendência deste episódio no Outbox
+      const currentOps = readOutbox();
+      const filtered = currentOps.filter(
+        (o) =>
+          !(
+            o.animeId === animeId &&
+            (o.episodeId === episode.id || o.episodeId === canonicalId)
+          ),
+      );
+      writeOutbox(filtered);
+
+      return {
+        confirmed: true,
+        queued: false,
+        canonicalId,
+        status: "synced",
+      };
     }
 
     if (res.status === 401 || res.status === 403) {
@@ -369,10 +537,15 @@ export async function persistEpisode(
       } catch {
         // ignore
       }
-      return { confirmed: false, queued: false, error: errMsg };
+      return {
+        confirmed: false,
+        queued: false,
+        status: "conflict",
+        error: errMsg,
+      };
     }
 
-    // Se for 400 ou 409 (validação/conflito)
+    // Se for 400 ou 409 (validação/conflito): PRESERVA no Outbox com status "conflict"
     if (res.status === 400 || res.status === 409) {
       let errMsg = "Erro de validação ao salvar episódio.";
       try {
@@ -381,10 +554,33 @@ export async function persistEpisode(
       } catch {
         // ignore
       }
-      return { confirmed: false, queued: false, error: errMsg };
+
+      const op = enqueue({
+        type: "upsert",
+        episodeId: episode.id,
+        animeId,
+        seasonNumber,
+        episodeNumber: episode.number,
+        payload,
+      });
+
+      if (op) {
+        op.status = "conflict";
+        op.lastError = errMsg;
+        op.attempts = 1;
+        op.lastAttemptAt = Date.now();
+        writeOutbox(readOutbox().map((o) => (o.id === op.id ? op : o)));
+      }
+
+      return {
+        confirmed: false,
+        queued: Boolean(op),
+        status: "conflict",
+        error: errMsg,
+      };
     }
 
-    // Erros 5xx: enfileira no Outbox
+    // Erros 5xx ou outros do servidor: enfileira no Outbox como "pending"
     const op = enqueue({
       type: "upsert",
       episodeId: episode.id,
@@ -398,13 +594,20 @@ export async function persistEpisode(
       return {
         confirmed: false,
         queued: false,
-        error: "Fila de sincronização cheia (40 operações). Conecte-se para sincronizar antes de adicionar novas alterações.",
+        status: "conflict",
+        error:
+          "Fila de sincronização cheia (40 operações). Conecte-se para sincronizar antes de adicionar novas alterações.",
       };
     }
 
-    return { confirmed: false, queued: true };
+    return {
+      confirmed: false,
+      queued: true,
+      status: "pending",
+      error: "Servidor temporariamente indisponível. Alteração mantida na fila de sincronização.",
+    };
   } catch {
-    // Falha de rede: enfileira no Outbox
+    // Falha de rede: enfileira no Outbox como "pending"
     const op = enqueue({
       type: "upsert",
       episodeId: episode.id,
@@ -418,26 +621,34 @@ export async function persistEpisode(
       return {
         confirmed: false,
         queued: false,
-        error: "Fila de sincronização cheia (40 operações). Conecte-se para sincronizar antes de adicionar novas alterações.",
+        status: "conflict",
+        error:
+          "Fila de sincronização cheia (40 operações). Conecte-se para sincronizar antes de adicionar novas alterações.",
       };
     }
 
-    return { confirmed: false, queued: true };
+    return {
+      confirmed: false,
+      queued: true,
+      status: "pending",
+      error: "Conexão de rede indisponível. Episódio preservado na fila local para envio automático.",
+    };
   }
 }
 
 /**
  * Tenta persistir a exclusão de um episódio no servidor.
- * Registra o tombstone imediatamente para evitar que o episódio reapareça de cópias locais antigas.
+ * Registra o tombstone imediatamente para proteger a experiência local e offline.
  * Se falhar por rede/servidor, enfileira automaticamente no Outbox.
  */
 export async function persistEpisodeDelete(
   animeId: string,
   seasonNumber: number,
   episodeId: string,
+  episodeNumber?: number,
 ): Promise<{ confirmed: boolean; queued: boolean; error?: string }> {
-  // Registra tombstone imediatamente para proteger a experiência local e offline
-  addTombstone(episodeId);
+  // Registra tombstone imediatamente para proteger a experiência local e offline com escopo de anime e slot
+  addTombstone(episodeId, { animeId, seasonNumber, episodeNumber });
 
   try {
     const res = await fetch("/api/admin/catalog-episode", {
@@ -467,19 +678,21 @@ export async function persistEpisodeDelete(
       return { confirmed: false, queued: false, error: errMsg };
     }
 
-    // Erros 5xx: enfileira no Outbox
+    // Erros 5xx ou 400/409: enfileira no Outbox
     const op = enqueue({
       type: "delete",
       episodeId,
       animeId,
       seasonNumber,
+      episodeNumber,
     });
 
     if (!op) {
       return {
         confirmed: false,
         queued: false,
-        error: "Fila de sincronização cheia (40 operações). Conecte-se para sincronizar antes de adicionar novas alterações.",
+        error:
+          "Fila de sincronização cheia (40 operações). Conecte-se para sincronizar antes de adicionar novas alterações.",
       };
     }
 
@@ -497,7 +710,8 @@ export async function persistEpisodeDelete(
       return {
         confirmed: false,
         queued: false,
-        error: "Fila de sincronização cheia (40 operações). Conecte-se para sincronizar antes de adicionar novas alterações.",
+        error:
+          "Fila de sincronização cheia (40 operações). Conecte-se para sincronizar antes de adicionar novas alterações.",
       };
     }
 

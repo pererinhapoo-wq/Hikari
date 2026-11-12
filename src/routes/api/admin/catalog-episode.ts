@@ -73,18 +73,118 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
           }
 
           const data = parsed.data;
+          const sql = await getSql();
 
-          // 4. Normalizar e validar URLs de reprodução de vídeo
-          const v1 = sanitizeVideoUrl(data.videoUrl);
-          const v2 = sanitizeVideoUrl(data.videoUrl2);
-          const v3 = sanitizeVideoUrl(data.videoUrl3);
-          const v4 = sanitizeVideoUrl(data.videoUrl4);
-          const v5 = sanitizeVideoUrl(data.videoUrl5);
+          // 4. Buscar registros existentes por ID e por Slot (animeId, seasonNumber, number)
+          const existingByIdRows = await sql.query<{
+            id: string;
+            animeId: string;
+            seasonNumber: number;
+            number: number;
+            title: string | null;
+            thumbnail: string | null;
+            duration: string | null;
+            synopsis: string | null;
+            videoUrl: string | null;
+            videoUrl2: string | null;
+            videoUrl3: string | null;
+            videoUrl4: string | null;
+            videoUrl5: string | null;
+            published: boolean;
+            publishedAt: string | null;
+          }>(
+            `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
+                    "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
+                    "videoUrl4", "videoUrl5", "published", "publishedAt"
+             FROM "catalog_episode"
+             WHERE "id" = $1 LIMIT 1;`,
+            [data.id],
+          );
+          const existingById = existingByIdRows[0] || null;
+
+          const existingBySlotRows = await sql.query<{
+            id: string;
+            animeId: string;
+            seasonNumber: number;
+            number: number;
+            title: string | null;
+            thumbnail: string | null;
+            duration: string | null;
+            synopsis: string | null;
+            videoUrl: string | null;
+            videoUrl2: string | null;
+            videoUrl3: string | null;
+            videoUrl4: string | null;
+            videoUrl5: string | null;
+            published: boolean;
+            publishedAt: string | null;
+          }>(
+            `SELECT "id", "animeId", "seasonNumber", "number", "title", "thumbnail",
+                    "duration", "synopsis", "videoUrl", "videoUrl2", "videoUrl3",
+                    "videoUrl4", "videoUrl5", "published", "publishedAt"
+             FROM "catalog_episode"
+             WHERE "animeId" = $1 AND "seasonNumber" = $2 AND "number" = $3 LIMIT 1;`,
+            [data.animeId, data.seasonNumber, data.number],
+          );
+          const existingBySlot = existingBySlotRows[0] || null;
+
+          // 5. Conflito de integridade: se o ID recebido já existe, ele NÃO pode pertencer a outro slot
+          if (
+            existingById &&
+            (existingById.animeId !== data.animeId ||
+              existingById.seasonNumber !== data.seasonNumber ||
+              existingById.number !== data.number)
+          ) {
+            return Response.json(
+              {
+                error: `Conflito de integridade: o identificador "${data.id}" já está associado a outro episódio (${existingById.animeId} - Temporada ${existingById.seasonNumber}, Ep. ${existingById.number}) e não pode ser reaproveitado em outro slot.`,
+                code: "ID_BOUND_TO_OTHER_SLOT",
+                existingSlot: {
+                  animeId: existingById.animeId,
+                  seasonNumber: existingById.seasonNumber,
+                  number: existingById.number,
+                },
+              },
+              { status: 409 },
+            );
+          }
+
+          // 6. Resolução canônica de ID:
+          // Se o slot já existe no banco (mesmo com outro ID enviado pelo cliente), preserva o ID canônico existente.
+          let canonicalId = data.id;
+          let existingRow = existingById;
+          if (existingBySlot) {
+            canonicalId = existingBySlot.id;
+            existingRow = existingBySlot;
+          } else if (existingById) {
+            canonicalId = existingById.id;
+            existingRow = existingById;
+          }
+
+          // 7. Preservação integral de campos e fontes de vídeo (não sobrescrever fontes com vazias/null)
+          function resolveSource(
+            incoming: string | null | undefined,
+            existing: string | null | undefined,
+          ): string | null {
+            if (incoming !== undefined && incoming !== null) {
+              const trimmed = incoming.trim();
+              if (trimmed) {
+                return sanitizeVideoUrl(trimmed);
+              }
+            }
+            return existing || null;
+          }
+
+          const v1 = resolveSource(data.videoUrl, existingRow?.videoUrl);
+          const v2 = resolveSource(data.videoUrl2, existingRow?.videoUrl2);
+          const v3 = resolveSource(data.videoUrl3, existingRow?.videoUrl3);
+          const v4 = resolveSource(data.videoUrl4, existingRow?.videoUrl4);
+          const v5 = resolveSource(data.videoUrl5, existingRow?.videoUrl5);
 
           const hasPlayableSource = Boolean(v1 || v2 || v3 || v4 || v5);
 
-          // Um episódio só pode ser publicado quando possuir pelo menos uma fonte válida de reprodução
-          if (data.published && !hasPlayableSource) {
+          // Validação de publicação: publicado exige pelo menos 1 fonte de reprodução válida
+          if (data.published === true && !hasPlayableSource) {
             return Response.json(
               {
                 error:
@@ -94,9 +194,27 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             );
           }
 
-          const sql = await getSql();
+          const published = Boolean(data.published && hasPlayableSource);
 
-          // 5. Garantir que o anime exista em catalog_anime
+          // Preserva metadados existentes se formulário enviou valores vazios
+          const title =
+            (data.title && data.title.trim()) ||
+            existingRow?.title ||
+            `Episódio ${data.number}`;
+          const thumbnail =
+            (data.thumbnail && data.thumbnail.trim()) ||
+            existingRow?.thumbnail ||
+            null;
+          const duration =
+            (data.duration && data.duration.trim()) ||
+            existingRow?.duration ||
+            null;
+          const synopsis =
+            (data.synopsis && data.synopsis.trim()) ||
+            existingRow?.synopsis ||
+            null;
+
+          // 8. Garantir que o anime e a temporada existam no catálogo
           const fallbackAnimeTitle = data.animeTitle?.trim() || data.animeId;
           await sql.query(
             `INSERT INTO "catalog_anime" ("id", "title", "createdAt", "updatedAt")
@@ -105,7 +223,6 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             [data.animeId, fallbackAnimeTitle],
           );
 
-          // 6. Garantir que a temporada exista em catalog_season
           const seasonTitle = `Temporada ${data.seasonNumber}`;
           await sql.query(
             `INSERT INTO "catalog_season" ("animeId", "number", "title", "position", "createdAt")
@@ -114,55 +231,15 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             [data.animeId, data.seasonNumber, seasonTitle, data.seasonNumber - 1],
           );
 
-          // 7. Tratamento explícito de conflitos de unicidade (id e (animeId, seasonNumber, number))
-          // Verifica se o ID já existe com outro anime
-          const existingById = await sql.query<{ id: string; animeId: string }>(
-            `SELECT "id", "animeId" FROM "catalog_episode" WHERE "id" = $1 LIMIT 1;`,
-            [data.id],
-          );
-
-          if (existingById.length > 0 && existingById[0].animeId !== data.animeId) {
-            return Response.json(
-              {
-                error: `Conflito de integridade: o identificador de episódio "${data.id}" já pertence a outro anime (${existingById[0].animeId}).`,
-              },
-              { status: 409 },
-            );
-          }
-
-          // Verifica se o slot (animeId, seasonNumber, number) já está ocupado por outro ID diferente
-          const existingBySlot = await sql.query<{ id: string }>(
-            `SELECT "id" FROM "catalog_episode"
-             WHERE "animeId" = $1 AND "seasonNumber" = $2 AND "number" = $3 AND "id" != $4 LIMIT 1;`,
-            [data.animeId, data.seasonNumber, data.number, data.id],
-          );
-
-          if (existingBySlot.length > 0) {
-            return Response.json(
-              {
-                error: `Conflito de integridade: o episódio número ${data.number} da temporada ${data.seasonNumber} já existe com outro identificador ("${existingBySlot[0].id}").`,
-              },
-              { status: 409 },
-            );
-          }
-
-          // 8. Upsert do episódio
-          const title = data.title?.trim() || `Episódio ${data.number}`;
-          const thumbnail = data.thumbnail?.trim() || null;
-          const duration = data.duration?.trim() || null;
-          const synopsis = data.synopsis?.trim() || null;
-          const published = data.published && hasPlayableSource;
-
-          // Verifica se o episódio já existia e já estava publicado para evitar notificações redundantes
-          const prevEpisode = await sql.query<{ published: boolean | null }>(
-            `SELECT "published" FROM "catalog_episode" WHERE "id" = $1 LIMIT 1;`,
-            [data.id],
-          );
-          const wasAlreadyPublished =
-            prevEpisode.length > 0 && prevEpisode[0].published === true;
+          // 9. Gravação segura contra concorrência usando constraint UNIQUE (animeId, seasonNumber, number)
+          const wasAlreadyPublished = existingRow?.published === true;
           const isFirstTimePublished = published && !wasAlreadyPublished;
 
-          await sql.query(
+          const upsertResult = await sql.query<{
+            id: string;
+            published: boolean;
+            publishedAt: string | null;
+          }>(
             `INSERT INTO "catalog_episode" (
                "id", "animeId", "seasonNumber", "number",
                "title", "thumbnail", "duration", "synopsis",
@@ -178,32 +255,47 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                CURRENT_TIMESTAMP,
                CURRENT_TIMESTAMP
              )
-             ON CONFLICT ("id") DO UPDATE
+             ON CONFLICT ("animeId", "seasonNumber", "number") DO UPDATE
              SET
-               "seasonNumber" = EXCLUDED."seasonNumber",
-               "number" = EXCLUDED."number",
-               "title" = COALESCE(EXCLUDED."title", "catalog_episode"."title"),
-               "thumbnail" = COALESCE(EXCLUDED."thumbnail", "catalog_episode"."thumbnail"),
-               "duration" = COALESCE(EXCLUDED."duration", "catalog_episode"."duration"),
-               "synopsis" = COALESCE(EXCLUDED."synopsis", "catalog_episode"."synopsis"),
-               "videoUrl" = EXCLUDED."videoUrl",
-               "videoUrl2" = EXCLUDED."videoUrl2",
-               "videoUrl3" = EXCLUDED."videoUrl3",
-               "videoUrl4" = EXCLUDED."videoUrl4",
-               "videoUrl5" = EXCLUDED."videoUrl5",
+               "title" = EXCLUDED."title",
+               "thumbnail" = COALESCE(NULLIF(EXCLUDED."thumbnail", ''), "catalog_episode"."thumbnail"),
+               "duration" = COALESCE(NULLIF(EXCLUDED."duration", ''), "catalog_episode"."duration"),
+               "synopsis" = COALESCE(NULLIF(EXCLUDED."synopsis", ''), "catalog_episode"."synopsis"),
+               "videoUrl" = COALESCE(NULLIF(EXCLUDED."videoUrl", ''), "catalog_episode"."videoUrl"),
+               "videoUrl2" = COALESCE(NULLIF(EXCLUDED."videoUrl2", ''), "catalog_episode"."videoUrl2"),
+               "videoUrl3" = COALESCE(NULLIF(EXCLUDED."videoUrl3", ''), "catalog_episode"."videoUrl3"),
+               "videoUrl4" = COALESCE(NULLIF(EXCLUDED."videoUrl4", ''), "catalog_episode"."videoUrl4"),
+               "videoUrl5" = COALESCE(NULLIF(EXCLUDED."videoUrl5", ''), "catalog_episode"."videoUrl5"),
                "published" = EXCLUDED."published",
                "publishedAt" = CASE
                  WHEN EXCLUDED."published" = true AND "catalog_episode"."publishedAt" IS NULL THEN CURRENT_TIMESTAMP
+                 WHEN EXCLUDED."published" = false THEN NULL
                  ELSE "catalog_episode"."publishedAt"
                END,
-               "updatedAt" = CURRENT_TIMESTAMP;`,
+               "updatedAt" = CURRENT_TIMESTAMP
+             RETURNING "id", "published", "publishedAt";`,
             [
-              data.id, data.animeId, data.seasonNumber, data.number,
-              title, thumbnail, duration, synopsis,
-              v1, v2, v3, v4, v5,
+              canonicalId,
+              data.animeId,
+              data.seasonNumber,
+              data.number,
+              title,
+              thumbnail,
+              duration,
+              synopsis,
+              v1,
+              v2,
+              v3,
+              v4,
+              v5,
               published,
             ],
           );
+
+          const savedRow = upsertResult[0];
+          const effectiveId = savedRow ? savedRow.id : canonicalId;
+          const finalPublished = savedRow ? savedRow.published : published;
+          const finalPublishedAt = savedRow ? savedRow.publishedAt : null;
 
           // 9. Notificações para seguidores do anime quando o episódio for publicado pela primeira vez
           if (isFirstTimePublished) {
@@ -283,8 +375,12 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
 
           return Response.json({
             ok: true,
-            published,
-            episodeId: data.id,
+            published: finalPublished,
+            publishedAt: finalPublishedAt,
+            episodeId: effectiveId,
+            canonicalId: effectiveId,
+            reconciled: effectiveId !== data.id,
+            previousId: data.id,
             adminId,
             notifiedFollowers: isFirstTimePublished,
           });

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Trash2, Camera, Loader2, AlertCircle, CheckCircle2, Film, Copy } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Plus, Trash2, Camera, Loader2, AlertCircle, CheckCircle2, Film, Copy, RefreshCw } from "lucide-react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
 import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/types";
@@ -25,6 +25,12 @@ import {
   flushOutbox,
   type OutboxOperation,
 } from "@/lib/episode-writer";
+import {
+  executeGetCatalogEpisodes,
+  getAdminCatalogEpisodes,
+  mergeAdminEpisodesWithServer,
+  type CatalogEpisodesResult,
+} from "@/lib/catalog-episodes";
 
 export const Route = createFileRoute("/admin/$id")({
   validateSearch: (raw: Record<string, unknown>): { importId?: string } => ({
@@ -33,13 +39,29 @@ export const Route = createFileRoute("/admin/$id")({
   loaderDeps: ({ search }) => ({ importId: search.importId }),
   loader: async ({ params, deps }) => {
     const fetchId = params.id === "new" ? deps.importId : params.id;
-    if (!fetchId || fetchId.startsWith("local-")) return { remote: null };
-    try {
-      const remote = await fetchAnimeDetail({ data: { id: fetchId } });
-      return { remote };
-    } catch {
-      return { remote: null };
+    let remote = null;
+    let serverEpisodes: CatalogEpisodesResult | null = null;
+
+    if (fetchId && !fetchId.startsWith("local-")) {
+      try {
+        remote = await fetchAnimeDetail({ data: { id: fetchId } });
+      } catch {
+        remote = null;
+      }
     }
+
+    // Carrega episódios persistidos no PostgreSQL para o anime no painel administrativo
+    if (params.id && params.id !== "new") {
+      try {
+        serverEpisodes = await executeGetCatalogEpisodes(params.id, {
+          includeUnpublished: true,
+        });
+      } catch (err) {
+        console.warn("[admin loader] Erro ao carregar episódios do servidor:", err);
+      }
+    }
+
+    return { remote, serverEpisodes };
   },
   component: AdminEditor,
 });
@@ -79,7 +101,7 @@ function emptyLocal(): LocalAnime {
 function AdminEditor() {
   const { id } = Route.useParams();
   const { importId } = Route.useSearch();
-  const { remote } = Route.useLoaderData();
+  const { remote, serverEpisodes } = Route.useLoaderData();
   const navigate = useNavigate();
   const stored = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
@@ -94,12 +116,74 @@ function AdminEditor() {
   const [outboxOps, setOutboxOps] = useState<OutboxOperation[]>(() =>
     typeof window !== "undefined" ? readOutbox() : [],
   );
+  const [recoveryState, setRecoveryState] = useState<{
+    status: "idle" | "loading" | "success" | "empty" | "error";
+    message?: string;
+    recoveredCount?: number;
+  }>({ status: "idle" });
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setOutboxOps(readOutbox());
     }
   }, []);
+
+  const recoverEpisodesFromServer = useCallback(
+    async (targetId?: string, forcedResult?: CatalogEpisodesResult) => {
+      const effectiveId = targetId || id;
+      if (!effectiveId || effectiveId === "new") return;
+
+      setRecoveryState({
+        status: "loading",
+        message: "Carregando episódios do servidor PostgreSQL...",
+      });
+
+      try {
+        let result = forcedResult;
+        if (!result) {
+          result = await getAdminCatalogEpisodes({ data: { animeId: effectiveId } });
+        }
+
+        if (!result || !result.episodes || result.episodes.length === 0) {
+          setRecoveryState({
+            status: "empty",
+            message: "Nenhum episódio cadastrado no servidor para este anime.",
+            recoveredCount: 0,
+          });
+          return;
+        }
+
+        setForm((currentForm) => {
+          if (!currentForm) return currentForm;
+          const currentOps = typeof window !== "undefined" ? readOutbox() : outboxOps;
+          const mergeResult = mergeAdminEpisodesWithServer({
+            animeId: effectiveId,
+            localSeasons: currentForm.seasons,
+            serverResult: result!,
+            outboxOps: currentOps,
+          });
+
+          return {
+            ...currentForm,
+            seasons: mergeResult.seasons,
+          };
+        });
+
+        setRecoveryState({
+          status: "success",
+          message: `Episódios recuperados com sucesso do PostgreSQL (${result.episodes.length} confirmados no banco).`,
+          recoveredCount: result.episodes.length,
+        });
+      } catch (err) {
+        console.warn("[admin] Falha ao recuperar episódios do servidor:", err);
+        setRecoveryState({
+          status: "error",
+          message: "Falha ao consultar o servidor PostgreSQL. O catálogo local foi mantido intacto.",
+        });
+      }
+    },
+    [id, outboxOps],
+  );
 
   async function handleCaptureEpisodeFrame(
     sid: string,
@@ -171,11 +255,52 @@ function AdminEditor() {
             ? locals.find((a) => a.anilistId === remote.anilistId)
             : undefined);
 
-    const next = existing ?? (remote ? animeToLocal(remote) : emptyLocal());
+    const base =
+      existing ??
+      (remote
+        ? animeToLocal(remote)
+        : {
+            ...emptyLocal(),
+            id: id !== "new" ? id : `local-${crypto.randomUUID()}`,
+          });
 
-    setForm(next);
-    setGenreText(next.genres.join(", "));
-  }, [hydrated, id, remote]);
+    // Se episódios do servidor já foram carregados pelo loader, realiza a recuperação e mesclagem imediata
+    if (id !== "new" && serverEpisodes && serverEpisodes.episodes.length > 0) {
+      const currentOps = typeof window !== "undefined" ? readOutbox() : [];
+      const mergeResult = mergeAdminEpisodesWithServer({
+        animeId: id,
+        localSeasons: base.seasons,
+        serverResult: serverEpisodes,
+        outboxOps: currentOps,
+      });
+
+      setForm({
+        ...base,
+        seasons: mergeResult.seasons,
+      });
+      setGenreText(base.genres.join(", "));
+      setRecoveryState({
+        status: "success",
+        message: `Episódios recuperados com sucesso do PostgreSQL (${serverEpisodes.episodes.length} confirmados no banco).`,
+        recoveredCount: serverEpisodes.episodes.length,
+      });
+    } else {
+      setForm(base);
+      setGenreText(base.genres.join(", "));
+
+      if (id !== "new") {
+        if (serverEpisodes && serverEpisodes.episodes.length === 0) {
+          setRecoveryState({
+            status: "empty",
+            message: "Nenhum episódio cadastrado no servidor para este anime.",
+            recoveredCount: 0,
+          });
+        } else {
+          void recoverEpisodesFromServer(id);
+        }
+      }
+    }
+  }, [hydrated, id, remote, serverEpisodes, recoverEpisodesFromServer]);
 
   if (!form) {
     return <div className="h-64 animate-pulse rounded-xl bg-elevated" />;
@@ -254,12 +379,11 @@ function AdminEditor() {
       return;
     }
 
-    // 1. Local first
+    // 1. Persistência local inicial
     upsertAnime(next);
-    toast.success("Salvo neste dispositivo.");
     void navigate({ to: "/admin/$id", params: { id: next.id } });
 
-    // 2. Server persistence & episode outbox
+    // 2. Persistência no servidor e reconciliação com o outbox
     try {
       void fetch("/api/admin/catalog-anime", {
         method: "POST",
@@ -302,15 +426,51 @@ function AdminEditor() {
 
       if (promises.length > 0) {
         const results = await Promise.all(promises);
-        const queued = results.filter((r) => r.queued).length;
-        if (queued > 0) {
-          toast.info(`${queued} episódio(s) na fila do outbox para envio quando online.`);
-        } else {
-          toast.success("Episódios sincronizados com o servidor.");
+
+        // Reconcilia os IDs no estado local do formulário se o servidor tiver retornado um ID canônico preexistente
+        let formNeedsUpdate = false;
+        const reconciledSeasons = next.seasons.map((season) => ({
+          ...season,
+          episodes: season.episodes.map((ep) => {
+            const match = results.find(
+              (r) => r.canonicalId && r.canonicalId !== ep.id && r.status === "synced",
+            );
+            if (match && match.canonicalId) {
+              formNeedsUpdate = true;
+              return { ...ep, id: match.canonicalId };
+            }
+            return ep;
+          }),
+        }));
+
+        if (formNeedsUpdate) {
+          setForm((f) => (f ? { ...f, seasons: reconciledSeasons } : f));
         }
+
+        const confirmedCount = results.filter((r) => r.confirmed).length;
+        const conflictCount = results.filter((r) => r.status === "conflict").length;
+        const pendingCount = results.filter((r) => r.status === "pending").length;
+
+        if (conflictCount > 0) {
+          const firstErr = results.find((r) => r.status === "conflict")?.error;
+          toast.warning(
+            `Ação necessária: ${conflictCount} episódio(s) preservados localmente com erro de validação (${firstErr || "verifique os dados"}).`,
+          );
+        } else if (pendingCount > 0) {
+          toast.info(
+            `Sincronização pendente: ${pendingCount} episódio(s) preservados localmente aguardando conexão com o servidor.`,
+          );
+        } else if (confirmedCount === results.length) {
+          toast.success("Salvo no servidor: episódios e alterações confirmados no PostgreSQL.");
+        } else {
+          toast.info("Salvo localmente: aguardando confirmação do servidor.");
+        }
+      } else {
+        toast.success("Salvo com sucesso!");
       }
     } catch (err) {
       console.warn("[admin] Erro ao sincronizar episódios:", err);
+      toast.info("Salvo localmente: alterações preservadas neste dispositivo.");
     } finally {
       if (typeof window !== "undefined") {
         setOutboxOps(readOutbox());
@@ -356,7 +516,7 @@ function AdminEditor() {
     const targetSeason = current.seasons.find((s) => s.id === sid);
     if (targetSeason) {
       for (const ep of targetSeason.episodes) {
-        void persistEpisodeDelete(current.id, targetSeason.number, ep.id);
+        void persistEpisodeDelete(current.id, targetSeason.number, ep.id, ep.number);
       }
     }
     setForm((f) =>
@@ -383,6 +543,7 @@ function AdminEditor() {
                 id: `e-${crypto.randomUUID()}`,
                 number,
                 title: `Episódio ${number}`,
+                published: false,
               };
 
               return {
@@ -421,6 +582,7 @@ function AdminEditor() {
 
   function removeEpisode(sid: string, eid: string) {
     const season = current.seasons.find((s) => s.id === sid);
+    const targetEp = season?.episodes.find((e) => e.id === eid);
     setForm((f) =>
       f
         ? {
@@ -437,7 +599,7 @@ function AdminEditor() {
         : f,
     );
     if (season) {
-      void persistEpisodeDelete(current.id, season.number, eid);
+      void persistEpisodeDelete(current.id, season.number, eid, targetEp?.number);
     }
   }
 
@@ -742,6 +904,49 @@ function AdminEditor() {
         );
       })()}
 
+      {/* Banner de Feedback da Recuperação de Episódios do Servidor PostgreSQL */}
+      {id !== "new" && recoveryState.status !== "idle" && (
+        <div
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-xl p-3.5 text-xs sm:text-sm border transition-colors ${
+            recoveryState.status === "loading"
+              ? "border-sky-500/30 bg-sky-500/10 text-sky-200"
+              : recoveryState.status === "success"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+              : recoveryState.status === "empty"
+              ? "border-border/60 bg-surface/80 text-muted"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {recoveryState.status === "loading" && (
+              <Loader2 className="size-4 animate-spin text-sky-400 shrink-0" />
+            )}
+            {recoveryState.status === "success" && (
+              <CheckCircle2 className="size-4 text-emerald-400 shrink-0" />
+            )}
+            {recoveryState.status === "empty" && (
+              <Film className="size-4 text-muted shrink-0" />
+            )}
+            {recoveryState.status === "error" && (
+              <AlertCircle className="size-4 text-amber-400 shrink-0" />
+            )}
+            <span>{recoveryState.message}</span>
+          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={recoveryState.status === "loading"}
+            onClick={() => void recoverEpisodesFromServer(id)}
+            className="h-7 text-xs gap-1.5 hover:bg-white/10"
+          >
+            <RefreshCw className={`size-3.5 ${recoveryState.status === "loading" ? "animate-spin" : ""}`} />
+            Recarregar do servidor
+          </Button>
+        </div>
+      )}
+
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-2xl">
@@ -827,14 +1032,14 @@ function AdminEditor() {
                               outboxOp.status === "conflict" ? (
                                 <span
                                   className="inline-flex items-center gap-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-medium text-red-400"
-                                  title={outboxOp.lastError || "Conflito de integridade no servidor"}
+                                  title={`Ação necessária: ${outboxOp.lastError || "Erro de validação ou conflito no servidor"}`}
                                 >
-                                  Conflito
+                                  Ação necessária
                                 </span>
                               ) : (
                                 <span
                                   className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
-                                  title="Operação pendente na fila local do outbox"
+                                  title="Sincronização pendente: episódio preservado aguardando envio ao servidor"
                                 >
                                   Pendente
                                 </span>
@@ -842,14 +1047,14 @@ function AdminEditor() {
                             ) : isEpisodePublished(ep) ? (
                               <span
                                 className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400"
-                                title="Publicação confirmada e sincronizada no servidor"
+                                title="Salvo no servidor: gravação confirmada no PostgreSQL"
                               >
                                 Sincronizado
                               </span>
                             ) : (
                               <span
                                 className="inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-muted"
-                                title="Rascunho local (adicione um player para publicar)"
+                                title="Salvo no servidor: rascunho sem player de vídeo"
                               >
                                 Rascunho
                               </span>

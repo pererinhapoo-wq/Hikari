@@ -267,18 +267,47 @@ if (typeof window !== "undefined") {
 export const TOMBSTONE_KEY = "hikari-deleted-episodes-v1";
 const MAX_TOMBSTONES = 500;
 
+export interface TombstoneRecord {
+  id: string;
+  animeId?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  deletedAt?: number;
+}
+
 /**
- * Lê a lista de IDs de episódios excluídos (tombstones).
+ * Lê a lista de registros estruturados de episódios excluídos (tombstones).
+ * Compatível tanto com o formato legado (array de strings) quanto com o formato
+ * estruturado com escopo de anime e slot da Etapa 3.
  * Seguro para SSR (retorna array vazio quando executado no servidor).
  */
-export function readTombstones(): string[] {
+export function readTombstoneRecords(): TombstoneRecord[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(TOMBSTONE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed.filter((id): id is string => typeof id === "string" && Boolean(id.trim()));
+      const records: TombstoneRecord[] = [];
+      for (const item of parsed) {
+        if (typeof item === "string" && item.trim()) {
+          records.push({ id: item.trim() });
+        } else if (
+          item &&
+          typeof item === "object" &&
+          typeof item.id === "string" &&
+          item.id.trim()
+        ) {
+          records.push({
+            id: item.id.trim(),
+            animeId: typeof item.animeId === "string" ? item.animeId.trim() : undefined,
+            seasonNumber: typeof item.seasonNumber === "number" ? item.seasonNumber : undefined,
+            episodeNumber: typeof item.episodeNumber === "number" ? item.episodeNumber : undefined,
+            deletedAt: typeof item.deletedAt === "number" ? item.deletedAt : undefined,
+          });
+        }
+      }
+      return records;
     }
   } catch (err) {
     console.warn("[catalog-storage] Erro ao ler tombstones do localStorage:", err);
@@ -287,19 +316,57 @@ export function readTombstones(): string[] {
 }
 
 /**
- * Registra um episódio excluído para evitar que reapareça a partir de fallbacks locais.
- * Mantém o limite de 500 identificadores preservando os mais recentes.
+ * Lê a lista de IDs de episódios excluídos (tombstones) em formato simples para compatibilidade.
  */
-export function addTombstone(episodeId: string): void {
+export function readTombstones(): string[] {
+  return readTombstoneRecords().map((t) => t.id);
+}
+
+/**
+ * Registra um episódio excluído com contexto de anime e slot para evitar que reapareça
+ * indevidamente em fallbacks locais, sem vazar para outros animes.
+ */
+export function addTombstone(
+  episodeId: string,
+  context?: { animeId?: string; seasonNumber?: number; episodeNumber?: number },
+): void {
   if (typeof window === "undefined" || !episodeId || typeof episodeId !== "string") return;
   const cleanId = episodeId.trim();
   if (!cleanId) return;
 
   try {
-    const current = readTombstones();
-    if (current.includes(cleanId)) return;
+    const current = readTombstoneRecords();
+    const cleanAnimeId = context?.animeId?.trim();
 
-    const next = [...current, cleanId];
+    // Evita duplicar se já existir para o mesmo id ou mesmo slot do mesmo anime
+    const exists = current.some((t) => {
+      if (t.id === cleanId && (!cleanAnimeId || !t.animeId || t.animeId === cleanAnimeId)) {
+        return true;
+      }
+      if (
+        cleanAnimeId &&
+        t.animeId === cleanAnimeId &&
+        context?.seasonNumber !== undefined &&
+        t.seasonNumber === context.seasonNumber &&
+        context?.episodeNumber !== undefined &&
+        t.episodeNumber === context.episodeNumber
+      ) {
+        return true;
+      }
+      return false;
+    });
+
+    if (exists) return;
+
+    const newRecord: TombstoneRecord = {
+      id: cleanId,
+      animeId: cleanAnimeId,
+      seasonNumber: context?.seasonNumber,
+      episodeNumber: context?.episodeNumber,
+      deletedAt: Date.now(),
+    };
+
+    const next = [...current, newRecord];
     const clamped = next.slice(Math.max(0, next.length - MAX_TOMBSTONES));
     window.localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(clamped));
   } catch (err) {
@@ -308,21 +375,114 @@ export function addTombstone(episodeId: string): void {
 }
 
 /**
- * Remove o tombstone de um episódio (usado na republicação).
+ * Remove o tombstone de um episódio (usado na republicação ou recriação do slot).
  */
-export function clearTombstone(episodeId: string): void {
+export function clearTombstone(
+  episodeId: string,
+  context?: { animeId?: string; seasonNumber?: number; episodeNumber?: number },
+): void {
   if (typeof window === "undefined" || !episodeId || typeof episodeId !== "string") return;
   const cleanId = episodeId.trim();
   if (!cleanId) return;
 
   try {
-    const current = readTombstones();
-    if (!current.includes(cleanId)) return;
+    const current = readTombstoneRecords();
+    const cleanAnimeId = context?.animeId?.trim();
 
-    const next = current.filter((id) => id !== cleanId);
-    window.localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(next));
+    const next = current.filter((t) => {
+      if (t.id === cleanId) {
+        if (!cleanAnimeId || !t.animeId || t.animeId === cleanAnimeId) {
+          return false;
+        }
+      }
+      if (
+        cleanAnimeId &&
+        t.animeId === cleanAnimeId &&
+        context?.seasonNumber !== undefined &&
+        t.seasonNumber === context.seasonNumber &&
+        context?.episodeNumber !== undefined &&
+        t.episodeNumber === context.episodeNumber
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    if (next.length !== current.length) {
+      window.localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(next));
+    }
   } catch (err) {
     console.warn("[catalog-storage] Erro ao limpar tombstone:", err);
   }
 }
+
+/**
+ * Avalia de forma segura se determinado episódio está marcado como excluído por tombstone.
+ * Aplica estritamente o isolamento por anime: um tombstone do anime X NUNCA afeta o anime Y.
+ * Se o tombstone não possui informações suficientes ou se o slot foi recriado com ID diferente,
+ * preserva os dados por segurança.
+ */
+export function isEpisodeTombstoned(
+  tombstones: TombstoneRecord[],
+  animeId: string,
+  episodeId: string,
+  seasonNumber?: number,
+  episodeNumber?: number,
+): boolean {
+  if (!tombstones || tombstones.length === 0 || !animeId) return false;
+  const cleanAnime = animeId.trim();
+  const cleanEpId = episodeId?.trim();
+
+  for (const t of tombstones) {
+    // 1. Validação de integridade do tombstone:
+    // Deve possuir ao menos ID válido ou slot válido (temporada e episódio)
+    const hasValidId =
+      typeof t.id === "string" &&
+      t.id.trim().length > 0 &&
+      t.id !== "undefined" &&
+      t.id !== "null";
+    const hasValidSlot =
+      typeof t.seasonNumber === "number" && typeof t.episodeNumber === "number";
+
+    if (!hasValidId && !hasValidSlot) {
+      // Tombstone sem informações suficientes -> preserva os dados por segurança
+      continue;
+    }
+
+    // 2. Isolamento por Anime:
+    // Se o tombstone especifica animeId e for diferente de cleanAnime, NUNCA se aplica
+    if (t.animeId && t.animeId.trim() !== cleanAnime) {
+      continue;
+    }
+
+    // Se o tombstone não possui animeId especificado, não temos garantia segura de a qual anime pertencia
+    // -> preserva os dados por segurança (Cenário 12)
+    if (!t.animeId) {
+      continue;
+    }
+
+    // 3. Coincidência por slot exato (animeId, seasonNumber, episodeNumber)
+    if (
+      hasValidSlot &&
+      seasonNumber !== undefined &&
+      t.seasonNumber === seasonNumber &&
+      episodeNumber !== undefined &&
+      t.episodeNumber === episodeNumber
+    ) {
+      // Tombstone antigo/desatualizado não oculta novo episódio recriado ou com ID diferente no mesmo slot (Cenário 10)
+      if (hasValidId && cleanEpId && t.id !== cleanEpId) {
+        continue;
+      }
+      return true;
+    }
+
+    // 4. Coincidência por ID exato
+    if (hasValidId && cleanEpId && t.id === cleanEpId) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 
