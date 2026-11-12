@@ -2,7 +2,6 @@ import { memo, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Film } from "lucide-react";
 import { cleanEpisodeDisplay, type PublishedEpisode } from "@/lib/published-episodes";
-import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { cn } from "@/lib/utils";
 
 export const EpisodeCard = memo(function EpisodeCard({
@@ -13,14 +12,7 @@ export const EpisodeCard = memo(function EpisodeCard({
   priority?: boolean;
 }) {
   const [thumbFailed, setThumbFailed] = useState(false);
-  const [failedOptimizedFor, setFailedOptimizedFor] = useState<string | null>(null);
-  const [fallbackFailed, setFallbackFailed] = useState(false);
-
-  const fallbackImage = episode.animeBanner || episode.animeCover;
-  const fallbackAttrs = getResponsiveCoverAttrs(fallbackImage, "card-md");
-  const fallbackOptimizedFailed = Boolean(fallbackImage && failedOptimizedFor === fallbackImage);
   const hasValidThumbnail = Boolean(episode.thumbnail && !thumbFailed);
-  const showFallback = !hasValidThumbnail && Boolean(fallbackImage && !fallbackFailed);
 
   const formattedSubtitle = useMemo(() => {
     return cleanEpisodeDisplay(
@@ -95,29 +87,8 @@ export const EpisodeCard = memo(function EpisodeCard({
               onError={() => setThumbFailed(true)}
               className="size-full object-cover transition-opacity duration-200 motion-reduce:transition-none"
             />
-          ) : showFallback ? (
-            /* Imagem alternativa adequada (banner/capa oficial do anime em 16:9) */
-            <img
-              src={fallbackOptimizedFailed ? fallbackImage : fallbackAttrs.src}
-              srcSet={fallbackOptimizedFailed ? undefined : fallbackAttrs.srcSet}
-              sizes={fallbackOptimizedFailed ? undefined : fallbackAttrs.sizes}
-              alt=""
-              width={320}
-              height={180}
-              loading={priority ? "eager" : "lazy"}
-              decoding="async"
-              fetchPriority={priority ? "high" : "auto"}
-              onError={() => {
-                if (!fallbackOptimizedFailed && fallbackAttrs.fallbackSrc && fallbackImage) {
-                  setFailedOptimizedFor(fallbackImage);
-                } else {
-                  setFallbackFailed(true);
-                }
-              }}
-              className="size-full object-cover opacity-90 transition-opacity duration-200 motion-reduce:transition-none"
-            />
           ) : (
-            /* Tratamento gracioso caso nenhuma imagem esteja acessível */
+            /* Tratamento gracioso caso a miniatura do episódio não esteja acessível (nunca substitui por capa/banner) */
             <div className="relative flex size-full flex-col items-center justify-center bg-gradient-to-br from-[#17122a] via-[#0f0d19] to-[#09080e] p-2 sm:p-3 text-center">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.12)_0%,transparent_70%)]" />
               <div className="relative flex size-7 sm:size-9 items-center justify-center rounded-full bg-purple-950/80 border border-purple-500/30 text-purple-300 shadow-md">

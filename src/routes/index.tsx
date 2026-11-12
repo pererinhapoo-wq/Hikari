@@ -300,17 +300,7 @@ function Home() {
       {/* 1. Episódios de Hoje (prioritário na primeira visualização) */}
       <TodayEpisodesSection initialItems={data.todaySchedule ?? []} />
 
-      {/* 2. Novos Episódios (publicados pelo administrador - carregamento progressivo adiado) */}
-      {hasRecentEpisodes && (
-        <SectionReveal minHeight="380px" rootMargin="300px 0px">
-          <RecentEpisodesSection
-            serverResult={data.publicEpisodesResult}
-            initialEpisodes={recentEpisodes}
-          />
-        </SectionReveal>
-      )}
-
-      {/* 3. Em Alta (carregamento progressivo adiado) */}
+      {/* 2. Em Alta (carregamento progressivo adiado) */}
       <SectionReveal minHeight="260px" rootMargin="300px 0px">
         <AnimeRow
           title="Em Alta"
@@ -321,6 +311,16 @@ function Home() {
           priorityCount={(data.todaySchedule?.length ?? 0) === 0 ? 3 : 0}
         />
       </SectionReveal>
+
+      {/* 3. Episódios Recentes (publicados pelo administrador - carregamento progressivo adiado) */}
+      {hasRecentEpisodes && (
+        <SectionReveal minHeight="380px" rootMargin="300px 0px">
+          <RecentEpisodesSection
+            serverResult={data.publicEpisodesResult}
+            initialEpisodes={recentEpisodes}
+          />
+        </SectionReveal>
+      )}
 
       {/* 4. Animes Recém-Adicionados */}
       <SectionReveal minHeight="260px" rootMargin="300px 0px">

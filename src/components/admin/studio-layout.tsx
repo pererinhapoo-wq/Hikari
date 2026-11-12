@@ -562,7 +562,7 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
       {/* =========================================================
           3. ÁREA DE CONTEÚDO PRINCIPAL (COM MARGEM DA SIDEBAR)
       ========================================================== */}
-      <div className="flex flex-1 flex-col lg:pl-64 lg:w-[calc(100%-16rem)] xl:pl-72 xl:w-[calc(100%-18rem)] overflow-x-hidden min-h-screen">
+      <div className="flex flex-1 flex-col lg:pl-72 w-full overflow-x-hidden min-h-screen">
         {/* Barra Superior / Header do Studio */}
         <header className="sticky top-0 z-20 flex h-14 sm:h-16 items-center justify-between border-b border-white/[0.08] bg-[#08070d]/90 px-4 sm:px-6 backdrop-blur-md">
           {/* Lado Esquerdo: Botão Mobile + Breadcrumbs */}

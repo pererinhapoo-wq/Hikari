@@ -44,7 +44,13 @@ async function main() {
   // -------------------------------------------------------------
   console.log("2. Testando bloqueio de acesso não autenticado ao /admin...");
   await publicPage.goto(`${baseUrl}/admin`, { waitUntil: "domcontentloaded" });
-  await publicPage.waitForTimeout(1000);
+  try {
+    await publicPage.waitForURL((url) => url.pathname.includes("/login") || url.pathname.includes("/account"), {
+      timeout: 5000,
+    });
+  } catch {
+    // Continua para checagem da URL
+  }
   const currentUrl = publicPage.url();
   const redirectedToLogin = currentUrl.includes("/login") || currentUrl.includes("/account");
   console.log(`   - Redirecionado para autenticação: ${redirectedToLogin ? "SIM (" + currentUrl + ")" : "NÃO"}`);
@@ -69,7 +75,9 @@ async function main() {
   await adminPage.addInitScript(() => {
     try {
       window.sessionStorage.setItem("hikari_preview_admin_email", "nexaweeb@gmail.com");
-    } catch {}
+    } catch {
+      // Ignorar no ambiente do teste
+    }
   });
 
   // Também interceptamos a rota /api/auth/get-session para retornar usuário admin
@@ -81,7 +89,9 @@ async function main() {
         session: { id: "sess-1", userId: "admin-user-1" },
         user: {
           id: "admin-user-1",
+          email: "nexaweeb@gmail.com",
           primaryEmail: "nexaweeb@gmail.com",
+          name: "Administrador Chefe",
           displayName: "Administrador Chefe",
         },
       }),
@@ -128,7 +138,9 @@ async function main() {
     await mobilePage.addInitScript(() => {
       try {
         window.sessionStorage.setItem("hikari_preview_admin_email", "nexaweeb@gmail.com");
-      } catch {}
+      } catch {
+        // Ignorar no ambiente do teste
+      }
     });
     await mobilePage.route("**/api/auth/get-session", async (route) => {
       await route.fulfill({
@@ -138,7 +150,9 @@ async function main() {
           session: { id: "sess-1", userId: "admin-user-1" },
           user: {
             id: "admin-user-1",
+            email: "nexaweeb@gmail.com",
             primaryEmail: "nexaweeb@gmail.com",
+            name: "Administrador Chefe",
             displayName: "Administrador Chefe",
           },
         }),
@@ -207,7 +221,9 @@ async function main() {
   await navPage.addInitScript(() => {
     try {
       window.sessionStorage.setItem("hikari_preview_admin_email", "nexaweeb@gmail.com");
-    } catch {}
+    } catch {
+      // Ignorar no ambiente do teste
+    }
   });
   await navPage.route("**/api/auth/get-session", async (route) => {
     await route.fulfill({
@@ -217,7 +233,9 @@ async function main() {
         session: { id: "sess-1", userId: "admin-user-1" },
         user: {
           id: "admin-user-1",
+          email: "nexaweeb@gmail.com",
           primaryEmail: "nexaweeb@gmail.com",
+          name: "Administrador Chefe",
           displayName: "Administrador Chefe",
         },
       }),

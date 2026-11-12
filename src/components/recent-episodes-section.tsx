@@ -24,9 +24,11 @@ function EpisodeCardSkeleton() {
 export function RecentEpisodesSection({
   serverResult,
   initialEpisodes,
+  title = "Episódios Recentes",
 }: {
   serverResult?: PublicEpisodesResult | null;
   initialEpisodes?: PublishedEpisode[];
+  title?: string;
 }) {
   const animes = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
@@ -60,7 +62,7 @@ export function RecentEpisodesSection({
           {/* Título da Seção */}
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="font-section text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white drop-shadow-sm truncate">
-              Novos Episódios
+              {title}
             </h2>
             {!isLoading && displayEpisodes.length > 0 && (
               <span className="hidden sm:inline-flex shrink-0 rounded-full bg-purple-950/50 border border-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300/80">
