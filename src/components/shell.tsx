@@ -1169,22 +1169,22 @@ export function Shell() {
           menuOpen
         }
       >
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-1.5 min-[380px]:gap-3 px-3 min-[380px]:px-4 sm:h-16 sm:px-6">
 
           {/* LADO ESQUERDO: Menu Mobile + Logo + Navegação Desktop */}
-          <div className="flex items-center gap-3 sm:gap-6">
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5 min-[380px]:gap-3 sm:gap-6">
             {/* BOTÃO MENU (visível em telas menores que md) */}
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
-              className="flex size-10 items-center justify-center rounded-xl text-fg hover:bg-elevated/70 transition-colors md:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
+              className="flex size-9 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-fg hover:bg-elevated/70 transition-colors md:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
               aria-label="Abrir menu de navegação"
             >
               <Menu className="size-5" />
             </button>
 
             {/* LOGO OFICIAL HIKARI */}
-            <div className="flex items-center">
+            <div className="flex shrink-0 items-center">
               <Logo size="md" />
             </div>
 
@@ -1236,7 +1236,7 @@ export function Shell() {
           </div>
 
           {/* AÇÕES DA DIREITA */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-1 min-[380px]:gap-1.5 sm:gap-2">
             {/* BUSCA — escondida na área de Notícias */}
             {!pathname.startsWith("/news") && (
               <button
@@ -1246,7 +1246,7 @@ export function Shell() {
                 }}
                 onMouseEnter={() => void prefetchSearchModal()}
                 onFocus={() => void prefetchSearchModal()}
-                className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
+                className="flex size-8 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
                 aria-label="Buscar"
                 title="Buscar (Ctrl+K)"
                 aria-expanded={searchOpen}
@@ -1266,7 +1266,7 @@ export function Shell() {
                 }
               }}
               className={cn(
-                "relative flex size-10 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+                "relative flex size-8 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
                 "motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
                 notificationsOpen && "bg-elevated text-fg",
               )}
@@ -1291,10 +1291,10 @@ export function Shell() {
                 onClick={() => setLoginModalOpen(true)}
                 onMouseEnter={() => void prefetchLoginMenu()}
                 onFocus={() => void prefetchLoginMenu()}
-                className="flex items-center gap-1.5 sm:gap-2 rounded-xl border border-[#a855f7]/40 bg-[#a855f7] px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#9333ea] hover:shadow-[0_0_20px_rgba(168,85,247,0.35)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
+                className="flex shrink-0 items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-xl border border-[#a855f7]/40 bg-[#a855f7] px-2.5 py-1.5 min-[380px]:px-3 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-[#9333ea] hover:shadow-[0_0_20px_rgba(168,85,247,0.35)] motion-safe:transition-[transform,background-color,border-color,box-shadow] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-[0.95] motion-reduce:transition-none motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
                 aria-label="Entrar na conta"
               >
-                <LogIn className="size-3.5 sm:size-4" />
+                <LogIn className="size-3.5 sm:size-4 shrink-0" />
                 <span>Entrar</span>
               </button>
             )}
