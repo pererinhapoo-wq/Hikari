@@ -41,7 +41,7 @@ function formatJoinDate(isoString?: string | null): string | null {
   const month = months[date.getMonth()];
   const year = date.getFullYear();
 
-  return `Entrou em ${day} de ${month} de ${year}`;
+  return `Entrou em ${day} de ${month} de ${year}.`;
 }
 
 export function ProfileAboutSpace({
@@ -85,7 +85,7 @@ export function ProfileAboutSpace({
             <Calendar className="size-4 text-violet-400 shrink-0" />
             <div>
               <span className="block text-[11px] text-zinc-500">Membro da Comunidade</span>
-              <span className="font-semibold text-zinc-200">Hikari 2026</span>
+              <span className="block font-semibold text-zinc-200">Hikari 2026</span>
               {joinDateText && (
                 <span className="block text-[11px] text-zinc-400 font-medium mt-0.5">
                   {joinDateText}

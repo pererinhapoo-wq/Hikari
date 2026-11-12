@@ -463,6 +463,7 @@ export const getProfile =
           privacyComments: string | null;
           privacyFollowers: string | null;
           isVerified: boolean | null;
+          createdAt?: string | Date | null;
         }>`
           select
             "nick",
@@ -478,6 +479,7 @@ export const getProfile =
             "privacyHistory",
             "privacyComments",
             "privacyFollowers",
+            "createdAt",
             coalesce("isVerified", false) as "isVerified"
           from "profile"
           where "userId" = ${context.userId}
@@ -538,6 +540,7 @@ export const getProfile =
           privacyComments: string | null;
           privacyFollowers: string | null;
           isVerified: boolean | null;
+          createdAt?: string | Date | null;
         }>`
           select
             "nick",
@@ -553,6 +556,7 @@ export const getProfile =
             "privacyHistory",
             "privacyComments",
             "privacyFollowers",
+            "createdAt",
             coalesce("isVerified", false) as "isVerified"
           from "profile"
           where "userId" = ${context.userId}

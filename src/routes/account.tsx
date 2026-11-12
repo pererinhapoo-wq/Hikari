@@ -1367,6 +1367,7 @@ function AccountProfile() {
                 nick={userNick}
                 bio={userBio}
                 favorites={userFavoritesList}
+                createdAt={profile?.createdAt}
                 onOpenEdit={handleOpenEdit}
               />
             </Suspense>

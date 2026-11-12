@@ -1,589 +1,308 @@
-import { staffRoleLabel } from "@/lib/labels";
+const ANILIST_ENDPOINT = "https://graphql.anilist.co";
 
 export interface StudioWorkAnime {
   id: string;
-  idMal?: number | null;
   title: string;
-  cover: string | null;
-  banner?: string | null;
-  year?: number | null;
+  cover?: string | null;
   format?: string | null;
-  episodesCount?: number | null;
-  score?: number | null;
+  year?: number | string | null;
 }
 
 export interface DubladorWorkItem {
   id: string;
   anime: {
     id: string;
-    idMal?: number | null;
     title: string;
-    cover: string | null;
-    year?: number | null;
-    format?: string | null;
-    episodesCount?: number | null;
-    score?: number | null;
+    cover?: string | null;
+    year?: number | string | null;
   };
   character: {
-    id: number;
     name: string;
-    image: string | null;
-    role?: string | null; // e.g. "MAIN" | "SUPPORTING"
+    role?: string | null;
   };
 }
 
 export interface StaffWorkItem {
   id: string;
-  role: string;
   roleLabel: string;
   anime: {
     id: string;
-    idMal?: number | null;
     title: string;
-    cover: string | null;
-    year?: number | null;
-    format?: string | null;
-    episodesCount?: number | null;
-    score?: number | null;
+    cover?: string | null;
+    year?: number | string | null;
   };
 }
 
 export interface EntityWorksData {
-  kind: "studio" | "dublador" | "staff";
-  targetId?: string | number | null;
+  kind: "studio" | "dublador" | "staff" | "person";
   name: string;
   image?: string | null;
   subtitle?: string | null;
-  occupations?: string[];
   studioAnimes?: StudioWorkAnime[];
   dubladorWorks?: DubladorWorkItem[];
   staffWorks?: StaffWorkItem[];
-  error?: string | null;
+  error?: string;
 }
 
-// Cache em memória compartilhado na sessão para garantir carregamento instantâneo e zero requisições duplicadas
-const clientEntityWorksCache = new Map<string, EntityWorksData>();
-const inFlightRequests = new Map<string, Promise<EntityWorksData>>();
+const cache = new Map<string, { data: EntityWorksData; timestamp: number }>();
+const CACHE_TTL = 1000 * 60 * 15; // 15 minutos
 
-/**
- * Função utilitária que seleciona o melhor título legível no alfabeto latino/português,
- * sem caracteres japoneses alternativos.
- */
-function pickCleanAnimeTitle(titleObj?: {
-  romaji?: string | null;
-  english?: string | null;
-  userPreferred?: string | null;
-} | null): string {
-  if (!titleObj) return "Anime";
-  return (
-    titleObj.english?.trim() ||
-    titleObj.romaji?.trim() ||
-    titleObj.userPreferred?.trim() ||
-    "Anime"
-  );
-}
+const STUDIO_QUERY = `
+  query StudioWorks($search: String, $id: Int) {
+    Studio(search: $search, id: $id) {
+      id
+      name
+      isAnimationStudio
+      media(sort: [POPULARITY_DESC, START_DATE_DESC], perPage: 30) {
+        nodes {
+          id
+          title {
+            romaji
+            english
+            userPreferred
+          }
+          coverImage {
+            large
+            extraLarge
+          }
+          format
+          startDate {
+            year
+          }
+        }
+      }
+    }
+  }
+`;
 
-/**
- * Envia query GraphQL para o endpoint /api-anilist do Hikari,
- * aproveitando cache e controle de taxa existentes.
- */
-async function queryAniListProxy<T>(
-  query: string,
-  variables: Record<string, unknown>,
-): Promise<T | null> {
+const PERSON_WORKS_QUERY = `
+  query PersonWorks($search: String, $id: Int) {
+    Staff(search: $search, id: $id) {
+      id
+      name {
+        full
+        native
+        userPreferred
+      }
+      image {
+        large
+        medium
+      }
+      primaryOccupations
+      characterMedia(sort: [POPULARITY_DESC, START_DATE_DESC], perPage: 30) {
+        edges {
+          node {
+            id
+            title {
+              romaji
+              english
+              userPreferred
+            }
+            coverImage {
+              large
+              extraLarge
+            }
+            startDate {
+              year
+            }
+          }
+          characters {
+            id
+            name {
+              full
+              userPreferred
+            }
+          }
+          characterRole
+        }
+      }
+      staffMedia(sort: [POPULARITY_DESC, START_DATE_DESC], perPage: 30) {
+        edges {
+          staffRole
+          node {
+            id
+            title {
+              romaji
+              english
+              userPreferred
+            }
+            coverImage {
+              large
+              extraLarge
+            }
+            startDate {
+              year
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export async function getStudioWorks(
+  studioName: string,
+  studioId?: string | number | null,
+): Promise<EntityWorksData> {
+  const cacheKey = `studio:${studioId || studioName.trim().toLowerCase()}`;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+
+  const cleanName = studioName.trim();
+  const numericId = studioId ? Number(studioId) : undefined;
+  const variables = Number.isFinite(numericId) && numericId! > 0
+    ? { id: numericId }
+    : { search: cleanName };
+
   try {
-    const url =
-      typeof window !== "undefined"
-        ? "/api-anilist"
-        : "http://127.0.0.1:3000/api-anilist";
-
-    const res = await fetch(url, {
+    const res = await fetch(ANILIST_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ query, variables }),
+      body: JSON.stringify({
+        query: STUDIO_QUERY,
+        variables,
+      }),
     });
 
     if (!res.ok) {
-      console.warn(`[entity-works] Resposta não-ok do proxy: ${res.status}`);
-      return null;
+      throw new Error(`HTTP ${res.status}`);
     }
 
     const json = await res.json();
-    if (json.errors && (!json.data || Object.keys(json.data).length === 0)) {
-      console.warn("[entity-works] Erros na consulta AniList:", json.errors);
-      return null;
-    }
+    const studio = json?.data?.Studio;
+    const mediaNodes: any[] = studio?.media?.nodes ?? [];
 
-    return (json.data as T) ?? null;
-  } catch (err) {
-    console.error("[entity-works] Falha de rede ao consultar AniList:", err);
-    return null;
-  }
-}
-
-/**
- * Obtém animes e produções associadas a um Studio.
- */
-export async function getStudioWorks(
-  studioName: string,
-  studioId?: string | number | null,
-): Promise<EntityWorksData> {
-  const normName = studioName.trim();
-  const cacheKey = `studio:${studioId || ""}:${normName.toLowerCase()}`;
-
-  if (clientEntityWorksCache.has(cacheKey)) {
-    return clientEntityWorksCache.get(cacheKey)!;
-  }
-
-  if (inFlightRequests.has(cacheKey)) {
-    return inFlightRequests.get(cacheKey)!;
-  }
-
-  const promise = (async (): Promise<EntityWorksData> => {
-    const numId =
-      studioId && !Number.isNaN(Number(studioId)) && Number(studioId) > 0
-        ? Number(studioId)
-        : null;
-
-    const query = `
-      query ($name: String, $id: Int) {
-        Studio(search: $name, id: $id) {
-          id
-          name
-          isAnimationStudio
-          media(sort: POPULARITY_DESC, page: 1, perPage: 30) {
-            nodes {
-              id
-              idMal
-              title {
-                romaji
-                english
-                userPreferred
-              }
-              coverImage {
-                extraLarge
-                large
-                color
-              }
-              bannerImage
-              format
-              episodes
-              averageScore
-              startDate {
-                year
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    interface StudioQueryResult {
-      Studio?: {
-        id: number;
-        name: string;
-        isAnimationStudio: boolean;
-        media?: {
-          nodes?: Array<{
-            id: number;
-            idMal?: number | null;
-            title?: {
-              romaji?: string | null;
-              english?: string | null;
-              userPreferred?: string | null;
-            } | null;
-            coverImage?: {
-              extraLarge?: string | null;
-              large?: string | null;
-            } | null;
-            bannerImage?: string | null;
-            format?: string | null;
-            episodes?: number | null;
-            averageScore?: number | null;
-            startDate?: { year?: number | null } | null;
-          }>;
-        };
-      };
-    }
-
-    let data: StudioQueryResult | null = null;
-    if (numId) {
-      data = await queryAniListProxy<StudioQueryResult>(query, {
-        id: numId,
-      });
-    }
-
-    // Se não encontrou por ID, buscar por nome
-    if (!data?.Studio && normName) {
-      data = await queryAniListProxy<StudioQueryResult>(query, {
-        name: normName,
-      });
-    }
-
-    const studio = data?.Studio;
-    const rawNodes = studio?.media?.nodes ?? [];
-
-    const seenAnimeIds = new Set<string>();
-    const animes: StudioWorkAnime[] = [];
-    for (const node of rawNodes) {
-      if (!node?.id) continue;
-      const strId = String(node.id);
-      if (seenAnimeIds.has(strId)) continue;
-      seenAnimeIds.add(strId);
-
-      animes.push({
-        id: strId,
-        idMal: node.idMal ?? null,
-        title: pickCleanAnimeTitle(node.title),
-        cover: node.coverImage?.extraLarge || node.coverImage?.large || null,
-        banner: node.bannerImage || null,
-        year: node.startDate?.year || null,
-        format: node.format || null,
-        episodesCount: node.episodes || null,
-        score: node.averageScore ? node.averageScore / 10 : null,
-      });
-    }
+    const studioAnimes: StudioWorkAnime[] = mediaNodes.map((m: any) => ({
+      id: String(m.id),
+      title: m.title?.romaji || m.title?.userPreferred || m.title?.english || "Anime",
+      cover: m.coverImage?.large || m.coverImage?.extraLarge || null,
+      format: m.format || "TV",
+      year: m.startDate?.year ?? null,
+    }));
 
     const result: EntityWorksData = {
       kind: "studio",
-      targetId: studio?.id ?? studioId,
-      name: studio?.name || normName,
-      subtitle: studio?.isAnimationStudio
-        ? "Estúdio de animação"
-        : "Empresa / Produtora",
-      studioAnimes: animes,
+      name: studio?.name || cleanName,
+      subtitle: studio?.isAnimationStudio ? "Estúdio Principal de Animação" : "Estúdio de Animação",
+      studioAnimes,
     };
 
-    clientEntityWorksCache.set(cacheKey, result);
+    cache.set(cacheKey, { data: result, timestamp: Date.now() });
     return result;
-  })();
-
-  inFlightRequests.set(cacheKey, promise);
-  try {
-    return await promise;
-  } finally {
-    inFlightRequests.delete(cacheKey);
+  } catch (err) {
+    console.warn("[getStudioWorks] Falha ao consultar AniList:", err);
+    return {
+      kind: "studio",
+      name: cleanName,
+      subtitle: "Estúdio de animação",
+      studioAnimes: [],
+    };
   }
 }
 
-/**
- * Obtém os trabalhos de um Dublador ou Profissional da equipe técnica (Staff / People).
- */
 export async function getPersonWorks(
   personName: string,
   personId?: string | number | null,
-  preferCategory: "dublador" | "staff" = "dublador",
+  prefer: "dublador" | "staff" = "dublador",
 ): Promise<EntityWorksData> {
+  const cacheKey = `person:${prefer}:${personId || personName.trim().toLowerCase()}`;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+
   const cleanName = personName.trim();
-  const cacheKey = `person:${preferCategory}:${personId || ""}:${cleanName.toLowerCase()}`;
+  const numericId = personId ? Number(personId) : undefined;
+  const variables = Number.isFinite(numericId) && numericId! > 0
+    ? { id: numericId }
+    : { search: cleanName };
 
-  if (clientEntityWorksCache.has(cacheKey)) {
-    return clientEntityWorksCache.get(cacheKey)!;
-  }
+  try {
+    const res = await fetch(ANILIST_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        query: PERSON_WORKS_QUERY,
+        variables,
+      }),
+    });
 
-  if (inFlightRequests.has(cacheKey)) {
-    return inFlightRequests.get(cacheKey)!;
-  }
-
-  const promise = (async (): Promise<EntityWorksData> => {
-    const numId =
-      personId && !Number.isNaN(Number(personId)) && Number(personId) > 0
-        ? Number(personId)
-        : null;
-
-    const query = `
-      query ($id: Int, $search: String) {
-        Staff(id: $id, search: $search) {
-          id
-          name {
-            full
-            userPreferred
-          }
-          image {
-            large
-            medium
-          }
-          primaryOccupations
-          characterMedia(page: 1, perPage: 35, sort: POPULARITY_DESC) {
-            edges {
-              characterRole
-              node {
-                id
-                idMal
-                title {
-                  romaji
-                  english
-                  userPreferred
-                }
-                coverImage {
-                  extraLarge
-                  large
-                }
-                format
-                episodes
-                averageScore
-                startDate {
-                  year
-                }
-              }
-              characters {
-                id
-                name {
-                  full
-                  userPreferred
-                }
-                image {
-                  large
-                  medium
-                }
-              }
-            }
-          }
-          staffMedia(page: 1, perPage: 35, sort: POPULARITY_DESC) {
-            edges {
-              staffRole
-              node {
-                id
-                idMal
-                title {
-                  romaji
-                  english
-                  userPreferred
-                }
-                coverImage {
-                  extraLarge
-                  large
-                }
-                format
-                episodes
-                averageScore
-                startDate {
-                  year
-                }
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    interface StaffQueryResult {
-      Staff?: {
-        id: number;
-        name?: {
-          full?: string | null;
-          userPreferred?: string | null;
-        } | null;
-        image?: {
-          large?: string | null;
-          medium?: string | null;
-        } | null;
-        primaryOccupations?: string[] | null;
-        characterMedia?: {
-          edges?: Array<{
-            characterRole?: string | null;
-            node?: {
-              id: number;
-              idMal?: number | null;
-              title?: {
-                romaji?: string | null;
-                english?: string | null;
-                userPreferred?: string | null;
-              } | null;
-              coverImage?: {
-                extraLarge?: string | null;
-                large?: string | null;
-              } | null;
-              format?: string | null;
-              episodes?: number | null;
-              averageScore?: number | null;
-              startDate?: { year?: number | null } | null;
-            } | null;
-            characters?: Array<{
-              id: number;
-              name?: {
-                full?: string | null;
-                userPreferred?: string | null;
-              } | null;
-              image?: {
-                large?: string | null;
-                medium?: string | null;
-              } | null;
-            }> | null;
-          }>;
-        };
-        staffMedia?: {
-          edges?: Array<{
-            staffRole?: string | null;
-            node?: {
-              id: number;
-              idMal?: number | null;
-              title?: {
-                romaji?: string | null;
-                english?: string | null;
-                userPreferred?: string | null;
-              } | null;
-              coverImage?: {
-                extraLarge?: string | null;
-                large?: string | null;
-              } | null;
-              format?: string | null;
-              episodes?: number | null;
-              averageScore?: number | null;
-              startDate?: { year?: number | null } | null;
-            } | null;
-          }>;
-        };
-      };
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
     }
 
-    // Tentar por ID numérico primeiro se houver
-    let data: StaffQueryResult | null = null;
-    if (numId) {
-      data = await queryAniListProxy<StaffQueryResult>(query, {
-        id: numId,
-      });
-    }
+    const json = await res.json();
+    const staff = json?.data?.Staff;
+    const resolvedName = staff?.name?.full || staff?.name?.userPreferred || cleanName;
+    const personImage = staff?.image?.large || staff?.image?.medium || null;
 
-    // Fallback por busca de nome se não encontrou por ID
-    if (!data?.Staff && cleanName) {
-      data = await queryAniListProxy<StaffQueryResult>(query, {
-        search: cleanName,
-      });
-    }
-
-    const staff = data?.Staff;
-    const displayName =
-      staff?.name?.full?.trim() ||
-      staff?.name?.userPreferred?.trim() ||
-      cleanName;
-
-    const displayImage = staff?.image?.large || staff?.image?.medium || null;
-    const occupations = staff?.primaryOccupations || [];
-
-    // Mapeamento de Dublador (Voice Acting Roles)
     const dubladorWorks: DubladorWorkItem[] = [];
-    const seenDubKeys = new Set<string>();
-
-    for (const edge of staff?.characterMedia?.edges ?? []) {
+    const charEdges: any[] = staff?.characterMedia?.edges ?? [];
+    for (let i = 0; i < charEdges.length; i++) {
+      const edge = charEdges[i];
       const node = edge?.node;
       if (!node) continue;
-
-      const charList = edge?.characters ?? [];
-      const char = charList[0];
-      const charName =
-        char?.name?.full?.trim() ||
-        char?.name?.userPreferred?.trim() ||
-        "Personagem";
-
-      const key = `${node.id}-${char?.id || charName}`;
-      if (seenDubKeys.has(key)) continue;
-      seenDubKeys.add(key);
-
+      const char = edge?.characters?.[0];
       dubladorWorks.push({
-        id: key,
+        id: `${node.id}-${char?.id || i}`,
         anime: {
           id: String(node.id),
-          idMal: node.idMal ?? null,
-          title: pickCleanAnimeTitle(node.title),
-          cover: node.coverImage?.extraLarge || node.coverImage?.large || null,
-          year: node.startDate?.year || null,
-          format: node.format || null,
-          episodesCount: node.episodes || null,
-          score: node.averageScore ? node.averageScore / 10 : null,
+          title: node.title?.romaji || node.title?.userPreferred || node.title?.english || "Anime",
+          cover: node.coverImage?.large || node.coverImage?.extraLarge || null,
+          year: node.startDate?.year ?? null,
         },
         character: {
-          id: char?.id ?? 0,
-          name: charName,
-          image: char?.image?.large || char?.image?.medium || null,
-          role: edge.characterRole ?? null,
+          name: char?.name?.full || char?.name?.userPreferred || "Personagem",
+          role: edge?.characterRole || "Secundário",
         },
       });
     }
 
-    // Mapeamento de Equipe Técnica (Staff Roles)
     const staffWorks: StaffWorkItem[] = [];
-    const seenStaffKeys = new Set<string>();
-
-    for (const edge of staff?.staffMedia?.edges ?? []) {
+    const staffEdges: any[] = staff?.staffMedia?.edges ?? [];
+    for (let i = 0; i < staffEdges.length; i++) {
+      const edge = staffEdges[i];
       const node = edge?.node;
       if (!node) continue;
-
-      const role = edge.staffRole?.trim() || "Equipe técnica";
-      const key = `${node.id}-${role.toLowerCase()}`;
-      if (seenStaffKeys.has(key)) continue;
-      seenStaffKeys.add(key);
-
       staffWorks.push({
-        id: key,
-        role,
-        roleLabel: staffRoleLabel(role),
+        id: `${node.id}-${i}`,
+        roleLabel: edge.staffRole || "Equipe técnica",
         anime: {
           id: String(node.id),
-          idMal: node.idMal ?? null,
-          title: pickCleanAnimeTitle(node.title),
-          cover: node.coverImage?.extraLarge || node.coverImage?.large || null,
-          year: node.startDate?.year || null,
-          format: node.format || null,
-          episodesCount: node.episodes || null,
-          score: node.averageScore ? node.averageScore / 10 : null,
+          title: node.title?.romaji || node.title?.userPreferred || node.title?.english || "Anime",
+          cover: node.coverImage?.large || node.coverImage?.extraLarge || null,
+          year: node.startDate?.year ?? null,
         },
       });
-    }
-
-    // Filtragem estrita conforme a função real da pessoa:
-    // 1. Se preferCategory for 'dublador', retorna exclusivamente dublagens, sem misturar funções técnicas.
-    // 2. Se preferCategory for 'staff', retorna exclusivamente produções técnicas, sem misturar dublagens.
-    // 3. Se for genérico, avalia occupations e preenchimento para escolher a categoria real predominante, mantendo estrita separação.
-    let finalKind: "dublador" | "staff" = preferCategory === "dublador" ? "dublador" : "staff";
-    let finalDubladorWorks: DubladorWorkItem[] = [];
-    let finalStaffWorks: StaffWorkItem[] = [];
-
-    if (preferCategory === "dublador") {
-      finalKind = "dublador";
-      finalDubladorWorks = dubladorWorks;
-      finalStaffWorks = [];
-    } else if (preferCategory === "staff") {
-      finalKind = "staff";
-      finalDubladorWorks = [];
-      finalStaffWorks = staffWorks;
-    } else {
-      const isVoice = occupations.some((o) =>
-        /voice actor|seiyuu|dublador/i.test(o),
-      ) || (dubladorWorks.length > 0 && staffWorks.length === 0);
-
-      if (isVoice) {
-        finalKind = "dublador";
-        finalDubladorWorks = dubladorWorks;
-        finalStaffWorks = [];
-      } else {
-        finalKind = "staff";
-        finalDubladorWorks = [];
-        finalStaffWorks = staffWorks;
-      }
     }
 
     const result: EntityWorksData = {
-      kind: finalKind,
-      targetId: staff?.id ?? personId,
-      name: displayName,
-      image: displayImage,
-      occupations: occupations.filter(Boolean),
-      dubladorWorks: finalDubladorWorks,
-      staffWorks: finalStaffWorks,
+      kind: prefer === "dublador" ? "dublador" : "staff",
+      name: resolvedName,
+      image: personImage,
+      subtitle: prefer === "dublador" ? "Dublador(a) / Ator de voz" : "Direção e equipe técnica",
+      dubladorWorks,
+      staffWorks,
     };
 
-    clientEntityWorksCache.set(cacheKey, result);
+    cache.set(cacheKey, { data: result, timestamp: Date.now() });
     return result;
-  })();
-
-  inFlightRequests.set(cacheKey, promise);
-  try {
-    return await promise;
-  } finally {
-    inFlightRequests.delete(cacheKey);
+  } catch (err) {
+    console.warn("[getPersonWorks] Falha ao consultar AniList:", err);
+    return {
+      kind: prefer === "dublador" ? "dublador" : "staff",
+      name: cleanName,
+      subtitle: prefer === "dublador" ? "Dublador(a)" : "Equipe técnica",
+      dubladorWorks: [],
+      staffWorks: [],
+    };
   }
 }
