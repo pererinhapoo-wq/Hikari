@@ -2,18 +2,39 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Search as SearchIcon, Film, Clapperboard } from "lucide-react";
 import { useHikariStore } from "@/lib/store";
-import { getAllPublishedEpisodes } from "@/lib/published-episodes";
+import { resolvePublicEpisodes } from "@/lib/published-episodes";
+import {
+  executeGetPublicCatalogEpisodes,
+  getPublicCatalogEpisodes,
+} from "@/lib/catalog-episodes";
 import { EpisodeCard } from "@/components/episode-card";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 
 export const Route = createFileRoute("/episodes")({
+  staleTime: 1000 * 60 * 5,
+  gcTime: 1000 * 60 * 20,
+  loader: async () => {
+    const publicEpisodesResult = await (typeof window === "undefined"
+      ? executeGetPublicCatalogEpisodes()
+      : getPublicCatalogEpisodes()
+    ).catch((err) => ({
+      status: "error" as const,
+      episodes: [],
+      total: 0,
+      error: String(err),
+    }));
+    return {
+      publicEpisodesResult,
+    };
+  },
   component: AllEpisodesPage,
 });
 
 const ITEMS_PER_PAGE = 24;
 
 function AllEpisodesPage() {
+  const loaderData = Route.useLoaderData();
   const animes = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
 
@@ -21,10 +42,10 @@ function AllEpisodesPage() {
   const [selectedAnime, setSelectedAnime] = useState<string>("all");
   const [page, setPage] = useState(1);
 
-  // Todos os episódios publicados, ordenados do mais recente para o mais antigo
+  // Todos os episódios publicados, priorizando PostgreSQL como fonte canônica com fallback local
   const allEpisodes = useMemo(() => {
-    return getAllPublishedEpisodes(animes);
-  }, [animes]);
+    return resolvePublicEpisodes(loaderData?.publicEpisodesResult ?? null, animes);
+  }, [loaderData?.publicEpisodesResult, animes]);
 
   // Lista única de animes que possuem episódios para o filtro
   const animeOptions = useMemo(() => {
@@ -156,7 +177,9 @@ function AllEpisodesPage() {
           </h2>
           <p className="mx-auto mt-2 max-w-md text-xs sm:text-sm text-zinc-400">
             {allEpisodes.length === 0
-              ? "Ainda não há episódios cadastrados pelo administrador no Hikari. Novos lançamentos aparecerão aqui automaticamente."
+              ? loaderData?.publicEpisodesResult?.status === "error"
+                ? "Não foi possível conectar ao servidor de episódios no momento. Exibindo catálogo local quando disponível."
+                : "Ainda não há episódios cadastrados pelo administrador no Hikari. Novos lançamentos aparecerão aqui automaticamente."
               : "Nenhum episódio corresponde ao filtro de busca selecionado."}
           </p>
           {search || selectedAnime !== "all" ? (

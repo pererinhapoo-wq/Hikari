@@ -190,6 +190,149 @@ export const getAdminCatalogEpisodes = createServerFn({
     });
   });
 
+export interface PublicEpisodeRow {
+  id: string;
+  animeId: string;
+  seasonNumber: number;
+  number: number;
+  title: string | null;
+  thumbnail: string | null;
+  duration: string | null;
+  synopsis: string | null;
+  videoUrl: string | null;
+  videoUrl2: string | null;
+  videoUrl3: string | null;
+  videoUrl4: string | null;
+  videoUrl5: string | null;
+  published: boolean;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  animeTitle: string | null;
+  animeTitleRomaji: string | null;
+  animeTitleEnglish: string | null;
+  animeTitleNative: string | null;
+  animeCover: string | null;
+  animeBanner: string | null;
+  animeStatus: string | null;
+  animeEpisodesCount: number | null;
+  animeCreatedAt: string | null;
+  animeUpdatedAt: string | null;
+  seasonTitle: string | null;
+}
+
+export type PublicEpisodesFetchStatus = "success" | "empty" | "error";
+
+export interface PublicEpisodesResult {
+  status: PublicEpisodesFetchStatus;
+  episodes: PublicEpisodeRow[];
+  total: number;
+  error?: string;
+}
+
+/**
+ * Consulta server-side direta dos episódios publicados no PostgreSQL para exibição pública
+ * na Home e na página /episodes.
+ * 
+ * Regras da Etapa 4:
+ * 1. Recupera apenas episódios marcados com published = true.
+ * 2. Exclui rascunhos.
+ * 3. Une metadados de anime e temporada canônicos.
+ * 4. Ordena temporalmente de forma decrescente (mais recentes primeiro).
+ * 5. Não executa escritas, mutações ou exclusões no banco de dados (leitura pura).
+ * 6. Em caso de falha de conexão, retorna status = "error" com erro detalhado.
+ */
+export async function executeGetPublicCatalogEpisodes(options?: {
+  limit?: number;
+  offset?: number;
+}): Promise<PublicEpisodesResult> {
+  try {
+    const sql = await getSql();
+    const limit =
+      typeof options?.limit === "number" && options.limit > 0
+        ? options.limit
+        : 2000;
+    const offset =
+      typeof options?.offset === "number" && options.offset >= 0
+        ? options.offset
+        : 0;
+
+    const rows = await sql.query<PublicEpisodeRow>(
+      `SELECT
+         e."id",
+         e."animeId",
+         e."seasonNumber",
+         e."number",
+         e."title",
+         e."thumbnail",
+         e."duration",
+         e."synopsis",
+         e."videoUrl",
+         e."videoUrl2",
+         e."videoUrl3",
+         e."videoUrl4",
+         e."videoUrl5",
+         e."published",
+         e."publishedAt",
+         e."createdAt",
+         e."updatedAt",
+         COALESCE(NULLIF(a."title", ''), a."titleRomaji", a."titleEnglish", 'Anime') AS "animeTitle",
+         a."titleRomaji" AS "animeTitleRomaji",
+         a."titleEnglish" AS "animeTitleEnglish",
+         a."titleNative" AS "animeTitleNative",
+         a."cover" AS "animeCover",
+         a."banner" AS "animeBanner",
+         a."status" AS "animeStatus",
+         a."episodesCount" AS "animeEpisodesCount",
+         a."createdAt" AS "animeCreatedAt",
+         a."updatedAt" AS "animeUpdatedAt",
+         s."title" AS "seasonTitle"
+       FROM "catalog_episode" e
+       LEFT JOIN "catalog_anime" a ON a."id" = e."animeId"
+       LEFT JOIN "catalog_season" s ON s."animeId" = e."animeId" AND s."number" = e."seasonNumber"
+       WHERE e."published" = true
+       ORDER BY e."publishedAt" DESC NULLS LAST, e."createdAt" DESC, e."seasonNumber" DESC, e."number" DESC
+       LIMIT $1 OFFSET $2;`,
+      [limit, offset],
+    );
+
+    const episodes = Array.isArray(rows) ? rows : [];
+
+    return {
+      status: episodes.length > 0 ? "success" : "empty",
+      episodes,
+      total: episodes.length,
+    };
+  } catch (err: any) {
+    console.warn("[Hikari] Falha segura ao consultar episódios públicos do PostgreSQL:", err);
+    return {
+      status: "error",
+      episodes: [],
+      total: 0,
+      error: err?.message || String(err),
+    };
+  }
+}
+
+export const getPublicCatalogEpisodesSchema = z
+  .object({
+    limit: z.number().optional(),
+    offset: z.number().optional(),
+  })
+  .optional();
+
+/**
+ * Server Function GET para consulta pública de episódios publicados no PostgreSQL
+ * acessível tanto no SSR quanto via RPC no cliente.
+ */
+export const getPublicCatalogEpisodes = createServerFn({
+  method: "GET",
+})
+  .validator((d?: { limit?: number; offset?: number }) => d ?? {})
+  .handler(async ({ data }): Promise<PublicEpisodesResult> => {
+    return executeGetPublicCatalogEpisodes(data);
+  });
+
 /**
  * Constrói temporadas resolvidas a partir dos dados remotos e do fallback local.
  */

@@ -14,14 +14,35 @@ import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
 import { RecentEpisodesSection } from "@/components/recent-episodes-section";
-import { getRecentEpisodesSection } from "@/lib/published-episodes";
+import { resolvePublicRecentEpisodes } from "@/lib/published-episodes";
+import {
+  executeGetPublicCatalogEpisodes,
+  getPublicCatalogEpisodes,
+} from "@/lib/catalog-episodes";
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { SectionReveal } from "@/components/section-reveal";
 
 export const Route = createFileRoute("/")({
   staleTime: 1000 * 60 * 10,
   gcTime: 1000 * 60 * 30,
-  loader: () => fetchHomeCatalog(),
+  loader: async () => {
+    const [homeCatalog, publicEpisodesResult] = await Promise.all([
+      fetchHomeCatalog(),
+      (typeof window === "undefined"
+        ? executeGetPublicCatalogEpisodes()
+        : getPublicCatalogEpisodes()
+      ).catch((err) => ({
+        status: "error" as const,
+        episodes: [],
+        total: 0,
+        error: String(err),
+      })),
+    ]);
+    return {
+      ...homeCatalog,
+      publicEpisodesResult,
+    };
+  },
   head: ({ loaderData }) => {
     const featured =
       loaderData?.trending?.[0] ?? loaderData?.popular?.[0] ?? null;
@@ -258,9 +279,12 @@ function Home() {
   );
 
   // Novos Episódios: apenas monta o container de carregamento progressivo se houver episódios cadastrados
-  const hasRecentEpisodes = useMemo(() => {
-    return getRecentEpisodesSection(locals).length > 0;
-  }, [locals]);
+  // Prioriza o PostgreSQL como fonte canônica com fallback seguro no catálogo local
+  const recentEpisodes = useMemo(() => {
+    return resolvePublicRecentEpisodes(data.publicEpisodesResult ?? null, locals);
+  }, [data.publicEpisodesResult, locals]);
+
+  const hasRecentEpisodes = recentEpisodes.length > 0;
 
   return (
     <div className="space-y-8 pb-12 sm:space-y-11 md:space-y-14">
@@ -279,7 +303,10 @@ function Home() {
       {/* 2. Novos Episódios (publicados pelo administrador - carregamento progressivo adiado) */}
       {hasRecentEpisodes && (
         <SectionReveal minHeight="380px" rootMargin="300px 0px">
-          <RecentEpisodesSection />
+          <RecentEpisodesSection
+            serverResult={data.publicEpisodesResult}
+            initialEpisodes={recentEpisodes}
+          />
         </SectionReveal>
       )}
 

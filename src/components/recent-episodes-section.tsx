@@ -1,7 +1,12 @@
 import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 import { useHikariStore } from "@/lib/store";
-import { getRecentEpisodesSection } from "@/lib/published-episodes";
+import {
+  getRecentEpisodesSection,
+  resolvePublicRecentEpisodes,
+  type PublishedEpisode,
+} from "@/lib/published-episodes";
+import type { PublicEpisodesResult } from "@/lib/catalog-episodes";
 import { EpisodeCard } from "@/components/episode-card";
 
 function EpisodeCardSkeleton() {
@@ -16,16 +21,28 @@ function EpisodeCardSkeleton() {
   );
 }
 
-export function RecentEpisodesSection() {
+export function RecentEpisodesSection({
+  serverResult,
+  initialEpisodes,
+}: {
+  serverResult?: PublicEpisodesResult | null;
+  initialEpisodes?: PublishedEpisode[];
+}) {
   const animes = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
 
   const displayEpisodes = useMemo(() => {
+    if (initialEpisodes && initialEpisodes.length > 0) {
+      return initialEpisodes;
+    }
+    if (serverResult !== undefined) {
+      return resolvePublicRecentEpisodes(serverResult, animes);
+    }
     return getRecentEpisodesSection(animes);
-  }, [animes]);
+  }, [serverResult, initialEpisodes, animes]);
 
   const hasEpisodes = displayEpisodes.length > 0;
-  const isLoading = !hydrated && !hasEpisodes;
+  const isLoading = !hydrated && !hasEpisodes && serverResult === undefined;
 
   // Se já hidratou e não houver episódios publicados, oculta a seção sem deixar espaços vazios
   if (hydrated && !hasEpisodes) {

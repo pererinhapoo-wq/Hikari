@@ -1,5 +1,12 @@
 import type { LocalAnime } from "@/lib/types";
 import { getBearerToken } from "@/lib/auth/client";
+import { readOutbox, type OutboxOperation } from "@/lib/episode-writer";
+import {
+  readTombstoneRecords,
+  isEpisodeTombstoned,
+  type TombstoneRecord,
+} from "@/lib/catalog-storage";
+import type { PublicEpisodesResult } from "@/lib/catalog-episodes";
 
 export type PublishedEpisodeBadge = "LANÇAMENTO" | "FINAL" | null;
 
@@ -501,6 +508,405 @@ export function getAllPublishedEpisodes(animes: LocalAnime[]): PublishedEpisode[
 
   // Ordena do mais recente para o mais antigo
   return list.sort((a, b) => b.publishedAt - a.publishedAt);
+}
+
+/**
+ * Resolve a lista completa de episódios publicados unindo os dados do PostgreSQL
+ * com o fallback do catálogo local, aplicando rigorosamente as proteções da Etapa 3 e 4:
+ * 1. O PostgreSQL é a fonte preferencial para episódios confirmados no servidor.
+ * 2. Exclusões pendentes no Outbox são estritamente respeitadas (o episódio é ocultado).
+ * 3. Tombstones órfãos sem exclusão ativa no Outbox NÃO ocultam episódios confirmados no banco.
+ * 4. Episódios adicionais no catálogo local ainda não persistidos no banco são preservados.
+ * 5. Não duplica episódios que existam em ambas as fontes para o mesmo slot (animeId, seasonNumber, episodeNumber).
+ * 6. Preserva os IDs canônicos, 5 fontes de vídeo, miniaturas, duração e metadados.
+ * 7. Nunca exibe rascunhos (published = false ou sem player válido).
+ * 8. Quando o banco falhar ou estiver vazio, utiliza o catálogo local de forma segura e não destrutiva.
+ */
+export function resolvePublicEpisodes(
+  serverResult?: PublicEpisodesResult | null,
+  localAnimes?: LocalAnime[],
+  options?: { outbox?: OutboxOperation[]; tombstones?: TombstoneRecord[] },
+): PublishedEpisode[] {
+  const safeLocals = Array.isArray(localAnimes) ? localAnimes : [];
+
+  const outboxOps =
+    options?.outbox !== undefined
+      ? options.outbox
+      : typeof window !== "undefined"
+        ? readOutbox()
+        : [];
+
+  const tombstones =
+    options?.tombstones !== undefined
+      ? options.tombstones
+      : typeof window !== "undefined"
+        ? readTombstoneRecords()
+        : [];
+
+  const hasRemoteEpisodes =
+    serverResult &&
+    serverResult.status === "success" &&
+    Array.isArray(serverResult.episodes) &&
+    serverResult.episodes.length > 0;
+
+  // Se o servidor retornou erro, ou está vazio sem episódios remotos, utiliza o fallback local seguro
+  if (!hasRemoteEpisodes) {
+    return getAllPublishedEpisodes(safeLocals).filter((ep) => {
+      // Respeita exclusões pendentes na Outbox
+      const isPendingDelete = outboxOps.some(
+        (op) =>
+          op.type === "delete" &&
+          (op.episodeId === ep.episodeId ||
+            (op.animeId === ep.animeId &&
+              op.seasonNumber === ep.seasonNumber &&
+              op.episodeNumber === ep.episodeNumber)),
+      );
+      if (isPendingDelete) return false;
+
+      // Respeita tombstones válidos daquele anime
+      const applicableTombstones = tombstones.filter(
+        (t) => t.animeId === ep.animeId,
+      );
+      if (
+        isEpisodeTombstoned(
+          applicableTombstones,
+          ep.animeId,
+          ep.episodeId,
+          ep.seasonNumber,
+          ep.episodeNumber,
+        )
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  const remoteRows = serverResult.episodes;
+  const result: PublishedEpisode[] = [];
+  const processedSlots = new Set<string>();
+  const processedIds = new Set<string>();
+
+  // 1. Processa os episódios confirmados do PostgreSQL (fonte canônica)
+  for (const row of remoteRows) {
+    if (row.published === false) continue; // Nunca exibe rascunho
+
+    const sNum = row.seasonNumber || 1;
+    const epNum = row.number;
+    const slotKey = `${row.animeId}:${sNum}:${epNum}`;
+
+    // Verifica se há exclusão intencional pendente no Outbox local
+    const isPendingDelete = outboxOps.some(
+      (op) =>
+        op.type === "delete" &&
+        (op.episodeId === row.id ||
+          (op.animeId === row.animeId &&
+            op.seasonNumber === sNum &&
+            op.episodeNumber === epNum)),
+    );
+    if (isPendingDelete) {
+      processedSlots.add(slotKey);
+      processedIds.add(row.id);
+      continue;
+    }
+
+    // Identifica primeira fonte de reprodução válida
+    const validVideo = [
+      row.videoUrl,
+      row.videoUrl2,
+      row.videoUrl3,
+      row.videoUrl4,
+      row.videoUrl5,
+    ].find(isHikariPlayableUrl);
+
+    if (!validVideo) continue; // Descarta se não houver stream reproduzível
+
+    const localAnime = safeLocals.find((a) => a.id === row.animeId);
+
+    // Resolve títulos canônicos e variações alternativas
+    const animeTitle =
+      (localAnime ? resolveAnimeCanonicalTitle(localAnime) : null) ||
+      row.animeTitle?.trim() ||
+      row.animeTitleEnglish?.trim() ||
+      row.animeTitleRomaji?.trim() ||
+      "Anime";
+
+    const altTitles = localAnime
+      ? resolveAnimeAltTitles(localAnime, animeTitle)
+      : Array.from(
+          new Set(
+            [
+              animeTitle,
+              row.animeTitleRomaji,
+              row.animeTitleEnglish,
+              row.animeTitleNative,
+            ].filter((t): t is string => typeof t === "string" && Boolean(t.trim())),
+          ),
+        );
+
+    // Verifica se há edição pendente no Outbox para este episódio
+    const pendingUpsert = outboxOps.find(
+      (op) =>
+        op.type === "upsert" &&
+        (op.episodeId === row.id ||
+          (op.animeId === row.animeId &&
+            op.seasonNumber === sNum &&
+            op.episodeNumber === epNum)),
+    );
+
+    const episodeTitle =
+      (pendingUpsert?.payload?.title as string)?.trim() ||
+      row.title?.trim() ||
+      `Episódio ${epNum}`;
+
+    const animeCover =
+      row.animeCover?.trim() || localAnime?.cover?.trim() || "";
+    const animeBanner =
+      row.animeBanner?.trim() || localAnime?.banner?.trim() || animeCover;
+
+    const cloudinaryThumb = getCloudinaryThumbnail(validVideo);
+    const youtubeThumb = getYouTubeThumbnail(validVideo);
+    const resolvedThumb =
+      (pendingUpsert?.payload?.thumbnail as string)?.trim() ||
+      row.thumbnail?.trim() ||
+      cloudinaryThumb ||
+      youtubeThumb ||
+      undefined;
+
+    const duration =
+      (pendingUpsert?.payload?.duration as string)?.trim() ||
+      row.duration?.trim() ||
+      undefined;
+
+    const seasonTitle =
+      row.seasonTitle?.trim() ||
+      localAnime?.seasons?.find((s) => s.number === sNum)?.title ||
+      `Temporada ${sNum}`;
+
+    const publishedAt = row.publishedAt
+      ? new Date(row.publishedAt).getTime()
+      : row.createdAt
+        ? new Date(row.createdAt).getTime()
+        : Date.now();
+
+    result.push({
+      animeId: row.animeId,
+      animeTitle,
+      animeAltTitles: altTitles,
+      animeCover,
+      animeBanner,
+      seasonId: `s-${row.animeId}-${sNum}`,
+      seasonNumber: sNum,
+      seasonTitle,
+      episodeId: row.id,
+      episodeNumber: epNum,
+      episodeTitle,
+      thumbnail: resolvedThumb,
+      duration,
+      videoUrl: validVideo,
+      publishedAt,
+      badge: null,
+    });
+
+    processedSlots.add(slotKey);
+    processedIds.add(row.id);
+  }
+
+  // 2. Processa episódios locais adicionais que ainda não existem no PostgreSQL (offline / rascunhos publicados)
+  for (const anime of safeLocals) {
+    if (anime.hidden) continue;
+
+    const animeTitle = resolveAnimeCanonicalTitle(anime);
+    const altTitles = resolveAnimeAltTitles(anime, animeTitle);
+    const baseTime = anime.updatedAt || anime.createdAt || 0;
+    const applicableTombstones = tombstones.filter((t) => t.animeId === anime.id);
+
+    for (const season of anime.seasons || []) {
+      for (const ep of season.episodes || []) {
+        if (!isEpisodePublished(ep)) continue;
+
+        const slotKey = `${anime.id}:${season.number}:${ep.number}`;
+
+        // Se já foi processado a partir do PostgreSQL, não duplica
+        if (processedSlots.has(slotKey) || processedIds.has(ep.id)) {
+          continue;
+        }
+
+        // Verifica exclusão pendente no Outbox
+        const isPendingDelete = outboxOps.some(
+          (op) =>
+            op.type === "delete" &&
+            (op.episodeId === ep.id ||
+              (op.animeId === anime.id &&
+                op.seasonNumber === season.number &&
+                op.episodeNumber === ep.number)),
+        );
+        if (isPendingDelete) continue;
+
+        // Verifica tombstone
+        if (
+          isEpisodeTombstoned(
+            applicableTombstones,
+            anime.id,
+            ep.id,
+            season.number,
+            ep.number,
+          )
+        ) {
+          continue;
+        }
+
+        const validVideo = [
+          ep.videoUrl,
+          ep.videoUrl2,
+          ep.videoUrl3,
+          ep.videoUrl4,
+          ep.videoUrl5,
+        ].find(isHikariPlayableUrl);
+
+        if (!validVideo) continue;
+
+        const cloudinaryThumb = getCloudinaryThumbnail(validVideo);
+        const youtubeThumb = getYouTubeThumbnail(validVideo);
+        const resolvedThumb =
+          ep.thumbnail?.trim() || cloudinaryThumb || youtubeThumb || undefined;
+
+        const epTime = baseTime + season.number * 1000 + ep.number;
+
+        result.push({
+          animeId: anime.id,
+          animeTitle,
+          animeAltTitles: altTitles,
+          animeCover: anime.cover,
+          animeBanner: anime.banner || anime.cover,
+          seasonId: season.id,
+          seasonNumber: season.number,
+          seasonTitle: season.title || `Temporada ${season.number}`,
+          episodeId: ep.id,
+          episodeNumber: ep.number,
+          episodeTitle: ep.title || `Episódio ${ep.number}`,
+          thumbnail: resolvedThumb,
+          duration: ep.duration?.trim() || undefined,
+          videoUrl: validVideo,
+          publishedAt: epTime,
+          badge: null,
+        });
+
+        processedSlots.add(slotKey);
+        processedIds.add(ep.id);
+      }
+    }
+  }
+
+  // 3. Atribui badges (LANÇAMENTO para S1 E1; FINAL para encerramento confirmado) por anime
+  const epsByAnime = new Map<string, PublishedEpisode[]>();
+  for (const ep of result) {
+    const list = epsByAnime.get(ep.animeId) ?? [];
+    list.push(ep);
+    epsByAnime.set(ep.animeId, list);
+  }
+
+  for (const [animeId, animeEps] of Array.from(epsByAnime.entries())) {
+    animeEps.sort(
+      (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
+    );
+
+    const firstEp = animeEps.find(
+      (e) => e.seasonNumber === 1 && e.episodeNumber === 1,
+    );
+    if (firstEp) {
+      firstEp.badge = "LANÇAMENTO";
+    }
+
+    const latestEp = animeEps[animeEps.length - 1];
+    const localAnime = safeLocals.find((a) => a.id === animeId);
+    const remoteRow = remoteRows.find((r) => r.animeId === animeId);
+
+    const isFinished =
+      (localAnime && isAnimeConfirmedFinished(localAnime)) ||
+      (remoteRow?.animeStatus &&
+        ["FINISHED", "ENCERRADO", "CONCLUÍDO", "CONCLUIDO"].includes(
+          remoteRow.animeStatus.trim().toUpperCase(),
+        ));
+
+    if (latestEp && isFinished && (!firstEp || latestEp.episodeId !== firstEp.episodeId)) {
+      const episodesCount =
+        localAnime?.episodesCount ?? remoteRow?.animeEpisodesCount ?? null;
+
+      let isFinal = false;
+      if (typeof episodesCount === "number" && episodesCount > 0) {
+        isFinal = latestEp.episodeNumber >= episodesCount;
+      } else if (latestEp.episodeTitle) {
+        isFinal = /\b(fim|final|o fim|the end|conclusão|conclusao|último episódio|ultimo episodio)\b/i.test(
+          latestEp.episodeTitle,
+        );
+      }
+
+      if (isFinal) {
+        latestEp.badge = "FINAL";
+      }
+    }
+  }
+
+  // 4. Ordena do mais recente para o mais antigo
+  return result.sort((a, b) => b.publishedAt - a.publishedAt);
+}
+
+/**
+ * Retorna os episódios selecionados para a vitrine da Home ("Novos Episódios"),
+ * respeitando as 5 regras de negócio para vitrines:
+ * 1. LANÇAMENTO para o Episódio 1 (apenas uma vez por anime).
+ * 2. Destaca o episódio mais recente publicado de cada anime.
+ * 3. Selo FINAL somente quando o anime estiver confirmado como concluído.
+ * 4. Evita que cadastros em massa de dezenas/centenas de episódios monopolizem a Home,
+ *    omitindo episódios intermediários na Home (todos continuam disponíveis em /episodes).
+ * 5. Limita a 18 episódios no total para manter a performance da vitrine.
+ */
+export function resolvePublicRecentEpisodes(
+  serverResult?: PublicEpisodesResult | null,
+  localAnimes?: LocalAnime[],
+  options?: { outbox?: OutboxOperation[]; tombstones?: TombstoneRecord[] },
+): PublishedEpisode[] {
+  const all = resolvePublicEpisodes(serverResult, localAnimes, options);
+  if (all.length === 0) return [];
+
+  const epsByAnime = new Map<string, PublishedEpisode[]>();
+  for (const ep of all) {
+    const list = epsByAnime.get(ep.animeId) ?? [];
+    list.push(ep);
+    epsByAnime.set(ep.animeId, list);
+  }
+
+  const selected: PublishedEpisode[] = [];
+
+  for (const [, animeEps] of Array.from(epsByAnime.entries())) {
+    // Ordena do menor ao maior slot para identificar primeiro e último
+    animeEps.sort(
+      (a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber,
+    );
+
+    const firstEp = animeEps.find(
+      (e) => e.seasonNumber === 1 && e.episodeNumber === 1,
+    );
+    const latestEp = animeEps[animeEps.length - 1];
+
+    if (animeEps.length === 1 && firstEp) {
+      selected.push(firstEp);
+      continue;
+    }
+
+    if (firstEp) {
+      selected.push(firstEp);
+    }
+
+    if (latestEp && (!firstEp || latestEp.episodeId !== firstEp.episodeId)) {
+      selected.push(latestEp);
+    }
+  }
+
+  // Ordena do mais recente para o mais antigo e limita aos 18 da vitrine
+  return selected.sort((a, b) => b.publishedAt - a.publishedAt).slice(0, 18);
 }
 
 /**
