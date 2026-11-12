@@ -10,7 +10,6 @@ import {
   Calendar,
   CalendarDays,
   CheckCheck,
-  ChevronRight,
   Compass,
   House,
   Loader2,
@@ -94,6 +93,31 @@ function useNotificationPanelPresence(open: boolean, exitMs = 170) {
     visible: open,
     closing: !open && mounted,
   };
+}
+
+const PANEL_BATCH_SIZE = 10;
+
+function dedupeNotificationItems(list: NotificationItem[]): NotificationItem[] {
+  const seenIds = new Set<string>();
+  const seenGroupedFollowerIds = new Set<string>();
+  const result: NotificationItem[] = [];
+
+  for (const item of list) {
+    if (!item?.id || seenIds.has(item.id)) continue;
+
+    if (item.type === "grouped_followers" && Array.isArray(item.groupedIds)) {
+      for (const gid of item.groupedIds) {
+        seenGroupedFollowerIds.add(gid);
+      }
+    } else if (item.type === "new_follower" && seenGroupedFollowerIds.has(item.id)) {
+      continue;
+    }
+
+    seenIds.add(item.id);
+    result.push(item);
+  }
+
+  return result;
 }
 
 const ShellMain = memo(function ShellMain({
@@ -459,14 +483,38 @@ export function Shell() {
     setNotificationsLoading,
   ] = useState(false);
 
+  const [
+    notificationsLoadingMore,
+    setNotificationsLoadingMore,
+  ] = useState(false);
+
+  const [
+    notificationsHasMore,
+    setNotificationsHasMore,
+  ] = useState(false);
+
   const notificationsPanel =
     useNotificationPanelPresence(notificationsOpen, 170);
 
   const notificationsRef = useRef<NotificationItem[]>([]);
   notificationsRef.current = notifications;
 
+  const notificationsOpenRef = useRef(notificationsOpen);
+  notificationsOpenRef.current = notificationsOpen;
+
+  const notificationsLoadingRef = useRef(notificationsLoading);
+  notificationsLoadingRef.current = notificationsLoading;
+
+  const notificationsHasMoreRef = useRef(false);
+  notificationsHasMoreRef.current = notificationsHasMore;
+
+  const loadingMoreRef = useRef(false);
+  const notificationsNextOffsetRef = useRef(0);
+  const loadedExtraBatchesRef = useRef(false);
   const hasLoadedNotificationsRef = useRef(false);
   const pendingReadTokensRef = useRef<Map<string, string>>(new Map());
+  const notificationsScrollRef = useRef<HTMLDivElement | null>(null);
+  const notificationsSentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setNotificationsOpen(false);
@@ -559,71 +607,133 @@ export function Shell() {
   );
 
   const userId = user?.id ?? null;
+  const activeUserIdRef = useRef<string | null>(userId);
+  activeUserIdRef.current = userId;
+
+  const applyFirstBatchResponse = useCallback(
+    (data: {
+      notifications?: NotificationItem[];
+      unreadCount?: number;
+      hasMore?: boolean;
+      nextOffset?: number;
+    }) => {
+      const reconciled = reconcileNotifications(
+        data.notifications ?? [],
+        Number(data.unreadCount ?? 0),
+      );
+      const firstBatch = dedupeNotificationItems(reconciled.notifications);
+      const serverNextOffset =
+        typeof data.nextOffset === "number"
+          ? data.nextOffset
+          : firstBatch.length;
+      const serverHasMore = Boolean(data.hasMore);
+
+      if (!loadedExtraBatchesRef.current || !notificationsOpenRef.current) {
+        notificationsNextOffsetRef.current = serverNextOffset;
+        notificationsHasMoreRef.current = serverHasMore;
+        setNotificationsHasMore(serverHasMore);
+        setNotifications(firstBatch);
+        setUnreadCount(reconciled.unreadCount);
+        return;
+      }
+
+      // Painel aberto com lotes adicionais carregados: atualiza o topo preservando os itens antigos rolados
+      setNotifications((prev) => {
+        if (!serverHasMore || firstBatch.length === 0) {
+          notificationsNextOffsetRef.current = serverNextOffset;
+          notificationsHasMoreRef.current = serverHasMore;
+          setNotificationsHasMore(serverHasMore);
+          return firstBatch;
+        }
+
+        const firstBatchIds = new Set(firstBatch.map((item) => item.id));
+        const oldestFirstTime = Math.min(
+          ...firstBatch.map((item) => {
+            const parsed = Date.parse(item.createdAt);
+            return Number.isNaN(parsed) ? Infinity : parsed;
+          }),
+        );
+
+        const preservedTail = prev.filter((item) => {
+          if (firstBatchIds.has(item.id)) return false;
+          const itemTime = Date.parse(item.createdAt);
+          if (Number.isNaN(itemTime) || oldestFirstTime === Infinity) return false;
+          return itemTime < oldestFirstTime;
+        });
+
+        return dedupeNotificationItems([...firstBatch, ...preservedTail]);
+      });
+      setUnreadCount(reconciled.unreadCount);
+    },
+    [reconcileNotifications],
+  );
 
   useEffect(() => {
     if (!userId) {
       hasLoadedNotificationsRef.current = false;
+      loadedExtraBatchesRef.current = false;
+      loadingMoreRef.current = false;
+      notificationsNextOffsetRef.current = 0;
+      notificationsHasMoreRef.current = false;
       pendingReadTokensRef.current.clear();
       setNotifications([]);
+      setNotificationsHasMore(false);
+      setNotificationsLoadingMore(false);
       setUnreadCount(0);
       return;
     }
 
     let cancelled = false;
 
-    const loadNotifications =
-      async () => {
-        try {
-          const bearer = getBearerToken();
-          const response =
-            await fetch(
-              "/api/notifications",
-              {
-                method: "GET",
-                credentials: "include",
-                headers: bearer
-                  ? { Authorization: `Bearer ${bearer}` }
-                  : undefined,
-              },
-            );
+    const loadNotifications = async () => {
+      try {
+        const bearer = getBearerToken();
+        const response = await fetch(
+          `/api/notifications?limit=${PANEL_BATCH_SIZE}&offset=0`,
+          {
+            method: "GET",
+            credentials: "include",
+            headers: bearer
+              ? { Authorization: `Bearer ${bearer}` }
+              : undefined,
+          },
+        );
 
-          if (!response.ok) {
-            return;
-          }
-
-          const data =
-            (await response.json()) as {
-              notifications?: NotificationItem[];
-              unreadCount?: number;
-            };
-
-          if (cancelled) {
-            return;
-          }
-
-          hasLoadedNotificationsRef.current = true;
-
-          const reconciled = reconcileNotifications(
-            data.notifications ?? [],
-            Number(data.unreadCount ?? 0),
-          );
-
-          setNotifications(reconciled.notifications);
-          setUnreadCount(reconciled.unreadCount);
-        } catch {
-          // Mantém o estado atual caso a API esteja indisponível.
+        if (!response.ok) {
+          return;
         }
-      };
+
+        const data = (await response.json()) as {
+          notifications?: NotificationItem[];
+          unreadCount?: number;
+          hasMore?: boolean;
+          nextOffset?: number;
+        };
+
+        if (cancelled) {
+          return;
+        }
+
+        hasLoadedNotificationsRef.current = true;
+        applyFirstBatchResponse(data);
+      } catch {
+        // Mantém o estado atual caso a API esteja indisponível.
+      }
+    };
 
     void loadNotifications();
 
-    const interval =
-      window.setInterval(
-        loadNotifications,
-        30000,
-      );
+    const interval = window.setInterval(loadNotifications, 30000);
 
-    const handleVisibilityOrSync = () => {
+    const handleVisibilityOrSync = (event?: Event) => {
+      if (
+        event instanceof CustomEvent &&
+        event.detail &&
+        typeof event.detail === "object" &&
+        (event.detail as { source?: string }).source === "shell-mark-read"
+      ) {
+        return;
+      }
       if (
         typeof document !== "undefined" &&
         document.visibilityState === "hidden"
@@ -643,9 +753,7 @@ export function Shell() {
     return () => {
       cancelled = true;
 
-      window.clearInterval(
-        interval,
-      );
+      window.clearInterval(interval);
       window.removeEventListener("focus", handleVisibilityOrSync);
       document.removeEventListener("visibilitychange", handleVisibilityOrSync);
       window.removeEventListener(
@@ -653,7 +761,7 @@ export function Shell() {
         handleVisibilityOrSync,
       );
     };
-  }, [userId, reconcileNotifications]);
+  }, [userId, applyFirstBatchResponse]);
 
   const markNotificationsAsRead = useCallback(
     async (ids: string[]) => {
@@ -734,7 +842,9 @@ export function Shell() {
         );
 
         window.dispatchEvent(
-          new CustomEvent("hikari:notifications-updated"),
+          new CustomEvent("hikari:notifications-updated", {
+            detail: { source: "shell-mark-read" },
+          }),
         );
       } catch {
         for (const id of targetIds) {
@@ -807,6 +917,144 @@ export function Shell() {
     [user, notifications],
   );
 
+  const loadMoreNotifications = useCallback(async () => {
+    const currentUserId = activeUserIdRef.current;
+    if (
+      !currentUserId ||
+      !notificationsOpenRef.current ||
+      notificationsLoadingRef.current ||
+      loadingMoreRef.current ||
+      !notificationsHasMoreRef.current
+    ) {
+      return;
+    }
+
+    const offsetToFetch = notificationsNextOffsetRef.current;
+    loadingMoreRef.current = true;
+    setNotificationsLoadingMore(true);
+
+    try {
+      const bearer = getBearerToken();
+      const response = await fetch(
+        `/api/notifications?limit=${PANEL_BATCH_SIZE}&offset=${offsetToFetch}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+        },
+      );
+
+      if (
+        !response.ok ||
+        activeUserIdRef.current !== currentUserId ||
+        !notificationsOpenRef.current
+      ) {
+        return;
+      }
+
+      const data = (await response.json()) as {
+        notifications?: NotificationItem[];
+        unreadCount?: number;
+        hasMore?: boolean;
+        nextOffset?: number;
+      };
+
+      const incomingRaw = data.notifications ?? [];
+      const reconciled = reconcileNotifications(
+        incomingRaw,
+        Number(data.unreadCount ?? 0),
+      );
+
+      let addedNewItems = false;
+      setNotifications((prev) => {
+        const merged = dedupeNotificationItems([
+          ...prev,
+          ...reconciled.notifications,
+        ]);
+        addedNewItems = merged.length > prev.length;
+        return merged;
+      });
+      setUnreadCount(reconciled.unreadCount);
+
+      const serverNextOffset =
+        typeof data.nextOffset === "number"
+          ? data.nextOffset
+          : offsetToFetch + incomingRaw.length;
+      const madeProgress =
+        serverNextOffset > offsetToFetch || addedNewItems;
+      const nextHasMore = Boolean(data.hasMore) && madeProgress && incomingRaw.length > 0;
+
+      notificationsNextOffsetRef.current = serverNextOffset;
+      notificationsHasMoreRef.current = nextHasMore;
+      setNotificationsHasMore(nextHasMore);
+      loadedExtraBatchesRef.current = true;
+    } catch {
+      // Falha silenciosa sem entrar em loop automático
+    } finally {
+      loadingMoreRef.current = false;
+      setNotificationsLoadingMore(false);
+    }
+  }, [reconcileNotifications]);
+
+  // Carregamento automático por proximidade do fim da lista via IntersectionObserver
+  useEffect(() => {
+    if (
+      !notificationsOpen ||
+      notificationsLoading ||
+      !notificationsHasMore ||
+      !user
+    ) {
+      return;
+    }
+
+    const rootEl = notificationsScrollRef.current;
+    const sentinelEl = notificationsSentinelRef.current;
+    if (!rootEl || !sentinelEl || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadMoreNotifications();
+        }
+      },
+      {
+        root: rootEl,
+        rootMargin: "120px 0px",
+        threshold: 0,
+      },
+    );
+
+    observer.observe(sentinelEl);
+    return () => observer.disconnect();
+  }, [
+    notificationsOpen,
+    notificationsLoading,
+    notificationsHasMore,
+    notifications.length,
+    user,
+    loadMoreNotifications,
+  ]);
+
+  const handleNotificationsScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      if (
+        loadingMoreRef.current ||
+        !notificationsHasMoreRef.current ||
+        notificationsLoadingRef.current
+      ) {
+        return;
+      }
+      const el = e.currentTarget;
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distanceFromBottom <= 120) {
+        void loadMoreNotifications();
+      }
+    },
+    [loadMoreNotifications],
+  );
+
   // Marca automaticamente como lidas as notificações exibidas ao abrir o sino
   useEffect(() => {
     if (!notificationsOpen || notificationsLoading || !user) {
@@ -821,7 +1069,7 @@ export function Shell() {
     }
 
     const displayedUnreadIds: string[] = [];
-    for (const item of notifications.slice(0, 10)) {
+    for (const item of notifications.slice(0, PANEL_BATCH_SIZE)) {
       if (
         !item.read &&
         pendingReadTokensRef.current.get(item.id) !== item.createdAt
@@ -845,62 +1093,58 @@ export function Shell() {
     markNotificationsAsRead,
   ]);
 
-  const openNotifications =
-    async () => {
-      setNotificationsOpen(
-        true,
+  const openNotifications = async () => {
+    setNotificationsOpen(true);
+    loadedExtraBatchesRef.current = false;
+    loadingMoreRef.current = false;
+
+    if (notificationsScrollRef.current) {
+      notificationsScrollRef.current.scrollTop = 0;
+    }
+
+    if (!user) {
+      return;
+    }
+
+    const showInitialLoader = !hasLoadedNotificationsRef.current;
+    if (showInitialLoader) {
+      setNotificationsLoading(true);
+    }
+
+    try {
+      const bearer = getBearerToken();
+      const response = await fetch(
+        `/api/notifications?limit=${PANEL_BATCH_SIZE}&offset=0`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: bearer
+            ? { Authorization: `Bearer ${bearer}` }
+            : undefined,
+        },
       );
 
-      if (!user) {
+      if (!response.ok) {
         return;
       }
 
-      const showInitialLoader = !hasLoadedNotificationsRef.current;
+      const data = (await response.json()) as {
+        notifications?: NotificationItem[];
+        unreadCount?: number;
+        hasMore?: boolean;
+        nextOffset?: number;
+      };
+
+      hasLoadedNotificationsRef.current = true;
+      applyFirstBatchResponse(data);
+    } catch {
+      // Mantém os dados atuais.
+    } finally {
       if (showInitialLoader) {
-        setNotificationsLoading(true);
+        setNotificationsLoading(false);
       }
-
-      try {
-        const bearer = getBearerToken();
-        const response =
-          await fetch(
-            "/api/notifications",
-            {
-              method: "GET",
-              credentials: "include",
-              headers: bearer
-                ? { Authorization: `Bearer ${bearer}` }
-                : undefined,
-            },
-          );
-
-        if (!response.ok) {
-          return;
-        }
-
-        const data =
-          (await response.json()) as {
-            notifications?: NotificationItem[];
-            unreadCount?: number;
-          };
-
-        hasLoadedNotificationsRef.current = true;
-
-        const reconciled = reconcileNotifications(
-          data.notifications ?? [],
-          Number(data.unreadCount ?? 0),
-        );
-
-        setNotifications(reconciled.notifications);
-        setUnreadCount(reconciled.unreadCount);
-      } catch {
-        // Mantém os dados atuais.
-      } finally {
-        if (showInitialLoader) {
-          setNotificationsLoading(false);
-        }
-      }
-    };
+    }
+  };
 
   if (cinema || isAdmin) {
     return <Outlet />;
@@ -1071,7 +1315,7 @@ export function Shell() {
       )}
 
       {/* =========================================================
-          PAINEL FLUTUANTE DE NOTIFICAÇÕES (COMPACTO E DISCRETO)
+          PAINEL FLUTUANTE DE NOTIFICAÇÕES (COMPACTO E REFINADO)
       ========================================================== */}
       {notificationsPanel.mounted && (
         <>
@@ -1089,7 +1333,7 @@ export function Shell() {
             role="dialog"
             aria-label="Painel de notificações"
             className={cn(
-              "fixed right-3 sm:right-6 top-14 sm:top-16 z-50 flex w-[calc(100vw-1.5rem)] max-w-[360px] sm:max-w-[380px] origin-top-right flex-col overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0e0c18]/95 shadow-[0_16px_48px_rgba(0,0,0,0.7),0_0_24px_rgba(168,85,247,0.12)] backdrop-blur-xl",
+              "fixed right-3 sm:right-6 top-14 sm:top-16 z-50 flex w-[calc(100vw-1.5rem)] max-w-[360px] sm:max-w-[380px] origin-top-right flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0b0913]/96 shadow-[0_20px_52px_rgba(0,0,0,0.78)] backdrop-blur-2xl",
               "motion-safe:transition-[opacity,transform] motion-safe:duration-[170ms] motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
               notificationsPanel.visible
                 ? "opacity-100 translate-y-0 scale-100"
@@ -1097,27 +1341,28 @@ export function Shell() {
               notificationsPanel.closing && "pointer-events-none",
             )}
           >
+            {/* LINHA DE ACENTO SUTIL NO TOPO */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none h-px w-full bg-gradient-to-r from-transparent via-purple-400/35 to-transparent"
+            />
+
             {/* CABEÇALHO COMPACTO */}
-            <div className="flex shrink-0 items-center justify-between border-b border-purple-500/15 px-3.5 py-2.5 bg-white/[0.02]">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="flex size-7 items-center justify-center rounded-lg bg-purple-500/15 text-[#c084fc] shrink-0">
-                  <Bell className="size-3.5" />
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.07] bg-white/[0.02] px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <h2 className="text-[13px] font-semibold tracking-tight text-zinc-100">
+                    Notificações
+                  </h2>
+                  {unreadCount > 0 && (
+                    <span className="text-[11px] font-medium text-purple-300/85 tabular-nums">
+                      · {unreadCount} {unreadCount === 1 ? "nova" : "novas"}
+                    </span>
+                  )}
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <h2 className="text-xs font-bold text-fg tracking-tight">
-                      Notificações
-                    </h2>
-                    {unreadCount > 0 && (
-                      <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-purple-500/25 px-1 text-[9px] font-bold text-[#c084fc] tabular-nums">
-                        {unreadCount}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-muted truncate">
-                    Suas atividades recentes
-                  </p>
-                </div>
+                <p className="text-[11px] text-zinc-400 truncate">
+                  Atividades e interações recentes
+                </p>
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
@@ -1125,18 +1370,18 @@ export function Shell() {
                   <button
                     type="button"
                     onClick={markAllNotificationsAsReadAction}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold text-[#c084fc] hover:bg-purple-500/15 transition-colors active:scale-95"
+                    className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-purple-300/90 hover:bg-purple-500/12 hover:text-purple-100 transition-colors active:scale-[0.98] cursor-pointer whitespace-nowrap"
                     title="Marcar todas como lidas"
                   >
-                    <CheckCheck className="size-3" />
-                    <span>Lidas</span>
+                    <CheckCheck className="size-3.5" />
+                    <span>Marcar lidas</span>
                   </button>
                 )}
 
                 <button
                   type="button"
                   onClick={() => setNotificationsOpen(false)}
-                  className="flex size-7 items-center justify-center rounded-lg text-muted hover:bg-white/5 hover:text-fg transition-colors"
+                  className="flex size-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors cursor-pointer"
                   aria-label="Fechar notificações"
                 >
                   <X className="size-3.5" />
@@ -1144,29 +1389,33 @@ export function Shell() {
               </div>
             </div>
 
-            {/* CORPO DO PAINEL COM ROLAGEM INTERNA */}
+            {/* CORPO DO PAINEL COM ROLAGEM VERTICAL E CARREGAMENTO AUTOMÁTICO */}
             {notificationsLoading ? (
-              <div className="flex min-h-36 flex-1 items-center justify-center px-4 py-8 text-center">
+              <div className="flex min-h-40 flex-1 items-center justify-center px-4 py-8 text-center">
                 <div className="flex flex-col items-center gap-2">
-                  <Loader2 className="size-5 animate-spin text-[#c084fc]" />
-                  <p className="text-xs text-muted">Carregando notificações...</p>
+                  <Loader2 className="size-5 animate-spin text-purple-300" />
+                  <p className="text-xs text-zinc-400">Carregando notificações...</p>
                 </div>
               </div>
             ) : notifications.length === 0 ? (
-              <div className="flex min-h-36 flex-1 items-center justify-center px-4 py-8 text-center">
+              <div className="flex min-h-40 flex-1 items-center justify-center px-4 py-8 text-center">
                 <div>
-                  <div className="mx-auto mb-2 flex size-10 items-center justify-center rounded-xl bg-purple-500/10 text-[#c084fc]/70">
-                    <Bell className="size-5" />
+                  <div className="mx-auto mb-2.5 flex size-10 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.03] text-purple-300/75">
+                    <Bell className="size-4.5" />
                   </div>
-                  <p className="text-xs font-semibold text-fg">Nenhuma notificação</p>
-                  <p className="mt-0.5 text-[11px] text-muted max-w-[220px]">
+                  <p className="text-xs font-semibold text-zinc-100">Nenhuma notificação</p>
+                  <p className="mt-1 text-[11px] text-zinc-400 max-w-[220px]">
                     Novos seguidores, comentários e curtidas aparecerão aqui.
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="max-h-[min(380px,calc(100dvh-12rem))] min-h-0 flex-1 overflow-y-auto overscroll-contain divide-y divide-purple-500/10">
-                {notifications.slice(0, 10).map((notification) => (
+              <div
+                ref={notificationsScrollRef}
+                onScroll={handleNotificationsScroll}
+                className="max-h-[min(390px,calc(100dvh-12rem))] min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              >
+                {notifications.map((notification) => (
                   <NotificationItemCard
                     key={notification.id}
                     notification={notification}
@@ -1177,19 +1426,23 @@ export function Shell() {
                     onNavigate={() => setNotificationsOpen(false)}
                   />
                 ))}
-              </div>
-            )}
 
-            {/* ACESSO A TODAS AS NOTIFICAÇÕES */}
-            {!notificationsLoading && notifications.length > 0 && (
-              <Link
-                to="/notifications"
-                onClick={() => setNotificationsOpen(false)}
-                className="flex shrink-0 items-center justify-center gap-1.5 border-t border-purple-500/15 bg-white/[0.02] py-2.5 text-center text-xs font-semibold text-[#c084fc] hover:bg-purple-500/10 hover:text-[#d8b4fe] transition-colors"
-              >
-                <span>Ver todas as notificações</span>
-                <ChevronRight className="size-3.5" />
-              </Link>
+                {/* SENTINELA INVISÍVEL PARA CARREGAMENTO AUTOMÁTICO POR LOTES */}
+                {notificationsHasMore && (
+                  <div
+                    ref={notificationsSentinelRef}
+                    className="h-1 w-full shrink-0"
+                    aria-hidden="true"
+                  />
+                )}
+
+                {notificationsLoadingMore && (
+                  <div className="flex items-center justify-center gap-2 border-t border-white/[0.05] py-3 text-[11px] text-zinc-400">
+                    <Loader2 className="size-3.5 animate-spin text-purple-300" />
+                    <span>Carregando notificações antigas...</span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </>

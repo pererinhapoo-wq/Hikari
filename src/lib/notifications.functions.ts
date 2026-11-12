@@ -74,6 +74,7 @@ export type GetNotificationsResult = {
   hasMore: boolean;
   limit: number;
   offset: number;
+  nextOffset: number;
 };
 
 export interface CreateNotificationParams {
@@ -568,7 +569,7 @@ export async function executeGetNotifications(
             )
           )
         )
-      order by n."createdAt" desc
+      order by n."createdAt" desc, n."id" desc
       limit ${limit + 1}
       offset ${offset}
     ),
@@ -642,7 +643,7 @@ export async function executeGetNotifications(
     left join "comment" pc on pc."id" = c."parentId"
     left join "user" pu on pu."id" = pc."userId"
     left join "profile" pp on pp."userId" = pc."userId"
-    order by n."createdAt" desc
+    order by n."createdAt" desc, n."id" desc
   `;
 
   const hasMore = rows.length > limit;
@@ -948,6 +949,7 @@ export async function executeGetNotifications(
     hasMore,
     limit,
     offset,
+    nextOffset: offset + items.length,
   };
 }
 
