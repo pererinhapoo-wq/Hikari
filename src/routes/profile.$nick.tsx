@@ -743,21 +743,37 @@ function PublicProfile() {
       if (res.status === "following") {
         setFollowersList((prev) =>
           prev.map((p) =>
-            p.userId === targetUserId ? { ...p, isFollowing: true } : p,
+            p.userId === targetUserId
+              ? { ...p, isFollowing: true, hasPendingRequest: false }
+              : p,
           ),
         );
         setFollowingList((prev) =>
           prev.map((p) =>
-            p.userId === targetUserId ? { ...p, isFollowing: true } : p,
+            p.userId === targetUserId
+              ? { ...p, isFollowing: true, hasPendingRequest: false }
+              : p,
           ),
         );
         toast.success("Você agora está seguindo este usuário.");
       } else if (res.status === "requested") {
+        setFollowersList((prev) =>
+          prev.map((p) =>
+            p.userId === targetUserId ? { ...p, hasPendingRequest: true } : p,
+          ),
+        );
+        setFollowingList((prev) =>
+          prev.map((p) =>
+            p.userId === targetUserId ? { ...p, hasPendingRequest: true } : p,
+          ),
+        );
         toast.info("Solicitação para seguir enviada.");
       }
     } catch (err) {
       console.error("Erro ao seguir de volta:", err);
-      toast.error("Não foi possível seguir o usuário.");
+      toast.error(
+        err instanceof Error ? err.message : "Não foi possível seguir o usuário.",
+      );
     }
   };
 
@@ -976,7 +992,7 @@ function PublicProfile() {
         ) : (
           <>
             <UserPlus className="size-4" />
-            <span>Seguir</span>
+            <span>{profile?.isFollowedBy ? "Seguir de volta" : "Seguir"}</span>
           </>
         )}
       </button>
@@ -988,6 +1004,7 @@ function PublicProfile() {
     followLoading,
     following,
     hasPendingRequest,
+    profile?.isFollowedBy,
   ]);
 
   const handleConnectionsTabChange = async (tab: "followers" | "following" | "requests") => {
@@ -1333,7 +1350,11 @@ function PublicProfile() {
                           : "bg-violet-600 text-white hover:bg-violet-500 shadow-lg shadow-violet-600/30",
                       )}
                     >
-                      {hasPendingRequest ? "Solicitação enviada" : "Seguir esta conta"}
+                      {hasPendingRequest
+                        ? "Solicitação enviada"
+                        : profile.isFollowedBy
+                          ? "Seguir de volta"
+                          : "Seguir esta conta"}
                     </button>
                   )}
                 </div>

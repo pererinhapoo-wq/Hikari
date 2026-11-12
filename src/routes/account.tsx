@@ -22,6 +22,7 @@ import {
   getReceivedFollowRequests,
   acceptFollowRequest,
   rejectFollowRequest,
+  removeFollower,
 } from "@/lib/profile.functions";
 
 import {
@@ -407,6 +408,7 @@ function AccountProfile() {
   const getRequestsFn = useServerFn(getReceivedFollowRequests);
   const acceptRequestFn = useServerFn(acceptFollowRequest);
   const rejectRequestFn = useServerFn(rejectFollowRequest);
+  const removeFollowerFn = useServerFn(removeFollower);
   const getCommentsFn = useServerFn(getMyComments);
   const getTrackingFn = useServerFn(getMyAnimeTracking);
   const getFavoritesFn = useServerFn(getMyProfileFavorites);
@@ -977,12 +979,16 @@ function AccountProfile() {
       if (res.status === "following") {
         setFollowersList((prev) =>
           prev.map((p) =>
-            p.userId === targetUserId ? { ...p, isFollowing: true } : p,
+            p.userId === targetUserId
+              ? { ...p, isFollowing: true, hasPendingRequest: false }
+              : p,
           ),
         );
         setFollowingList((prev) =>
           prev.map((p) =>
-            p.userId === targetUserId ? { ...p, isFollowing: true } : p,
+            p.userId === targetUserId
+              ? { ...p, isFollowing: true, hasPendingRequest: false }
+              : p,
           ),
         );
         setProfile((prev) =>
@@ -990,11 +996,48 @@ function AccountProfile() {
         );
         toast.success("Você agora está seguindo este usuário.");
       } else if (res.status === "requested") {
+        setFollowersList((prev) =>
+          prev.map((p) =>
+            p.userId === targetUserId ? { ...p, hasPendingRequest: true } : p,
+          ),
+        );
+        setFollowingList((prev) =>
+          prev.map((p) =>
+            p.userId === targetUserId ? { ...p, hasPendingRequest: true } : p,
+          ),
+        );
         toast.info("Solicitação para seguir enviada.");
       }
     } catch (err) {
       console.error("Erro ao seguir de volta:", err);
-      toast.error("Não foi possível seguir o usuário.");
+      toast.error(
+        err instanceof Error ? err.message : "Não foi possível seguir o usuário.",
+      );
+    }
+  };
+
+  const handleRemoveFollower = async (followerId: string) => {
+    try {
+      const res = await removeFollowerFn({ data: { followerId } });
+      setFollowersList((prev) => prev.filter((p) => p.userId !== followerId));
+      setFollowingList((prev) =>
+        prev.map((p) =>
+          p.userId === followerId
+            ? { ...p, followsViewer: false, followsOpenProfile: false }
+            : p,
+        ),
+      );
+      if (res.removed) {
+        setProfile((prev) =>
+          prev ? { ...prev, followersCount: Math.max(0, prev.followersCount - 1) } : prev,
+        );
+      }
+      toast.success("Seguidor removido.");
+    } catch (err) {
+      console.error("Erro ao remover seguidor:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Não foi possível remover o seguidor.",
+      );
     }
   };
 
@@ -1428,6 +1471,7 @@ function AccountProfile() {
             onAcceptRequest={handleAcceptRequest}
             onRejectRequest={handleRejectRequest}
             onFollowBack={handleFollowBack}
+            onRemoveFollower={handleRemoveFollower}
             currentUserId={user?.id ?? null}
             profileOwnerId={profile?.userId || user?.id || null}
           />

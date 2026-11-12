@@ -113,6 +113,7 @@ export type PublicUserProfile = {
   followersCount: number;
   followingCount: number;
   isFollowing: boolean;
+  isFollowedBy: boolean;
   hasPendingRequest: boolean;
   relationStatus: FollowRelationshipStatus;
   isBlocked?: boolean;
@@ -147,6 +148,8 @@ export type ProfileUser = {
   isVerified?: boolean;
   followsViewer?: boolean;
   followsOpenProfile?: boolean;
+  hasPendingRequest?: boolean;
+  isBlocked?: boolean;
 };
 
 export type MyProfileComment = {
@@ -667,7 +670,7 @@ export async function executeGetPublicProfile(
   // Avaliação estrita de privacidade no servidor
   const privacy = await evaluateUserPrivacy(sql, row.userId, viewerUserId);
 
-  const [commentRows, followerRows, followingRows, blockRows, reqRows] = await Promise.all([
+  const [commentRows, followerRows, followingRows, blockRows, reqRows, followedByRows] = await Promise.all([
     privacy.canViewComments
       ? sql<{ count: string }>`select count(*)::text as count from "comment" where "userId" = ${row.userId}`
       : Promise.resolve([]),
@@ -700,6 +703,15 @@ export async function executeGetPublicProfile(
           limit 1
         `
       : Promise.resolve([]),
+    viewerUserId && !privacy.isOwner
+      ? sql<{ count: string }>`
+          select count(*)::text as count
+          from "user_follow"
+          where "followerId" = ${row.userId}
+            and "followingId" = ${viewerUserId}
+          limit 1
+        `
+      : Promise.resolve([]),
   ]);
 
   const commentCount = Number(commentRows[0]?.count ?? "0");
@@ -712,6 +724,7 @@ export async function executeGetPublicProfile(
   const isBlocked = isBlockedByMe || isBlockedByTarget;
 
   const hasPendingRequest = !isBlocked && Number(reqRows[0]?.count ?? "0") > 0;
+  const isFollowedBy = !isBlocked && Number(followedByRows[0]?.count ?? "0") > 0;
 
   let relationStatus: FollowRelationshipStatus = "none";
   if (privacy.isOwner) {
@@ -747,6 +760,7 @@ export async function executeGetPublicProfile(
     followersCount,
     followingCount,
     isFollowing: isBlocked ? false : privacy.isFollower,
+    isFollowedBy,
     hasPendingRequest,
     relationStatus,
     isBlocked,
@@ -814,6 +828,7 @@ export const getProfileFollowers =
           name: string | null;
           image: string | null;
           isFollowing: boolean;
+          hasPendingRequest: boolean;
           isVerified: boolean;
         }>`
           select
@@ -827,7 +842,14 @@ export const getProfileFollowers =
               from "user_follow" f
               where f."followerId" = ${currentUserId}
                 and f."followingId" = u."id"
-            ) as "isFollowing"
+            ) as "isFollowing",
+            exists (
+              select 1
+              from "user_follow_request" r
+              where r."requesterId" = ${currentUserId}
+                and r."targetId" = u."id"
+                and r."status" = 'pending'
+            ) as "hasPendingRequest"
           from "user_follow" uf
 
           inner join "user" u
@@ -856,6 +878,7 @@ export const getProfileFollowers =
             "Usuário",
           image: row.image,
           isFollowing: Boolean(row.isFollowing),
+          hasPendingRequest: Boolean(row.hasPendingRequest),
           isVerified: Boolean(row.isVerified),
           followsOpenProfile: true,
           followsViewer: true,
@@ -935,6 +958,7 @@ export const getProfileFollowing =
             "Usuário",
           image: row.image,
           isFollowing: true,
+          hasPendingRequest: false,
           isVerified: Boolean(row.isVerified),
           followsOpenProfile: Boolean(row.followsViewer),
           followsViewer: Boolean(row.followsViewer),
@@ -1596,6 +1620,8 @@ export async function executeGetPublicProfileFollowers(
     name: string | null;
     image: string | null;
     isFollowing: boolean;
+    hasPendingRequest: boolean;
+    isBlocked: boolean;
     isVerified: boolean;
     followsViewer: boolean;
   }>`
@@ -1605,18 +1631,31 @@ export async function executeGetPublicProfileFollowers(
       coalesce(p."displayName", u."name", 'Usuário') as "name",
       coalesce(p."avatarUrl", u."image") as "image",
       coalesce(p."isVerified", false) as "isVerified",
-      exists (
+      (${viewerUserId}::text is not null and exists (
         select 1
         from "user_follow" f
         where f."followerId" = ${viewerUserId}
           and f."followingId" = u."id"
-      ) as "isFollowing",
-      exists (
+      )) as "isFollowing",
+      (${viewerUserId}::text is not null and exists (
+        select 1
+        from "user_follow_request" r
+        where r."requesterId" = ${viewerUserId}
+          and r."targetId" = u."id"
+          and r."status" = 'pending'
+      )) as "hasPendingRequest",
+      (${viewerUserId}::text is not null and exists (
+        select 1
+        from "user_block" ub
+        where (ub."blockerId" = ${viewerUserId} and ub."blockedId" = u."id")
+           or (ub."blockerId" = u."id" and ub."blockedId" = ${viewerUserId})
+      )) as "isBlocked",
+      (${viewerUserId}::text is not null and exists (
         select 1
         from "user_follow" f
         where f."followerId" = u."id"
           and f."followingId" = ${viewerUserId}
-      ) as "followsViewer"
+      )) as "followsViewer"
     from "user_follow" uf
     inner join "user" u on u."id" = uf."followerId"
     left join "profile" p on p."userId" = u."id"
@@ -1624,16 +1663,21 @@ export async function executeGetPublicProfileFollowers(
     order by uf."createdAt" desc
   `;
 
-  return rows.map((r) => ({
-    userId: r.userId,
-    nick: r.nick || r.userId,
-    name: r.name ?? "Usuário",
-    image: r.image,
-    isFollowing: Boolean(r.isFollowing),
-    isVerified: Boolean(r.isVerified),
-    followsOpenProfile: true,
-    followsViewer: Boolean(r.followsViewer),
-  }));
+  return rows.map((r) => {
+    const isBlocked = Boolean(r.isBlocked);
+    return {
+      userId: r.userId,
+      nick: r.nick || r.userId,
+      name: r.name ?? "Usuário",
+      image: r.image,
+      isFollowing: isBlocked ? false : Boolean(r.isFollowing),
+      hasPendingRequest: isBlocked ? false : Boolean(r.hasPendingRequest),
+      isBlocked,
+      isVerified: Boolean(r.isVerified),
+      followsOpenProfile: true,
+      followsViewer: isBlocked ? false : Boolean(r.followsViewer),
+    };
+  });
 }
 
 export const getPublicProfileFollowers =
@@ -1667,6 +1711,8 @@ export async function executeGetPublicProfileFollowing(
     name: string | null;
     image: string | null;
     isFollowing: boolean;
+    hasPendingRequest: boolean;
+    isBlocked: boolean;
     isVerified: boolean;
     followsOpenProfile: boolean;
     followsViewer: boolean;
@@ -1677,24 +1723,37 @@ export async function executeGetPublicProfileFollowing(
       coalesce(p."displayName", u."name", 'Usuário') as "name",
       coalesce(p."avatarUrl", u."image") as "image",
       coalesce(p."isVerified", false) as "isVerified",
-      exists (
+      (${viewerUserId}::text is not null and exists (
         select 1
         from "user_follow" f
         where f."followerId" = ${viewerUserId}
           and f."followingId" = u."id"
-      ) as "isFollowing",
+      )) as "isFollowing",
+      (${viewerUserId}::text is not null and exists (
+        select 1
+        from "user_follow_request" r
+        where r."requesterId" = ${viewerUserId}
+          and r."targetId" = u."id"
+          and r."status" = 'pending'
+      )) as "hasPendingRequest",
+      (${viewerUserId}::text is not null and exists (
+        select 1
+        from "user_block" ub
+        where (ub."blockerId" = ${viewerUserId} and ub."blockedId" = u."id")
+           or (ub."blockerId" = u."id" and ub."blockedId" = ${viewerUserId})
+      )) as "isBlocked",
       exists (
         select 1
         from "user_follow" f
         where f."followerId" = u."id"
           and f."followingId" = ${targetUserId}
       ) as "followsOpenProfile",
-      exists (
+      (${viewerUserId}::text is not null and exists (
         select 1
         from "user_follow" f
         where f."followerId" = u."id"
           and f."followingId" = ${viewerUserId}
-      ) as "followsViewer"
+      )) as "followsViewer"
     from "user_follow" uf
     inner join "user" u on u."id" = uf."followingId"
     left join "profile" p on p."userId" = u."id"
@@ -1702,16 +1761,21 @@ export async function executeGetPublicProfileFollowing(
     order by uf."createdAt" desc
   `;
 
-  return rows.map((r) => ({
-    userId: r.userId,
-    nick: r.nick || r.userId,
-    name: r.name ?? "Usuário",
-    image: r.image,
-    isFollowing: Boolean(r.isFollowing),
-    isVerified: Boolean(r.isVerified),
-    followsOpenProfile: Boolean(r.followsOpenProfile),
-    followsViewer: Boolean(r.followsViewer),
-  }));
+  return rows.map((r) => {
+    const isBlocked = Boolean(r.isBlocked);
+    return {
+      userId: r.userId,
+      nick: r.nick || r.userId,
+      name: r.name ?? "Usuário",
+      image: r.image,
+      isFollowing: isBlocked ? false : Boolean(r.isFollowing),
+      hasPendingRequest: isBlocked ? false : Boolean(r.hasPendingRequest),
+      isBlocked,
+      isVerified: Boolean(r.isVerified),
+      followsOpenProfile: Boolean(r.followsOpenProfile),
+      followsViewer: isBlocked ? false : Boolean(r.followsViewer),
+    };
+  });
 }
 
 export const getPublicProfileFollowing =
@@ -2623,6 +2687,40 @@ export const acceptFollowRequest = createServerFn({
     return executeAcceptFollowRequest(sql, context.userId, data.requesterId);
   });
 
+export const removeFollowerSchema = z.object({
+  followerId: z.string().trim().min(1, "ID do seguidor é obrigatório"),
+});
+
+export async function executeRemoveFollower(
+  sql: Sql,
+  ownerId: string,
+  followerId: string,
+) {
+  if (ownerId === followerId) {
+    throw new Error("Operação inválida.");
+  }
+
+  const deletedRows = await sql<{ followerId: string }>`
+    delete from "user_follow"
+    where "followerId" = ${followerId}
+      and "followingId" = ${ownerId}
+    returning "followerId"
+  `;
+
+  await sql`
+    delete from "notification"
+    where "userId" = ${ownerId}
+      and "actorId" = ${followerId}
+      and "type" = 'new_follower'
+  `;
+
+  return {
+    success: true,
+    removed: deletedRows.length > 0,
+    message: "Seguidor removido com sucesso.",
+  };
+}
+
 /**
  * Recusar solicitação de acompanhamento recebida.
  * Apenas o proprietário (targetId = context.userId) pode recusar.
@@ -2635,6 +2733,20 @@ export const rejectFollowRequest = createServerFn({
   .handler(async ({ context, data }) => {
     const sql = await getSql();
     return executeRejectFollowRequest(sql, context.userId, data.requesterId);
+  });
+
+/**
+ * Remover um seguidor da própria lista de seguidores.
+ * Somente o proprietário autenticado (followingId = context.userId) pode remover.
+ */
+export const removeFollower = createServerFn({
+  method: "POST",
+})
+  .middleware([authMiddleware])
+  .validator((d: { followerId: string }) => removeFollowerSchema.parse(d))
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return executeRemoveFollower(sql, context.userId, data.followerId);
   });
 
 /**

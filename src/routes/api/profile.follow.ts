@@ -97,6 +97,13 @@ export const Route = createFileRoute("/api/profile/follow")({
                 and "status" = 'pending'
             `;
 
+            await sql`
+              delete from "notification"
+              where "userId" = ${targetUserId}
+                and "actorId" = ${viewerId}
+                and "type" = 'follow_request'
+            `;
+
             const followerCountRows = await sql<{ count: string }>`
               select count(*)::text as count
               from "user_follow"
@@ -175,6 +182,24 @@ export const Route = createFileRoute("/api/profile/follow")({
                 "status" = 'pending',
                 "updatedAt" = current_timestamp
             `;
+
+            try {
+              const actorRow = await sql<{ name: string | null }>`
+                select coalesce(p."displayName", p."nick", u."name", 'Usuário') as name
+                from "user" u
+                left join "profile" p on p."userId" = u."id"
+                where u."id" = ${viewerId} limit 1
+              `;
+              const actorName = actorRow[0]?.name || "Usuário";
+              await executeCreateNotification(sql, {
+                userId: targetUserId,
+                actorId: viewerId,
+                type: "follow_request",
+                message: `${actorName} solicitou para seguir você.`,
+              });
+            } catch {
+              // Falha não-impeditiva
+            }
 
             const followerCountRows = await sql<{ count: string }>`
               select count(*)::text as count

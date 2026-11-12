@@ -27,6 +27,7 @@ interface ProfileConnectionsModalProps {
   onAcceptRequest?: (requesterId: string) => Promise<void>;
   onRejectRequest?: (requesterId: string) => Promise<void>;
   onFollowBack?: (userId: string) => Promise<void>;
+  onRemoveFollower?: (followerId: string) => Promise<void>;
   currentUserId?: string | null;
   profileOwnerId?: string | null;
 }
@@ -46,13 +47,19 @@ export function ProfileConnectionsModal({
   onAcceptRequest,
   onRejectRequest,
   onFollowBack,
+  onRemoveFollower,
   currentUserId,
   profileOwnerId,
 }: ProfileConnectionsModalProps) {
   useScrollLock(isOpen);
   const [followingActionId, setFollowingActionId] = useState<string | null>(null);
+  const [removingFollowerId, setRemovingFollowerId] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const isViewerTheProfileOwner = Boolean(
+    currentUserId && profileOwnerId && currentUserId === profileOwnerId,
+  );
 
   const handleFollowBack = async (userId: string) => {
     if (!onFollowBack || followingActionId) return;
@@ -61,6 +68,16 @@ export function ProfileConnectionsModal({
       await onFollowBack(userId);
     } finally {
       setFollowingActionId(null);
+    }
+  };
+
+  const handleRemoveFollower = async (followerId: string) => {
+    if (!onRemoveFollower || removingFollowerId || !isViewerTheProfileOwner) return;
+    setRemovingFollowerId(followerId);
+    try {
+      await onRemoveFollower(followerId);
+    } finally {
+      setRemovingFollowerId(null);
     }
   };
 
@@ -294,14 +311,19 @@ export function ProfileConnectionsModal({
                   </Link>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    {/* Relacionamento: Seguindo / Seguir de volta */}
+                    {/* Relacionamento: Seguindo / Solicitado / Seguir de volta / Seguir */}
                     {(() => {
                       // 1. Não mostrar botão de seguir para a própria conta
                       if (currentUserId && person.userId === currentUserId) {
                         return null;
                       }
 
-                      // 2. Mostrar "Seguindo" quando o usuário que está visualizando já segue a pessoa exibida
+                      // 2. Não exibir ação de seguir se houver bloqueio ativo
+                      if (person.isBlocked) {
+                        return null;
+                      }
+
+                      // 3. Mostrar "Seguindo" quando o visitante já segue a pessoa exibida
                       if (person.isFollowing) {
                         return (
                           <span className="rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
@@ -310,26 +332,26 @@ export function ProfileConnectionsModal({
                         );
                       }
 
-                      // 3. Mostrar "Seguir de volta" somente quando:
-                      // - a pessoa exibida segue o perfil aberto
-                      // - o usuário que está visualizando ainda não segue essa pessoa
-                      // - existe o relacionamento que justifica essa ação (o perfil aberto é do próprio usuário visualizando, ou a pessoa segue o usuário visualizando)
-                      const isViewerTheProfileOwner = Boolean(
-                        currentUserId && profileOwnerId && currentUserId === profileOwnerId
-                      );
-                      const personFollowsOpenProfile =
-                        activeTab === "followers" || Boolean(person.followsOpenProfile);
+                      // 4. Mostrar "Solicitado" quando já existe solicitação pendente (perfil privado)
+                      if (person.hasPendingRequest) {
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">
+                            <Clock className="size-3" />
+                            <span>Solicitado</span>
+                          </span>
+                        );
+                      }
+
+                      if (!currentUserId || !onFollowBack) {
+                        return null;
+                      }
+
+                      // 5. Determinar se a pessoa listada já segue o visitante
                       const personFollowsViewer =
-                        isViewerTheProfileOwner || Boolean(person.followsViewer);
+                        (isViewerTheProfileOwner && activeTab === "followers") ||
+                        Boolean(person.followsViewer);
 
-                      const canFollowBack =
-                        Boolean(currentUserId) &&
-                        !person.isFollowing &&
-                        personFollowsOpenProfile &&
-                        personFollowsViewer &&
-                        Boolean(onFollowBack);
-
-                      if (canFollowBack) {
+                      if (personFollowsViewer) {
                         return (
                           <button
                             type="button"
@@ -348,18 +370,45 @@ export function ProfileConnectionsModal({
                         );
                       }
 
-                      // Não exibir "Seguir de volta" quando não existir o relacionamento que justifica essa ação
+                      // Ao visitar o perfil de outra pessoa, mostrar "Seguir" quando a pessoa listada não segue o visitante
+                      if (!isViewerTheProfileOwner) {
+                        return (
+                          <button
+                            type="button"
+                            disabled={followingActionId === person.userId}
+                            onClick={() => void handleFollowBack(person.userId)}
+                            className="flex items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-1.5 text-[11px] font-semibold text-white transition-all hover:bg-violet-500 disabled:opacity-50 cursor-pointer shadow-sm"
+                            title="Seguir este membro"
+                          >
+                            <UserPlus className="size-3.5" />
+                            <span>
+                              {followingActionId === person.userId
+                                ? "Seguindo..."
+                                : "Seguir"}
+                            </span>
+                          </button>
+                        );
+                      }
+
                       return null;
                     })()}
 
-                    <Link
-                      to="/profile/$nick"
-                      params={{ nick: person.nick }}
-                      onClick={onClose}
-                      className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-all hover:border-violet-500/40 hover:bg-violet-600 hover:text-white"
-                    >
-                      Ver perfil
-                    </Link>
+                    {/* Botão "X" exclusivo do dono do perfil para remover seguidor */}
+                    {activeTab === "followers" &&
+                      isViewerTheProfileOwner &&
+                      Boolean(onRemoveFollower) &&
+                      !(currentUserId && person.userId === currentUserId) && (
+                        <button
+                          type="button"
+                          disabled={removingFollowerId === person.userId}
+                          onClick={() => void handleRemoveFollower(person.userId)}
+                          className="flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-zinc-400 transition hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/30 disabled:opacity-50 cursor-pointer"
+                          title="Remover seguidor"
+                          aria-label={`Remover seguidor ${person.name || person.nick}`}
+                        >
+                          <X className="size-4" />
+                        </button>
+                      )}
                   </div>
                 </div>
               );

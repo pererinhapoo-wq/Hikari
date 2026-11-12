@@ -50,6 +50,7 @@ export type NotificationItem = {
   }>;
 
   isFollowingActor?: boolean;
+  hasPendingFollowRequestToActor?: boolean;
   groupedIds?: string[];
   groupedFollowers?: Array<{
     id: string;
@@ -729,16 +730,31 @@ export async function executeGetNotifications(
   );
 
   const followingActorIdSet = new Set<string>();
+  const pendingFollowRequestActorIdSet = new Set<string>();
   if (actorIds.length > 0) {
-    const followRows = await sql<{ followingId: string }>`
-      select "followingId"
-      from "user_follow"
-      where "followerId" = ${userId}
-        and "followingId" = any(${actorIds}::text[])
-    `;
+    const [followRows, pendingReqRows] = await Promise.all([
+      sql<{ followingId: string }>`
+        select "followingId"
+        from "user_follow"
+        where "followerId" = ${userId}
+          and "followingId" = any(${actorIds}::text[])
+      `,
+      sql<{ targetId: string }>`
+        select "targetId"
+        from "user_follow_request"
+        where "requesterId" = ${userId}
+          and "targetId" = any(${actorIds}::text[])
+          and "status" = 'pending'
+      `,
+    ]);
     for (const row of followRows) {
       if (row.followingId) {
         followingActorIdSet.add(row.followingId);
+      }
+    }
+    for (const row of pendingReqRows) {
+      if (row.targetId) {
+        pendingFollowRequestActorIdSet.add(row.targetId);
       }
     }
   }
@@ -815,6 +831,9 @@ export async function executeGetNotifications(
     const commentId = r.commentId ? String(r.commentId) : null;
     const animeMeta = animeId ? animeMetaMap.get(animeId) : undefined;
     const isFollowingActor = Boolean(r.actorId && followingActorIdSet.has(r.actorId));
+    const hasPendingFollowRequestToActor = Boolean(
+      r.actorId && pendingFollowRequestActorIdSet.has(r.actorId),
+    );
 
     return {
       id: r.id,
@@ -846,6 +865,7 @@ export async function executeGetNotifications(
           ? avatarsByCommentId.get(commentId) ?? []
           : [],
       isFollowingActor,
+      hasPendingFollowRequestToActor,
     };
   });
 

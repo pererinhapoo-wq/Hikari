@@ -1,7 +1,9 @@
 import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Check,
   ChevronRight,
+  Clock,
   CornerDownRight,
   EyeOff,
   Heart,
@@ -12,10 +14,16 @@ import {
   UserCircle,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { getBearerToken } from "@/lib/auth/client";
+import {
+  acceptFollowRequest,
+  rejectFollowRequest,
+} from "@/lib/profile.functions";
 import type { LocalAnime } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +67,7 @@ export type NotificationItem = {
   }>;
 
   isFollowingActor?: boolean;
+  hasPendingFollowRequestToActor?: boolean;
   groupedIds?: string[];
   groupedFollowers?: Array<{
     id: string;
@@ -400,13 +409,26 @@ export function NotificationItemCard({
   const [isPressingAction, setIsPressingAction] = useState(false);
   const pressTimerRef = useRef<number | null>(null);
 
-  // Estado local para botão "Seguir de volta" -> "Seguindo"
+  // Estado local para botão "Seguir de volta" -> "Seguindo" / "Solicitado"
   const [isFollowing, setIsFollowing] = useState(notification.isFollowingActor ?? false);
+  const [isRequested, setIsRequested] = useState(
+    notification.hasPendingFollowRequestToActor ?? false,
+  );
   const [followLoading, setFollowLoading] = useState(false);
+
+  // Estado local para solicitações de perfil privado ("Aceitar" / "Recusar")
+  const acceptRequestFn = useServerFn(acceptFollowRequest);
+  const rejectRequestFn = useServerFn(rejectFollowRequest);
+  const [requestDecision, setRequestDecision] = useState<"accepted" | "rejected" | null>(null);
+  const [requestLoading, setRequestLoading] = useState<"accept" | "reject" | null>(null);
 
   useEffect(() => {
     setIsFollowing(notification.isFollowingActor ?? false);
   }, [notification.isFollowingActor]);
+
+  useEffect(() => {
+    setIsRequested(notification.hasPendingFollowRequestToActor ?? false);
+  }, [notification.hasPendingFollowRequestToActor]);
 
   useEffect(() => {
     return () => {
@@ -430,7 +452,7 @@ export function NotificationItemCard({
   const handleFollowBack = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isFollowing || followLoading || !notification.actorId) return;
+    if (isFollowing || isRequested || followLoading || !notification.actorId) return;
 
     setFollowLoading(true);
     try {
@@ -446,13 +468,60 @@ export function NotificationItemCard({
       });
 
       if (res.ok) {
-        setIsFollowing(true);
+        const data = (await res.json().catch(() => ({}))) as { status?: string };
+        if (data.status === "requested") {
+          setIsRequested(true);
+        } else {
+          setIsFollowing(true);
+        }
         window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
       }
     } catch {
       // Falha não impeditiva
     } finally {
       setFollowLoading(false);
+    }
+  };
+
+  const handleAcceptFollowRequest = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!notification.actorId || requestLoading || requestDecision) return;
+
+    setRequestLoading("accept");
+    try {
+      await acceptRequestFn({ data: { requesterId: notification.actorId } });
+      setRequestDecision("accepted");
+      toast.success("Solicitação aceita.");
+      window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Não foi possível aceitar a solicitação.",
+      );
+      window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+    } finally {
+      setRequestLoading(null);
+    }
+  };
+
+  const handleRejectFollowRequest = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!notification.actorId || requestLoading || requestDecision) return;
+
+    setRequestLoading("reject");
+    try {
+      await rejectRequestFn({ data: { requesterId: notification.actorId } });
+      setRequestDecision("rejected");
+      toast.info("Solicitação recusada.");
+      window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Não foi possível recusar a solicitação.",
+      );
+      window.dispatchEvent(new CustomEvent("hikari:notifications-updated"));
+    } finally {
+      setRequestLoading(null);
     }
   };
 
@@ -841,12 +910,17 @@ export function NotificationItemCard({
                   <Check className="size-3 text-emerald-400" />
                   <span>Seguindo</span>
                 </span>
+              ) : isRequested ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] sm:text-[11px] font-medium text-amber-300 select-none">
+                  <Clock className="size-3" />
+                  <span>Solicitado</span>
+                </span>
               ) : (
                 <button
                   type="button"
                   disabled={followLoading}
                   onClick={handleFollowBack}
-                  className="inline-flex items-center gap-1 rounded-md bg-[#a855f7] px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-white shadow-sm hover:bg-[#9333ea] active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7]"
+                  className="inline-flex items-center gap-1 rounded-md bg-[#a855f7] px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-white shadow-sm hover:bg-[#9333ea] active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7] cursor-pointer"
                 >
                   {followLoading ? (
                     <Loader2 className="size-3 animate-spin" />
@@ -858,6 +932,54 @@ export function NotificationItemCard({
               )}
             </div>
           )}
+
+          {/* SOLICITAÇÃO DE PERFIL PRIVADO: BOTÕES ACEITAR E RECUSAR */}
+          {isIndividualFollower &&
+            notification.type === "follow_request" &&
+            notification.actorId && (
+              <div className="pt-0.5 flex flex-wrap items-center gap-1.5">
+                {requestDecision === "accepted" ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] sm:text-[11px] font-medium text-emerald-300 select-none">
+                    <Check className="size-3" />
+                    <span>Solicitação aceita</span>
+                  </span>
+                ) : requestDecision === "rejected" ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] sm:text-[11px] font-medium text-muted select-none">
+                    <X className="size-3" />
+                    <span>Solicitação recusada</span>
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={requestLoading !== null}
+                      onClick={handleAcceptFollowRequest}
+                      className="inline-flex items-center gap-1 rounded-md bg-[#a855f7] px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-white shadow-sm hover:bg-[#9333ea] active:scale-95 disabled:opacity-50 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#a855f7] cursor-pointer"
+                    >
+                      {requestLoading === "accept" ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <Check className="size-3" />
+                      )}
+                      <span>Aceitar</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={requestLoading !== null}
+                      onClick={handleRejectFollowRequest}
+                      className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold text-zinc-200 hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-300 active:scale-95 disabled:opacity-50 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-500/50 cursor-pointer"
+                    >
+                      {requestLoading === "reject" ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <X className="size-3" />
+                      )}
+                      <span>Recusar</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
           {/* AVATARES DE QUEM CURTIU O COMENTÁRIO */}
           {isLikeNotification && likeCount > 0 && likeAvatars.length > 0 && (
