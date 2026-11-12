@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { ProfileDropdownMenu } from "@/components/profile/ProfileDropdownMenu";
+import { ProfileSaveNotification } from "@/components/profile/ProfileSaveNotification";
 import { signOut } from "@/lib/auth/client";
 import {
   NotificationItemCard,
@@ -1458,6 +1459,11 @@ export function Shell() {
           - Ocultado em todas as demais rotas sem deixar espaços ou margens vazias
       ========================================================== */}
       {isHomePage && <HomeFooterLazy />}
+
+      {/* =========================================================
+          NOTIFICAÇÃO MODERNA DE SALVAMENTO DO PERFIL (CANTO SUPERIOR)
+      ========================================================== */}
+      <ProfileSaveNotification />
 
     </div>
   );

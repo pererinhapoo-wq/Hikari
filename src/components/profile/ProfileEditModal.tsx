@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { triggerProfileSaveNotification } from "@/components/profile/ProfileSaveNotification";
 import { useScrollLock } from "@/lib/scroll-lock";
 import { uploadImageFile } from "@/lib/storage/image-storage-client";
 
@@ -345,10 +346,11 @@ export function ProfileEditModal({
         favorites: cleanFavorites,
       });
 
-      setSaveSuccess(true);
-      setTimeout(() => {
-        onClose();
-      }, 700);
+      triggerProfileSaveNotification(
+        "Perfil atualizado com sucesso.",
+        "Alterações salvas",
+      );
+      onClose();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Não foi possível salvar o perfil.",
@@ -426,13 +428,7 @@ export function ProfileEditModal({
 
         {/* 2. Conteúdo Rolável */}
         <div className="relative flex-1 min-h-0 overflow-y-auto px-3.5 sm:px-7 py-3 sm:py-5 pb-8 sm:pb-6 space-y-3.5 sm:space-y-6 overscroll-contain">
-          {/* Mensagens de Sucesso e Erro */}
-          {saveSuccess && (
-            <div className="flex items-center gap-2 rounded-xl sm:rounded-2xl border border-emerald-500/30 bg-emerald-500/15 p-2.5 sm:p-3.5 text-xs sm:text-sm font-semibold text-emerald-200 animate-in fade-in duration-200">
-              <Check className="size-4 shrink-0 text-emerald-400" />
-              <span>Perfil atualizado com sucesso! Salvando alterações...</span>
-            </div>
-          )}
+          {/* Mensagens de Erro */}
 
           {error && (
             <div className="flex items-start gap-2 rounded-xl sm:rounded-2xl border border-rose-500/30 bg-rose-500/10 p-2.5 sm:p-3.5 text-xs text-rose-300 animate-in fade-in duration-200">

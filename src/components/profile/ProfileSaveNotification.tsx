@@ -61,7 +61,7 @@ export function ProfileSaveNotification({
 
   const startXRef = useRef(0);
   const currentXRef = useRef(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isVisible = controlledShow !== undefined ? controlledShow : isOpen;
   const currentTitle = controlledTitle ?? data.title;
@@ -181,7 +181,7 @@ export function ProfileSaveNotification({
     <div
       role="status"
       aria-live="polite"
-      className="fixed z-[99999] pointer-events-auto top-[max(1rem,env(safe-area-inset-top))] right-[max(1rem,env(safe-area-inset-right))] select-none"
+      className="fixed z-[99999] pointer-events-none top-[max(1rem,env(safe-area-inset-top))] right-[max(1rem,env(safe-area-inset-right))] select-none"
       style={{
         maxWidth: "min(92vw, 380px)",
       }}
@@ -195,7 +195,7 @@ export function ProfileSaveNotification({
         onMouseLeave={() => {
           if (!isDragging) startAutoCloseTimer();
         }}
-        className={`group relative flex items-center gap-3 rounded-2xl border border-purple-500/35 bg-[#0c0a18]/95 p-3.5 sm:p-4 text-white shadow-[0_12px_40px_rgba(0,0,0,0.7),0_0_25px_rgba(168,85,247,0.28)] backdrop-blur-xl cursor-grab active:cursor-grabbing ${
+        className={`group relative flex items-center gap-3 rounded-2xl border border-purple-500/35 bg-[#0c0a18]/95 p-3.5 sm:p-4 text-white shadow-[0_12px_40px_rgba(0,0,0,0.7),0_0_25px_rgba(168,85,247,0.28)] backdrop-blur-xl cursor-grab active:cursor-grabbing pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-200 ${
           isDragging
             ? "transition-none"
             : isDismissing

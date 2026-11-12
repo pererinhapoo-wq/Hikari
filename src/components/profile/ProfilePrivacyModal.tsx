@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useState } from "react";
+import { triggerProfileSaveNotification } from "@/components/profile/ProfileSaveNotification";
 import { useScrollLock } from "@/lib/scroll-lock";
 import {
   getMyBlockedUsers,
@@ -196,11 +197,11 @@ export function ProfilePrivacyModal({
         privacyFollowers,
       });
 
-      setSuccess(true);
-      setTimeout(() => {
-        setSuccess(false);
-        onClose();
-      }, 1200);
+      triggerProfileSaveNotification(
+        "Preferências de privacidade atualizadas com sucesso.",
+        "Privacidade salva",
+      );
+      onClose();
     } catch (err) {
       setError(
         err instanceof Error
@@ -263,12 +264,6 @@ export function ProfilePrivacyModal({
           </div>
         )}
 
-        {success && (
-          <div className="shrink-0 mx-3.5 sm:mx-5 mt-2.5 sm:mt-4 flex items-center gap-2 rounded-xl sm:rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 sm:px-4 py-2.5 sm:py-3 text-xs font-medium text-emerald-300">
-            <Check className="size-4 shrink-0 text-emerald-400" />
-            <span>Preferências de privacidade atualizadas com sucesso!</span>
-          </div>
-        )}
 
         {/* Formulário de Configurações com Rolagem Suave */}
         <form
