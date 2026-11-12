@@ -450,7 +450,7 @@ export function Shell() {
         s.location.pathname,
     });
 
-  const { user } =
+  const { user, isPending: authPending } =
     useCurrentUserState();
 
   useEffect(() => {
@@ -1282,9 +1282,14 @@ export function Shell() {
               )}
             </button>
 
-            {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO ENTRAR (QUANDO VISITANTE) */}
+            {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO ENTRAR (QUANDO VISITANTE CONFIRMADO) */}
             {user ? (
               <ProfileDropdownMenu user={user} />
+            ) : authPending ? (
+              <div
+                aria-hidden="true"
+                className="size-9 sm:size-10 shrink-0 rounded-full bg-white/[0.06] ring-1 ring-white/10 animate-pulse"
+              />
             ) : (
               <button
                 type="button"
@@ -1571,7 +1576,7 @@ export function Shell() {
                         <span>Meu Perfil</span>
                       </Link>
                     </>
-                  ) : (
+                  ) : authPending ? null : (
                     <button
                       type="button"
                       onClick={() => {

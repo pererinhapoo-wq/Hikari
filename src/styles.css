@@ -359,3 +359,80 @@ textarea:focus {
   50% { transform: scale(0.88); }
   100% { transform: scale(1); }
 }
+
+/* =========================================================
+   HIKARI — ANIMAÇÕES DA SEÇÃO ANIME STATS
+========================================================= */
+
+@keyframes animeStatsEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes animeStatsItemEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes animeStatsBarReveal {
+  from {
+    opacity: 0.65;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes animeStatsCategoryEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.anime-stats-enter {
+  animation: animeStatsEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.anime-stats-item-enter {
+  animation: animeStatsItemEnter 0.34s cubic-bezier(0.22, 1, 0.36, 1) var(--stats-delay, 0ms) both;
+}
+
+.anime-stats-bar-reveal {
+  transform-origin: left center;
+  animation: animeStatsBarReveal 0.62s cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+}
+
+.anime-stats-category-enter {
+  animation: animeStatsCategoryEnter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anime-stats-enter,
+  .anime-stats-item-enter,
+  .anime-stats-bar-reveal,
+  .anime-stats-category-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+

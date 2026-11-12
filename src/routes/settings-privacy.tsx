@@ -205,7 +205,7 @@ export function SettingsPrivacy() {
     }
   };
 
-  if (isPending || loading) {
+  if (isPending) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-12 text-zinc-300">
         <div className="flex flex-col items-center justify-center space-y-4 py-20">
@@ -218,6 +218,30 @@ export function SettingsPrivacy() {
 
   if (!user) {
     return <RedirectToSignIn to="/login" />;
+  }
+
+  if (loading || (!initialState && !errorMsg)) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-12 text-zinc-300">
+        <div className="flex flex-col items-center justify-center space-y-4 py-20">
+          <Loader2 className="size-8 animate-spin text-violet-400" />
+          <p className="text-sm text-zinc-400">Carregando configurações de privacidade...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!initialState) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-12 text-zinc-300">
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center space-y-3">
+          <AlertTriangle className="mx-auto size-7 text-red-400" />
+          <p className="text-sm text-red-200">
+            {errorMsg || "Não foi possível carregar suas configurações atuais."}
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

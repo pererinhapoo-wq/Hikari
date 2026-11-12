@@ -1,3 +1,4 @@
+import { createContext, useContext, useSyncExternalStore } from "react";
 import { authClient, authEnabled } from "./client";
 
 /** Normalized user shape used across the app, auth on or off. */
@@ -6,9 +7,35 @@ export type AppUser = {
   displayName: string | null;
   primaryEmail: string | null;
   profileImageUrl: string | null;
+  profileNick?: string | null;
   /** True when this is the sandbox/dev fallback (auth not configured). */
   isDevFallback: boolean;
 };
+
+/**
+ * Context populated by the root route SSR loader so authenticated cookie
+ * sessions render immediately on SSR and first client paint without flashing
+ * signed-out UI.
+ */
+export const InitialSessionUserContext = createContext<AppUser | null>(null);
+
+const subscribeToNothing = () => () => {};
+const getSignedOutSnapshot = (): boolean => {
+  try {
+    return window.sessionStorage.getItem("hikari_signed_out") === "true";
+  } catch {
+    return false;
+  }
+};
+const getSignedOutServerSnapshot = (): boolean => false;
+const getAdminEmailSnapshot = (): string | null => {
+  try {
+    return window.sessionStorage.getItem("hikari_preview_admin_email");
+  } catch {
+    return null;
+  }
+};
+const getAdminEmailServerSnapshot = (): string | null => null;
 
 /**
  * Stable fallback user, used ONLY when auth is disabled
@@ -22,6 +49,7 @@ export const DEV_USER: AppUser = {
   displayName: "Dev User",
   primaryEmail: "dev@example.com",
   profileImageUrl: null,
+  profileNick: null,
   isDevFallback: true,
 };
 
@@ -33,42 +61,29 @@ export type CurrentUserState = {
   isPending: boolean;
 };
 
-/**
- * Current user + loading state. Same behavior in live preview and when deployed:
- *   - Auth enabled -> the real signed-in user; `user` is `null` while
- *                            the session resolves (`isPending: true`) and when
- *                            signed out (`isPending: false`). Session comes from
- *                            Better Auth `useSession()` → `/api/auth/get-session`
- *                            (cookie when deployed; bearer in live preview).
- *   - Auth disabled (`VITE_AUTH_ENABLED=false`) -> `DEV_USER`, never pending.
- *
- * Protect a route by waiting out `isPending` before acting on `user` —
- * redirecting on `user: null` alone bounces signed-in visitors to sign-in on
- * every hard reload:
- *
- *   import { RedirectToSignIn } from "@/lib/auth/gates";
- *   const { user, isPending } = useCurrentUserState();
- *   if (isPending) return null;              // still resolving — don't redirect yet
- *   if (!user) return <RedirectToSignIn />;  // definitely signed out
- *
- * `authEnabled` is a module-level constant fixed at load, so the guarded hook
- * call keeps a stable hook order across every render of a given component.
- */
 export function useCurrentUserState(): CurrentUserState {
+  const initialSessionUser = useContext(InitialSessionUserContext);
+
   if (!authEnabled) {
-    const isSignedOut =
-      typeof window !== "undefined" &&
-      window.sessionStorage.getItem("hikari_signed_out") === "true";
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
+    const isSignedOut = useSyncExternalStore(
+      subscribeToNothing,
+      getSignedOutSnapshot,
+      getSignedOutServerSnapshot,
+    );
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
+    const adminEmailOverride = useSyncExternalStore(
+      subscribeToNothing,
+      getAdminEmailSnapshot,
+      getAdminEmailServerSnapshot,
+    );
+
     if (isSignedOut) {
       return {
         user: null,
         isPending: false,
       };
     }
-    const adminEmailOverride =
-      typeof window !== "undefined"
-        ? window.sessionStorage.getItem("hikari_preview_admin_email")
-        : null;
     if (adminEmailOverride) {
       return {
         user: {
@@ -81,23 +96,41 @@ export function useCurrentUserState(): CurrentUserState {
       };
     }
     return {
-      user: DEV_USER,
+      user: initialSessionUser ?? DEV_USER,
       isPending: false,
     };
   }
-  // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
   const { data, isPending } = authClient.useSession();
   const user = data?.user;
+  if (user) {
+    const matchesInitial = initialSessionUser?.id === user.id;
+    return {
+      user: {
+        id: user.id,
+        displayName: user.name ?? (matchesInitial ? initialSessionUser.displayName : null) ?? null,
+        primaryEmail: user.email ?? null,
+        profileImageUrl:
+          (matchesInitial && initialSessionUser.profileImageUrl) ||
+          user.image ||
+          null,
+        profileNick: matchesInitial ? (initialSessionUser.profileNick ?? null) : null,
+        isDevFallback: false,
+      },
+      isPending: false,
+    };
+  }
+
+  // Enquanto o useSession() ainda está validando no cliente, preserva o usuário
+  // já verificado via cookie no SSR para evitar flash de "Entrar".
+  if (isPending && initialSessionUser) {
+    return {
+      user: initialSessionUser,
+      isPending: false,
+    };
+  }
+
   return {
-    user: user
-      ? {
-          id: user.id,
-          displayName: user.name ?? null,
-          primaryEmail: user.email ?? null,
-          profileImageUrl: user.image ?? null,
-          isDevFallback: false,
-        }
-      : null,
+    user: null,
     isPending,
   };
 }

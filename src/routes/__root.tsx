@@ -5,14 +5,106 @@ import {
   Scripts,
   ScrollRestoration,
 } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
 
 import { AuthProvider } from "@/lib/auth/provider";
+import type { AppUser } from "@/lib/auth/use-current-user";
 
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 
 import { Shell } from "@/components/shell";
 
 import appCss from "../styles.css?url";
+
+const fetchRootSessionUser = createServerFn({ method: "GET" }).handler(
+  async (): Promise<AppUser | null> => {
+    try {
+      const { getRequest } = await import("@tanstack/react-start/server");
+      const { auth, authConfigured } = await import("@/lib/auth/server");
+      const { gateIdentityEnabled } = await import(
+        "@/lib/auth/gate-identity.server"
+      );
+      const { DEV_USER_ID } = await import("@/lib/auth/verify.server");
+      const { getSql } = await import("@/lib/db");
+
+      const realAuthActive = authConfigured || gateIdentityEnabled();
+      let resolvedUser: AppUser | null = null;
+
+      if (realAuthActive) {
+        const request = getRequest();
+        if (!request) return null;
+        const session = await auth.api.getSession({ headers: request.headers });
+        if (!session?.user) return null;
+        resolvedUser = {
+          id: session.user.id,
+          displayName: session.user.name ?? null,
+          primaryEmail: session.user.email ?? null,
+          profileImageUrl: session.user.image ?? null,
+          profileNick: null,
+          isDevFallback: false,
+        };
+      } else {
+        const databaseConfigured = Boolean(process.env.DATABASE_URL?.trim());
+        if (databaseConfigured) return null;
+        resolvedUser = {
+          id: DEV_USER_ID,
+          displayName: "Dev User",
+          primaryEmail: "dev@example.com",
+          profileImageUrl: null,
+          profileNick: null,
+          isDevFallback: true,
+        };
+      }
+
+      try {
+        const sql = await getSql();
+        const [profileRows, userRows] = await Promise.all([
+          sql<{
+            displayName: string | null;
+            nick: string | null;
+            avatarUrl: string | null;
+          }>`
+            select "displayName", "nick", "avatarUrl"
+            from "profile"
+            where "userId" = ${resolvedUser.id}
+            limit 1
+          `,
+          sql<{
+            name: string | null;
+            image: string | null;
+          }>`
+            select "name", "image"
+            from "user"
+            where "id" = ${resolvedUser.id}
+            limit 1
+          `,
+        ]);
+
+        const prof = profileRows[0];
+        const usr = userRows[0];
+
+        const resolvedName = prof?.displayName || usr?.name || null;
+        const resolvedAvatar = prof?.avatarUrl || usr?.image || null;
+
+        if (resolvedName) {
+          resolvedUser.displayName = resolvedName;
+        }
+        if (resolvedAvatar) {
+          resolvedUser.profileImageUrl = resolvedAvatar;
+        }
+        if (prof?.nick) {
+          resolvedUser.profileNick = prof.nick;
+        }
+      } catch {
+        // Fallback para os metadados básicos da sessão caso o perfil ainda não exista
+      }
+
+      return resolvedUser;
+    } catch {
+      return null;
+    }
+  },
+);
 
 const APP_NAME = "HIKARI";
 
@@ -37,6 +129,11 @@ function DeferredAnalytics() {
 }
 
 export const Route = createRootRoute({
+  staleTime: Infinity,
+  shouldReload: false,
+  loader: async () => ({
+    sessionUser: await fetchRootSessionUser(),
+  }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -114,7 +211,12 @@ export const Route = createRootRoute({
     ],
   }),
 
-  component: () => (
+  component: RootDocument,
+});
+
+function RootDocument() {
+  const loaderData = Route.useLoaderData();
+  return (
     <html
       lang="pt-BR"
       className="antialiased"
@@ -163,7 +265,7 @@ export const Route = createRootRoute({
       <body style={{ backgroundColor: "inherit", color: "inherit" }}>
         <PreviewHostBridge />
 
-        <AuthProvider>
+        <AuthProvider initialSessionUser={loaderData?.sessionUser ?? null}>
           <Shell />
         </AuthProvider>
 
@@ -174,5 +276,5 @@ export const Route = createRootRoute({
         <DeferredAnalytics />
       </body>
     </html>
-  ),
-});
+  );
+}

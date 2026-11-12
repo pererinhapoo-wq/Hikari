@@ -257,7 +257,7 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
 
 export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   items: initialItems,
-  loading: initialLoadingProp = false,
+  loading: _initialLoadingProp = false,
   onUpdateItem,
   activeFilter,
   onFilterChange,
@@ -327,40 +327,52 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   const getPaginatedTrackingFn = useServerFn(getMyAnimeTrackingPaginated);
   const getPublicPaginatedTrackingFn = useServerFn(getPublicAnimeTrackingPaginated);
 
-  // Estados de Paginação Real
-  const [items, setItems] = useState<UserAnimeTrackingItem[]>(() => initialItems || []);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [dataLoading, setDataLoading] = useState(() => !(initialItems && initialItems.length > 0));
+  type FilterCacheEntry = {
+    items: UserAnimeTrackingItem[];
+    page: number;
+    hasMore: boolean;
+  };
+
+  const scopePrefix = targetUserId ?? "__self__";
+  const cacheKey = `${scopePrefix}::${filter}`;
+
+  // Cache reativo por (usuário, filtro) para evitar flash de lista errada ou vazia ao trocar/abrir categorias
+  const [filterCache, setFilterCache] = useState<Record<string, FilterCacheEntry>>({});
   const [loadingMore, setLoadingMore] = useState(false);
-  const [counts, setCounts] = useState<Record<FilterOption, number>>({
-    all: 0,
-    watching: 0,
-    completed: 0,
-    on_hold: 0,
-    dropped: 0,
-    planning: 0,
-  });
+  const [serverCounts, setServerCounts] = useState<Record<FilterOption, number> | null>(null);
+
+  const fallbackCounts = useMemo<Record<FilterOption, number>>(() => {
+    const base: Record<FilterOption, number> = {
+      all: initialItems?.length ?? 0,
+      watching: 0,
+      completed: 0,
+      on_hold: 0,
+      dropped: 0,
+      planning: 0,
+    };
+    if (!initialItems) return base;
+    for (let i = 0; i < initialItems.length; i++) {
+      const st = initialItems[i].status;
+      if (st in base) {
+        base[st] += 1;
+      }
+    }
+    return base;
+  }, [initialItems]);
+
+  const counts = serverCounts ?? fallbackCounts;
+
+  const activeCache = filterCache[cacheKey];
+  const items = useMemo(() => activeCache?.items ?? [], [activeCache?.items]);
+  const page = activeCache?.page ?? 1;
+  const hasMore = activeCache?.hasMore ?? true;
+  const dataLoading = !activeCache;
 
   // Trava para impedir requisições simultâneas da mesma página
   const fetchingRef = useRef(false);
 
-  // Cache por filtro para alternância instantânea sem perder itens carregados
-  const filterCacheRef = useRef<
-    Partial<
-      Record<
-        FilterOption,
-        {
-          items: UserAnimeTrackingItem[];
-          page: number;
-          hasMore: boolean;
-        }
-      >
-    >
-  >({});
-
   // Índice em memória (Set) de IDs carregados por filtro para deduplicação O(1) sem alocação
-  const loadedIdSetsRef = useRef<Map<FilterOption, Set<string>>>(new Map());
+  const loadedIdSetsRef = useRef<Map<string, Set<string>>>(new Map());
   const lastTargetUserIdRef = useRef<string | undefined>(targetUserId);
 
   const animeSentinelRef = useRef<HTMLDivElement>(null);
@@ -370,25 +382,16 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     let active = true;
 
     if (lastTargetUserIdRef.current !== targetUserId) {
-      filterCacheRef.current = {};
       loadedIdSetsRef.current.clear();
+      setServerCounts(null);
       lastTargetUserIdRef.current = targetUserId;
     }
 
-    // Se já foi carregado para este filtro na sessão do componente, restaura do cache
-    const cached = filterCacheRef.current[filter];
-    if (cached) {
-      setItems(cached.items);
-      setPage(cached.page);
-      setHasMore(cached.hasMore);
-      setDataLoading(false);
+    // Se já foi carregado para este filtro na sessão do componente, evita nova requisição
+    if (activeCache) {
       return;
     }
 
-    setDataLoading(true);
-    setItems([]);
-    setPage(1);
-    setHasMore(true);
     fetchingRef.current = true;
 
     const requestPromise = targetUserId
@@ -411,31 +414,31 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     void requestPromise
       .then((res) => {
         if (!active) return;
-        setItems(res.items);
-        setPage(1);
-        setHasMore(res.hasMore);
-        setCounts(res.counts);
-        onCountsChange?.(res.counts);
 
         // Atualiza índice de IDs
         const idSet = new Set<string>();
         for (let i = 0; i < res.items.length; i++) {
           idSet.add(res.items[i].animeId);
         }
-        loadedIdSetsRef.current.set(filter, idSet);
+        loadedIdSetsRef.current.set(cacheKey, idSet);
 
-        filterCacheRef.current[filter] = {
-          items: res.items,
-          page: 1,
-          hasMore: res.hasMore,
-        };
+        setServerCounts(res.counts);
+        onCountsChange?.(res.counts);
+
+        setFilterCache((prev) => ({
+          ...prev,
+          [cacheKey]: {
+            items: res.items,
+            page: 1,
+            hasMore: res.hasMore,
+          },
+        }));
       })
       .catch((err) => {
         console.warn("Erro ao buscar registros de animes paginados:", err);
       })
       .finally(() => {
         fetchingRef.current = false;
-        if (active) setDataLoading(false);
       });
 
     return () => {
@@ -443,6 +446,8 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       fetchingRef.current = false;
     };
   }, [
+    cacheKey,
+    activeCache,
     filter,
     targetUserId,
     getPaginatedTrackingFn,
@@ -457,6 +462,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     fetchingRef.current = true;
     setLoadingMore(true);
 
+    const requestCacheKey = cacheKey;
     const nextPage = page + 1;
 
     const requestPromise = targetUserId
@@ -478,12 +484,15 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
     void requestPromise
       .then((res) => {
-        setItems((prev) => {
+        setFilterCache((prev) => {
+          const prevEntry = prev[requestCacheKey];
+          const prevItems = prevEntry?.items ?? [];
+
           // Prevenção estrita de registros duplicados com Set index O(1)
-          let idSet = loadedIdSetsRef.current.get(filter);
+          let idSet = loadedIdSetsRef.current.get(requestCacheKey);
           if (!idSet) {
-            idSet = new Set(prev.map((i) => i.animeId));
-            loadedIdSetsRef.current.set(filter, idSet);
+            idSet = new Set(prevItems.map((i) => i.animeId));
+            loadedIdSetsRef.current.set(requestCacheKey, idSet);
           }
 
           const uniqueNew: UserAnimeTrackingItem[] = [];
@@ -495,20 +504,17 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
             }
           }
 
-          const combined = [...prev, ...uniqueNew];
-
-          filterCacheRef.current[filter] = {
-            items: combined,
-            page: nextPage,
-            hasMore: res.hasMore,
+          return {
+            ...prev,
+            [requestCacheKey]: {
+              items: [...prevItems, ...uniqueNew],
+              page: nextPage,
+              hasMore: res.hasMore,
+            },
           };
-
-          return combined;
         });
 
-        setPage(nextPage);
-        setHasMore(res.hasMore);
-        setCounts(res.counts);
+        setServerCounts(res.counts);
         onCountsChange?.(res.counts);
       })
       .catch((err) => {
@@ -519,6 +525,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
         setLoadingMore(false);
       });
   }, [
+    cacheKey,
     filter,
     targetUserId,
     getPaginatedTrackingFn,
@@ -549,6 +556,77 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     return () => observer.disconnect();
   }, [hasMore, dataLoading, loadNextPage]);
 
+  const applyItemMutationToCache = useCallback(
+    (nextItem: UserAnimeTrackingItem, prevStatus?: TrackingStatus) => {
+      const prefix = `${scopePrefix}::`;
+
+      setFilterCache((prev) => {
+        const updatedCache: Record<string, FilterCacheEntry> = {};
+
+        for (const [key, entry] of Object.entries(prev)) {
+          if (!key.startsWith(prefix)) {
+            updatedCache[key] = entry;
+            continue;
+          }
+
+          const keyFilter = key.slice(prefix.length) as FilterOption;
+
+          if (keyFilter === "all") {
+            updatedCache[key] = {
+              ...entry,
+              items: entry.items.map((i) =>
+                i.animeId === nextItem.animeId ? nextItem : i,
+              ),
+            };
+          } else if (keyFilter === nextItem.status) {
+            const exists = entry.items.some((i) => i.animeId === nextItem.animeId);
+            if (exists) {
+              updatedCache[key] = {
+                ...entry,
+                items: entry.items.map((i) =>
+                  i.animeId === nextItem.animeId ? nextItem : i,
+                ),
+              };
+            } else {
+              // Invalida aba de destino em cache para rebuscar ordenado quando visitada
+              loadedIdSetsRef.current.delete(key);
+            }
+          } else {
+            const filtered = entry.items.filter((i) => i.animeId !== nextItem.animeId);
+            if (filtered.length !== entry.items.length) {
+              loadedIdSetsRef.current.set(
+                key,
+                new Set(filtered.map((i) => i.animeId)),
+              );
+              updatedCache[key] = {
+                ...entry,
+                items: filtered,
+              };
+            } else {
+              updatedCache[key] = entry;
+            }
+          }
+        }
+
+        return updatedCache;
+      });
+
+      if (prevStatus && prevStatus !== nextItem.status) {
+        setServerCounts((prevCounts) => {
+          if (!prevCounts) return prevCounts;
+          const nextCounts: Record<FilterOption, number> = {
+            ...prevCounts,
+            [prevStatus]: Math.max(0, (prevCounts[prevStatus] ?? 0) - 1),
+            [nextItem.status]: (prevCounts[nextItem.status] ?? 0) + 1,
+          };
+          onCountsChange?.(nextCounts);
+          return nextCounts;
+        });
+      }
+    },
+    [onCountsChange, scopePrefix],
+  );
+
   // Callback estável para incremento rápido (+1 ep)
   const handleQuickIncrement = useCallback(async (item: UserAnimeTrackingItem) => {
     if (isReadOnly) return;
@@ -573,9 +651,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       status: nextStatus,
     };
 
-    setItems((prev) =>
-      prev.map((i) => (i.animeId === updatedItem.animeId ? updatedItem : i)),
-    );
+    applyItemMutationToCache(updatedItem, previousItem.status);
     onUpdateItem?.(updatedItem);
 
     try {
@@ -599,29 +675,17 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
         updatedAt: res.updatedAt,
       };
 
-      setItems((prev) =>
-        prev.map((i) => (i.animeId === finalItem.animeId ? finalItem : i)),
-      );
-
-      // Sincroniza cache por filtro
-      if (filterCacheRef.current[filter]) {
-        filterCacheRef.current[filter]!.items = filterCacheRef.current[filter]!.items.map((i) =>
-          i.animeId === finalItem.animeId ? finalItem : i,
-        );
-      }
-
+      applyItemMutationToCache(finalItem, updatedItem.status);
       onUpdateItem?.(finalItem);
       toast.success(`Episódio ${nextWatched}${maxEps ? ` de ${maxEps}` : ""} marcado!`);
     } catch (err) {
-      setItems((prev) =>
-        prev.map((i) => (i.animeId === previousItem.animeId ? previousItem : i)),
-      );
+      applyItemMutationToCache(previousItem, updatedItem.status);
       onUpdateItem?.(previousItem);
       toast.error(err instanceof Error ? err.message : "Erro ao atualizar episódios.");
     } finally {
       setUpdatingId(null);
     }
-  }, [filter, isReadOnly, onUpdateItem, upsertTrackingFn]);
+  }, [applyItemMutationToCache, isReadOnly, onUpdateItem, upsertTrackingFn]);
 
   // Callback estável para salvar edição completa
   const handleSaveEdit = useCallback(async (data: {
@@ -648,9 +712,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       episodesWatched: resolvedEpisodes,
     };
 
-    setItems((prev) =>
-      prev.map((i) => (i.animeId === optimisticItem.animeId ? optimisticItem : i)),
-    );
+    applyItemMutationToCache(optimisticItem, previousItem.status);
     onUpdateItem?.(optimisticItem);
 
     try {
@@ -674,26 +736,15 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
         updatedAt: res.updatedAt,
       };
 
-      setItems((prev) =>
-        prev.map((i) => (i.animeId === finalItem.animeId ? finalItem : i)),
-      );
-
-      if (filterCacheRef.current[filter]) {
-        filterCacheRef.current[filter]!.items = filterCacheRef.current[filter]!.items.map((i) =>
-          i.animeId === finalItem.animeId ? finalItem : i,
-        );
-      }
-
+      applyItemMutationToCache(finalItem, optimisticItem.status);
       onUpdateItem?.(finalItem);
       toast.success("Coleção atualizada com sucesso!");
     } catch (err) {
-      setItems((prev) =>
-        prev.map((i) => (i.animeId === previousItem.animeId ? previousItem : i)),
-      );
+      applyItemMutationToCache(previousItem, optimisticItem.status);
       onUpdateItem?.(previousItem);
       throw err;
     }
-  }, [editingItem, filter, isReadOnly, onUpdateItem, upsertTrackingFn]);
+  }, [applyItemMutationToCache, editingItem, isReadOnly, onUpdateItem, upsertTrackingFn]);
 
   // Estrutura de busca e ordenação em memória otimizada com useDeferredValue
   const processedItems = useMemo(() => {
@@ -731,7 +782,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     return result;
   }, [items, deferredSearch, sortBy]);
 
-  const isLoading = initialLoadingProp || dataLoading;
+  const isLoading = dataLoading;
 
   return (
     <div className="space-y-6">

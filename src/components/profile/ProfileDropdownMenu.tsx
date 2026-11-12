@@ -45,10 +45,19 @@ function useDropdownPresence(open: boolean, exitMs = 150) {
   };
 }
 
+const profileMetaCache = new Map<
+  string,
+  { image: string | null; nick: string | null }
+>();
+
 export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
   const [open, setOpen] = useState(false);
-  const [customAvatar, setCustomAvatar] = useState<string | null>(null);
-  const [customNick, setCustomNick] = useState<string | null>(null);
+  const [customAvatar, setCustomAvatar] = useState<string | null>(
+    () => profileMetaCache.get(user.id)?.image ?? user.profileImageUrl ?? null,
+  );
+  const [customNick, setCustomNick] = useState<string | null>(
+    () => profileMetaCache.get(user.id)?.nick ?? user.profileNick ?? null,
+  );
   const [imgError, setImgError] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const dropdown = useDropdownPresence(open, 150);
@@ -70,16 +79,28 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
     void getProfile()
       .then((data) => {
         if (!active || !data) return;
-        if (data.image) {
-          setCustomAvatar(data.image);
+        const nextImage = data.image ?? null;
+        const nextNick = data.nick ?? null;
+        profileMetaCache.set(user.id, { image: nextImage, nick: nextNick });
+        if (nextImage) {
+          setCustomAvatar(nextImage);
           setImgError(false);
         }
-        if (data.nick) setCustomNick(data.nick);
+        if (nextNick) setCustomNick(nextNick);
       })
       .catch(() => {});
 
     const handleProfileUpdated = (event: Event) => {
       const customEvent = event as CustomEvent<{ image?: string | null; nick?: string }>;
+      const prev = profileMetaCache.get(user.id) ?? {
+        image: customAvatar,
+        nick: customNick,
+      };
+      const nextImage =
+        customEvent.detail?.image !== undefined ? customEvent.detail.image : prev.image;
+      const nextNick =
+        customEvent.detail?.nick !== undefined ? customEvent.detail.nick : prev.nick;
+      profileMetaCache.set(user.id, { image: nextImage ?? null, nick: nextNick ?? null });
       if (customEvent.detail?.image !== undefined) {
         setCustomAvatar(customEvent.detail.image);
         setImgError(false);

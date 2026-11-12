@@ -1197,7 +1197,10 @@ function PublicProfile() {
       trackingItems.filter((i) => i.status === statusParam).length;
 
     return (
-      <div className="relative min-h-[80vh] w-full pb-16 pt-6 sm:pt-8">
+      <div
+        key={statusParam}
+        className="anime-stats-category-enter relative min-h-[80vh] w-full pb-16 pt-6 sm:pt-8"
+      >
         <div
           className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-violet-600/10 blur-[120px]"
           aria-hidden="true"

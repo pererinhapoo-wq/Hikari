@@ -16,17 +16,21 @@ import {
   X,
 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { triggerProfileSaveNotification } from "@/components/profile/ProfileSaveNotification";
 import { useScrollLock } from "@/lib/scroll-lock";
 import {
   getMyBlockedUsers,
+  getProfile,
   unblockUser,
   type AccountType,
   type BlockedUserItem,
   type SectionPrivacyLevel,
   type UserProfile,
 } from "@/lib/profile.functions";
+
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 interface ProfilePrivacyModalProps {
   isOpen: boolean;
@@ -76,8 +80,15 @@ export function ProfilePrivacyModal({
   onSave,
 }: ProfilePrivacyModalProps) {
   useScrollLock(isOpen);
+  const getProfileFn = useServerFn(getProfile);
   const getMyBlockedUsersFn = useServerFn(getMyBlockedUsers);
   const unblockUserFn = useServerFn(unblockUser);
+
+  const [fetchedProfile, setFetchedProfile] = useState<UserProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(() => isOpen && !profile);
+  const [loadProfileError, setLoadProfileError] = useState("");
+
+  const resolvedProfile = profile ?? fetchedProfile;
 
   const [showBlocked, setShowBlocked] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUserItem[]>([]);
@@ -87,17 +98,27 @@ export function ProfilePrivacyModal({
   const [unblocking, setUnblocking] = useState(false);
   const [unblockSuccess, setUnblockSuccess] = useState("");
 
-  const [accountType, setAccountType] = useState<AccountType>("public");
-  const [allowFollowers, setAllowFollowers] = useState(true);
-  const [privacyLists, setPrivacyLists] = useState<SectionPrivacyLevel>("public");
-  const [privacyFavorites, setPrivacyFavorites] =
-    useState<SectionPrivacyLevel>("public");
-  const [privacyHistory, setPrivacyHistory] =
-    useState<SectionPrivacyLevel>("public");
-  const [privacyComments, setPrivacyComments] =
-    useState<SectionPrivacyLevel>("public");
-  const [privacyFollowers, setPrivacyFollowers] =
-    useState<SectionPrivacyLevel>("public");
+  const [accountType, setAccountType] = useState<AccountType>(
+    () => resolvedProfile?.accountType || "public",
+  );
+  const [allowFollowers, setAllowFollowers] = useState(
+    () => resolvedProfile?.allowFollowers ?? true,
+  );
+  const [privacyLists, setPrivacyLists] = useState<SectionPrivacyLevel>(
+    () => resolvedProfile?.privacyLists || "public",
+  );
+  const [privacyFavorites, setPrivacyFavorites] = useState<SectionPrivacyLevel>(
+    () => resolvedProfile?.privacyFavorites || "public",
+  );
+  const [privacyHistory, setPrivacyHistory] = useState<SectionPrivacyLevel>(
+    () => resolvedProfile?.privacyHistory || "public",
+  );
+  const [privacyComments, setPrivacyComments] = useState<SectionPrivacyLevel>(
+    () => resolvedProfile?.privacyComments || "public",
+  );
+  const [privacyFollowers, setPrivacyFollowers] = useState<SectionPrivacyLevel>(
+    () => resolvedProfile?.privacyFollowers || "public",
+  );
 
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -129,6 +150,41 @@ export function ProfilePrivacyModal({
     }
   }, [showBlocked, loadBlockedUsers]);
 
+  // Se o modal abrir antes do objeto profile estar carregado no pai,
+  // busca as preferências reais persistidas antes de exibir os controles.
+  useEffect(() => {
+    if (!isOpen || profile) {
+      setLoadingProfile(false);
+      setLoadProfileError("");
+      return;
+    }
+
+    let active = true;
+    setLoadingProfile(true);
+    setLoadProfileError("");
+
+    void getProfileFn()
+      .then((data) => {
+        if (!active) return;
+        setFetchedProfile(data);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setLoadProfileError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar suas configurações de privacidade.",
+        );
+      })
+      .finally(() => {
+        if (active) setLoadingProfile(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, profile, getProfileFn]);
+
   const handleUnblock = async (targetUserId: string, targetName?: string | null) => {
     setUnblocking(true);
     setBlockedError("");
@@ -149,40 +205,43 @@ export function ProfilePrivacyModal({
     }
   };
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (isOpen) {
       setShowBlocked(false);
       setConfirmUnblockId(null);
       setUnblockSuccess("");
       setBlockedError("");
-      if (profile) {
-        setAccountType(profile.accountType || "public");
-        setAllowFollowers(profile.allowFollowers ?? true);
-        setPrivacyLists(profile.privacyLists || "public");
-        setPrivacyFavorites(profile.privacyFavorites || "public");
-        setPrivacyHistory(profile.privacyHistory || "public");
-        setPrivacyComments(profile.privacyComments || "public");
-        setPrivacyFollowers(profile.privacyFollowers || "public");
+      if (resolvedProfile) {
+        setAccountType(resolvedProfile.accountType || "public");
+        setAllowFollowers(resolvedProfile.allowFollowers ?? true);
+        setPrivacyLists(resolvedProfile.privacyLists || "public");
+        setPrivacyFavorites(resolvedProfile.privacyFavorites || "public");
+        setPrivacyHistory(resolvedProfile.privacyHistory || "public");
+        setPrivacyComments(resolvedProfile.privacyComments || "public");
+        setPrivacyFollowers(resolvedProfile.privacyFollowers || "public");
         setError("");
         setSuccess(false);
       }
     }
-  }, [isOpen, profile]);
+  }, [isOpen, resolvedProfile]);
 
   if (!isOpen) return null;
 
+  const isPrivacyReady = Boolean(resolvedProfile) && !loadingProfile;
+
   const isDirty =
-    accountType !== (profile?.accountType || "public") ||
-    allowFollowers !== (profile?.allowFollowers ?? true) ||
-    privacyLists !== (profile?.privacyLists || "public") ||
-    privacyFavorites !== (profile?.privacyFavorites || "public") ||
-    privacyHistory !== (profile?.privacyHistory || "public") ||
-    privacyComments !== (profile?.privacyComments || "public") ||
-    privacyFollowers !== (profile?.privacyFollowers || "public");
+    isPrivacyReady &&
+    (accountType !== (resolvedProfile?.accountType || "public") ||
+      allowFollowers !== (resolvedProfile?.allowFollowers ?? true) ||
+      privacyLists !== (resolvedProfile?.privacyLists || "public") ||
+      privacyFavorites !== (resolvedProfile?.privacyFavorites || "public") ||
+      privacyHistory !== (resolvedProfile?.privacyHistory || "public") ||
+      privacyComments !== (resolvedProfile?.privacyComments || "public") ||
+      privacyFollowers !== (resolvedProfile?.privacyFollowers || "public"));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving) return;
+    if (saving || !isPrivacyReady) return;
 
     try {
       setSaving(true);
@@ -257,15 +316,20 @@ export function ProfilePrivacyModal({
         </div>
 
         {/* Feedback de Erro ou Sucesso */}
-        {error && (
+        {(error || loadProfileError) && (
           <div className="shrink-0 mx-3.5 sm:mx-5 mt-2.5 sm:mt-4 flex items-center gap-2 rounded-xl sm:rounded-2xl border border-red-500/30 bg-red-500/10 px-3 sm:px-4 py-2.5 sm:py-3 text-xs text-red-200">
             <AlertCircle className="size-4 shrink-0 text-red-400" />
-            <span>{error}</span>
+            <span>{error || loadProfileError}</span>
           </div>
         )}
 
-
         {/* Formulário de Configurações com Rolagem Suave */}
+        {!isPrivacyReady ? (
+          <div className="flex-1 min-h-[260px] flex flex-col items-center justify-center gap-3 px-6 py-12 text-zinc-400">
+            <Loader2 className="size-6 animate-spin text-violet-400" />
+            <p className="text-xs sm:text-sm">Carregando configurações de privacidade...</p>
+          </div>
+        ) : (
         <form
           onSubmit={handleSubmit}
           className="flex-1 min-h-0 overflow-y-auto px-3.5 py-3.5 sm:px-6 sm:py-5 pb-8 sm:pb-6 space-y-4 sm:space-y-6 text-sm overscroll-contain"
@@ -512,6 +576,7 @@ export function ProfilePrivacyModal({
             )}
           </div>
         </form>
+        )}
 
         {/* Rodapé de Ações Original */}
         <div className="shrink-0 flex items-center justify-between border-t border-white/[0.08] bg-[#140e24] px-3.5 py-2.5 sm:px-6 sm:py-4 gap-2 z-10 shadow-[0_-8px_20px_rgba(0,0,0,0.5)]">

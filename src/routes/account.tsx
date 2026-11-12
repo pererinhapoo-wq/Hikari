@@ -150,17 +150,23 @@ function OverviewSpaceSkeleton() {
   );
 }
 
-function TrackingSpaceSkeleton() {
+function TrackingSpaceSkeleton({
+  hideFilterBar = false,
+}: {
+  hideFilterBar?: boolean;
+}) {
   return (
     <div className="space-y-6 animate-pulse min-h-[500px]">
-      <div className="flex flex-wrap gap-2">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-9 w-24 rounded-xl border border-white/[0.05] bg-white/[0.04]"
-          />
-        ))}
-      </div>
+      {!hideFilterBar && (
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-9 w-24 rounded-xl border border-white/[0.05] bg-white/[0.04]"
+            />
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
         {Array.from({ length: 12 }).map((_, i) => (
           <div key={i} className="min-w-0">
@@ -484,6 +490,7 @@ function AccountProfile() {
   const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>([]);
   const [trackingLoading, setTrackingLoading] = useState(true);
   const [trackingLoaded, setTrackingLoaded] = useState(false);
+  const [statusCounts, setStatusCounts] = useState<Record<"all" | TrackingStatus, number> | null>(null);
   const trackingFetchingRef = useRef(false);
 
   // Favoritos Canônicos (Necessário para a visão geral)
@@ -1267,10 +1274,15 @@ function AccountProfile() {
   // Se a rota for aberta com parâmetro de status, exibe diretamente a lista de animes correspondente
   if (statusParam && STATUS_CONFIG[statusParam]) {
     const cfg = STATUS_CONFIG[statusParam];
-    const filteredCount = trackingItems.filter((i) => i.status === statusParam).length;
+    const filteredCount =
+      statusCounts?.[statusParam] ??
+      trackingItems.filter((i) => i.status === statusParam).length;
 
     return (
-      <div className="relative min-h-[80vh] w-full pb-16 pt-6 sm:pt-8">
+      <div
+        key={statusParam}
+        className="anime-stats-category-enter relative min-h-[80vh] w-full pb-16 pt-6 sm:pt-8"
+      >
         <div
           className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-violet-600/10 blur-[120px]"
           aria-hidden="true"
@@ -1283,7 +1295,7 @@ function AccountProfile() {
               <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
                 Animes — {cfg.label}
               </h1>
-              {!trackingLoading && (
+              {(!trackingLoading || statusCounts !== null) && (
                 <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
                   {filteredCount}
                 </span>
@@ -1291,12 +1303,13 @@ function AccountProfile() {
             </div>
           </div>
 
-          <Suspense fallback={<TrackingSpaceSkeleton />}>
+          <Suspense fallback={<TrackingSpaceSkeleton hideFilterBar={true} />}>
             <LazyProfileTrackingSpace
               items={trackingItems}
               loading={trackingLoading}
               activeFilter={statusParam}
               hideFilterBar={true}
+              onCountsChange={setStatusCounts}
               onUpdateItem={handleUpdateTrackingItem}
             />
           </Suspense>
