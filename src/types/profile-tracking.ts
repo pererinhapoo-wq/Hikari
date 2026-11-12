@@ -118,6 +118,23 @@ export interface PaginatedAnimeTrackingResponse {
 }
 
 /**
+ * 2c. Schema e tipo para consultar acompanhamento público de outro usuário respeitando privacidade.
+ */
+export const getPublicAnimeTrackingSchema = z.object({
+  userId: z
+    .string()
+    .trim()
+    .min(1, "O identificador do usuário (userId) é obrigatório."),
+  status: trackingStatusSchema.optional(),
+  animeId: z.string().trim().min(1).optional(),
+  minimal: z.boolean().optional(),
+});
+
+export type GetPublicAnimeTrackingInput = z.infer<
+  typeof getPublicAnimeTrackingSchema
+>;
+
+/**
  * 3. Schema e tipo para consultar acompanhamento filtrado por status.
  */
 export const getAnimeTrackingByStatusSchema = z.object({

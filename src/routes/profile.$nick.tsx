@@ -31,7 +31,9 @@ import {
   type ProfileUser,
 } from "@/lib/profile.functions";
 import { getPublicProfileFavorites } from "@/lib/profile-favorites.functions";
+import { getPublicAnimeTracking } from "@/lib/profile-tracking.functions";
 import type { ProfileFavoritesGrouped } from "@/types/favorite";
+import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
 
 import { ProfileIdentityHeader } from "@/components/profile/ProfileIdentityHeader";
 import {
@@ -327,6 +329,7 @@ function PublicProfile() {
   const getPublicCommentsFn = useServerFn(getPublicComments);
   const getPublicActivitiesFn = useServerFn(getPublicActivities);
   const getPublicFavoritesFn = useServerFn(getPublicProfileFavorites);
+  const getPublicAnimeTrackingFn = useServerFn(getPublicAnimeTracking);
   const getFollowersFn = useServerFn(getPublicProfileFollowers);
   const getFollowingFn = useServerFn(getPublicProfileFollowing);
 
@@ -344,6 +347,10 @@ function PublicProfile() {
   const [error, setError] = useState("");
 
   const [activeSpace, setActiveSpace] = useState<ProfileSpace>("overview");
+
+  // Acompanhamento de animes para o Anime Stats do perfil visitado
+  const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>([]);
+  const [trackingLoading, setTrackingLoading] = useState(false);
 
   // Favoritos agrupados (necessários para a Visão Geral)
   const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>({
@@ -408,9 +415,21 @@ function PublicProfile() {
 
     setLoading(true);
     setError("");
+    setTrackingItems([]);
+    setTrackingLoading(false);
+    setFavoritesGrouped({
+      anime: [],
+      character: [],
+      studio: [],
+      company: [],
+      person: [],
+    });
+    setFavoritesLoading(false);
     setComments([]);
+    setCommentsTotal(0);
     setCommentsLoaded(false);
     setActivities([]);
+    setActivityTotal(0);
     setActivityLoaded(false);
 
     void getPublicProfileFn({
@@ -434,8 +453,31 @@ function PublicProfile() {
         setIsBlockedByMe(Boolean(result.isBlockedByMe));
         setIsBlockedByTarget(Boolean(result.isBlockedByTarget));
 
-        // Carrega Favoritos da Visão Geral se o conteúdo for público ou acessível
-        if (result.canViewContent && !result.isBlockedByMe && !result.isBlockedByTarget) {
+        const canAccessProfileContent =
+          result.canViewContent && !result.isBlockedByMe && !result.isBlockedByTarget;
+
+        // Carrega dados reais de acompanhamento de animes para o Anime Stats do perfil visitado
+        if (canAccessProfileContent) {
+          setTrackingLoading(true);
+          getPublicAnimeTrackingFn({
+            data: {
+              userId: result.userId,
+              minimal: true,
+            },
+          })
+            .then((items) => {
+              if (active) setTrackingItems(items);
+            })
+            .catch((err) => {
+              console.warn("Erro ao buscar estatísticas públicas de animes:", err);
+            })
+            .finally(() => {
+              if (active) setTrackingLoading(false);
+            });
+        }
+
+        // Carrega Favoritos da Visão Geral somente se o perfil e a seção de favoritos estiverem acessíveis
+        if (canAccessProfileContent && result.canViewFavorites) {
           setFavoritesLoading(true);
           getPublicFavoritesFn({
             data: {
@@ -464,7 +506,7 @@ function PublicProfile() {
     return () => {
       active = false;
     };
-  }, [nick, getPublicProfileFn, getPublicFavoritesFn, navigate]);
+  }, [nick, getPublicProfileFn, getPublicFavoritesFn, getPublicAnimeTrackingFn, navigate]);
 
   // Carregamento sob demanda para a aba de Comentários (Cache e trava contra cliques rápidos)
   useEffect(() => {
@@ -1123,7 +1165,7 @@ function PublicProfile() {
           followersCount={followersCount}
           followingCount={followingCount}
           commentCount={commentsTotal}
-          totalTrackingCount={0}
+          totalTrackingCount={trackingItems.length}
           favorites={userFavoritesList}
           isBlockedByMe={isBlockedByMe}
           onBlockAction={handleToggleBlock}
@@ -1173,7 +1215,7 @@ function PublicProfile() {
               onChangeSpace={handleSpaceChange}
               onPrefetchSpace={handlePrefetchSpace}
               counts={{
-                animes: 0,
+                animes: trackingItems.length,
                 comments: commentsTotal,
                 activity: activityTotal,
               }}
@@ -1214,11 +1256,11 @@ function PublicProfile() {
                   {activeSpace === "overview" && (
                     <Suspense fallback={<OverviewSpaceSkeleton />}>
                       <LazyProfileOverviewSpace
-                        trackingItems={[]}
+                        trackingItems={trackingItems}
                         favoritesGrouped={favoritesGrouped}
                         activityItems={activities}
                         comments={comments}
-                        loading={favoritesLoading}
+                        loading={favoritesLoading || trackingLoading}
                       />
                     </Suspense>
                   )}

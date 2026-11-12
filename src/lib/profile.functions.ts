@@ -635,8 +635,8 @@ export async function executeGetPublicProfile(
       coalesce(p."displayName", u."name") as "name",
       p."nick",
       p."bio",
-      coalesce(p."avatarUrl", u."image") as "image",
-      p."bannerUrl",
+      coalesce(nullif(trim(p."avatarUrl"), ''), nullif(trim(u."image"), '')) as "image",
+      nullif(trim(p."bannerUrl"), '') as "bannerUrl",
       coalesce(p."isVerified", false) as "isVerified",
       u."createdAt" as "userCreatedAt",
       p."createdAt" as "profileCreatedAt"
@@ -1877,8 +1877,18 @@ export const updateProfile =
       }
 
       // 6. Resolver Avatar (image):
+      const currentProfileAvatar =
+        typeof existingProfile?.avatarUrl === "string" &&
+        existingProfile.avatarUrl.trim() !== ""
+          ? existingProfile.avatarUrl.trim()
+          : null;
+      const currentUserAvatar =
+        typeof existingUser?.image === "string" &&
+        existingUser.image.trim() !== ""
+          ? existingUser.image.trim()
+          : null;
       let finalAvatar: string | null =
-        existingProfile?.avatarUrl ?? existingUser?.image ?? null;
+        currentProfileAvatar ?? currentUserAvatar ?? null;
       if (data.image !== undefined) {
         if (
           data.image === null ||
@@ -1898,7 +1908,12 @@ export const updateProfile =
       }
 
       // 7. Resolver Banner (bannerUrl):
-      let finalBanner: string | null = existingProfile?.bannerUrl ?? null;
+      const currentProfileBanner =
+        typeof existingProfile?.bannerUrl === "string" &&
+        existingProfile.bannerUrl.trim() !== ""
+          ? existingProfile.bannerUrl.trim()
+          : null;
+      let finalBanner: string | null = currentProfileBanner;
       if (data.bannerUrl !== undefined) {
         if (
           data.bannerUrl === null ||
