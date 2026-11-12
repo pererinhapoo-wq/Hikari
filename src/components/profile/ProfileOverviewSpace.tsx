@@ -13,6 +13,7 @@ interface ProfileOverviewSpaceProps {
   loading?: boolean;
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
   onRemoveFavorite?: (item: ProfileFavoriteItem) => Promise<void> | void;
+  profileNick?: string;
 }
 
 export function ProfileOverviewSpace({
@@ -23,6 +24,7 @@ export function ProfileOverviewSpace({
   loading = false,
   onUpdateItem,
   onRemoveFavorite,
+  profileNick,
 }: ProfileOverviewSpaceProps) {
   if (loading) {
     return (
@@ -41,7 +43,11 @@ export function ProfileOverviewSpace({
   return (
     <div className="space-y-10 sm:space-y-12">
       {/* Seção A: Anime Stats */}
-      <ProfileAnimeStats items={trackingItems} onUpdateItem={onUpdateItem} />
+      <ProfileAnimeStats
+        items={trackingItems}
+        onUpdateItem={onUpdateItem}
+        profileNick={profileNick}
+      />
 
       {/* Seções B, C, D, E: Favoritos (Animes, Personagens, Studios, People) */}
       <ProfileOverviewFavorites

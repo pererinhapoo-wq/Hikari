@@ -9,9 +9,13 @@ import type {
 interface ProfileAnimeStatsProps {
   items: UserAnimeTrackingItem[];
   onUpdateItem?: (updatedItem: UserAnimeTrackingItem) => void;
+  profileNick?: string;
 }
 
-export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }: ProfileAnimeStatsProps) {
+export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({
+  items,
+  profileNick,
+}: ProfileAnimeStatsProps) {
   // Cálculo em passe único O(N) em memória com useMemo para listas grandes
   const stats = useMemo(() => {
     let watching = 0;
@@ -200,7 +204,8 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }
             <>
               {pctWatching > 0 && (
                 <Link
-                  to="/account"
+                  to={profileNick ? "/profile/$nick" : "/account"}
+                  params={profileNick ? { nick: profileNick } : undefined}
                   search={{ status: "watching" }}
                   style={{ width: `${pctWatching}%` }}
                   className="h-full bg-emerald-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
@@ -210,7 +215,8 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }
               )}
               {pctCompleted > 0 && (
                 <Link
-                  to="/account"
+                  to={profileNick ? "/profile/$nick" : "/account"}
+                  params={profileNick ? { nick: profileNick } : undefined}
                   search={{ status: "completed" }}
                   style={{ width: `${pctCompleted}%` }}
                   className="h-full bg-violet-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
@@ -220,7 +226,8 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }
               )}
               {pctOnHold > 0 && (
                 <Link
-                  to="/account"
+                  to={profileNick ? "/profile/$nick" : "/account"}
+                  params={profileNick ? { nick: profileNick } : undefined}
                   search={{ status: "on_hold" }}
                   style={{ width: `${pctOnHold}%` }}
                   className="h-full bg-amber-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
@@ -230,7 +237,8 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }
               )}
               {pctDropped > 0 && (
                 <Link
-                  to="/account"
+                  to={profileNick ? "/profile/$nick" : "/account"}
+                  params={profileNick ? { nick: profileNick } : undefined}
                   search={{ status: "dropped" }}
                   style={{ width: `${pctDropped}%` }}
                   className="h-full bg-rose-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
@@ -240,7 +248,8 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }
               )}
               {pctPlanning > 0 && (
                 <Link
-                  to="/account"
+                  to={profileNick ? "/profile/$nick" : "/account"}
+                  params={profileNick ? { nick: profileNick } : undefined}
                   search={{ status: "planning" }}
                   style={{ width: `${pctPlanning}%` }}
                   className="h-full bg-cyan-500 transition-all duration-300 first:rounded-l-full last:rounded-r-full cursor-pointer hover:opacity-85"
@@ -266,7 +275,8 @@ export const ProfileAnimeStats = React.memo(function ProfileAnimeStats({ items }
             return (
               <Link
                 key={status}
-                to="/account"
+                to={profileNick ? "/profile/$nick" : "/account"}
+                params={profileNick ? { nick: profileNick } : undefined}
                 search={{ status }}
                 className="group w-full flex items-center justify-between gap-2 text-xs py-1.5 px-2.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-white/[0.05] text-zinc-300 hover:text-white"
                 aria-label={`Ver ${label}: ${count} animes`}

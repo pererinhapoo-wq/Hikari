@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
 import {
   getMyAnimeTrackingPaginated,
+  getPublicAnimeTrackingPaginated,
   upsertAnimeTracking,
 } from "@/lib/profile-tracking.functions";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,8 @@ export interface ProfileTrackingSpaceProps {
   onFilterChange?: (filter: FilterOption) => void;
   hideFilterBar?: boolean;
   onCountsChange?: (counts: Record<FilterOption, number>) => void;
+  targetUserId?: string;
+  readOnly?: boolean;
 }
 
 const PAGE_SIZE = 24;
@@ -42,6 +45,7 @@ interface AnimeTrackingCardProps {
   item: UserAnimeTrackingItem;
   isUpdating: boolean;
   isMobileActive: boolean;
+  readOnly?: boolean;
   onCardClick: (e: React.MouseEvent, animeId: string) => void;
   onQuickIncrement: (item: UserAnimeTrackingItem) => void;
   onEdit: (item: UserAnimeTrackingItem) => void;
@@ -56,6 +60,7 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
   item,
   isUpdating,
   isMobileActive,
+  readOnly = false,
   onCardClick,
   onQuickIncrement,
   onEdit,
@@ -196,53 +201,55 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
           </div>
         )}
 
-        {/* Controles de Incremento Rápido e Edição */}
-        <div
-          className={`mt-2 flex items-center justify-between gap-1 pt-1 border-t border-white/[0.06] transition-opacity duration-200 ${
-            isMobileActive
-              ? "opacity-100"
-              : "opacity-80 sm:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:sm:group-hover:opacity-100"
-          }`}
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onQuickIncrement(item);
-            }}
-            disabled={isButtonDisabled}
-            className={`inline-flex items-center justify-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-transform duration-100 ease-out shrink-0 ${
-              isButtonDisabled
-                ? "border border-white/10 bg-white/[0.04] text-zinc-500 cursor-not-allowed opacity-60"
-                : "border border-purple-500/35 bg-purple-500/15 text-purple-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-400/60 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/30 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer"
+        {/* Controles de Incremento Rápido e Edição (somente no próprio perfil) */}
+        {!readOnly && (
+          <div
+            className={`mt-2 flex items-center justify-between gap-1 pt-1 border-t border-white/[0.06] transition-opacity duration-200 ${
+              isMobileActive
+                ? "opacity-100"
+                : "opacity-80 sm:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:sm:group-hover:opacity-100"
             }`}
-            title={
-              isCompletedOrMax
-                ? "Todos os episódios assistidos"
-                : isUpdating
-                  ? "Atualizando..."
-                  : "Adicionar 1 episódio assistido (+1)"
-            }
           >
-            <Plus className="size-2.5 shrink-0 stroke-[2.5]" />
-            <span>1 ep</span>
-          </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onQuickIncrement(item);
+              }}
+              disabled={isButtonDisabled}
+              className={`inline-flex items-center justify-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-transform duration-100 ease-out shrink-0 ${
+                isButtonDisabled
+                  ? "border border-white/10 bg-white/[0.04] text-zinc-500 cursor-not-allowed opacity-60"
+                  : "border border-purple-500/35 bg-purple-500/15 text-purple-200 [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-400/60 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/30 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer"
+              }`}
+              title={
+                isCompletedOrMax
+                  ? "Todos os episódios assistidos"
+                  : isUpdating
+                    ? "Atualizando..."
+                    : "Adicionar 1 episódio assistido (+1)"
+              }
+            >
+              <Plus className="size-2.5 shrink-0 stroke-[2.5]" />
+              <span>1 ep</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onEdit(item);
-            }}
-            className="inline-flex items-center justify-center gap-0.5 rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200 transition-transform duration-100 ease-out [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/40 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/20 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer shrink-0"
-            title="Editar status e episódios"
-          >
-            <Pencil className="size-2.5 text-purple-300 shrink-0" />
-            <span>Editar</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onEdit(item);
+              }}
+              className="inline-flex items-center justify-center gap-0.5 rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-200 transition-transform duration-100 ease-out [@media(hover:hover)_and_(pointer:fine)]:hover:border-purple-500/40 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-purple-600/20 [@media(hover:hover)_and_(pointer:fine)]:hover:text-white active:scale-95 cursor-pointer shrink-0"
+              title="Editar status e episódios"
+            >
+              <Pencil className="size-2.5 text-purple-300 shrink-0" />
+              <span>Editar</span>
+            </button>
+          </div>
+        )}
       </div>
     </article>
   );
@@ -256,7 +263,10 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   onFilterChange,
   hideFilterBar = false,
   onCountsChange,
+  targetUserId,
+  readOnly = false,
 }: ProfileTrackingSpaceProps) {
+  const isReadOnly = Boolean(readOnly || targetUserId);
   const [internalFilter, setInternalFilter] = useState<FilterOption>("all");
   const filter = activeFilter !== undefined ? activeFilter : internalFilter;
 
@@ -304,16 +314,18 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
   }, []);
 
   const handleCardClick = useCallback((e: React.MouseEvent, animeId: string) => {
+    if (isReadOnly) return;
     if (isMobileOrTouch(e) && activeMobileCardId !== animeId) {
       // Primeiro toque no card no mobile: revela os controles sem acionar ação acidental
       e.preventDefault();
       e.stopPropagation();
       setActiveMobileCardId(animeId);
     }
-  }, [activeMobileCardId, isMobileOrTouch]);
+  }, [activeMobileCardId, isMobileOrTouch, isReadOnly]);
 
   const upsertTrackingFn = useServerFn(upsertAnimeTracking);
   const getPaginatedTrackingFn = useServerFn(getMyAnimeTrackingPaginated);
+  const getPublicPaginatedTrackingFn = useServerFn(getPublicAnimeTrackingPaginated);
 
   // Estados de Paginação Real
   const [items, setItems] = useState<UserAnimeTrackingItem[]>(() => initialItems || []);
@@ -349,12 +361,19 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
   // Índice em memória (Set) de IDs carregados por filtro para deduplicação O(1) sem alocação
   const loadedIdSetsRef = useRef<Map<FilterOption, Set<string>>>(new Map());
+  const lastTargetUserIdRef = useRef<string | undefined>(targetUserId);
 
   const animeSentinelRef = useRef<HTMLDivElement>(null);
 
   // Busca inicial (lote de 24) por filtro
   useEffect(() => {
     let active = true;
+
+    if (lastTargetUserIdRef.current !== targetUserId) {
+      filterCacheRef.current = {};
+      loadedIdSetsRef.current.clear();
+      lastTargetUserIdRef.current = targetUserId;
+    }
 
     // Se já foi carregado para este filtro na sessão do componente, restaura do cache
     const cached = filterCacheRef.current[filter];
@@ -372,13 +391,24 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     setHasMore(true);
     fetchingRef.current = true;
 
-    void getPaginatedTrackingFn({
-      data: {
-        status: filter === "all" ? undefined : filter,
-        page: 1,
-        limit: PAGE_SIZE,
-      },
-    })
+    const requestPromise = targetUserId
+      ? getPublicPaginatedTrackingFn({
+          data: {
+            userId: targetUserId,
+            status: filter === "all" ? undefined : filter,
+            page: 1,
+            limit: PAGE_SIZE,
+          },
+        })
+      : getPaginatedTrackingFn({
+          data: {
+            status: filter === "all" ? undefined : filter,
+            page: 1,
+            limit: PAGE_SIZE,
+          },
+        });
+
+    void requestPromise
       .then((res) => {
         if (!active) return;
         setItems(res.items);
@@ -412,7 +442,13 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       active = false;
       fetchingRef.current = false;
     };
-  }, [filter, getPaginatedTrackingFn, onCountsChange]);
+  }, [
+    filter,
+    targetUserId,
+    getPaginatedTrackingFn,
+    getPublicPaginatedTrackingFn,
+    onCountsChange,
+  ]);
 
   // Carrega a próxima página (lote de 24) ao se aproximar do fim da lista
   const loadNextPage = useCallback(() => {
@@ -423,13 +459,24 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
     const nextPage = page + 1;
 
-    void getPaginatedTrackingFn({
-      data: {
-        status: filter === "all" ? undefined : filter,
-        page: nextPage,
-        limit: PAGE_SIZE,
-      },
-    })
+    const requestPromise = targetUserId
+      ? getPublicPaginatedTrackingFn({
+          data: {
+            userId: targetUserId,
+            status: filter === "all" ? undefined : filter,
+            page: nextPage,
+            limit: PAGE_SIZE,
+          },
+        })
+      : getPaginatedTrackingFn({
+          data: {
+            status: filter === "all" ? undefined : filter,
+            page: nextPage,
+            limit: PAGE_SIZE,
+          },
+        });
+
+    void requestPromise
       .then((res) => {
         setItems((prev) => {
           // Prevenção estrita de registros duplicados com Set index O(1)
@@ -471,7 +518,16 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
         fetchingRef.current = false;
         setLoadingMore(false);
       });
-  }, [filter, getPaginatedTrackingFn, hasMore, dataLoading, onCountsChange, page]);
+  }, [
+    filter,
+    targetUserId,
+    getPaginatedTrackingFn,
+    getPublicPaginatedTrackingFn,
+    hasMore,
+    dataLoading,
+    onCountsChange,
+    page,
+  ]);
 
   // IntersectionObserver com rootMargin entre 300px e 400px (350px) para rolagem suave
   useEffect(() => {
@@ -495,6 +551,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
 
   // Callback estável para incremento rápido (+1 ep)
   const handleQuickIncrement = useCallback(async (item: UserAnimeTrackingItem) => {
+    if (isReadOnly) return;
     const currentWatched = item.episodesWatched ?? 0;
     const maxEps = item.episodesCount ?? null;
     if (maxEps !== null && maxEps > 0 && currentWatched >= maxEps) {
@@ -564,7 +621,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     } finally {
       setUpdatingId(null);
     }
-  }, [filter, onUpdateItem, upsertTrackingFn]);
+  }, [filter, isReadOnly, onUpdateItem, upsertTrackingFn]);
 
   // Callback estável para salvar edição completa
   const handleSaveEdit = useCallback(async (data: {
@@ -573,7 +630,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
     score: number | null;
     episodesWatched: number;
   }) => {
-    if (!editingItem) return;
+    if (isReadOnly || !editingItem) return;
     const targetItem = editingItem;
     const previousItem = { ...targetItem };
 
@@ -636,7 +693,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
       onUpdateItem?.(previousItem);
       throw err;
     }
-  }, [editingItem, filter, onUpdateItem, upsertTrackingFn]);
+  }, [editingItem, filter, isReadOnly, onUpdateItem, upsertTrackingFn]);
 
   // Estrutura de busca e ordenação em memória otimizada com useDeferredValue
   const processedItems = useMemo(() => {
@@ -798,7 +855,9 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
             {searchQuery
               ? "Tente buscar por outro termo ou limpe a busca para visualizar os animes disponíveis."
               : filter === "all"
-                ? "Você ainda não adicionou nenhum anime à sua lista de acompanhamento."
+                ? isReadOnly
+                  ? "Este usuário ainda não adicionou nenhum anime à sua lista de acompanhamento."
+                  : "Você ainda não adicionou nenhum anime à sua lista de acompanhamento."
                 : `Nenhum anime com status "${STATUS_CONFIG[filter]?.label || filter}".`}
           </p>
           {searchQuery && (
@@ -820,6 +879,7 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
                 item={item}
                 isUpdating={updatingId === item.animeId}
                 isMobileActive={activeMobileCardId === item.animeId}
+                readOnly={isReadOnly}
                 onCardClick={handleCardClick}
                 onQuickIncrement={handleQuickIncrement}
                 onEdit={setEditingItem}
@@ -838,8 +898,8 @@ export const ProfileTrackingSpace = React.memo(function ProfileTrackingSpace({
         </div>
       )}
 
-      {/* Modal de Edição Direta de Anime da Coleção */}
-      {editingItem && (
+      {/* Modal de Edição Direta de Anime da Coleção (somente no próprio perfil) */}
+      {!isReadOnly && editingItem && (
         <ProfileAnimeEditModal
           key={editingItem.animeId}
           isOpen={true}

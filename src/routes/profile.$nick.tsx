@@ -33,7 +33,12 @@ import {
 import { getPublicProfileFavorites } from "@/lib/profile-favorites.functions";
 import { getPublicAnimeTracking } from "@/lib/profile-tracking.functions";
 import type { ProfileFavoritesGrouped } from "@/types/favorite";
-import type { UserAnimeTrackingItem } from "@/types/profile-tracking";
+import {
+  STATUS_CONFIG,
+  STATUS_ORDER,
+  type TrackingStatus,
+  type UserAnimeTrackingItem,
+} from "@/types/profile-tracking";
 
 import { ProfileIdentityHeader } from "@/components/profile/ProfileIdentityHeader";
 import {
@@ -49,12 +54,18 @@ const LazyProfileOverviewSpace = lazy(() =>
   })),
 );
 
+const LazyProfileTrackingSpace = lazy(() =>
+  import("@/components/profile/ProfileTrackingSpace").then((m) => ({
+    default: m.ProfileTrackingSpace,
+  })),
+);
+
 const TAB_PREFETCHERS: Record<ProfileSpace, () => void> = {
   overview: () => {
     void import("@/components/profile/ProfileOverviewSpace");
   },
   animes: () => {
-    // not present on public profile
+    void import("@/components/profile/ProfileTrackingSpace");
   },
   comments: () => {
     void import("@/components/profile/ProfileCommentsSpace");
@@ -210,6 +221,7 @@ function WorksViewSkeleton() {
 
 interface PublicProfileSearchParams {
   tab?: "comments" | "activity" | "favorites";
+  status?: TrackingStatus;
   studio?: string;
   studioId?: string;
   dublador?: string;
@@ -221,13 +233,21 @@ interface PublicProfileSearchParams {
 }
 
 export const Route = createFileRoute("/profile/$nick")({
-  validateSearch: (raw: Record<string, unknown>): PublicProfileSearchParams => ({
-    tab:
-      raw.tab === "comments" || raw.tab === "activity" || raw.tab === "favorites"
-        ? (raw.tab as "comments" | "activity" | "favorites")
-        : undefined,
-    studio:
-      typeof raw.studio === "string" && raw.studio ? raw.studio : undefined,
+  validateSearch: (raw: Record<string, unknown>): PublicProfileSearchParams => {
+    const status =
+      typeof raw.status === "string" &&
+      STATUS_ORDER.includes(raw.status as TrackingStatus)
+        ? (raw.status as TrackingStatus)
+        : undefined;
+
+    return {
+      tab:
+        raw.tab === "comments" || raw.tab === "activity" || raw.tab === "favorites"
+          ? (raw.tab as "comments" | "activity" | "favorites")
+          : undefined,
+      status,
+      studio:
+        typeof raw.studio === "string" && raw.studio ? raw.studio : undefined,
     studioId:
       typeof raw.studioId === "string" && raw.studioId
         ? raw.studioId
@@ -274,7 +294,8 @@ export const Route = createFileRoute("/profile/$nick")({
             : typeof raw.personId === "number"
               ? String(raw.personId)
               : undefined,
-  }),
+    };
+  },
   component: PublicProfile,
 });
 
@@ -285,6 +306,16 @@ function PublicProfile() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const { user: currentUser } = useCurrentUserState();
+
+  const urlStatus =
+    search.status ||
+    (typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("status") as TrackingStatus | null)
+      : null);
+  const statusParam =
+    urlStatus && STATUS_ORDER.includes(urlStatus) ? urlStatus : undefined;
+  const statusParamRef = useRef(statusParam);
+  statusParamRef.current = statusParam;
 
   const studioParam =
     search.studio ||
@@ -351,6 +382,7 @@ function PublicProfile() {
   // Acompanhamento de animes para o Anime Stats do perfil visitado
   const [trackingItems, setTrackingItems] = useState<UserAnimeTrackingItem[]>([]);
   const [trackingLoading, setTrackingLoading] = useState(false);
+  const [statusCounts, setStatusCounts] = useState<Record<"all" | TrackingStatus, number> | null>(null);
 
   // Favoritos agrupados (necessários para a Visão Geral)
   const [favoritesGrouped, setFavoritesGrouped] = useState<ProfileFavoritesGrouped>({
@@ -417,6 +449,7 @@ function PublicProfile() {
     setError("");
     setTrackingItems([]);
     setTrackingLoading(false);
+    setStatusCounts(null);
     setFavoritesGrouped({
       anime: [],
       character: [],
@@ -442,7 +475,11 @@ function PublicProfile() {
 
         // Se for o próprio usuário, redireciona imediatamente para o Perfil próprio (/account)
         if (result.isOwner) {
-          void navigate({ to: "/account", replace: true });
+          void navigate({
+            to: "/account",
+            search: statusParamRef.current ? { status: statusParamRef.current } : undefined,
+            replace: true,
+          });
           return;
         }
 
@@ -1128,6 +1165,67 @@ function PublicProfile() {
     );
   }
 
+  // Se o perfil visitado for aberto com parâmetro de status (clicando em Anime Stats),
+  // exibe a lista filtrada somente leitura do usuário visitado respeitando privacidade e bloqueios.
+  if (
+    statusParam &&
+    STATUS_CONFIG[statusParam] &&
+    profile.canViewContent &&
+    !isBlockedByTarget &&
+    !isBlockedByMe
+  ) {
+    const cfg = STATUS_CONFIG[statusParam];
+    const filteredCount =
+      statusCounts?.[statusParam] ??
+      trackingItems.filter((i) => i.status === statusParam).length;
+
+    return (
+      <div className="relative min-h-[80vh] w-full pb-16 pt-6 sm:pt-8">
+        <div
+          className="pointer-events-none absolute -left-20 top-0 size-96 rounded-full bg-violet-600/10 blur-[120px]"
+          aria-hidden="true"
+        />
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
+          <div>
+            <Link
+              to="/profile/$nick"
+              params={{ nick: profile.nick }}
+              className="inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-zinc-400 transition hover:text-white mb-4"
+            >
+              <ArrowLeft className="size-4" />
+              Voltar ao perfil de @{profile.nick}
+            </Link>
+
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
+              <div className="flex items-center gap-3">
+                <span className={`size-3.5 rounded-full ${cfg.indicatorDot}`} />
+                <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                  Animes — {cfg.label}
+                </h1>
+                {(!trackingLoading || statusCounts !== null) && (
+                  <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-zinc-300">
+                    {filteredCount}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <Suspense fallback={<WorksViewSkeleton />}>
+            <LazyProfileTrackingSpace
+              targetUserId={profile.userId}
+              readOnly={true}
+              activeFilter={statusParam}
+              hideFilterBar={true}
+              onCountsChange={setStatusCounts}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
   const displayName = profile.name || profile.nick;
   const userNick = profile.nick;
   const userBio = profile.bio || "";
@@ -1261,6 +1359,7 @@ function PublicProfile() {
                         activityItems={activities}
                         comments={comments}
                         loading={favoritesLoading || trackingLoading}
+                        profileNick={profile.nick}
                       />
                     </Suspense>
                   )}
