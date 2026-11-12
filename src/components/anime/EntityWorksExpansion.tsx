@@ -9,6 +9,7 @@ import {
   type StaffWorkItem,
   type StudioWorkAnime,
 } from "@/lib/entity-works";
+import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
 
@@ -202,28 +203,27 @@ export const StudioAnimeCard = memo(function StudioAnimeCard({
           [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
           group-active:border-purple-400
         ">
-          {anime.cover ? (
-            <img
-              src={anime.cover}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="
-                size-full
-                object-cover
-                transition-transform
-                duration-300
-                ease-out
-                [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
-                group-active:scale-[1.01]
-                motion-reduce:transform-none
-              "
-            />
-          ) : (
-            <div className="flex size-full items-center justify-center text-zinc-600">
-              <Film className="size-6" />
-            </div>
-          )}
+          <ProfileAnimeImage
+            src={anime.cover}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="
+              size-full
+              object-cover
+              transition-transform
+              duration-300
+              ease-out
+              [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
+              group-active:scale-[1.01]
+              motion-reduce:transform-none
+            "
+            fallback={
+              <div className="flex size-full items-center justify-center text-zinc-600">
+                <Film className="size-6" />
+              </div>
+            }
+          />
 
           {/* Camada de sombra/glow acelerada por GPU */}
           <div
@@ -295,28 +295,27 @@ export const DubladorAnimeCard = memo(function DubladorAnimeCard({
           [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
           group-active:border-purple-400
         ">
-          {work.anime.cover ? (
-            <img
-              src={work.anime.cover}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="
-                size-full
-                object-cover
-                transition-transform
-                duration-300
-                ease-out
-                [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
-                group-active:scale-[1.01]
-                motion-reduce:transform-none
-              "
-            />
-          ) : (
-            <div className="flex size-full items-center justify-center text-zinc-600">
-              <Film className="size-6" />
-            </div>
-          )}
+          <ProfileAnimeImage
+            src={work.anime.cover}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="
+              size-full
+              object-cover
+              transition-transform
+              duration-300
+              ease-out
+              [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
+              group-active:scale-[1.01]
+              motion-reduce:transform-none
+            "
+            fallback={
+              <div className="flex size-full items-center justify-center text-zinc-600">
+                <Film className="size-6" />
+              </div>
+            }
+          />
 
           {/* Camada de sombra/glow acelerada por GPU */}
           <div
@@ -383,28 +382,27 @@ export const StaffAnimeCard = memo(function StaffAnimeCard({
           [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
           group-active:border-purple-400
         ">
-          {work.anime.cover ? (
-            <img
-              src={work.anime.cover}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="
-                size-full
-                object-cover
-                transition-transform
-                duration-300
-                ease-out
-                [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
-                group-active:scale-[1.01]
-                motion-reduce:transform-none
-              "
-            />
-          ) : (
-            <div className="flex size-full items-center justify-center text-zinc-600">
-              <Film className="size-6" />
-            </div>
-          )}
+          <ProfileAnimeImage
+            src={work.anime.cover}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="
+              size-full
+              object-cover
+              transition-transform
+              duration-300
+              ease-out
+              [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
+              group-active:scale-[1.01]
+              motion-reduce:transform-none
+            "
+            fallback={
+              <div className="flex size-full items-center justify-center text-zinc-600">
+                <Film className="size-6" />
+              </div>
+            }
+          />
 
           {/* Camada de sombra/glow acelerada por GPU */}
           <div

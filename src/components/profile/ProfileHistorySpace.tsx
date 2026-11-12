@@ -14,6 +14,7 @@ import {
   Star,
   XCircle,
 } from "lucide-react";
+import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import { cn } from "@/lib/utils";
 import type { UserActivityItem } from "@/lib/profile.functions";
 import type {
@@ -332,37 +333,36 @@ export function ProfileHistorySpace({
                 <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
                   {/* Thumbnail / Ícone */}
                   <div className="relative size-14 sm:size-16 shrink-0 overflow-hidden rounded-xl bg-[#161424]">
-                    {entry.resourceCover ? (
-                      <img
-                        src={entry.resourceCover}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
-                      />
-                    ) : (
-                      <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
-                        {isFavorite ? (
-                          <Heart className="size-6 text-rose-400" />
-                        ) : isList ? (
-                          <ListPlus className="size-6 text-amber-400" />
-                        ) : isTracking ? (
-                          trackingStatus === "watching" ? (
-                            <Play className="size-6 text-emerald-400" />
-                          ) : trackingStatus === "completed" ? (
-                            <CheckCircle2 className="size-6 text-violet-400" />
-                          ) : trackingStatus === "on_hold" ? (
-                            <Clock className="size-6 text-amber-400" />
-                          ) : trackingStatus === "dropped" ? (
-                            <XCircle className="size-6 text-rose-400" />
+                    <ProfileAnimeImage
+                      src={entry.resourceCover}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
+                      fallback={
+                        <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
+                          {isFavorite ? (
+                            <Heart className="size-6 text-rose-400" />
+                          ) : isList ? (
+                            <ListPlus className="size-6 text-amber-400" />
+                          ) : isTracking ? (
+                            trackingStatus === "watching" ? (
+                              <Play className="size-6 text-emerald-400" />
+                            ) : trackingStatus === "completed" ? (
+                              <CheckCircle2 className="size-6 text-violet-400" />
+                            ) : trackingStatus === "on_hold" ? (
+                              <Clock className="size-6 text-amber-400" />
+                            ) : trackingStatus === "dropped" ? (
+                              <XCircle className="size-6 text-rose-400" />
+                            ) : (
+                              <Bookmark className="size-6 text-sky-400" />
+                            )
                           ) : (
-                            <Bookmark className="size-6 text-sky-400" />
-                          )
-                        ) : (
-                          <Film className="size-6" />
-                        )}
-                      </div>
-                    )}
+                            <Film className="size-6" />
+                          )}
+                        </div>
+                      }
+                    />
                   </div>
 
                   <div className="min-w-0 flex-1">

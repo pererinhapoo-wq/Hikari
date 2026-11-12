@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import type { MyProfileComment } from "@/lib/profile.functions";
 import { useScrollLock } from "@/lib/scroll-lock";
 
@@ -269,19 +270,20 @@ export function ProfileCommentsSpace({
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.05] pb-3 text-xs">
                   <div className="flex items-center gap-2.5 min-w-0">
                     {/* Capa Miniatura do Anime se disponível */}
-                    {comment.animeCover ? (
-                      <img
+                    <div className="relative size-8 shrink-0 overflow-hidden rounded-lg bg-white/5">
+                      <ProfileAnimeImage
                         src={comment.animeCover}
                         alt=""
                         loading="lazy"
                         decoding="async"
-                        className="size-8 shrink-0 rounded-lg object-cover bg-white/5"
+                        className="size-full object-cover"
+                        fallback={
+                          <div className="grid size-full place-items-center text-zinc-500">
+                            <Film className="size-4" />
+                          </div>
+                        }
                       />
-                    ) : (
-                      <div className="size-8 shrink-0 rounded-lg bg-white/5 grid place-items-center text-zinc-500">
-                        <Film className="size-4" />
-                      </div>
-                    )}
+                    </div>
 
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">

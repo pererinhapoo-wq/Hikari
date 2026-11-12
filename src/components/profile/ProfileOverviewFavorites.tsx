@@ -19,6 +19,7 @@ import {
   EntityWorksExpansion,
   type SelectedEntityTarget,
 } from "@/components/anime/EntityWorksExpansion";
+import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import { getStudioLogo } from "@/lib/studio-logos";
 import { cn } from "@/lib/utils";
 import type { ProfileFavoriteItem, ProfileFavoritesGrouped } from "@/types/favorite";
@@ -346,7 +347,6 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
   onCardClick: (item: ProfileFavoriteItem) => void;
   isOwner?: boolean;
 }) {
-  const [imgError, setImgError] = useState(false);
   const initial = (item.title || "?").charAt(0).toUpperCase();
 
   const cardSubtitle = useMemo(() => {
@@ -385,31 +385,29 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
         [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
         group-active:border-purple-400
       ">
-        {!imgError && item.image ? (
-          <img
-            src={item.image}
-            alt=""
-            onError={() => setImgError(true)}
-            loading="lazy"
-            decoding="async"
-            className="
-              size-full
-              object-cover
-              object-center
-              scale-[0.95]
-              transition-transform
-              duration-300
-              ease-out
-              [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98]
-              group-active:scale-[0.96]
-              motion-reduce:transform-none
-            "
-          />
-        ) : (
-          <div className="flex size-full items-center justify-center font-display text-base sm:text-lg text-zinc-600">
-            {initial}
-          </div>
-        )}
+        <ProfileAnimeImage
+          src={item.image}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="
+            size-full
+            object-cover
+            object-center
+            scale-[0.95]
+            transition-transform
+            duration-300
+            ease-out
+            [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98]
+            group-active:scale-[0.96]
+            motion-reduce:transform-none
+          "
+          fallback={
+            <div className="flex size-full items-center justify-center font-display text-base sm:text-lg text-zinc-600">
+              {initial}
+            </div>
+          }
+        />
 
         {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint contínuo da box-shadow */}
         <div
@@ -779,7 +777,20 @@ function EntityDetailModal({
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-start">
           {/* Mídia do item com proporção 3/4 */}
           <div className="relative aspect-[3/4] w-28 sm:w-36 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#151224] shadow-md mx-auto sm:mx-0 flex items-center justify-center">
-            {displayImage ? (
+            {isAnime ? (
+              <ProfileAnimeImage
+                src={displayImage}
+                alt={entity.title}
+                loading="lazy"
+                decoding="async"
+                className="size-full object-cover object-top"
+                fallback={
+                  <div className="flex size-full items-center justify-center font-display text-3xl font-bold text-purple-400">
+                    {(entity.title || "?").charAt(0).toUpperCase()}
+                  </div>
+                }
+              />
+            ) : displayImage ? (
               <img
                 src={displayImage}
                 alt={entity.title}

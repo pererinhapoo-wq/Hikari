@@ -14,6 +14,7 @@ import {
   EntityWorksExpansion,
   type SelectedEntityTarget,
 } from "@/components/anime/EntityWorksExpansion";
+import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import { cn } from "@/lib/utils";
 import type {
   FavoriteTargetType,
@@ -107,7 +108,20 @@ const FavoriteGridCard = React.memo(function FavoriteGridCard({
         items-center
         justify-center
       ">
-        {item.image ? (
+        {isAnime ? (
+          <ProfileAnimeImage
+            src={item.image}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="size-full transition-transform duration-300 ease-out motion-reduce:transform-none object-cover object-center scale-[0.95] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98] group-active:scale-[0.96]"
+            fallback={
+              <div className="flex size-full items-center justify-center text-zinc-600">
+                <Icon className="size-8" />
+              </div>
+            }
+          />
+        ) : item.image ? (
           <img
             src={item.image}
             alt=""

@@ -37,14 +37,22 @@ import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useScrollLock } from "@/lib/scroll-lock";
 import {
+  setShellUiReady,
+  useNotificationsPresentationReady,
+} from "@/lib/presentation-sync";
+import {
   lazy,
   memo,
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
+
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 let searchModalModulePromise: Promise<
   typeof import("@/components/search/SearchModal")
@@ -495,6 +503,34 @@ export function Shell() {
 
   const notificationsPanel =
     useNotificationPanelPresence(notificationsOpen, 170);
+  const notificationsPresentationReady = useNotificationsPresentationReady();
+
+  useIsomorphicLayoutEffect(() => {
+    setShellUiReady(false);
+
+    if (authPending) {
+      return;
+    }
+
+    let cancelled = false;
+    let secondFrameId: number | null = null;
+    const firstFrameId = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      secondFrameId = window.requestAnimationFrame(() => {
+        if (cancelled) return;
+        setShellUiReady(true);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(firstFrameId);
+      if (secondFrameId !== null) {
+        window.cancelAnimationFrame(secondFrameId);
+      }
+      setShellUiReady(false);
+    };
+  }, [pathname, authPending]);
 
   const notificationsRef = useRef<NotificationItem[]>([]);
   notificationsRef.current = notifications;
@@ -1275,7 +1311,7 @@ export function Shell() {
             >
               <Bell className="size-4 sm:size-5" />
 
-              {unreadCount > 0 && (
+              {notificationsPresentationReady && unreadCount > 0 && (
                 <span className="absolute right-0.5 top-0.5 flex min-w-4 h-4 sm:min-w-5 sm:h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] sm:text-[10px] font-bold leading-none text-white ring-2 ring-bg tabular-nums">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
@@ -1395,7 +1431,7 @@ export function Shell() {
             </div>
 
             {/* CORPO DO PAINEL COM ROLAGEM VERTICAL E CARREGAMENTO AUTOMÁTICO */}
-            {notificationsLoading ? (
+            {notificationsLoading || !notificationsPresentationReady ? (
               <div className="flex min-h-40 flex-1 items-center justify-center px-4 py-8 text-center">
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="size-5 animate-spin text-purple-300" />

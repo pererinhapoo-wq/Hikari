@@ -11,6 +11,7 @@ import {
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
+import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import {
   getMyAnimeTrackingPaginated,
   getPublicAnimeTrackingPaginated,
@@ -121,28 +122,27 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
           [@media(hover:hover)_and_(pointer:fine)]:group-hover:border-purple-500/50
           group-active:border-purple-400
         ">
-          {item.cover ? (
-            <img
-              src={item.cover}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="
-                size-full
-                object-cover
-                transition-transform
-                duration-300
-                ease-out
-                [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
-                group-active:scale-[1.01]
-                motion-reduce:transform-none
-              "
-            />
-          ) : (
-            <div className="flex size-full items-center justify-center font-display text-base text-zinc-600">
-              {item.title.slice(0, 1)}
-            </div>
-          )}
+          <ProfileAnimeImage
+            src={item.cover}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="
+              size-full
+              object-cover
+              transition-transform
+              duration-300
+              ease-out
+              [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
+              group-active:scale-[1.01]
+              motion-reduce:transform-none
+            "
+            fallback={
+              <div className="flex size-full items-center justify-center font-display text-base text-zinc-600">
+                {item.title.slice(0, 1)}
+              </div>
+            }
+          />
 
           {/* Camada de sombra/glow acelerada por GPU via opacidade, evitando repaint da box-shadow */}
           <div

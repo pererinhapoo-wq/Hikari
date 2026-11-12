@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   BadgeCheck,
   Camera,
@@ -12,6 +12,11 @@ import {
   UserX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+type BannerLoadStatus = "loading" | "loaded" | "error";
 
 export interface ProfileIdentityHeaderProps {
   name: string;
@@ -71,6 +76,25 @@ export const ProfileIdentityHeader = memo(function ProfileIdentityHeader({
 
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const bannerImgRef = useRef<HTMLImageElement | null>(null);
+  const [bannerStatus, setBannerStatus] = useState<BannerLoadStatus>(
+    bannerUrl ? "loading" : "loaded",
+  );
+
+  useIsomorphicLayoutEffect(() => {
+    if (!bannerUrl) {
+      setBannerStatus("loaded");
+      return;
+    }
+
+    const img = bannerImgRef.current;
+    if (img && img.complete) {
+      setBannerStatus(img.naturalWidth > 0 ? "loaded" : "error");
+      return;
+    }
+
+    setBannerStatus("loading");
+  }, [bannerUrl]);
 
   // Fecha o menu de três pontinhos ao clicar fora ou pressionar Escape
   useEffect(() => {
@@ -100,14 +124,23 @@ export const ProfileIdentityHeader = memo(function ProfileIdentityHeader({
     <header className="relative z-10 w-full overflow-hidden rounded-2xl border border-purple-900/30 bg-[#130E24] shadow-[0_16px_50px_rgba(0,0,0,0.7)]">
       {/* 1. Banner Panorâmico do Perfil */}
       <div className="relative h-[192px] sm:h-[256px] md:h-[320px] min-h-[192px] sm:min-h-[256px] md:min-h-[320px] w-full overflow-hidden bg-gradient-to-br from-purple-950 via-[#18112e] to-[#0A0713]">
-        {bannerUrl ? (
+        {bannerUrl && bannerStatus !== "error" ? (
           <>
             <img
+              ref={bannerImgRef}
               src={bannerUrl}
               alt="Banner do perfil"
               decoding="async"
               fetchPriority="high"
               referrerPolicy="no-referrer"
+              onLoad={(e) => {
+                setBannerStatus(
+                  e.currentTarget.naturalWidth > 0 ? "loaded" : "error",
+                );
+              }}
+              onError={() => {
+                setBannerStatus("error");
+              }}
               className="h-full w-full object-cover object-center"
             />
             {/* Gradiente escurecedor suave para manter legibilidade das badges e contraste do avatar */}
@@ -137,6 +170,17 @@ export const ProfileIdentityHeader = memo(function ProfileIdentityHeader({
               aria-hidden="true"
             />
           </>
+        )}
+
+        {/* Animação única e discreta na região superior do banner enquanto a imagem carrega */}
+        {bannerUrl && bannerStatus === "loading" && (
+          <div
+            aria-hidden="true"
+            data-banner-top-loader="true"
+            className="pointer-events-none absolute inset-x-0 top-0 z-20 h-[3px] overflow-hidden"
+          >
+            <div className="hikari-banner-top-loader" />
+          </div>
         )}
 
         {/* Controles do Banner (Trocar e Remover Banner) & Indicador de Privacidade */}

@@ -8,6 +8,7 @@ import {
   Lock,
   Sparkles,
 } from "lucide-react";
+import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import type { ProfileListSummary } from "@/types/profile-list";
 
 interface ProfileListsSpaceProps {
@@ -105,12 +106,17 @@ export function ProfileListsSpace({
                             key={idx}
                             className="relative size-full overflow-hidden rounded-lg bg-[#141220]"
                           >
-                            <img
+                            <ProfileAnimeImage
                               src={coverUrl}
                               alt=""
                               loading="lazy"
                               decoding="async"
                               className="size-full object-cover transition-transform duration-500 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
+                              fallback={
+                                <div className="flex size-full items-center justify-center rounded-lg bg-white/[0.02] text-zinc-700">
+                                  <Film className="size-4" />
+                                </div>
+                              }
                             />
                           </div>
                         ))}

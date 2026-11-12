@@ -5,6 +5,7 @@ import { Check, ChevronRight, Info, Play } from "lucide-react";
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
 import { getAnimeLogo } from "@/lib/anime-logos";
+import { useSynchronizedImageRef } from "@/lib/presentation-sync";
 
 /**
  * Determina o total de temporadas confirmadas para o anime em formato compacto (ex.: "S1–S3").
@@ -457,6 +458,10 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
 
   const mobileBackdrop = anime.cover || anime.banner || "";
   const desktopBackdrop = anime.banner || anime.cover || "";
+  const heroBackdropRef = useSynchronizedImageRef(
+    priority,
+    mobileBackdrop || desktopBackdrop,
+  );
 
   const scoreValue = anime.score != null ? scoreLabel(anime.score) : null;
   const seasonsSpan = useMemo(
@@ -516,6 +521,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             />
           ) : null}
           <img
+            ref={heroBackdropRef}
             src={mobileBackdrop || desktopBackdrop}
             alt={preferredTitle}
             width={460}

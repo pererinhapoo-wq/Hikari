@@ -23,6 +23,7 @@ import {
   type FormEvent,
 } from "react";
 
+import { NewsSyncImage } from "@/components/NewsSyncImage";
 import {
   fetchAutomaticNews,
   type AutomaticNewsItem,
@@ -1272,11 +1273,13 @@ function NewsPage() {
                               bg-black
                             "
                           >
-                            <img
+                            <NewsSyncImage
                               src={
                                 item.image
                               }
                               alt=""
+                              syncCritical
+                              loading="eager"
                               className="
                                 h-full
                                 w-full
@@ -1462,9 +1465,10 @@ function NewsPage() {
                   lg:aspect-[16/6]
                 "
               >
-                <img
+                <NewsSyncImage
                   src={featuredItem.bannerImage || featuredItem.image}
                   alt={featuredItem.title}
+                  syncCritical
                   className="
                     absolute
                     inset-0
@@ -1623,7 +1627,7 @@ function NewsPage() {
               "
             >
               {visibleNews.map(
-                (item) => (
+                (item, index) => (
                   <Link
                     key={
                       item.id
@@ -1655,13 +1659,14 @@ function NewsPage() {
                         bg-black
                       "
                     >
-                      <img
+                      <NewsSyncImage
                         src={
                           item.image
                         }
                         alt={
                           item.title
                         }
+                        syncCritical={index < 4}
                         className="
                           absolute
                           inset-0
@@ -1670,7 +1675,7 @@ function NewsPage() {
                           object-contain
                           object-center
                         "
-                        loading="lazy"
+                        loading={index < 4 ? "eager" : "lazy"}
                       />
 
                       <div

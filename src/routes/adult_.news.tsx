@@ -22,6 +22,7 @@ import {
   type FormEvent,
 } from "react";
 
+import { NewsSyncImage } from "@/components/NewsSyncImage";
 import {
   fetchAdultNews,
   type AutomaticNewsItem,
@@ -904,11 +905,13 @@ function NewsPage() {
                               bg-black
                             "
                           >
-                            <img
+                            <NewsSyncImage
                               src={
                                 item.image
                               }
                               alt=""
+                              syncCritical
+                              loading="eager"
                               className="
                                 h-full
                                 w-full
@@ -1100,7 +1103,7 @@ function NewsPage() {
               "
             >
               {visibleNews.map(
-                (item) => (
+                (item, index) => (
                   <Link
                     key={
                       item.id
@@ -1132,13 +1135,14 @@ function NewsPage() {
                         bg-black
                       "
                     >
-                      <img
+                      <NewsSyncImage
                         src={
                           item.image
                         }
                         alt={
                           item.title
                         }
+                        syncCritical={index < 4}
                         className="
                           absolute
                           inset-0
@@ -1147,7 +1151,7 @@ function NewsPage() {
                           object-contain
                           object-center
                         "
-                        loading="lazy"
+                        loading={index < 4 ? "eager" : "lazy"}
                       />
 
                       <div

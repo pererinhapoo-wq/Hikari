@@ -13,6 +13,7 @@ import {
   Tv,
 } from "lucide-react";
 
+import { NewsSyncImage } from "@/components/NewsSyncImage";
 import {
   fetchAutomaticNews,
   type AutomaticNewsItem,
@@ -437,9 +438,11 @@ function NewsDetailsPage() {
             bg-black
           "
         >
-          <img
+          <NewsSyncImage
             src={news.image}
             alt=""
+            syncCritical
+            loading="eager"
             className="
               size-full
               object-contain
@@ -878,7 +881,7 @@ function NewsDetailsPage() {
                     bg-elevated
                   "
                 >
-                  <img
+                  <NewsSyncImage
                     src={
                       news.anime
                         .image
@@ -887,6 +890,8 @@ function NewsDetailsPage() {
                       news.anime
                         .name
                     }
+                    syncCritical
+                    loading="eager"
                     className="
                       aspect-[2/3]
                       w-full

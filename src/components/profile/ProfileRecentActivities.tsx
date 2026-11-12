@@ -12,6 +12,7 @@ import {
   Star,
   XCircle,
 } from "lucide-react";
+import { ProfileAnimeImage } from "@/components/profile/ProfileAnimeImage";
 import type { MyProfileComment, UserActivityItem } from "@/lib/profile.functions";
 import { cn } from "@/lib/utils";
 import type { TrackingStatus } from "@/types/profile-tracking";
@@ -251,19 +252,18 @@ export function ProfileRecentActivities({
                   <div className="flex items-start gap-3.5 sm:gap-4 min-w-0 flex-1">
                     {/* Capa / Ícone */}
                     <div className="relative aspect-[2/3] w-12 sm:w-14 shrink-0 overflow-hidden rounded-none border border-white/10 bg-[#161424] mt-0.5">
-                      {comm.animeCover ? (
-                        <img
-                          src={comm.animeCover}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
-                        />
-                      ) : (
-                        <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
-                          <MessageSquare className="size-5 text-purple-400" />
-                        </div>
-                      )}
+                      <ProfileAnimeImage
+                        src={comm.animeCover}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
+                        fallback={
+                          <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
+                            <MessageSquare className="size-5 text-purple-400" />
+                          </div>
+                        }
+                      />
                     </div>
 
                     {/* Informações: Anime, Episódio, Trecho do Comentário e Data */}
@@ -386,35 +386,34 @@ export function ProfileRecentActivities({
                 <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
                   {/* Capa / Ícone */}
                   <div className="relative aspect-[2/3] w-12 sm:w-14 shrink-0 overflow-hidden rounded-none border border-white/10 bg-[#161424]">
-                    {act.resourceCover ? (
-                      <img
-                        src={act.resourceCover}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
-                      />
-                    ) : (
-                      <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
-                        {isFavorite ? (
-                          <Heart className="size-5 text-rose-400" />
-                        ) : isTracking && trackingStatus ? (
-                          trackingStatus === "watching" ? (
-                            <Play className="size-5 text-emerald-400" />
-                          ) : trackingStatus === "completed" ? (
-                            <CheckCircle2 className="size-5 text-violet-400" />
-                          ) : trackingStatus === "on_hold" ? (
-                            <Clock className="size-5 text-amber-400" />
-                          ) : trackingStatus === "dropped" ? (
-                            <XCircle className="size-5 text-rose-400" />
+                    <ProfileAnimeImage
+                      src={act.resourceCover}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="size-full object-cover transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105 motion-reduce:transform-none"
+                      fallback={
+                        <div className="flex size-full items-center justify-center text-zinc-500 bg-white/[0.03]">
+                          {isFavorite ? (
+                            <Heart className="size-5 text-rose-400" />
+                          ) : isTracking && trackingStatus ? (
+                            trackingStatus === "watching" ? (
+                              <Play className="size-5 text-emerald-400" />
+                            ) : trackingStatus === "completed" ? (
+                              <CheckCircle2 className="size-5 text-violet-400" />
+                            ) : trackingStatus === "on_hold" ? (
+                              <Clock className="size-5 text-amber-400" />
+                            ) : trackingStatus === "dropped" ? (
+                              <XCircle className="size-5 text-rose-400" />
+                            ) : (
+                              <Bookmark className="size-5 text-sky-400" />
+                            )
                           ) : (
-                            <Bookmark className="size-5 text-sky-400" />
-                          )
-                        ) : (
-                          <Film className="size-5" />
-                        )}
-                      </div>
-                    )}
+                            <Film className="size-5" />
+                          )}
+                        </div>
+                      }
+                    />
                   </div>
 
                   {/* Informações: Anime, Status Canônico, Episódio e Data */}

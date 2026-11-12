@@ -8,6 +8,7 @@ import {
 } from "@/components/notifications/notification-item-card";
 import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { useNotificationsPresentationReady } from "@/lib/presentation-sync";
 import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,7 @@ const PAGE_SIZE = 20;
 
 function NotificationsPage() {
   const { user, isPending } = useCurrentUserState();
+  const notificationsPresentationReady = useNotificationsPresentationReady();
   const localAnimes = useHikariStore((s) => s.animes);
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -399,7 +401,7 @@ function NotificationsPage() {
       </div>
 
       {/* ESTADO CARREGANDO */}
-      {loading && (
+      {(loading || (Boolean(user) && !notificationsPresentationReady)) && (
         <div className="space-y-3">
           {[1, 2, 3, 4].map((i) => (
             <div
@@ -417,7 +419,9 @@ function NotificationsPage() {
       )}
 
       {/* ESTADO VAZIO */}
-      {!loading && notifications.length === 0 && (
+      {!loading &&
+        (!user || notificationsPresentationReady) &&
+        notifications.length === 0 && (
         <div className="flex min-h-60 flex-col items-center justify-center rounded-2xl border border-border/80 bg-surface/50 px-5 py-12 text-center">
           <div className="flex size-14 items-center justify-center rounded-2xl bg-elevated/80 text-muted shadow-inner mb-3">
             <Bell className="size-7" />
@@ -445,7 +449,9 @@ function NotificationsPage() {
       )}
 
       {/* LISTA DE NOTIFICAÇÕES */}
-      {!loading && notifications.length > 0 && (
+      {!loading &&
+        (!user || notificationsPresentationReady) &&
+        notifications.length > 0 && (
         <div className="space-y-3">
           <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface/70 shadow-sm backdrop-blur-sm divide-y divide-border/60">
             {notifications.map((notification) => (

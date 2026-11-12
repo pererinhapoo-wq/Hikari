@@ -19,6 +19,7 @@ import {
   useState,
 } from "react";
 
+import { NewsSyncImage } from "@/components/NewsSyncImage";
 import {
   fetchAutomaticNews,
   type AutomaticNewsItem,
@@ -531,7 +532,7 @@ function NewsSearchPage() {
               "
             >
               {visibleResults.map(
-                (item) => (
+                (item, index) => (
                   <Link
                     key={
                       item.id
@@ -570,13 +571,14 @@ function NewsSearchPage() {
                         bg-black
                       "
                     >
-                      <img
+                      <NewsSyncImage
                         src={
                           item.image
                         }
                         alt={
                           item.title
                         }
+                        syncCritical={index < 4}
                         className="
                           absolute
                           inset-0
@@ -588,7 +590,7 @@ function NewsSearchPage() {
                           duration-300
                           group-hover:scale-[1.01]
                         "
-                        loading="lazy"
+                        loading={index < 4 ? "eager" : "lazy"}
                       />
 
                       <div
