@@ -4,6 +4,7 @@ import {
   Film,
   Heart,
   Mic,
+  Star,
   Trash2,
   User,
   Users,
@@ -382,11 +383,13 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
             className="
               size-full
               object-cover
+              object-center
+              scale-[0.95]
               transition-transform
               duration-300
               ease-out
-              [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03]
-              group-active:scale-[1.01]
+              [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98]
+              group-active:scale-[0.96]
               motion-reduce:transform-none
             "
           />
@@ -406,6 +409,19 @@ const FavoriteAnimeGridCard = React.memo(function FavoriteAnimeGridCard({
         <div className="absolute top-1.5 right-1.5 flex size-5.5 items-center justify-center rounded-none bg-[#0c0a18]/90 border border-rose-500/30 text-rose-500 shadow-sm transition-transform duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105">
           <Heart className="size-3 fill-rose-500 text-rose-500" />
         </div>
+
+        {/* Indicador discreto de nota sobreposto à imagem do anime */}
+        {typeof item.userScore === "number" && item.userScore > 0 && (
+          <div
+            className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 rounded bg-[#0b0914]/90 border border-purple-500/35 px-1.5 py-0.5 text-[10px] font-bold text-purple-200 backdrop-blur-md shadow-sm select-none"
+            title={`Nota pessoal: ${item.userScore}/10`}
+          >
+            <Star className="size-2.5 text-[#c084fc] fill-[#c084fc]/50" />
+            <span className="tabular-nums leading-none">
+              {Number(item.userScore).toFixed(item.userScore % 1 === 0 ? 0 : 1)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Informações estritamente FORA do pôster */}
@@ -641,8 +657,10 @@ const FavoriteCarouselCard = React.memo(function FavoriteCarouselCard({
             loading="lazy"
             decoding="async"
             className={cn(
-              "size-full transition-transform duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none",
-              isStudio ? "object-contain p-3" : "object-cover object-top",
+              "size-full transition-transform duration-300 ease-out motion-reduce:transform-none",
+              isStudio
+                ? "object-contain p-4 scale-[0.94] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.97]"
+                : "object-cover object-center scale-[0.95] [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.98] group-active:scale-[0.96]",
             )}
           />
         ) : isStudio ? (

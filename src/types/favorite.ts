@@ -148,6 +148,7 @@ export interface ProfileFavoriteItem {
   banner: string | null;
   description: string | null;
   subtitle: string | null;
+  userScore?: number | null;
 }
 
 /**

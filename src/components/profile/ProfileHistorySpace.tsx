@@ -87,7 +87,7 @@ const TRACKING_STATUS_CONFIG: Record<
     iconClassName: "size-2.5 fill-current",
   },
   completed: {
-    label: "Assistido",
+    label: "Completo",
     icon: CheckCircle2,
     className: "bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/25",
     iconClassName: "size-3",
@@ -121,8 +121,11 @@ function getMeaningfulDescription(
   isFavorite: boolean,
   isTracking: boolean,
 ): string | null {
-  // 1. Episódio já possui etiqueta "Episódio X", omitir descrição redundante "Assistiu ao episódio X"
+  // 1. Para episódios, exibir descrição real (ex: "Atualizou o progresso para o episódio 6.")
   if (isEpisode) {
+    if (entry.description) {
+      return entry.description;
+    }
     return null;
   }
 
@@ -131,7 +134,7 @@ function getMeaningfulDescription(
     return null;
   }
 
-  // 3. Status de anime já possui etiqueta real ("Assistindo", "Assistido", "Em espera", "Abandonado", "Planejado")
+  // 3. Status de anime já possui etiqueta real ("Assistindo", "Completo", "Em espera", "Abandonado", "Planejado")
   // Não exibir descrições redundantes como "Marcou como concluído", "Começou a assistir o anime", etc.
   if (isTracking) {
     const rawDesc = (entry.description || "").toLowerCase().trim();

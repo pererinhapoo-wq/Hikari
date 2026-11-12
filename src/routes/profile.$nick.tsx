@@ -1244,7 +1244,10 @@ function PublicProfile() {
                   {/* Aba 3: Sobre */}
                   {activeSpace === "about" && (
                     <Suspense fallback={<AboutSpaceSkeleton />}>
-                      <LazyProfileAboutSpace favorites={userFavoritesList} />
+                      <LazyProfileAboutSpace
+                        favorites={userFavoritesList}
+                        createdAt={profile?.createdAt}
+                      />
                     </Suspense>
                   )}
 

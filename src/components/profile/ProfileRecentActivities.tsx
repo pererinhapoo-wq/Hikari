@@ -45,7 +45,7 @@ const TRACKING_STATUS_CONFIG: Record<
     iconClassName: "size-2.5 fill-current",
   },
   completed: {
-    label: "Assistido",
+    label: "Completo",
     icon: CheckCircle2,
     className: "bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/25",
     iconClassName: "size-3",
@@ -442,7 +442,7 @@ export function ProfileRecentActivities({
                       {isEpisode && (
                         <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/15 px-2 py-0.5 text-[11px] font-semibold text-violet-300 ring-1 ring-violet-500/25">
                           <CheckCircle2 className="size-3" />
-                          <span>Assistido</span>
+                          <span>Completo</span>
                         </span>
                       )}
 
@@ -461,8 +461,16 @@ export function ProfileRecentActivities({
                       )}
                     </div>
 
-                    {/* Metadados: Data (sem estrelas/notas e sem textos duplicados) */}
+                    {/* Metadados: Descrição e Data */}
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                      {act.description && (
+                        <>
+                          <span className="font-medium text-zinc-300">
+                            {act.description}
+                          </span>
+                          <span className="text-zinc-600">•</span>
+                        </>
+                      )}
                       <span
                         className="flex items-center gap-1 text-zinc-400 text-[11px] cursor-default"
                         title={formatFullDate(act.createdAt)}

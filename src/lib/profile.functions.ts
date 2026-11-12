@@ -49,6 +49,7 @@ export type UserProfile = {
   privacyComments: SectionPrivacyLevel;
   privacyFollowers: SectionPrivacyLevel;
   isVerified?: boolean;
+  createdAt?: string | null;
 };
 
 export type FollowRelationshipStatus =
@@ -134,6 +135,7 @@ export type PublicUserProfile = {
   canViewFollowers: boolean;
   isVerified: boolean;
   canManageVerification?: boolean;
+  createdAt?: string | null;
 };
 
 export type ProfileUser = {
@@ -499,8 +501,9 @@ export const getProfile =
           name: string | null;
           email: string | null;
           image: string | null;
+          createdAt: string | Date | null;
         }>`
-          select "name", "email", "image"
+          select "name", "email", "image", "createdAt"
           from "user"
           where "id" = ${context.userId}
           limit 1
@@ -585,6 +588,11 @@ export const getProfile =
         privacyComments: (row?.privacyComments as SectionPrivacyLevel) || "public",
         privacyFollowers: (row?.privacyFollowers as SectionPrivacyLevel) || "public",
         isVerified: Boolean(row?.isVerified),
+        createdAt: userRow?.createdAt
+          ? new Date(userRow.createdAt).toISOString()
+          : row?.createdAt
+            ? new Date(row.createdAt).toISOString()
+            : null,
       } satisfies UserProfile;
     });
 
@@ -612,6 +620,8 @@ export async function executeGetPublicProfile(
     image: string | null;
     bannerUrl: string | null;
     isVerified: boolean | null;
+    userCreatedAt: string | Date | null;
+    profileCreatedAt: string | Date | null;
   }>`
     select
       u."id" as "userId",
@@ -622,7 +632,9 @@ export async function executeGetPublicProfile(
       p."bio",
       coalesce(p."avatarUrl", u."image") as "image",
       p."bannerUrl",
-      coalesce(p."isVerified", false) as "isVerified"
+      coalesce(p."isVerified", false) as "isVerified",
+      u."createdAt" as "userCreatedAt",
+      p."createdAt" as "profileCreatedAt"
     from "user" u
     left join "profile" p on p."userId" = u."id"
     where (p."nick" is not null and lower(trim(p."nick")) = lower(${nick}))
@@ -751,6 +763,11 @@ export async function executeGetPublicProfile(
     canViewFollowers: privacy.canViewFollowers,
     isVerified: Boolean(row.isVerified),
     canManageVerification,
+    createdAt: row.userCreatedAt
+      ? new Date(row.userCreatedAt).toISOString()
+      : row.profileCreatedAt
+        ? new Date(row.profileCreatedAt).toISOString()
+        : null,
   };
 }
 
@@ -1151,6 +1168,22 @@ export async function executeGetUserActivities(
 
       UNION ALL
 
+      -- 2b. Atualizações de progresso de episódios no acompanhamento
+      SELECT
+        uat."updatedAt" AS "createdAt"
+      FROM "user_anime_tracking" uat
+      WHERE uat."userId" = $1
+        AND uat."episodesWatched" > 0
+        AND uat."updatedAt" > (uat."createdAt" + interval '1 second')
+        AND NOT EXISTS (
+          SELECT 1 FROM "user_watched_episode" uwe
+          WHERE uwe."userId" = uat."userId"
+            AND uwe."animeId" = uat."animeId"
+            AND uwe."episodeNumber" = uat."episodesWatched"
+        )
+
+      UNION ALL
+
       -- 3. Favoritos adicionados
       SELECT
         uf."createdAt" AS "createdAt"
@@ -1189,7 +1222,7 @@ export async function executeGetUserActivities(
         'watched:' || uwe."animeId" || ':' || uwe."episodeId" || ':' || to_char(uwe."watchedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
         'watched_episode' AS "type",
         uwe."watchedAt" AS "createdAt",
-        'Assistiu ao episódio ' || uwe."episodeNumber" AS "description",
+        'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'este anime') || ' para o episódio ' || uwe."episodeNumber" AS "description",
         uwe."animeId" AS "resourceId",
         COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
         COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
@@ -1231,6 +1264,35 @@ export async function executeGetUserActivities(
       FROM "user_anime_tracking" uat
       LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
       WHERE uat."userId" = $1
+
+      UNION ALL
+
+      -- 2b. Atualizações de progresso de episódios no acompanhamento
+      SELECT
+        'tracking_progress:' || uat."animeId" || ':' || uat."episodesWatched" || ':' || to_char(uat."updatedAt" at time zone 'UTC', 'YYYYMMDDHH24MISSMS') AS "id",
+        'watched_episode' AS "type",
+        uat."updatedAt" AS "createdAt",
+        'Atualizou o progresso de ' || COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'este anime') || ' para o episódio ' || uat."episodesWatched" AS "description",
+        uat."animeId" AS "resourceId",
+        COALESCE(ca."title", (uat."animeSnapshot"->>'title'), 'Anime') AS "resourceTitle",
+        COALESCE(ca."cover", (uat."animeSnapshot"->>'cover'), NULL) AS "resourceCover",
+        'anime' AS "resourceType",
+        json_build_object(
+          'episodeId', uat."animeId" || '-ep-' || uat."episodesWatched",
+          'episodeNumber', uat."episodesWatched",
+          'origin', 'manual'
+        )::text AS "metadata"
+      FROM "user_anime_tracking" uat
+      LEFT JOIN "catalog_anime" ca ON ca."id" = uat."animeId"
+      WHERE uat."userId" = $1
+        AND uat."episodesWatched" > 0
+        AND uat."updatedAt" > (uat."createdAt" + interval '1 second')
+        AND NOT EXISTS (
+          SELECT 1 FROM "user_watched_episode" uwe
+          WHERE uwe."userId" = uat."userId"
+            AND uwe."animeId" = uat."animeId"
+            AND uwe."episodeNumber" = uat."episodesWatched"
+        )
 
       UNION ALL
 

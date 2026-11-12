@@ -277,6 +277,91 @@ export const addProfileFavorite = createServerFn({
       throw new Error("Esse item já está nos seus favoritos.");
     }
 
+    // 2b. Validação estrita de limite independente de no máximo 10 favoritos por categoria
+    if (targetType === "anime") {
+      const animeCount = await sql<{ count: number }>`
+        SELECT count(*)::int AS count FROM "user_favorite"
+        WHERE "userId" = ${userId} AND "targetType" = 'anime'
+      `;
+      if ((animeCount[0]?.count ?? 0) >= 10) {
+        throw new Error("Você atingiu o limite de 10 animes favoritos.");
+      }
+    } else if (targetType === "character") {
+      const charCount = await sql<{ count: number }>`
+        SELECT count(*)::int AS count FROM "user_favorite"
+        WHERE "userId" = ${userId} AND "targetType" = 'character'
+      `;
+      if ((charCount[0]?.count ?? 0) >= 10) {
+        throw new Error("Você atingiu o limite de 10 personagens favoritos.");
+      }
+    } else if (targetType === "studio" || targetType === "company") {
+      const studioCount = await sql<{ count: number }>`
+        SELECT count(*)::int AS count FROM "user_favorite"
+        WHERE "userId" = ${userId} AND "targetType" IN ('studio', 'company')
+      `;
+      if ((studioCount[0]?.count ?? 0) >= 10) {
+        throw new Error("Você atingiu o limite de 10 estúdios favoritos.");
+      }
+    } else if (targetType === "person") {
+      // Diferenciação estrita entre Dubladores e People
+      const isVoiceActorCandidate =
+        Boolean(personSnapshot?.biography?.toLowerCase().includes("dublador")) ||
+        Boolean(personSnapshot?.biography?.toLowerCase().includes("voice actor")) ||
+        Boolean(personSnapshot?.biography?.toLowerCase().includes("seiyuu")) ||
+        Boolean(personSnapshot?.primaryOccupation?.toLowerCase().includes("dublador")) ||
+        Boolean(personSnapshot?.primaryOccupation?.toLowerCase().includes("seiyuu"));
+
+      const dbPersonCheck = await sql<{ is_va: boolean }>`
+        SELECT (
+          EXISTS(SELECT 1 FROM "character_voice_actor" cva WHERE cva."personId" = ${finalTargetId}) OR
+          EXISTS(SELECT 1 FROM "catalog_person" cp WHERE cp."id" = ${finalTargetId} AND (
+            LOWER(COALESCE(cp."biography", '')) LIKE '%dublador%' OR
+            LOWER(COALESCE(cp."biography", '')) LIKE '%voice actor%' OR
+            LOWER(COALESCE(cp."biography", '')) LIKE '%seiyuu%' OR
+            LOWER(COALESCE(cp."primaryOccupation", '')) LIKE '%dublador%' OR
+            LOWER(COALESCE(cp."primaryOccupation", '')) LIKE '%seiyuu%'
+          ))
+        ) AS is_va
+      `;
+
+      const isVoiceActor = isVoiceActorCandidate || Boolean(dbPersonCheck[0]?.is_va);
+
+      const existingPersonRows = await sql<{
+        personId: string;
+        is_va: boolean;
+      }>`
+        SELECT uf."personId", (
+          EXISTS(SELECT 1 FROM "character_voice_actor" cva WHERE cva."personId" = uf."personId") OR
+          EXISTS(SELECT 1 FROM "catalog_person" cp WHERE cp."id" = uf."personId" AND (
+            LOWER(COALESCE(cp."biography", '')) LIKE '%dublador%' OR
+            LOWER(COALESCE(cp."biography", '')) LIKE '%voice actor%' OR
+            LOWER(COALESCE(cp."biography", '')) LIKE '%seiyuu%' OR
+            LOWER(COALESCE(cp."primaryOccupation", '')) LIKE '%dublador%' OR
+            LOWER(COALESCE(cp."primaryOccupation", '')) LIKE '%seiyuu%'
+          ))
+        ) AS is_va
+        FROM "user_favorite" uf
+        WHERE uf."userId" = ${userId} AND uf."targetType" = 'person'
+      `;
+
+      let dubladoresCount = 0;
+      let peopleCount = 0;
+      for (const row of existingPersonRows) {
+        if (row.is_va) {
+          dubladoresCount++;
+        } else {
+          peopleCount++;
+        }
+      }
+
+      if (isVoiceActor && dubladoresCount >= 10) {
+        throw new Error("Você atingiu o limite de 10 dubladores favoritos.");
+      }
+      if (!isVoiceActor && peopleCount >= 10) {
+        throw new Error("Você atingiu o limite de 10 pessoas favoritas.");
+      }
+    }
+
     // 3. Monta mapeamento exclusivo de colunas conforme targetType
     const animeId = targetType === "anime" ? finalTargetId : null;
     const characterId = targetType === "character" ? finalTargetId : null;
@@ -474,13 +559,15 @@ export const getMyProfileFavorites = createServerFn({
               'Produção & Elenco'
             )
           ELSE NULL
-        END AS "subtitle"
+        END AS "subtitle",
+        uat."score" AS "userScore"
       FROM "user_favorite" uf
       LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
       LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
       LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
       LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
       LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
+      LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uf."userId" AND uat."animeId" = uf."animeId"
       WHERE uf."userId" = $1
         AND ($2::text IS NULL OR uf."targetType" = $2)
         AND ($3::text IS NULL OR COALESCE(uf."animeId", uf."characterId", uf."studioId", uf."companyId", uf."personId") = $3)
@@ -500,6 +587,7 @@ export const getMyProfileFavorites = createServerFn({
       banner: string | null;
       description: string | null;
       subtitle: string | null;
+      userScore: number | string | null;
     }>(query, [userId, targetTypeFilter, targetIdFilter]);
 
     const items: ProfileFavoriteItem[] = rawRows.map((row) => ({
@@ -515,6 +603,7 @@ export const getMyProfileFavorites = createServerFn({
       banner: row.banner ?? null,
       description: row.description ?? null,
       subtitle: row.subtitle ?? null,
+      userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
     }));
 
     const grouped: ProfileFavoritesGrouped = {
@@ -606,13 +695,15 @@ export const getPublicProfileFavorites = createServerFn({
               'Produção & Elenco'
             )
           ELSE NULL
-        END AS "subtitle"
+        END AS "subtitle",
+        uat."score" AS "userScore"
       FROM "user_favorite" uf
       LEFT JOIN "catalog_anime" ca ON ca."id" = uf."animeId"
       LEFT JOIN "catalog_character" cc ON cc."id" = uf."characterId"
       LEFT JOIN "catalog_studio" cs ON cs."id" = uf."studioId"
       LEFT JOIN "catalog_company" cco ON cco."id" = uf."companyId"
       LEFT JOIN "catalog_person" cp ON cp."id" = uf."personId"
+      LEFT JOIN "user_anime_tracking" uat ON uat."userId" = uf."userId" AND uat."animeId" = uf."animeId"
       WHERE uf."userId" = $1
         AND ($2::text IS NULL OR uf."targetType" = $2)
       ORDER BY uf."targetType" ASC, uf."position" ASC, uf."createdAt" ASC;
@@ -631,6 +722,7 @@ export const getPublicProfileFavorites = createServerFn({
       banner: string | null;
       description: string | null;
       subtitle: string | null;
+      userScore: number | string | null;
     }>(query, [targetUserId, targetTypeFilter]);
 
     const items: ProfileFavoriteItem[] = rawRows.map((row) => ({
@@ -646,6 +738,7 @@ export const getPublicProfileFavorites = createServerFn({
       banner: row.banner ?? null,
       description: row.description ?? null,
       subtitle: row.subtitle ?? null,
+      userScore: row.userScore !== null && row.userScore !== undefined ? Number(row.userScore) : null,
     }));
 
     const grouped: ProfileFavoritesGrouped = {

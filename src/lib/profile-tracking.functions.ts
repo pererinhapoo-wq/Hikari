@@ -110,7 +110,16 @@ export const upsertAnimeTracking = createServerFn({
     const cleanSnapshot = buildAnimeSnapshot(catalogRow, animeSnapshot);
 
     const hasScore = score !== undefined;
-    const hasEpisodesWatched = episodesWatched !== undefined;
+    const hasEpisodesWatched = episodesWatched !== undefined && episodesWatched !== null;
+
+    // Consulta registro anterior para detectar se o progresso de episódios foi alterado
+    const existingTrackingRows = await sql.query<{
+      episodesWatched: number;
+    }>(
+      `SELECT "episodesWatched" FROM "user_anime_tracking" WHERE "userId" = $1 AND "animeId" = $2 LIMIT 1`,
+      [userId, animeId],
+    );
+    const prevEpWatched = existingTrackingRows[0]?.episodesWatched ?? null;
 
     // Tratamento coerente de datas
     let startedParam: string | null = startedAt ?? null;
@@ -174,6 +183,30 @@ export const upsertAnimeTracking = createServerFn({
     const record = rows[0];
     if (!record) {
       throw new Error("Não foi possível salvar o acompanhamento do anime.");
+    }
+
+    // Se o progresso de episódios foi atualizado ou marcado com valor positivo, registra na tabela user_watched_episode
+    const finalWatched = Number(record.episodesWatched) || 0;
+    if (hasEpisodesWatched && finalWatched > 0 && (prevEpWatched === null || prevEpWatched !== finalWatched)) {
+      try {
+        const epRows = await sql.query<{ id: string }>(
+          `SELECT "id" FROM "catalog_episode" WHERE "animeId" = $1 AND "number" = $2 LIMIT 1`,
+          [animeId, finalWatched],
+        );
+        const resolvedEpId = epRows[0]?.id || `${animeId}-ep-${finalWatched}`;
+
+        await sql.query(
+          `INSERT INTO "user_watched_episode" (
+            "userId", "animeId", "episodeId", "episodeNumber", "origin", "watchedAt"
+          )
+          VALUES ($1, $2, $3, $4, 'manual', CURRENT_TIMESTAMP)
+          ON CONFLICT ("userId", "animeId", "episodeId") DO UPDATE
+          SET "watchedAt" = CURRENT_TIMESTAMP, "episodeNumber" = EXCLUDED."episodeNumber", "origin" = 'manual'`,
+          [userId, animeId, resolvedEpId, finalWatched],
+        );
+      } catch (err) {
+        console.warn("Erro ao registrar episódio assistido na tabela user_watched_episode:", err);
+      }
     }
 
     return {

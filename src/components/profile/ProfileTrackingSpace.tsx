@@ -5,6 +5,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Star,
   X,
 } from "lucide-react";
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -143,6 +144,19 @@ const AnimeTrackingCard = React.memo(function AnimeTrackingCard({
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 rounded-none shadow-[0_0_20px_rgba(168,85,247,0.35)] opacity-0 transition-opacity duration-200 ease-out [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 group-active:opacity-100"
           />
+
+          {/* Indicador discreto de nota pessoal sobreposto à imagem do anime */}
+          {typeof item.score === "number" && item.score > 0 && (
+            <div
+              className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 rounded bg-[#0b0914]/90 border border-purple-500/35 px-1.5 py-0.5 text-[10px] font-bold text-purple-200 backdrop-blur-md shadow-sm select-none"
+              title={`Nota pessoal: ${item.score}/10`}
+            >
+              <Star className="size-2.5 text-[#c084fc] fill-[#c084fc]/50" />
+              <span className="tabular-nums leading-none">
+                {Number(item.score).toFixed(item.score % 1 === 0 ? 0 : 1)}
+              </span>
+            </div>
+          )}
         </div>
       </Link>
 
