@@ -1,5 +1,5 @@
 import { lazy, startTransition, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 
@@ -354,7 +354,7 @@ export const Route = createFileRoute("/account")({
 const EMPTY_FAVORITES: string[] = [];
 
 function AccountProfile() {
-  const navigate = useNavigate();
+  const navigate = Route.useNavigate();
   const search = Route.useSearch();
   const urlStatus =
     search.status ||
@@ -1212,7 +1212,7 @@ function AccountProfile() {
           onClear={() => {
             void navigate({
               to: "/account",
-              search: (prev) => {
+              search: (prev: AccountSearchParams) => {
                 const next = { ...prev };
                 delete next.studio;
                 delete next.studioId;
@@ -1234,7 +1234,7 @@ function AccountProfile() {
           onClear={() => {
             void navigate({
               to: "/account",
-              search: (prev) => {
+              search: (prev: AccountSearchParams) => {
                 const next = { ...prev };
                 delete next.dublador;
                 delete next.dubladorId;
@@ -1256,7 +1256,7 @@ function AccountProfile() {
           onClear={() => {
             void navigate({
               to: "/account",
-              search: (prev) => {
+              search: (prev: AccountSearchParams) => {
                 const next = { ...prev };
                 delete next.staff;
                 delete next.staffId;

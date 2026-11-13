@@ -456,8 +456,8 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
   );
   const logoFailed = failedLogoAnimeId === anime.id;
 
-  const mobileBackdrop = anime.cover || anime.banner || "";
-  const desktopBackdrop = anime.banner || anime.cover || "";
+  const mobileBackdrop = anime.cover?.trim() || "";
+  const desktopBackdrop = anime.banner?.trim() || "";
   const heroBackdropRef = useSynchronizedImageRef(
     priority,
     mobileBackdrop || desktopBackdrop,
@@ -528,7 +528,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             height={690}
             loading={priority ? "eager" : "lazy"}
             decoding="async"
-            fetchPriority={priority ? "high" : "auto"}
+            fetchPriority={priority ? "high" : "low"}
             className="size-full object-cover object-top md:object-center"
           />
         </picture>
@@ -593,7 +593,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
                   height={logoConfig.height ?? 176}
                   loading={priority ? "eager" : "lazy"}
                   decoding="async"
-                  fetchPriority={priority ? "high" : "auto"}
+                  fetchPriority="low"
                   onError={() => setFailedLogoAnimeId(anime.id)}
                   className={`
                     object-contain
@@ -826,48 +826,6 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
   );
 });
 
-const HeroSlideStyles = memo(function HeroSlideStyles() {
-  return (
-    <style>{`
-      @keyframes heroGreenDotPulse {
-        0%, 100% {
-          transform: scale(1);
-          opacity: 1;
-        }
-        50% {
-          transform: scale(0.82);
-          opacity: 0.85;
-        }
-      }
-      .hero-glass-capsule--status {
-        background-color: rgba(255, 255, 255, 0.42);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
-        border: 1px solid rgba(255, 255, 255, 0.28);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
-        contain: paint;
-      }
-      .hero-genre-capsule {
-        background-color: rgba(255, 255, 255, 0.55);
-        border: 1px solid rgba(255, 255, 255, 0.28);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
-        contain: paint;
-      }
-      .hero-btn-action {
-        transition: transform 140ms cubic-bezier(0.2, 0.8, 0.4, 1), box-shadow 140ms ease, background-color 140ms ease, opacity 140ms ease;
-      }
-      .hero-btn-action:active {
-        transform: scale(0.95);
-        will-change: transform;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .hero-btn-action:active {
-          transform: none !important;
-        }
-      }
-    `}</style>
-  );
-});
 
 export function Hero({
   anime,
@@ -1281,7 +1239,6 @@ export function Hero({
           [contain:layout_style]
         "
       >
-        <HeroSlideStyles />
         <HeroSlide anime={items[0]} priority />
       </section>
     );
@@ -1324,63 +1281,6 @@ export function Hero({
         [contain:layout_style]
       "
     >
-      <HeroSlideStyles />
-      <style>{`
-        @keyframes heroCrossfadeOut {
-          0% {
-            opacity: 1;
-          }
-          22% {
-            opacity: 0.96;
-          }
-          45% {
-            opacity: 0.68;
-          }
-          75% {
-            opacity: 0.22;
-          }
-          100% {
-            opacity: 0;
-          }
-        }
-
-        @keyframes heroDarkenFade {
-          0% {
-            opacity: 0;
-          }
-          22% {
-            opacity: 0.42;
-          }
-          45% {
-            opacity: 0.62;
-          }
-          75% {
-            opacity: 0.75;
-          }
-          100% {
-            opacity: 0.82;
-          }
-        }
-
-        @keyframes heroCrossfadeIn {
-          0% {
-            opacity: 0;
-          }
-          20% {
-            opacity: 0;
-          }
-          38% {
-            opacity: 0.38;
-          }
-          68% {
-            opacity: 0.88;
-          }
-          100% {
-            opacity: 1;
-          }
-        }
-      `}</style>
-
       {/* Camadas da transição ou anime ativo */}
       {transitioning ? (
         <div className="relative size-full min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end">

@@ -114,7 +114,8 @@ export function RecentEpisodesSection({
             <EpisodeCard
               key={`${episode.animeId}-${episode.episodeId}`}
               episode={episode}
-              priority={index < 2}
+              priority={index < 5}
+              defer={index >= 5}
             />
           ))}
         </div>

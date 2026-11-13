@@ -22,6 +22,7 @@ export interface HikariImageProps {
   fallbackClassName?: string;
   fallback?: ReactNode;
   defer?: boolean;
+  deferred?: boolean;
   priority?: boolean;
   loadedOpacityClass?: string;
   onLoad?: React.ReactEventHandler<HTMLImageElement>;
@@ -43,13 +44,15 @@ export const HikariImage = React.memo(function HikariImage({
   alt = "",
   width,
   height,
-  loading: loadingProp,
+  loading: _loadingProp,
   decoding = "async",
-  fetchPriority: fetchPriorityProp,
+  fetchPriority: _fetchPriorityProp,
   className,
+  shimmerClassName: _shimmerClassName,
   fallbackClassName,
   fallback,
   defer = false,
+  deferred = false,
   priority = false,
   loadedOpacityClass = "opacity-100",
   onLoad,
@@ -57,7 +60,7 @@ export const HikariImage = React.memo(function HikariImage({
   ...rest
 }: HikariImageProps) {
   const [usingFallback, setUsingFallback] = useState(false);
-  const [loaded, setLoaded] = useState(true);
+  const [loaded, setLoaded] = useState(false);
 
   const activeSrc = usingFallback ? fallbackSrc : src;
   const activeSrcSet = usingFallback ? undefined : srcSet;
@@ -70,14 +73,15 @@ export const HikariImage = React.memo(function HikariImage({
     return (
       <div
         aria-hidden="true"
-        className={cn("size-full bg-[#131020]", fallbackClassName)}
+        className={cn("size-full bg-[#0d0c16]", fallbackClassName, className)}
         {...rest}
       />
     );
   }
 
-  const loading = priority ? "eager" : defer ? "lazy" : (loadingProp ?? "lazy");
-  const fetchPriority = priority ? "high" : fetchPriorityProp ?? "low";
+  const isLazy = !priority || Boolean(defer || deferred && !priority);
+  const loading: "eager" | "lazy" = priority ? "eager" : isLazy ? "lazy" : "lazy";
+  const fetchPriority: "high" | "low" = priority ? "high" : "low";
 
   return (
     <img
@@ -103,8 +107,8 @@ export const HikariImage = React.memo(function HikariImage({
         onError?.(e);
       }}
       className={cn(
-        "size-full object-cover hikari-image-fade",
-        loaded ? "opacity-100" : "opacity-100",
+        "size-full object-cover hikari-image-fade opacity-100",
+        loaded && loadedOpacityClass,
         className,
       )}
       {...rest}

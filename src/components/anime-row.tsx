@@ -477,20 +477,20 @@ export function AnimeRow({
             ? Array.from({ length: 8 }, (_, i) => (
                 <AnimeCardSkeleton key={i} />
               ))
-            : items.map((anime, index) => (
-                <AnimeCard
-                  key={anime.id}
-                  anime={anime}
-                  rank={showRank ? index + 1 : undefined}
-                  showBookmark={showBookmark}
-                  priority={
-                    priorityCount > 0 &&
-                    index < priorityCount &&
-                    index < visibleImgLimit
-                  }
-                  loadImage={index < visibleImgLimit}
-                />
-              ))}
+            : items.map((anime, index) => {
+                const isPriority = priorityCount > 0 && index < priorityCount;
+                return (
+                  <AnimeCard
+                    key={anime.id}
+                    anime={anime}
+                    rank={showRank ? index + 1 : undefined}
+                    showBookmark={showBookmark}
+                    priority={isPriority}
+                    defer={!isPriority}
+                    loadImage={isPriority || index < visibleImgLimit}
+                  />
+                );
+              })}
           {/* Espaçador invisível para limites suaves no fim da rolagem */}
           <div className="w-1 shrink-0 -ml-1 sm:w-2 sm:-ml-2 pointer-events-none" aria-hidden="true" />
         </div>

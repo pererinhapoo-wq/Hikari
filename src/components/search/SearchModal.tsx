@@ -309,7 +309,7 @@ export function SearchModal({
 
         if (!cancelled) {
           setAnimeResults(merged);
-          setAnimeHasNext(result.page < result.totalPages);
+          setAnimeHasNext(Boolean(result.hasNext));
         }
       } catch {
         if (!cancelled) {
@@ -364,7 +364,7 @@ export function SearchModal({
       });
 
       setAnimePage(nextPage);
-      setAnimeHasNext(result.page < result.totalPages);
+      setAnimeHasNext(Boolean(result.hasNext));
     } catch {
       setAnimeHasNext(false);
     } finally {

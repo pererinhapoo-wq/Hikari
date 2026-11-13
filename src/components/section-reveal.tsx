@@ -16,9 +16,13 @@ export function SectionReveal({
   lazy?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(!lazy);
 
   useEffect(() => {
+    if (!lazy) {
+      setRevealed(true);
+      return;
+    }
     // Se o ambiente não tiver IntersectionObserver (SSR/testes sem DOM), exibe imediatamente
     if (typeof window === "undefined" || !("IntersectionObserver" in window)) {
       setRevealed(true);
@@ -64,7 +68,7 @@ export function SectionReveal({
       if (timer) clearTimeout(timer);
       observer.disconnect();
     };
-  }, [delayMs, rootMargin]);
+  }, [lazy, delayMs, rootMargin]);
 
   return (
     <div

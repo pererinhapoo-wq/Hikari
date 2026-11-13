@@ -1877,86 +1877,78 @@ function AnimePage() {
 
   return (
     <article className="pb-12">
-      {/* Testes experimentais isolados: entrada suave da página e assentamento sutil do banner */}
-      <style>{`
-        @keyframes pageEnter {
-          from { opacity: 0; transform: translateY(4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes bannerSettle {
-          from { transform: scale(1.02); }
-          to { transform: scale(1); }
-        }
-        @keyframes bookmarkPop {
-          0% { transform: scale(0.85); }
-          50% { transform: scale(1.22); }
-          100% { transform: scale(1); }
-        }
-        @keyframes bookmarkDepop {
-          0% { transform: scale(1.15); }
-          50% { transform: scale(0.88); }
-          100% { transform: scale(1); }
-        }
-        @keyframes episodeTapPulse {
-          0% { transform: scale(1); }
-          45% { transform: scale(0.982); }
-          100% { transform: scale(1); }
-        }
-      `}</style>
-
       {/* HERO */}
       <section className="relative z-20 -mx-4 sm:-mx-6">
         <div
           key={`banner-${anime.id}`}
           className="relative max-sm:h-[22rem] max-sm:min-[380px]:h-[24rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated overflow-hidden"
         >
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
-
           {shouldRenderPicture ? (
-            <picture
-              className={cn(
-                "relative block size-full",
-                !isHydratedClient && !validDesktopBannerUrl && "sm:hidden",
-              )}
-            >
-              {validMobileSourceUrl ? (
-                <source
-                  media={MOBILE_BANNER_MEDIA_QUERY}
-                  srcSet={validMobileSourceUrl}
+            <>
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
+              <picture
+                className={cn(
+                  "relative block size-full",
+                  !isHydratedClient && !validDesktopBannerUrl && "sm:hidden",
+                )}
+              >
+                {validMobileSourceUrl ? (
+                  <source
+                    media={MOBILE_BANNER_MEDIA_QUERY}
+                    srcSet={validMobileSourceUrl}
+                  />
+                ) : null}
+                {validDesktopBannerUrl ? (
+                  <source
+                    media={DESKTOP_BANNER_MEDIA_QUERY}
+                    srcSet={validDesktopBannerUrl}
+                  />
+                ) : null}
+                <img
+                  src={currentBannerSrc}
+                  alt=""
+                  sizes="100vw"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  onError={(e) => {
+                    const failedUrl =
+                      e.currentTarget.currentSrc ||
+                      effectiveBannerUrl ||
+                      currentBannerSrc;
+                    if (!failedUrl) return;
+                    setFailedBannerUrls((prev) =>
+                      prev[failedUrl] ? prev : { ...prev, [failedUrl]: true },
+                    );
+                  }}
+                  style={{
+                    objectPosition: isHydratedClient
+                      ? bannerObjectPosition
+                      : (activeMobileBannerState?.initialObjectPosition ??
+                        "50% 24%"),
+                  }}
+                  className="size-full object-cover object-center sm:!object-center transition-opacity duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
+                />
+              </picture>
+            </>
+          ) : (
+            <>
+              {anime.cover ? (
+                <img
+                  src={anime.cover}
+                  alt=""
+                  width={460}
+                  height={690}
+                  sizes="100vw"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  className="size-full object-cover object-center blur-sm scale-110"
                 />
               ) : null}
-              {validDesktopBannerUrl ? (
-                <source
-                  media={DESKTOP_BANNER_MEDIA_QUERY}
-                  srcSet={validDesktopBannerUrl}
-                />
-              ) : null}
-              <img
-                src={currentBannerSrc}
-                alt=""
-                loading="eager"
-                fetchPriority="high"
-                decoding="sync"
-                onError={(e) => {
-                  const failedUrl =
-                    e.currentTarget.currentSrc ||
-                    effectiveBannerUrl ||
-                    currentBannerSrc;
-                  if (!failedUrl) return;
-                  setFailedBannerUrls((prev) =>
-                    prev[failedUrl] ? prev : { ...prev, [failedUrl]: true },
-                  );
-                }}
-                style={{
-                  objectPosition: isHydratedClient
-                    ? bannerObjectPosition
-                    : (activeMobileBannerState?.initialObjectPosition ??
-                      "50% 24%"),
-                }}
-                className="size-full object-cover sm:!object-center transition-opacity duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
-              />
-            </picture>
-          ) : null}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#151126]/75 via-[#0d0b18]/65 to-bg" />
+            </>
+          )}
 
           {/* Sombra superior suave para contraste */}
           <div className="pointer-events-none absolute inset-x-0 top-0 max-sm:h-20 sm:h-28 bg-gradient-to-b from-black/60 via-black/20 to-transparent sm:from-black/50 sm:via-black/15" />
@@ -1979,7 +1971,7 @@ function AnimePage() {
                     : null;
                   return (
                     <HikariImage
-                      src={coverAttrs ? coverAttrs.src : null}
+                      src={anime.cover || null}
                       srcSet={coverAttrs?.srcSet}
                       sizes={
                         coverAttrs
@@ -1990,9 +1982,9 @@ function AnimePage() {
                         coverAttrs?.fallbackSrc ? anime.cover : undefined
                       }
                       alt={title}
-                      loading="eager"
-                      decoding="async"
-                      fetchPriority={shouldRenderPicture ? "auto" : "high"}
+                      width={460}
+                      height={690}
+                      priority
                       fallbackClassName="bg-elevated"
                       className="size-full object-cover"
                     />
@@ -3354,10 +3346,8 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
                 ? "(min-width: 640px) 144px, 128px"
                 : undefined
             }
-            deferred={Boolean(imgSrc && !loadImage)}
+            defer={Boolean(imgSrc && !loadImage)}
             alt=""
-            loading="lazy"
-            decoding="async"
             fallbackClassName="bg-elevated"
             loadedOpacityClass={watched ? "opacity-75" : "opacity-100"}
             className="size-full object-cover [@media(hover:hover)]:motion-safe:group-hover:scale-105"
@@ -3884,10 +3874,8 @@ const ImagensSection = memo(function ImagensSection({
               <div className="relative size-full flex items-center justify-center overflow-hidden rounded-xl bg-[#07060d]">
                 <HikariImage
                   src={imgUrl}
-                  deferred={idx >= visibleImgLimit}
+                  defer={idx >= visibleImgLimit}
                   alt={`Arte promocional de ${title} (${idx + 1})`}
-                  loading="lazy"
-                  decoding="async"
                   fallbackClassName="bg-[#07060d]"
                   className="size-full object-contain [@media(hover:hover)]:group-hover:scale-105"
                 />
@@ -4065,10 +4053,8 @@ const ElencoCard = memo(function ElencoCard({
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         <HikariImage
           src={char.image}
-          deferred={Boolean(char.image && !loadImage)}
+          defer={Boolean(char.image && !loadImage)}
           alt={charName}
-          loading="lazy"
-          decoding="async"
           fallbackClassName="bg-[#0d0c16]"
           className="size-full object-cover object-top [@media(hover:hover)]:group-hover:scale-105"
         />
@@ -4175,7 +4161,7 @@ type DubladorItem = {
   vaImage?: string;
   rawLanguage: string;
   language: string;
-  langCategory: "ja" | "pt" | "other";
+  langCategory: "ja" | "pt" | "en" | "other";
   characterId: number;
   characterName: string;
   isMain: boolean;
@@ -4224,7 +4210,8 @@ const DubladoresSection = memo(function DubladoresSection({
         if (!vaName) continue;
 
         const rawLang = va.language?.trim() || "Japanese";
-        const key = va.id ? String(va.id) : vaName.trim().toLowerCase();
+        const langCat = categorizeLanguage(rawLang);
+        const key = `${va.id ? String(va.id) : vaName.trim().toLowerCase()}::${langCat}`;
         if (!map.has(key)) {
           map.set(key, {
             vaId: va.id,
@@ -4232,7 +4219,7 @@ const DubladoresSection = memo(function DubladoresSection({
             vaImage: va.image,
             rawLanguage: rawLang,
             language: formatVoiceActorLanguage(rawLang),
-            langCategory: categorizeLanguage(rawLang),
+            langCategory: langCat,
             characters: new Set(),
             isMain: false,
           });
@@ -4247,7 +4234,7 @@ const DubladoresSection = memo(function DubladoresSection({
     return Array.from(map.values())
       .map((item, idx) => ({
         id: `${item.vaId || item.vaName}-${idx}`,
-        vaId: item.vaId,
+        vaId: item.vaId ?? 0,
         vaName: item.vaName,
         vaImage: item.vaImage,
         rawLanguage: item.rawLanguage,
@@ -4471,10 +4458,8 @@ const DubladorCard = memo(function DubladorCard({
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         <HikariImage
           src={item.vaImage}
-          deferred={Boolean(item.vaImage && !loadImage)}
+          defer={Boolean(item.vaImage && !loadImage)}
           alt={item.vaName}
-          loading="lazy"
-          decoding="async"
           fallbackClassName="bg-[#0d0c16]"
           className="size-full object-cover object-top [@media(hover:hover)]:group-hover:scale-105"
         />
@@ -4831,10 +4816,8 @@ const StaffCard = memo(function StaffCard({
           <div className="relative flex size-full items-center justify-center p-2.5 sm:p-3 bg-[#0d0c16]">
             <HikariImage
               src={item.image}
-              deferred={Boolean(item.image && !loadImage)}
+              defer={Boolean(item.image && !loadImage)}
               alt={item.name}
-              loading="lazy"
-              decoding="async"
               fallbackClassName="bg-[#0d0c16]"
               className="max-h-full max-w-full object-contain [@media(hover:hover)]:group-hover:scale-105"
             />
@@ -4842,10 +4825,8 @@ const StaffCard = memo(function StaffCard({
         ) : (
           <HikariImage
             src={item.image}
-            deferred={Boolean(item.image && !loadImage)}
+            defer={Boolean(item.image && !loadImage)}
             alt={item.name}
-            loading="lazy"
-            decoding="async"
             fallbackClassName="bg-[#0d0c16]"
             className="size-full object-cover object-top [@media(hover:hover)]:group-hover:scale-105"
           />

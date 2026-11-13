@@ -22,6 +22,27 @@ import {
 import { AnimeCardSkeleton } from "@/components/anime-card";
 import { SectionReveal } from "@/components/section-reveal";
 
+function pickHeroItems(trending: SlimAnime[], popular: SlimAnime[]): SlimAnime[] {
+  const seen = new Set<string>();
+  const merged: SlimAnime[] = [];
+  for (const item of [...trending, ...popular]) {
+    if (!item || seen.has(item.id)) continue;
+    seen.add(item.id);
+    merged.push(item);
+  }
+  const withDistinctBanner = merged.filter((a) => {
+    const banner = a.banner?.trim();
+    const cover = a.cover?.trim();
+    return Boolean(banner && cover && banner !== cover);
+  });
+  const withoutDistinctBanner = merged.filter((a) => {
+    const banner = a.banner?.trim();
+    const cover = a.cover?.trim();
+    return !(banner && cover && banner !== cover);
+  });
+  return [...withDistinctBanner, ...withoutDistinctBanner].slice(0, 8);
+}
+
 export const Route = createFileRoute("/")({
   staleTime: 1000 * 60 * 10,
   gcTime: 1000 * 60 * 30,
@@ -44,8 +65,11 @@ export const Route = createFileRoute("/")({
     };
   },
   head: ({ loaderData }) => {
-    const featured =
-      loaderData?.trending?.[0] ?? loaderData?.popular?.[0] ?? null;
+    const heroCandidates = pickHeroItems(
+      loaderData?.trending ?? [],
+      loaderData?.popular ?? [],
+    );
+    const featured = heroCandidates[0] ?? null;
     if (!featured) {
       return {};
     }
@@ -107,14 +131,14 @@ export const Route = createFileRoute("/")({
           imageSrcSet: logoConfig.webpSrcSet,
           imageSizes: logoConfig.sizes,
           type: "image/webp",
-          fetchPriority: "high",
+          fetchPriority: "low",
         });
       } else {
         links.push({
           rel: "preload",
           as: "image",
           href: logoConfig.src,
-          fetchPriority: "high",
+          fetchPriority: "low",
         });
       }
     }
@@ -268,16 +292,11 @@ function Home() {
     };
   }, [locals]);
 
-  const featured = trending[0] ?? popular[0];
-
   const featuredItems = useMemo(
-    () =>
-      [
-        ...trending,
-        ...popular.filter((a) => !trending.some((t) => t.id === a.id)),
-      ].slice(0, 8),
+    () => pickHeroItems(trending, popular),
     [trending, popular],
   );
+  const featured = featuredItems[0];
 
   // Novos Episódios: apenas monta o container de carregamento progressivo se houver episódios cadastrados
   // Prioriza o PostgreSQL como fonte canônica com fallback seguro no catálogo local
@@ -301,21 +320,21 @@ function Home() {
       {/* 1. Episódios de Hoje (prioritário na primeira visualização) */}
       <TodayEpisodesSection initialItems={data.todaySchedule ?? []} />
 
-      {/* 2. Em Alta (carregamento progressivo adiado) */}
-      <SectionReveal minHeight="260px" rootMargin="300px 0px">
+      {/* 2. Em Alta */}
+      <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
         <AnimeRow
           title="Em Alta"
           href="/browse/trending"
           items={emAltaItems}
           showBookmark={false}
           showRank={false}
-          priorityCount={(data.todaySchedule?.length ?? 0) === 0 ? 3 : 0}
+          priorityCount={5}
         />
       </SectionReveal>
 
-      {/* 3. Episódios Recentes (publicados pelo administrador - carregamento progressivo adiado) */}
+      {/* 3. Episódios Recentes (publicados pelo administrador) */}
       {hasRecentEpisodes && (
-        <SectionReveal minHeight="380px" rootMargin="300px 0px">
+        <SectionReveal minHeight="380px" rootMargin="300px 0px" lazy={false}>
           <RecentEpisodesSection
             serverResult={data.publicEpisodesResult}
             initialEpisodes={recentEpisodes}
@@ -324,13 +343,14 @@ function Home() {
       )}
 
       {/* 4. Animes Recém-Adicionados */}
-      <SectionReveal minHeight="260px" rootMargin="300px 0px">
+      <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
         <AnimeRow
           title="Animes Recém-Adicionados"
           items={recentlyAddedAnimes}
           loading={!hydrated}
           showBookmark={false}
           showRank={false}
+          priorityCount={5}
           emptyTitle="Não há dados suficientes de animes recém-adicionados"
           emptyDescription={
             hasLocalWithoutCreationDate
@@ -340,8 +360,8 @@ function Home() {
         />
       </SectionReveal>
 
-      {/* 5. Animes da Temporada (carregamento sob demanda e progressivo) */}
-      <SectionReveal minHeight="260px" rootMargin="300px 0px">
+      {/* 5. Animes da Temporada */}
+      <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
         <SeasonAnimeRow
           seasonName={data.seasonName}
           seasonYear={data.seasonYear}
@@ -399,6 +419,7 @@ function SeasonAnimeRow({
       loading={loading}
       showBookmark={false}
       showRank={false}
+      priorityCount={5}
     />
   );
 }

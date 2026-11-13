@@ -120,10 +120,21 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
     });
   }, [navigate]);
 
+  const narrowStatus = (s: unknown) =>
+    s === "watching" ||
+    s === "completed" ||
+    s === "planning" ||
+    s === "on_hold" ||
+    s === "dropped"
+      ? s
+      : undefined;
+
   const handleDubladorClick = useCallback((item: ProfileFavoriteItem) => {
     void navigate({
-      search: (prev: Record<string, unknown>) => ({
+      to: "/account",
+      search: (prev) => ({
         ...prev,
+        status: narrowStatus(prev.status),
         dublador: item.title,
         dubladorId: item.targetId,
         studio: undefined,
@@ -138,8 +149,10 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
 
   const handleStudioClick = useCallback((item: ProfileFavoriteItem) => {
     void navigate({
-      search: (prev: Record<string, unknown>) => ({
+      to: "/account",
+      search: (prev) => ({
         ...prev,
+        status: narrowStatus(prev.status),
         studio: item.title,
         studioId: item.targetId,
         dublador: undefined,
@@ -154,8 +167,10 @@ export const ProfileOverviewFavorites = React.memo(function ProfileOverviewFavor
 
   const handlePeopleClick = useCallback((item: ProfileFavoriteItem) => {
     void navigate({
-      search: (prev: Record<string, unknown>) => ({
+      to: "/account",
+      search: (prev) => ({
         ...prev,
+        status: narrowStatus(prev.status),
         staff: item.title,
         staffId: item.targetId,
         dublador: undefined,

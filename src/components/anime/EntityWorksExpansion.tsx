@@ -620,11 +620,11 @@ export const DubladorWorksView = memo(function DubladorWorksView({
       });
     } else {
       void navigate({
-        search: (prev: Record<string, unknown>) => {
-          const next = { ...prev };
+        search: (prev) => {
+          const next: Record<string, unknown> = { ...prev };
           delete next.dublador;
           delete next.dubladorId;
-          return next;
+          return next as never;
         },
       });
     }
@@ -730,13 +730,13 @@ export const StaffWorksView = memo(function StaffWorksView({
       });
     } else {
       void navigate({
-        search: (prev: Record<string, unknown>) => {
-          const next = { ...prev };
+        search: (prev) => {
+          const next: Record<string, unknown> = { ...prev };
           delete next.staff;
           delete next.staffId;
           delete next.person;
           delete next.personId;
-          return next;
+          return next as never;
         },
       });
     }
@@ -903,10 +903,10 @@ export const StudioProductionsView = memo(function StudioProductionsView({
       });
     } else {
       void navigate({
-        search: (prev: Record<string, unknown>) => {
-          const next = { ...prev };
+        search: (prev) => {
+          const next: Record<string, unknown> = { ...prev };
           delete next.studio;
-          return next;
+          return next as never;
         },
       });
     }

@@ -3990,9 +3990,13 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
       popular: {
         media: AniMedia[];
       };
+
+      season: {
+        media: AniMedia[];
+      };
     }>(
       `
-      query HomePriority {
+      query HomePriority($season: MediaSeason, $year: Int) {
         trending: Page(
           page: 1,
           perPage: 18
@@ -4016,8 +4020,23 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
             ${CARD_FIELDS}
           }
         }
+
+        season: Page(
+          page: 1,
+          perPage: 18
+        ) {
+          media(
+            type: ANIME,
+            season: $season,
+            seasonYear: $year,
+            sort: POPULARITY_DESC
+          ) {
+            ${CARD_FIELDS}
+          }
+        }
       }
       `,
+      { season, year },
     ),
     fetchTodayScheduleFromAni().catch(() => []),
   ]);
@@ -4030,6 +4049,10 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
     (anime) => !isAdultAnime(anime),
   );
 
+  const seasonItems = (data.season?.media ?? []).filter(
+    (anime) => !isAdultAnime(anime),
+  );
+
   return {
     todaySchedule,
 
@@ -4039,7 +4062,7 @@ async function fetchHomeFromAni(): Promise<HomeCatalog> {
 
     top: [],
 
-    season: [],
+    season: seasonItems.map(mapAniSlim),
 
     releases: [],
 
@@ -4088,7 +4111,7 @@ async function fetchHomeFromJikan(): Promise<HomeCatalog> {
 
     top: [],
 
-    season: [],
+    season: seasonItems,
 
     releases: [],
 

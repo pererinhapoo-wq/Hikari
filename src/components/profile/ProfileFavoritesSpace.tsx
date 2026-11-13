@@ -243,10 +243,21 @@ export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
 
   const handleEntityClick = useCallback(
     (item: ProfileFavoriteItem) => {
+      const narrowStatus = (s: unknown) =>
+        s === "watching" ||
+        s === "completed" ||
+        s === "planning" ||
+        s === "on_hold" ||
+        s === "dropped"
+          ? s
+          : undefined;
+
       if (item.targetType === "studio" || item.targetType === "company") {
         void navigate({
-          search: (prev: Record<string, unknown>) => ({
+          to: "/account",
+          search: (prev) => ({
             ...prev,
+            status: narrowStatus(prev.status),
             studio: item.title,
             studioId: item.targetId,
             dublador: undefined,
@@ -265,8 +276,10 @@ export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
 
         if (isVoiceActor) {
           void navigate({
-            search: (prev: Record<string, unknown>) => ({
+            to: "/account",
+            search: (prev) => ({
               ...prev,
+              status: narrowStatus(prev.status),
               dublador: item.title,
               dubladorId: item.targetId,
               studio: undefined,
@@ -279,8 +292,10 @@ export const ProfileFavoritesSpace = React.memo(function ProfileFavoritesSpace({
           });
         } else {
           void navigate({
-            search: (prev: Record<string, unknown>) => ({
+            to: "/account",
+            search: (prev) => ({
               ...prev,
+              status: narrowStatus(prev.status),
               staff: item.title,
               staffId: item.targetId,
               dublador: undefined,

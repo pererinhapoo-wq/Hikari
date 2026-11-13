@@ -7,9 +7,11 @@ import { cn } from "@/lib/utils";
 export const EpisodeCard = memo(function EpisodeCard({
   episode,
   priority = false,
+  defer,
 }: {
   episode: PublishedEpisode;
   priority?: boolean;
+  defer?: boolean;
 }) {
   const formattedSubtitle = useMemo(() => {
     return cleanEpisodeDisplay(
@@ -76,9 +78,8 @@ export const EpisodeCard = memo(function EpisodeCard({
             alt=""
             width={320}
             height={180}
-            loading={priority ? "eager" : "lazy"}
-            decoding="async"
-            fetchPriority={priority ? "high" : "auto"}
+            priority={priority}
+            defer={defer ?? !priority}
             fallbackClassName="bg-[#0f0d1a]"
             className="size-full object-cover"
           />

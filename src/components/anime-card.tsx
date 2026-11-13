@@ -24,6 +24,7 @@ export const AnimeCard = memo(function AnimeCard({
   loadImage = true,
   showGenre: _showGenre = true,
   priority = false,
+  defer,
   showScoreBadge: _showScoreBadge = false,
 }: {
   anime: SlimAnime;
@@ -33,6 +34,7 @@ export const AnimeCard = memo(function AnimeCard({
   loadImage?: boolean;
   showGenre?: boolean;
   priority?: boolean;
+  defer?: boolean;
   showScoreBadge?: boolean;
 }) {
   const { user } = useCurrentUserState();
@@ -110,13 +112,11 @@ export const AnimeCard = memo(function AnimeCard({
             srcSet={anime.cover ? coverAttrs.srcSet : undefined}
             sizes={anime.cover ? coverAttrs.sizes : undefined}
             fallbackSrc={coverAttrs.fallbackSrc ? anime.cover : undefined}
-            deferred={Boolean(anime.cover && !loadImage)}
+            priority={priority}
+            defer={defer ?? (!priority || !loadImage)}
             alt=""
             width={230}
             height={345}
-            loading={priority ? "eager" : "lazy"}
-            decoding="async"
-            fetchPriority={priority ? "high" : "auto"}
             fallbackClassName="bg-[#0d0c16]"
             className="
               size-full

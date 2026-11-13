@@ -166,8 +166,7 @@ export function ProfileRecentActivities({
       item.resourceType === "anime" ||
       item.type === "watched_episode" ||
       item.type === "tracking_added" ||
-      item.type === "tracking_updated" ||
-      (item.type === "favorite_added" && item.resourceType === "anime"),
+      item.type === "tracking_updated",
   );
 
   // 2. Ordenação Conjunta: unir ambas as categorias sem registros duplicados e ordenar cronologicamente por data decrescente
