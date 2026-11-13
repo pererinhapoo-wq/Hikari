@@ -242,7 +242,7 @@ export function SearchModal({
      1. BUSCA DE ANIMES
   ========================================================== */
   useEffect(() => {
-    if (!isOpen || category !== "animes") {
+    if (!isOpen || (category !== "animes" && category !== "tudo" && category !== "movies" && category !== "series")) {
       return;
     }
 
@@ -314,7 +314,13 @@ export function SearchModal({
         }
 
         if (!cancelled) {
-          setAnimeResults(merged);
+          let finalResults = merged;
+          if (category === "movies") {
+            finalResults = merged.filter((a) => a.format === "MOVIE");
+          } else if (category === "series") {
+            finalResults = merged.filter((a) => a.format !== "MOVIE");
+          }
+          setAnimeResults(finalResults);
           setAnimeHasNext(Boolean(result.hasNext));
         }
       } catch {
@@ -791,15 +797,23 @@ export function SearchModal({
             BARRA DE BUSCA SUPERIOR
         ========================================================== */}
         <div
-          className="relative border-b shrink-0 flex items-center"
+          className="relative border-b shrink-0 flex items-center [&>*+*]:ml-[12px]"
           style={{
-            borderColor: "var(--line)",
+            display: "flex",
+            alignItems: "center",
             padding: "14px 16px",
-            gap: "10px",
+            flexShrink: 0,
+            borderColor: "var(--line)",
           }}
         >
           <SearchIcon
-            className="size-5 shrink-0 text-[var(--text-4)]"
+            style={{
+              width: "20px",
+              height: "20px",
+              color: "var(--text-3)",
+              strokeWidth: 1.5,
+              flexShrink: 0,
+            }}
             aria-hidden="true"
           />
 
@@ -817,13 +831,19 @@ export function SearchModal({
               }
             }}
             placeholder={placeholderText}
-            className="h-full flex-1 bg-transparent outline-none border-none shadow-none focus:outline-none focus:ring-0 placeholder:font-normal"
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none shadow-none focus:outline-[2px] focus:outline-[var(--violet-400)] focus:outline-offset-[-2px] placeholder:text-[var(--text-4)] placeholder:font-normal"
             style={{
+              flex: 1,
+              minWidth: 0,
+              background: "transparent",
+              border: 0,
+              outline: 0,
+              color: "#fff",
               fontFamily: "var(--font-sans)",
-              fontSize: "17px",
               fontWeight: 500,
+              fontSize: "17px",
               letterSpacing: "-0.005em",
-              color: "var(--text-1)",
+              padding: "4px 0",
             }}
             autoComplete="off"
             autoCorrect="off"
@@ -836,7 +856,16 @@ export function SearchModal({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={handleClear}
-              className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[var(--text-3)] hover:text-white hover:bg-white/10 transition-colors"
+              style={{
+                width: "26px",
+                height: "26px",
+                borderRadius: "50%",
+                border: 0,
+                background: "rgba(255,255,255,.06)",
+                color: "var(--text-3)",
+                flexShrink: 0,
+              }}
+              className="flex items-center justify-center hover:bg-white/12 hover:text-[#fff] transition-colors cursor-pointer"
               aria-label="Limpar pesquisa"
               title="Limpar pesquisa"
             >
@@ -853,10 +882,17 @@ export function SearchModal({
           <button
             type="button"
             onClick={handleClose}
-            className="hidden min-[561px]:inline-flex shrink-0 items-center justify-center px-2 py-0.5 rounded-[var(--r-sm)] border bg-white/[0.06] text-[var(--text-4)] hover:text-[var(--text-1)] text-[10px] tracking-[.08em] uppercase transition-colors cursor-pointer"
+            className="hidden min-[561px]:inline-flex items-center justify-center transition-colors cursor-pointer"
             style={{
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              borderColor: "var(--line-2)",
+              fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: "10px",
+              letterSpacing: ".08em",
+              color: "var(--text-4)",
+              border: "1px solid var(--line-2)",
+              borderRadius: "4px",
+              padding: "3px 7px",
+              lineHeight: 1,
+              flexShrink: 0,
             }}
             title="ESC para fechar"
           >
@@ -870,7 +906,7 @@ export function SearchModal({
         {hasQuery && (
           <div className="sr-section-label">
             <div className="flex items-center justify-between">
-              <span>{category === "animes" ? "ANIMES" : category === "users" ? "USUÁRIOS" : category === "people" ? "PEOPLE" : "PERSONAGENS"}</span>
+              <span>{category === "tudo" ? "TUDO" : category === "movies" ? "FILMES" : category === "series" ? "SÉRIES" : category === "people" ? "PESSOAS" : "ANIMES"}</span>
               <span style={{ color: "var(--violet-200)" }}>
                 {isCurrentLoading
                   ? "..."
@@ -926,7 +962,7 @@ export function SearchModal({
           {/* =========================================================
               1. RESULTADOS DE ANIMES
           ========================================================== */}
-          {category === "animes" && hasQuery && (
+          {(category === "animes" || category === "tudo" || category === "movies" || category === "series") && hasQuery && (
             <div>
               {animeLoading && animeResults.length === 0 ? (
                 <div className="space-y-1 p-0.5">

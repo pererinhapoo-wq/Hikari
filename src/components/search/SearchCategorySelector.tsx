@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Film, Mic2, Sparkles, Users } from "lucide-react";
+import { Check, ChevronDown, Film, Search as SearchIcon, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type SearchCategory = "animes" | "users" | "people" | "characters";
+export type SearchCategory = "tudo" | "movies" | "series" | "people" | "animes";
 
 export interface CategoryOption {
   id: SearchCategory;
@@ -12,24 +12,29 @@ export interface CategoryOption {
 
 export const CATEGORIES: CategoryOption[] = [
   {
-    id: "animes",
-    label: "Animes",
+    id: "tudo",
+    label: "Tudo",
+    icon: SearchIcon,
+  },
+  {
+    id: "movies",
+    label: "Filmes",
     icon: Film,
   },
   {
-    id: "users",
-    label: "Usuários",
-    icon: Users,
+    id: "series",
+    label: "Séries",
+    icon: Film,
   },
   {
     id: "people",
-    label: "People",
-    icon: Mic2,
+    label: "Pessoas",
+    icon: Users,
   },
   {
-    id: "characters",
-    label: "Personagens",
-    icon: Sparkles,
+    id: "animes",
+    label: "Animes",
+    icon: Film,
   },
 ];
 
@@ -126,7 +131,6 @@ export function SearchCategorySelector({
 
   return (
     <div ref={containerRef} className={cn("relative shrink-0", className)}>
-      {/* Botão de escopo ("Tudo"/"All" / Categoria atual): font-family var(--font-sans), font-size 13px, font-weight 600, fundo rgb(168 85 247 / 0.1), borda rgb(168 85 247 / 0.28), cor var(--violet-200) */}
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
@@ -139,28 +143,39 @@ export function SearchCategorySelector({
         aria-expanded={isOpen}
         aria-label={`Categoria: ${currentOption.label}`}
         style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "13px",
-          fontWeight: 600,
-          background: "rgb(168 85 247 / 0.1)",
-          borderColor: "rgb(168 85 247 / 0.28)",
+          display: "inline-flex",
+          padding: "8px 11px",
+          background: "rgba(168,85,247,.1)",
+          border: "1px solid rgba(168,85,247,.28)",
+          borderRadius: "6px",
           color: "var(--violet-200)",
+          fontFamily: "var(--font-sans)",
+          fontWeight: 600,
+          fontSize: "13px",
+          letterSpacing: "-0.005em",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
         }}
         className={cn(
-          "group relative inline-flex items-center gap-1.5 rounded-full border px-3 py-1 transition-all select-none outline-none focus-visible:ring-1 focus-visible:ring-purple-400 active:scale-[0.98]",
+          "group relative items-center transition-all select-none outline-none focus-visible:ring-1 focus-visible:ring-purple-400 active:scale-[0.98] cursor-pointer",
           isOpen && "ring-1 ring-purple-400/50 shadow-[0_0_12px_rgba(168,85,247,0.25)]",
         )}
       >
-        <span className="tracking-normal">{currentOption.label}</span>
+        <span>{currentOption.label}</span>
         <ChevronDown
+          style={{
+            width: "13px",
+            height: "13px",
+            marginLeft: "7px",
+            opacity: 0.85,
+          }}
           className={cn(
-            "size-3.5 opacity-85 transition-transform duration-200",
+            "transition-transform duration-200 shrink-0",
             isOpen && "rotate-180 opacity-100",
           )}
         />
       </button>
 
-      {/* Dropdown */}
       {isOpen && (
         <div
           role="listbox"
@@ -221,3 +236,4 @@ export function SearchCategorySelector({
     </div>
   );
 }
+
