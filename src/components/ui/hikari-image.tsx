@@ -120,7 +120,7 @@ export const HikariImage = React.memo(function HikariImage({
     );
   }
 
-  if (!activeSrc || status === "error") {
+  if (!activeSrc) {
     if (fallback !== undefined && fallback !== null) {
       return <>{fallback}</>;
     }
@@ -156,16 +156,8 @@ export const HikariImage = React.memo(function HikariImage({
         decoding={decoding}
         fetchPriority={fetchPriority}
         onLoad={(e) => {
-          if (e.currentTarget.naturalWidth > 0) {
-            setStatus("loaded");
-            onLoad?.(e);
-          } else if (!usingFallback && fallbackSrc && fallbackSrc !== activeSrc) {
-            setUsingFallback(true);
-            setStatus("loading");
-          } else {
-            setStatus("error");
-            onError?.(e);
-          }
+          setStatus("loaded");
+          onLoad?.(e);
         }}
         onError={(e) => {
           if (!usingFallback && fallbackSrc && fallbackSrc !== activeSrc) {
@@ -179,7 +171,7 @@ export const HikariImage = React.memo(function HikariImage({
         className={cn(
           className,
           "hikari-image-fade",
-          status === "loaded" ? loadedOpacityClass : "opacity-0",
+          loadedOpacityClass,
         )}
       />
     </>

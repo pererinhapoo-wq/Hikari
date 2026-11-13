@@ -4206,8 +4206,16 @@ const DubladoresSection = memo(function DubladoresSection({
   }, [characters]);
 
   const allVoiceActors = useMemo(() => {
-    const list: DubladorItem[] = [];
-    const seen = new Set<string>();
+    const map = new Map<string, {
+      vaId?: number;
+      vaName: string;
+      vaImage?: string;
+      rawLanguage: string;
+      language: string;
+      langCategory: "pt" | "ja" | "en" | "other";
+      characters: Set<string>;
+      isMain: boolean;
+    }>();
 
     for (const char of validCharacters) {
       const charName =
@@ -4220,30 +4228,43 @@ const DubladoresSection = memo(function DubladoresSection({
         if (!vaName) continue;
 
         const rawLang = va.language?.trim() || "Japanese";
-        const key = `${va.id || vaName.toLowerCase()}-${char.id || charName.toLowerCase()}-${rawLang.toLowerCase()}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-
-        list.push({
-          id: key,
-          vaId: va.id,
-          vaName,
-          vaImage: va.image,
-          rawLanguage: rawLang,
-          language: formatVoiceActorLanguage(rawLang),
-          langCategory: categorizeLanguage(rawLang),
-          characterId: char.id,
-          characterName: charName,
-          isMain,
-        });
+        const key = `${va.id || vaName.toLowerCase()}-${rawLang.toLowerCase()}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            vaId: va.id,
+            vaName,
+            vaImage: va.image,
+            rawLanguage: rawLang,
+            language: formatVoiceActorLanguage(rawLang),
+            langCategory: categorizeLanguage(rawLang),
+            characters: new Set(),
+            isMain: false,
+          });
+        }
+        const entry = map.get(key)!;
+        if (charName) entry.characters.add(charName);
+        if (isMain) entry.isMain = true;
+        if (!entry.vaImage && va.image) entry.vaImage = va.image;
       }
     }
 
-    return list.sort((a, b) => {
-      if (a.isMain && !b.isMain) return -1;
-      if (!a.isMain && b.isMain) return 1;
-      return 0;
-    });
+    return Array.from(map.values())
+      .map((item, idx) => ({
+        id: `${item.vaId || item.vaName}-${idx}`,
+        vaId: item.vaId,
+        vaName: item.vaName,
+        vaImage: item.vaImage,
+        rawLanguage: item.rawLanguage,
+        language: item.language,
+        langCategory: item.langCategory,
+        characterName: Array.from(item.characters).join(" · "),
+        isMain: item.isMain,
+      }))
+      .sort((a, b) => {
+        if (a.isMain && !b.isMain) return -1;
+        if (!a.isMain && b.isMain) return 1;
+        return 0;
+      });
   }, [validCharacters]);
 
   const hasPortuguese = useMemo(() => {
@@ -4560,12 +4581,31 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
   const railRef = useRef<HTMLDivElement>(null);
 
   const validStaff = useMemo(() => {
-    return [...(staff ?? [])]
-      .filter((s) => Boolean(s?.name?.trim()))
+    const map = new Map<string, { id?: number; name: string; roles: Set<string>; image?: string }>();
+    for (const s of staff ?? []) {
+      const name = s?.name?.trim();
+      if (!name) continue;
+      const key = s.id ? String(s.id) : name.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, {
+          id: s.id,
+          name,
+          roles: new Set(),
+          image: s.image,
+        });
+      }
+      const entry = map.get(key)!;
+      const roleLabel = s.role?.trim() ? staffRoleLabel(s.role) : "Equipe técnica";
+      if (roleLabel) entry.roles.add(roleLabel);
+      if (!entry.image && s.image) entry.image = s.image;
+    }
+
+    return Array.from(map.values())
       .map((s) => ({
-        ...s,
-        name: s.name.trim(),
-        role: s.role?.trim() || "Equipe técnica",
+        id: s.id,
+        name: s.name,
+        role: Array.from(s.roles).join(" · ") || "Equipe técnica",
+        image: s.image,
       }))
       .sort((a, b) => getStaffRoleWeight(a.role) - getStaffRoleWeight(b.role));
   }, [staff]);

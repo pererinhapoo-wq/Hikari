@@ -713,7 +713,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
               <span
                 key={genre}
                 className="
-                  hero-glass-capsule
+                  hero-genre-capsule
                   inline-flex
                   items-center
                   rounded-full
@@ -841,8 +841,14 @@ const HeroSlideStyles = memo(function HeroSlideStyles() {
       }
       .hero-glass-capsule {
         background-color: rgba(255, 255, 255, 0.42);
-        backdrop-filter: blur(8px) saturate(130%);
-        -webkit-backdrop-filter: blur(8px) saturate(130%);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+        contain: paint;
+      }
+      .hero-genre-capsule {
+        background-color: rgba(255, 255, 255, 0.55);
         border: 1px solid rgba(255, 255, 255, 0.28);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
         contain: paint;

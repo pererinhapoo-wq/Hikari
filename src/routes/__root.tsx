@@ -158,10 +158,7 @@ export const Route = createRootRoute({
         rel: "preconnect",
         href: "https://s4.anilist.co",
       },
-      {
-        rel: "dns-prefetch",
-        href: "https://s4.anilist.co",
-      },
+
       {
         rel: "icon",
         type: "image/svg+xml",
