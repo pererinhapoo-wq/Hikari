@@ -84,15 +84,15 @@ export function RecentEpisodesSection({
       </div>
 
       {isLoading ? (
-        /* Grade de carregamento compatível com o layout existente */
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4.5">
+        /* Grade de carregamento em 2 colunas lado a lado */
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 md:gap-4.5">
           {Array.from({ length: 6 }, (_, i) => (
             <EpisodeCardSkeleton key={i} />
           ))}
         </div>
       ) : (
-        /* Grade de 2 colunas no mobile e 3 colunas em telas maiores */
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4.5">
+        /* Grade de exatamente 2 colunas (dois cards por linha, lado a lado) */
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 md:gap-4.5">
           {recentEpisodes.map((episode, idx) => (
             <EpisodeCard
               key={`${episode.animeId}-${episode.episodeId}`}

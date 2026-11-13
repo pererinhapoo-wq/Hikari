@@ -333,8 +333,6 @@ function Home() {
     return resolvePublicRecentEpisodes(data.publicEpisodesResult ?? null, locals);
   }, [data.publicEpisodesResult, locals]);
 
-  const hasRecentEpisodes = recentEpisodes.length > 0;
-
   return (
     <div className="space-y-8 pb-12 sm:space-y-11 md:space-y-14">
       {featured ? (
@@ -361,14 +359,12 @@ function Home() {
       </SectionReveal>
 
       {/* 3. Episódios Recentes (publicados pelo administrador) */}
-      {hasRecentEpisodes && (
-        <SectionReveal minHeight="380px" rootMargin="300px 0px" lazy={false}>
-          <RecentEpisodesSection
-            serverResult={data.publicEpisodesResult}
-            initialEpisodes={recentEpisodes}
-          />
-        </SectionReveal>
-      )}
+      <SectionReveal minHeight="380px" rootMargin="300px 0px" lazy={false}>
+        <RecentEpisodesSection
+          serverResult={data.publicEpisodesResult}
+          initialEpisodes={recentEpisodes}
+        />
+      </SectionReveal>
 
       {/* 4. Animes Recém-Adicionados (renderiza apenas quando há itens cadastrados) */}
       {hydrated && recentlyAddedAnimes.length > 0 && (
