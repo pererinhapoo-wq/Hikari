@@ -353,7 +353,6 @@ function Home() {
       <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
         <AnimeRow
           title="Em Alta"
-          href="/browse/trending"
           items={emAltaItems}
           showBookmark={false}
           showRank={false}

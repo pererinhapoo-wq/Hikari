@@ -154,7 +154,6 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
 
   const avatarSrc = !imgError ? customAvatar || user.profileImageUrl || null : null;
   const displayName = user.displayName || customNick || "Membro";
-  const displayHandle = customNick ? `@${customNick}` : user.primaryEmail || "";
   const initial = (user.displayName || customNick || user.primaryEmail || "U")
     .trim()
     .charAt(0)
@@ -216,13 +215,13 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
           />
 
           {/* Identificação do Usuário */}
-          <div className="mb-1 border-b border-white/[0.07] px-2.5 py-1.5">
+          <div className="mb-1 border-b border-white/[0.07] px-2.5 py-2">
             <p className="truncate text-[12px] font-semibold leading-snug tracking-tight text-zinc-100">
               {displayName}
             </p>
-            {displayHandle && (
-              <p className="mt-0.5 truncate font-mono text-[11px] leading-snug text-zinc-400">
-                {displayHandle}
+            {user.primaryEmail && (
+              <p className="mt-0.5 truncate text-[11px] leading-snug text-purple-300/90 font-medium">
+                {user.primaryEmail}
               </p>
             )}
           </div>

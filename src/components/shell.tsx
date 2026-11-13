@@ -443,6 +443,89 @@ function HomeFooterLazy() {
   );
 }
 
+function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleMouseDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={menuRef} className="relative inline-block shrink-0 text-left">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        onMouseEnter={() => void prefetchLoginMenu()}
+        onFocus={() => void prefetchLoginMenu()}
+        className={cn(
+          "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none bg-surface/80 border border-white/15 text-muted hover:text-fg hover:border-white/30 transition-all",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+          open && "ring-2 ring-[#a855f7]/75 border-purple-500/40 text-fg shadow-[0_0_16px_rgba(168,85,247,0.32)]"
+        )}
+        aria-label="Opções de conta"
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <UserCircle className="size-5 sm:size-5.5 text-[#c084fc]" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label="Menu de visitante"
+          className="absolute right-0 top-full mt-2 w-48 sm:w-52 origin-top-right overflow-hidden rounded-xl border border-white/[0.09] bg-[#0b0913]/96 p-1 shadow-[0_16px_40px_rgba(0,0,0,0.78)] backdrop-blur-2xl z-50 animate-in fade-in zoom-in-95 duration-150"
+        >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/35 to-transparent"
+          />
+          <div className="space-y-0.5 pt-1">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onOpenLogin();
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs sm:text-[13px] font-medium text-zinc-200 hover:bg-white/[0.06] hover:text-white transition-colors cursor-pointer"
+            >
+              <LogIn className="size-4 text-[#c084fc] shrink-0" />
+              <span>Entrar</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onOpenLogin();
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs sm:text-[13px] font-medium text-purple-200 hover:bg-purple-500/15 hover:text-white transition-colors cursor-pointer"
+            >
+              <UserCircle className="size-4 text-[#c084fc] shrink-0" />
+              <span>Criar conta</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Shell() {
   const pathname =
     useRouterState({
@@ -1320,34 +1403,36 @@ export function Shell() {
               </button>
             )}
 
-            {/* NOTIFICAÇÕES */}
-            <button
-              type="button"
-              onClick={() => {
-                if (notificationsOpen) {
-                  setNotificationsOpen(false);
-                } else {
-                  void openNotifications();
-                }
-              }}
-              className={cn(
-                "relative flex size-8 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-                "motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
-                notificationsOpen && "bg-elevated text-fg",
-              )}
-              aria-label="Notificações"
-              aria-expanded={notificationsOpen}
-            >
-              <Bell className="size-4 sm:size-5" />
+            {/* NOTIFICAÇÕES (APENAS PARA USUÁRIOS AUTENTICADOS) */}
+            {user && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (notificationsOpen) {
+                    setNotificationsOpen(false);
+                  } else {
+                    void openNotifications();
+                  }
+                }}
+                className={cn(
+                  "relative flex size-8 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+                  "motion-safe:transition-[color,background-color,transform] motion-safe:duration-150 motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+                  notificationsOpen && "bg-elevated text-fg",
+                )}
+                aria-label="Notificações"
+                aria-expanded={notificationsOpen}
+              >
+                <Bell className="size-4 sm:size-5" />
 
-              {notificationsPresentationReady && unreadCount > 0 && (
-                <span className="absolute right-0.5 top-0.5 flex min-w-4 h-4 sm:min-w-5 sm:h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] sm:text-[10px] font-bold leading-none text-white ring-2 ring-bg tabular-nums">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </button>
+                {notificationsPresentationReady && unreadCount > 0 && (
+                  <span className="absolute right-0.5 top-0.5 flex min-w-4 h-4 sm:min-w-5 sm:h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] sm:text-[10px] font-bold leading-none text-white ring-2 ring-bg tabular-nums">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </button>
+            )}
 
-            {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO ENTRAR (QUANDO VISITANTE CONFIRMADO) */}
+            {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO DE CONTA (QUANDO VISITANTE) */}
             {user ? (
               <Suspense fallback={null}>
                 <LazyProfileDropdownMenu user={user} />
@@ -1358,17 +1443,7 @@ export function Shell() {
                 className="size-9 sm:size-10 shrink-0 rounded-full bg-white/[0.06] ring-1 ring-white/10 animate-pulse"
               />
             ) : (
-              <button
-                type="button"
-                onClick={() => setLoginModalOpen(true)}
-                onMouseEnter={() => void prefetchLoginMenu()}
-                onFocus={() => void prefetchLoginMenu()}
-                className="flex shrink-0 items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-xl border border-[#a855f7]/40 bg-[#a855f7] px-2.5 py-1.5 min-[380px]:px-3 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-[#9333ea] hover:shadow-[0_0_20px_rgba(168,85,247,0.35)] motion-safe:transition-[transform,background-color,border-color,box-shadow] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-[0.95] motion-reduce:transition-none motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
-                aria-label="Entrar na conta"
-              >
-                <LogIn className="size-3.5 sm:size-4 shrink-0" />
-                <span>Entrar</span>
-              </button>
+              <VisitorDropdownMenu onOpenLogin={() => setLoginModalOpen(true)} />
             )}
           </div>
         </div>
