@@ -1,6 +1,40 @@
+function getCloudinaryCloud(): string {
+  const fromProcess =
+    typeof process !== "undefined"
+      ? process.env?.NEXT_PUBLIC_CLOUDINARY_CLOUD ||
+        process.env?.VITE_CLOUDINARY_CLOUD_NAME ||
+        ""
+      : "";
+  if (fromProcess && fromProcess.trim()) {
+    return fromProcess.trim();
+  }
+  const fromMeta =
+    typeof import.meta !== "undefined"
+      ? (import.meta.env?.NEXT_PUBLIC_CLOUDINARY_CLOUD as string | undefined) ||
+        (import.meta.env?.VITE_CLOUDINARY_CLOUD_NAME as string | undefined) ||
+        ""
+      : "";
+  return fromMeta ? fromMeta.trim() : "";
+}
+
+export function anilistImage(url: string | null | undefined, width: number): string {
+  const cleanUrl = typeof url === "string" ? url.trim() : "";
+  if (!cleanUrl) return "";
+  const cloud = getCloudinaryCloud();
+  if (
+    cloud &&
+    (cleanUrl.startsWith("https://") || cleanUrl.startsWith("http://")) &&
+    !cleanUrl.includes("res.cloudinary.com/")
+  ) {
+    return `https://res.cloudinary.com/${cloud}/image/fetch/f_auto,q_auto:good,c_limit,w_${width}/${encodeURIComponent(cleanUrl)}`;
+  }
+  return cleanUrl;
+}
+
 export type CoverSizeVariant = "thumb" | "card-sm" | "card-md" | "card-lg";
 
 export interface ResponsiveCoverAttrs {
+  graphicUrl?: string;
   src: string;
   srcSet?: string;
   sizes?: string;
@@ -34,6 +68,8 @@ export function getResponsiveCoverAttrs(
     return { src: "" };
   }
 
+  const hasCloud = Boolean(getCloudinaryCloud());
+
   // Tratamento otimizado para capas do AniList
   const aniMatch = cleanUrl.match(ANILIST_COVER_REGEX);
   if (aniMatch) {
@@ -41,9 +77,9 @@ export function getResponsiveCoverAttrs(
     const query = aniMatch[3] ?? "";
     const base = "https://s4.anilist.co/file/anilistcdn/media/anime/cover";
 
-    const smallUrl = `${base}/small/${filename}${query}`;
-    const mediumUrl = `${base}/medium/${filename}${query}`;
-    const largeUrl = `${base}/large/${filename}${query}`;
+    const smallUrl = hasCloud ? anilistImage(cleanUrl, 100) : `${base}/small/${filename}${query}`;
+    const mediumUrl = hasCloud ? anilistImage(cleanUrl, 230) : `${base}/medium/${filename}${query}`;
+    const largeUrl = hasCloud ? anilistImage(cleanUrl, 460) : `${base}/large/${filename}${query}`;
 
     if (variant === "thumb") {
       return {
@@ -70,9 +106,9 @@ export function getResponsiveCoverAttrs(
     const query = kitsuMatch[4] ?? "";
     const base = "https://media.kitsu.app/anime/poster_images";
 
-    const smallUrl = `${base}/${id}/small.${ext}${query}`;
-    const mediumUrl = `${base}/${id}/medium.${ext}${query}`;
-    const largeUrl = `${base}/${id}/large.${ext}${query}`;
+    const smallUrl = hasCloud ? anilistImage(cleanUrl, 110) : `${base}/${id}/small.${ext}${query}`;
+    const mediumUrl = hasCloud ? anilistImage(cleanUrl, 220) : `${base}/${id}/medium.${ext}${query}`;
+    const largeUrl = hasCloud ? anilistImage(cleanUrl, 550) : `${base}/${id}/large.${ext}${query}`;
 
     if (variant === "thumb") {
       return {
@@ -91,5 +127,5 @@ export function getResponsiveCoverAttrs(
     };
   }
 
-  return { src: cleanUrl };
+  return { src: hasCloud ? anilistImage(cleanUrl, 460) : cleanUrl };
 }

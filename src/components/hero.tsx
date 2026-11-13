@@ -5,6 +5,7 @@ import { Check, ChevronRight, Info, Play } from "lucide-react";
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
 import { getAnimeLogo } from "@/lib/anime-logos";
+import { anilistImage } from "@/lib/image-utils";
 import { useSynchronizedImageRef } from "@/lib/presentation-sync";
 
 /**
@@ -456,11 +457,39 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
   );
   const logoFailed = failedLogoAnimeId === anime.id;
 
-  const mobileBackdrop = anime.cover?.trim() || "";
-  const desktopBackdrop = anime.banner?.trim() || "";
+  const rawMobileBackdrop = anime.cover?.trim() || anime.banner?.trim() || "";
+  const rawDesktopBackdrop = anime.banner?.trim() || anime.cover?.trim() || "";
+
+  const mobileSrc480 = anilistImage(rawMobileBackdrop, 480);
+  const mobileSrc768 = anilistImage(rawMobileBackdrop, 768);
+  const desktopSrc1200 = anilistImage(rawDesktopBackdrop, 1200);
+  const desktopSrc1600 = anilistImage(rawDesktopBackdrop, 1600);
+
+  const mobileSrcSet = rawMobileBackdrop
+    ? `${mobileSrc480} 480w, ${mobileSrc768} 768w`
+    : "";
+  const desktopSrcSet = rawDesktopBackdrop
+    ? `${desktopSrc1200} 1200w, ${desktopSrc1600} 1600w`
+    : "";
+  const hasDistinctSources = Boolean(
+    rawMobileBackdrop &&
+      rawDesktopBackdrop &&
+      rawMobileBackdrop !== rawDesktopBackdrop,
+  );
+  const heroSizes = "(min-width: 768px) 100vw, 100vw";
+
+  const fallbackImgSrc = hasDistinctSources
+    ? mobileSrc768
+    : anilistImage(rawMobileBackdrop || rawDesktopBackdrop, 1600);
+  const fallbackImgSrcSet = hasDistinctSources
+    ? mobileSrcSet
+    : rawMobileBackdrop || rawDesktopBackdrop
+      ? `${anilistImage(rawMobileBackdrop || rawDesktopBackdrop, 480)} 480w, ${anilistImage(rawMobileBackdrop || rawDesktopBackdrop, 768)} 768w, ${anilistImage(rawMobileBackdrop || rawDesktopBackdrop, 1200)} 1200w, ${anilistImage(rawMobileBackdrop || rawDesktopBackdrop, 1600)} 1600w`
+      : undefined;
+
   const heroBackdropRef = useSynchronizedImageRef(
     priority,
-    mobileBackdrop || desktopBackdrop,
+    fallbackImgSrc,
   );
 
   const scoreValue = anime.score != null ? scoreLabel(anime.score) : null;
@@ -504,28 +533,32 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
       <div className="absolute inset-0 size-full pointer-events-none overflow-hidden select-none">
         {/* MOBILE / DESKTOP: Elemento único <picture> para priorizar apenas a imagem LCP real do viewport ativo */}
         <picture className="relative block size-full">
-          {desktopBackdrop ? (
-            <source
-              media="(min-width: 768px)"
-              srcSet={desktopBackdrop}
-              width={1900}
-              height={400}
-            />
-          ) : null}
-          {mobileBackdrop ? (
-            <source
-              media="(max-width: 767.98px)"
-              srcSet={mobileBackdrop}
-              width={460}
-              height={690}
-            />
+          {hasDistinctSources ? (
+            <>
+              <source
+                media="(min-width: 768px)"
+                srcSet={desktopSrcSet}
+                sizes={heroSizes}
+                width={1900}
+                height={400}
+              />
+              <source
+                media="(max-width: 767.98px)"
+                srcSet={mobileSrcSet}
+                sizes={heroSizes}
+                width={460}
+                height={690}
+              />
+            </>
           ) : null}
           <img
             ref={heroBackdropRef}
-            src={mobileBackdrop || desktopBackdrop}
+            src={fallbackImgSrc}
+            srcSet={fallbackImgSrcSet}
+            sizes={heroSizes}
             alt={preferredTitle}
-            width={460}
-            height={690}
+            width={hasDistinctSources ? 460 : 1600}
+            height={hasDistinctSources ? 690 : 900}
             loading={priority ? "eager" : "lazy"}
             decoding={priority ? "sync" : "async"}
             fetchPriority={priority ? "high" : "low"}
@@ -802,9 +835,10 @@ export function Hero({
     if (!targetItem || typeof window === "undefined") return;
 
     const isDesktop = window.matchMedia("(min-width: 768px)").matches;
-    const backdropUrl = isDesktop
+    const rawBackdropUrl = isDesktop
       ? targetItem.banner || targetItem.cover
       : targetItem.cover || targetItem.banner;
+    const backdropUrl = anilistImage(rawBackdropUrl, isDesktop ? 1600 : 768);
 
     if (backdropUrl && !preloadedUrlsRef.current.has(backdropUrl)) {
       preloadedUrlsRef.current.add(backdropUrl);

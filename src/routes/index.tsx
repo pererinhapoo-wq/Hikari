@@ -10,7 +10,7 @@ import { overlayList } from "@/lib/overlay";
 import { localToAnime, type SlimAnime } from "@/lib/types";
 
 import { getAnimeLogo } from "@/lib/anime-logos";
-import { getResponsiveCoverAttrs } from "@/lib/image-utils";
+import { anilistImage, getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
@@ -80,6 +80,15 @@ export const Route = createFileRoute("/")({
     const desktopBackdrop =
       featured.banner?.trim() || featured.cover?.trim() || "";
 
+    const mobileSrc480 = anilistImage(mobileBackdrop, 480);
+    const mobileSrc768 = anilistImage(mobileBackdrop, 768);
+    const desktopSrc1200 = anilistImage(desktopBackdrop, 1200);
+    const desktopSrc1600 = anilistImage(desktopBackdrop, 1600);
+
+    const mobileSrcSet = `${mobileSrc480} 480w, ${mobileSrc768} 768w`;
+    const desktopSrcSet = `${desktopSrc1200} 1200w, ${desktopSrc1600} 1600w`;
+    const heroSizes = "(min-width: 768px) 100vw, 100vw";
+
     const links: Array<{
       rel: string;
       as: string;
@@ -100,23 +109,30 @@ export const Route = createFileRoute("/")({
         {
           rel: "preload",
           as: "image",
-          href: mobileBackdrop,
+          href: mobileSrc768,
           media: "(max-width: 767.98px)",
+          imageSrcSet: mobileSrcSet,
+          imageSizes: heroSizes,
           fetchPriority: "high",
         },
         {
           rel: "preload",
           as: "image",
-          href: desktopBackdrop,
+          href: desktopSrc1600,
           media: "(min-width: 768px)",
+          imageSrcSet: desktopSrcSet,
+          imageSizes: heroSizes,
           fetchPriority: "high",
         },
       );
     } else if (mobileBackdrop || desktopBackdrop) {
+      const single = mobileBackdrop || desktopBackdrop;
       links.push({
         rel: "preload",
         as: "image",
-        href: mobileBackdrop || desktopBackdrop,
+        href: anilistImage(single, 1600),
+        imageSrcSet: `${anilistImage(single, 480)} 480w, ${anilistImage(single, 768)} 768w, ${anilistImage(single, 1200)} 1200w, ${anilistImage(single, 1600)} 1600w`,
+        imageSizes: heroSizes,
         fetchPriority: "high",
       });
     }

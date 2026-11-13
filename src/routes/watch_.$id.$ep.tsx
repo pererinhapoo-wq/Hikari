@@ -4,6 +4,7 @@ import {
   ChevronRight,
   EyeOff,
   HeartHandshake,
+  Play,
   ShieldAlert,
 } from "lucide-react";
 import {
@@ -34,12 +35,19 @@ const CustomVideoPlayer = lazy(() =>
   })),
 );
 import { fetchAnimeDetail } from "@/lib/api";
-import { getResponsiveCoverAttrs } from "@/lib/image-utils";
+import { anilistImage, getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { mergeDetail } from "@/lib/overlay";
 import { buildCleanCanonical, buildWatchJsonLd, DEFAULT_OG_IMAGE } from "@/lib/seo";
 import { useHikariStore } from "@/lib/store";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { resolveEpisodes, getCachedResolvedSeasons } from "@/lib/catalog-episodes";
+import {
+  buildResolvedSeasons,
+  executeGetCatalogEpisodes,
+  getCachedResolvedSeasons,
+  getCatalogEpisodes,
+  primeCatalogEpisodesCache,
+  resolveEpisodes,
+} from "@/lib/catalog-episodes";
 import {
   startEpisodeSession,
   heartbeatEpisodeProgress,
@@ -57,6 +65,100 @@ function parseEpisodeNumber(epStr?: string): number {
   if (!epStr) return 1;
   const match = epStr.match(/ep-(?:\d+-)?(\d+)$/i) || epStr.match(/(\d+)$/);
   return match ? parseInt(match[1], 10) : 1;
+}
+
+function resolvePlayableStream(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.includes("player.mux.com/")) {
+    const muxMatch = trimmed.match(/player\.mux\.com\/([a-zA-Z0-9_-]+)/);
+    if (muxMatch?.[1]) {
+      return `https://stream.mux.com/${muxMatch[1]}.m3u8`;
+    }
+  }
+  if (
+    /^[a-zA-Z0-9_-]{20,50}$/.test(trimmed) &&
+    !trimmed.includes("/") &&
+    !trimmed.includes(".")
+  ) {
+    return `https://stream.mux.com/${trimmed}.m3u8`;
+  }
+
+  if (trimmed.includes("player.mediadelivery.net/embed/")) {
+    const bunnyMatch = trimmed.match(
+      /mediadelivery\.net\/embed\/(\d+)\/([0-9a-f-]{36})/i,
+    );
+    if (bunnyMatch) {
+      const [, libraryId, videoId] = bunnyMatch;
+      return `https://vz-${libraryId}.b-cdn.net/${videoId}/playlist.m3u8`;
+    }
+  }
+
+  return trimmed;
+}
+
+function isPlayableMediaUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const trimmed = url.trim().toLowerCase();
+  if (!trimmed) return false;
+
+  if (
+    trimmed.includes("crunchyroll.com") ||
+    trimmed.includes("funimation.com") ||
+    trimmed.includes("vrv.co") ||
+    trimmed.includes("netflix.com") ||
+    trimmed.includes("hidive.com") ||
+    trimmed.includes("youtube.com/watch") ||
+    trimmed.includes("youtu.be/") ||
+    trimmed.includes("vimeo.com/")
+  ) {
+    return false;
+  }
+
+  if (
+    trimmed.includes("player.mux.com/") ||
+    (/^[a-zA-Z0-9_-]{20,50}$/.test(url.trim()) &&
+      !trimmed.includes("/") &&
+      !trimmed.includes("."))
+  ) {
+    return true;
+  }
+  if (trimmed.includes("player.mediadelivery.net/embed/")) {
+    return true;
+  }
+
+  const cleanPath = trimmed.split("?")[0].split("#")[0];
+  if (
+    cleanPath.endsWith(".m3u8") ||
+    cleanPath.endsWith(".mp4") ||
+    cleanPath.endsWith(".webm") ||
+    cleanPath.endsWith(".mkv") ||
+    cleanPath.endsWith(".mov") ||
+    cleanPath.endsWith(".ogg") ||
+    cleanPath.endsWith(".mpd")
+  ) {
+    return true;
+  }
+
+  if (
+    trimmed.startsWith("blob:") ||
+    trimmed.includes("vercel-storage.com") ||
+    trimmed.includes("b-cdn.net") ||
+    trimmed.includes("stream.mux.com") ||
+    trimmed.includes("backblazeb2.com") ||
+    trimmed.includes("cloudinary.com") ||
+    trimmed.includes("amazonaws.com") ||
+    trimmed.includes("r2.cloudflarestorage.com") ||
+    trimmed.includes("storage.googleapis.com") ||
+    trimmed.includes("/hls/") ||
+    trimmed.includes("/m3u8/")
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export const Route = createFileRoute("/watch_/$id/$ep")({
@@ -86,18 +188,25 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
 
   loader: async ({ params }) => {
     if (params.id.startsWith("local-")) {
-      return { remote: null };
+      return { remote: null, catalogEpisodes: null };
     }
 
-    const remote = await fetchAnimeDetail({
-      data: { id: params.id },
-    });
+    const [remote, catalogEpisodes] = await Promise.all([
+      fetchAnimeDetail({
+        data: { id: params.id },
+      }),
+      (typeof window === "undefined"
+        ? executeGetCatalogEpisodes(params.id)
+        : getCatalogEpisodes({ data: { animeId: params.id } })
+      ).catch(() => null),
+    ]);
 
-    return { remote };
+    return { remote, catalogEpisodes };
   },
 
   head: ({ params, loaderData }) => {
     const remote = loaderData?.remote;
+    const catalogEpisodes = loaderData?.catalogEpisodes;
     const epNum = parseEpisodeNumber(params.ep);
 
     const animeTitle =
@@ -110,6 +219,79 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
       (remote as { coverImage?: { extraLarge?: string } })?.coverImage?.extraLarge ||
       remote?.cover ||
       DEFAULT_OG_IMAGE;
+
+    const targetCatalogEp =
+      catalogEpisodes?.episodes?.find((e) => e.number === epNum) ??
+      catalogEpisodes?.episodes?.[0];
+    const remoteEps = (remote?.seasons ?? []).flatMap((s) => s.episodes ?? []);
+    const targetRemoteEp =
+      remoteEps.find((e) => e.number === epNum) ?? remoteEps[0];
+
+    const streamCandidates = [
+      targetCatalogEp?.videoUrl,
+      targetCatalogEp?.videoUrl2,
+      targetCatalogEp?.videoUrl3,
+      targetCatalogEp?.videoUrl4,
+      targetCatalogEp?.videoUrl5,
+      targetRemoteEp?.videoUrl,
+      targetRemoteEp?.videoUrl2,
+      targetRemoteEp?.videoUrl3,
+      targetRemoteEp?.videoUrl4,
+      targetRemoteEp?.videoUrl5,
+    ];
+
+    const externalOriginSet = new Set<string>();
+    let hasPlayableVideo = false;
+    for (const rawCandidate of streamCandidates) {
+      if (!rawCandidate || !isPlayableMediaUrl(rawCandidate)) continue;
+      const resolvedUrl = resolvePlayableStream(rawCandidate);
+      if (!resolvedUrl) continue;
+      hasPlayableVideo = true;
+      try {
+        const parsed = new URL(resolvedUrl);
+        if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+          externalOriginSet.add(parsed.origin);
+        }
+      } catch {
+        // ignora URL inválida
+      }
+    }
+
+    const firstRawVideo = streamCandidates.find((c) => Boolean(c?.trim()));
+    const resolvedYt = !hasPlayableVideo
+      ? (remote?.trailerId ? youtubeIdFrom(remote.trailerId) : null) ||
+        (firstRawVideo ? youtubeIdFrom(firstRawVideo) : null)
+      : null;
+
+    if (resolvedYt) {
+      externalOriginSet.add("https://www.youtube-nocookie.com");
+      if (!targetCatalogEp?.thumbnail && !targetRemoteEp?.thumbnail && !remote?.banner && !remote?.cover) {
+        externalOriginSet.add("https://i.ytimg.com");
+      }
+    }
+
+    const rawPoster =
+      targetCatalogEp?.thumbnail?.trim() ||
+      targetRemoteEp?.thumbnail?.trim() ||
+      remote?.banner?.trim() ||
+      remote?.cover?.trim() ||
+      "";
+    if (rawPoster) {
+      const optimizedPoster = anilistImage(rawPoster, 1280);
+      try {
+        const posterOrigin = new URL(optimizedPoster).origin;
+        if (posterOrigin !== "https://s4.anilist.co") {
+          externalOriginSet.add(posterOrigin);
+        }
+      } catch {
+        // ignora URL relativa
+      }
+    }
+
+    const preconnectLinks = Array.from(externalOriginSet).flatMap((origin) => [
+      { rel: "preconnect", href: origin },
+      { rel: "dns-prefetch", href: origin },
+    ]);
 
     const meta = [
       { title: pageTitle },
@@ -137,6 +319,7 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
 
     return {
       links: [
+        ...preconnectLinks,
         {
           rel: "stylesheet",
           href: playerCss,
@@ -164,11 +347,51 @@ function WatchPage() {
   const navigate = useNavigate();
   const targetEpNum = parseEpisodeNumber(ep);
 
+  const [playerMounted, setPlayerMounted] = useState(false);
+  const [userTriggeredPlay, setUserTriggeredPlay] = useState(false);
+
+  const handleActivatePlayer = useCallback(() => {
+    setUserTriggeredPlay(true);
+    setPlayerMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || playerMounted) return;
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    let idleId: number | null = null;
+    let timerId: number | null = null;
+
+    if (typeof win.requestIdleCallback === "function") {
+      idleId = win.requestIdleCallback(
+        () => {
+          setPlayerMounted(true);
+        },
+        { timeout: 3000 },
+      );
+    } else {
+      timerId = window.setTimeout(() => {
+        setPlayerMounted(true);
+      }, 3000);
+    }
+
+    return () => {
+      if (idleId !== null && typeof win.cancelIdleCallback === "function") {
+        win.cancelIdleCallback(idleId);
+      }
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, [playerMounted]);
+
   const {
     comment: commentQuery,
   } = Route.useSearch();
 
-  const { remote } = Route.useLoaderData();
+  const { remote, catalogEpisodes } = Route.useLoaderData();
 
   const locals = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
@@ -183,7 +406,14 @@ function WatchPage() {
   );
 
   const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
-    return getCachedResolvedSeasons(baseAnime?.id || id, baseAnime?.seasons);
+    const targetId = baseAnime?.id || id;
+    if (catalogEpisodes) {
+      if (typeof window !== "undefined") {
+        primeCatalogEpisodesCache(targetId, catalogEpisodes);
+      }
+      return buildResolvedSeasons(targetId, catalogEpisodes, baseAnime?.seasons ?? []);
+    }
+    return getCachedResolvedSeasons(targetId, baseAnime?.seasons);
   });
 
   useEffect(() => {
@@ -288,98 +518,7 @@ function WatchPage() {
     ? displayTitle(anime)
     : "";
 
-  // Resolve qualquer formato de URL (HLS .m3u8, MP4, WebM, Bunny, Mux, B2, Vercel Blob)
-  // em um stream reproduzível nativamente pelo reprodutor do Hikari
-  function resolvePlayableStream(url: string | null | undefined): string | null {
-    if (!url) return null;
-    const trimmed = url.trim();
-    if (!trimmed) return null;
-
-    // Se for URL ou ID do Mux
-    if (trimmed.includes("player.mux.com/")) {
-      const muxMatch = trimmed.match(/player\.mux\.com\/([a-zA-Z0-9_-]+)/);
-      if (muxMatch?.[1]) {
-        return `https://stream.mux.com/${muxMatch[1]}.m3u8`;
-      }
-    }
-    if (/^[a-zA-Z0-9_-]{20,50}$/.test(trimmed) && !trimmed.includes("/") && !trimmed.includes(".")) {
-      return `https://stream.mux.com/${trimmed}.m3u8`;
-    }
-
-    // Se for embed do Bunny mediadelivery: https://player.mediadelivery.net/embed/{libraryId}/{videoId}
-    if (trimmed.includes("player.mediadelivery.net/embed/")) {
-      const bunnyMatch = trimmed.match(/mediadelivery\.net\/embed\/(\d+)\/([0-9a-f-]{36})/i);
-      if (bunnyMatch) {
-        const [, libraryId, videoId] = bunnyMatch;
-        return `https://vz-${libraryId}.b-cdn.net/${videoId}/playlist.m3u8`;
-      }
-    }
-
-    // Streams diretos (HLS, MP4, WebM, Cloudinary, Vercel Blob, Bunny CDN, B2, S3)
-    return trimmed;
-  }
-
-  // Verifica se uma URL é um arquivo/stream de mídia reproduzível e descarta páginas web externas
-  function isPlayableMediaUrl(url: string | null | undefined): boolean {
-    if (!url) return false;
-    const trimmed = url.trim().toLowerCase();
-    if (!trimmed) return false;
-
-    // Páginas externas de streaming / catálogo que não são arquivos de vídeo diretos
-    if (
-      trimmed.includes("crunchyroll.com") ||
-      trimmed.includes("funimation.com") ||
-      trimmed.includes("vrv.co") ||
-      trimmed.includes("netflix.com") ||
-      trimmed.includes("hidive.com") ||
-      trimmed.includes("youtube.com/watch") ||
-      trimmed.includes("youtu.be/") ||
-      trimmed.includes("vimeo.com/")
-    ) {
-      return false;
-    }
-
-    // Embeds / IDs suportados pelo resolver (Mux e Bunny)
-    if (trimmed.includes("player.mux.com/") || (/^[a-zA-Z0-9_-]{20,50}$/.test(url.trim()) && !trimmed.includes("/") && !trimmed.includes("."))) {
-      return true;
-    }
-    if (trimmed.includes("player.mediadelivery.net/embed/")) {
-      return true;
-    }
-
-    // Extensões de vídeo e playlists HLS/DASH
-    const cleanPath = trimmed.split("?")[0].split("#")[0];
-    if (
-      cleanPath.endsWith(".m3u8") ||
-      cleanPath.endsWith(".mp4") ||
-      cleanPath.endsWith(".webm") ||
-      cleanPath.endsWith(".mkv") ||
-      cleanPath.endsWith(".mov") ||
-      cleanPath.endsWith(".ogg") ||
-      cleanPath.endsWith(".mpd")
-    ) {
-      return true;
-    }
-
-    // Storages e CDNs de mídia reconhecidos (Vercel Blob, Bunny, Mux, B2, S3, Cloudinary, etc.)
-    if (
-      trimmed.startsWith("blob:") ||
-      trimmed.includes("vercel-storage.com") ||
-      trimmed.includes("b-cdn.net") ||
-      trimmed.includes("stream.mux.com") ||
-      trimmed.includes("backblazeb2.com") ||
-      trimmed.includes("cloudinary.com") ||
-      trimmed.includes("amazonaws.com") ||
-      trimmed.includes("r2.cloudflarestorage.com") ||
-      trimmed.includes("storage.googleapis.com") ||
-      trimmed.includes("/hls/") ||
-      trimmed.includes("/m3u8/")
-    ) {
-      return true;
-    }
-
-    return false;
-  }
+  // Usa os helpers resolvePlayableStream e isPlayableMediaUrl definidos no escopo do módulo
 
   type PlayerSourceEntry = {
     id: "player-1" | "player-2" | "player-3" | "player-4" | "player-5";
@@ -839,7 +978,8 @@ function WatchPage() {
   }
 
   const playerPoster = useMemo(() => {
-    return current?.thumbnail || anime?.banner || anime?.cover || null;
+    const rawPoster = current?.thumbnail || anime?.banner || anime?.cover || null;
+    return rawPoster ? anilistImage(rawPoster, 1280) : null;
   }, [current?.thumbnail, anime?.banner, anime?.cover]);
 
   const _currentVideoItem = useMemo((): VideoItem | undefined => {
@@ -887,7 +1027,7 @@ function WatchPage() {
     }
   }, [playerSources, selectedPlayer, handleSelectPlayer]);
 
-  if (!hydrated) {
+  if (!hydrated && !anime) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-bg text-fg">
         <div className="flex flex-col items-center justify-center gap-3">
@@ -942,39 +1082,75 @@ function WatchPage() {
         {/* ================================================== */}
 
         {file && selectedPlayer && current ? (
-          <Suspense
-            fallback={
-              <PlayerLoadingFallback
-                posterUrl={playerPoster}
-                title={
-                  current.number
-                    ? `${title} — Episódio ${current.number}`
-                    : title
-                }
+          playerMounted ? (
+            <Suspense
+              fallback={
+                <PlayerLoadingFallback
+                  posterUrl={playerPoster}
+                  title={
+                    current.number
+                      ? `${title} — Episódio ${current.number}`
+                      : title
+                  }
+                />
+              }
+            >
+              <CustomVideoPlayer
+                key={`${anime.id}-${current.id}-${selectedPlayer.id}-${file}`}
+                video={_currentVideoItem}
+                autoPlay={userTriggeredPlay || userAutoplay}
+                initialTime={effectiveInitialTime}
+                onPlay={handlePlay}
+                onPlaying={handlePlaying}
+                onSeeking={handleSeeking}
+                onSeeked={handleSeeked}
+                onWaiting={handleWaiting}
+                onTimeUpdate={handleTimeUpdate}
+                onPause={handlePause}
+                onRestored={handleRestored}
+                onEnded={handleEnded}
+                onError={handlePlayerError}
               />
-            }
-          >
-            <CustomVideoPlayer
-              key={`${anime.id}-${current.id}-${selectedPlayer.id}-${file}`}
-              video={_currentVideoItem}
-              autoPlay={userAutoplay}
-              initialTime={effectiveInitialTime}
-              onPlay={handlePlay}
-              onPlaying={handlePlaying}
-              onSeeking={handleSeeking}
-              onSeeked={handleSeeked}
-              onWaiting={handleWaiting}
-              onTimeUpdate={handleTimeUpdate}
-              onPause={handlePause}
-              onRestored={handleRestored}
-              onEnded={handleEnded}
-              onError={handlePlayerError}
-            />
-          </Suspense>
+            </Suspense>
+          ) : (
+            <button
+              type="button"
+              onClick={handleActivatePlayer}
+              aria-label={
+                current.number
+                  ? `Reproduzir ${title} — Episódio ${current.number}`
+                  : `Reproduzir ${title}`
+              }
+              className="relative block aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)] cursor-pointer group select-none text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+            >
+              {playerPoster ? (
+                <img
+                  src={playerPoster}
+                  alt={current.number ? `${title} — Episódio ${current.number}` : title}
+                  width={1280}
+                  height={720}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="sync"
+                  className="absolute inset-0 size-full object-cover filter brightness-[0.85] transition-transform duration-300 group-hover:scale-105"
+                />
+              ) : null}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex size-16 sm:size-20 items-center justify-center rounded-full bg-purple-600/90 text-white shadow-[0_0_30px_rgba(168,85,247,0.6)] transition-transform duration-200 group-hover:scale-110">
+                  <Play className="size-8 sm:size-10 fill-white ml-1" />
+                </div>
+              </div>
+            </button>
+          )
         ) : yt ? (
           <YouTubeTrailer
             yt={yt}
             title={title}
+            posterUrl={playerPoster || `https://i.ytimg.com/vi/${yt}/hqdefault.jpg`}
+            mounted={playerMounted}
+            autoPlay={userTriggeredPlay || userAutoplay}
+            onActivate={handleActivatePlayer}
           />
         ) : (
           <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
@@ -1036,6 +1212,7 @@ function WatchPage() {
                   height={96}
                   className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
                   loading="lazy"
+                  fetchPriority="low"
                   decoding="async"
                 />
               );
@@ -1231,24 +1408,56 @@ function WatchPage() {
   );
 }
 
-function YouTubeTrailer({ yt, title }: { yt: string; title: string }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
+function YouTubeTrailer({
+  yt,
+  title,
+  posterUrl,
+  mounted,
+  autoPlay,
+  onActivate,
+}: {
+  yt: string;
+  title: string;
+  posterUrl: string;
+  mounted: boolean;
+  autoPlay: boolean;
+  onActivate: () => void;
+}) {
   return (
     <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)]">
       {mounted ? (
         <iframe
           title={`${title} — trailer`}
-          src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&rel=0`}
+          src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=${autoPlay ? 1 : 0}&rel=0`}
           className="size-full"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
-      ) : null}
+      ) : (
+        <button
+          type="button"
+          onClick={onActivate}
+          aria-label={`Reproduzir trailer de ${title}`}
+          className="relative block size-full cursor-pointer group select-none text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+        >
+          <img
+            src={posterUrl}
+            alt={`${title} — trailer`}
+            width={1280}
+            height={720}
+            loading="eager"
+            fetchPriority="high"
+            decoding="sync"
+            className="absolute inset-0 size-full object-cover filter brightness-[0.85] transition-transform duration-300 group-hover:scale-105"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex size-16 sm:size-20 items-center justify-center rounded-full bg-purple-600/90 text-white shadow-[0_0_30px_rgba(168,85,247,0.6)] transition-transform duration-200 group-hover:scale-110">
+              <Play className="size-8 sm:size-10 fill-white ml-1" />
+            </div>
+          </div>
+        </button>
+      )}
     </div>
   );
 }
@@ -1324,7 +1533,8 @@ function CommentsLoadingFallback() {
                 width={290}
                 height={140}
                 className="w-44 sm:w-52 md:w-56 h-auto object-contain pointer-events-none"
-                loading="eager"
+                loading="lazy"
+                fetchPriority="low"
                 decoding="async"
                 draggable={false}
               />

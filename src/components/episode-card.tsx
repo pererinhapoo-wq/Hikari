@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 import { HikariImage } from "@/components/ui/hikari-image";
+import { anilistImage } from "@/lib/image-utils";
 import { cleanEpisodeDisplay, type PublishedEpisode } from "@/lib/published-episodes";
 import { cn } from "@/lib/utils";
 
@@ -8,10 +9,12 @@ export const EpisodeCard = memo(function EpisodeCard({
   episode,
   priority = false,
   defer,
+  first = false,
 }: {
   episode: PublishedEpisode;
   priority?: boolean;
   defer?: boolean;
+  first?: boolean;
 }) {
   const formattedSubtitle = useMemo(() => {
     return cleanEpisodeDisplay(
@@ -74,12 +77,14 @@ export const EpisodeCard = memo(function EpisodeCard({
           )}
         >
           <HikariImage
-            src={episode.thumbnail}
+            src={episode.thumbnail ? anilistImage(episode.thumbnail, 320) : episode.thumbnail}
             alt=""
             width={320}
             height={180}
-            priority={priority}
-            defer={defer ?? !priority}
+            priority={false}
+            loading={first || priority ? "eager" : "lazy"}
+            fetchPriority="low"
+            defer={!first && !priority && (defer ?? true)}
             fallbackClassName="bg-[#0f0d1a]"
             className="size-full object-cover"
           />

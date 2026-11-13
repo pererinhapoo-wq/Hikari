@@ -132,6 +132,7 @@ export default defineConfig(({ command, isPreview }) => {
   const isBuildOrPreview = command === "build" || Boolean(isPreview);
 
   return {
+    envPrefix: ["VITE_", "NEXT_PUBLIC_"],
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url)),

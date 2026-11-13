@@ -81,7 +81,7 @@ const DeferredAnimeComments = lazy(
 import { SectionReveal } from "@/components/section-reveal";
 import { useScrollLock } from "@/lib/scroll-lock";
 import { warmBannerImage } from "@/lib/anime-banner-warmup";
-import { getResponsiveCoverAttrs } from "@/lib/image-utils";
+import { anilistImage, getResponsiveCoverAttrs } from "@/lib/image-utils";
 import {
   buildCleanCanonical,
   buildTVSeriesJsonLd,
@@ -322,6 +322,7 @@ export const Route = createFileRoute("/anime/$id")({
       as?: string;
       href: string;
       media?: string;
+      imageSizes?: string;
       fetchPriority?: "high" | "low" | "auto";
     }> = [];
 
@@ -345,8 +346,9 @@ export const Route = createFileRoute("/anime/$id")({
         {
           rel: "preload",
           as: "image",
-          href: syncMobile.url,
+          href: anilistImage(syncMobile.url, 640),
           media: MOBILE_BANNER_MEDIA_QUERY,
+          imageSizes: "100vw",
           fetchPriority: "high",
         },
         ...(desktopBanner
@@ -354,8 +356,9 @@ export const Route = createFileRoute("/anime/$id")({
               {
                 rel: "preload",
                 as: "image",
-                href: desktopBanner,
+                href: anilistImage(desktopBanner, 1600),
                 media: DESKTOP_BANNER_MEDIA_QUERY,
+                imageSizes: "100vw",
                 fetchPriority: "high" as const,
               },
             ]
@@ -365,7 +368,16 @@ export const Route = createFileRoute("/anime/$id")({
       links.push({
         rel: "preload",
         as: "image",
-        href: desktopBanner,
+        href: anilistImage(desktopBanner, 1600),
+        imageSizes: "100vw",
+        fetchPriority: "high",
+      });
+    } else if (remote.cover) {
+      links.push({
+        rel: "preload",
+        as: "image",
+        href: anilistImage(remote.cover, 640),
+        imageSizes: "100vw",
         fetchPriority: "high",
       });
     }
@@ -1924,17 +1936,29 @@ function AnimePage() {
                 {validMobileSourceUrl ? (
                   <source
                     media={MOBILE_BANNER_MEDIA_QUERY}
-                    srcSet={validMobileSourceUrl}
+                    srcSet={anilistImage(validMobileSourceUrl, 640)}
+                    sizes="100vw"
                   />
                 ) : null}
                 {validDesktopBannerUrl ? (
                   <source
                     media={DESKTOP_BANNER_MEDIA_QUERY}
-                    srcSet={validDesktopBannerUrl}
+                    srcSet={anilistImage(validDesktopBannerUrl, 1600)}
+                    sizes="100vw"
                   />
                 ) : null}
                 <img
-                  src={currentBannerSrc}
+                  src={
+                    currentBannerSrc
+                      ? anilistImage(
+                          currentBannerSrc,
+                          validMobileSourceUrl &&
+                            currentBannerSrc === validMobileSourceUrl
+                            ? 640
+                            : 1600,
+                        )
+                      : undefined
+                  }
                   alt=""
                   sizes="100vw"
                   loading="eager"
@@ -1964,7 +1988,7 @@ function AnimePage() {
             <>
               {anime.cover ? (
                 <img
-                  src={anime.cover}
+                  src={anilistImage(anime.cover, 480)}
                   alt=""
                   width={460}
                   height={690}
@@ -1995,27 +2019,22 @@ function AnimePage() {
             <div className="block">
               <div className="relative aspect-2/3 w-28 max-sm:min-[380px]:w-32 sm:w-44 shrink-0 overflow-hidden rounded-2xl bg-elevated shadow-[0_12px_36px_rgba(0,0,0,0.85),0_0_24px_rgba(168,85,247,0.2)] ring-1 ring-purple-500/35 sm:translate-y-8.5">
                 {(() => {
-                  const coverAttrs = anime.cover
-                    ? getResponsiveCoverAttrs(anime.cover, "card-lg")
-                    : null;
+                  const posterUrl = anime.cover || null;
+                  const anilist320 = anilistImage(posterUrl, 320);
+                  const anilist460 = anilistImage(posterUrl, 460);
+                  const anilist640 = anilistImage(posterUrl, 640);
+                  const srcSet = posterUrl ? `${anilist320} 320w, ${anilist460} 460w, ${anilist640} 640w` : undefined;
                   return (
                     <HikariImage
-                      src={anime.cover || null}
-                      srcSet={coverAttrs?.srcSet}
-                      sizes={
-                        coverAttrs
-                          ? "(min-width: 640px) 176px, (min-width: 380px) 128px, 112px"
-                          : undefined
-                      }
-                      fallbackSrc={
-                        coverAttrs?.fallbackSrc ? anime.cover : undefined
-                      }
+                      src={anilist640}
+                      srcSet={srcSet}
+                      sizes="(min-width: 640px) 176px, 112px"
                       alt={title}
                       width={460}
                       height={690}
                       priority={false}
                       loading="eager"
-                      fetchPriority="auto"
+                      fetchPriority={shouldRenderPicture ? "auto" : "high"}
                       decoding="sync"
                       fallbackClassName="bg-elevated"
                       className="size-full object-cover"
@@ -3353,7 +3372,9 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
   const fallbackCoverAttrs = isFallback
     ? getResponsiveCoverAttrs(cover, "card-sm")
     : null;
-  const imgSrc = ep.thumbnail || fallbackCoverAttrs?.src || cover;
+  const imgSrc = ep.thumbnail
+    ? anilistImage(ep.thumbnail, 320)
+    : fallbackCoverAttrs?.src || anilistImage(cover, 320);
 
   return (
     <li>
@@ -3918,7 +3939,7 @@ const ImagensSection = memo(function ImagensSection({
             >
               <div className="relative size-full flex items-center justify-center overflow-hidden rounded-xl bg-[#07060d]">
                 <HikariImage
-                  src={imgUrl}
+                  src={anilistImage(imgUrl, 480)}
                   defer={idx >= visibleImgLimit}
                   alt={`Arte promocional de ${title} (${idx + 1})`}
                   fallbackClassName="bg-[#07060d]"
@@ -3958,7 +3979,7 @@ const ImagensSection = memo(function ImagensSection({
             onClick={(e) => e.stopPropagation()}
           >
             <HikariImage
-              src={selectedImage}
+              src={anilistImage(selectedImage, 1200)}
               alt={`Visualização completa de ${title}`}
               loading="eager"
               decoding="async"
@@ -4097,7 +4118,7 @@ const ElencoCard = memo(function ElencoCard({
       {/* Imagem retangular do personagem (elemento visual principal, nunca circular) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         <HikariImage
-          src={char.image}
+          src={anilistImage(char.image, 320)}
           defer={Boolean(char.image && !loadImage)}
           alt={charName}
           fallbackClassName="bg-[#0d0c16]"
@@ -4504,7 +4525,7 @@ const DubladorCard = memo(function DubladorCard({
       {/* Imagem retangular do dublador (foto real da pessoa) */}
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-[#0d0c16]">
         <HikariImage
-          src={item.vaImage}
+          src={anilistImage(item.vaImage, 320)}
           defer={Boolean(item.vaImage && !loadImage)}
           alt={item.vaName}
           fallbackClassName="bg-[#0d0c16]"
@@ -4885,7 +4906,7 @@ const StaffCard = memo(function StaffCard({
         {isStudio ? (
           <div className="relative flex size-full items-center justify-center p-2.5 sm:p-3 bg-[#0d0c16]">
             <HikariImage
-              src={item.image}
+              src={anilistImage(item.image, 320)}
               defer={Boolean(item.image && !loadImage)}
               alt={item.name}
               fallbackClassName="bg-[#0d0c16]"
@@ -4894,7 +4915,7 @@ const StaffCard = memo(function StaffCard({
           </div>
         ) : (
           <HikariImage
-            src={item.image}
+            src={anilistImage(item.image, 320)}
             defer={Boolean(item.image && !loadImage)}
             alt={item.name}
             fallbackClassName="bg-[#0d0c16]"
