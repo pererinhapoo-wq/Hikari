@@ -63,7 +63,7 @@ function SearchPoster({
     <div className={cn("sr-poster", status !== "loaded" && "hikari-image-shimmer")}>
       {status === "error" || !src ? (
         <div className="flex size-full items-center justify-center bg-[var(--bg-4)] text-[var(--text-4)]">
-          <Film className="size-[16px] opacity-75" />
+          <Film className="size-[14px] opacity-75" />
         </div>
       ) : (
         <img
@@ -98,7 +98,7 @@ function SearchAvatar({
   }, [src]);
 
   return (
-    <div className="sr-poster text-[var(--violet-200)] flex items-center justify-center font-bold text-lg bg-[var(--bg-4)]">
+    <div className="sr-poster text-[var(--violet-200)] flex items-center justify-center font-bold text-sm bg-[var(--bg-4)]">
       {src && status !== "error" ? (
         <img
           src={src}
@@ -130,6 +130,7 @@ export function SearchModal({
 
   const [category, setCategory] = useState<SearchCategory>(initialCategory);
   const [query, setQuery] = useState("");
+  const [lockedHeight, setLockedHeight] = useState<number | null>(null);
 
   // Resultados de Animes
   const [animeResults, setAnimeResults] = useState<SlimAnime[]>([]);
@@ -169,6 +170,10 @@ export function SearchModal({
       setIsRendered(true);
       setAnimationState("open");
       document.body.style.overflow = "hidden";
+      
+      const initialHeight = window.visualViewport?.height ?? window.innerHeight;
+      setLockedHeight(initialHeight);
+
       const timer = window.setTimeout(() => {
         inputRef.current?.focus({ preventScroll: true });
       }, 40);
@@ -178,6 +183,7 @@ export function SearchModal({
       const timer = window.setTimeout(() => {
         setIsRendered(false);
         document.body.style.overflow = "";
+        setLockedHeight(null);
       }, 160);
       return () => window.clearTimeout(timer);
     }
@@ -763,6 +769,11 @@ export function SearchModal({
       aria-label="Caixa de busca do Hikari"
       data-state={animationState}
       className="sr-overlay"
+      style={
+        lockedHeight && typeof window !== "undefined" && window.innerWidth <= 560
+          ? { height: `${lockedHeight}px`, maxHeight: `${lockedHeight}px` }
+          : undefined
+      }
     >
       {/* Backdrop */}
       <div
@@ -875,7 +886,7 @@ export function SearchModal({
         <div
           ref={scrollContainerRef}
           data-search-scroll-container
-          className="flex-1 overflow-y-auto overscroll-contain p-2 space-y-1"
+          className="flex-1 overflow-y-auto overscroll-contain px-2 py-1 space-y-0.5"
         >
           {/* =========================================================
               ESTADO VAZIO (Sem consulta)
@@ -918,8 +929,8 @@ export function SearchModal({
           {category === "animes" && hasQuery && (
             <div>
               {animeLoading && animeResults.length === 0 ? (
-                <div className="space-y-1.5 p-1">
-                  {Array.from({ length: 4 }).map((_, i) => (
+                <div className="space-y-1 p-0.5">
+                  {Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="sr-item skeleton">
                       <div className="sr-poster" />
                       <div className="min-w-0 space-y-2 py-1">
@@ -946,7 +957,7 @@ export function SearchModal({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {animeResults.map((anime) => {
                     const coverAttrs = anime.cover
                       ? getResponsiveCoverAttrs(anime.cover, "thumb")
@@ -1032,8 +1043,8 @@ export function SearchModal({
                   </p>
                 </div>
               ) : userLoading && userResults.length === 0 ? (
-                <div className="space-y-1.5 p-1">
-                  {Array.from({ length: 4 }).map((_, i) => (
+                <div className="space-y-1 p-0.5">
+                  {Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="sr-item skeleton">
                       <div className="sr-poster" />
                       <div className="min-w-0 space-y-2 py-1">
@@ -1060,7 +1071,7 @@ export function SearchModal({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {userResults.map((person) => {
                     const avatarLetter = (
                       person.displayName ||
@@ -1113,8 +1124,8 @@ export function SearchModal({
           {category === "people" && hasQuery && (
             <div>
               {peopleLoading && peopleResults.length === 0 ? (
-                <div className="space-y-1.5 p-1">
-                  {Array.from({ length: 4 }).map((_, i) => (
+                <div className="space-y-1 p-0.5">
+                  {Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="sr-item skeleton">
                       <div className="sr-poster" />
                       <div className="min-w-0 space-y-2 py-1">
@@ -1141,7 +1152,7 @@ export function SearchModal({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {peopleResults.map((person) => {
                     const imageSrc = person.image?.large || person.image?.medium || "";
                     const animeId = person.anime?.id;
@@ -1195,8 +1206,8 @@ export function SearchModal({
           {category === "characters" && hasQuery && (
             <div>
               {characterLoading && characterResults.length === 0 ? (
-                <div className="space-y-1.5 p-1">
-                  {Array.from({ length: 4 }).map((_, i) => (
+                <div className="space-y-1 p-0.5">
+                  {Array.from({ length: 6 }).map((_, i) => (
                     <div key={i} className="sr-item skeleton">
                       <div className="sr-poster" />
                       <div className="min-w-0 space-y-2 py-1">
@@ -1223,7 +1234,7 @@ export function SearchModal({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {characterResults.map((character) => {
                     const imageSrc = character.image?.large || character.image?.medium || "";
                     const animeId = character.anime?.id;
