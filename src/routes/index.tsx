@@ -99,10 +99,11 @@ export const Route = createFileRoute("/")({
     const logoConfig = getAnimeLogo(featured);
     if (logoConfig?.src) {
       if (logoConfig.webpSrcSet) {
+        const mobileWebp = logoConfig.webpSrcSet.split(",")[0].trim().split(" ")[0];
         links.push({
           rel: "preload",
           as: "image",
-          href: logoConfig.src,
+          href: mobileWebp,
           imageSrcSet: logoConfig.webpSrcSet,
           imageSizes: logoConfig.sizes,
           type: "image/webp",

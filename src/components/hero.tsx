@@ -629,36 +629,36 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
         </div>
 
         {/* Linha de Metadados: Nota com estrela dourada · Total Temporadas · Lançamento · Episódios */}
-        <div className="flex flex-wrap items-center justify-center gap-x-2.5 sm:gap-x-3 gap-y-1 text-xs sm:text-[13px] font-semibold text-zinc-100 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
+        <div className="flex flex-wrap items-center justify-center gap-x-2.5 sm:gap-x-3 gap-y-1 text-xs sm:text-[13px] font-semibold text-zinc-100 [text-shadow:0_2px_6px_rgba(0,0,0,0.95)]">
           {scoreValue && (
-            <span className="inline-flex items-center gap-1 font-extrabold tracking-tight text-amber-400 drop-shadow-[0_2px_8px_rgba(245,158,11,0.4)]">
-              <span className="text-sm sm:text-base leading-none text-amber-400 drop-shadow-[0_1px_3px_rgba(245,158,11,0.6)]">★</span>
+            <span className="inline-flex items-center gap-1 font-extrabold tracking-tight text-amber-400 [text-shadow:0_2px_8px_rgba(245,158,11,0.4)]">
+              <span className="text-sm sm:text-base leading-none text-amber-400 [text-shadow:0_1px_3px_rgba(245,158,11,0.6)]">★</span>
               <span className="tabular-nums text-xs sm:text-[13.5px] leading-none font-extrabold text-amber-300">{scoreValue}</span>
             </span>
           )}
 
           {scoreValue && (seasonsSpan || seasonValue || episodesValue) && (
-            <span className="size-1 rounded-full bg-zinc-400/80 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
+            <span className="size-1 rounded-full bg-zinc-400/80 shrink-0" aria-hidden="true" />
           )}
 
           {seasonsSpan && (
-            <span className="font-bold text-white tracking-wide text-xs sm:text-[13px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{seasonsSpan}</span>
+            <span className="font-bold text-white tracking-wide text-xs sm:text-[13px] [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">{seasonsSpan}</span>
           )}
 
           {seasonsSpan && (seasonValue || episodesValue) && (
-            <span className="size-1 rounded-full bg-zinc-400/80 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
+            <span className="size-1 rounded-full bg-zinc-400/80 shrink-0" aria-hidden="true" />
           )}
 
           {seasonValue && (
-            <span className="font-semibold text-zinc-100 tracking-normal text-xs sm:text-[13px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{seasonValue}</span>
+            <span className="font-semibold text-zinc-100 tracking-normal text-xs sm:text-[13px] [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">{seasonValue}</span>
           )}
 
           {seasonValue && episodesValue && (
-            <span className="size-1 rounded-full bg-zinc-400/80 shadow-[0_1px_2px_rgba(0,0,0,0.9)] shrink-0" aria-hidden="true" />
+            <span className="size-1 rounded-full bg-zinc-400/80 shrink-0" aria-hidden="true" />
           )}
 
           {episodesValue && (
-            <span className="font-semibold text-zinc-200 tracking-normal text-xs sm:text-[13px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">{episodesValue}</span>
+            <span className="font-semibold text-zinc-200 tracking-normal text-xs sm:text-[13px] [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">{episodesValue}</span>
           )}
         </div>
 

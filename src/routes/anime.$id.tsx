@@ -1880,7 +1880,7 @@ function AnimePage() {
       : "Assistir";
 
   return (
-    <article className="pb-12 motion-safe:animate-[pageEnter_250ms_ease-out]">
+    <article className="pb-12">
       {/* Testes experimentais isolados: entrada suave da página e assentamento sutil do banner */}
       <style>{`
         @keyframes pageEnter {
@@ -3443,6 +3443,7 @@ const EpisodeGrid = memo(function EpisodeGrid({
   watchedEpisodes: string[];
 }) {
   const [selectingId, setSelectingId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollBoxRef = useRef<HTMLDivElement>(null);
 
@@ -3451,9 +3452,11 @@ const EpisodeGrid = memo(function EpisodeGrid({
     [watchedEpisodes],
   );
 
+  const displayedEpisodes = showAll ? episodes : episodes.slice(0, 12);
+
   const visibleImgLimit = useVerticalBoxImageLimit(
     scrollBoxRef,
-    episodes.length,
+    displayedEpisodes.length,
     108,
     18,
     animeId,
@@ -3478,32 +3481,43 @@ const EpisodeGrid = memo(function EpisodeGrid({
   }, []);
 
   return (
-    <div
-      ref={scrollBoxRef}
-      className="
-        max-h-[28rem]
-        overflow-y-auto
-        overscroll-contain
-        rounded-xl
-        pr-1
-        touch-pan-y
-        sm:max-h-[34rem]
-      "
-    >
-      <ol className="grid gap-3 p-0.5 sm:grid-cols-2">
-        {episodes.map((ep, index) => (
-          <EpisodeGridItem
-            key={ep.id}
-            ep={ep}
-            animeId={animeId}
-            cover={cover}
-            watched={watchedSet.has(ep.id)}
-            isSelecting={selectingId === ep.id}
-            loadImage={index < visibleImgLimit}
-            onSelect={handleEpisodeSelect}
-          />
-        ))}
-      </ol>
+    <div className="space-y-3">
+      <div
+        ref={scrollBoxRef}
+        className="
+          max-h-[28rem]
+          overflow-y-auto
+          overscroll-contain
+          rounded-xl
+          pr-1
+          touch-pan-y
+          sm:max-h-[34rem]
+        "
+      >
+        <ol className="grid gap-3 p-0.5 sm:grid-cols-2">
+          {displayedEpisodes.map((ep, index) => (
+            <EpisodeGridItem
+              key={ep.id}
+              ep={ep}
+              animeId={animeId}
+              cover={cover}
+              watched={watchedSet.has(ep.id)}
+              isSelecting={selectingId === ep.id}
+              loadImage={index < visibleImgLimit}
+              onSelect={handleEpisodeSelect}
+            />
+          ))}
+        </ol>
+      </div>
+      {!showAll && episodes.length > 12 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="w-full rounded-xl border border-purple-500/30 bg-surface/80 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-purple-300 transition-colors hover:bg-elevated hover:text-white"
+        >
+          Ver todos ({episodes.length} episódios)
+        </button>
+      )}
     </div>
   );
 });

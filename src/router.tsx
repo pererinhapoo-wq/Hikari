@@ -8,6 +8,8 @@ export function getRouter() {
   return createRouter({
     routeTree,
     defaultErrorComponent: AppErrorComponent,
+    defaultPreload: "intent",
+    defaultPreloadStaleTime: 30000,
     scrollToTopSelectors: [".rail"],
   });
 }

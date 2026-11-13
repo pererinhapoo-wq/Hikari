@@ -6,6 +6,8 @@ export interface LogoProps {
   className?: string;
   size?: "sm" | "md" | "lg";
   linkToHome?: boolean;
+  loading?: "eager" | "lazy";
+  fetchPriority?: "high" | "low" | "auto";
 }
 
 /**
@@ -19,6 +21,8 @@ export function Logo({
   className,
   size = "md",
   linkToHome = true,
+  loading = "eager",
+  fetchPriority = "auto",
 }: LogoProps) {
   const containerSizeClasses = {
     sm: "h-[42px] sm:h-[46px]",
@@ -76,9 +80,9 @@ export function Logo({
             "absolute top-0 z-0 w-auto object-contain pointer-events-none -translate-x-[3.5%] drop-shadow-[0_2px_8px_rgba(0,0,0,0.65)]",
             charSizeClasses
           )}
-          loading="eager"
+          loading={loading}
           decoding="async"
-          fetchPriority="high"
+          fetchPriority={fetchPriority}
           draggable={false}
         />
       </picture>
@@ -102,9 +106,9 @@ export function Logo({
             width={329}
             height={112}
             className="h-full w-auto object-contain [clip-path:polygon(0%_0%,14%_0%,14%_25%,78%_25%,78%_0%,100%_0%,100%_100%,74%_100%,74%_87%,26%_87%,26%_100%,0%_100%)]"
-            loading="eager"
+            loading={loading}
             decoding="async"
-            fetchPriority="high"
+            fetchPriority={fetchPriority}
             draggable={false}
           />
         </picture>

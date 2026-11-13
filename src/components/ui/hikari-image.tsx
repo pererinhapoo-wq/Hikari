@@ -127,7 +127,6 @@ export const HikariImage = React.memo(function HikariImage({
     return (
       <div
         aria-hidden="true"
-        data-image-fallback="true"
         className={cn("size-full bg-[#131020]", fallbackClassName)}
       />
     );

@@ -325,7 +325,7 @@ function HomeFooterLazy() {
               {/* Identidade Hikari / Descrição */}
               <div className="space-y-3.5 md:col-span-5">
                 <div className="flex items-center">
-                  <Logo size="md" />
+                  <Logo size="md" loading="lazy" fetchPriority="low" />
                 </div>
                 <p className="max-w-sm text-xs sm:text-sm leading-relaxed text-muted">
                   Plataforma de catálogo, acompanhamento e transmissão de animes com interface veloz, moderna e comunidade ativa.
