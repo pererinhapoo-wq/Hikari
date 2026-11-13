@@ -59,7 +59,6 @@ import {
   type Season,
 } from "@/lib/types";
 import { youtubeIdFrom } from "@/lib/utils";
-import playerCss from "@/styles/player.css?url";
 
 function parseEpisodeNumber(epStr?: string): number {
   if (!epStr) return 1;
@@ -320,10 +319,6 @@ export const Route = createFileRoute("/watch_/$id/$ep")({
     return {
       links: [
         ...preconnectLinks,
-        {
-          rel: "stylesheet",
-          href: playerCss,
-        },
         {
           rel: "canonical",
           href: canonicalUrl,
