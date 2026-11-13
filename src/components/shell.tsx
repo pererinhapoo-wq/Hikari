@@ -10,6 +10,7 @@ import {
   Calendar,
   CalendarDays,
   CheckCheck,
+  CircleUserRound,
   Compass,
   House,
   Loader2,
@@ -20,6 +21,7 @@ import {
   Settings2,
   Tags,
   UserCircle,
+  UserPlus,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -466,33 +468,33 @@ function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
   }, [open]);
 
   return (
-    <div ref={menuRef} className="relative inline-block shrink-0 text-left">
+    <div ref={menuRef} className="relative inline-block shrink-0 text-left font-sans">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         onMouseEnter={() => void prefetchLoginMenu()}
         onFocus={() => void prefetchLoginMenu()}
         className={cn(
-          "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none bg-surface/80 border border-white/15 text-muted hover:text-fg hover:border-white/30 transition-all",
+          "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none bg-surface/90 border border-purple-500/20 text-muted hover:text-fg hover:border-purple-400/40 transition-all",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-          open && "ring-2 ring-[#a855f7]/75 border-purple-500/40 text-fg shadow-[0_0_16px_rgba(168,85,247,0.32)]"
+          open && "ring-2 ring-[#a855f7]/75 border-purple-500/60 text-fg shadow-[0_0_18px_rgba(168,85,247,0.3)]"
         )}
         aria-label="Opções de conta"
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <UserCircle className="size-5 sm:size-5.5 text-[#c084fc]" />
+        <CircleUserRound className="size-5 sm:size-5.5 text-[#c084fc] transition-transform group-hover:scale-105" />
       </button>
 
       {open && (
         <div
           role="menu"
           aria-label="Menu de visitante"
-          className="absolute right-0 top-full mt-2 w-48 sm:w-52 origin-top-right overflow-hidden rounded-xl border border-white/[0.09] bg-[#0b0913]/96 p-1 shadow-[0_16px_40px_rgba(0,0,0,0.78)] backdrop-blur-2xl z-50 animate-in fade-in zoom-in-95 duration-150"
+          className="absolute right-0 top-full mt-2 w-48 sm:w-52 origin-top-right overflow-hidden rounded-xl border border-purple-500/20 bg-[#0c0a17]/98 p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.7)] backdrop-blur-2xl z-50 animate-in fade-in zoom-in-95 duration-150 font-sans"
         >
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/35 to-transparent"
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/40 to-transparent"
           />
           <div className="space-y-0.5 pt-1">
             <button
@@ -502,7 +504,7 @@ function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
                 setOpen(false);
                 onOpenLogin();
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs sm:text-[13px] font-medium text-zinc-200 hover:bg-white/[0.06] hover:text-white transition-colors cursor-pointer"
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs sm:text-[13px] font-sans font-medium text-zinc-200 hover:bg-purple-500/15 hover:text-white transition-colors cursor-pointer"
             >
               <LogIn className="size-4 text-[#c084fc] shrink-0" />
               <span>Entrar</span>
@@ -514,9 +516,9 @@ function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
                 setOpen(false);
                 onOpenLogin();
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs sm:text-[13px] font-medium text-purple-200 hover:bg-purple-500/15 hover:text-white transition-colors cursor-pointer"
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs sm:text-[13px] font-sans font-medium text-purple-200 hover:bg-purple-500/15 hover:text-white transition-colors cursor-pointer"
             >
-              <UserCircle className="size-4 text-[#c084fc] shrink-0" />
+              <UserPlus className="size-4 text-[#c084fc] shrink-0" />
               <span>Criar conta</span>
             </button>
           </div>

@@ -200,7 +200,7 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
           role="menu"
           aria-label="Opções do perfil"
           className={cn(
-            "absolute right-0 top-full mt-2 w-48 sm:w-52 origin-top-right overflow-hidden rounded-xl border border-white/[0.09] bg-[#0b0913]/96 p-1 shadow-[0_16px_40px_rgba(0,0,0,0.78)] backdrop-blur-2xl z-50",
+            "absolute right-0 top-full mt-2 w-48 sm:w-52 origin-top-right overflow-hidden rounded-xl border border-purple-500/20 bg-[#0c0a17]/98 p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.7)] backdrop-blur-2xl z-50 font-sans",
             "motion-safe:transition-[opacity,transform] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
             dropdown.visible
               ? "opacity-100 translate-y-0 scale-100"
@@ -211,7 +211,7 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
           {/* Linha de acento violeta sutil */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/35 to-transparent"
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/40 to-transparent"
           />
 
           {/* Identificação do Usuário */}

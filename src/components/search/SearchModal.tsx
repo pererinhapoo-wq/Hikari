@@ -1289,39 +1289,6 @@ export function SearchModal({
           )}
         </div>
 
-        {/* =========================================================
-            RODAPÉ DO MODAL
-        ========================================================== */}
-        <div
-          className="flex items-center justify-between border-t px-4 py-2.5 text-[11px] shrink-0"
-          style={{
-            borderColor: "var(--line)",
-            background: "var(--bg-2)",
-          }}
-        >
-          <Link
-            to="/search"
-            search={{
-              q: query.trim() || undefined,
-              tab: category === "animes" ? undefined : category,
-            }}
-            onClick={handleClose}
-            className="font-mono text-[11px] tracking-wide transition-colors hover:underline"
-            style={{ color: "var(--violet-200)" }}
-          >
-            Ver todos os resultados →
-          </Link>
-
-          <span
-            className="hidden sm:inline font-mono text-[10px] uppercase"
-            style={{
-              letterSpacing: ".08em",
-              color: "var(--text-4)",
-            }}
-          >
-            ESC para fechar
-          </span>
-        </div>
       </div>
     </div>
   );

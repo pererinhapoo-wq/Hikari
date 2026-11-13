@@ -587,9 +587,12 @@ textarea:focus {
   display: flex;
   justify-content: center;
   align-items: flex-start;
+  padding-top: 52px;
   height: 100dvh;
   max-height: 100dvh;
-  padding: 14px 16px;
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-bottom: 16px;
   overflow: hidden;
   overscroll-behavior: contain;
   background: rgb(4 2 9 / 0.86);
@@ -607,8 +610,9 @@ textarea:focus {
 
 .sr-modal-window {
   width: 100%;
-  max-width: 560px;
-  max-height: min(72dvh, calc(100dvh - 28px));
+  max-width: 500px;
+  max-height: 65svh;
+  height: 65svh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -632,8 +636,8 @@ textarea:focus {
 }
 
 @media (max-width: 560px) {
-  .sr-overlay { padding: 8px 10px; }
-  .sr-modal-window { max-height: min(78dvh, calc(100dvh - 16px)); }
+  .sr-overlay { padding-top: 38px; padding-left: 10px; padding-right: 10px; }
+  .sr-modal-window { max-height: 70svh; height: 70svh; max-width: 100%; }
 }
 
 .sr-poster { width: 58px; height: 87px; border-radius: var(--r-sm); overflow: hidden; background: var(--bg-4); flex-shrink: 0; position: relative; }
