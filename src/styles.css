@@ -546,3 +546,91 @@ textarea:focus {
     transition: none !important;
   }
 }
+
+/* =========================================================
+   HIKARI — REDESIGN DA BUSCA GLOBAL (TOKENS & ESTILOS)
+========================================================= */
+
+:root {
+  --bg-2: #0e0c18;
+  --bg-3: #141224;
+  --bg-4: #1c1830;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.12);
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-xl: 18px;
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.85), 0 0 32px rgba(168, 85, 247, 0.16);
+  --text-1: #f4f4f1;
+  --text-2: #d4d4d8;
+  --text-3: #a1a1aa;
+  --text-4: #71717a;
+  --violet-200: #e9d5ff;
+  --d-base: 200ms;
+}
+
+@keyframes srModalEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-1.4rem) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sr-overlay {
+  background: rgba(4, 2, 9, 0.86);
+}
+
+.sr-modal-window {
+  animation: srModalEnter 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sr-modal-window {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+.sr-poster {
+  width: 3.6rem;
+  height: 5.4rem;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--bg-4);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.sr-poster-img {
+  width: 100%;
+  height: 100%;
+  background-position: center center;
+  background-size: cover;
+  opacity: 0;
+  transition: opacity var(--d-base) var(--ease-out);
+}
+
+.sr-poster-img.loaded {
+  opacity: 1;
+}
+
+.sr-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.4rem;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sr-item:hover .sr-title {
+  color: #fff;
+}
+

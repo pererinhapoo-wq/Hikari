@@ -172,6 +172,10 @@ export const Route = createRootRoute({
         href: appCss,
       },
       {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+      },
+      {
         rel: "manifest",
         href: "/__grok/manifest.webmanifest",
       },

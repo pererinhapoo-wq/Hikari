@@ -69,8 +69,8 @@ const CATEGORY_TABS: {
 }[] = [
   { id: "animes", label: "Animes", icon: Tv },
   { id: "users", label: "Usuários", icon: Users },
-  { id: "characters", label: "Personagens", icon: UserRound },
   { id: "people", label: "People", icon: Mic2 },
+  { id: "characters", label: "Personagens", icon: UserRound },
 ];
 
 type Search = {
@@ -131,7 +131,7 @@ export const Route =
           : undefined,
 
       tab:
-        raw.tab === "users" || raw.tab === "characters" || raw.tab === "people"
+        raw.tab === "users" || raw.tab === "people" || raw.tab === "characters"
           ? raw.tab
           : undefined,
     }),
@@ -839,8 +839,8 @@ function SearchPage() {
           </div>
         </div>
 
-        {/* Categorias horizontais (Animes, Usuários, Personagens, People) */}
-        <div className="grid grid-cols-4 gap-1 sm:gap-2">
+        {/* Categorias horizontais (Animes, Usuários, People, Personagens) */}
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
           {CATEGORY_TABS.map((cat) => {
             const isActive = activeTab === cat.id;
             const Icon = cat.icon;
@@ -1015,18 +1015,18 @@ function SearchPage() {
               ? "Explorar Animes"
               : activeTab === "users"
                 ? "Explorar Usuários"
-                : activeTab === "characters"
-                  ? "Explorar Personagens"
-                  : "Explorar People"}
+                : activeTab === "people"
+                  ? "Explorar People"
+                  : "Explorar Personagens"}
         </h1>
         <p className="mt-0.5 text-xs sm:text-sm text-zinc-400">
           {activeTab === "animes"
             ? `${items.length} ${items.length === 1 ? "resultado" : "resultados"}`
             : activeTab === "users"
               ? `${userResults.length} ${userResults.length === 1 ? "resultado" : "resultados"}`
-              : activeTab === "characters"
-                ? `${characterResults.length} ${characterResults.length === 1 ? "resultado" : "resultados"}`
-                : `${peopleResults.length} ${peopleResults.length === 1 ? "resultado" : "resultados"}`}
+              : activeTab === "people"
+                ? `${peopleResults.length} ${peopleResults.length === 1 ? "resultado" : "resultados"}`
+                : `${characterResults.length} ${characterResults.length === 1 ? "resultado" : "resultados"}`}
         </p>
       </div>
 

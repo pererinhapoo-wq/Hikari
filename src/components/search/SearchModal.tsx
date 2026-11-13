@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
-  Clapperboard,
   Film,
-  Lock,
   Search as SearchIcon,
-  Sparkles,
   Star,
-  Users,
   X,
 } from "lucide-react";
 import { searchCatalog } from "@/lib/api";
@@ -26,7 +22,6 @@ import {
   SearchCategorySelector,
   type SearchCategory,
 } from "@/components/search/SearchCategorySelector";
-import { HikariImage } from "@/components/ui/hikari-image";
 import { useScrollLock } from "@/lib/scroll-lock";
 
 interface SearchModalProps {
@@ -36,15 +31,95 @@ interface SearchModalProps {
 }
 
 /**
- * Normaliza e formata a nota real do anime de acordo com a escala da fonte de dados:
- * - A API AniList e o catálogo base do Hikari utilizam a escala 0 a 100 (ex: 84 = 8.4)
- * - Avaliações locais ou manuais podem vir na escala 0 a 10 (ex: 8.5)
- * - Converte valores > 10 dividindo por 10 e formata com 1 casa decimal (ex: 8.4)
+ * Normaliza e formata a nota real do anime de acordo com a escala:
+ * - AniList e catálogo base: 0 a 100 (ex: 84 = 8.4)
+ * - Avaliações locais: 0 a 10 (ex: 8.5)
  */
 function formatAnimeScore(score: number | null | undefined): string | null {
   if (score == null || Number.isNaN(score) || score <= 0) return null;
   const normalized = score > 10 ? score / 10 : score;
   return normalized.toFixed(1);
+}
+
+/**
+ * Pôster vertical com proporção 2:3, fade-in e fallback de 18px
+ */
+function SearchPoster({
+  src,
+  srcSet,
+  alt = "",
+}: {
+  src?: string | null;
+  srcSet?: string;
+  alt?: string;
+}) {
+  const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
+
+  useEffect(() => {
+    setStatus("loading");
+  }, [src]);
+
+  return (
+    <div
+      className="sr-poster shrink-0 w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] overflow-hidden bg-[var(--bg-4)]"
+      style={{ borderRadius: "var(--r-sm)" }}
+    >
+      {status === "error" || !src ? (
+        <div className="flex size-full items-center justify-center bg-[var(--bg-4)] text-[var(--text-4)]">
+          <Film className="size-[18px] opacity-75" />
+        </div>
+      ) : (
+        <img
+          src={src}
+          srcSet={srcSet}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setStatus("loaded")}
+          onError={() => setStatus("error")}
+          className={`sr-poster-img ${status === "loaded" ? "loaded" : ""}`}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Avatar de usuário ou entidade
+ */
+function SearchAvatar({
+  src,
+  letter,
+}: {
+  src?: string | null;
+  letter: string;
+}) {
+  const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
+
+  useEffect(() => {
+    setStatus("loading");
+  }, [src]);
+
+  return (
+    <div
+      className="relative shrink-0 overflow-hidden w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] bg-[var(--bg-4)] text-[var(--violet-200)] flex items-center justify-center font-bold text-lg"
+      style={{ borderRadius: "var(--r-sm)" }}
+    >
+      {src && status !== "error" ? (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setStatus("loaded")}
+          onError={() => setStatus("error")}
+          className={`sr-poster-img ${status === "loaded" ? "loaded" : ""}`}
+        />
+      ) : (
+        <span>{letter}</span>
+      )}
+    </div>
+  );
 }
 
 export function SearchModal({
@@ -94,7 +169,7 @@ export function SearchModal({
   const localAnimes = useHikariStore((s) => s.animes);
 
   /* =========================================================
-     PROTEÇÃO DA PÁGINA QUE ESTÁ ATRÁS DA BUSCA
+     PROTEÇÃO DO SCROLL E FOCO DA PÁGINA
   ========================================================== */
   useEffect(() => {
     if (!isOpen) return;
@@ -152,7 +227,7 @@ export function SearchModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleClose]);
 
-  // Limpeza de texto da busca ao tocar no botão X
+  // Limpeza de texto da busca
   const handleClear = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -179,7 +254,7 @@ export function SearchModal({
   };
 
   /* =========================================================
-     1. BUSCA DE ANIMES (Catálogo + Infinite Scroll)
+     1. BUSCA DE ANIMES
   ========================================================== */
   useEffect(() => {
     if (!isOpen || category !== "animes") {
@@ -319,7 +394,7 @@ export function SearchModal({
   }, [animeLoading, animeLoadingMore, animeHasNext, query, animePage, localAnimes]);
 
   /* =========================================================
-     2. BUSCA DE USUÁRIOS (Membros + Infinite Scroll)
+     2. BUSCA DE USUÁRIOS
   ========================================================== */
   useEffect(() => {
     if (!isOpen || category !== "users") {
@@ -416,7 +491,7 @@ export function SearchModal({
   }, [userLoading, userLoadingMore, userHasNext, query, userPage]);
 
   /* =========================================================
-     3. BUSCA DE PERSONAGENS (Characters + Infinite Scroll)
+     3. BUSCA DE PERSONAGENS
   ========================================================== */
   useEffect(() => {
     if (!isOpen || category !== "characters") {
@@ -493,7 +568,7 @@ export function SearchModal({
   }, [characterLoading, characterLoadingMore, characterHasNext, query, characterPage]);
 
   /* =========================================================
-     4. BUSCA DE PEOPLE / STAFF (Profissionais + Infinite Scroll)
+     4. BUSCA DE PEOPLE
   ========================================================== */
   useEffect(() => {
     if (!isOpen || category !== "people") {
@@ -570,7 +645,7 @@ export function SearchModal({
   }, [peopleLoading, peopleLoadingMore, peopleHasNext, query, peoplePage]);
 
   /* =========================================================
-     CARREGAMENTO AUTOMÁTICO (INFINITE SCROLL VIA OBSERVER)
+     OBSERVER DE SCROLL INFINITO
   ========================================================== */
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -658,216 +733,266 @@ export function SearchModal({
           ? characterHasNext
           : peopleHasNext;
 
-  const categoryLabel =
+  const categoryName =
     category === "animes"
-      ? "animes"
+      ? "ANIMES"
       : category === "users"
-        ? "usuários"
+        ? "USUÁRIOS"
         : category === "characters"
-          ? "personagens"
-          : "people";
+          ? "PERSONAGENS"
+          : "PEOPLE";
 
   const placeholderText =
     category === "animes"
-      ? "Buscar animes, filmes, títulos..."
+      ? "Buscar no Hikari..."
       : category === "users"
-        ? "Buscar membros por @username ou nome..."
+        ? "Buscar usuários por @username..."
         : category === "characters"
-          ? "Buscar personagens de animes..."
-          : "Buscar dubladores, diretores, equipe...";
+          ? "Buscar personagens..."
+          : "Buscar profissionais (People)...";
+
+  const handleEnterNavigation = () => {
+    const clean = query.trim();
+    if (!clean) return;
+
+    if (category === "animes") {
+      handleClose();
+      void navigate({
+        to: "/search",
+        search: { q: clean },
+      });
+    } else if (category === "users") {
+      if (userResults.length > 0) {
+        handleClose();
+        void navigate({
+          to: "/profile/$nick",
+          params: { nick: userResults[0].nick },
+        });
+      } else {
+        handleClose();
+        void navigate({
+          to: "/search",
+          search: { q: clean, tab: "users" },
+        });
+      }
+    } else {
+      handleClose();
+      void navigate({
+        to: "/search",
+        search: { q: clean, tab: category },
+      });
+    }
+  };
+
+  const hasQuery = query.trim().length > 0;
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Caixa de busca do Hikari"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6"
+      className="fixed inset-0 z-50 flex justify-center sr-overlay pt-[10vh] sm:pt-[12vh] px-3 sm:px-4 pb-4"
+      style={{ background: "rgba(4,2,9,.86)" }}
     >
-      {/* Backdrop: Escurece suavemente o fundo */}
+      {/* Backdrop */}
       <div
         onClick={handleClose}
-        className="fixed inset-0 bg-black/80 backdrop-blur-md transition-opacity animate-in fade-in duration-200 cursor-pointer"
+        className="fixed inset-0 cursor-pointer"
         aria-hidden="true"
       />
 
-      {/* Janela modal: dimensões e proporções originais rigorosamente preservadas */}
+      {/* Janela modal centralizada com altura máxima estável */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative z-10 flex w-full max-w-lg max-h-[78vh] sm:max-h-[82vh] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#12101e]/98 shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_25px_rgba(168,85,247,0.12)] backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-200"
+        className="relative z-10 flex w-full max-w-[56rem] max-h-[78dvh] sm:max-h-[72vh] flex-col overflow-hidden sr-modal-window"
+        style={{
+          background: "var(--bg-2)",
+          border: "1px solid var(--line-2)",
+          borderRadius: "var(--r-xl)",
+          boxShadow: "var(--shadow-modal)",
+        }}
       >
         {/* =========================================================
-            CAMPO DE PESQUISA COMPACTO
+            BARRA DE BUSCA SUPERIOR (Permanente em ambos os estados)
         ========================================================== */}
-        <div className="relative border-b border-white/5 bg-white/[0.02] p-2 sm:p-2.5">
-          <div className="relative flex items-center rounded-xl border border-white/10 bg-white/[0.04] px-2.5 sm:px-3 h-10 sm:h-10.5 transition-colors focus-within:border-purple-400/40 focus-within:bg-[#181528]">
-            <SearchIcon className="pointer-events-none size-4 shrink-0 text-zinc-400 mr-2" />
+        <div
+          className="relative border-b shrink-0"
+          style={{
+            borderColor: "var(--line)",
+            padding: "1.2rem 1.6rem",
+          }}
+        >
+          {/* Layout da barra */}
+          <div className="flex items-center gap-3 w-full">
+            <SearchIcon
+              className="size-5 shrink-0 text-[var(--text-4)]"
+              aria-hidden="true"
+            />
 
             <input
               ref={inputRef}
               type="text"
-              enterKeyHint="go"
+              enterKeyHint="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
                   (e.currentTarget as HTMLInputElement).blur();
-                  const clean = query.trim();
-                  if (!clean) return;
-
-                  if (category === "animes") {
-                    onClose();
-                    void navigate({
-                      to: "/search",
-                      search: { q: clean },
-                    });
-                  } else if (category === "users") {
-                    if (userResults.length > 0) {
-                      onClose();
-                      void navigate({
-                        to: "/profile/$nick",
-                        params: { nick: userResults[0].nick },
-                      });
-                    } else {
-                      onClose();
-                      void navigate({
-                        to: "/search",
-                        search: { q: clean, tab: "users" },
-                      });
-                    }
-                  } else if (category === "characters") {
-                    onClose();
-                    void navigate({
-                      to: "/search",
-                      search: { q: clean, tab: "characters" },
-                    });
-                  } else if (category === "people") {
-                    onClose();
-                    void navigate({
-                      to: "/search",
-                      search: { q: clean, tab: "people" },
-                    });
-                  }
+                  handleEnterNavigation();
                 }
               }}
               placeholder={placeholderText}
-              className="h-full w-full flex-1 bg-transparent text-xs sm:text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+              className="h-full flex-1 bg-transparent outline-none placeholder:text-[var(--text-4)] placeholder:font-normal"
+              style={{
+                fontFamily: "'Inter', system-ui, sans-serif",
+                fontSize: "16px",
+                fontWeight: 500,
+                letterSpacing: "-0.005em",
+                color: "var(--text-1)",
+              }}
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck="false"
             />
 
-            {/* Controles da direita: [X] + [Seletor com as 4 categorias] */}
-            <div className="flex items-center gap-1.5 shrink-0 ml-1">
-              {query.length > 0 && (
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={handleClear}
-                  className="flex size-6 items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white transition-colors"
-                  aria-label="Limpar pesquisa"
-                  title="Limpar pesquisa"
-                >
-                  <X className="size-3.5" />
-                </button>
-              )}
+            {query.length > 0 && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleClear}
+                className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[var(--text-3)] hover:text-white hover:bg-white/10 transition-colors"
+                aria-label="Limpar pesquisa"
+                title="Limpar pesquisa"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
 
-              {/* Seletor dropdown com setinha exibindo as 4 categorias (Animes, Usuários, Personagens, People) */}
-              <SearchCategorySelector
-                category={category}
-                onChange={handleCategoryChange}
-                align="right"
-                size="sm"
-              />
-            </div>
+            <SearchCategorySelector
+              category={category}
+              onChange={handleCategoryChange}
+              size="sm"
+            />
           </div>
         </div>
 
         {/* =========================================================
-            HEADER DE CONTAGEM DE RESULTADOS
+            HEADER DE RÓTULO E CONTAGEM (Apenas com consulta)
         ========================================================== */}
-        {query.trim().length > 0 && (
-          <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.015] px-3.5 py-1.5 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-            <span>Resultados de {categoryLabel}</span>
+        {hasQuery && (
+          <div
+            className="flex items-center justify-between border-b px-4 py-2 font-mono text-[10px] uppercase shrink-0"
+            style={{
+              borderColor: "var(--line)",
+              letterSpacing: ".16em",
+              color: "var(--text-4)",
+              background: "rgba(255,255,255,0.01)",
+            }}
+          >
+            <span>{categoryName}</span>
 
-            <span className="text-[#c084fc] font-bold">
+            <span
+              className="font-mono text-[10px] uppercase font-semibold"
+              style={{ color: "var(--violet-200)", letterSpacing: ".1em" }}
+            >
               {isCurrentLoading
-                ? "Buscando..."
+                ? "..."
                 : `${currentCount} ${currentCount === 1 ? "resultado" : "resultados"}`}
             </span>
           </div>
         )}
 
         {/* =========================================================
-            ÁREA DE RESULTADOS COMPACTA COM CARREGAMENTO AUTOMÁTICO
+            ÁREA DE CONTEÚDO (Scroll Container)
         ========================================================== */}
         <div
           ref={scrollContainerRef}
           data-search-scroll-container
-          className="flex-1 overflow-y-auto overscroll-contain p-1.5 sm:p-2"
+          className="flex-1 overflow-y-auto overscroll-contain p-2 min-[561px]:p-3 space-y-1"
         >
-          {/* ESTADO INICIAL VAZIO */}
-          {!query.trim() && (
-            <div className="px-4 py-8 text-center">
-              <div className="mx-auto flex size-9 items-center justify-center rounded-xl bg-purple-500/10 text-[#c084fc] ring-1 ring-purple-500/20">
-                {category === "animes" ? (
-                  <Film className="size-4.5" />
-                ) : category === "users" ? (
-                  <Users className="size-4.5" />
-                ) : category === "characters" ? (
-                  <Sparkles className="size-4.5" />
-                ) : (
-                  <Clapperboard className="size-4.5" />
-                )}
+          {/* =========================================================
+              ESTADO VAZIO (Primeira referência visual)
+          ========================================================== */}
+          {!hasQuery && (
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 px-4 text-center">
+              <div
+                className="flex size-14 items-center justify-center rounded-2xl mb-4 text-[var(--violet-200)] shadow-[0_0_24px_rgba(168,85,247,0.15)]"
+                style={{
+                  background: "rgba(168,85,247,.1)",
+                  border: "1px solid rgba(168,85,247,.28)",
+                }}
+              >
+                <SearchIcon className="size-7" />
               </div>
-              <p className="mt-2.5 text-xs sm:text-sm font-semibold text-zinc-200">
+              <h2
+                className="text-[18px] sm:text-[20px] font-semibold text-[var(--text-1)] tracking-tight"
+                style={{ fontFamily: "'Manrope', sans-serif" }}
+              >
+                Find something to watch
+              </h2>
+              <p
+                className="mt-1.5 text-[13px] sm:text-[14px] text-[var(--text-3)] max-w-sm leading-relaxed"
+                style={{ fontFamily: "'Manrope', sans-serif" }}
+              >
                 {category === "animes"
-                  ? "Pesquise por qualquer anime do catálogo"
+                  ? "Pesquise animes por título original, romaji ou em português."
                   : category === "users"
-                    ? "Encontre usuários e amigos na comunidade"
+                    ? "Encontre amigos e membros da comunidade pelo @username."
                     : category === "characters"
-                      ? "Pesquise personagens de animes"
-                      : "Pesquise dubladores e equipe de produção"}
-              </p>
-              <p className="mt-0.5 text-[11px] text-zinc-400 max-w-xs mx-auto leading-normal">
-                {category === "animes"
-                  ? "Digite títulos em português, inglês ou japonês para ver notas e detalhes."
-                  : category === "users"
-                    ? "Digite o @username ou nome de exibição para acessar o perfil."
-                    : category === "characters"
-                      ? "Digite o nome do personagem em romaji ou kanji."
-                      : "Digite o nome do dublador ou profissional."}
+                      ? "Pesquise personagens favoritos de suas obras."
+                      : "Pesquise dubladores, diretores e profissionais de produção."}
               </p>
             </div>
           )}
 
-          {/* 1. RESULTADOS DE ANIMES — Com notas corrigidas e animação suave ao clicar */}
-          {category === "animes" && query.trim().length > 0 && (
+          {/* =========================================================
+              1. RESULTADOS DE ANIMES
+          ========================================================== */}
+          {category === "animes" && hasQuery && (
             <div>
               {animeLoading ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2.5 sm:gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-1.5 sm:p-2"
+                      className="rounded-[var(--r-md)] border border-white/5 bg-white/[0.02]"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "3.6rem 1fr",
+                        gap: "1.2rem",
+                        alignItems: "center",
+                        padding: "0.8rem 1rem",
+                      }}
                     >
-                      <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 rounded-md hikari-modal-skeleton-shimmer" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="h-3.5 w-40 rounded hikari-modal-skeleton-shimmer" />
-                        <div className="h-2.5 w-24 rounded hikari-modal-skeleton-shimmer" />
-                        <div className="h-2.5 w-32 rounded hikari-modal-skeleton-shimmer" />
+                      <div
+                        className="w-[3.6rem] h-[5.4rem] shrink-0 bg-[var(--bg-4)] animate-pulse"
+                        style={{ borderRadius: "var(--r-sm)" }}
+                      />
+                      <div className="min-w-0 space-y-2 py-1">
+                        <div className="h-4 w-44 rounded bg-white/5 animate-pulse" />
+                        <div className="h-3 w-28 rounded bg-white/5 animate-pulse" />
+                        <div className="h-3 w-36 rounded bg-white/5 animate-pulse" />
                       </div>
                     </div>
                   ))}
                 </div>
               ) : animeResults.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <Clapperboard className="mx-auto size-7 text-zinc-500" />
-                  <p className="mt-2 text-xs sm:text-sm font-semibold text-zinc-200">
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
+                    <Film className="size-6" />
+                  </div>
+                  <h2
+                    className="text-[16px] font-semibold text-[var(--text-1)]"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
                     Nenhum anime encontrado
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-400">
+                  </h2>
+                  <p
+                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
                     Não encontramos resultados para &quot;{query.trim()}&quot;. Tente outro título.
                   </p>
                 </div>
@@ -886,101 +1011,95 @@ export function SearchModal({
                         to="/anime/$id"
                         params={{ id: anime.id }}
                         onClick={handleClose}
-                        className="
-                          group
-                          flex
-                          items-center
-                          gap-2.5
-                          sm:gap-3
-                          rounded-xl
-                          p-1.5
-                          sm:p-2
-                          transition-all
-                          duration-150
-                          ease-out
-                          hover:bg-white/[0.04]
-                          active:scale-[0.98]
-                          active:bg-purple-500/15
-                          active:brightness-105
-                          motion-reduce:transition-none
-                          motion-reduce:transform-none
-                          select-none
-                        "
+                        className="sr-item group block select-none transition-colors"
+                        style={{
+                          borderRadius: "var(--r-md)",
+                          display: "grid",
+                          gridTemplateColumns: "3.6rem 1fr",
+                          gap: "1.2rem",
+                          alignItems: "center",
+                          padding: "0.8rem 1rem",
+                        }}
                       >
-                        {/* Capa compacta */}
-                        <div className="relative h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#131020] ring-1 ring-white/10">
-                          <HikariImage
-                            src={coverAttrs?.src}
-                            srcSet={coverAttrs?.srcSet}
-                            sizes="40px"
-                            fallbackSrc={
-                              coverAttrs?.fallbackSrc ? anime.cover : undefined
-                            }
-                            alt=""
-                            width={40}
-                            height={56}
-                            loading="lazy"
-                            decoding="async"
-                            fallbackClassName="bg-[#131020]"
-                            className="size-full object-cover group-hover:scale-105"
-                          />
-                        </div>
+                        <SearchPoster
+                          src={coverAttrs?.src}
+                          srcSet={coverAttrs?.srcSet}
+                          alt=""
+                        />
 
-                        {/* Metadados alinhados e elegantes */}
                         <div className="min-w-0 flex-1">
-                          {/* Título */}
-                          <p className="text-xs sm:text-[13px] font-semibold text-zinc-100 group-hover:text-[#c084fc] transition-colors line-clamp-1">
+                          <p className="sr-title">
                             {title}
                           </p>
 
-                          {/* Linha de info: Estrela + Nota Real Corrigida · Ano · Gêneros */}
-                          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] sm:text-[11px] text-zinc-400">
+                          <div className="sr-sub mt-1">
                             {scoreFormatted && (
-                              <span className="inline-flex items-center gap-1 font-bold text-amber-400">
-                                <Star className="size-2.5 sm:size-3 fill-amber-400 text-amber-400" />
+                              <span className="inline-flex items-center gap-1 font-bold text-[#f5c518]">
+                                <Star className="size-[13px] fill-[#f5c518] text-[#f5c518]" />
                                 {scoreFormatted}
                               </span>
                             )}
 
                             {scoreFormatted && anime.year && (
-                              <span className="text-zinc-600">·</span>
+                              <span style={{ color: "var(--text-4)" }}>·</span>
                             )}
 
                             {anime.year && (
-                              <span className="text-zinc-400 font-medium">
-                                {anime.year}
-                              </span>
+                              <span>{anime.year}</span>
                             )}
 
                             {anime.genres && anime.genres.length > 0 && (
                               <>
-                                <span className="text-zinc-600">·</span>
-                                <span className="text-zinc-400 truncate max-w-[130px] sm:max-w-xs">
+                                <span style={{ color: "var(--text-4)" }}>·</span>
+                                <span className="truncate max-w-[140px] sm:max-w-xs">
                                   {anime.genres.slice(0, 2).join(", ")}
                                 </span>
                               </>
                             )}
                           </div>
 
-                          {/* Badges de formato e episódios */}
-                          <div className="mt-1 flex items-center gap-1.5">
-                            {anime.format && (
-                              <span className="rounded bg-purple-500/15 border border-purple-500/25 px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider text-purple-300">
-                                {anime.format === "TV"
-                                  ? "Série"
-                                  : anime.format === "MOVIE"
-                                    ? "Filme"
-                                    : anime.format}
+                          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                            {anime.format === "TV" ? (
+                              <span
+                                className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-[var(--r-sm)] font-semibold"
+                                style={{
+                                  letterSpacing: ".1em",
+                                  background: "rgba(168,85,247,.14)",
+                                  color: "var(--violet-200)",
+                                  border: "1px solid rgba(168,85,247,.3)",
+                                }}
+                              >
+                                TV
                               </span>
-                            )}
+                            ) : anime.format ? (
+                              <span
+                                className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-[var(--r-sm)] font-semibold"
+                                style={{
+                                  letterSpacing: ".1em",
+                                  background: "rgba(255,255,255,0.06)",
+                                  color: "var(--text-2)",
+                                  border: "1px solid var(--line)",
+                                }}
+                              >
+                                {anime.format === "MOVIE" ? "Filme" : anime.format}
+                              </span>
+                            ) : null}
 
                             {anime.episodes && (
-                              <span className="text-zinc-500 text-[9px]">
-                                {anime.episodes} eps
+                              <span
+                                className="font-mono text-[9px] uppercase"
+                                style={{
+                                  letterSpacing: ".08em",
+                                  color: "var(--text-4)",
+                                }}
+                              >
+                                {anime.episodes} EPS
                               </span>
                             )}
                           </div>
                         </div>
+
+                        <div className="hidden sm:block" />
                       </Link>
                     );
                   })}
@@ -989,257 +1108,128 @@ export function SearchModal({
             </div>
           )}
 
-          {/* 2. RESULTADOS DE USUÁRIOS */}
-          {category === "users" && query.trim().length > 0 && (
+          {/* =========================================================
+              2. RESULTADOS DE USUÁRIOS
+          ========================================================== */}
+          {category === "users" && hasQuery && (
             <div>
-              {userQueryClean.length < 2 && (
-                <div className="px-4 py-8 text-center">
-                  <Users className="mx-auto size-7 text-zinc-500" />
-                  <p className="mt-2 text-xs sm:text-sm font-semibold text-zinc-200">
+              {userQueryClean.length < 2 ? (
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <h2
+                    className="text-[16px] font-semibold text-[var(--text-1)]"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
                     Digite pelo menos 2 caracteres
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-400 max-w-xs mx-auto">
+                  </h2>
+                  <p
+                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
                     Pesquise por @username ou nome de exibição para encontrar membros.
                   </p>
                 </div>
-              )}
-
-              {userQueryClean.length >= 2 && userLoading && (
+              ) : userLoading ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-1.5 sm:p-2"
+                      className="rounded-[var(--r-md)] border border-white/5 bg-white/[0.02]"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "5.8rem 1fr auto",
+                        gap: "1.4rem",
+                        alignItems: "center",
+                        padding: "1rem 1.1rem",
+                      }}
                     >
-                      <div className="size-9 sm:size-10 shrink-0 rounded-xl hikari-modal-skeleton-shimmer" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="h-3.5 w-32 rounded hikari-modal-skeleton-shimmer" />
-                        <div className="h-2.5 w-18 rounded hikari-modal-skeleton-shimmer" />
+                      <div
+                        className="w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] shrink-0 bg-[var(--bg-4)] animate-pulse"
+                        style={{ borderRadius: "var(--r-sm)" }}
+                      />
+                      <div className="min-w-0 space-y-2 py-1">
+                        <div className="h-4 w-36 rounded bg-white/5 animate-pulse" />
+                        <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
                       </div>
                     </div>
                   ))}
                 </div>
-              )}
-
-              {userQueryClean.length >= 2 &&
-                !userLoading &&
-                userResults.length === 0 && (
-                  <div className="px-4 py-8 text-center">
-                    <Users className="mx-auto size-7 text-zinc-500" />
-                    <p className="mt-2 text-xs sm:text-sm font-semibold text-zinc-200">
-                      Nenhum usuário encontrado
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-zinc-400">
-                      Não encontramos membros com &quot;{query.trim()}&quot;. Tente outro username ou nome.
-                    </p>
+              ) : userResults.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
+                    <SearchIcon className="size-6" />
                   </div>
-                )}
-
-              {userQueryClean.length >= 2 &&
-                !userLoading &&
-                userResults.length > 0 && (
-                  <div className="space-y-1">
-                    {userResults.map((person) => {
-                      const avatarLetter = (
-                        person.displayName ||
-                        person.nick ||
-                        "U"
-                      )
-                        .charAt(0)
-                        .toUpperCase();
-
-                      return (
-                        <Link
-                          key={person.userId}
-                          to="/profile/$nick"
-                          params={{ nick: person.nick }}
-                          onClick={handleClose}
-                          className="
-                            group
-                            flex
-                            items-center
-                            justify-between
-                            gap-2.5
-                            rounded-xl
-                            p-1.5
-                            sm:p-2
-                            transition-all
-                            duration-150
-                            ease-out
-                            hover:bg-white/[0.04]
-                            active:scale-[0.98]
-                            active:bg-purple-500/15
-                            active:brightness-105
-                            motion-reduce:transition-none
-                            motion-reduce:transform-none
-                            select-none
-                          "
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className="relative flex size-9 sm:size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#161424] font-semibold text-xs sm:text-sm text-[#c084fc] ring-1 ring-purple-500/20 group-hover:ring-purple-500/40 transition-colors">
-                              {person.avatarUrl ? (
-                                <HikariImage
-                                  src={person.avatarUrl}
-                                  alt=""
-                                  loading="lazy"
-                                  decoding="async"
-                                  fallbackClassName="bg-[#161424]"
-                                  className="size-full object-cover"
-                                />
-                              ) : (
-                                <span>{avatarLetter}</span>
-                              )}
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="truncate text-xs sm:text-[13px] font-semibold text-zinc-100 group-hover:text-[#c084fc] transition-colors">
-                                  {person.displayName || person.nick}
-                                </p>
-
-                                {person.accountType === "private" && (
-                                  <span
-                                    className="inline-flex items-center gap-0.5 rounded bg-white/[0.06] px-1 py-0.2 text-[9px] font-medium text-zinc-400 border border-white/[0.08]"
-                                    title="Conta privada"
-                                  >
-                                    <Lock className="size-2 text-zinc-400" />
-                                    <span>Privada</span>
-                                  </span>
-                                )}
-
-                                {person.isFollowing && (
-                                  <span className="inline-flex items-center rounded bg-[#a855f7]/15 px-1 py-0.2 text-[9px] font-semibold text-[#c084fc] border border-purple-500/20">
-                                    Seguindo
-                                  </span>
-                                )}
-
-                                {person.isOwner && (
-                                  <span className="inline-flex items-center rounded bg-white/10 px-1 py-0.2 text-[9px] font-semibold text-zinc-300">
-                                    Você
-                                  </span>
-                                )}
-                              </div>
-
-                              <p className="truncate text-[10px] sm:text-[11px] text-zinc-400">
-                                @{person.nick}
-                              </p>
-                            </div>
-                          </div>
-
-                          <span className="shrink-0 rounded-lg border border-purple-500/25 bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-[#c084fc] group-hover:bg-[#a855f7] group-hover:text-white transition-all">
-                            Ver Perfil
-                          </span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-            </div>
-          )}
-
-          {/* 3. RESULTADOS DE PERSONAGENS */}
-          {category === "characters" && query.trim().length > 0 && (
-            <div>
-              {characterLoading ? (
-                <div className="space-y-1.5 p-1">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2.5 sm:gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-1.5 sm:p-2"
-                    >
-                      <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 rounded-md hikari-modal-skeleton-shimmer" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="h-3.5 w-40 rounded hikari-modal-skeleton-shimmer" />
-                        <div className="h-2.5 w-24 rounded hikari-modal-skeleton-shimmer" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : characterResults.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <Sparkles className="mx-auto size-7 text-zinc-500" />
-                  <p className="mt-2 text-xs sm:text-sm font-semibold text-zinc-200">
-                    Nenhum personagem encontrado
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-400">
-                    Não encontramos personagens para &quot;{query.trim()}&quot;.
+                  <h2
+                    className="text-[16px] font-semibold text-[var(--text-1)]"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
+                    Nenhum usuário encontrado
+                  </h2>
+                  <p
+                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
+                    Não encontramos membros com &quot;{query.trim()}&quot;. Tente outro username ou nome.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {characterResults.map((character) => {
-                    const imageSrc =
-                      character.image?.large || character.image?.medium || "";
-                    const animeId = character.anime?.id;
+                  {userResults.map((person) => {
+                    const avatarLetter = (
+                      person.displayName ||
+                      person.nick ||
+                      "U"
+                    )
+                      .charAt(0)
+                      .toUpperCase();
 
-                    const itemContent = (
-                      <>
-                        <div className="relative h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#161424] ring-1 ring-white/10">
-                          <HikariImage
-                            src={imageSrc}
-                            alt=""
-                            loading="lazy"
-                            decoding="async"
-                            fallbackClassName="bg-[#161424]"
-                            className="size-full object-cover object-top group-hover:scale-105"
-                          />
-                        </div>
+                    return (
+                      <Link
+                        key={person.userId}
+                        to="/profile/$nick"
+                        params={{ nick: person.nick }}
+                        onClick={handleClose}
+                        className="sr-item group block select-none transition-colors"
+                        style={{
+                          borderRadius: "var(--r-md)",
+                          display: "grid",
+                          gridTemplateColumns: "5.8rem 1fr auto",
+                          gap: "1.4rem",
+                          alignItems: "center",
+                          padding: "1rem 1.1rem",
+                        }}
+                      >
+                        <SearchAvatar
+                          src={person.avatarUrl}
+                          letter={avatarLetter}
+                        />
 
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs sm:text-[13px] font-semibold text-zinc-100 group-hover:text-[#c084fc] transition-colors line-clamp-1">
-                            {character.name.full}
+                          <p className="sr-title">
+                            {person.displayName || person.nick}
                           </p>
 
-                          <p className="mt-0.5 text-[10px] sm:text-[11px] text-zinc-400 truncate">
-                            {character.role || "Personagem"}
-                            {character.anime?.title ? ` · ${character.anime.title}` : ""}
+                          <p
+                            className="truncate text-[13px] max-[560px]:text-[12px] mt-0.5"
+                            style={{ color: "var(--text-3)" }}
+                          >
+                            @{person.nick}
                           </p>
-
-                          <div className="mt-1 flex items-center gap-1.5">
-                            <span className="rounded bg-amber-500/15 border border-amber-500/25 px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider text-amber-300">
-                              Personagem
-                            </span>
-                          </div>
                         </div>
-                      </>
-                    );
 
-                    return animeId ? (
-                      <Link
-                        key={character.id}
-                        to="/anime/$id"
-                        params={{ id: String(animeId) }}
-                        onClick={handleClose}
-                        className="
-                          group
-                          flex
-                          items-center
-                          gap-2.5
-                          sm:gap-3
-                          rounded-xl
-                          p-1.5
-                          sm:p-2
-                          transition-all
-                          duration-150
-                          ease-out
-                          hover:bg-white/[0.04]
-                          active:scale-[0.98]
-                          active:bg-purple-500/15
-                          active:brightness-105
-                          motion-reduce:transition-none
-                          motion-reduce:transform-none
-                          select-none
-                        "
-                      >
-                        {itemContent}
+                        <div className="shrink-0 flex items-center">
+                          <span
+                            className="font-mono text-[9px] uppercase px-2 py-0.5 rounded-[var(--r-sm)] font-semibold"
+                            style={{
+                              letterSpacing: ".1em",
+                              background: "rgba(217,70,239,.13)",
+                              color: "#f0abfc",
+                              border: "1px solid rgba(217,70,239,.3)",
+                            }}
+                          >
+                            PESSOA
+                          </span>
+                        </div>
                       </Link>
-                    ) : (
-                      <div
-                        key={character.id}
-                        className="group flex items-center gap-2.5 sm:gap-3 rounded-xl p-1.5 sm:p-2"
-                      >
-                        {itemContent}
-                      </div>
                     );
                   })}
                 </div>
@@ -1247,72 +1237,91 @@ export function SearchModal({
             </div>
           )}
 
-          {/* 4. RESULTADOS DE PEOPLE */}
-          {category === "people" && query.trim().length > 0 && (
+          {/* =========================================================
+              3. RESULTADOS DE PEOPLE
+          ========================================================== */}
+          {category === "people" && hasQuery && (
             <div>
               {peopleLoading ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2.5 sm:gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-1.5 sm:p-2"
+                      className="rounded-[var(--r-md)] border border-white/5 bg-white/[0.02]"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "5.8rem 1fr auto",
+                        gap: "1.4rem",
+                        alignItems: "start",
+                        padding: "1rem 1.1rem",
+                      }}
                     >
-                      <div className="h-13 w-9 sm:h-14 sm:w-10 shrink-0 rounded-md hikari-modal-skeleton-shimmer" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="h-3.5 w-40 rounded hikari-modal-skeleton-shimmer" />
-                        <div className="h-2.5 w-24 rounded hikari-modal-skeleton-shimmer" />
+                      <div
+                        className="w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] shrink-0 bg-[var(--bg-4)] animate-pulse"
+                        style={{ borderRadius: "var(--r-sm)" }}
+                      />
+                      <div className="min-w-0 space-y-2 py-1">
+                        <div className="h-4 w-40 rounded bg-white/5 animate-pulse" />
+                        <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
                       </div>
                     </div>
                   ))}
                 </div>
               ) : peopleResults.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <Clapperboard className="mx-auto size-7 text-zinc-500" />
-                  <p className="mt-2 text-xs sm:text-sm font-semibold text-zinc-200">
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
+                    <SearchIcon className="size-6" />
+                  </div>
+                  <h2
+                    className="text-[16px] font-semibold text-[var(--text-1)]"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
                     Nenhum profissional encontrado
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-400">
-                    Não encontramos dubladores ou equipe para &quot;{query.trim()}&quot;.
+                  </h2>
+                  <p
+                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
+                    Não encontramos profissionais para &quot;{query.trim()}&quot;.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-1">
                   {peopleResults.map((person) => {
-                    const imageSrc =
-                      person.image?.large || person.image?.medium || "";
+                    const imageSrc = person.image?.large || person.image?.medium || "";
                     const animeId = person.anime?.id;
-                    const occupation =
-                      person.primaryOccupations?.[0] || person.role || "Staff";
+                    const roleText = person.role || person.primaryOccupations?.[0] || "Staff";
 
                     const itemContent = (
                       <>
-                        <div className="relative h-13 w-9 sm:h-14 sm:w-10 shrink-0 overflow-hidden rounded-md bg-[#161424] ring-1 ring-white/10">
-                          <HikariImage
-                            src={imageSrc}
-                            alt=""
-                            loading="lazy"
-                            decoding="async"
-                            fallbackClassName="bg-[#161424]"
-                            className="size-full object-cover object-top group-hover:scale-105"
-                          />
-                        </div>
+                        <SearchPoster src={imageSrc} alt="" />
 
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs sm:text-[13px] font-semibold text-zinc-100 group-hover:text-[#c084fc] transition-colors line-clamp-1">
+                          <p className="sr-title">
                             {person.name.full}
                           </p>
 
-                          <p className="mt-0.5 text-[10px] sm:text-[11px] text-zinc-400 truncate">
-                            {occupation}
+                          <p className="sr-sub mt-1 truncate">
+                            {roleText}
                             {person.anime?.title ? ` · ${person.anime.title}` : ""}
                           </p>
 
-                          <div className="mt-1 flex items-center gap-1.5">
-                            <span className="rounded bg-rose-500/15 border border-rose-500/25 px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider text-rose-300">
-                              Staff
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <span
+                              className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-[var(--r-sm)] font-semibold"
+                              style={{
+                                letterSpacing: ".1em",
+                                background: "rgba(244,63,94,.14)",
+                                color: "#fda4af",
+                                border: "1px solid rgba(244,63,94,.3)",
+                              }}
+                            >
+                              STAFF
                             </span>
                           </div>
                         </div>
+
+                        <div className="hidden sm:block" />
                       </>
                     );
 
@@ -1322,33 +1331,30 @@ export function SearchModal({
                         to="/anime/$id"
                         params={{ id: String(animeId) }}
                         onClick={handleClose}
-                        className="
-                          group
-                          flex
-                          items-center
-                          gap-2.5
-                          sm:gap-3
-                          rounded-xl
-                          p-1.5
-                          sm:p-2
-                          transition-all
-                          duration-150
-                          ease-out
-                          hover:bg-white/[0.04]
-                          active:scale-[0.98]
-                          active:bg-purple-500/15
-                          active:brightness-105
-                          motion-reduce:transition-none
-                          motion-reduce:transform-none
-                          select-none
-                        "
+                        className="sr-item group block select-none transition-colors"
+                        style={{
+                          borderRadius: "var(--r-md)",
+                          display: "grid",
+                          gridTemplateColumns: "5.8rem 1fr auto",
+                          gap: "1.4rem",
+                          alignItems: "start",
+                          padding: "1rem 1.1rem",
+                        }}
                       >
                         {itemContent}
                       </Link>
                     ) : (
                       <div
                         key={person.id}
-                        className="group flex items-center gap-2.5 sm:gap-3 rounded-xl p-1.5 sm:p-2"
+                        className="sr-item group block select-none"
+                        style={{
+                          borderRadius: "var(--r-md)",
+                          display: "grid",
+                          gridTemplateColumns: "5.8rem 1fr auto",
+                          gap: "1.4rem",
+                          alignItems: "start",
+                          padding: "1rem 1.1rem",
+                        }}
                       >
                         {itemContent}
                       </div>
@@ -1359,23 +1365,184 @@ export function SearchModal({
             </div>
           )}
 
-          {/* Sentinel do carregamento automático (sem botão nem texto "Carregar mais") */}
-          {query.trim().length > 0 && currentHasMore && (
+          {/* =========================================================
+              4. RESULTADOS DE PERSONAGENS
+          ========================================================== */}
+          {category === "characters" && hasQuery && (
+            <div>
+              {characterLoading ? (
+                <div className="space-y-1.5 p-1">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="rounded-[var(--r-md)] border border-white/5 bg-white/[0.02]"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "5.8rem 1fr auto",
+                        gap: "1.4rem",
+                        alignItems: "start",
+                        padding: "1rem 1.1rem",
+                      }}
+                    >
+                      <div
+                        className="w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] shrink-0 bg-[var(--bg-4)] animate-pulse"
+                        style={{ borderRadius: "var(--r-sm)" }}
+                      />
+                      <div className="min-w-0 space-y-2 py-1">
+                        <div className="h-4 w-40 rounded bg-white/5 animate-pulse" />
+                        <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : characterResults.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
+                    <SearchIcon className="size-6" />
+                  </div>
+                  <h2
+                    className="text-[16px] font-semibold text-[var(--text-1)]"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
+                    Nenhum personagem encontrado
+                  </h2>
+                  <p
+                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
+                    style={{ fontFamily: "'Manrope', sans-serif" }}
+                  >
+                    Não encontramos personagens para &quot;{query.trim()}&quot;.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {characterResults.map((character) => {
+                    const imageSrc = character.image?.large || character.image?.medium || "";
+                    const animeId = character.anime?.id;
+
+                    const itemContent = (
+                      <>
+                        <SearchPoster src={imageSrc} alt="" />
+
+                        <div className="min-w-0 flex-1">
+                          <p className="sr-title">
+                            {character.name.full}
+                          </p>
+
+                          <p className="sr-sub mt-1 truncate">
+                            {character.role || "Personagem"}
+                            {character.anime?.title ? ` · ${character.anime.title}` : ""}
+                          </p>
+
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <span
+                              className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-[var(--r-sm)] font-semibold"
+                              style={{
+                                letterSpacing: ".1em",
+                                background: "rgba(59,130,246,.14)",
+                                color: "#93c5fd",
+                                border: "1px solid rgba(59,130,246,.3)",
+                              }}
+                            >
+                              PERSONAGEM
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="hidden sm:block" />
+                      </>
+                    );
+
+                    return animeId ? (
+                      <Link
+                        key={character.id}
+                        to="/anime/$id"
+                        params={{ id: String(animeId) }}
+                        onClick={handleClose}
+                        className="sr-item group block select-none transition-colors"
+                        style={{
+                          borderRadius: "var(--r-md)",
+                          display: "grid",
+                          gridTemplateColumns: "5.8rem 1fr auto",
+                          gap: "1.4rem",
+                          alignItems: "start",
+                          padding: "1rem 1.1rem",
+                        }}
+                      >
+                        {itemContent}
+                      </Link>
+                    ) : (
+                      <div
+                        key={character.id}
+                        className="sr-item group block select-none"
+                        style={{
+                          borderRadius: "var(--r-md)",
+                          display: "grid",
+                          gridTemplateColumns: "5.8rem 1fr auto",
+                          gap: "1.4rem",
+                          alignItems: "start",
+                          padding: "1rem 1.1rem",
+                        }}
+                      >
+                        {itemContent}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sentinel de scroll infinito */}
+          {hasQuery && currentHasMore && (
             <div
               ref={sentinelRef}
               className="py-3 flex items-center justify-center"
             >
               {isCurrentLoadingMore && (
-                <div className="size-5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+                <div
+                  className="size-4 animate-spin rounded-full border-2 border-t-transparent"
+                  style={{
+                    borderColor: "var(--violet-200)",
+                    borderTopColor: "transparent",
+                  }}
+                />
               )}
             </div>
           )}
         </div>
 
-        {/* Rodapé minimalista */}
-        <div className="flex items-center justify-between border-t border-white/5 bg-white/[0.01] px-3.5 py-1.5 text-[10px] text-zinc-500">
-          <span>Hikari Search</span>
-          <span className="hidden sm:inline">ESC para fechar</span>
+        {/* =========================================================
+            RODAPÉ DO MODAL
+        ========================================================== */}
+        <div
+          className="flex items-center justify-between border-t px-4 py-2.5 text-[11px] shrink-0"
+          style={{
+            borderColor: "var(--line)",
+            background: "var(--bg-2)",
+          }}
+        >
+          <Link
+            to="/search"
+            search={{
+              q: query.trim() || undefined,
+              tab: category === "animes" ? undefined : category,
+            }}
+            onClick={handleClose}
+            className="font-mono text-[11px] tracking-wide transition-colors hover:underline"
+            style={{ color: "var(--violet-200)" }}
+          >
+            Ver todos os resultados →
+          </Link>
+
+          <span
+            className="hidden sm:inline font-mono text-[10px] uppercase"
+            style={{
+              letterSpacing: ".08em",
+              color: "var(--text-4)",
+            }}
+          >
+            ESC para fechar
+          </span>
         </div>
       </div>
     </div>
