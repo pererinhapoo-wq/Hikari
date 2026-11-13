@@ -42,7 +42,7 @@ function formatAnimeScore(score: number | null | undefined): string | null {
 }
 
 /**
- * Pôster vertical com proporção 2:3, fade-in e fallback de 18px
+ * Pôster vertical com proporção 2:3, fade-in e fallback
  */
 function SearchPoster({
   src,
@@ -60,13 +60,10 @@ function SearchPoster({
   }, [src]);
 
   return (
-    <div
-      className="sr-poster shrink-0 w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] overflow-hidden bg-[var(--bg-4)]"
-      style={{ borderRadius: "var(--r-sm)" }}
-    >
+    <div className="sr-poster">
       {status === "error" || !src ? (
         <div className="flex size-full items-center justify-center bg-[var(--bg-4)] text-[var(--text-4)]">
-          <Film className="size-[18px] opacity-75" />
+          <Film className="size-[16px] opacity-75" />
         </div>
       ) : (
         <img
@@ -101,10 +98,7 @@ function SearchAvatar({
   }, [src]);
 
   return (
-    <div
-      className="relative shrink-0 overflow-hidden w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] bg-[var(--bg-4)] text-[var(--violet-200)] flex items-center justify-center font-bold text-lg"
-      style={{ borderRadius: "var(--r-sm)" }}
-    >
+    <div className="sr-poster text-[var(--violet-200)] flex items-center justify-center font-bold text-lg bg-[var(--bg-4)]">
       {src && status !== "error" ? (
         <img
           src={src}
@@ -733,15 +727,6 @@ export function SearchModal({
           ? characterHasNext
           : peopleHasNext;
 
-  const categoryName =
-    category === "animes"
-      ? "ANIMES"
-      : category === "users"
-        ? "USUÁRIOS"
-        : category === "characters"
-          ? "PERSONAGENS"
-          : "PEOPLE";
-
   const placeholderText =
     category === "animes"
       ? "Buscar no Hikari..."
@@ -801,10 +786,10 @@ export function SearchModal({
         aria-hidden="true"
       />
 
-      {/* Janela modal centralizada com altura máxima estável */}
+      {/* Janela modal centralizada com max-w-[560px] */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative z-10 flex w-full max-w-[56rem] max-h-[78dvh] sm:max-h-[72vh] flex-col overflow-hidden sr-modal-window"
+        className="relative z-10 flex w-full max-w-[560px] max-h-[78dvh] sm:max-h-[72vh] flex-col overflow-hidden sr-modal-window"
         style={{
           background: "var(--bg-2)",
           border: "1px solid var(--line-2)",
@@ -813,94 +798,96 @@ export function SearchModal({
         }}
       >
         {/* =========================================================
-            BARRA DE BUSCA SUPERIOR (Permanente em ambos os estados)
+            BARRA DE BUSCA SUPERIOR (padding 14px 16px, gap 10px, border-bottom 1px solid var(--line))
         ========================================================== */}
         <div
-          className="relative border-b shrink-0"
+          className="relative border-b shrink-0 flex items-center"
           style={{
             borderColor: "var(--line)",
-            padding: "1.2rem 1.6rem",
+            padding: "14px 16px",
+            gap: "10px",
           }}
         >
-          {/* Layout da barra */}
-          <div className="flex items-center gap-3 w-full">
-            <SearchIcon
-              className="size-5 shrink-0 text-[var(--text-4)]"
-              aria-hidden="true"
-            />
+          <SearchIcon
+            className="size-5 shrink-0 text-[var(--text-4)]"
+            aria-hidden="true"
+          />
 
-            <input
-              ref={inputRef}
-              type="text"
-              enterKeyHint="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  (e.currentTarget as HTMLInputElement).blur();
-                  handleEnterNavigation();
-                }
-              }}
-              placeholder={placeholderText}
-              className="h-full flex-1 bg-transparent outline-none placeholder:text-[var(--text-4)] placeholder:font-normal"
-              style={{
-                fontFamily: "'Inter', system-ui, sans-serif",
-                fontSize: "16px",
-                fontWeight: 500,
-                letterSpacing: "-0.005em",
-                color: "var(--text-1)",
-              }}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck="false"
-            />
+          <input
+            ref={inputRef}
+            type="text"
+            enterKeyHint="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.currentTarget as HTMLInputElement).blur();
+                handleEnterNavigation();
+              }
+            }}
+            placeholder={placeholderText}
+            className="h-full flex-1 bg-transparent outline-none border-none shadow-none focus:outline-none focus:ring-0 placeholder:font-normal"
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "17px",
+              fontWeight: 500,
+              letterSpacing: "-0.005em",
+              color: "var(--text-1)",
+            }}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck="false"
+          />
 
-            {query.length > 0 && (
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={handleClear}
-                className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[var(--text-3)] hover:text-white hover:bg-white/10 transition-colors"
-                aria-label="Limpar pesquisa"
-                title="Limpar pesquisa"
-              >
-                <X className="size-3.5" />
-              </button>
-            )}
+          {query.length > 0 && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleClear}
+              className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[var(--text-3)] hover:text-white hover:bg-white/10 transition-colors"
+              aria-label="Limpar pesquisa"
+              title="Limpar pesquisa"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
 
-            <SearchCategorySelector
-              category={category}
-              onChange={handleCategoryChange}
-              size="sm"
-            />
-          </div>
+          <SearchCategorySelector
+            category={category}
+            onChange={handleCategoryChange}
+            size="sm"
+          />
+
+          {/* Chip ESC */}
+          <button
+            type="button"
+            onClick={handleClose}
+            className="hidden min-[561px]:inline-flex shrink-0 items-center justify-center px-2 py-0.5 rounded-[var(--r-sm)] border bg-white/[0.06] text-[var(--text-4)] hover:text-[var(--text-1)] text-[10px] tracking-[.08em] uppercase transition-colors cursor-pointer"
+            style={{
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              borderColor: "var(--line-2)",
+            }}
+            title="ESC para fechar"
+          >
+            ESC
+          </button>
         </div>
 
         {/* =========================================================
             HEADER DE RÓTULO E CONTAGEM (Apenas com consulta)
         ========================================================== */}
         {hasQuery && (
-          <div
-            className="flex items-center justify-between border-b px-4 py-2 font-mono text-[10px] uppercase shrink-0"
-            style={{
-              borderColor: "var(--line)",
-              letterSpacing: ".16em",
-              color: "var(--text-4)",
-              background: "rgba(255,255,255,0.01)",
-            }}
-          >
-            <span>{categoryName}</span>
-
-            <span
-              className="font-mono text-[10px] uppercase font-semibold"
-              style={{ color: "var(--violet-200)", letterSpacing: ".1em" }}
-            >
-              {isCurrentLoading
-                ? "..."
-                : `${currentCount} ${currentCount === 1 ? "resultado" : "resultados"}`}
-            </span>
+          <div className="sr-section-label">
+            <div className="flex items-center justify-between">
+              <span>{category === "animes" ? "ANIMES" : category === "users" ? "USUÁRIOS" : category === "people" ? "PEOPLE" : "PERSONAGENS"}</span>
+              <span style={{ color: "var(--violet-200)" }}>
+                {isCurrentLoading
+                  ? "..."
+                  : `${currentCount} ${currentCount === 1 ? "resultado" : "resultados"}`}
+              </span>
+            </div>
           </div>
         )}
 
@@ -910,10 +897,10 @@ export function SearchModal({
         <div
           ref={scrollContainerRef}
           data-search-scroll-container
-          className="flex-1 overflow-y-auto overscroll-contain p-2 min-[561px]:p-3 space-y-1"
+          className="flex-1 overflow-y-auto overscroll-contain p-2 space-y-1"
         >
           {/* =========================================================
-              ESTADO VAZIO (Primeira referência visual)
+              ESTADO VAZIO
           ========================================================== */}
           {!hasQuery && (
             <div className="flex flex-col items-center justify-center py-16 sm:py-20 px-4 text-center">
@@ -928,13 +915,13 @@ export function SearchModal({
               </div>
               <h2
                 className="text-[18px] sm:text-[20px] font-semibold text-[var(--text-1)] tracking-tight"
-                style={{ fontFamily: "'Manrope', sans-serif" }}
+                style={{ fontFamily: "var(--font-sans)" }}
               >
                 Find something to watch
               </h2>
               <p
                 className="mt-1.5 text-[13px] sm:text-[14px] text-[var(--text-3)] max-w-sm leading-relaxed"
-                style={{ fontFamily: "'Manrope', sans-serif" }}
+                style={{ fontFamily: "var(--font-sans)" }}
               >
                 {category === "animes"
                   ? "Pesquise animes por título original, romaji ou em português."
@@ -957,23 +944,12 @@ export function SearchModal({
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={i}
-                      className="rounded-[var(--r-md)] border border-white/5 bg-white/[0.02]"
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "3.6rem 1fr",
-                        gap: "1.2rem",
-                        alignItems: "center",
-                        padding: "0.8rem 1rem",
-                      }}
+                      className="sr-item bg-white/[0.02]"
                     >
-                      <div
-                        className="w-[3.6rem] h-[5.4rem] shrink-0 bg-[var(--bg-4)] animate-pulse"
-                        style={{ borderRadius: "var(--r-sm)" }}
-                      />
+                      <div className="sr-poster bg-[var(--bg-4)] animate-pulse" />
                       <div className="min-w-0 space-y-2 py-1">
                         <div className="h-4 w-44 rounded bg-white/5 animate-pulse" />
                         <div className="h-3 w-28 rounded bg-white/5 animate-pulse" />
-                        <div className="h-3 w-36 rounded bg-white/5 animate-pulse" />
                       </div>
                     </div>
                   ))}
@@ -983,16 +959,10 @@ export function SearchModal({
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
                     <Film className="size-6" />
                   </div>
-                  <h2
-                    className="text-[16px] font-semibold text-[var(--text-1)]"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <h2 className="text-[16px] font-semibold text-[var(--text-1)]" style={{ fontFamily: "var(--font-sans)" }}>
                     Nenhum anime encontrado
                   </h2>
-                  <p
-                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
                     Não encontramos resultados para &quot;{query.trim()}&quot;. Tente outro título.
                   </p>
                 </div>
@@ -1011,15 +981,7 @@ export function SearchModal({
                         to="/anime/$id"
                         params={{ id: anime.id }}
                         onClick={handleClose}
-                        className="sr-item group block select-none transition-colors"
-                        style={{
-                          borderRadius: "var(--r-md)",
-                          display: "grid",
-                          gridTemplateColumns: "3.6rem 1fr",
-                          gap: "1.2rem",
-                          alignItems: "center",
-                          padding: "0.8rem 1rem",
-                        }}
+                        className="sr-item group"
                       >
                         <SearchPoster
                           src={coverAttrs?.src}
@@ -1032,16 +994,16 @@ export function SearchModal({
                             {title}
                           </p>
 
-                          <div className="sr-sub mt-1">
+                          <div className="sr-sub">
                             {scoreFormatted && (
-                              <span className="inline-flex items-center gap-1 font-bold text-[#f5c518]">
-                                <Star className="size-[13px] fill-[#f5c518] text-[#f5c518]" />
+                              <span className="sr-rating">
+                                <Star />
                                 {scoreFormatted}
                               </span>
                             )}
 
                             {scoreFormatted && anime.year && (
-                              <span style={{ color: "var(--text-4)" }}>·</span>
+                              <span className="sr-sep">·</span>
                             )}
 
                             {anime.year && (
@@ -1050,56 +1012,24 @@ export function SearchModal({
 
                             {anime.genres && anime.genres.length > 0 && (
                               <>
-                                <span style={{ color: "var(--text-4)" }}>·</span>
-                                <span className="truncate max-w-[140px] sm:max-w-xs">
+                                <span className="sr-sep">·</span>
+                                <span className="sr-genres">
                                   {anime.genres.slice(0, 2).join(", ")}
                                 </span>
                               </>
                             )}
                           </div>
 
-                          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                          <div>
                             {anime.format === "TV" ? (
-                              <span
-                                className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-[var(--r-sm)] font-semibold"
-                                style={{
-                                  letterSpacing: ".1em",
-                                  background: "rgba(168,85,247,.14)",
-                                  color: "var(--violet-200)",
-                                  border: "1px solid rgba(168,85,247,.3)",
-                                }}
-                              >
-                                TV
-                              </span>
+                              <span className="sr-type tv">TV</span>
                             ) : anime.format ? (
-                              <span
-                                className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-[var(--r-sm)] font-semibold"
-                                style={{
-                                  letterSpacing: ".1em",
-                                  background: "rgba(255,255,255,0.06)",
-                                  color: "var(--text-2)",
-                                  border: "1px solid var(--line)",
-                                }}
-                              >
+                              <span className="sr-type">
                                 {anime.format === "MOVIE" ? "Filme" : anime.format}
                               </span>
                             ) : null}
-
-                            {anime.episodes && (
-                              <span
-                                className="font-mono text-[9px] uppercase"
-                                style={{
-                                  letterSpacing: ".08em",
-                                  color: "var(--text-4)",
-                                }}
-                              >
-                                {anime.episodes} EPS
-                              </span>
-                            )}
                           </div>
                         </div>
-
-                        <div className="hidden sm:block" />
                       </Link>
                     );
                   })}
@@ -1115,37 +1045,18 @@ export function SearchModal({
             <div>
               {userQueryClean.length < 2 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                  <h2
-                    className="text-[16px] font-semibold text-[var(--text-1)]"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <h2 className="text-[16px] font-semibold text-[var(--text-1)]" style={{ fontFamily: "var(--font-sans)" }}>
                     Digite pelo menos 2 caracteres
                   </h2>
-                  <p
-                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
                     Pesquise por @username ou nome de exibição para encontrar membros.
                   </p>
                 </div>
               ) : userLoading ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="rounded-[var(--r-md)] border border-white/5 bg-white/[0.02]"
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "5.8rem 1fr auto",
-                        gap: "1.4rem",
-                        alignItems: "center",
-                        padding: "1rem 1.1rem",
-                      }}
-                    >
-                      <div
-                        className="w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] shrink-0 bg-[var(--bg-4)] animate-pulse"
-                        style={{ borderRadius: "var(--r-sm)" }}
-                      />
+                    <div key={i} className="sr-item bg-white/[0.02]">
+                      <div className="sr-poster bg-[var(--bg-4)] animate-pulse" />
                       <div className="min-w-0 space-y-2 py-1">
                         <div className="h-4 w-36 rounded bg-white/5 animate-pulse" />
                         <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
@@ -1158,16 +1069,10 @@ export function SearchModal({
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
                     <SearchIcon className="size-6" />
                   </div>
-                  <h2
-                    className="text-[16px] font-semibold text-[var(--text-1)]"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <h2 className="text-[16px] font-semibold text-[var(--text-1)]" style={{ fontFamily: "var(--font-sans)" }}>
                     Nenhum usuário encontrado
                   </h2>
-                  <p
-                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
                     Não encontramos membros com &quot;{query.trim()}&quot;. Tente outro username ou nome.
                   </p>
                 </div>
@@ -1188,15 +1093,7 @@ export function SearchModal({
                         to="/profile/$nick"
                         params={{ nick: person.nick }}
                         onClick={handleClose}
-                        className="sr-item group block select-none transition-colors"
-                        style={{
-                          borderRadius: "var(--r-md)",
-                          display: "grid",
-                          gridTemplateColumns: "5.8rem 1fr auto",
-                          gap: "1.4rem",
-                          alignItems: "center",
-                          padding: "1rem 1.1rem",
-                        }}
+                        className="sr-item group"
                       >
                         <SearchAvatar
                           src={person.avatarUrl}
@@ -1216,18 +1113,8 @@ export function SearchModal({
                           </p>
                         </div>
 
-                        <div className="shrink-0 flex items-center">
-                          <span
-                            className="font-mono text-[9px] uppercase px-2 py-0.5 rounded-[var(--r-sm)] font-semibold"
-                            style={{
-                              letterSpacing: ".1em",
-                              background: "rgba(217,70,239,.13)",
-                              color: "#f0abfc",
-                              border: "1px solid rgba(217,70,239,.3)",
-                            }}
-                          >
-                            PESSOA
-                          </span>
+                        <div>
+                          <span className="sr-type person">PESSOA</span>
                         </div>
                       </Link>
                     );
@@ -1245,21 +1132,8 @@ export function SearchModal({
               {peopleLoading ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="rounded-[var(--r-md)] border border-white/5 bg-white/[0.02]"
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "5.8rem 1fr auto",
-                        gap: "1.4rem",
-                        alignItems: "start",
-                        padding: "1rem 1.1rem",
-                      }}
-                    >
-                      <div
-                        className="w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] shrink-0 bg-[var(--bg-4)] animate-pulse"
-                        style={{ borderRadius: "var(--r-sm)" }}
-                      />
+                    <div key={i} className="sr-item bg-white/[0.02]">
+                      <div className="sr-poster bg-[var(--bg-4)] animate-pulse" />
                       <div className="min-w-0 space-y-2 py-1">
                         <div className="h-4 w-40 rounded bg-white/5 animate-pulse" />
                         <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
@@ -1272,16 +1146,10 @@ export function SearchModal({
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
                     <SearchIcon className="size-6" />
                   </div>
-                  <h2
-                    className="text-[16px] font-semibold text-[var(--text-1)]"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <h2 className="text-[16px] font-semibold text-[var(--text-1)]" style={{ fontFamily: "var(--font-sans)" }}>
                     Nenhum profissional encontrado
                   </h2>
-                  <p
-                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
                     Não encontramos profissionais para &quot;{query.trim()}&quot;.
                   </p>
                 </div>
@@ -1301,27 +1169,15 @@ export function SearchModal({
                             {person.name.full}
                           </p>
 
-                          <p className="sr-sub mt-1 truncate">
+                          <p className="sr-sub truncate">
                             {roleText}
                             {person.anime?.title ? ` · ${person.anime.title}` : ""}
                           </p>
 
-                          <div className="mt-1.5 flex items-center gap-1.5">
-                            <span
-                              className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-[var(--r-sm)] font-semibold"
-                              style={{
-                                letterSpacing: ".1em",
-                                background: "rgba(244,63,94,.14)",
-                                color: "#fda4af",
-                                border: "1px solid rgba(244,63,94,.3)",
-                              }}
-                            >
-                              STAFF
-                            </span>
+                          <div>
+                            <span className="sr-type person">STAFF</span>
                           </div>
                         </div>
-
-                        <div className="hidden sm:block" />
                       </>
                     );
 
@@ -1331,31 +1187,12 @@ export function SearchModal({
                         to="/anime/$id"
                         params={{ id: String(animeId) }}
                         onClick={handleClose}
-                        className="sr-item group block select-none transition-colors"
-                        style={{
-                          borderRadius: "var(--r-md)",
-                          display: "grid",
-                          gridTemplateColumns: "5.8rem 1fr auto",
-                          gap: "1.4rem",
-                          alignItems: "start",
-                          padding: "1rem 1.1rem",
-                        }}
+                        className="sr-item group"
                       >
                         {itemContent}
                       </Link>
                     ) : (
-                      <div
-                        key={person.id}
-                        className="sr-item group block select-none"
-                        style={{
-                          borderRadius: "var(--r-md)",
-                          display: "grid",
-                          gridTemplateColumns: "5.8rem 1fr auto",
-                          gap: "1.4rem",
-                          alignItems: "start",
-                          padding: "1rem 1.1rem",
-                        }}
-                      >
+                      <div key={person.id} className="sr-item group">
                         {itemContent}
                       </div>
                     );
@@ -1373,21 +1210,8 @@ export function SearchModal({
               {characterLoading ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="rounded-[var(--r-md)] border border-white/5 bg-white/[0.02]"
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "5.8rem 1fr auto",
-                        gap: "1.4rem",
-                        alignItems: "start",
-                        padding: "1rem 1.1rem",
-                      }}
-                    >
-                      <div
-                        className="w-[5.8rem] h-[8.7rem] max-[560px]:w-[6.0rem] max-[560px]:h-[9.0rem] shrink-0 bg-[var(--bg-4)] animate-pulse"
-                        style={{ borderRadius: "var(--r-sm)" }}
-                      />
+                    <div key={i} className="sr-item bg-white/[0.02]">
+                      <div className="sr-poster bg-[var(--bg-4)] animate-pulse" />
                       <div className="min-w-0 space-y-2 py-1">
                         <div className="h-4 w-40 rounded bg-white/5 animate-pulse" />
                         <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
@@ -1400,16 +1224,10 @@ export function SearchModal({
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.04] border border-[var(--line)] text-[var(--text-4)] mb-3">
                     <SearchIcon className="size-6" />
                   </div>
-                  <h2
-                    className="text-[16px] font-semibold text-[var(--text-1)]"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <h2 className="text-[16px] font-semibold text-[var(--text-1)]" style={{ fontFamily: "var(--font-sans)" }}>
                     Nenhum personagem encontrado
                   </h2>
-                  <p
-                    className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm"
-                    style={{ fontFamily: "'Manrope', sans-serif" }}
-                  >
+                  <p className="mt-1 text-[13px] text-[var(--text-3)] max-w-sm" style={{ fontFamily: "var(--font-sans)" }}>
                     Não encontramos personagens para &quot;{query.trim()}&quot;.
                   </p>
                 </div>
@@ -1428,27 +1246,15 @@ export function SearchModal({
                             {character.name.full}
                           </p>
 
-                          <p className="sr-sub mt-1 truncate">
+                          <p className="sr-sub truncate">
                             {character.role || "Personagem"}
                             {character.anime?.title ? ` · ${character.anime.title}` : ""}
                           </p>
 
-                          <div className="mt-1.5 flex items-center gap-1.5">
-                            <span
-                              className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-[var(--r-sm)] font-semibold"
-                              style={{
-                                letterSpacing: ".1em",
-                                background: "rgba(59,130,246,.14)",
-                                color: "#93c5fd",
-                                border: "1px solid rgba(59,130,246,.3)",
-                              }}
-                            >
-                              PERSONAGEM
-                            </span>
+                          <div>
+                            <span className="sr-type">PERSONAGEM</span>
                           </div>
                         </div>
-
-                        <div className="hidden sm:block" />
                       </>
                     );
 
@@ -1458,31 +1264,12 @@ export function SearchModal({
                         to="/anime/$id"
                         params={{ id: String(animeId) }}
                         onClick={handleClose}
-                        className="sr-item group block select-none transition-colors"
-                        style={{
-                          borderRadius: "var(--r-md)",
-                          display: "grid",
-                          gridTemplateColumns: "5.8rem 1fr auto",
-                          gap: "1.4rem",
-                          alignItems: "start",
-                          padding: "1rem 1.1rem",
-                        }}
+                        className="sr-item group"
                       >
                         {itemContent}
                       </Link>
                     ) : (
-                      <div
-                        key={character.id}
-                        className="sr-item group block select-none"
-                        style={{
-                          borderRadius: "var(--r-md)",
-                          display: "grid",
-                          gridTemplateColumns: "5.8rem 1fr auto",
-                          gap: "1.4rem",
-                          alignItems: "start",
-                          padding: "1rem 1.1rem",
-                        }}
-                      >
+                      <div key={character.id} className="sr-item group">
                         {itemContent}
                       </div>
                     );

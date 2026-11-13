@@ -126,7 +126,7 @@ export function SearchCategorySelector({
 
   return (
     <div ref={containerRef} className={cn("relative shrink-0", className)}>
-      {/* Pílula violeta: Inter 14px, peso 500, fundo rgba(168,85,247,.1), borda violeta .28, texto --violet-200 */}
+      {/* Botão de escopo ("Tudo"/"All" / Categoria atual): font-family var(--font-sans), font-size 13px, font-weight 600, fundo rgb(168 85 247 / 0.1), borda rgb(168 85 247 / 0.28), cor var(--violet-200) */}
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
@@ -139,12 +139,12 @@ export function SearchCategorySelector({
         aria-expanded={isOpen}
         aria-label={`Categoria: ${currentOption.label}`}
         style={{
-          fontFamily: "'Inter', system-ui, sans-serif",
-          fontSize: "14px",
-          fontWeight: 500,
-          background: "rgba(168, 85, 247, 0.1)",
-          borderColor: "rgba(168, 85, 247, 0.28)",
-          color: "var(--violet-200, #e9d5ff)",
+          fontFamily: "var(--font-sans)",
+          fontSize: "13px",
+          fontWeight: 600,
+          background: "rgb(168 85 247 / 0.1)",
+          borderColor: "rgb(168 85 247 / 0.28)",
+          color: "var(--violet-200)",
         }}
         className={cn(
           "group relative inline-flex items-center gap-1.5 rounded-full border px-3 py-1 transition-all select-none outline-none focus-visible:ring-1 focus-visible:ring-purple-400 active:scale-[0.98]",
@@ -160,7 +160,7 @@ export function SearchCategorySelector({
         />
       </button>
 
-      {/* Dropdown com fundo --bg-2, borda --line-2, raio --r-md */}
+      {/* Dropdown */}
       {isOpen && (
         <div
           role="listbox"
@@ -194,7 +194,7 @@ export function SearchCategorySelector({
                     selectCategory(opt.id);
                   }}
                   style={{
-                    fontFamily: "'Inter', system-ui, sans-serif",
+                    fontFamily: "var(--font-sans)",
                     fontSize: "13px",
                     fontWeight: isSelected ? 600 : 500,
                   }}
