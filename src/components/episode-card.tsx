@@ -57,7 +57,7 @@ export const EpisodeCard = memo(function EpisodeCard({
   ]);
 
   return (
-    <article className="group relative w-full">
+    <article className="group relative w-full episode-card-cv">
       <Link
         to="/watch/$id/$ep"
         params={{ id: episode.animeId, ep: `ep-${episode.episodeNumber || 1}` }}
@@ -83,6 +83,7 @@ export const EpisodeCard = memo(function EpisodeCard({
             height={180}
             priority={false}
             loading={first || priority ? "eager" : "lazy"}
+            decoding="async"
             fetchPriority="low"
             defer={!first && !priority && (defer ?? true)}
             fallbackClassName="bg-[#0f0d1a]"

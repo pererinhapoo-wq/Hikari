@@ -728,20 +728,32 @@ textarea:focus {
   }
 }
 
+.episode-card-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: 160px;
+  contain: layout paint;
+}
+
 .hero-glass-capsule--status {
-  background-color: rgba(255, 255, 255, 0.42);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background-color: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.28);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
-  contain: paint;
+  contain: layout paint;
+}
+
+@media (min-width: 768px) {
+  .hero-glass-capsule--status {
+    background-color: rgba(255, 255, 255, 0.42);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
 }
 
 .hero-genre-capsule {
-  background-color: rgba(255, 255, 255, 0.55);
+  background-color: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.28);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
-  contain: paint;
+  contain: layout paint;
 }
 
 .hero-btn-action {

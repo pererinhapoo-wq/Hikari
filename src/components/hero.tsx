@@ -604,10 +604,10 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
               </picture>
             </div>
           ) : (
-            <h1
-              title={preferredTitle}
-              className="font-display text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight text-white leading-snug drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] line-clamp-2"
-            >
+              <h1
+                title={preferredTitle}
+                className="font-display text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight text-white leading-snug [text-shadow:0_2px_8px_rgba(0,0,0,0.85)] line-clamp-2"
+              >
               {preferredTitle}
             </h1>
           )}
@@ -708,11 +708,11 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
           <Link
             to="/anime/$id"
             params={{ id: anime.id }}
-            className="hero-btn-action group inline-flex items-center justify-center gap-1.5 h-9 sm:h-10 px-3.5 sm:px-4.5 rounded-xl sm:rounded-2xl bg-black/60 hover:bg-black/75 border border-white/25 hover:border-white/40 text-white font-semibold text-xs sm:text-sm tracking-wide backdrop-blur-md shadow-[0_2px_12px_rgba(0,0,0,0.5)] cursor-pointer select-none"
+            className="hero-btn-action group inline-flex items-center justify-center gap-1.5 h-9 sm:h-10 px-3.5 sm:px-4.5 rounded-xl sm:rounded-2xl bg-black/75 md:bg-black/60 hover:bg-black/80 border border-white/25 hover:border-white/40 text-white font-semibold text-xs sm:text-sm tracking-wide md:backdrop-blur-md shadow-[0_2px_12px_rgba(0,0,0,0.5)] cursor-pointer select-none"
           >
-            <Info className="size-3.5 sm:size-4 text-purple-200 group-hover:text-white shrink-0 transition-colors drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
-            <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">Detalhes</span>
-            <ChevronRight className="size-3.5 sm:size-4 text-zinc-300 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
+            <Info className="size-3.5 sm:size-4 text-purple-200 group-hover:text-white shrink-0 transition-colors" />
+            <span className="[text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">Detalhes</span>
+            <ChevronRight className="size-3.5 sm:size-4 text-zinc-300 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
           </Link>
         </div>
       </div>

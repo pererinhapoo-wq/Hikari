@@ -162,32 +162,52 @@ function ShellHeaderWrapper({
   keepVisible: boolean;
   children: React.ReactNode;
 }) {
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [showHeader, setShowHeader] = useState(true);
+  const headerRef = useRef<HTMLElement>(null);
   const isScrolledRef = useRef(false);
   const showHeaderRef = useRef(true);
+  const isScrollingRef = useRef(false);
 
   // Mantém o cabeçalho imediatamente visível ao navegar para qualquer página
   useEffect(() => {
     const nextScrolled = window.scrollY > (isBannerPage ? 70 : 20);
     showHeaderRef.current = true;
     isScrolledRef.current = nextScrolled;
-    setShowHeader(true);
-    setIsScrolled(nextScrolled);
+    isScrollingRef.current = false;
+    const el = headerRef.current;
+    if (el) {
+      el.dataset.hidden = "false";
+      el.dataset.scrolled = nextScrolled ? "true" : "false";
+      el.dataset.scrolling = "false";
+    }
   }, [pathname, isBannerPage]);
 
   useEffect(() => {
     let lastScrollY = window.scrollY;
     let rafId: number | null = null;
+    let scrollIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const commitHeaderState = (nextScrolled: boolean, nextShow: boolean) => {
+    const commitHeaderDataset = (nextScrolled: boolean, nextShow: boolean) => {
+      const el = headerRef.current;
       if (isScrolledRef.current !== nextScrolled) {
         isScrolledRef.current = nextScrolled;
-        setIsScrolled(nextScrolled);
+        if (el) {
+          el.dataset.scrolled = nextScrolled ? "true" : "false";
+        }
       }
       if (showHeaderRef.current !== nextShow) {
         showHeaderRef.current = nextShow;
-        setShowHeader(nextShow);
+        if (el) {
+          el.dataset.hidden = nextShow ? "false" : "true";
+        }
+      }
+    };
+
+    const setScrollingActive = (active: boolean) => {
+      if (isScrollingRef.current === active) return;
+      isScrollingRef.current = active;
+      const el = headerRef.current;
+      if (el) {
+        el.dataset.scrolling = active ? "true" : "false";
       }
     };
 
@@ -197,7 +217,7 @@ function ShellHeaderWrapper({
 
       // Se qualquer painel/menu/busca estiver aberto, mantém o cabeçalho visível
       if (keepVisible) {
-        commitHeaderState(currentScrollY > 20, true);
+        commitHeaderDataset(currentScrollY > 20, true);
         lastScrollY = currentScrollY;
         return;
       }
@@ -223,11 +243,20 @@ function ShellHeaderWrapper({
         nextScrolled = false;
       }
 
-      commitHeaderState(nextScrolled, nextShow);
+      commitHeaderDataset(nextScrolled, nextShow);
       lastScrollY = currentScrollY;
     };
 
     const handleScroll = () => {
+      setScrollingActive(true);
+      if (scrollIdleTimer !== null) {
+        clearTimeout(scrollIdleTimer);
+      }
+      scrollIdleTimer = setTimeout(() => {
+        scrollIdleTimer = null;
+        setScrollingActive(false);
+      }, 160);
+
       if (rafId !== null) return;
       rafId = window.requestAnimationFrame(evaluateScroll);
     };
@@ -239,34 +268,35 @@ function ShellHeaderWrapper({
       if (rafId !== null) {
         window.cancelAnimationFrame(rafId);
       }
+      if (scrollIdleTimer !== null) {
+        clearTimeout(scrollIdleTimer);
+      }
+      setScrollingActive(false);
     };
   }, [keepVisible, isBannerPage]);
 
   return (
     <header
+      ref={headerRef}
       data-r6="1"
       data-r7="1"
+      data-scrolled="false"
+      data-hidden="false"
+      data-scrolling="false"
       className={cn(
-        "sticky top-0 z-40 transition-transform duration-300 ease-out will-change-auto",
-        showHeader
-          ? "translate-y-0 pointer-events-auto"
-          : "-translate-y-full pointer-events-none",
+        "group/header sticky top-0 z-40 transition-transform duration-150 ease-out",
+        "data-[scrolling=true]:will-change-transform",
+        "data-[hidden=false]:translate-y-0 data-[hidden=false]:pointer-events-auto",
+        "data-[hidden=true]:-translate-y-full data-[hidden=true]:pointer-events-none",
         isBannerPage
-          ? isScrolled
-            ? "border-b border-purple-500/15 bg-bg/85 shadow-[0_4px_24px_rgba(0,0,0,0.6)] backdrop-blur-md"
-            : "border-b border-transparent bg-transparent"
-          : isScrolled
-            ? "border-b border-purple-500/15 bg-bg/85 shadow-[0_4px_24px_rgba(0,0,0,0.6)] backdrop-blur-md"
-            : "border-b border-border bg-bg/85 backdrop-blur-md",
+          ? "border-b data-[scrolled=false]:border-transparent data-[scrolled=false]:bg-transparent data-[scrolled=true]:border-purple-500/15 data-[scrolled=true]:bg-black/75 md:data-[scrolled=true]:bg-black/60 md:data-[scrolled=true]:backdrop-blur-md data-[scrolled=true]:shadow-[0_4px_24px_rgba(0,0,0,0.6)]"
+          : "border-b data-[scrolled=false]:border-border data-[scrolled=true]:border-purple-500/15 data-[scrolled=true]:shadow-[0_4px_24px_rgba(0,0,0,0.6)] bg-bg/95 md:bg-bg/85 md:backdrop-blur-md",
       )}
     >
       {/* Degradê sutil de proteção para contraste no topo do banner */}
       {isBannerPage && (
         <div
-          className={cn(
-            "pointer-events-none absolute inset-0 bg-gradient-to-b from-black/80 via-black/35 to-transparent transition-opacity duration-300 -z-10",
-            isScrolled ? "opacity-0" : "opacity-100",
-          )}
+          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/80 via-black/35 to-transparent transition-opacity duration-150 -z-10 opacity-100 group-data-[scrolled=true]/header:opacity-0"
           aria-hidden="true"
         />
       )}
@@ -1375,7 +1405,7 @@ export function Shell() {
             role="dialog"
             aria-label="Painel de notificações"
             className={cn(
-              "fixed right-3 sm:right-6 top-14 sm:top-16 z-50 flex w-[calc(100vw-1.5rem)] max-w-[360px] sm:max-w-[380px] origin-top-right flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0b0913]/96 shadow-[0_20px_52px_rgba(0,0,0,0.78)] backdrop-blur-2xl",
+              "fixed right-3 sm:right-6 top-14 sm:top-16 z-50 flex w-[calc(100vw-1.5rem)] max-w-[360px] sm:max-w-[380px] origin-top-right flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0b0913]/98 md:bg-[#0b0913]/92 shadow-[0_20px_52px_rgba(0,0,0,0.78)] md:backdrop-blur-md",
               "motion-safe:transition-[opacity,transform] motion-safe:duration-[170ms] motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none motion-reduce:transform-none",
               notificationsPanel.visible
                 ? "opacity-100 translate-y-0 scale-100"

@@ -71,7 +71,7 @@ export const AnimeCard = memo(function AnimeCard({
   const yearText = anime.year ? String(anime.year) : "";
 
   return (
-    <article className={cn("group relative flex flex-col min-w-0 shrink-0", width)}>
+    <article className={cn("group relative flex flex-col min-w-0 shrink-0 [contain:layout_paint]", width)}>
       <Link
         to="/anime/$id"
         params={{ id: anime.id }}

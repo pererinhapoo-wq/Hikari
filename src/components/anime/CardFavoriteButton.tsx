@@ -1,5 +1,5 @@
 import { Heart } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface CardFavoriteButtonProps {
@@ -10,7 +10,7 @@ interface CardFavoriteButtonProps {
   className?: string;
 }
 
-export function CardFavoriteButton({
+export const CardFavoriteButton = memo(function CardFavoriteButton({
   isFavorite,
   onToggle,
   loading = false,
@@ -67,4 +67,4 @@ export function CardFavoriteButton({
       />
     </button>
   );
-}
+});

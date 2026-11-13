@@ -172,7 +172,7 @@ export function SearchCategorySelector({
             borderRadius: "var(--r-md, 10px)",
           }}
           className={cn(
-            "absolute top-full mt-1.5 z-50 min-w-[150px] overflow-hidden border p-1 shadow-[0_16px_36px_rgba(0,0,0,0.9),0_0_20px_rgba(168,85,247,0.18)] backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-150",
+            "absolute top-full mt-1.5 z-50 min-w-[150px] overflow-hidden border p-1 shadow-[0_16px_36px_rgba(0,0,0,0.9),0_0_20px_rgba(168,85,247,0.18)] md:backdrop-blur-md animate-in fade-in zoom-in-95 duration-150",
             placement === "right" ? "right-0 origin-top-right" : "left-0 origin-top-left",
           )}
         >

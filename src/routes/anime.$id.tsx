@@ -556,6 +556,56 @@ function makeAnimeSnapshot(anime: Anime) {
 }
 
 
+const TrailerFacade = memo(function TrailerFacade({
+  videoId,
+  title,
+}: {
+  videoId: string;
+  title: string;
+}) {
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    setPlaying(false);
+  }, [videoId]);
+
+  return (
+    <div className="mt-4 aspect-video w-full overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0d0b18] shadow-[0_8px_30px_rgba(0,0,0,0.6)] [contain:layout_paint]">
+      {playing ? (
+        <iframe
+          title={`Trailer de ${title}`}
+          src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`}
+          referrerPolicy="strict-origin-when-cross-origin"
+          className="size-full border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setPlaying(true)}
+          aria-label={`Reproduzir trailer de ${title}`}
+          style={{
+            backgroundImage: `url("https://i.ytimg.com/vi/${videoId}/hqdefault.jpg")`,
+          }}
+          className="group relative flex size-full items-center justify-center bg-cover bg-center bg-no-repeat cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+        >
+          <span
+            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/35 transition-opacity duration-150 group-hover:opacity-80"
+            aria-hidden="true"
+          />
+          <span
+            className="relative z-10 flex size-16 sm:size-20 items-center justify-center rounded-full border border-white/25 bg-purple-600/90 text-white shadow-[0_8px_30px_rgba(0,0,0,0.7)] transition-transform duration-150 group-hover:scale-110 group-hover:bg-purple-500"
+            aria-hidden="true"
+          >
+            <Play className="ml-1 size-7 sm:size-8 fill-current" />
+          </span>
+        </button>
+      )}
+    </div>
+  );
+});
+
 function AnimePage() {
   const { id } = Route.useParams();
   const { remote } = Route.useLoaderData();
@@ -659,7 +709,28 @@ function AnimePage() {
     let cancelled = false;
     void resolveEpisodes(targetId, baseAnime?.seasons).then((seasons) => {
       if (cancelled) return;
-      setResolvedSeasons(seasons);
+      startTransition(() => {
+        setResolvedSeasons((prev) => {
+          const baseline = prev ?? baseAnime?.seasons ?? null;
+          if (
+            baseline &&
+            baseline.length === seasons.length &&
+            baseline.every((s, idx) => {
+              const next = seasons[idx];
+              return (
+                next &&
+                s.id === next.id &&
+                s.episodes.length === next.episodes.length &&
+                s.episodes[0]?.title === next.episodes[0]?.title &&
+                s.episodes[0]?.thumbnail === next.episodes[0]?.thumbnail
+              );
+            })
+          ) {
+            return prev;
+          }
+          return seasons;
+        });
+      });
     });
 
     return () => {
@@ -738,33 +809,37 @@ function AnimePage() {
   useEffect(() => {
     if (shouldLoadCredits) return;
     if (hasCharacters && hasStaff && hasStudios) return;
-    if (typeof window === "undefined" || !("IntersectionObserver" in window)) {
-      setShouldLoadCredits(true);
-      return;
-    }
-
-    const node = creditsSentinelRef.current;
-    if (!node) return;
+    if (typeof window === "undefined") return;
 
     let unmounted = false;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting && !unmounted) {
-          setShouldLoadCredits(true);
-          observer.disconnect();
-        }
-      },
-      {
-        threshold: 0,
-        rootMargin: "450px 0px",
-      },
-    );
+    let idleId: number | null = null;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
 
-    observer.observe(node);
+    const trigger = () => {
+      if (!unmounted) {
+        startTransition(() => {
+          setShouldLoadCredits(true);
+        });
+      }
+    };
+
+    if ("requestIdleCallback" in window) {
+      idleId = (window as Window & { requestIdleCallback: any }).requestIdleCallback(
+        trigger,
+        { timeout: 600 },
+      );
+    } else {
+      timerId = setTimeout(trigger, 120);
+    }
 
     return () => {
       unmounted = true;
-      observer.disconnect();
+      if (idleId !== null && "cancelIdleCallback" in window) {
+        (window as Window & { cancelIdleCallback: any }).cancelIdleCallback(idleId);
+      }
+      if (timerId !== null) {
+        clearTimeout(timerId);
+      }
     };
   }, [shouldLoadCredits, hasCharacters, hasStaff, hasStudios]);
 
@@ -1205,6 +1280,14 @@ function AnimePage() {
       }
     },
     [user, favoriteEntities],
+  );
+
+  const favoritesEntityContextValue = useMemo(
+    () => ({
+      isEntityFavorited,
+      toggleEntityFavorite: handleToggleEntityFavorite,
+    }),
+    [isEntityFavorited, handleToggleEntityFavorite],
   );
 
   // Ações de salvar e remover da coleção
@@ -2061,8 +2144,8 @@ function AnimePage() {
                       height={690}
                       priority={false}
                       loading="eager"
-                      fetchPriority={shouldRenderPicture ? "auto" : "high"}
-                      decoding="sync"
+                      fetchPriority="auto"
+                      decoding="async"
                       fallbackClassName="bg-elevated"
                       className="size-full object-cover"
                     />
@@ -2088,7 +2171,7 @@ function AnimePage() {
                   )}
                 </div>
 
-                <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-white line-clamp-3 drop-shadow-sm sm:text-4xl md:text-5xl sm:line-clamp-none">
+                <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-white line-clamp-3 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] sm:text-4xl md:text-5xl sm:line-clamp-none">
                   {title}
                 </h1>
 
@@ -2214,7 +2297,7 @@ function AnimePage() {
                       : "Adicionar à Minha Coleção"
                   }
                   className={cn(
-                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden backdrop-blur-xl transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden bg-black/75 md:bg-black/60 md:backdrop-blur-md transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400",
                     "before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:transition-opacity before:duration-300",
                     "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
                     trackingStatus
@@ -2292,7 +2375,7 @@ function AnimePage() {
                   disabled={favoriteLoading}
                   aria-label={isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
                   className={cn(
-                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden backdrop-blur-xl transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400",
+                    "group relative inline-flex h-11 sm:h-12 items-center justify-center gap-2.5 rounded-2xl px-4 sm:px-5 text-sm sm:text-base font-semibold select-none cursor-pointer overflow-hidden bg-black/75 md:bg-black/60 md:backdrop-blur-md transition-all duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400",
                     "before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:transition-opacity before:duration-300",
                     "motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.97]",
                     isFavorite
@@ -2346,7 +2429,7 @@ function AnimePage() {
                         className={cn(
                           "tracking-tight transition-colors",
                           isFavorite
-                            ? "font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]"
+                            ? "font-bold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]"
                             : "font-semibold text-rose-100/90 group-hover:text-white",
                         )}
                       >
@@ -2433,17 +2516,7 @@ function AnimePage() {
             </h2>
           </div>
 
-          <div className="mt-4 aspect-video overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0d0b18] shadow-[0_8px_30px_rgba(0,0,0,0.6)] [contain:layout_paint]">
-            <iframe
-              title={`Trailer de ${title}`}
-              src={`https://www.youtube-nocookie.com/embed/${yt}`}
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
-              className="size-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
+          <TrailerFacade key={`${anime.id}-${yt}`} videoId={yt} title={title} />
         </section>
       )}
 
@@ -2503,14 +2576,12 @@ function AnimePage() {
       />
 
       {/* 1. PERSONAGENS, DUBLADORES, ESTÚDIOS E EQUIPE TÉCNICA COM SUPORTE A FAVORITOS */}
-      <FavoritesEntityContext.Provider
-        value={{
-          isEntityFavorited,
-          toggleEntityFavorite: handleToggleEntityFavorite,
-        }}
-      >
+      <FavoritesEntityContext.Provider value={favoritesEntityContextValue}>
         {/* 1. PERSONAGENS (ELENCO) */}
-        <SectionReveal minHeight="260px" rootMargin="350px 0px" delayMs={0}>
+        <SectionReveal
+          lazy={false}
+          className="[content-visibility:auto] [contain-intrinsic-size:auto_280px]"
+        >
           <ElencoSection
             key={`elenco-${anime.id}`}
             animeId={anime.id}
@@ -2520,7 +2591,10 @@ function AnimePage() {
         </SectionReveal>
 
         {/* 2. DUBLADORES */}
-        <SectionReveal minHeight="260px" rootMargin="250px 0px" delayMs={80}>
+        <SectionReveal
+          lazy={false}
+          className="[content-visibility:auto] [contain-intrinsic-size:auto_280px]"
+        >
           <DubladoresSection
             key={`dubladores-${anime.id}`}
             animeId={anime.id}
@@ -2530,7 +2604,10 @@ function AnimePage() {
         </SectionReveal>
 
         {/* 3. DIREÇÃO E EQUIPE TÉCNICA */}
-        <SectionReveal minHeight="200px" rootMargin="200px 0px" delayMs={160}>
+        <SectionReveal
+          lazy={false}
+          className="[content-visibility:auto] [contain-intrinsic-size:auto_240px]"
+        >
           <DirecaoEquipeSection
             key={`staff-${anime.id}`}
             animeId={anime.id}
@@ -2542,12 +2619,18 @@ function AnimePage() {
       </FavoritesEntityContext.Provider>
 
       {/* 3. INFORMAÇÕES ADICIONAIS */}
-      <SectionReveal minHeight="180px" rootMargin="300px 0px">
+      <SectionReveal
+        lazy={false}
+        className="[content-visibility:auto] [contain-intrinsic-size:auto_220px]"
+      >
         <InformacoesAdicionaisSection anime={anime} />
       </SectionReveal>
 
       {/* 4. IMAGENS (GALERIA) */}
-      <SectionReveal minHeight="220px" rootMargin="300px 0px">
+      <SectionReveal
+        lazy={false}
+        className="[content-visibility:auto] [contain-intrinsic-size:auto_260px]"
+      >
         <ImagensSection
           key={`imagens-${anime.id}`}
           animeId={anime.id}
@@ -2561,7 +2644,10 @@ function AnimePage() {
 
       {/* 5. RELACIONADOS (SEM BOTÃO DE SALVAR) */}
       {anime.recommendations.length > 0 && (
-        <SectionReveal minHeight="260px" rootMargin="300px 0px">
+        <SectionReveal
+          lazy={false}
+          className="[content-visibility:auto] [contain-intrinsic-size:auto_280px]"
+        >
           <RelatedSection
             key={`related-${anime.id}`}
             animeId={anime.id}
@@ -2571,7 +2657,12 @@ function AnimePage() {
       )}
 
       {/* 6. COMENTÁRIOS DO ANIME */}
-      <SectionReveal minHeight="300px" rootMargin="300px 0px" lazy={!shouldForceCommentsLoad}>
+      <SectionReveal
+        minHeight="300px"
+        rootMargin="100px 0px"
+        lazy={!shouldForceCommentsLoad && !shouldLoadCredits}
+        className="[content-visibility:auto] [contain-intrinsic-size:auto_320px]"
+      >
         <Suspense fallback={<CommentsLoadingFallback />}>
           <DeferredAnimeComments
             animeId={anime.id}
@@ -2621,7 +2712,7 @@ function AuthPromptModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 md:bg-black/60 md:backdrop-blur-md animate-in fade-in duration-200"
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-prompt-title"
@@ -2696,7 +2787,7 @@ function CommentsLoadingFallback() {
         <div
           role="status"
           aria-live="polite"
-          className="elizabeth-loading-container relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24]/90 via-[#0c0a15]/95 to-[#08070d] p-8 sm:p-12 text-center shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] backdrop-blur-md"
+          className="elizabeth-loading-container relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24]/95 via-[#0c0a15]/95 to-[#08070d] p-8 sm:p-12 text-center shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] md:backdrop-blur-md"
         >
           <div
             className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-36 bg-[#a855f7]/15 rounded-full blur-3xl"
@@ -2971,7 +3062,7 @@ function SeasonSelector({
             role="listbox"
             aria-label="Lista de temporadas"
             className={cn(
-              "absolute left-0 top-full z-40 mt-2 w-full min-w-[17rem] max-w-[min(24rem,calc(100vw-2rem))] origin-top rounded-md border border-purple-500/30 bg-[#100d1c]/98 p-1.5 shadow-[0_18px_44px_rgba(0,0,0,0.78),0_0_24px_rgba(168,85,247,0.14)] backdrop-blur-xl will-change-[opacity,transform]",
+              "absolute left-0 top-full z-40 mt-2 w-full min-w-[17rem] max-w-[min(24rem,calc(100vw-2rem))] origin-top rounded-md border border-purple-500/30 bg-[#100d1c]/98 p-1.5 shadow-[0_18px_44px_rgba(0,0,0,0.78),0_0_24px_rgba(168,85,247,0.14)] md:backdrop-blur-md",
               "motion-safe:transition-[opacity,transform] motion-reduce:transition-none",
               isEntered
                 ? "pointer-events-auto translate-y-0 scale-100 opacity-100 motion-safe:duration-[170ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]"
@@ -3114,9 +3205,9 @@ function useProgressiveRail({
   resetKey,
   isMobile = false,
 }: UseProgressiveRailOptions) {
-  // Limites iniciais otimizados: renderização progressiva leve (mobile: 6, desktop: 8)
+  // Limites iniciais otimizados: renderização progressiva leve (mobile: 8, desktop: 10)
   // e imagens antecipadas apenas para o que cabe na tela (mobile: 4, desktop: 7)
-  const defaultRender = isMobile ? 6 : 8;
+  const defaultRender = isMobile ? 8 : 10;
   const defaultImage = isMobile ? 4 : 7;
   const initRender = Math.min(totalCount, initialRenderCount ?? defaultRender);
   const initImage = Math.min(totalCount, initialImageCount ?? defaultImage);
@@ -3194,40 +3285,6 @@ function useProgressiveRail({
       }
     };
   }, [railRef, advance]);
-
-  // Carrega progressivamente os próximos grupos em background após o primeiro frame pintar
-  useEffect(() => {
-    if (effectiveRenderLimit >= totalCount) return;
-
-    let timerId: ReturnType<typeof setTimeout> | null = null;
-    let idleId: number | null = null;
-
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      idleId = (window as Window & { requestIdleCallback: any }).requestIdleCallback(
-        () => {
-          startTransition(() => {
-            setRenderedLimit((prev) => Math.min(totalCount, prev + strideBatch));
-          });
-        },
-        { timeout: 350 },
-      );
-    } else {
-      timerId = setTimeout(() => {
-        startTransition(() => {
-          setRenderedLimit((prev) => Math.min(totalCount, prev + strideBatch));
-        });
-      }, 120);
-    }
-
-    return () => {
-      if (idleId !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
-        (window as Window & { cancelIdleCallback: any }).cancelIdleCallback(idleId);
-      }
-      if (timerId !== null) {
-        clearTimeout(timerId);
-      }
-    };
-  }, [effectiveRenderLimit, totalCount, strideBatch]);
 
   return {
     renderedLimit: Math.min(totalCount, effectiveRenderLimit),
@@ -3378,8 +3435,11 @@ type EpisodeItemData = {
   duration?: string;
 };
 
+const EPISODES_PAGE_SIZE = 60;
+
 const EpisodeGridItem = memo(function EpisodeGridItem({
   ep,
+  index,
   animeId,
   cover,
   watched,
@@ -3388,6 +3448,7 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
   onSelect,
 }: {
   ep: EpisodeItemData;
+  index: number;
   animeId: string;
   cover: string;
   watched: boolean;
@@ -3402,9 +3463,10 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
   const imgSrc = ep.thumbnail
     ? anilistImage(ep.thumbnail, 320)
     : fallbackCoverAttrs?.src || anilistImage(cover, 320);
+  const isFirstSix = index < 6;
 
   return (
-    <li>
+    <li className="episode-card-cv">
       <Link
         to="/watch/$id/$ep"
         params={{
@@ -3445,7 +3507,10 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
                 ? "(min-width: 640px) 144px, 128px"
                 : undefined
             }
-            defer={Boolean(imgSrc && !loadImage)}
+            loading={isFirstSix ? "eager" : "lazy"}
+            decoding="async"
+            fetchPriority={isFirstSix ? "auto" : "low"}
+            defer={Boolean(imgSrc && (!isFirstSix || !loadImage))}
             alt={ep.title ? `Episódio ${ep.number}: ${ep.title}` : `Episódio ${ep.number}`}
             width={320}
             height={180}
@@ -3530,22 +3595,29 @@ const EpisodeGrid = memo(function EpisodeGrid({
   watchedEpisodes: string[];
 }) {
   const [selectingId, setSelectingId] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(EPISODES_PAGE_SIZE);
   const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollBoxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleCount(EPISODES_PAGE_SIZE);
+  }, [animeId]);
 
   const watchedSet = useMemo(
     () => new Set(watchedEpisodes),
     [watchedEpisodes],
   );
 
-  const displayedEpisodes = showAll ? episodes : episodes.slice(0, 12);
+  const displayedEpisodes = useMemo(
+    () => episodes.slice(0, visibleCount),
+    [episodes, visibleCount],
+  );
 
   const visibleImgLimit = useVerticalBoxImageLimit(
     scrollBoxRef,
     displayedEpisodes.length,
     108,
-    18,
+    6,
     animeId,
   );
 
@@ -3567,6 +3639,8 @@ const EpisodeGrid = memo(function EpisodeGrid({
     }, 320);
   }, []);
 
+  const remainingCount = Math.max(0, episodes.length - displayedEpisodes.length);
+
   return (
     <div className="space-y-3">
       <div
@@ -3578,6 +3652,7 @@ const EpisodeGrid = memo(function EpisodeGrid({
             <EpisodeGridItem
               key={ep.id}
               ep={ep}
+              index={index}
               animeId={animeId}
               cover={cover}
               watched={watchedSet.has(ep.id)}
@@ -3588,13 +3663,17 @@ const EpisodeGrid = memo(function EpisodeGrid({
           ))}
         </ol>
       </div>
-      {!showAll && episodes.length > 12 && (
+      {remainingCount > 0 && (
         <button
           type="button"
-          onClick={() => setShowAll(true)}
-          className="w-full rounded-xl border border-purple-500/30 bg-surface/80 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-purple-300 transition-colors hover:bg-elevated hover:text-white"
+          onClick={() =>
+            setVisibleCount((prev) =>
+              Math.min(episodes.length, prev + EPISODES_PAGE_SIZE),
+            )
+          }
+          className="w-full rounded-xl border border-purple-500/30 bg-surface/80 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-purple-300 transition-colors hover:bg-elevated hover:text-white cursor-pointer"
         >
-          Ver todos ({episodes.length} episódios)
+          Carregar mais ({Math.min(EPISODES_PAGE_SIZE, remainingCount)} de {remainingCount} restantes)
         </button>
       )}
     </div>
@@ -3974,7 +4053,7 @@ const ImagensSection = memo(function ImagensSection({
                 />
               </div>
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity flex items-end p-2.5 pointer-events-none">
-                <span className="text-[11px] font-semibold text-purple-200 drop-shadow">
+                <span className="text-[11px] font-semibold text-purple-200 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]">
                   Ampliar arte
                 </span>
               </div>
@@ -3987,7 +4066,7 @@ const ImagensSection = memo(function ImagensSection({
           role="dialog"
           aria-modal="true"
           aria-label={`Visualização de imagem de ${title}`}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-3 sm:p-6 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 md:bg-black/75 md:backdrop-blur-md p-3 sm:p-6 animate-in fade-in duration-200"
           onClick={closeModal}
         >
           {/* Botão fechar proeminente */}
@@ -4126,7 +4205,7 @@ const ElencoCard = memo(function ElencoCard({
   const charTargetId = char.id ? String(char.id) : charName;
   const isFav = isEntityFavorited("character", charTargetId, charName);
 
-  const handleToggleFav = async () => {
+  const handleToggleFav = useCallback(async () => {
     await toggleEntityFavorite({
       targetType: "character",
       targetId: charTargetId,
@@ -4138,7 +4217,7 @@ const ElencoCard = memo(function ElencoCard({
         role: roleLabel,
       },
     });
-  };
+  }, [toggleEntityFavorite, charTargetId, charName, char.name?.native, char.image, roleLabel]);
 
   return (
     <div className="group relative flex w-[110px] sm:w-[126px] md:w-[136px] shrink-0 flex-col overflow-hidden rounded-xl border border-purple-500/15 bg-[#100e1b] shadow-sm [contain:layout_paint_style] motion-safe:transition-[transform,border-color,box-shadow] motion-safe:duration-300 [@media(hover:hover)]:hover:-translate-y-1 [@media(hover:hover)]:hover:border-purple-500/45 [@media(hover:hover)]:hover:shadow-[0_8px_24px_rgba(168,85,247,0.2)]">
@@ -4375,6 +4454,21 @@ const DubladoresSection = memo(function DubladoresSection({
     resetKey: `${animeId}-vas-${activeLang}`,
   });
 
+  const handleSelectActor = useCallback(
+    (item: DubladorItem) => {
+      void navigate({
+        to: "/anime/$id",
+        params: { id: animeId },
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          dublador: item.vaName,
+          ...(item.vaId ? { dubladorId: String(item.vaId) } : {}),
+        }),
+      });
+    },
+    [navigate, animeId],
+  );
+
   if (displayVoiceActors.length === 0) {
     return null;
   }
@@ -4483,17 +4577,7 @@ const DubladoresSection = memo(function DubladoresSection({
                 item={item}
                 loadImage={index < visibleImgLimit}
                 isSelected={false}
-                onSelect={() => {
-                  void navigate({
-                    to: "/anime/$id",
-                    params: { id: animeId },
-                    search: (prev: Record<string, unknown>) => ({
-                      ...prev,
-                      dublador: item.vaName,
-                      ...(item.vaId ? { dubladorId: String(item.vaId) } : {}),
-                    }),
-                  });
-                }}
+                onSelect={handleSelectActor}
               />
             ))}
           </div>
@@ -4510,14 +4594,14 @@ const DubladorCard = memo(function DubladorCard({
   item: DubladorItem;
   loadImage: boolean;
   isSelected?: boolean;
-  onSelect?: () => void;
+  onSelect?: (item: DubladorItem) => void;
 }) {
   const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
 
   const vaTargetId = item.vaId ? String(item.vaId) : item.vaName;
   const isFav = isEntityFavorited("person", vaTargetId, item.vaName);
 
-  const handleToggleFav = async () => {
+  const handleToggleFav = useCallback(async () => {
     await toggleEntityFavorite({
       targetType: "person",
       targetId: vaTargetId,
@@ -4530,17 +4614,17 @@ const DubladorCard = memo(function DubladorCard({
           : `Dublador(a) (${item.language})`,
       },
     });
-  };
+  }, [toggleEntityFavorite, vaTargetId, item.vaName, item.vaImage, item.characterName, item.language]);
 
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={onSelect}
+      onClick={() => onSelect?.(item)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSelect?.();
+          onSelect?.(item);
         }
       }}
       className={cn(
@@ -4746,6 +4830,38 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
     resetKey: `${animeId}-staff`,
   });
 
+  const handleSelectStaff = useCallback(
+    (item: {
+      id?: number | string;
+      name: string;
+      role: string;
+      image?: string;
+      isStudio?: boolean;
+    }) => {
+      if ("isStudio" in item && Boolean(item.isStudio)) {
+        void navigate({
+          to: "/anime/$id",
+          params: { id: animeId },
+          search: (prev: Record<string, unknown>) => ({
+            ...prev,
+            studio: item.name,
+          }),
+        });
+      } else {
+        void navigate({
+          to: "/anime/$id",
+          params: { id: animeId },
+          search: (prev: Record<string, unknown>) => ({
+            ...prev,
+            staff: item.name,
+            ...(item.id ? { staffId: String(item.id) } : {}),
+          }),
+        });
+      }
+    },
+    [navigate, animeId],
+  );
+
   if (allItems.length === 0) {
     return null;
   }
@@ -4815,28 +4931,7 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
             item={item}
             loadImage={index < visibleImgLimit}
             isSelected={false}
-            onSelect={() => {
-              if ("isStudio" in item && Boolean((item as { isStudio?: boolean }).isStudio)) {
-                void navigate({
-                  to: "/anime/$id",
-                  params: { id: animeId },
-                  search: (prev: Record<string, unknown>) => ({
-                    ...prev,
-                    studio: item.name,
-                  }),
-                });
-              } else {
-                void navigate({
-                  to: "/anime/$id",
-                  params: { id: animeId },
-                  search: (prev: Record<string, unknown>) => ({
-                    ...prev,
-                    staff: item.name,
-                    ...(item.id ? { staffId: String(item.id) } : {}),
-                  }),
-                });
-              }
-            }}
+            onSelect={handleSelectStaff}
           />
         ))}
       </div>
@@ -4859,7 +4954,13 @@ const StaffCard = memo(function StaffCard({
   };
   loadImage: boolean;
   isSelected?: boolean;
-  onSelect?: () => void;
+  onSelect?: (item: {
+    id?: number | string;
+    name: string;
+    role: string;
+    image?: string;
+    isStudio?: boolean;
+  }) => void;
 }) {
   const { isEntityFavorited, toggleEntityFavorite } = useFavoritesEntity();
 
@@ -4875,7 +4976,7 @@ const StaffCard = memo(function StaffCard({
 
   const isFav = isEntityFavorited(targetType, targetId, item.name);
 
-  const handleToggleFav = async () => {
+  const handleToggleFav = useCallback(async () => {
     if (isStudio) {
       let logoUrl = item.image;
       if (!logoUrl) {
@@ -4904,7 +5005,7 @@ const StaffCard = memo(function StaffCard({
         },
       });
     }
-  };
+  }, [isStudio, item.image, item.name, item.role, roleText, targetId, toggleEntityFavorite]);
 
   const itemAriaLabel = isFav
     ? `Remover ${item.name} dos favoritos`
@@ -4915,11 +5016,11 @@ const StaffCard = memo(function StaffCard({
       role="button"
       tabIndex={0}
       title={item.isStudio ? `Ver produções de ${item.name}` : undefined}
-      onClick={onSelect}
+      onClick={() => onSelect?.(item)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSelect?.();
+          onSelect?.(item);
         }
       }}
       className={cn(
