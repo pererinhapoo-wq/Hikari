@@ -720,9 +720,37 @@ export function Shell() {
       }
     };
 
-    void loadNotifications();
+    const POLL_INTERVAL_MS = 120_000;
+    let intervalId: number | null = null;
 
-    const interval = window.setInterval(loadNotifications, 30000);
+    const stopPolling = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const startPolling = () => {
+      if (typeof document !== "undefined" && document.hidden) {
+        stopPolling();
+        return;
+      }
+      if (intervalId !== null) {
+        return;
+      }
+      intervalId = window.setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) {
+          stopPolling();
+          return;
+        }
+        void loadNotifications();
+      }, POLL_INTERVAL_MS);
+    };
+
+    if (typeof document === "undefined" || !document.hidden) {
+      void loadNotifications();
+      startPolling();
+    }
 
     const handleVisibilityOrSync = (event?: Event) => {
       if (
@@ -735,10 +763,12 @@ export function Shell() {
       }
       if (
         typeof document !== "undefined" &&
-        document.visibilityState === "hidden"
+        (document.hidden || document.visibilityState === "hidden")
       ) {
+        stopPolling();
         return;
       }
+      startPolling();
       void loadNotifications();
     };
 
@@ -752,7 +782,7 @@ export function Shell() {
     return () => {
       cancelled = true;
 
-      window.clearInterval(interval);
+      stopPolling();
       window.removeEventListener("focus", handleVisibilityOrSync);
       document.removeEventListener("visibilitychange", handleVisibilityOrSync);
       window.removeEventListener(

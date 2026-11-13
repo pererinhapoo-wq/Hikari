@@ -1602,7 +1602,14 @@ function AnimePage() {
    * COR DA ABA DO NAVEGADOR
    */
   useEffect(() => {
-    const defaultColor = "#09090b";
+    const getActiveThemeDefault = () =>
+      document.documentElement.getAttribute("data-theme") === "light"
+        ? "#f7f7f5"
+        : "#08070d";
+
+    const isLight =
+      document.documentElement.getAttribute("data-theme") === "light";
+    const defaultColor = getActiveThemeDefault();
 
     let meta = document.querySelector(
       'meta[name="theme-color"]',
@@ -1614,23 +1621,43 @@ function AnimePage() {
       document.head.appendChild(meta);
     }
 
+    if (isLight) {
+      meta.content = defaultColor;
+      return () => {
+        if (meta) meta.content = getActiveThemeDefault();
+      };
+    }
+
     meta.content = animeColor || defaultColor;
 
     if (animeColor || !currentBannerSrc) {
-      return;
+      return () => {
+        if (meta) meta.content = getActiveThemeDefault();
+      };
     }
 
-    return analyzeBannerFramingAndTheme({
+    const cancelAnalyze = analyzeBannerFramingAndTheme({
       bannerUrl: currentBannerSrc,
       hasExplicitColor: false,
       computeFraming: false,
       defaultThemeColor: defaultColor,
       onResult: ({ themeColor }) => {
-        if (themeColor && meta) {
+        if (
+          themeColor &&
+          meta &&
+          document.documentElement.getAttribute("data-theme") !== "light"
+        ) {
           meta.content = themeColor;
         }
       },
     });
+
+    return () => {
+      cancelAnalyze?.();
+      if (meta) {
+        meta.content = getActiveThemeDefault();
+      }
+    };
   }, [animeId, currentBannerSrc, animeColor]);
 
   /*
@@ -3419,7 +3446,7 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
                 : undefined
             }
             defer={Boolean(imgSrc && !loadImage)}
-            alt=""
+            alt={ep.title ? `Episódio ${ep.number}: ${ep.title}` : `Episódio ${ep.number}`}
             width={320}
             height={180}
             fallbackClassName="bg-elevated"

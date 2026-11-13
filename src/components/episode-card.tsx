@@ -78,7 +78,7 @@ export const EpisodeCard = memo(function EpisodeCard({
         >
           <HikariImage
             src={episode.thumbnail ? anilistImage(episode.thumbnail, 320) : episode.thumbnail}
-            alt=""
+            alt={episode.animeTitle}
             width={320}
             height={180}
             priority={false}

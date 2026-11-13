@@ -113,7 +113,7 @@ export const Route = createFileRoute("/")({
           media: "(max-width: 767.98px)",
           imageSrcSet: mobileSrcSet,
           imageSizes: heroSizes,
-          fetchPriority: "high",
+          fetchPriority: "low",
         },
         {
           rel: "preload",
@@ -122,7 +122,7 @@ export const Route = createFileRoute("/")({
           media: "(min-width: 768px)",
           imageSrcSet: desktopSrcSet,
           imageSizes: heroSizes,
-          fetchPriority: "high",
+          fetchPriority: "low",
         },
       );
     } else if (mobileBackdrop || desktopBackdrop) {
@@ -133,7 +133,7 @@ export const Route = createFileRoute("/")({
         href: anilistImage(single, 1600),
         imageSrcSet: `${anilistImage(single, 480)} 480w, ${anilistImage(single, 768)} 768w, ${anilistImage(single, 1200)} 1200w, ${anilistImage(single, 1600)} 1600w`,
         imageSizes: heroSizes,
-        fetchPriority: "high",
+        fetchPriority: "low",
       });
     }
 
@@ -148,14 +148,14 @@ export const Route = createFileRoute("/")({
           imageSrcSet: logoConfig.webpSrcSet,
           imageSizes: logoConfig.sizes,
           type: "image/webp",
-          fetchPriority: "low",
+          fetchPriority: "high",
         });
       } else {
         links.push({
           rel: "preload",
           as: "image",
           href: logoConfig.src,
-          fetchPriority: "low",
+          fetchPriority: "high",
         });
       }
     }
@@ -178,7 +178,7 @@ export const Route = createFileRoute("/")({
       }
     }
 
-    const homeTitle = "HIKARI — catálogo e streaming de animes";
+    const homeTitle = "HIKARI — Assista animes online legendados e dublados";
     const homeDesc =
       "Assista a animes online legendados e dublados em alta definição. Lançamentos da temporada, catálogo completo, calendário semanal e episódios atualizados.";
     const homeUrl = "https://grokhikari.vercel.app/";
@@ -302,7 +302,7 @@ function Home() {
 
   // Animes Recém-Adicionados: animes incluídos no catálogo próprio do Hikari com data real (createdAt),
   // ordenados do mais recente para o mais antigo
-  const { recentlyAddedAnimes, hasLocalWithoutCreationDate } = useMemo(() => {
+  const recentlyAddedAnimes = useMemo(() => {
     const visibleLocals = locals.filter((a) => !a.hidden);
     const withValidCreatedAt = visibleLocals.filter(
       (a) =>
@@ -311,7 +311,7 @@ function Home() {
         a.createdAt > 0,
     );
 
-    const sorted = [...withValidCreatedAt]
+    return [...withValidCreatedAt]
       .sort(
         (a, b) =>
           b.createdAt - a.createdAt ||
@@ -319,12 +319,6 @@ function Home() {
       )
       .slice(0, 18)
       .map(localToAnime);
-
-    return {
-      recentlyAddedAnimes: sorted,
-      hasLocalWithoutCreationDate:
-        visibleLocals.length > 0 && withValidCreatedAt.length === 0,
-    };
   }, [locals]);
 
   const featuredItems = useMemo(
@@ -377,23 +371,18 @@ function Home() {
         </SectionReveal>
       )}
 
-      {/* 4. Animes Recém-Adicionados */}
-      <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
-        <AnimeRow
-          title="Animes Recém-Adicionados"
-          items={recentlyAddedAnimes}
-          loading={!hydrated}
-          showBookmark={false}
-          showRank={false}
-          priorityCount={0}
-          emptyTitle="Não há dados suficientes de animes recém-adicionados"
-          emptyDescription={
-            hasLocalWithoutCreationDate
-              ? "Os registros encontrados no catálogo local não possuem data de criação ou inclusão válida para ordenação."
-              : "Ainda não há animes cadastrados no catálogo próprio do Hikari com data de inclusão registrada, e a fonte externa de catálogo não informa a data de adição à plataforma."
-          }
-        />
-      </SectionReveal>
+      {/* 4. Animes Recém-Adicionados (renderiza apenas quando há itens cadastrados) */}
+      {hydrated && recentlyAddedAnimes.length > 0 && (
+        <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>
+          <AnimeRow
+            title="Animes Recém-Adicionados"
+            items={recentlyAddedAnimes}
+            showBookmark={false}
+            showRank={false}
+            priorityCount={0}
+          />
+        </SectionReveal>
+      )}
 
       {/* 5. Animes da Temporada */}
       <SectionReveal minHeight="260px" rootMargin="300px 0px" lazy={false}>

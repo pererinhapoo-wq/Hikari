@@ -561,7 +561,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             height={hasDistinctSources ? 690 : 900}
             loading={priority ? "eager" : "lazy"}
             decoding={priority ? "sync" : "async"}
-            fetchPriority={priority ? "high" : "low"}
+            fetchPriority="low"
             className="size-full object-cover object-top md:object-center"
           />
         </picture>
@@ -597,7 +597,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
                   height={logoConfig.height ?? 176}
                   loading={priority ? "eager" : "lazy"}
                   decoding="async"
-                  fetchPriority="low"
+                  fetchPriority={priority ? "high" : "low"}
                   onError={() => setFailedLogoAnimeId(anime.id)}
                   className={`object-contain select-none pointer-events-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)] filter ${logoConfig.sizeClasses}`.replace(/\s+/g, " ").trim()}
                 />

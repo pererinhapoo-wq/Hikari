@@ -1473,7 +1473,7 @@ function SearchCharacterResultCard({
         {imageSrc ? (
           <img
             src={imageSrc}
-            alt=""
+            alt={character.name.full}
             loading="lazy"
             decoding="async"
             className="
@@ -1570,7 +1570,7 @@ function SearchPersonResultCard({
         {imageSrc ? (
           <img
             src={imageSrc}
-            alt=""
+            alt={person.name.full}
             loading="lazy"
             decoding="async"
             className="

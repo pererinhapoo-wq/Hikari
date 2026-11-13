@@ -965,7 +965,7 @@ export function SearchModal({
                         <SearchPoster
                           src={coverAttrs?.src}
                           srcSet={coverAttrs?.srcSet}
-                          alt=""
+                          alt={title}
                         />
 
                         <div className="min-w-0 flex-1">
@@ -1149,7 +1149,7 @@ export function SearchModal({
 
                     const itemContent = (
                       <>
-                        <SearchPoster src={imageSrc} alt="" />
+                        <SearchPoster src={imageSrc} alt={person.name.full} />
 
                         <div className="min-w-0 flex-1">
                           <p className="sr-title">
@@ -1230,7 +1230,7 @@ export function SearchModal({
 
                     const itemContent = (
                       <>
-                        <SearchPoster src={imageSrc} alt="" />
+                        <SearchPoster src={imageSrc} alt={character.name.full} />
 
                         <div className="min-w-0 flex-1">
                           <p className="sr-title">

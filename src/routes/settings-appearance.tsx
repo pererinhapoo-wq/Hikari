@@ -91,20 +91,32 @@ function SettingsAppearance() {
     useState(true);
 
   useEffect(() => {
-    if (theme === "Claro") {
-      document.documentElement.setAttribute(
-        "data-theme",
-        "light",
-      );
+    const isLight = theme === "Claro";
+    const themeColor = isLight ? "#f7f7f5" : "#08070d";
 
+    if (isLight) {
+      document.documentElement.setAttribute("data-theme", "light");
+      document.documentElement.style.backgroundColor = "#f7f7f5";
+      document.documentElement.style.color = "#171717";
+      document.documentElement.style.colorScheme = "light";
       saveThemeCookie("Claro");
     } else {
-      document.documentElement.removeAttribute(
-        "data-theme",
-      );
-
+      document.documentElement.removeAttribute("data-theme");
+      document.documentElement.style.backgroundColor = "#08070d";
+      document.documentElement.style.color = "#f4f4f1";
+      document.documentElement.style.colorScheme = "dark";
       saveThemeCookie("Escuro");
     }
+
+    let meta = document.querySelector(
+      'meta[name="theme-color"]',
+    ) as HTMLMetaElement | null;
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    meta.content = themeColor;
   }, [theme]);
 
   return (

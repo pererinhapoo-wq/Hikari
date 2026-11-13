@@ -154,7 +154,7 @@ export function buildHomeJsonLd() {
     "@type": "WebSite",
     name: "HIKARI",
     url: `${CANONICAL_DOMAIN}/`,
-    description: "HIKARI — catálogo e streaming de animes",
+    description: "HIKARI — Assista animes online legendados e dublados",
     inLanguage: "pt-BR",
     potentialAction: {
       "@type": "SearchAction",

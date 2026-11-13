@@ -112,53 +112,11 @@ const LazyAnalytics = lazy(() =>
   import("@vercel/analytics/react").then((m) => ({ default: m.Analytics })),
 );
 
-const ADSENSE_SCRIPT_URL =
-  "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594";
-
 function DeferredAnalytics() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-
-    if (typeof window === "undefined" || typeof document === "undefined") {
-      return;
-    }
-
-    const injectAdSense = () => {
-      if (
-        document.querySelector(
-          'script[src^="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]',
-        )
-      ) {
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = ADSENSE_SCRIPT_URL;
-      script.async = true;
-      script.crossOrigin = "anonymous";
-      document.head.appendChild(script);
-    };
-
-    const win = window as Window & {
-      requestIdleCallback?: (
-        cb: () => void,
-        opts?: { timeout: number },
-      ) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
-
-    if (typeof win.requestIdleCallback === "function") {
-      const idleId = win.requestIdleCallback(injectAdSense, { timeout: 2500 });
-      return () => {
-        win.cancelIdleCallback?.(idleId);
-      };
-    }
-
-    const timerId = window.setTimeout(injectAdSense, 2500);
-    return () => {
-      window.clearTimeout(timerId);
-    };
   }, []);
 
   if (!mounted) return null;
@@ -186,7 +144,7 @@ export const Route = createRootRoute({
       },
       {
         name: "theme-color",
-        content: "#09090b",
+        content: "#08070d",
       },
     ],
 
@@ -234,11 +192,22 @@ function RootDocument() {
         />
         <link rel="stylesheet" href={appCss} />
         <link rel="preconnect" href="https://s4.anilist.co" />
+        <link rel="dns-prefetch" href="https://s4.anilist.co" />
         <HeadContent />
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function () {
+                function setThemeColorMeta(color) {
+                  var meta = document.querySelector('meta[name="theme-color"]');
+                  if (!meta) {
+                    meta = document.createElement("meta");
+                    meta.name = "theme-color";
+                    document.head.appendChild(meta);
+                  }
+                  meta.content = color;
+                }
+
                 function applyTheme() {
                   try {
                     var match = document.cookie.match(/(?:^|;\\s*)hikari-theme=([^;]+)/);
@@ -248,11 +217,13 @@ function RootDocument() {
                       document.documentElement.style.backgroundColor = "#f7f7f5";
                       document.documentElement.style.color = "#171717";
                       document.documentElement.style.colorScheme = "light";
+                      setThemeColorMeta("#f7f7f5");
                     } else {
                       document.documentElement.removeAttribute("data-theme");
                       document.documentElement.style.backgroundColor = "#08070d";
                       document.documentElement.style.color = "#f4f4f1";
                       document.documentElement.style.colorScheme = "dark";
+                      setThemeColorMeta("#08070d");
                     }
                   } catch (e) {}
                 }

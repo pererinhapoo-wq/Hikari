@@ -177,7 +177,7 @@ export const StudioAnimeCard = memo(function StudioAnimeCard({
         ">
           <ProfileAnimeImage
             src={anime.cover}
-            alt=""
+            alt={anime.title}
             loading="lazy"
             decoding="async"
             fallbackClassName="bg-[#0d0c16]"
@@ -262,7 +262,7 @@ export const DubladorAnimeCard = memo(function DubladorAnimeCard({
         ">
           <ProfileAnimeImage
             src={work.anime.cover}
-            alt=""
+            alt={work.anime.title}
             loading="lazy"
             decoding="async"
             fallbackClassName="bg-[#0d0c16]"
@@ -342,7 +342,7 @@ export const StaffAnimeCard = memo(function StaffAnimeCard({
         ">
           <ProfileAnimeImage
             src={work.anime.cover}
-            alt=""
+            alt={work.anime.title}
             loading="lazy"
             decoding="async"
             fallbackClassName="bg-[#0d0c16]"

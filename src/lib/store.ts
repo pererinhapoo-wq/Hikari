@@ -1,7 +1,8 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import type { LocalAnime, SlimAnime } from "@/lib/types";
 import { flushAnimes, loadAnimes, scheduleSave } from "@/lib/catalog-storage";
+import { pruneProgressKeys, withQuotaRetry } from "@/lib/storage-prune";
 
 export type ContinueWatch = {
   animeId: string;
@@ -13,7 +14,12 @@ export type ContinueWatch = {
   updatedAt: number;
 };
 
-const MAX_WATCHED_PER_ANIME = 1000;
+const LEGACY_CATALOG_STORAGE_KEY = "hikari-catalog-v1";
+const USER_STATE_STORAGE_KEY = "hikari-user-state-v1";
+const MAX_WATCHED_PER_ANIME = 250;
+const MAX_WATCHED_ANIMES = 100;
+const MAX_SNAPSHOTS = 100;
+const MAX_PERSISTED_USERS = 3;
 
 export function slimSnapshot(anime: SlimAnime): SlimAnime {
   return {
@@ -40,12 +46,86 @@ export function slimSnapshot(anime: SlimAnime): SlimAnime {
 
 function slimSnapshotsRecord(
   record: Record<string, SlimAnime> | undefined,
+  allowedIds?: Iterable<string>,
 ): Record<string, SlimAnime> {
   if (!record) return {};
+  const allowedSet = allowedIds ? new Set(allowedIds) : null;
   const out: Record<string, SlimAnime> = {};
+  let count = 0;
+
+  // Prioriza IDs ainda presentes na lista ou no Continuar Assistindo
+  if (allowedSet) {
+    for (const id of allowedSet) {
+      if (count >= MAX_SNAPSHOTS) break;
+      const anime = record[id];
+      if (anime) {
+        out[id] = slimSnapshot(anime);
+        count++;
+      }
+    }
+    return out;
+  }
+
   for (const [id, anime] of Object.entries(record)) {
+    if (count >= MAX_SNAPSHOTS) break;
     if (anime) {
       out[id] = slimSnapshot(anime);
+      count++;
+    }
+  }
+  return out;
+}
+
+function limitWatchedRecord(
+  record: Record<string, string[]> | undefined,
+  priorityIds?: Iterable<string>,
+): Record<string, string[]> {
+  if (!record) return {};
+  const out: Record<string, string[]> = {};
+  const prioritySet = new Set(priorityIds ?? []);
+  const entries = Object.entries(record).filter(
+    ([, eps]) => Array.isArray(eps) && eps.length > 0,
+  );
+
+  // Coloca animes prioritários primeiro (ex: Continuar Assistindo e Minha Lista)
+  entries.sort(([idA], [idB]) => {
+    const aPri = prioritySet.has(idA) ? 1 : 0;
+    const bPri = prioritySet.has(idB) ? 1 : 0;
+    return bPri - aPri;
+  });
+
+  const limited = entries.slice(0, MAX_WATCHED_ANIMES);
+  for (const [animeId, eps] of limited) {
+    out[animeId] =
+      eps.length > MAX_WATCHED_PER_ANIME
+        ? eps.slice(eps.length - MAX_WATCHED_PER_ANIME)
+        : eps;
+  }
+  return out;
+}
+
+function pickUserKeys(
+  record: Record<string, unknown> | undefined,
+  currentUserId: string | null,
+): string[] {
+  const keys = Object.keys(record ?? {});
+  if (!currentUserId || !keys.includes(currentUserId)) {
+    return keys.slice(-MAX_PERSISTED_USERS);
+  }
+  const others = keys.filter((k) => k !== currentUserId);
+  return [...others.slice(-(MAX_PERSISTED_USERS - 1)), currentUserId];
+}
+
+function slimUserListsRecord(
+  record: Record<string, string[]> | undefined,
+  currentUserId: string | null,
+): Record<string, string[]> {
+  if (!record) return {};
+  const out: Record<string, string[]> = {};
+  for (const userId of pickUserKeys(record, currentUserId)) {
+    const list = record[userId];
+    if (Array.isArray(list)) {
+      out[userId] = list.slice(0, MAX_SNAPSHOTS);
     }
   }
   return out;
@@ -53,31 +133,141 @@ function slimSnapshotsRecord(
 
 function slimUserSnapshotsRecord(
   record: Record<string, Record<string, SlimAnime>> | undefined,
+  userLists: Record<string, string[]> | undefined,
+  currentUserId: string | null,
 ): Record<string, Record<string, SlimAnime>> {
   if (!record) return {};
   const out: Record<string, Record<string, SlimAnime>> = {};
-  for (const [userId, userSnaps] of Object.entries(record)) {
+  for (const userId of pickUserKeys(record, currentUserId)) {
+    const userSnaps = record[userId];
     if (userSnaps) {
-      out[userId] = slimSnapshotsRecord(userSnaps);
+      out[userId] = slimSnapshotsRecord(userSnaps, userLists?.[userId]);
     }
   }
   return out;
 }
 
+function limitUserWatchedRecord(
+  record: Record<string, Record<string, string[]>> | undefined,
+  userLists: Record<string, string[]> | undefined,
+  currentUserId: string | null,
+): Record<string, Record<string, string[]>> {
+  if (!record) return {};
+  const out: Record<string, Record<string, string[]>> = {};
+  for (const userId of pickUserKeys(record, currentUserId)) {
+    const userWatched = record[userId];
+    if (userWatched) {
+      out[userId] = limitWatchedRecord(userWatched, userLists?.[userId]);
+    }
+  }
+  return out;
+}
+
+const quotaSafeStorage: StateStorage = {
+  getItem: (name) => {
+    if (typeof window === "undefined") return null;
+    try {
+      return window.localStorage.getItem(name);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (name, value) => {
+    if (typeof window === "undefined") return;
+    withQuotaRetry(() => {
+      window.localStorage.setItem(name, value);
+    });
+  },
+  removeItem: (name) => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.removeItem(name);
+    } catch {
+      // ignore
+    }
+  },
+};
+
 /**
- * Captura dados existentes de "hikari-catalog-v1" no localStorage antes que
- * o Zustand possa sobrescrever a chave antiga durante a inicialização.
+ * Captura dados existentes de "hikari-catalog-v1" no localStorage, migra estado
+ * de usuário para "hikari-user-state-v1" e retorna eventual catálogo legado
+ * para gravação no IndexedDB antes de remover a chave antiga.
  */
 function captureLegacyCatalogFromLocalStorage(): LocalAnime[] | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem("hikari-catalog-v1");
+    const raw = window.localStorage.getItem(LEGACY_CATALOG_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const candidate = parsed?.state?.animes ?? parsed?.animes;
+    const legacyState = parsed?.state ?? parsed;
+    const candidate = legacyState?.animes;
+
+    if (
+      legacyState &&
+      typeof legacyState === "object" &&
+      !window.localStorage.getItem(USER_STATE_STORAGE_KEY)
+    ) {
+      const migratedContinue = Array.isArray(legacyState.continueWatching)
+        ? legacyState.continueWatching.slice(0, 12)
+        : [];
+      const migratedMyList = Array.isArray(legacyState.myList)
+        ? legacyState.myList.slice(0, MAX_SNAPSHOTS)
+        : [];
+      const migratedUserId =
+        typeof legacyState.currentUserId === "string"
+          ? legacyState.currentUserId
+          : null;
+      const migratedUserLists = slimUserListsRecord(
+        legacyState.userLists,
+        migratedUserId,
+      );
+      const priorityIds = [
+        ...migratedMyList,
+        ...migratedContinue.map((c: ContinueWatch) => c?.animeId).filter(Boolean),
+      ];
+
+      const migratedPayload = {
+        state: {
+          myList: migratedMyList,
+          snapshots: slimSnapshotsRecord(legacyState.snapshots, priorityIds),
+          userLists: migratedUserLists,
+          userSnapshots: slimUserSnapshotsRecord(
+            legacyState.userSnapshots,
+            migratedUserLists,
+            migratedUserId,
+          ),
+          currentUserId: migratedUserId,
+          continueWatching: migratedContinue,
+          watchedEpisodes: limitWatchedRecord(
+            legacyState.watchedEpisodes,
+            priorityIds,
+          ),
+          anonymousWatchedEpisodes: limitWatchedRecord(
+            legacyState.anonymousWatchedEpisodes,
+            priorityIds,
+          ),
+          userWatchedEpisodes: limitUserWatchedRecord(
+            legacyState.userWatchedEpisodes,
+            migratedUserLists,
+            migratedUserId,
+          ),
+        },
+        version: 2,
+      };
+      withQuotaRetry(() => {
+        window.localStorage.setItem(
+          USER_STATE_STORAGE_KEY,
+          JSON.stringify(migratedPayload),
+        );
+      });
+    }
+
     if (Array.isArray(candidate) && candidate.length > 0) {
       return candidate as LocalAnime[];
     }
+
+    // Sem catálogo legado pendente -> remove a chave antiga imediatamente
+    window.localStorage.removeItem(LEGACY_CATALOG_STORAGE_KEY);
   } catch (err) {
     console.warn("[Hikari] Erro ao capturar catálogo legado do localStorage:", err);
   }
@@ -286,9 +476,10 @@ export const useHikariStore = create<HikariState>()(
             (Object.keys(s.snapshots).length > 0 ? { ...s.snapshots } : {});
 
           const on = currentList.includes(anime.id);
-          const nextList = on
+          const nextList = (on
             ? currentList.filter((x) => x !== anime.id)
-            : [anime.id, ...currentList];
+            : [anime.id, ...currentList]
+          ).slice(0, MAX_SNAPSHOTS);
 
           const nextSnapshots = {
             ...currentSnapshots,
@@ -297,20 +488,32 @@ export const useHikariStore = create<HikariState>()(
           if (on) {
             delete nextSnapshots[anime.id];
           } else {
-            nextSnapshots[anime.id] = anime;
+            nextSnapshots[anime.id] = slimSnapshot(anime);
           }
 
+          const boundedSnapshots = slimSnapshotsRecord(nextSnapshots, nextList);
+
           return {
-            userLists: {
-              ...(s.userLists ?? {}),
-              [activeUserId]: nextList,
-            },
-            userSnapshots: {
-              ...(s.userSnapshots ?? {}),
-              [activeUserId]: nextSnapshots,
-            },
+            userLists: slimUserListsRecord(
+              {
+                ...(s.userLists ?? {}),
+                [activeUserId]: nextList,
+              },
+              activeUserId,
+            ),
+            userSnapshots: slimUserSnapshotsRecord(
+              {
+                ...(s.userSnapshots ?? {}),
+                [activeUserId]: boundedSnapshots,
+              },
+              {
+                ...(s.userLists ?? {}),
+                [activeUserId]: nextList,
+              },
+              activeUserId,
+            ),
             myList: nextList,
-            snapshots: nextSnapshots,
+            snapshots: boundedSnapshots,
           };
         });
       },
@@ -329,26 +532,39 @@ export const useHikariStore = create<HikariState>()(
                 : updated;
           }
 
-          const watchedEpisodes = alreadyWatched
-            ? s.watchedEpisodes
-            : {
-                ...s.watchedEpisodes,
-                [entry.animeId]: nextWatched,
-              };
-
           const continueWatching = [
             entry,
             ...s.continueWatching.filter((c) => c.animeId !== entry.animeId),
           ].slice(0, 12);
 
+          const priorityIds = [
+            entry.animeId,
+            ...s.myList,
+            ...continueWatching.map((c) => c.animeId),
+          ];
+
+          const watchedEpisodes = alreadyWatched
+            ? s.watchedEpisodes
+            : limitWatchedRecord(
+                {
+                  ...s.watchedEpisodes,
+                  [entry.animeId]: nextWatched,
+                },
+                priorityIds,
+              );
+
           if (s.currentUserId) {
             return {
               continueWatching,
               watchedEpisodes,
-              userWatchedEpisodes: {
-                ...(s.userWatchedEpisodes ?? {}),
-                [s.currentUserId]: watchedEpisodes,
-              },
+              userWatchedEpisodes: limitUserWatchedRecord(
+                {
+                  ...(s.userWatchedEpisodes ?? {}),
+                  [s.currentUserId]: watchedEpisodes,
+                },
+                s.userLists,
+                s.currentUserId,
+              ),
             };
           } else {
             return {
@@ -379,18 +595,30 @@ export const useHikariStore = create<HikariState>()(
               ? updated.slice(updated.length - MAX_WATCHED_PER_ANIME)
               : updated;
 
-          const nextWatched = {
-            ...s.watchedEpisodes,
-            [animeId]: clamped,
-          };
+          const priorityIds = [
+            animeId,
+            ...s.myList,
+            ...s.continueWatching.map((c) => c.animeId),
+          ];
+          const nextWatched = limitWatchedRecord(
+            {
+              ...s.watchedEpisodes,
+              [animeId]: clamped,
+            },
+            priorityIds,
+          );
 
           if (s.currentUserId) {
             return {
               watchedEpisodes: nextWatched,
-              userWatchedEpisodes: {
-                ...(s.userWatchedEpisodes ?? {}),
-                [s.currentUserId]: nextWatched,
-              },
+              userWatchedEpisodes: limitUserWatchedRecord(
+                {
+                  ...(s.userWatchedEpisodes ?? {}),
+                  [s.currentUserId]: nextWatched,
+                },
+                s.userLists,
+                s.currentUserId,
+              ),
             };
           } else {
             return {
@@ -419,8 +647,9 @@ export const useHikariStore = create<HikariState>()(
       },
     }),
     {
-      name: "hikari-catalog-v1",
+      name: USER_STATE_STORAGE_KEY,
       version: 2,
+      storage: createJSONStorage(() => quotaSafeStorage),
 
       migrate: (persistedState: unknown, version: number) => {
         if (version < 2 && persistedState && typeof persistedState === "object") {
@@ -440,17 +669,37 @@ export const useHikariStore = create<HikariState>()(
         // A hidratação só é concluída após carregar o catálogo do IndexedDB ou fallback
       },
 
-      partialize: (s) => ({
-        myList: s.myList,
-        snapshots: slimSnapshotsRecord(s.snapshots),
-        userLists: s.userLists,
-        userSnapshots: slimUserSnapshotsRecord(s.userSnapshots),
-        currentUserId: s.currentUserId,
-        continueWatching: (s.continueWatching ?? []).slice(0, 12),
-        watchedEpisodes: s.watchedEpisodes,
-        anonymousWatchedEpisodes: s.anonymousWatchedEpisodes ?? {},
-        userWatchedEpisodes: s.userWatchedEpisodes ?? {},
-      }),
+      partialize: (s) => {
+        const myList = (s.myList ?? []).slice(0, MAX_SNAPSHOTS);
+        const continueWatching = (s.continueWatching ?? []).slice(0, 12);
+        const priorityIds = [
+          ...myList,
+          ...continueWatching.map((c) => c.animeId),
+        ];
+        const userLists = slimUserListsRecord(s.userLists, s.currentUserId);
+        return {
+          myList,
+          snapshots: slimSnapshotsRecord(s.snapshots, priorityIds),
+          userLists,
+          userSnapshots: slimUserSnapshotsRecord(
+            s.userSnapshots,
+            userLists,
+            s.currentUserId,
+          ),
+          currentUserId: s.currentUserId,
+          continueWatching,
+          watchedEpisodes: limitWatchedRecord(s.watchedEpisodes, priorityIds),
+          anonymousWatchedEpisodes: limitWatchedRecord(
+            s.anonymousWatchedEpisodes,
+            priorityIds,
+          ),
+          userWatchedEpisodes: limitUserWatchedRecord(
+            s.userWatchedEpisodes,
+            userLists,
+            s.currentUserId,
+          ),
+        };
+      },
     },
   ),
 );
@@ -546,6 +795,20 @@ export function ensureCatalogLoaded(): Promise<void> {
           await flushAnimes();
         }
       }
+
+      // Garante a remoção definitiva da chave legada hikari-catalog-v1 do localStorage
+      try {
+        window.localStorage.removeItem(LEGACY_CATALOG_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+
+      // Poda chaves de progresso antigas para manter o localStorage dentro da cota
+      const stateSnapshot = useHikariStore.getState();
+      pruneProgressKeys([
+        ...stateSnapshot.myList,
+        ...stateSnapshot.continueWatching.map((c) => c.animeId),
+      ]);
 
       // 3. Atualizar store Zustand em memória
       useHikariStore.setState({
