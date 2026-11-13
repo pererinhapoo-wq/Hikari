@@ -2,9 +2,7 @@ import { type ReactNode, lazy, Suspense, useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type AppUser, InitialSessionUserContext } from "./use-current-user";
 
-const LazyToaster = lazy(() =>
-  import("sonner").then((mod) => ({ default: mod.Toaster })),
-);
+const LazyToaster = lazy(() => import("@/components/lazy-toaster"));
 
 function makeQueryClient() {
   return new QueryClient({

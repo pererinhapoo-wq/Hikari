@@ -10,6 +10,7 @@ import { overlayList } from "@/lib/overlay";
 import { localToAnime, type SlimAnime } from "@/lib/types";
 
 import { getAnimeLogo } from "@/lib/anime-logos";
+import { getResponsiveCoverAttrs } from "@/lib/image-utils";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
@@ -139,6 +140,24 @@ export const Route = createFileRoute("/")({
           as: "image",
           href: logoConfig.src,
           fetchPriority: "low",
+        });
+      }
+    }
+
+    const todayPreloadItems = (loaderData?.todaySchedule ?? [])
+      .filter((item) => Boolean(item?.cover?.trim()))
+      .slice(0, 2);
+    for (const item of todayPreloadItems) {
+      const coverAttrs = getResponsiveCoverAttrs(item.cover, "card-md");
+      if (coverAttrs.src) {
+        links.push({
+          rel: "preload",
+          as: "image",
+          href: coverAttrs.src,
+          imageSrcSet: coverAttrs.srcSet,
+          imageSizes: coverAttrs.sizes,
+          media: "(min-width: 768px)",
+          fetchPriority: "high",
         });
       }
     }

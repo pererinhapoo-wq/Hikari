@@ -25,6 +25,8 @@ export const AnimeCard = memo(function AnimeCard({
   showGenre: _showGenre = true,
   priority = false,
   defer,
+  loading,
+  fetchPriority,
   showScoreBadge: _showScoreBadge = false,
 }: {
   anime: SlimAnime;
@@ -35,6 +37,8 @@ export const AnimeCard = memo(function AnimeCard({
   showGenre?: boolean;
   priority?: boolean;
   defer?: boolean;
+  loading?: "eager" | "lazy";
+  fetchPriority?: "high" | "low" | "auto";
   showScoreBadge?: boolean;
 }) {
   const { user } = useCurrentUserState();
@@ -72,41 +76,10 @@ export const AnimeCard = memo(function AnimeCard({
         to="/anime/$id"
         params={{ id: anime.id }}
         preload="intent"
-        className="
-          block
-          outline-none
-          focus-visible:ring-2
-          focus-visible:ring-purple-400
-          transition-all
-          duration-150
-          ease-out
-          active:scale-[0.96]
-          active:brightness-110
-          [@media(hover:hover)]:hover:brightness-105
-          motion-reduce:transition-none
-          motion-reduce:transform-none
-          -webkit-tap-highlight-color-transparent
-        "
+        className="block outline-none focus-visible:ring-2 focus-visible:ring-purple-400 transition-all duration-150 ease-out active:scale-[0.96] active:brightness-110 [@media(hover:hover)]:hover:brightness-105 motion-reduce:transition-none motion-reduce:transform-none -webkit-tap-highlight-color-transparent"
       >
         {/* Pôster vertical retangular com cantos retos (sem cantos arredondados) */}
-        <div className="
-          relative
-          aspect-[2/3]
-          w-full
-          overflow-hidden
-          rounded-none
-          bg-[#0d0c16]
-          border
-          border-white/10
-          shadow-sm
-          transition-all
-          duration-200
-          ease-out
-          group-hover:border-purple-500/50
-          group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)]
-          group-active:border-purple-400
-          group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]
-        ">
+        <div className="relative aspect-[2/3] w-full overflow-hidden rounded-none bg-[#0d0c16] border border-white/10 shadow-sm transition-all duration-200 ease-out group-hover:border-purple-500/50 group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)] group-active:border-purple-400 group-active:shadow-[0_0_25px_rgba(168,85,247,0.45)]">
           <HikariImage
             src={anime.cover ? coverAttrs.src : null}
             srcSet={anime.cover ? coverAttrs.srcSet : undefined}
@@ -114,17 +87,13 @@ export const AnimeCard = memo(function AnimeCard({
             fallbackSrc={coverAttrs.fallbackSrc ? anime.cover : undefined}
             priority={priority}
             defer={defer ?? (!priority || !loadImage)}
+            loading={loading}
+            fetchPriority={fetchPriority}
             alt=""
             width={230}
             height={345}
             fallbackClassName="bg-[#0d0c16]"
-            className="
-              size-full
-              object-cover
-              group-hover:scale-[1.03]
-              group-active:scale-[1.01]
-              motion-reduce:transform-none
-            "
+            className="size-full object-cover group-hover:scale-[1.03] group-active:scale-[1.01] motion-reduce:transform-none"
           />
         </div>
 

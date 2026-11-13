@@ -44,9 +44,9 @@ export const HikariImage = React.memo(function HikariImage({
   alt = "",
   width,
   height,
-  loading: _loadingProp,
+  loading: loadingProp,
   decoding = "async",
-  fetchPriority: _fetchPriorityProp,
+  fetchPriority: fetchPriorityProp,
   className,
   shimmerClassName: _shimmerClassName,
   fallbackClassName,
@@ -79,9 +79,10 @@ export const HikariImage = React.memo(function HikariImage({
     );
   }
 
-  const isLazy = !priority || Boolean(defer || deferred && !priority);
-  const loading: "eager" | "lazy" = priority ? "eager" : isLazy ? "lazy" : "lazy";
-  const fetchPriority: "high" | "low" = priority ? "high" : "low";
+  const isLazy = !priority || Boolean(defer || (deferred && !priority));
+  const loading: "eager" | "lazy" = loadingProp ?? (priority ? "eager" : isLazy ? "lazy" : "lazy");
+  const fetchPriority: "high" | "low" | "auto" =
+    fetchPriorityProp ?? (priority ? "high" : "low");
 
   return (
     <img

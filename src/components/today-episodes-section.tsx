@@ -264,10 +264,12 @@ export function TodayEpisodesSection({
     return unsubscribe;
   }, [router]);
 
+  const displayedItems = useMemo(() => activeItems.slice(0, 12), [activeItems]);
+
   // Carregamento progressivo com medição do layout em cache (sem Layout Thrashing no scroll)
   const { limit: visibleImgLimit } = useHorizontalRailImageLimit(
     railRef,
-    activeItems.length,
+    displayedItems.length,
     undefined,
     undefined,
     loadedDayKeyRef.current,
@@ -294,24 +296,7 @@ export function TodayEpisodesSection({
         <div className="flex shrink-0 items-center gap-2">
           <Link
             to="/calendar"
-            className="
-              inline-flex
-              items-center
-              rounded-md
-              bg-purple-950/30
-              border
-              border-purple-500/20
-              px-2.5
-              py-1
-              text-xs
-              font-medium
-              text-purple-300
-              transition-all
-              duration-200
-              hover:bg-purple-900/40
-              hover:border-purple-400/40
-              hover:text-white
-            "
+            className="inline-flex items-center rounded-md bg-purple-950/30 border border-purple-500/20 px-2.5 py-1 text-xs font-medium text-purple-300 transition-all duration-200 hover:bg-purple-900/40 hover:border-purple-400/40 hover:text-white"
           >
             Ver calendário
           </Link>
@@ -333,12 +318,14 @@ export function TodayEpisodesSection({
           ref={railRef}
           className="rail -mx-4 px-4 sm:-mx-6 sm:px-6 gap-2.5 sm:gap-3.5 md:gap-4 py-2 overscroll-x-contain"
         >
-          {activeItems.map((anime, index) => (
+          {displayedItems.map((anime, index) => (
             <AnimeCard
               key={anime.id}
               anime={anime}
-              priority={index < 3}
-              defer={index >= 3}
+              priority={false}
+              defer={index > 0}
+              loading={index === 0 ? "eager" : "lazy"}
+              fetchPriority="low"
               showBookmark={false}
               showGenre={false}
               loadImage={index < 3 || index < visibleImgLimit}

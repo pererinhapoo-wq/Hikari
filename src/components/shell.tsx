@@ -245,6 +245,7 @@ function ShellHeaderWrapper({
   return (
     <header
       data-r6="1"
+      data-r7="1"
       className={cn(
         "sticky top-0 z-40 transition-transform duration-300 ease-out will-change-auto",
         showHeader

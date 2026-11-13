@@ -74,13 +74,7 @@ export function SectionReveal({
     <div
       ref={ref}
       style={revealed ? undefined : { minHeight }}
-      className={`
-        transition-opacity
-        duration-300
-        motion-reduce:transition-none
-        ${revealed ? "opacity-100" : "opacity-0"}
-        ${className}
-      `}
+      className={`transition-opacity duration-300 motion-reduce:transition-none ${revealed ? "opacity-100" : "opacity-0"} ${className}`.replace(/\s+/g, " ").trim()}
     >
       {lazy ? (revealed ? children : null) : children}
     </div>

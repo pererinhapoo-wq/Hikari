@@ -112,11 +112,53 @@ const LazyAnalytics = lazy(() =>
   import("@vercel/analytics/react").then((m) => ({ default: m.Analytics })),
 );
 
+const ADSENSE_SCRIPT_URL =
+  "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594";
+
 function DeferredAnalytics() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
+
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    const injectAdSense = () => {
+      if (
+        document.querySelector(
+          'script[src^="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]',
+        )
+      ) {
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = ADSENSE_SCRIPT_URL;
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      document.head.appendChild(script);
+    };
+
+    const win = window as Window & {
+      requestIdleCallback?: (
+        cb: () => void,
+        opts?: { timeout: number },
+      ) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (typeof win.requestIdleCallback === "function") {
+      const idleId = win.requestIdleCallback(injectAdSense, { timeout: 2500 });
+      return () => {
+        win.cancelIdleCallback?.(idleId);
+      };
+    }
+
+    const timerId = window.setTimeout(injectAdSense, 2500);
+    return () => {
+      window.clearTimeout(timerId);
+    };
   }, []);
 
   if (!mounted) return null;
@@ -136,11 +178,6 @@ export const Route = createRootRoute({
   }),
   head: () => ({
     meta: [
-      { charSet: "utf-8" },
-      {
-        name: "viewport",
-        content: "width=device-width, initial-scale=1, interactive-widget=resizes-content",
-      },
       { title: APP_NAME },
       {
         name: "description",
@@ -155,20 +192,10 @@ export const Route = createRootRoute({
 
     links: [
       {
-        rel: "preconnect",
-        href: "https://s4.anilist.co",
-      },
-
-      {
         rel: "icon",
         type: "image/svg+xml",
         href: "/favicon.svg",
       },
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-
       {
         rel: "manifest",
         href: "/__grok/manifest.webmanifest",
@@ -182,28 +209,6 @@ export const Route = createRootRoute({
         as: "font",
         type: "font/woff2",
         href: "/assets/fonts/manrope-latin.woff2",
-        crossOrigin: "anonymous",
-      },
-      {
-        rel: "preload",
-        as: "font",
-        type: "font/woff2",
-        href: "/assets/fonts/playfair-display-latin.woff2",
-        crossOrigin: "anonymous",
-      },
-      {
-        rel: "preload",
-        as: "font",
-        type: "font/woff2",
-        href: "/assets/fonts/noto-serif-jp-latin.woff2",
-        crossOrigin: "anonymous",
-      },
-    ],
-
-    scripts: [
-      {
-        src: "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4294366271727594",
-        async: true,
         crossOrigin: "anonymous",
       },
     ],
@@ -222,6 +227,14 @@ function RootDocument() {
       suppressHydrationWarning
     >
       <head>
+        <meta charSet="utf-8" />
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, interactive-widget=resizes-content"
+        />
+        <link rel="stylesheet" href={appCss} />
+        <link rel="preconnect" href="https://s4.anilist.co" />
+        <HeadContent />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -256,8 +269,6 @@ function RootDocument() {
             `,
           }}
         />
-
-        <HeadContent />
       </head>
 
       <body style={{ backgroundColor: "inherit", color: "inherit" }}>

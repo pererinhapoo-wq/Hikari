@@ -75,10 +75,8 @@ const useFavoritesEntity = () => useContext(FavoritesEntityContext);
 
 import { AnimeCard } from "@/components/anime-card";
 import { HikariImage } from "@/components/ui/hikari-image";
-const CommentsSection = lazy(() =>
-  import("@/components/comments/CommentsSection").then((mod) => ({
-    default: mod.CommentsSection,
-  })),
+const DeferredAnimeComments = lazy(
+  () => import("@/components/comments/DeferredAnimeComments"),
 );
 import { SectionReveal } from "@/components/section-reveal";
 import { useScrollLock } from "@/lib/scroll-lock";
@@ -1972,7 +1970,7 @@ function AnimePage() {
                   height={690}
                   sizes="100vw"
                   loading="eager"
-                  fetchPriority="high"
+                  fetchPriority="low"
                   decoding="async"
                   className="size-full object-cover object-center blur-sm scale-110"
                 />
@@ -2015,7 +2013,10 @@ function AnimePage() {
                       alt={title}
                       width={460}
                       height={690}
-                      priority={shouldRenderPicture}
+                      priority={false}
+                      loading="eager"
+                      fetchPriority="auto"
+                      decoding="sync"
                       fallbackClassName="bg-elevated"
                       className="size-full object-cover"
                     />
@@ -2356,9 +2357,10 @@ function AnimePage() {
           </div>
 
           <p
-            className={`mt-3.5 text-sm sm:text-base leading-relaxed text-zinc-300 ${
-              synopsisExpanded ? "" : "line-clamp-4"
-            }`}
+            className={cn(
+              "mt-3.5 text-sm sm:text-base leading-relaxed text-zinc-300",
+              !synopsisExpanded && "line-clamp-4",
+            )}
           >
             {anime.synopsis}
           </p>
@@ -2525,11 +2527,10 @@ function AnimePage() {
       {/* 6. COMENTÁRIOS DO ANIME */}
       <SectionReveal minHeight="300px" rootMargin="300px 0px" lazy={!shouldForceCommentsLoad}>
         <Suspense fallback={<CommentsLoadingFallback />}>
-          <CommentsSection
+          <DeferredAnimeComments
             animeId={anime.id}
             animeTitle={title}
             targetCommentId={targetCommentId}
-            isAnimeGeneral
           />
         </Suspense>
       </SectionReveal>
@@ -3522,15 +3523,7 @@ const EpisodeGrid = memo(function EpisodeGrid({
     <div className="space-y-3">
       <div
         ref={scrollBoxRef}
-        className="
-          max-h-[28rem]
-          overflow-y-auto
-          overscroll-contain
-          rounded-xl
-          pr-1
-          touch-pan-y
-          sm:max-h-[34rem]
-        "
+        className="max-h-[28rem] overflow-y-auto overscroll-contain rounded-xl pr-1 touch-pan-y sm:max-h-[34rem]"
       >
         <ol className="grid gap-3 p-0.5 sm:grid-cols-2">
           {displayedEpisodes.map((ep, index) => (

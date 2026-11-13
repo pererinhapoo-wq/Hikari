@@ -1,5 +1,4 @@
 @import "tailwindcss" source("./");
-@import "./styles/sonner.css";
 @source not "./components/player/NovaStreamPlayer.tsx";
 @source not "./components/player/NovaStreamVideoPlayer.tsx";
 @source not "./**/*.test.ts";

@@ -527,7 +527,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             width={460}
             height={690}
             loading={priority ? "eager" : "lazy"}
-            decoding="async"
+            decoding={priority ? "sync" : "async"}
             fetchPriority={priority ? "high" : "low"}
             className="size-full object-cover object-top md:object-center"
           />
@@ -535,42 +535,13 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
 
         {/* GRADIENTE INFERIOR NEUTRO: Limitado estritamente à região dos textos */}
         <div
-          className="
-            absolute
-            inset-x-0
-            bottom-0
-            h-[38%]
-            sm:h-[35%]
-            md:h-[32%]
-            bg-gradient-to-t
-            from-black
-            via-black/50
-            via-40%
-            to-transparent
-          "
+          className="absolute inset-x-0 bottom-0 h-[38%] sm:h-[35%] md:h-[32%] bg-gradient-to-t from-black via-black/50 via-40% to-transparent"
         />
       </div>
 
       {/* CONTEÚDO CENTRALIZADO E ELEGANTE */}
       <div
-        className="
-          relative
-          z-20
-          w-full
-          max-w-2xl
-          mx-auto
-          px-4
-          pt-28
-          pb-8
-          sm:px-6
-          sm:pb-10
-          flex
-          flex-col
-          items-center
-          text-center
-          space-y-3
-          sm:space-y-3.5
-        "
+        className="relative z-20 w-full max-w-2xl mx-auto px-4 pt-28 pb-8 sm:px-6 sm:pb-10 flex flex-col items-center text-center space-y-3 sm:space-y-3.5"
       >
         {/* Título Principal: Logotipo Oficial ou Fallback Tipográfico */}
         <div className="w-full max-w-xl flex flex-col items-center justify-center min-h-[50px] sm:min-h-[64px] md:min-h-[76px]">
@@ -595,33 +566,14 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
                   decoding="async"
                   fetchPriority="low"
                   onError={() => setFailedLogoAnimeId(anime.id)}
-                  className={`
-                    object-contain
-                    select-none
-                    pointer-events-none
-                    drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)]
-                    filter
-                    ${logoConfig.sizeClasses}
-                  `}
+                  className={`object-contain select-none pointer-events-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)] filter ${logoConfig.sizeClasses}`.replace(/\s+/g, " ").trim()}
                 />
               </picture>
             </div>
           ) : (
             <h1
               title={preferredTitle}
-              className="
-                font-display
-                text-xl
-                sm:text-2xl
-                md:text-3xl
-                lg:text-4xl
-                font-bold
-                tracking-tight
-                text-white
-                leading-snug
-                drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]
-                line-clamp-2
-              "
+              className="font-display text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight text-white leading-snug drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] line-clamp-2"
             >
               {preferredTitle}
             </h1>
@@ -666,24 +618,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
         {statusText && (
           <div className="flex items-center justify-center pt-0.5">
             <span
-              className="
-                hero-glass-capsule--status
-                inline-flex
-                items-center
-                gap-1.5
-                rounded-full
-                border
-                border-white/30
-                bg-white/40
-                px-3
-                py-1
-                text-[10.5px]
-                sm:text-[11.5px]
-                font-extrabold
-                tracking-wider
-                uppercase
-                text-zinc-900
-              "
+              className="hero-glass-capsule--status inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/40 px-3 py-1 text-[10.5px] sm:text-[11.5px] font-extrabold tracking-wider uppercase text-zinc-900"
             >
               {isAiring && (
                 <span
@@ -712,23 +647,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             {anime.genres.slice(0, 4).map((genre) => (
               <span
                 key={genre}
-                className="
-                  hero-genre-capsule
-                  inline-flex
-                  items-center
-                  rounded-full
-                  border
-                  border-white/30
-                  bg-white/40
-                  px-2.5
-                  py-0.5
-                  text-[9.5px]
-                  sm:text-[10.5px]
-                  font-bold
-                  uppercase
-                  tracking-wider
-                  text-zinc-900
-                "
+                className="hero-genre-capsule inline-flex items-center rounded-full border border-white/30 bg-white/40 px-2.5 py-0.5 text-[9.5px] sm:text-[10.5px] font-bold uppercase tracking-wider text-zinc-900"
               >
                 <span>{genreLabel(genre)}</span>
               </span>
@@ -746,38 +665,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
             to="/watch/$id/$ep"
             params={{ id: anime.id, ep: "ep-1" }}
             preload="intent"
-            className="
-              hero-btn-action
-              group
-              inline-flex
-              items-center
-              justify-center
-              gap-2
-              h-9
-              sm:h-10
-              px-4.5
-              sm:px-5.5
-              rounded-xl
-              sm:rounded-2xl
-              bg-gradient-to-r
-              from-purple-600
-              via-purple-500
-              to-fuchsia-600
-              hover:from-purple-500
-              hover:via-purple-400
-              hover:to-fuchsia-500
-              text-white
-              font-bold
-              text-xs
-              sm:text-sm
-              tracking-wide
-              border
-              border-white/20
-              shadow-[0_4px_20px_rgba(168,85,247,0.38)]
-              hover:shadow-[0_4px_26px_rgba(168,85,247,0.55)]
-              cursor-pointer
-              select-none
-            "
+            className="hero-btn-action group inline-flex items-center justify-center gap-2 h-9 sm:h-10 px-4.5 sm:px-5.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-purple-600 via-purple-500 to-fuchsia-600 hover:from-purple-500 hover:via-purple-400 hover:to-fuchsia-500 text-white font-bold text-xs sm:text-sm tracking-wide border border-white/20 shadow-[0_4px_20px_rgba(168,85,247,0.38)] hover:shadow-[0_4px_26px_rgba(168,85,247,0.55)] cursor-pointer select-none"
           >
             <Play className="size-3.5 sm:size-4 fill-white text-white shrink-0 group-hover:scale-110 transition-transform duration-140 ease-out" />
             <span>Assistir</span>
@@ -787,34 +675,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
           <Link
             to="/anime/$id"
             params={{ id: anime.id }}
-            className="
-              hero-btn-action
-              group
-              inline-flex
-              items-center
-              justify-center
-              gap-1.5
-              h-9
-              sm:h-10
-              px-3.5
-              sm:px-4.5
-              rounded-xl
-              sm:rounded-2xl
-              bg-black/60
-              hover:bg-black/75
-              border
-              border-white/25
-              hover:border-white/40
-              text-white
-              font-semibold
-              text-xs
-              sm:text-sm
-              tracking-wide
-              backdrop-blur-md
-              shadow-[0_2px_12px_rgba(0,0,0,0.5)]
-              cursor-pointer
-              select-none
-            "
+            className="hero-btn-action group inline-flex items-center justify-center gap-1.5 h-9 sm:h-10 px-3.5 sm:px-4.5 rounded-xl sm:rounded-2xl bg-black/60 hover:bg-black/75 border border-white/25 hover:border-white/40 text-white font-semibold text-xs sm:text-sm tracking-wide backdrop-blur-md shadow-[0_2px_12px_rgba(0,0,0,0.5)] cursor-pointer select-none"
           >
             <Info className="size-3.5 sm:size-4 text-purple-200 group-hover:text-white shrink-0 transition-colors drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
             <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">Detalhes</span>
@@ -1215,29 +1076,7 @@ export function Hero({
     return (
       <section
         aria-label="Destaque principal"
-        className="
-          relative
-          -mx-4
-          overflow-hidden
-          bg-black
-          border-b
-          border-white/5
-          shadow-[0_12px_40px_rgba(0,0,0,0.85)]
-          sm:-mx-6
-          md:mx-0
-          md:rounded-3xl
-          md:border
-          md:border-white/10
-          md:shadow-[0_20px_50px_rgba(0,0,0,0.7)]
-          min-h-[560px]
-          sm:min-h-[620px]
-          md:min-h-[560px]
-          lg:min-h-[600px]
-          flex
-          flex-col
-          justify-end
-          [contain:layout_style]
-        "
+        className="relative -mx-4 overflow-hidden bg-black border-b border-white/5 shadow-[0_12px_40px_rgba(0,0,0,0.85)] sm:-mx-6 md:mx-0 md:rounded-3xl md:border md:border-white/10 md:shadow-[0_20px_50px_rgba(0,0,0,0.7)] min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end [contain:layout_style]"
       >
         <HeroSlide anime={items[0]} priority />
       </section>
@@ -1254,32 +1093,7 @@ export function Hero({
       onPointerCancel={handlePointerUpOrCancel}
       onClickCapture={handleClickCapture}
       style={{ touchAction: "pan-y" }}
-      className="
-        relative
-        -mx-4
-        overflow-hidden
-        bg-black
-        border-b
-        border-white/5
-        shadow-[0_12px_40px_rgba(0,0,0,0.85)]
-        sm:-mx-6
-        md:mx-0
-        md:rounded-3xl
-        md:border
-        md:border-white/10
-        md:shadow-[0_20px_50px_rgba(0,0,0,0.7)]
-        min-h-[560px]
-        sm:min-h-[620px]
-        md:min-h-[560px]
-        lg:min-h-[600px]
-        flex
-        flex-col
-        justify-end
-        select-none
-        touch-pan-y
-        cursor-default
-        [contain:layout_style]
-      "
+      className="relative -mx-4 overflow-hidden bg-black border-b border-white/5 shadow-[0_12px_40px_rgba(0,0,0,0.85)] sm:-mx-6 md:mx-0 md:rounded-3xl md:border md:border-white/10 md:shadow-[0_20px_50px_rgba(0,0,0,0.7)] min-h-[560px] sm:min-h-[620px] md:min-h-[560px] lg:min-h-[600px] flex flex-col justify-end select-none touch-pan-y cursor-default [contain:layout_style]"
     >
       {/* Camadas da transição ou anime ativo */}
       {transitioning ? (

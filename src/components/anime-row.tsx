@@ -381,22 +381,7 @@ export function AnimeRow({
                 type="button"
                 onClick={() => scroll("left")}
                 aria-label="Rolar para a esquerda"
-                className="
-                  flex
-                  size-8
-                  items-center
-                  justify-center
-                  rounded-lg
-                  bg-white/5
-                  border
-                  border-white/10
-                  text-zinc-300
-                  transition-all
-                  hover:bg-purple-950/60
-                  hover:border-purple-500/40
-                  hover:text-white
-                  active:scale-95
-                "
+                className="flex size-8 items-center justify-center rounded-lg bg-white/5 border border-white/10 text-zinc-300 transition-all hover:bg-purple-950/60 hover:border-purple-500/40 hover:text-white active:scale-95"
               >
                 <ChevronLeft className="size-4" />
               </button>
@@ -404,22 +389,7 @@ export function AnimeRow({
                 type="button"
                 onClick={() => scroll("right")}
                 aria-label="Rolar para a direita"
-                className="
-                  flex
-                  size-8
-                  items-center
-                  justify-center
-                  rounded-lg
-                  bg-white/5
-                  border
-                  border-white/10
-                  text-zinc-300
-                  transition-all
-                  hover:bg-purple-950/60
-                  hover:border-purple-500/40
-                  hover:text-white
-                  active:scale-95
-                "
+                className="flex size-8 items-center justify-center rounded-lg bg-white/5 border border-white/10 text-zinc-300 transition-all hover:bg-purple-950/60 hover:border-purple-500/40 hover:text-white active:scale-95"
               >
                 <ChevronRight className="size-4" />
               </button>
@@ -429,24 +399,7 @@ export function AnimeRow({
           {href && (
             <Link
               to={href}
-              className="
-                inline-flex
-                items-center
-                rounded-md
-                bg-purple-950/30
-                border
-                border-purple-500/20
-                px-2.5
-                py-1
-                text-xs
-                font-medium
-                text-purple-300
-                transition-all
-                duration-200
-                hover:bg-purple-900/40
-                hover:border-purple-400/40
-                hover:text-white
-              "
+              className="inline-flex items-center rounded-md bg-purple-950/30 border border-purple-500/20 px-2.5 py-1 text-xs font-medium text-purple-300 transition-all duration-200 hover:bg-purple-900/40 hover:border-purple-400/40 hover:text-white"
             >
               {linkLabel}
             </Link>

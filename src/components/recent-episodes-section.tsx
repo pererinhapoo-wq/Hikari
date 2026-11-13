@@ -76,24 +76,7 @@ export function RecentEpisodesSection({
         <div className="flex shrink-0 items-center gap-2">
           <Link
             to="/episodes"
-            className="
-              inline-flex
-              items-center
-              rounded-md
-              bg-purple-950/30
-              border
-              border-purple-500/20
-              px-2.5
-              py-1
-              text-xs
-              font-medium
-              text-purple-300
-              transition-all
-              duration-200
-              hover:bg-purple-900/40
-              hover:border-purple-400/40
-              hover:text-white
-            "
+            className="inline-flex items-center rounded-md bg-purple-950/30 border border-purple-500/20 px-2.5 py-1 text-xs font-medium text-purple-300 transition-all duration-200 hover:bg-purple-900/40 hover:border-purple-400/40 hover:text-white"
           >
             Ver todos
           </Link>
