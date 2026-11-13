@@ -45,7 +45,7 @@ function pickHeroItems(trending: SlimAnime[], popular: SlimAnime[]): SlimAnime[]
 }
 
 export const Route = createFileRoute("/")({
-  staleTime: 1000 * 60 * 10,
+  staleTime: 0,
   gcTime: 1000 * 60 * 30,
   loader: async () => {
     const [homeCatalog, publicEpisodesResult] = await Promise.all([

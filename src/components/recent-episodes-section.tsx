@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useHikariStore } from "@/lib/store";
 import {
@@ -6,8 +6,13 @@ import {
   resolvePublicRecentEpisodes,
   type PublishedEpisode,
 } from "@/lib/published-episodes";
-import type { PublicEpisodesResult } from "@/lib/catalog-episodes";
+import {
+  getPublicCatalogEpisodes,
+  type PublicEpisodesResult,
+} from "@/lib/catalog-episodes";
 import { EpisodeCard } from "@/components/episode-card";
+
+const FOCUS_REFRESH_THROTTLE_MS = 15_000;
 
 function EpisodeCardSkeleton() {
   return (
@@ -33,21 +38,93 @@ export function RecentEpisodesSection({
   const animes = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
 
+  const [liveServerResult, setLiveServerResult] =
+    useState<PublicEpisodesResult | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const lastFetchAtRef = useRef<number>(0);
+  const inFlightRef = useRef<boolean>(false);
+
+  // Sincroniza quando o loader da rota entrega novo serverResult
+  useEffect(() => {
+    setLiveServerResult(null);
+    lastFetchAtRef.current = Date.now();
+  }, [serverResult]);
+
+  const refreshPublicEpisodes = useCallback(async (force = false) => {
+    if (typeof window === "undefined") return;
+    if (inFlightRef.current) return;
+
+    const now = Date.now();
+    if (!force && now - lastFetchAtRef.current < FOCUS_REFRESH_THROTTLE_MS) {
+      return;
+    }
+
+    inFlightRef.current = true;
+    lastFetchAtRef.current = now;
+    setIsSyncing(true);
+    try {
+      const fresh = await getPublicCatalogEpisodes();
+      if (fresh && fresh.status !== "error") {
+        setLiveServerResult(fresh);
+      }
+    } catch (err) {
+      console.warn("[Hikari] Falha ao atualizar episódios recentes:", err);
+    } finally {
+      inFlightRef.current = false;
+      setIsSyncing(false);
+    }
+  }, []);
+
+  // Recupera automaticamente no cliente caso SSR tenha falhado ou retornado vazio
+  useEffect(() => {
+    if (
+      serverResult === undefined ||
+      serverResult === null ||
+      serverResult.status === "error" ||
+      serverResult.status === "empty"
+    ) {
+      void refreshPublicEpisodes(true);
+    }
+  }, [serverResult, refreshPublicEpisodes]);
+
+  // Atualiza ao retornar o foco para a aba
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        void refreshPublicEpisodes(false);
+      }
+    };
+
+    window.addEventListener("focus", onVisibilityOrFocus);
+    document.addEventListener("visibilitychange", onVisibilityOrFocus);
+    return () => {
+      window.removeEventListener("focus", onVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", onVisibilityOrFocus);
+    };
+  }, [refreshPublicEpisodes]);
+
+  const effectiveServerResult = liveServerResult ?? serverResult;
+
   const displayEpisodes = useMemo(() => {
+    if (liveServerResult !== null) {
+      return resolvePublicRecentEpisodes(liveServerResult, animes);
+    }
     if (initialEpisodes && initialEpisodes.length > 0) {
       return initialEpisodes;
     }
-    if (serverResult !== undefined) {
-      return resolvePublicRecentEpisodes(serverResult, animes);
+    if (effectiveServerResult !== undefined) {
+      return resolvePublicRecentEpisodes(effectiveServerResult, animes);
     }
     return getRecentEpisodesSection(animes);
-  }, [serverResult, initialEpisodes, animes]);
+  }, [liveServerResult, effectiveServerResult, initialEpisodes, animes]);
 
   const hasEpisodes = displayEpisodes.length > 0;
-  const isLoading = !hydrated && !hasEpisodes && serverResult === undefined;
+  const isLoading = !hasEpisodes && (isSyncing || (!hydrated && serverResult === undefined));
 
-  // Se já hidratou e não houver episódios publicados, oculta a seção sem deixar espaços vazios
-  if (hydrated && !hasEpisodes) {
+  // Se não houver episódios publicados e não estiver carregando, oculta sem deixar espaços vazios
+  if (!hasEpisodes && !isLoading) {
     return null;
   }
 

@@ -684,10 +684,12 @@ export function resolvePublicEpisodes(
       localAnime?.seasons?.find((s) => s.number === sNum)?.title ||
       `Temporada ${sNum}`;
 
-    const publishedAt = row.publishedAt
-      ? new Date(row.publishedAt).getTime()
-      : row.createdAt
-        ? new Date(row.createdAt).getTime()
+    const rawPublishedMs = row.publishedAt ? new Date(row.publishedAt).getTime() : NaN;
+    const rawCreatedMs = row.createdAt ? new Date(row.createdAt).getTime() : NaN;
+    const publishedAt = Number.isFinite(rawPublishedMs)
+      ? rawPublishedMs
+      : Number.isFinite(rawCreatedMs)
+        ? rawCreatedMs
         : Date.now();
 
     result.push({
