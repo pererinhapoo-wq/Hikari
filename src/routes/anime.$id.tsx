@@ -171,7 +171,7 @@ const DESKTOP_BANNER_MEDIA_QUERY = "(min-width: 640px)";
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-const clientHydrationState = { hydrated: false };
+const clientHydrationState = { hydrated: true };
 const clientCreditsCache = new Map<
   string,
   {
@@ -1449,9 +1449,7 @@ function AnimePage() {
     [localRecord, remote],
   );
 
-  const [isHydratedClient, setIsHydratedClient] = useState(
-    () => clientHydrationState.hydrated,
-  );
+  const [isHydratedClient, setIsHydratedClient] = useState(true);
 
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
     if (clientHydrationState.hydrated && typeof window !== "undefined") {

@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import { Link } from "@tanstack/react-router";
+import { Film } from "lucide-react";
 import { HikariImage } from "@/components/ui/hikari-image";
 import { anilistImage } from "@/lib/image-utils";
 import { cleanEpisodeDisplay, type PublishedEpisode } from "@/lib/published-episodes";
@@ -56,6 +57,8 @@ export const EpisodeCard = memo(function EpisodeCard({
     episode,
   ]);
 
+  const hasValidThumbnail = Boolean(episode.thumbnail?.trim());
+
   return (
     <article className="group relative w-full episode-card-cv">
       <Link
@@ -76,19 +79,25 @@ export const EpisodeCard = memo(function EpisodeCard({
             "group-active:border-purple-400/80",
           )}
         >
-          <HikariImage
-            src={episode.thumbnail ? anilistImage(episode.thumbnail, 320) : episode.thumbnail}
-            alt={episode.animeTitle}
-            width={320}
-            height={180}
-            priority={false}
-            loading={first || priority ? "eager" : "lazy"}
-            decoding="async"
-            fetchPriority="low"
-            defer={!first && !priority && (defer ?? true)}
-            fallbackClassName="bg-[#0f0d1a]"
-            className="size-full object-cover"
-          />
+          {hasValidThumbnail ? (
+            <HikariImage
+              src={anilistImage(episode.thumbnail, 320)}
+              alt={episode.animeTitle}
+              width={320}
+              height={180}
+              priority={false}
+              loading={first || priority ? "eager" : "lazy"}
+              decoding="async"
+              fetchPriority="low"
+              defer={!first && !priority && (defer ?? true)}
+              fallbackClassName="bg-[#0f0d1a]"
+              className="size-full object-cover"
+            />
+          ) : (
+            <div className="flex size-full items-center justify-center bg-[#131022] text-purple-400/40">
+              <Film className="size-8" />
+            </div>
+          )}
 
           {/* Sombra interna com gradiente escuro */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60" />

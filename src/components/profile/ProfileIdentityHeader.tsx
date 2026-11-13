@@ -232,7 +232,7 @@ export const ProfileIdentityHeader = memo(function ProfileIdentityHeader({
           {/* Avatar Container com dimensões e moldura geométrica da referência */}
           <div className="relative group shrink-0">
             <div
-              className={`h-[112px] w-[112px] sm:h-[144px] sm:w-[144px] rounded-2xl overflow-hidden border-4 border-[#130E24] bg-[#1a1333] shadow-xl shadow-black/80 ring-2 ring-purple-600/40 ${isOwner && onOpenEdit ? "cursor-pointer" : ""}`}
+              className={`h-[112px] w-[112px] sm:h-[144px] sm:w-[144px] rounded-2xl overflow-hidden bg-[#1a1333] shadow-xl shadow-black/80 ring-2 ring-purple-600/40 ${isOwner && onOpenEdit ? "cursor-pointer" : ""}`}
               onClick={isOwner ? onOpenEdit : undefined}
               title={isOwner ? "Editar foto e informações do perfil" : name || nick}
             >

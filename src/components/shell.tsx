@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { ProfileSaveNotification } from "@/components/profile/ProfileSaveNotification";
+import { ProfileDropdownMenu } from "@/components/profile/ProfileDropdownMenu";
 import type { NotificationItem } from "@/components/notifications/notification-item-card";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -78,11 +79,7 @@ const LazyLoginMenu = lazy(() =>
   prefetchLoginMenu().then((mod) => ({ default: mod.LoginMenu })),
 );
 
-const LazyProfileDropdownMenu = lazy(() =>
-  import("@/components/profile/ProfileDropdownMenu").then((mod) => ({
-    default: mod.ProfileDropdownMenu,
-  })),
-);
+
 
 const LazyNotificationItemCard = lazy(() =>
   import("@/components/notifications/notification-item-card").then((mod) => ({
@@ -1436,9 +1433,7 @@ export function Shell() {
 
             {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO DE CONTA (QUANDO VISITANTE) */}
             {user ? (
-              <Suspense fallback={null}>
-                <LazyProfileDropdownMenu user={user} />
-              </Suspense>
+              <ProfileDropdownMenu user={user} />
             ) : authPending ? (
               <div
                 aria-hidden="true"
