@@ -472,9 +472,9 @@ function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
         onMouseEnter={() => void prefetchLoginMenu()}
         onFocus={() => void prefetchLoginMenu()}
         className={cn(
-          "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none bg-surface/90 border border-purple-500/20 text-muted hover:text-fg hover:border-purple-400/40 transition-all",
+          "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none text-muted hover:text-fg hover:bg-elevated transition-colors border-0 border-none outline-none focus:outline-none",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-          open && "ring-2 ring-[#a855f7]/75 border-purple-500/60 text-fg shadow-[0_0_18px_rgba(168,85,247,0.3)]"
+          open && "text-fg bg-elevated shadow-[0_0_18px_rgba(168,85,247,0.3)] ring-2 ring-[#a855f7]/75"
         )}
         aria-label="Opções de conta"
         aria-expanded={open}
@@ -1434,11 +1434,6 @@ export function Shell() {
             {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO DE CONTA (QUANDO VISITANTE) */}
             {user ? (
               <ProfileDropdownMenu user={user} />
-            ) : authPending ? (
-              <div
-                aria-hidden="true"
-                className="size-9 sm:size-10 shrink-0 rounded-full bg-white/[0.06] ring-1 ring-white/10 animate-pulse"
-              />
             ) : (
               <VisitorDropdownMenu onOpenLogin={() => setLoginModalOpen(true)} />
             )}

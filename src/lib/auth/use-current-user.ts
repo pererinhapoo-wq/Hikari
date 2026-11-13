@@ -96,7 +96,7 @@ export function useCurrentUserState(): CurrentUserState {
       };
     }
     return {
-      user: initialSessionUser ?? DEV_USER,
+      user: initialSessionUser ?? null,
       isPending: false,
     };
   }

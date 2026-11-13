@@ -24,7 +24,6 @@ const fetchRootSessionUser = createServerFn({ method: "GET" }).handler(
       const { gateIdentityEnabled } = await import(
         "@/lib/auth/gate-identity.server"
       );
-      const { DEV_USER_ID } = await import("@/lib/auth/verify.server");
       const { getSql } = await import("@/lib/db");
 
       const realAuthActive = authConfigured || gateIdentityEnabled();
@@ -44,17 +43,10 @@ const fetchRootSessionUser = createServerFn({ method: "GET" }).handler(
           isDevFallback: false,
         };
       } else {
-        const databaseConfigured = Boolean(process.env.DATABASE_URL?.trim());
-        if (databaseConfigured) return null;
-        resolvedUser = {
-          id: DEV_USER_ID,
-          displayName: "Dev User",
-          primaryEmail: "dev@example.com",
-          profileImageUrl: null,
-          profileNick: null,
-          isDevFallback: true,
-        };
+        return null;
       }
+
+      if (!resolvedUser) return null;
 
       try {
         const sql = await getSql();
