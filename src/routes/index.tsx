@@ -328,7 +328,7 @@ function Home() {
           items={emAltaItems}
           showBookmark={false}
           showRank={false}
-          priorityCount={5}
+          priorityCount={0}
         />
       </SectionReveal>
 
@@ -350,7 +350,7 @@ function Home() {
           loading={!hydrated}
           showBookmark={false}
           showRank={false}
-          priorityCount={5}
+          priorityCount={0}
           emptyTitle="Não há dados suficientes de animes recém-adicionados"
           emptyDescription={
             hasLocalWithoutCreationDate
@@ -419,7 +419,7 @@ function SeasonAnimeRow({
       loading={loading}
       showBookmark={false}
       showRank={false}
-      priorityCount={5}
+      priorityCount={0}
     />
   );
 }

@@ -337,11 +337,11 @@ export function TodayEpisodesSection({
             <AnimeCard
               key={anime.id}
               anime={anime}
-              priority={index < 5}
-              defer={index >= 5}
+              priority={index < 3}
+              defer={index >= 3}
               showBookmark={false}
               showGenre={false}
-              loadImage={index < 5 || index < visibleImgLimit}
+              loadImage={index < 3 || index < visibleImgLimit}
             />
           ))}
           <div

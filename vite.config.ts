@@ -149,6 +149,17 @@ export default defineConfig(({ command, isPreview }) => {
     },
     build: {
       rollupOptions: {
+        output: {
+          chunkFileNames(chunkInfo) {
+            if (
+              chunkInfo.name === "react" &&
+              chunkInfo.facadeModuleId?.includes("@vercel/analytics")
+            ) {
+              return "assets/vercel-analytics-[hash].js";
+            }
+            return "assets/[name]-[hash].js";
+          },
+        },
         onwarn(warning, defaultHandler) {
           if (
             warning.code === "MODULE_LEVEL_DIRECTIVE" ||

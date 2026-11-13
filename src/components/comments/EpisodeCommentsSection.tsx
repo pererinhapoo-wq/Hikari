@@ -1,4 +1,6 @@
 import React, {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -35,8 +37,13 @@ import {
 } from "lucide-react";
 import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
-import { LoginMenu } from "@/components/LoginMenu";
 import { signOut, signIn, getBearerToken } from "@/lib/auth/client";
+
+const LazyLoginMenu = lazy(() =>
+  import("@/components/LoginMenu").then((mod) => ({
+    default: mod.LoginMenu,
+  })),
+);
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getProfile } from "@/lib/profile.functions";
 import { isHikariAdmin } from "@/lib/auth/admin";
@@ -4160,15 +4167,19 @@ export function EpisodeCommentsSection({
       {/* MENU DE LOGIN COMPACTO                             */}
       {/* ================================================== */}
 
-      <LoginMenu
-        isOpen={loginOpen}
-        onClose={() => setLoginOpen(false)}
-        callbackURL={
-          typeof window !== "undefined"
-            ? window.location.pathname + window.location.search
-            : "/"
-        }
-      />
+      {loginOpen && (
+        <Suspense fallback={null}>
+          <LazyLoginMenu
+            isOpen={loginOpen}
+            onClose={() => setLoginOpen(false)}
+            callbackURL={
+              typeof window !== "undefined"
+                ? window.location.pathname + window.location.search
+                : "/"
+            }
+          />
+        </Suspense>
+      )}
 
     </section>
   );

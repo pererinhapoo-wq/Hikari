@@ -33,6 +33,8 @@ import {
   Fragment,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -47,8 +49,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { LoginMenu } from "@/components/LoginMenu";
 import { signOut, signIn, getBearerToken } from "@/lib/auth/client";
+
+const LazyLoginMenu = lazy(() =>
+  import("@/components/LoginMenu").then((mod) => ({
+    default: mod.LoginMenu,
+  })),
+);
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getProfile } from "@/lib/profile.functions";
 import { isHikariAdmin } from "@/lib/auth/admin";
@@ -3592,15 +3599,19 @@ export function CommentsSection({
       )}
 
       {/* Modal LoginMenu Global */}
-      <LoginMenu
-        isOpen={loginOpen}
-        onClose={() => setLoginOpen(false)}
-        callbackURL={
-          typeof window !== "undefined"
-            ? window.location.pathname + window.location.search
-            : "/"
-        }
-      />
+      {loginOpen && (
+        <Suspense fallback={null}>
+          <LazyLoginMenu
+            isOpen={loginOpen}
+            onClose={() => setLoginOpen(false)}
+            callbackURL={
+              typeof window !== "undefined"
+                ? window.location.pathname + window.location.search
+                : "/"
+            }
+          />
+        </Suspense>
+      )}
     </section>
   );
 }

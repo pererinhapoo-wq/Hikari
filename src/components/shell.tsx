@@ -23,15 +23,9 @@ import {
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { ProfileDropdownMenu } from "@/components/profile/ProfileDropdownMenu";
 import { ProfileSaveNotification } from "@/components/profile/ProfileSaveNotification";
-import { signOut } from "@/lib/auth/client";
-import {
-  NotificationItemCard,
-  type NotificationItem,
-} from "@/components/notifications/notification-item-card";
+import type { NotificationItem } from "@/components/notifications/notification-item-card";
 import { isHikariAdmin } from "@/lib/auth/admin";
-import { getBearerToken } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useHikariStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -80,6 +74,18 @@ function prefetchLoginMenu() {
 
 const LazyLoginMenu = lazy(() =>
   prefetchLoginMenu().then((mod) => ({ default: mod.LoginMenu })),
+);
+
+const LazyProfileDropdownMenu = lazy(() =>
+  import("@/components/profile/ProfileDropdownMenu").then((mod) => ({
+    default: mod.ProfileDropdownMenu,
+  })),
+);
+
+const LazyNotificationItemCard = lazy(() =>
+  import("@/components/notifications/notification-item-card").then((mod) => ({
+    default: mod.NotificationItemCard,
+  })),
 );
 
 function useNotificationPanelPresence(open: boolean, exitMs = 170) {
@@ -238,6 +244,7 @@ function ShellHeaderWrapper({
 
   return (
     <header
+      data-r6="1"
       className={cn(
         "sticky top-0 z-40 transition-transform duration-300 ease-out will-change-auto",
         showHeader
@@ -268,53 +275,9 @@ function ShellHeaderWrapper({
 }
 
 function HomeFooterLazy() {
-  const [isLoaded, setIsLoaded] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (isLoaded) return;
-
-    if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") {
-      setIsLoaded(true);
-      return;
-    }
-
-    const target = sentinelRef.current;
-    if (!target) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-        if (entry?.isIntersecting) {
-          setIsLoaded(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "500px 0px" },
-    );
-
-    observer.observe(target);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [isLoaded]);
-
   return (
-    <>
-      {/* Sentinela leve para detecção de rolagem com margem antecipada de 500px */}
-      {!isLoaded && (
-        <div
-          ref={sentinelRef}
-          className="h-px w-full pointer-events-none opacity-0"
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Conteúdo do rodapé carregado e montado sob demanda */}
-      {isLoaded && (
-        <footer className="relative mt-12 w-full border-t border-purple-500/15 bg-gradient-to-b from-[#08070d] via-[#0d0b17] to-[#05040a] text-xs text-muted shadow-[0_-4px_24px_rgba(0,0,0,0.5)]">
-          {/* Brilho decorativo sutil no topo do rodapé */}
+    <footer className="relative mt-12 w-full border-t border-purple-500/15 bg-gradient-to-b from-[#08070d] via-[#0d0b17] to-[#05040a] text-xs text-muted shadow-[0_-4px_24px_rgba(0,0,0,0.5)] [content-visibility:auto] [contain-intrinsic-size:auto_420px]">
+      {/* Brilho decorativo sutil no topo do rodapé */}
           <div
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#a855f7]/30 to-transparent"
             aria-hidden="true"
@@ -446,8 +409,6 @@ function HomeFooterLazy() {
             </div>
           </div>
         </footer>
-      )}
-    </>
   );
 }
 
@@ -723,6 +684,7 @@ export function Shell() {
 
     const loadNotifications = async () => {
       try {
+        const { getBearerToken } = await import("@/lib/auth/client");
         const bearer = getBearerToken();
         const response = await fetch(
           `/api/notifications?limit=${PANEL_BATCH_SIZE}&offset=0`,
@@ -843,6 +805,7 @@ export function Shell() {
       );
 
       try {
+        const { getBearerToken } = await import("@/lib/auth/client");
         const bearer = getBearerToken();
         const response = await fetch("/api/notifications", {
           method: "PATCH",
@@ -896,6 +859,7 @@ export function Shell() {
     setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
     setUnreadCount(0);
     try {
+      const { getBearerToken } = await import("@/lib/auth/client");
       const bearer = getBearerToken();
       await fetch("/api/notifications", {
         method: "PATCH",
@@ -923,6 +887,7 @@ export function Shell() {
         setUnreadCount((c) => Math.max(0, c - removedCount));
       }
       try {
+        const { getBearerToken } = await import("@/lib/auth/client");
         const bearer = getBearerToken();
         const res = target?.groupedIds?.length
           ? await fetch("/api/notifications", {
@@ -970,6 +935,7 @@ export function Shell() {
     setNotificationsLoadingMore(true);
 
     try {
+      const { getBearerToken } = await import("@/lib/auth/client");
       const bearer = getBearerToken();
       const response = await fetch(
         `/api/notifications?limit=${PANEL_BATCH_SIZE}&offset=${offsetToFetch}`,
@@ -1148,6 +1114,7 @@ export function Shell() {
     }
 
     try {
+      const { getBearerToken } = await import("@/lib/auth/client");
       const bearer = getBearerToken();
       const response = await fetch(
         `/api/notifications?limit=${PANEL_BATCH_SIZE}&offset=0`,
@@ -1321,7 +1288,9 @@ export function Shell() {
 
             {/* PERFIL (QUANDO AUTENTICADO) OU BOTÃO ENTRAR (QUANDO VISITANTE CONFIRMADO) */}
             {user ? (
-              <ProfileDropdownMenu user={user} />
+              <Suspense fallback={null}>
+                <LazyProfileDropdownMenu user={user} />
+              </Suspense>
             ) : authPending ? (
               <div
                 aria-hidden="true"
@@ -1457,17 +1426,19 @@ export function Shell() {
                 onScroll={handleNotificationsScroll}
                 className="max-h-[min(390px,calc(100dvh-12rem))] min-h-0 flex-1 overflow-y-auto overscroll-contain"
               >
-                {notifications.map((notification) => (
-                  <NotificationItemCard
-                    key={notification.id}
-                    notification={notification}
-                    localAnimes={localAnimes}
-                    compact
-                    onMarkAsRead={(id) => void markNotificationsAsRead([id])}
-                    onDelete={(id) => void deleteNotificationAction(id)}
-                    onNavigate={() => setNotificationsOpen(false)}
-                  />
-                ))}
+                <Suspense fallback={null}>
+                  {notifications.map((notification) => (
+                    <LazyNotificationItemCard
+                      key={notification.id}
+                      notification={notification}
+                      localAnimes={localAnimes}
+                      compact
+                      onMarkAsRead={(id) => void markNotificationsAsRead([id])}
+                      onDelete={(id) => void deleteNotificationAction(id)}
+                      onNavigate={() => setNotificationsOpen(false)}
+                    />
+                  ))}
+                </Suspense>
 
                 {/* SENTINELA INVISÍVEL PARA CARREGAMENTO AUTOMÁTICO POR LOTES */}
                 {notificationsHasMore && (
@@ -1651,6 +1622,7 @@ export function Shell() {
                       onClick={async () => {
                         setMenuOpen(false);
                         try {
+                          const { signOut } = await import("@/lib/auth/client");
                           await signOut();
                           window.location.reload();
                         } catch {

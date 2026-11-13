@@ -1,6 +1,4 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
-import { toast } from "sonner";
 import {
   Bookmark,
   Check,
@@ -10,25 +8,13 @@ import {
   Heart,
   Loader2,
   LogIn,
-  Pencil,
   Play,
   X,
 } from "lucide-react";
-import {
-  getMyAnimeTracking,
-  upsertAnimeTracking,
-  removeAnimeTracking as _removeAnimeTracking,
-} from "@/lib/profile-tracking.functions";
 import type {
   TrackingStatus,
   UserAnimeTrackingItem,
 } from "@/types/profile-tracking";
-import { ProfileAnimeEditModal } from "@/components/profile/ProfileAnimeEditModal";
-import {
-  getMyProfileFavorites,
-  addProfileFavorite,
-  removeProfileFavorite,
-} from "@/lib/profile-favorites.functions";
 import type { FavoriteTargetType } from "@/types/favorite";
 import { CardFavoriteButton } from "@/components/anime/CardFavoriteButton";
 import {
@@ -113,7 +99,6 @@ import {
 } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { getStudioLogo } from "@/lib/studio-logos";
 import {
   formatDateLabel,
   formatLabel,
@@ -145,13 +130,42 @@ import {
   type SlimAnime,
 } from "@/lib/types";
 import { cn, stripHtml, youtubeIdFrom } from "@/lib/utils";
-import {
-  EntityWorksExpansion,
-  DubladorWorksView,
-  StaffWorksView,
-  StudioProductionsView,
-  type SelectedEntityTarget,
-} from "@/components/anime/EntityWorksExpansion";
+import type { SelectedEntityTarget } from "@/components/anime/EntityWorksExpansion";
+
+const ProfileAnimeEditModal = lazy(() =>
+  import("@/components/profile/ProfileAnimeEditModal").then((mod) => ({
+    default: mod.ProfileAnimeEditModal,
+  })),
+);
+const EntityWorksExpansion = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((mod) => ({
+    default: mod.EntityWorksExpansion,
+  })),
+);
+const DubladorWorksView = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((mod) => ({
+    default: mod.DubladorWorksView,
+  })),
+);
+const StaffWorksView = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((mod) => ({
+    default: mod.StaffWorksView,
+  })),
+);
+const StudioProductionsView = lazy(() =>
+  import("@/components/anime/EntityWorksExpansion").then((mod) => ({
+    default: mod.StudioProductionsView,
+  })),
+);
+
+function notifyToast(
+  type: "success" | "info" | "error",
+  message: string,
+) {
+  void import("sonner").then(({ toast }) => {
+    toast[type](message);
+  });
+}
 
 const EMPTY_WATCHED_EPISODES: string[] = [];
 const MOBILE_BANNER_MEDIA_QUERY = "(max-width: 639.98px)";
@@ -885,15 +899,6 @@ function AnimePage() {
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [isWatchPressing, setIsWatchPressing] = useState(false);
 
-  // Server Functions para Coleção e Favoritos
-  const getTrackingFn = useServerFn(getMyAnimeTracking);
-  const upsertTrackingFn = useServerFn(upsertAnimeTracking);
-  const _removeTrackingFn = useServerFn(_removeAnimeTracking);
-
-  const getFavoritesFn = useServerFn(getMyProfileFavorites);
-  const addFavoriteFn = useServerFn(addProfileFavorite);
-  const removeFavoriteFn = useServerFn(removeProfileFavorite);
-
   // Estados de Coleção (Minha Coleção) e Favoritos
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus | null>(null);
@@ -961,7 +966,10 @@ function AnimePage() {
     let active = true;
 
     // 1. Busca acompanhamento da lista do usuário
-    void getTrackingFn({ data: { animeId: anime.id } })
+    void import("@/lib/profile-tracking.functions")
+      .then(({ getMyAnimeTracking }) =>
+        getMyAnimeTracking({ data: { animeId: anime.id } }),
+      )
       .then((items) => {
         if (!active) return;
         if (items && items.length > 0) {
@@ -980,7 +988,10 @@ function AnimePage() {
       });
 
     // 2. Busca favoritos oficiais do perfil (anime, personagens, estúdios, pessoas)
-    void getFavoritesFn({ data: {} })
+    void import("@/lib/profile-favorites.functions")
+      .then(({ getMyProfileFavorites }) =>
+        getMyProfileFavorites({ data: {} }),
+      )
       .then((res) => {
         if (!active) return;
         const newMap = new Map<
@@ -1038,7 +1049,7 @@ function AnimePage() {
     return () => {
       active = false;
     };
-  }, [user?.id, anime?.id, getTrackingFn, getFavoritesFn]);
+  }, [user?.id, anime?.id]);
 
   const isEntityFavorited = useCallback(
     (
@@ -1114,8 +1125,11 @@ function AnimePage() {
       });
 
       try {
+        const { addProfileFavorite, removeProfileFavorite } = await import(
+          "@/lib/profile-favorites.functions"
+        );
         if (willBeFavorite) {
-          const created = await addFavoriteFn({
+          const created = await addProfileFavorite({
             data: {
               targetType: params.targetType,
               targetId: params.targetId,
@@ -1143,11 +1157,12 @@ function AnimePage() {
               : params.personSnapshot?.biography?.includes("Dublador")
               ? "Dublador(a)"
               : "Pessoa";
-          toast.success(
+          notifyToast(
+            "success",
             `${typeLabel} "${params.name}" adicionado aos favoritos!`,
           );
         } else {
-          await removeFavoriteFn({
+          await removeProfileFavorite({
             data: {
               targetType: params.targetType,
               targetId: existing?.targetId || params.targetId,
@@ -1157,7 +1172,7 @@ function AnimePage() {
                   : undefined,
             },
           });
-          toast.info(`"${params.name}" removido dos favoritos.`);
+          notifyToast("info", `"${params.name}" removido dos favoritos.`);
         }
       } catch (err: unknown) {
         // Reverte se a requisição falhar
@@ -1176,10 +1191,10 @@ function AnimePage() {
           err instanceof Error
             ? err.message
             : "Erro ao atualizar favoritos.";
-        toast.error(msg);
+        notifyToast("error", msg);
       }
     },
-    [user, favoriteEntities, addFavoriteFn, removeFavoriteFn],
+    [user, favoriteEntities],
   );
 
   // Ações de salvar e remover da coleção
@@ -1205,7 +1220,10 @@ function AnimePage() {
     setTrackingLoading(true);
 
     try {
-      await upsertTrackingFn({
+      const { upsertAnimeTracking } = await import(
+        "@/lib/profile-tracking.functions"
+      );
+      await upsertAnimeTracking({
         data: {
           animeId: anime.id,
           status: data.status,
@@ -1219,7 +1237,8 @@ function AnimePage() {
         toggleList(anime, user.id);
       }
 
-      toast.success(
+      notifyToast(
+        "success",
         isNewEntry
           ? `Adicionado à sua coleção como "${COLLECTION_STATUS_CONFIG[data.status].label}"!`
           : `Coleção atualizada para "${COLLECTION_STATUS_CONFIG[data.status].label}"!`,
@@ -1229,7 +1248,7 @@ function AnimePage() {
       setTrackingEpisodesWatched(previousEpisodes);
       setTrackingScore(previousScore);
       const msg = err instanceof Error ? err.message : "Erro ao atualizar coleção.";
-      toast.error(msg);
+      notifyToast("error", msg);
       throw err;
     } finally {
       setTrackingLoading(false);
@@ -1249,7 +1268,10 @@ function AnimePage() {
     setTrackingLoading(true);
 
     try {
-      await _removeTrackingFn({
+      const { removeAnimeTracking } = await import(
+        "@/lib/profile-tracking.functions"
+      );
+      await removeAnimeTracking({
         data: {
           animeId: anime.id,
         },
@@ -1259,13 +1281,13 @@ function AnimePage() {
         toggleList(anime, user.id);
       }
 
-      toast.info("Anime removido da sua coleção.");
+      notifyToast("info", "Anime removido da sua coleção.");
     } catch (err: unknown) {
       setTrackingStatus(previousStatus);
       setTrackingEpisodesWatched(previousEpisodes);
       setTrackingScore(previousScore);
       const msg = err instanceof Error ? err.message : "Erro ao remover da coleção.";
-      toast.error(msg);
+      notifyToast("error", msg);
     } finally {
       setTrackingLoading(false);
     }
@@ -1284,8 +1306,11 @@ function AnimePage() {
     setFavoriteLoading(true);
 
     try {
+      const { addProfileFavorite, removeProfileFavorite } = await import(
+        "@/lib/profile-favorites.functions"
+      );
       if (willBeFavorite) {
-        const created = await addFavoriteFn({
+        const created = await addProfileFavorite({
           data: {
             targetType: "anime",
             targetId: anime.id,
@@ -1293,9 +1318,9 @@ function AnimePage() {
           },
         });
         setFavFavoriteId(created.id);
-        toast.success("Adicionado aos seus favoritos!");
+        notifyToast("success", "Adicionado aos seus favoritos!");
       } else {
-        await removeFavoriteFn({
+        await removeProfileFavorite({
           data: {
             targetType: "anime",
             targetId: anime.id,
@@ -1303,12 +1328,12 @@ function AnimePage() {
           },
         });
         setFavFavoriteId(null);
-        toast.info("Removido dos favoritos.");
+        notifyToast("info", "Removido dos favoritos.");
       }
     } catch (err: unknown) {
       setIsFavorite(!willBeFavorite);
       const msg = err instanceof Error ? err.message : "Erro ao atualizar favoritos.";
-      toast.error(msg);
+      notifyToast("error", msg);
     } finally {
       setFavoriteLoading(false);
     }
@@ -1794,30 +1819,36 @@ function AnimePage() {
 
   if (studioParam) {
     return (
-      <StudioProductionsView
-        studioName={studioParam}
-        animeId={id}
-      />
+      <Suspense fallback={null}>
+        <StudioProductionsView
+          studioName={studioParam}
+          animeId={id}
+        />
+      </Suspense>
     );
   }
 
   if (dubladorParam) {
     return (
-      <DubladorWorksView
-        dubladorName={dubladorParam}
-        dubladorId={dubladorIdParam}
-        animeId={id}
-      />
+      <Suspense fallback={null}>
+        <DubladorWorksView
+          dubladorName={dubladorParam}
+          dubladorId={dubladorIdParam}
+          animeId={id}
+        />
+      </Suspense>
     );
   }
 
   if (staffParam) {
     return (
-      <StaffWorksView
-        staffName={staffParam}
-        staffId={staffIdParam}
-        animeId={id}
-      />
+      <Suspense fallback={null}>
+        <StaffWorksView
+          staffName={staffParam}
+          staffId={staffIdParam}
+          animeId={id}
+        />
+      </Suspense>
     );
   }
 
@@ -1984,7 +2015,7 @@ function AnimePage() {
                       alt={title}
                       width={460}
                       height={690}
-                      priority
+                      priority={shouldRenderPicture}
                       fallbackClassName="bg-elevated"
                       className="size-full object-cover"
                     />
@@ -2289,7 +2320,22 @@ function AnimePage() {
                     }}
                     className="inline-flex h-11 sm:h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 sm:px-5 text-sm sm:text-base font-medium text-zinc-300 shadow-sm transition-all duration-200 ease-out hover:border-purple-500/40 hover:bg-[#1a142e] hover:text-white hover:brightness-110 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer"
                   >
-                    <Pencil className="size-4 text-zinc-400" />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="size-4 text-zinc-400"
+                      aria-hidden="true"
+                    >
+                      <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+                      <path d="m15 5 4 4" />
+                    </svg>
                     <span>Editar</span>
                   </Link>
                 )}
@@ -2343,6 +2389,8 @@ function AnimePage() {
             <iframe
               title={`Trailer de ${title}`}
               src={`https://www.youtube-nocookie.com/embed/${yt}`}
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
               className="size-full"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
@@ -2488,18 +2536,20 @@ function AnimePage() {
 
       {/* Modal de Gerenciamento da Coleção existente no Perfil */}
       {isCollectionModalOpen && trackingItem && (
-        <ProfileAnimeEditModal
-          isOpen={isCollectionModalOpen}
-          item={trackingItem}
-          onClose={() => setIsCollectionModalOpen(false)}
-          onSave={async (data) => {
-            await handleSaveCollection({
-              status: data.status,
-              episodesWatched: data.episodesWatched,
-              score: data.score,
-            });
-          }}
-        />
+        <Suspense fallback={null}>
+          <ProfileAnimeEditModal
+            isOpen={isCollectionModalOpen}
+            item={trackingItem}
+            onClose={() => setIsCollectionModalOpen(false)}
+            onSave={async (data) => {
+              await handleSaveCollection({
+                status: data.status,
+                episodesWatched: data.episodesWatched,
+                score: data.score,
+              });
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Modal de Orientação para Visitantes não Autenticados */}
@@ -3348,6 +3398,8 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
             }
             defer={Boolean(imgSrc && !loadImage)}
             alt=""
+            width={320}
+            height={180}
             fallbackClassName="bg-elevated"
             loadedOpacityClass={watched ? "opacity-75" : "opacity-100"}
             className="size-full object-cover [@media(hover:hover)]:motion-safe:group-hover:scale-105"
@@ -4298,11 +4350,13 @@ const DubladoresSection = memo(function DubladoresSection({
   if (expandedEntity) {
     return (
       <section className="mt-12 space-y-4">
-        <EntityWorksExpansion
-          entity={expandedEntity}
-          onClear={() => setExpandedEntity(null)}
-          accentColor="pink"
-        />
+        <Suspense fallback={null}>
+          <EntityWorksExpansion
+            entity={expandedEntity}
+            onClear={() => setExpandedEntity(null)}
+            accentColor="pink"
+          />
+        </Suspense>
       </section>
     );
   }
@@ -4561,6 +4615,22 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
   const navigate = useNavigate();
   const [expandedEntity, setExpandedEntity] = useState<SelectedEntityTarget | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
+  const [resolveStudioLogo, setResolveStudioLogo] = useState<
+    ((name: string) => string | undefined) | null
+  >(null);
+
+  useEffect(() => {
+    if (!studios?.length) return;
+    let cancelled = false;
+    void import("@/lib/studio-logos").then((mod) => {
+      if (!cancelled) {
+        setResolveStudioLogo(() => mod.getStudioLogo);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [studios]);
 
   const validStaff = useMemo(() => {
     const map = new Map<string, { id?: number; name: string; roles: Set<string>; image?: string }>();
@@ -4613,11 +4683,11 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
         name,
         role: "Estúdio de animação",
         isStudio: true,
-        image: getStudioLogo(name),
+        image: resolveStudioLogo ? resolveStudioLogo(name) : undefined,
       });
     }
     return out;
-  }, [studios]);
+  }, [studios, resolveStudioLogo]);
 
   const allItems = useMemo(() => {
     return [...studioItems, ...validStaff];
@@ -4651,11 +4721,13 @@ const DirecaoEquipeSection = memo(function DirecaoEquipeSection({
   if (expandedEntity) {
     return (
       <section className="mt-12 space-y-4">
-        <EntityWorksExpansion
-          entity={expandedEntity}
-          onClear={() => setExpandedEntity(null)}
-          accentColor={expandedEntity.type === "studio" ? "indigo" : "purple"}
-        />
+        <Suspense fallback={null}>
+          <EntityWorksExpansion
+            entity={expandedEntity}
+            onClear={() => setExpandedEntity(null)}
+            accentColor={expandedEntity.type === "studio" ? "indigo" : "purple"}
+          />
+        </Suspense>
       </section>
     );
   }
@@ -4764,13 +4836,18 @@ const StaffCard = memo(function StaffCard({
 
   const handleToggleFav = async () => {
     if (isStudio) {
+      let logoUrl = item.image;
+      if (!logoUrl) {
+        const { getStudioLogo } = await import("@/lib/studio-logos");
+        logoUrl = getStudioLogo(item.name);
+      }
       await toggleEntityFavorite({
         targetType: "studio",
         targetId,
         name: item.name,
         studioSnapshot: {
           name: item.name,
-          logoUrl: item.image ?? getStudioLogo(item.name) ?? null,
+          logoUrl: logoUrl ?? null,
           description: "Estúdio de animação",
         },
       });

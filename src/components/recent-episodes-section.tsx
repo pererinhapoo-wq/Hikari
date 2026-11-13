@@ -110,12 +110,12 @@ export function RecentEpisodesSection({
       ) : (
         /* Grade de 2 colunas no mobile e 3 colunas em telas maiores */
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4.5">
-          {recentEpisodes.map((episode, index) => (
+          {recentEpisodes.map((episode) => (
             <EpisodeCard
               key={`${episode.animeId}-${episode.episodeId}`}
               episode={episode}
-              priority={index < 5}
-              defer={index >= 5}
+              priority={false}
+              defer={true}
             />
           ))}
         </div>
