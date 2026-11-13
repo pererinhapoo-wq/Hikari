@@ -20,7 +20,7 @@ const episodePostSchema = z.object({
   videoUrl3: z.string().max(2048).optional().nullable(),
   videoUrl4: z.string().max(2048).optional().nullable(),
   videoUrl5: z.string().max(2048).optional().nullable(),
-  published: z.boolean().default(true),
+  published: z.boolean().default(false),
   animeTitle: z.string().max(255).optional().nullable(),
 });
 
@@ -32,10 +32,18 @@ const episodeDeleteSchema = z.object({
 function sanitizeVideoUrl(url?: string | null): string | null {
   if (!url || typeof url !== "string") return null;
   const trimmed = url.trim();
-  if (!trimmed || trimmed === "#" || trimmed.startsWith("javascript:")) return null;
+  if (!trimmed || trimmed === "#") return null;
 
-  // Permitir apenas protocolos seguros https (ou http para desenvolvimento local)
-  if (!trimmed.startsWith("https://") && !trimmed.startsWith("http://")) {
+  // Permitir apenas URLs HTTP/HTTPS bem formadas com hostname válido
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return null;
+    }
+    if (!parsed.hostname) {
+      return null;
+    }
+  } catch {
     return null;
   }
 

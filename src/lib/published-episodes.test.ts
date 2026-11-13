@@ -5,7 +5,10 @@ import {
   getAllPublishedEpisodes,
   isConfirmedFinalEpisode,
   isAnimeConfirmedFinished,
+  isPersistablePlayableVideoUrl,
+  hasEpisodePlayableSource,
 } from "./published-episodes";
+import { persistEpisode } from "./episode-writer";
 import type { LocalAnime } from "./types";
 
 function createMockAnime(overrides: Partial<LocalAnime> = {}): LocalAnime {
@@ -220,5 +223,97 @@ describe("Lógica de exibição da seção 'Novos Episódios'", () => {
 
     // A estrutura do anime permanece com todos os episódios para a página de detalhes (/anime/$id)
     assert.equal(anime.seasons[0].episodes.length, 50);
+  });
+});
+
+describe("Regras de publicação explícita e fonte válida de reprodução", () => {
+  it("Aceita URLs HTTP/HTTPS válidas (inclusive esquema em maiúsculas) e rejeita URLs inválidas ou blocklist", () => {
+    assert.equal(isPersistablePlayableVideoUrl("https://cdn.example.com/ep1.mp4"), true);
+    assert.equal(isPersistablePlayableVideoUrl("HTTPS://cdn.example.com/ep1.m3u8"), true);
+    assert.equal(isPersistablePlayableVideoUrl("http://media.example.com/stream.mp4"), true);
+
+    assert.equal(isPersistablePlayableVideoUrl(""), false);
+    assert.equal(isPersistablePlayableVideoUrl("   "), false);
+    assert.equal(isPersistablePlayableVideoUrl("https://"), false);
+    assert.equal(isPersistablePlayableVideoUrl("ftp://cdn.example.com/ep1.mp4"), false);
+    assert.equal(isPersistablePlayableVideoUrl("javascript:alert(1)"), false);
+    assert.equal(isPersistablePlayableVideoUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), false);
+    assert.equal(isPersistablePlayableVideoUrl("https://www.crunchyroll.com/watch/123"), false);
+    assert.equal(isPersistablePlayableVideoUrl("nao-e-url"), false);
+  });
+
+  it("Detecta fonte válida em qualquer player (Player 1 a Player 5)", () => {
+    assert.equal(hasEpisodePlayableSource({}), false);
+    assert.equal(hasEpisodePlayableSource({ videoUrl: "https://www.youtube.com/watch?v=abc" }), false);
+    assert.equal(hasEpisodePlayableSource({ videoUrl4: "https://cdn.example.com/ep4.mp4" }), true);
+    assert.equal(hasEpisodePlayableSource({ videoUrl5: "HTTPS://cdn.example.com/ep5.m3u8" }), true);
+  });
+
+  it("Bloqueia publicação quando não há fonte válida e nunca auto-publica rascunhos", async () => {
+    const blocked = await persistEpisode("anime-test", 1, {
+      id: "ep-invalid",
+      number: 1,
+      title: "Sem Fonte",
+      videoUrl: "",
+      published: true,
+    });
+    assert.equal(blocked.confirmed, false);
+    assert.equal(blocked.queued, false);
+    assert.equal(blocked.status, "conflict");
+    assert.ok(blocked.error?.includes("fonte válida"));
+
+    const originalFetch = globalThis.fetch;
+    let sentPublished: boolean | undefined;
+    globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+      sentPublished = body.published;
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          published: Boolean(body.published),
+          publishedAt: body.published ? "2026-01-01T00:00:00.000Z" : null,
+          episodeId: body.id,
+          canonicalId: body.id,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      const draftWithSource = await persistEpisode("anime-test", 1, {
+        id: "ep-draft",
+        number: 2,
+        title: "Rascunho com URL",
+        videoUrl: "https://cdn.example.com/ep2.mp4",
+        published: false,
+      });
+      assert.equal(sentPublished, false);
+      assert.equal(draftWithSource.confirmed, true);
+      assert.equal(draftWithSource.published, false);
+
+      const omittedPublished = await persistEpisode("anime-test", 1, {
+        id: "ep-omitted",
+        number: 3,
+        title: "Sem aprovação explícita",
+        videoUrl: "https://cdn.example.com/ep3.mp4",
+      });
+      assert.equal(sentPublished, false);
+      assert.equal(omittedPublished.confirmed, true);
+      assert.equal(omittedPublished.published, false);
+
+      const approved = await persistEpisode("anime-test", 1, {
+        id: "ep-pub",
+        number: 4,
+        title: "Publicado",
+        videoUrl: "https://cdn.example.com/ep4.mp4",
+        published: true,
+      });
+      assert.equal(sentPublished, true);
+      assert.equal(approved.confirmed, true);
+      assert.equal(approved.published, true);
+      assert.ok(approved.publishedAt);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

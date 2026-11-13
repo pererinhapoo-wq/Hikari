@@ -11,9 +11,10 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
-  PlaySquare,
-  Sparkles,
+  Globe,
+  EyeOff,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,8 +26,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  isHikariPlayableUrl,
-  isEpisodePublished,
+  hasEpisodePlayableSource,
+  isPersistablePlayableVideoUrl,
 } from "@/lib/published-episodes";
 import type { Episode, Season } from "@/lib/types";
 import type { OutboxOperation } from "@/lib/episode-writer";
@@ -45,6 +46,16 @@ interface EditorSeasonsProps {
   uploadingEpisode: string | null;
   captureStatus: Record<string, { status: "loading" | "error" | "success"; message?: string }>;
   outboxOps: OutboxOperation[];
+}
+
+function getPublishSourceError(ep: Episode): string {
+  const rawUrls = [ep.videoUrl, ep.videoUrl2, ep.videoUrl3, ep.videoUrl4, ep.videoUrl5]
+    .map((u) => u?.trim() ?? "")
+    .filter(Boolean);
+  if (rawUrls.length === 0) {
+    return "Adicione pelo menos uma URL de vídeo válida (Player 1 a Player 5) antes de publicar este episódio.";
+  }
+  return "Nenhuma fonte de reprodução válida encontrada. Use uma URL HTTP/HTTPS direta de vídeo (MP4, HLS ou R2); links externos como YouTube ou Crunchyroll não permitem publicação.";
 }
 
 export function EditorSeasons({
@@ -67,6 +78,60 @@ export function EditorSeasons({
   const [activeSeasonTab, setActiveSeasonTab] = useState<string>("all");
   const [collapsedSeasons, setCollapsedSeasons] = useState<Record<string, boolean>>({});
   const [seasonToDelete, setSeasonToDelete] = useState<Season | null>(null);
+  const [publishErrors, setPublishErrors] = useState<Record<string, string>>({});
+
+  const clearPublishError = (epId: string) => {
+    setPublishErrors((prev) => {
+      if (!(epId in prev)) return prev;
+      const next = { ...prev };
+      delete next[epId];
+      return next;
+    });
+  };
+
+  const handleSetEpisodePublished = (
+    seasonId: string,
+    ep: Episode,
+    nextPublished: boolean,
+  ) => {
+    if (!nextPublished) {
+      clearPublishError(ep.id);
+      onPatchEpisode(seasonId, ep.id, { published: false });
+      return;
+    }
+
+    if (!hasEpisodePlayableSource(ep)) {
+      const msg = getPublishSourceError(ep);
+      setPublishErrors((prev) => ({ ...prev, [ep.id]: msg }));
+      toast.error(msg);
+      if (ep.published) {
+        onPatchEpisode(seasonId, ep.id, { published: false });
+      }
+      return;
+    }
+
+    clearPublishError(ep.id);
+    onPatchEpisode(seasonId, ep.id, { published: true });
+  };
+
+  const handleVideoUrlChange = (
+    seasonId: string,
+    ep: Episode,
+    key: "videoUrl" | "videoUrl2" | "videoUrl3" | "videoUrl4" | "videoUrl5",
+    value: string,
+  ) => {
+    const updatedEp = { ...ep, [key]: value };
+    const stillValid = hasEpisodePlayableSource(updatedEp);
+    if (stillValid) {
+      clearPublishError(ep.id);
+    } else if (ep.published === true) {
+      setPublishErrors((prev) => ({
+        ...prev,
+        [ep.id]: getPublishSourceError(updatedEp),
+      }));
+    }
+    onPatchEpisode(seasonId, ep.id, { [key]: value });
+  };
 
   const toggleCollapse = (sid: string) => {
     setCollapsedSeasons((prev) => ({
@@ -127,7 +192,9 @@ export function EditorSeasons({
 
           {seasons.map((s) => {
             const epCount = s.episodes.length;
-            const publishedCount = s.episodes.filter(isEpisodePublished).length;
+            const publishedCount = s.episodes.filter(
+              (ep) => ep.published === true && hasEpisodePlayableSource(ep),
+            ).length;
             const isSelected = activeSeasonTab === s.id;
 
             return (
@@ -161,7 +228,9 @@ export function EditorSeasons({
       <div className="space-y-6">
         {visibleSeasons.map((season) => {
           const isCollapsed = collapsedSeasons[season.id] ?? false;
-          const publishedCount = season.episodes.filter(isEpisodePublished).length;
+          const publishedCount = season.episodes.filter(
+            (ep) => ep.published === true && hasEpisodePlayableSource(ep),
+          ).length;
 
           return (
             <div
@@ -279,53 +348,122 @@ export function EditorSeasons({
                         const outboxOp = outboxOps.find(
                           (o) => o.episodeId === ep.id && o.animeId === animeId,
                         );
+                        const hasValidSource = hasEpisodePlayableSource(ep);
+                        const isMarkedPublished = ep.published === true;
+                        const isEffectivelyPublished = isMarkedPublished && hasValidSource;
+                        const inlinePublishError =
+                          publishErrors[ep.id] ??
+                          (isMarkedPublished && !hasValidSource
+                            ? getPublishSourceError(ep)
+                            : undefined);
 
                         return (
                           <li
                             key={ep.id}
+                            data-episode-id={ep.id}
+                            data-episode-number={ep.number}
                             className="rounded-xl border border-white/5 bg-elevated/40 p-4 shadow-sm transition-colors hover:border-white/10"
                           >
-                            <div className="grid gap-3 sm:grid-cols-12">
-                              {/* Campo de Número com Badge de Estado */}
-                              <Field
-                                label={
-                                  <span className="flex items-center gap-1.5 flex-wrap">
-                                    <span>#</span>
-                                    {outboxOp ? (
-                                      outboxOp.status === "conflict" ? (
-                                        <span
-                                          className="inline-flex items-center gap-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-medium text-red-400"
-                                          title={`Ação necessária: ${outboxOp.lastError || "Erro de validação ou conflito no servidor"}`}
-                                        >
-                                          Ação necessária
-                                        </span>
-                                      ) : (
-                                        <span
-                                          className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
-                                          title="Sincronização pendente: episódio preservado aguardando envio ao servidor"
-                                        >
-                                          Pendente
-                                        </span>
-                                      )
-                                    ) : isEpisodePublished(ep) ? (
-                                      <span
-                                        className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400"
-                                        title="Salvo no servidor: gravação confirmada no PostgreSQL"
-                                      >
-                                        Sincronizado
-                                      </span>
-                                    ) : (
-                                      <span
-                                        className="inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-muted"
-                                        title="Salvo no servidor: rascunho sem player de vídeo"
-                                      >
-                                        Rascunho
-                                      </span>
-                                    )}
+                            {/* Barra explícita de status de publicação do episódio */}
+                            <div className="mb-3 flex flex-col gap-2 border-b border-white/5 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-semibold text-zinc-200">
+                                  Episódio {ep.number}
+                                </span>
+                                {outboxOp ? (
+                                  outboxOp.status === "conflict" ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 rounded bg-red-500/15 px-2 py-0.5 text-[11px] font-medium text-red-400"
+                                      title={`Ação necessária: ${outboxOp.lastError || "Erro de validação ou conflito no servidor"}`}
+                                    >
+                                      Ação necessária
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300"
+                                      title="Sincronização pendente: episódio preservado aguardando envio ao servidor"
+                                    >
+                                      Pendente
+                                    </span>
+                                  )
+                                ) : isEffectivelyPublished ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
+                                    title="Episódio visível no catálogo público quando salvo"
+                                  >
+                                    <Globe className="size-3" />
+                                    Publicado
                                   </span>
-                                }
-                                className="sm:col-span-1"
+                                ) : isMarkedPublished && !hasValidSource ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 rounded bg-rose-500/15 px-2 py-0.5 text-[11px] font-medium text-rose-300"
+                                    title="Fonte de vídeo válida obrigatória para publicar"
+                                  >
+                                    <AlertCircle className="size-3" />
+                                    Fonte inválida
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="inline-flex items-center gap-1 rounded bg-white/5 px-2 py-0.5 text-[11px] font-medium text-zinc-400"
+                                    title="Salvo apenas como rascunho; oculto no catálogo público"
+                                  >
+                                    <EyeOff className="size-3" />
+                                    Rascunho
+                                  </span>
+                                )}
+                              </div>
+
+                              <div
+                                role="group"
+                                aria-label={`Status de publicação do Episódio ${ep.number}`}
+                                className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-black/30 p-0.5 self-start sm:self-auto"
                               >
+                                <button
+                                  type="button"
+                                  aria-pressed={!isMarkedPublished}
+                                  onClick={() => handleSetEpisodePublished(season.id, ep, false)}
+                                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                                    !isMarkedPublished
+                                      ? "bg-zinc-700 text-white shadow-sm"
+                                      : "text-zinc-400 hover:text-white"
+                                  }`}
+                                >
+                                  <EyeOff className="size-3.5" />
+                                  <span>Rascunho</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-pressed={isMarkedPublished}
+                                  onClick={() => handleSetEpisodePublished(season.id, ep, true)}
+                                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                                    isMarkedPublished
+                                      ? hasValidSource
+                                        ? "bg-emerald-600 text-white shadow-sm"
+                                        : "bg-rose-600 text-white shadow-sm"
+                                      : hasValidSource
+                                        ? "text-zinc-300 hover:bg-emerald-500/15 hover:text-emerald-300"
+                                        : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                                  }`}
+                                >
+                                  <Globe className="size-3.5" />
+                                  <span>Publicado</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {inlinePublishError && (
+                              <div
+                                role="alert"
+                                className="mb-3 flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200"
+                              >
+                                <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-rose-400" />
+                                <span>{inlinePublishError}</span>
+                              </div>
+                            )}
+
+                            <div className="grid gap-3 sm:grid-cols-12">
+                              {/* Campo de Número */}
+                              <Field label="#" className="sm:col-span-1">
                                 <Input
                                   type="number"
                                   value={ep.number}
@@ -393,19 +531,22 @@ export function EditorSeasons({
                                     <Input
                                       value={ep[key] ?? ""}
                                       onChange={(e) =>
-                                        onPatchEpisode(season.id, ep.id, {
-                                          [key]: e.target.value,
-                                        })
+                                        handleVideoUrlChange(
+                                          season.id,
+                                          ep,
+                                          key,
+                                          e.target.value,
+                                        )
                                       }
                                       onBlur={(e) => {
                                         const val = e.target.value.trim();
-                                        if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                                        if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
                                           void onCaptureFrame(season.id, ep, val);
                                         }
                                       }}
                                       onPaste={(e) => {
                                         const val = e.clipboardData.getData("text").trim();
-                                        if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                                        if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
                                           setTimeout(() => {
                                             void onCaptureFrame(season.id, ep, val);
                                           }, 100);
@@ -437,19 +578,22 @@ export function EditorSeasons({
                                   <Input
                                     value={ep.videoUrl4 ?? ""}
                                     onChange={(e) =>
-                                      onPatchEpisode(season.id, ep.id, {
-                                        videoUrl4: e.target.value,
-                                      })
+                                      handleVideoUrlChange(
+                                        season.id,
+                                        ep,
+                                        "videoUrl4",
+                                        e.target.value,
+                                      )
                                     }
                                     onBlur={(e) => {
                                       const val = e.target.value.trim();
-                                      if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                                      if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
                                         void onCaptureFrame(season.id, ep, val);
                                       }
                                     }}
                                     onPaste={(e) => {
                                       const val = e.clipboardData.getData("text").trim();
-                                      if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                                      if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
                                         setTimeout(() => {
                                           void onCaptureFrame(season.id, ep, val);
                                         }, 100);
@@ -473,19 +617,22 @@ export function EditorSeasons({
                                   <Input
                                     value={ep.videoUrl5 ?? ""}
                                     onChange={(e) =>
-                                      onPatchEpisode(season.id, ep.id, {
-                                        videoUrl5: e.target.value,
-                                      })
+                                      handleVideoUrlChange(
+                                        season.id,
+                                        ep,
+                                        "videoUrl5",
+                                        e.target.value,
+                                      )
                                     }
                                     onBlur={(e) => {
                                       const val = e.target.value.trim();
-                                      if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                                      if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
                                         void onCaptureFrame(season.id, ep, val);
                                       }
                                     }}
                                     onPaste={(e) => {
                                       const val = e.clipboardData.getData("text").trim();
-                                      if (val && !ep.thumbnail && isHikariPlayableUrl(val)) {
+                                      if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
                                         setTimeout(() => {
                                           void onCaptureFrame(season.id, ep, val);
                                         }, 100);

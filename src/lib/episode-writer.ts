@@ -1,6 +1,6 @@
 import type { Episode } from "@/lib/types";
 import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
-import { isHikariPlayableUrl } from "@/lib/published-episodes";
+import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 import { useHikariStore } from "@/lib/store";
 
 export const OUTBOX_STORAGE_KEY = "hikari-episode-outbox-v1";
@@ -52,6 +52,8 @@ export interface PersistEpisodeResult {
   confirmed: boolean;
   queued: boolean;
   canonicalId?: string;
+  published?: boolean;
+  publishedAt?: string | null;
   status: "synced" | "pending" | "conflict";
   error?: string;
 }
@@ -449,22 +451,21 @@ export async function persistEpisode(
     episodeNumber: episode.number,
   });
 
-  // Se o episódio não possui player válido e não foi explicitamente publicado como true,
-  // representa corretamente como rascunho (published = false)
-  const hasPlayableSource = Boolean(
-    (episode.videoUrl && isHikariPlayableUrl(episode.videoUrl)) ||
-      (episode.videoUrl2 && isHikariPlayableUrl(episode.videoUrl2)) ||
-      (episode.videoUrl3 && isHikariPlayableUrl(episode.videoUrl3)) ||
-      (episode.videoUrl4 && isHikariPlayableUrl(episode.videoUrl4)) ||
-      (episode.videoUrl5 && isHikariPlayableUrl(episode.videoUrl5)),
-  );
+  const hasPlayableSource = hasEpisodePlayableSource(episode);
 
-  const isPublished =
-    episode.published === true
-      ? true
-      : episode.published === false
-        ? false
-        : hasPlayableSource;
+  // Não publicar automaticamente episódios sem aprovação explícita do administrador.
+  // Se o administrador marcou como publicado mas não há fonte válida, bloqueia antes do envio.
+  if (episode.published === true && !hasPlayableSource) {
+    return {
+      confirmed: false,
+      queued: false,
+      status: "conflict",
+      error:
+        "Um episódio só pode ser publicado quando possuir pelo menos uma fonte válida de reprodução.",
+    };
+  }
+
+  const isPublished = episode.published === true && hasPlayableSource;
 
   const payload: EpisodePayload = {
     id: episode.id,
@@ -496,10 +497,18 @@ export async function persistEpisode(
 
     if (res.ok) {
       let canonicalId = episode.id;
+      let serverPublished: boolean = isPublished;
+      let serverPublishedAt: string | null = null;
       try {
         const j = await res.json();
         if (j?.episodeId || j?.canonicalId) {
           canonicalId = j.episodeId || j.canonicalId;
+        }
+        if (typeof j?.published === "boolean") {
+          serverPublished = j.published;
+        }
+        if (j?.publishedAt !== undefined) {
+          serverPublishedAt = j.publishedAt;
         }
       } catch {
         // ignore
@@ -525,6 +534,8 @@ export async function persistEpisode(
         confirmed: true,
         queued: false,
         canonicalId,
+        published: serverPublished,
+        publishedAt: serverPublishedAt,
         status: "synced",
       };
     }

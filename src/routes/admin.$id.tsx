@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { Loader2, CheckCircle2, Film, AlertCircle, RefreshCw } from "lucide-react";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
 import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/types";
@@ -9,7 +9,7 @@ import { youtubeIdFrom } from "@/lib/utils";
 import { uploadVideoToB2 } from "@/lib/b2";
 import {
   captureAndUploadThumbnail,
-  isHikariPlayableUrl,
+  hasEpisodePlayableSource,
 } from "@/lib/published-episodes";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,10 +18,12 @@ import {
   readOutbox,
   flushOutbox,
   type OutboxOperation,
+  type PersistEpisodeResult,
 } from "@/lib/episode-writer";
 import {
   executeGetCatalogEpisodes,
   getAdminCatalogEpisodes,
+  invalidateCatalogEpisodesCache,
   mergeAdminEpisodesWithServer,
   type CatalogEpisodesResult,
 } from "@/lib/catalog-episodes";
@@ -54,9 +56,12 @@ export const Route = createFileRoute("/admin/$id")({
     // Carrega episódios persistidos no PostgreSQL para o anime no painel administrativo
     if (params.id && params.id !== "new") {
       try {
-        serverEpisodes = await executeGetCatalogEpisodes(params.id, {
-          includeUnpublished: true,
-        });
+        serverEpisodes =
+          typeof window === "undefined"
+            ? await executeGetCatalogEpisodes(params.id, {
+                includeUnpublished: true,
+              })
+            : await getAdminCatalogEpisodes({ data: { animeId: params.id } });
       } catch (err) {
         console.warn("[admin loader] Erro ao carregar episódios do servidor:", err);
       }
@@ -104,6 +109,7 @@ function AdminEditor() {
   const { importId } = Route.useSearch();
   const { remote, serverEpisodes } = Route.useLoaderData();
   const navigate = useNavigate();
+  const router = useRouter();
   const stored = useHikariStore((s) => s.animes);
   const hydrated = useHikariStore((s) => s.hydrated);
   const upsertAnime = useHikariStore((s) => s.upsertAnime);
@@ -125,6 +131,10 @@ function AdminEditor() {
     message?: string;
     recoveredCount?: number;
   }>({ status: "idle" });
+
+  const initializedRouteKeyRef = useRef<string | null>(null);
+  const lastServerEpisodesRef = useRef<CatalogEpisodesResult | null | undefined>(undefined);
+  const isSavingRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -159,7 +169,7 @@ function AdminEditor() {
 
         setForm((currentForm) => {
           if (!currentForm) return currentForm;
-          const currentOps = typeof window !== "undefined" ? readOutbox() : outboxOps;
+          const currentOps = typeof window !== "undefined" ? readOutbox() : [];
           const mergeResult = mergeAdminEpisodesWithServer({
             animeId: effectiveId,
             localSeasons: currentForm.seasons,
@@ -186,7 +196,7 @@ function AdminEditor() {
         });
       }
     },
-    [id, outboxOps],
+    [id],
   );
 
   async function handleCaptureEpisodeFrame(
@@ -202,7 +212,7 @@ function AdminEditor() {
       ep.videoUrl4 ||
       ep.videoUrl5;
 
-    if (!videoUrl || !isHikariPlayableUrl(videoUrl)) {
+    if (!videoUrl || !hasEpisodePlayableSource({ videoUrl })) {
       toast.error("Insira uma URL de vídeo válida antes de capturar a miniatura.");
       return;
     }
@@ -282,7 +292,53 @@ function AdminEditor() {
   }
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || isSavingRef.current) return;
+
+    const routeKey = `${id}:${importId ?? ""}`;
+    const isRouteChange = initializedRouteKeyRef.current !== routeKey;
+    const isNewServerData = lastServerEpisodesRef.current !== serverEpisodes;
+
+    if (!isRouteChange && !isNewServerData) {
+      return;
+    }
+
+    lastServerEpisodesRef.current = serverEpisodes;
+
+    if (!isRouteChange) {
+      // Atualização incremental de serverEpisodes (ex: após router.invalidate())
+      if (id !== "new" && serverEpisodes) {
+        if (serverEpisodes.episodes.length > 0) {
+          const currentOps = typeof window !== "undefined" ? readOutbox() : [];
+          setForm((currentForm) => {
+            if (!currentForm) return currentForm;
+            const mergeResult = mergeAdminEpisodesWithServer({
+              animeId: id,
+              localSeasons: currentForm.seasons,
+              serverResult: serverEpisodes,
+              outboxOps: currentOps,
+            });
+            return {
+              ...currentForm,
+              seasons: mergeResult.seasons,
+            };
+          });
+          setRecoveryState({
+            status: "success",
+            message: `Episódios recuperados com sucesso do PostgreSQL (${serverEpisodes.episodes.length} confirmados no banco).`,
+            recoveredCount: serverEpisodes.episodes.length,
+          });
+        } else {
+          setRecoveryState({
+            status: "empty",
+            message: "Nenhum episódio cadastrado no servidor para este anime.",
+            recoveredCount: 0,
+          });
+        }
+      }
+      return;
+    }
+
+    initializedRouteKeyRef.current = routeKey;
 
     const existing =
       id === "new"
@@ -340,9 +396,11 @@ function AdminEditor() {
         } else {
           void recoverEpisodesFromServer(id);
         }
+      } else {
+        setRecoveryState({ status: "idle" });
       }
     }
-  }, [hydrated, stored, id, remote, serverEpisodes, recoverEpisodesFromServer]);
+  }, [hydrated, stored, id, importId, remote, serverEpisodes, recoverEpisodesFromServer]);
 
   if (!form) {
     return (
@@ -381,6 +439,7 @@ function AdminEditor() {
         videoUrl3: "",
         videoUrl4: "",
         videoUrl5: "",
+        published: false,
       })),
     }));
 
@@ -487,12 +546,24 @@ function AdminEditor() {
       return;
     }
 
+    // Validação pré-salvamento: episódio marcado como Publicado exige ao menos 1 fonte válida
+    for (const season of next.seasons) {
+      for (const ep of season.episodes) {
+        if (ep.published === true && !hasEpisodePlayableSource(ep)) {
+          toast.error(
+            `Não foi possível salvar: o Episódio ${ep.number} (Temporada ${season.number}) está marcado como Publicado sem nenhuma fonte de reprodução válida (Player 1 a Player 5).`,
+          );
+          return;
+        }
+      }
+    }
+
+    isSavingRef.current = true;
     setIsSaving(true);
     setAnimeSyncState("pending");
 
     // 1. Persistência local imediata (IndexedDB via Zustand)
     upsertAnime(next);
-    void navigate({ to: "/admin/$id", params: { id: next.id } });
 
     let metadataSavedOnServer = false;
     let serverErrorStatus: number | null = null;
@@ -572,37 +643,75 @@ function AdminEditor() {
       }
     }
 
-    // 3. Persistência de episódios
+    // 3. Persistência 1-para-1 de episódios
     try {
       const animeTitle = next.titleRomaji || next.titleEnglish || next.titleNative || "Anime";
-      const promises: ReturnType<typeof persistEpisode>[] = [];
+      const episodeTasks: Array<{
+        seasonId: string;
+        episodeId: string;
+        promise: ReturnType<typeof persistEpisode>;
+      }> = [];
       for (const season of next.seasons) {
         for (const ep of season.episodes) {
-          promises.push(persistEpisode(next.id, season.number, ep, animeTitle));
+          episodeTasks.push({
+            seasonId: season.id,
+            episodeId: ep.id,
+            promise: persistEpisode(next.id, season.number, ep, animeTitle),
+          });
         }
       }
 
-      if (promises.length > 0) {
-        const results = await Promise.all(promises);
+      if (episodeTasks.length > 0) {
+        const results = await Promise.all(episodeTasks.map((t) => t.promise));
+        const resultByPair = new Map<string, PersistEpisodeResult>();
+        episodeTasks.forEach((task, idx) => {
+          const result = results[idx];
+          if (result) {
+            resultByPair.set(`${task.seasonId}:${task.episodeId}`, result);
+          }
+        });
 
-        let formNeedsUpdate = false;
+        let anyEpisodeChanged = false;
         const reconciledSeasons = next.seasons.map((season) => ({
           ...season,
           episodes: season.episodes.map((ep) => {
-            const match = results.find(
-              (r) => r.canonicalId && r.canonicalId !== ep.id && r.status === "synced",
-            );
-            if (match && match.canonicalId) {
-              formNeedsUpdate = true;
-              return { ...ep, id: match.canonicalId };
+            const match = resultByPair.get(`${season.id}:${ep.id}`);
+            if (!match) return ep;
+
+            const nextId =
+              match.canonicalId && match.status === "synced"
+                ? match.canonicalId
+                : ep.id;
+            const nextPublished =
+              typeof match.published === "boolean"
+                ? match.published
+                : Boolean(ep.published);
+            const nextAired = nextPublished
+              ? match.publishedAt
+                ? new Date(match.publishedAt).toLocaleDateString("pt-BR")
+                : ep.aired
+              : undefined;
+
+            if (
+              nextId !== ep.id ||
+              nextPublished !== Boolean(ep.published) ||
+              nextAired !== ep.aired
+            ) {
+              anyEpisodeChanged = true;
+              return {
+                ...ep,
+                id: nextId,
+                published: nextPublished,
+                aired: nextAired,
+              };
             }
             return ep;
           }),
         }));
 
-        if (formNeedsUpdate) {
-          setForm((f) => (f ? { ...f, seasons: reconciledSeasons } : f));
-        }
+        const baseReconciled: LocalAnime = anyEpisodeChanged
+          ? { ...next, seasons: reconciledSeasons }
+          : next;
 
         const confirmedCount = results.filter((r) => r.confirmed).length;
         const conflictCount = results.filter((r) => r.status === "conflict").length;
@@ -610,24 +719,35 @@ function AdminEditor() {
 
         if (metadataSavedOnServer && confirmedCount === results.length) {
           const syncedAt = Date.now();
-          const syncedAnime = { ...next, syncedAt };
+          const syncedAnime = { ...baseReconciled, syncedAt };
           upsertAnime(syncedAnime);
-          setForm((f) => (f ? { ...f, syncedAt } : f));
+          setForm((f) =>
+            f ? { ...f, seasons: reconciledSeasons, syncedAt } : f,
+          );
           setAnimeSyncState("synced");
-          toast.success("Salvo no servidor: metadados e episódios confirmados no PostgreSQL.");
-        } else if (conflictCount > 0) {
-          const firstErr = results.find((r) => r.status === "conflict")?.error;
-          toast.warning(
-            `Ação necessária: ${conflictCount} episódio(s) preservados localmente com erro de validação (${firstErr || "verifique os dados"}).`,
+          toast.success(
+            "Salvo no servidor: metadados e episódios confirmados no PostgreSQL.",
           );
-        } else if (pendingCount > 0) {
-          if (metadataSavedOnServer) {
-            const syncedAnime = { ...next, syncedAt: Date.now() };
-            upsertAnime(syncedAnime);
+        } else {
+          if (anyEpisodeChanged) {
+            upsertAnime(baseReconciled);
+            setForm((f) => (f ? { ...f, seasons: reconciledSeasons } : f));
           }
-          toast.info(
-            `Sincronização pendente: ${pendingCount} episódio(s) preservados localmente aguardando conexão com o servidor.`,
-          );
+          if (conflictCount > 0) {
+            setAnimeSyncState("conflict");
+            const firstErr = results.find((r) => r.status === "conflict")?.error;
+            toast.warning(
+              `Ação necessária: ${conflictCount} episódio(s) preservados localmente com erro de validação (${firstErr || "verifique os dados"}).`,
+            );
+          } else if (pendingCount > 0) {
+            if (metadataSavedOnServer) {
+              const syncedAnime = { ...baseReconciled, syncedAt: Date.now() };
+              upsertAnime(syncedAnime);
+            }
+            toast.info(
+              `Sincronização pendente: ${pendingCount} episódio(s) preservados localmente aguardando conexão com o servidor.`,
+            );
+          }
         }
       } else {
         if (metadataSavedOnServer) {
@@ -639,13 +759,21 @@ function AdminEditor() {
           toast.success("Metadados confirmados e sincronizados com sucesso no PostgreSQL!");
         }
       }
+
+      invalidateCatalogEpisodesCache(next.id);
     } catch (err) {
       console.warn("[admin] Erro ao sincronizar episódios:", err);
       toast.info("Salvo localmente: alterações preservadas neste dispositivo.");
     } finally {
+      isSavingRef.current = false;
       setIsSaving(false);
       if (typeof window !== "undefined") {
         setOutboxOps(readOutbox());
+      }
+      if (id === "new") {
+        void navigate({ to: "/admin/$id", params: { id: next.id } });
+      } else {
+        void router.invalidate();
       }
     }
   }
@@ -811,6 +939,7 @@ function AdminEditor() {
           }
         : f,
     );
+    setAnimeSyncState((prev) => (prev === "synced" ? "local" : prev));
   }
 
   function removeEpisode(sid: string, eid: string) {

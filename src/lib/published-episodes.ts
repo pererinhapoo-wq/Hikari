@@ -120,6 +120,50 @@ export function isHikariPlayableUrl(url?: string | null): boolean {
 }
 
 /**
+ * Valida estritamente se uma URL é HTTP/HTTPS bem formada e aceita como fonte
+ * reproduzível persistível pelo Hikari (alinhada à validação de `sanitizeVideoUrl` no servidor).
+ */
+export function isPersistablePlayableVideoUrl(url?: string | null): boolean {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === "#") return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return false;
+    }
+    if (!parsed.hostname) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
+  return isHikariPlayableUrl(trimmed);
+}
+
+/**
+ * Verifica se o episódio possui ao menos uma fonte de reprodução válida e persistível
+ * entre Player 1 e Player 5.
+ */
+export function hasEpisodePlayableSource(ep: {
+  videoUrl?: string | null;
+  videoUrl2?: string | null;
+  videoUrl3?: string | null;
+  videoUrl4?: string | null;
+  videoUrl5?: string | null;
+}): boolean {
+  return [
+    ep.videoUrl,
+    ep.videoUrl2,
+    ep.videoUrl3,
+    ep.videoUrl4,
+    ep.videoUrl5,
+  ].some(isPersistablePlayableVideoUrl);
+}
+
+/**
  * Deriva uma miniatura gerada automaticamente pelo Cloudinary quando o vídeo está hospedado lá.
  */
 export function getCloudinaryThumbnail(url?: string | null): string | null {
