@@ -22,7 +22,7 @@ import {
   SearchCategorySelector,
   type SearchCategory,
 } from "@/components/search/SearchCategorySelector";
-import { useScrollLock } from "@/lib/scroll-lock";
+import { cn } from "@/lib/utils";
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -42,7 +42,7 @@ function formatAnimeScore(score: number | null | undefined): string | null {
 }
 
 /**
- * Pôster vertical com proporção 2:3, fade-in e fallback
+ * Pôster vertical com proporção 2:3, fade-in, shimmer e fallback
  */
 function SearchPoster({
   src,
@@ -60,7 +60,7 @@ function SearchPoster({
   }, [src]);
 
   return (
-    <div className="sr-poster">
+    <div className={cn("sr-poster", status !== "loaded" && "hikari-image-shimmer")}>
       {status === "error" || !src ? (
         <div className="flex size-full items-center justify-center bg-[var(--bg-4)] text-[var(--text-4)]">
           <Film className="size-[16px] opacity-75" />
@@ -121,13 +121,12 @@ export function SearchModal({
   onClose,
   initialCategory = "animes",
 }: SearchModalProps) {
-  useScrollLock(isOpen);
+  const [animationState, setAnimationState] = useState<"open" | "closed">("open");
+  const [isRendered, setIsRendered] = useState(isOpen);
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const savedScrollYRef = useRef<number>(0);
-  const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   const [category, setCategory] = useState<SearchCategory>(initialCategory);
   const [query, setQuery] = useState("");
@@ -163,47 +162,33 @@ export function SearchModal({
   const localAnimes = useHikariStore((s) => s.animes);
 
   /* =========================================================
-     PROTEÇÃO DO SCROLL E FOCO DA PÁGINA
+     GERENCIAMENTO DE MONTAGEM, ANIMAÇÃO E SCROLL LOCK
   ========================================================== */
   useEffect(() => {
-    if (!isOpen) return;
-
-    const currentScrollY =
-      window.scrollY || document.documentElement.scrollTop || 0;
-    savedScrollYRef.current = currentScrollY;
-    previousActiveElementRef.current = document.activeElement as HTMLElement | null;
-
-    const timer = window.setTimeout(() => {
-      inputRef.current?.focus({ preventScroll: true });
-    }, 40);
-
-    return () => {
-      window.clearTimeout(timer);
-      const targetScroll = savedScrollYRef.current;
-
-      window.scrollTo({
-        top: targetScroll,
-        behavior: "instant" as ScrollBehavior,
-      });
-
-      requestAnimationFrame(() => {
-        window.scrollTo({
-          top: targetScroll,
-          behavior: "instant" as ScrollBehavior,
-        });
-      });
-
-      try {
-        previousActiveElementRef.current?.focus({ preventScroll: true });
-      } catch {
-        // no-op
-      }
-    };
+    if (isOpen) {
+      setIsRendered(true);
+      setAnimationState("open");
+      document.body.style.overflow = "hidden";
+      const timer = window.setTimeout(() => {
+        inputRef.current?.focus({ preventScroll: true });
+      }, 40);
+      return () => window.clearTimeout(timer);
+    } else {
+      setAnimationState("closed");
+      const timer = window.setTimeout(() => {
+        setIsRendered(false);
+        document.body.style.overflow = "";
+      }, 160);
+      return () => window.clearTimeout(timer);
+    }
   }, [isOpen]);
 
   const handleClose = useCallback(() => {
     inputRef.current?.blur();
-    onClose();
+    setAnimationState("closed");
+    setTimeout(() => {
+      onClose();
+    }, 160);
   }, [onClose]);
 
   // Tecla Escape para fechar a busca
@@ -687,7 +672,7 @@ export function SearchModal({
     loadMorePeople,
   ]);
 
-  if (!isOpen) return null;
+  if (!isRendered) return null;
 
   const userQueryClean = query.trim().replace(/^@/, "").trim();
 
@@ -776,8 +761,8 @@ export function SearchModal({
       role="dialog"
       aria-modal="true"
       aria-label="Caixa de busca do Hikari"
-      className="fixed inset-0 z-50 flex justify-center sr-overlay pt-[10vh] sm:pt-[12vh] px-3 sm:px-4 pb-4"
-      style={{ background: "rgba(4,2,9,.86)" }}
+      data-state={animationState}
+      className="sr-overlay"
     >
       {/* Backdrop */}
       <div
@@ -786,19 +771,13 @@ export function SearchModal({
         aria-hidden="true"
       />
 
-      {/* Janela modal centralizada com max-w-[560px] */}
+      {/* Janela modal centralizada com animação */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative z-10 flex w-full max-w-[560px] max-h-[78dvh] sm:max-h-[72vh] flex-col overflow-hidden sr-modal-window"
-        style={{
-          background: "var(--bg-2)",
-          border: "1px solid var(--line-2)",
-          borderRadius: "var(--r-xl)",
-          boxShadow: "var(--shadow-modal)",
-        }}
+        className="sr-modal-window relative z-10"
       >
         {/* =========================================================
-            BARRA DE BUSCA SUPERIOR (padding 14px 16px, gap 10px, border-bottom 1px solid var(--line))
+            BARRA DE BUSCA SUPERIOR
         ========================================================== */}
         <div
           className="relative border-b shrink-0 flex items-center"
@@ -900,7 +879,7 @@ export function SearchModal({
           className="flex-1 overflow-y-auto overscroll-contain p-2 space-y-1"
         >
           {/* =========================================================
-              ESTADO VAZIO
+              ESTADO VAZIO (Sem consulta)
           ========================================================== */}
           {!hasQuery && (
             <div className="flex flex-col items-center justify-center py-16 sm:py-20 px-4 text-center">
@@ -939,20 +918,21 @@ export function SearchModal({
           ========================================================== */}
           {category === "animes" && hasQuery && (
             <div>
-              {animeLoading ? (
+              {animeLoading && animeResults.length === 0 ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="sr-item bg-white/[0.02]"
-                    >
-                      <div className="sr-poster bg-[var(--bg-4)] animate-pulse" />
+                    <div key={i} className="sr-item skeleton">
+                      <div className="sr-poster" />
                       <div className="min-w-0 space-y-2 py-1">
-                        <div className="h-4 w-44 rounded bg-white/5 animate-pulse" />
-                        <div className="h-3 w-28 rounded bg-white/5 animate-pulse" />
+                        <p className="sr-title" />
+                        <div className="sr-sub" />
                       </div>
                     </div>
                   ))}
+                </div>
+              ) : animeLoading && animeResults.length > 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="sr-spinner" />
                 </div>
               ) : animeResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
@@ -1052,17 +1032,21 @@ export function SearchModal({
                     Pesquise por @username ou nome de exibição para encontrar membros.
                   </p>
                 </div>
-              ) : userLoading ? (
+              ) : userLoading && userResults.length === 0 ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="sr-item bg-white/[0.02]">
-                      <div className="sr-poster bg-[var(--bg-4)] animate-pulse" />
+                    <div key={i} className="sr-item skeleton">
+                      <div className="sr-poster" />
                       <div className="min-w-0 space-y-2 py-1">
-                        <div className="h-4 w-36 rounded bg-white/5 animate-pulse" />
-                        <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
+                        <p className="sr-title" />
+                        <div className="sr-sub" />
                       </div>
                     </div>
                   ))}
+                </div>
+              ) : userLoading && userResults.length > 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="sr-spinner" />
                 </div>
               ) : userResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
@@ -1129,17 +1113,21 @@ export function SearchModal({
           ========================================================== */}
           {category === "people" && hasQuery && (
             <div>
-              {peopleLoading ? (
+              {peopleLoading && peopleResults.length === 0 ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="sr-item bg-white/[0.02]">
-                      <div className="sr-poster bg-[var(--bg-4)] animate-pulse" />
+                    <div key={i} className="sr-item skeleton">
+                      <div className="sr-poster" />
                       <div className="min-w-0 space-y-2 py-1">
-                        <div className="h-4 w-40 rounded bg-white/5 animate-pulse" />
-                        <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
+                        <p className="sr-title" />
+                        <div className="sr-sub" />
                       </div>
                     </div>
                   ))}
+                </div>
+              ) : peopleLoading && peopleResults.length > 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="sr-spinner" />
                 </div>
               ) : peopleResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
@@ -1207,17 +1195,21 @@ export function SearchModal({
           ========================================================== */}
           {category === "characters" && hasQuery && (
             <div>
-              {characterLoading ? (
+              {characterLoading && characterResults.length === 0 ? (
                 <div className="space-y-1.5 p-1">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="sr-item bg-white/[0.02]">
-                      <div className="sr-poster bg-[var(--bg-4)] animate-pulse" />
+                    <div key={i} className="sr-item skeleton">
+                      <div className="sr-poster" />
                       <div className="min-w-0 space-y-2 py-1">
-                        <div className="h-4 w-40 rounded bg-white/5 animate-pulse" />
-                        <div className="h-3 w-24 rounded bg-white/5 animate-pulse" />
+                        <p className="sr-title" />
+                        <div className="sr-sub" />
                       </div>
                     </div>
                   ))}
+                </div>
+              ) : characterLoading && characterResults.length > 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="sr-spinner" />
                 </div>
               ) : characterResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">

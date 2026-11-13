@@ -1282,7 +1282,8 @@ export function Shell() {
                 }}
                 onMouseEnter={() => void prefetchSearchModal()}
                 onFocus={() => void prefetchSearchModal()}
-                className="flex size-8 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]"
+                className="flex size-8 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7] active:scale-[0.97]"
+                style={{ transition: "transform 120ms cubic-bezier(0.16, 1, 0.3, 1)" }}
                 aria-label="Buscar"
                 title="Buscar (Ctrl+K)"
                 aria-expanded={searchOpen}
