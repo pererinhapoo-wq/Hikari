@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
-import { isHikariPlayableUrl } from "@/lib/published-episodes";
+import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 
@@ -21,6 +21,7 @@ const episodePostSchema = z.object({
   videoUrl4: z.string().max(2048).optional().nullable(),
   videoUrl5: z.string().max(2048).optional().nullable(),
   published: z.boolean().default(false),
+  replaceSources: z.boolean().optional().default(false),
   animeTitle: z.string().max(255).optional().nullable(),
 });
 
@@ -30,29 +31,7 @@ const episodeDeleteSchema = z.object({
 });
 
 function sanitizeVideoUrl(url?: string | null): string | null {
-  if (!url || typeof url !== "string") return null;
-  const trimmed = url.trim();
-  if (!trimmed || trimmed === "#") return null;
-
-  // Permitir apenas URLs HTTP/HTTPS bem formadas com hostname válido
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-      return null;
-    }
-    if (!parsed.hostname) {
-      return null;
-    }
-  } catch {
-    return null;
-  }
-
-  // Descartar páginas de catálogo ou de streaming não reproduzíveis diretamente
-  if (!isHikariPlayableUrl(trimmed)) {
-    return null;
-  }
-
-  return trimmed;
+  return sanitizePlayableVideoUrl(url);
 }
 
 export const Route = createFileRoute("/api/admin/catalog-episode")({
@@ -169,11 +148,16 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
             existingRow = existingById;
           }
 
-          // 7. Preservação integral de campos e fontes de vídeo (não sobrescrever fontes com vazias/null)
+          // 7. Resolução de fontes de vídeo:
+          // - Quando replaceSources=true (enviado pelo editor completo), reflete exatamente as 5 fontes (permitindo limpar URLs removidas).
+          // - Caso contrário (chamadas parciais), preserva fontes existentes quando vazias/null.
           function resolveSource(
             incoming: string | null | undefined,
             existing: string | null | undefined,
           ): string | null {
+            if (data.replaceSources) {
+              return sanitizeVideoUrl(incoming);
+            }
             if (incoming !== undefined && incoming !== null) {
               const trimmed = incoming.trim();
               if (trimmed) {
@@ -269,11 +253,26 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                "thumbnail" = COALESCE(NULLIF(EXCLUDED."thumbnail", ''), "catalog_episode"."thumbnail"),
                "duration" = COALESCE(NULLIF(EXCLUDED."duration", ''), "catalog_episode"."duration"),
                "synopsis" = COALESCE(NULLIF(EXCLUDED."synopsis", ''), "catalog_episode"."synopsis"),
-               "videoUrl" = COALESCE(NULLIF(EXCLUDED."videoUrl", ''), "catalog_episode"."videoUrl"),
-               "videoUrl2" = COALESCE(NULLIF(EXCLUDED."videoUrl2", ''), "catalog_episode"."videoUrl2"),
-               "videoUrl3" = COALESCE(NULLIF(EXCLUDED."videoUrl3", ''), "catalog_episode"."videoUrl3"),
-               "videoUrl4" = COALESCE(NULLIF(EXCLUDED."videoUrl4", ''), "catalog_episode"."videoUrl4"),
-               "videoUrl5" = COALESCE(NULLIF(EXCLUDED."videoUrl5", ''), "catalog_episode"."videoUrl5"),
+               "videoUrl" = CASE
+                 WHEN $15 = true THEN EXCLUDED."videoUrl"
+                 ELSE COALESCE(NULLIF(EXCLUDED."videoUrl", ''), "catalog_episode"."videoUrl")
+               END,
+               "videoUrl2" = CASE
+                 WHEN $15 = true THEN EXCLUDED."videoUrl2"
+                 ELSE COALESCE(NULLIF(EXCLUDED."videoUrl2", ''), "catalog_episode"."videoUrl2")
+               END,
+               "videoUrl3" = CASE
+                 WHEN $15 = true THEN EXCLUDED."videoUrl3"
+                 ELSE COALESCE(NULLIF(EXCLUDED."videoUrl3", ''), "catalog_episode"."videoUrl3")
+               END,
+               "videoUrl4" = CASE
+                 WHEN $15 = true THEN EXCLUDED."videoUrl4"
+                 ELSE COALESCE(NULLIF(EXCLUDED."videoUrl4", ''), "catalog_episode"."videoUrl4")
+               END,
+               "videoUrl5" = CASE
+                 WHEN $15 = true THEN EXCLUDED."videoUrl5"
+                 ELSE COALESCE(NULLIF(EXCLUDED."videoUrl5", ''), "catalog_episode"."videoUrl5")
+               END,
                "published" = EXCLUDED."published",
                "publishedAt" = CASE
                  WHEN EXCLUDED."published" = true AND "catalog_episode"."publishedAt" IS NULL THEN CURRENT_TIMESTAMP
@@ -297,6 +296,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
               v4,
               v5,
               published,
+              Boolean(data.replaceSources),
             ],
           );
 
@@ -343,7 +343,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                   chunk.forEach((f, idx) => {
                     const offset = idx * 8;
                     const notifId = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-                    const dedupKey = `episode:${f.userId}:${data.id}`;
+                    const dedupKey = `episode:${f.userId}:${effectiveId}`;
                     valueRows.push(
                       `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, false, CURRENT_TIMESTAMP)`,
                     );
@@ -354,7 +354,7 @@ export const Route = createFileRoute("/api/admin/catalog-episode")({
                       "episode",
                       notifMessage,
                       data.animeId,
-                      data.id,
+                      effectiveId,
                       dedupKey,
                     );
                   });

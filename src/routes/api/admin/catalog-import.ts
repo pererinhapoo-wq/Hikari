@@ -2,17 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolation.server";
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
-import { isHikariPlayableUrl } from "@/lib/published-episodes";
+import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
 
 function sanitizeVideoUrl(url?: string | null): string | null {
-  if (!url || typeof url !== "string") return null;
-  const trimmed = url.trim();
-  if (!trimmed || trimmed === "#" || trimmed.startsWith("javascript:")) return null;
-  if (!trimmed.startsWith("https://") && !trimmed.startsWith("http://")) return null;
-  if (!isHikariPlayableUrl(trimmed)) return null;
-  return trimmed;
+  return sanitizePlayableVideoUrl(url);
 }
 
 const episodeImportSchema = z.object({
@@ -228,7 +223,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                     );
                   }
 
-                  const published = (ep.published ?? true) && hasPlayableSource;
+                  const published = ep.published === true && hasPlayableSource;
                   const epTitle = ep.title?.trim() || `Episódio ${ep.number}`;
 
                   await sql.query(
@@ -263,6 +258,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                        "published" = EXCLUDED."published",
                        "publishedAt" = CASE
                          WHEN EXCLUDED."published" = true AND "catalog_episode"."publishedAt" IS NULL THEN CURRENT_TIMESTAMP
+                         WHEN EXCLUDED."published" = false THEN NULL
                          ELSE "catalog_episode"."publishedAt"
                        END,
                        "updatedAt" = CURRENT_TIMESTAMP;`,

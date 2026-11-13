@@ -652,7 +652,7 @@ async function runAllTests() {
       id: "ep-400-test",
       number: 5,
       title: "Episódio com Validação 400",
-      videoUrl: "invalid-url",
+      videoUrl: "https://r2.hikari.com/ep5-rejeitado-pelo-servidor.mp4",
       published: true,
     };
 

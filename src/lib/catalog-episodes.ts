@@ -545,7 +545,7 @@ export function buildResolvedSeasons(
             aired:
               lep.aired ||
               (rep.publishedAt ? new Date(rep.publishedAt).toLocaleDateString("pt-BR") : undefined),
-            published: rep.published ?? lep.published ?? true,
+            published: rep.published ?? lep.published ?? false,
           });
         }
       } else if (rep && !lep) {
@@ -566,7 +566,7 @@ export function buildResolvedSeasons(
           aired:
             localByIdMatch?.aired ||
             (rep.publishedAt ? new Date(rep.publishedAt).toLocaleDateString("pt-BR") : undefined),
-          published: rep.published ?? true,
+          published: rep.published ?? false,
         });
       } else if (!rep && lep) {
         // Se este ID já foi mapeado por um episódio remoto em outro slot da mesma temporada

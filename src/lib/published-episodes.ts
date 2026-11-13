@@ -73,6 +73,38 @@ export function resolveAnimeAltTitles(anime: LocalAnime, canonicalTitle: string)
   );
 }
 
+const BLOCKED_STREAMING_HOSTS = [
+  "crunchyroll.com",
+  "funimation.com",
+  "vrv.co",
+  "netflix.com",
+  "hidive.com",
+  "hulu.com",
+  "tubitv.com",
+  "bilibili.tv",
+  "iq.com",
+  "iqiyi.com",
+  "disneyplus.com",
+  "primevideo.com",
+  "amazon.com",
+  "viz.com",
+  "adultswim.com",
+  "retrocrush.tv",
+  "starplus.com",
+  "max.com",
+  "hbomax.com",
+  "dailymotion.com",
+  "anilist.co",
+  "myanimelist.net",
+  "kitsu.io",
+  "youtu.be",
+  "vimeo.com",
+] as const;
+
+function matchesHostDomain(hostname: string, domain: string): boolean {
+  return hostname === domain || hostname.endsWith(`.${domain}`);
+}
+
 /**
  * Verifica se uma URL é um arquivo ou stream de mídia reproduzível no Hikari,
  * descartando páginas web externas de catálogo de terceiros (Crunchyroll, Funimation, etc.).
@@ -80,38 +112,38 @@ export function resolveAnimeAltTitles(anime: LocalAnime, canonicalTitle: string)
 export function isHikariPlayableUrl(url?: string | null): boolean {
   if (!url || typeof url !== "string") return false;
   const trimmed = url.trim();
-  if (!trimmed || trimmed === "#" || trimmed.startsWith("javascript:")) return false;
+  if (!trimmed || trimmed === "#") return false;
 
   const lower = trimmed.toLowerCase();
-
-  // Páginas web externas de catálogo e serviços de streaming que não fornecem arquivos diretos
   if (
-    lower.includes("crunchyroll.com") ||
-    lower.includes("funimation.com") ||
-    lower.includes("vrv.co") ||
-    lower.includes("netflix.com") ||
-    lower.includes("hidive.com") ||
-    lower.includes("hulu.com") ||
-    lower.includes("tubitv.com") ||
-    lower.includes("bilibili.tv") ||
-    lower.includes("iq.com") ||
-    lower.includes("iqiyi.com") ||
-    lower.includes("disneyplus.com") ||
-    lower.includes("primevideo.com") ||
-    lower.includes("amazon.com") ||
-    lower.includes("viz.com") ||
-    lower.includes("adultswim.com") ||
-    lower.includes("retrocrush.tv") ||
-    lower.includes("starplus.com") ||
-    lower.includes("max.com") ||
-    lower.includes("hbomax.com") ||
-    lower.includes("youtube.com/watch") ||
-    lower.includes("youtu.be/") ||
-    lower.includes("vimeo.com/") ||
-    lower.includes("dailymotion.com") ||
-    lower.includes("anilist.co") ||
-    lower.includes("myanimelist.net") ||
-    lower.includes("kitsu.io")
+    lower.startsWith("javascript:") ||
+    lower.startsWith("data:") ||
+    lower.startsWith("vbscript:")
+  ) {
+    return false;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return false;
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  if (!host) return false;
+
+  if (BLOCKED_STREAMING_HOSTS.some((domain) => matchesHostDomain(host, domain))) {
+    return false;
+  }
+
+  if (
+    matchesHostDomain(host, "youtube.com") &&
+    parsed.pathname.toLowerCase().startsWith("/watch")
   ) {
     return false;
   }
@@ -120,27 +152,22 @@ export function isHikariPlayableUrl(url?: string | null): boolean {
 }
 
 /**
+ * Sanitiza e valida estritamente se uma URL é HTTP/HTTPS bem formada e aceita como fonte
+ * reproduzível persistível pelo Hikari.
+ */
+export function sanitizePlayableVideoUrl(url?: string | null): string | null {
+  if (!url || typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === "#") return null;
+  return isHikariPlayableUrl(trimmed) ? trimmed : null;
+}
+
+/**
  * Valida estritamente se uma URL é HTTP/HTTPS bem formada e aceita como fonte
  * reproduzível persistível pelo Hikari (alinhada à validação de `sanitizeVideoUrl` no servidor).
  */
 export function isPersistablePlayableVideoUrl(url?: string | null): boolean {
-  if (!url || typeof url !== "string") return false;
-  const trimmed = url.trim();
-  if (!trimmed || trimmed === "#") return false;
-
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-      return false;
-    }
-    if (!parsed.hostname) {
-      return false;
-    }
-  } catch {
-    return false;
-  }
-
-  return isHikariPlayableUrl(trimmed);
+  return sanitizePlayableVideoUrl(url) !== null;
 }
 
 /**
@@ -208,8 +235,8 @@ export function isEpisodePublished(ep: {
     return false;
   }
 
-  // Se explicitamente marcado como não publicado
-  if (ep.published === false) {
+  // Exige aprovação explícita de publicação pelo administrador (nunca auto-publica)
+  if (ep.published !== true) {
     return false;
   }
 
@@ -634,7 +661,7 @@ export function resolvePublicEpisodes(
 
   // 1. Processa os episódios confirmados do PostgreSQL (fonte canônica)
   for (const row of remoteRows) {
-    if (row.published === false) continue; // Nunca exibe rascunho
+    if (row.published !== true) continue; // Nunca exibe rascunho ou episódio sem aprovação explícita
 
     const sNum = row.seasonNumber || 1;
     const epNum = row.number;

@@ -521,53 +521,65 @@ export function EditorSeasons({
                                 { key: "videoUrl" as const, label: "Player 1" },
                                 { key: "videoUrl2" as const, label: "Player 2" },
                                 { key: "videoUrl3" as const, label: "Player 3" },
-                              ].map(({ key, label }) => (
-                                <Field
-                                  key={key}
-                                  label={`${label} — URL do vídeo`}
-                                  className="sm:col-span-4"
-                                >
-                                  <div className="flex gap-2">
-                                    <Input
-                                      value={ep[key] ?? ""}
-                                      onChange={(e) =>
-                                        handleVideoUrlChange(
-                                          season.id,
-                                          ep,
-                                          key,
-                                          e.target.value,
-                                        )
-                                      }
-                                      onBlur={(e) => {
-                                        const val = e.target.value.trim();
-                                        if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
-                                          void onCaptureFrame(season.id, ep, val);
-                                        }
-                                      }}
-                                      onPaste={(e) => {
-                                        const val = e.clipboardData.getData("text").trim();
-                                        if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
-                                          setTimeout(() => {
-                                            void onCaptureFrame(season.id, ep, val);
-                                          }, 100);
-                                        }
-                                      }}
-                                      placeholder="URL do vídeo (MP4 / R2)"
-                                      className="text-xs"
-                                    />
+                              ].map(({ key, label }) => {
+                                const rawVal = ep[key] ?? "";
+                                const hasInvalidInput =
+                                  Boolean(rawVal.trim()) &&
+                                  !isPersistablePlayableVideoUrl(rawVal);
 
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      className="shrink-0 text-xs"
-                                      disabled={uploadingEpisode === `${ep.id}-${key}`}
-                                      onClick={() => onUploadVideoToB2(season.id, ep, key)}
-                                    >
-                                      {uploadingEpisode === `${ep.id}-${key}` ? "Abrindo…" : "Enviar"}
-                                    </Button>
-                                  </div>
-                                </Field>
-                              ))}
+                                return (
+                                  <Field
+                                    key={key}
+                                    label={`${label} — URL do vídeo`}
+                                    className="sm:col-span-4"
+                                  >
+                                    <div className="flex gap-2">
+                                      <Input
+                                        value={rawVal}
+                                        onChange={(e) =>
+                                          handleVideoUrlChange(
+                                            season.id,
+                                            ep,
+                                            key,
+                                            e.target.value,
+                                          )
+                                        }
+                                        onBlur={(e) => {
+                                          const val = e.target.value.trim();
+                                          if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
+                                            void onCaptureFrame(season.id, ep, val);
+                                          }
+                                        }}
+                                        onPaste={(e) => {
+                                          const val = e.clipboardData.getData("text").trim();
+                                          if (val && !ep.thumbnail && isPersistablePlayableVideoUrl(val)) {
+                                            setTimeout(() => {
+                                              void onCaptureFrame(season.id, ep, val);
+                                            }, 100);
+                                          }
+                                        }}
+                                        placeholder="URL do vídeo (MP4 / R2)"
+                                        className="text-xs"
+                                      />
+
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="shrink-0 text-xs"
+                                        disabled={uploadingEpisode === `${ep.id}-${key}`}
+                                        onClick={() => onUploadVideoToB2(season.id, ep, key)}
+                                      >
+                                        {uploadingEpisode === `${ep.id}-${key}` ? "Abrindo…" : "Enviar"}
+                                      </Button>
+                                    </div>
+                                    {hasInvalidInput && (
+                                      <p className="mt-1 text-[11px] text-rose-400">
+                                        URL inválida ou não suportada para publicação.
+                                      </p>
+                                    )}
+                                  </Field>
+                                );
+                              })}
 
                               {/* Player 4 */}
                               <Field
@@ -606,6 +618,12 @@ export function EditorSeasons({
                                     Enviar
                                   </Button>
                                 </div>
+                                {Boolean(ep.videoUrl4?.trim()) &&
+                                  !isPersistablePlayableVideoUrl(ep.videoUrl4) && (
+                                    <p className="mt-1 text-[11px] text-rose-400">
+                                      URL inválida ou não suportada para publicação.
+                                    </p>
+                                  )}
                               </Field>
 
                               {/* Player 5 */}
@@ -642,6 +660,12 @@ export function EditorSeasons({
                                     className="text-xs"
                                   />
                                 </div>
+                                {Boolean(ep.videoUrl5?.trim()) &&
+                                  !isPersistablePlayableVideoUrl(ep.videoUrl5) && (
+                                    <p className="mt-1 text-[11px] text-rose-400">
+                                      URL inválida ou não suportada para publicação.
+                                    </p>
+                                  )}
                               </Field>
 
                               {/* Miniatura Real do Vídeo (Thumbnail) */}

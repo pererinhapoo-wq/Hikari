@@ -245,9 +245,7 @@ function AdminIndex() {
               ep.videoUrl4 ||
               ep.videoUrl5,
           );
-          const isPub =
-            ep.published === true ||
-            (ep.published !== false && hasPlayableSource);
+          const isPub = ep.published === true && hasPlayableSource;
           if (isPub) {
             totalPublishedEpisodes++;
           }

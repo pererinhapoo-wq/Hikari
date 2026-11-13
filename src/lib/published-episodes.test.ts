@@ -6,6 +6,9 @@ import {
   isConfirmedFinalEpisode,
   isAnimeConfirmedFinished,
   isPersistablePlayableVideoUrl,
+  sanitizePlayableVideoUrl,
+  isEpisodePublished,
+  resolvePublicEpisodes,
   hasEpisodePlayableSource,
 } from "./published-episodes";
 import { persistEpisode } from "./episode-writer";
@@ -312,6 +315,144 @@ describe("Regras de publicação explícita e fonte válida de reprodução", ()
       assert.equal(approved.confirmed, true);
       assert.equal(approved.published, true);
       assert.ok(approved.publishedAt);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("Não rejeita falsos positivos por substring e bloqueia domínios proibidos e esquemas inseguros", () => {
+    // Casos válidos antes rejeitados indevidamente por substring matching
+    assert.equal(sanitizePlayableVideoUrl("https://streammax.com/ep1.mp4"), "https://streammax.com/ep1.mp4");
+    assert.equal(sanitizePlayableVideoUrl("https://vidmax.com/ep1.mp4"), "https://vidmax.com/ep1.mp4");
+    assert.equal(sanitizePlayableVideoUrl("https://pixiq.com/ep1.m3u8"), "https://pixiq.com/ep1.m3u8");
+    assert.equal(sanitizePlayableVideoUrl("https://cdn.example.com/max.com/ep1.mp4"), "https://cdn.example.com/max.com/ep1.mp4");
+    assert.equal(sanitizePlayableVideoUrl("https://cdn.example.com/ep1.mp4?ref=viz.com"), "https://cdn.example.com/ep1.mp4?ref=viz.com");
+    assert.equal(sanitizePlayableVideoUrl("https://stream.mux.com/abc123.m3u8"), "https://stream.mux.com/abc123.m3u8");
+    assert.equal(sanitizePlayableVideoUrl("https://vz-123.b-cdn.net/video/playlist.m3u8"), "https://vz-123.b-cdn.net/video/playlist.m3u8");
+
+    // Domínios de terceiros proibidos (raiz e subdomínios)
+    assert.equal(sanitizePlayableVideoUrl("https://max.com/watch/123"), null);
+    assert.equal(sanitizePlayableVideoUrl("https://play.max.com/video/123"), null);
+    assert.equal(sanitizePlayableVideoUrl("https://www.iq.com/play/123"), null);
+    assert.equal(sanitizePlayableVideoUrl("https://viz.com/watch"), null);
+    assert.equal(sanitizePlayableVideoUrl("https://vrv.co/watch/123"), null);
+    assert.equal(sanitizePlayableVideoUrl("https://youtu.be/dQw4w9WgXcQ"), null);
+    assert.equal(sanitizePlayableVideoUrl("https://vimeo.com/123456"), null);
+
+    // Esquemas inseguros
+    assert.equal(sanitizePlayableVideoUrl("javascript:alert(1)"), null);
+    assert.equal(sanitizePlayableVideoUrl("data:text/html,<script>alert(1)</script>"), null);
+    assert.equal(sanitizePlayableVideoUrl("vbscript:msgbox(1)"), null);
+  });
+
+  it("Nunca auto-publica episódios com published undefined ou false", () => {
+    assert.equal(
+      isEpisodePublished({
+        id: "ep-undef",
+        number: 1,
+        videoUrl: "https://cdn.example.com/ep1.mp4",
+      }),
+      false,
+    );
+    assert.equal(
+      isEpisodePublished({
+        id: "ep-false",
+        number: 1,
+        videoUrl: "https://cdn.example.com/ep1.mp4",
+        published: false,
+      }),
+      false,
+    );
+
+    const publicFromServer = resolvePublicEpisodes(
+      {
+        status: "success",
+        total: 1,
+        episodes: [
+          {
+            id: "ep-srv-draft",
+            animeId: "a1",
+            seasonNumber: 1,
+            number: 1,
+            title: "Ep 1",
+            thumbnail: null,
+            duration: null,
+            synopsis: null,
+            videoUrl: "https://cdn.example.com/ep1.mp4",
+            videoUrl2: null,
+            videoUrl3: null,
+            videoUrl4: null,
+            videoUrl5: null,
+            published: false,
+            publishedAt: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            animeTitle: "Anime Teste",
+            animeTitleRomaji: "Anime Teste",
+            animeTitleEnglish: "Anime Teste",
+            animeTitleNative: null,
+            animeCover: "",
+            animeBanner: "",
+            animeStatus: "RELEASING",
+            animeEpisodesCount: 12,
+            animeCreatedAt: null,
+            animeUpdatedAt: null,
+            seasonTitle: "Temporada 1",
+          },
+        ],
+      },
+      [
+        createMockAnime({
+          id: "a1",
+          seasons: [
+            {
+              id: "s1",
+              number: 1,
+              title: "Temporada 1",
+              episodes: [
+                {
+                  id: "ep-local-undef",
+                  number: 2,
+                  title: "Ep 2",
+                  videoUrl: "https://cdn.example.com/ep2.mp4",
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+      { outbox: [], tombstones: [] },
+    );
+    assert.equal(publicFromServer.length, 0);
+  });
+
+  it("Envia replaceSources=true e Authorization Bearer quando presente no persistEpisode", async () => {
+    const originalFetch = globalThis.fetch;
+    let capturedBody: { replaceSources?: boolean; published?: boolean } = {};
+    globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body || "{}"));
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          published: false,
+          publishedAt: null,
+          episodeId: "ep-rep",
+          canonicalId: "ep-rep",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      await persistEpisode("anime-test", 1, {
+        id: "ep-rep",
+        number: 5,
+        title: "Ep 5",
+        videoUrl: "",
+        published: false,
+      });
+      assert.equal(capturedBody.replaceSources, true);
+      assert.equal(capturedBody.published, false);
     } finally {
       globalThis.fetch = originalFetch;
     }

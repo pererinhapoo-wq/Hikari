@@ -1,10 +1,22 @@
 import type { Episode } from "@/lib/types";
+import { getBearerToken } from "@/lib/auth/client";
 import { addTombstone, clearTombstone } from "@/lib/catalog-storage";
 import { hasEpisodePlayableSource } from "@/lib/published-episodes";
 import { useHikariStore } from "@/lib/store";
 
 export const OUTBOX_STORAGE_KEY = "hikari-episode-outbox-v1";
 const MAX_OUTBOX_SIZE = 40;
+
+function buildAdminRequestHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const token = typeof window !== "undefined" ? getBearerToken() : null;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 export interface EpisodePayload {
   id: string;
@@ -21,6 +33,7 @@ export interface EpisodePayload {
   videoUrl4?: string | null;
   videoUrl5?: string | null;
   published?: boolean;
+  replaceSources?: boolean;
   animeTitle?: string | null;
 }
 
@@ -320,18 +333,14 @@ export async function flushOutbox(options?: {
         if (op.type === "upsert" && op.payload) {
           res = await fetch("/api/admin/catalog-episode", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: buildAdminRequestHeaders(),
             credentials: "include",
             body: JSON.stringify(op.payload),
           });
         } else if (op.type === "delete") {
           res = await fetch("/api/admin/catalog-episode", {
             method: "DELETE",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: buildAdminRequestHeaders(),
             credentials: "include",
             body: JSON.stringify({
               id: op.episodeId,
@@ -482,15 +491,14 @@ export async function persistEpisode(
     videoUrl4: episode.videoUrl4 || null,
     videoUrl5: episode.videoUrl5 || null,
     published: isPublished,
+    replaceSources: true,
     animeTitle: animeTitle || null,
   };
 
   try {
     const res = await fetch("/api/admin/catalog-episode", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: buildAdminRequestHeaders(),
       credentials: "include",
       body: JSON.stringify(payload),
     });
@@ -664,9 +672,7 @@ export async function persistEpisodeDelete(
   try {
     const res = await fetch("/api/admin/catalog-episode", {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: buildAdminRequestHeaders(),
       credentials: "include",
       body: JSON.stringify({
         id: episodeId,

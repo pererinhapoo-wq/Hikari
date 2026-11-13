@@ -7,6 +7,8 @@ import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/
 import { useHikariStore } from "@/lib/store";
 import { youtubeIdFrom } from "@/lib/utils";
 import { uploadVideoToB2 } from "@/lib/b2";
+import { getBearerToken } from "@/lib/auth/client";
+import { flushAnimes } from "@/lib/catalog-storage";
 import {
   captureAndUploadThumbnail,
   hasEpisodePlayableSource,
@@ -16,6 +18,7 @@ import {
   persistEpisode,
   persistEpisodeDelete,
   readOutbox,
+  writeOutbox,
   flushOutbox,
   type OutboxOperation,
   type PersistEpisodeResult,
@@ -475,10 +478,12 @@ function AdminEditor() {
 
     if (isServerBacked) {
       try {
+        const token = getBearerToken();
         const res = await fetch(
           `/api/admin/catalog-anime?id=${encodeURIComponent(current.id)}`,
           {
             method: "DELETE",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
             credentials: "include",
           },
         );
@@ -510,7 +515,7 @@ function AdminEditor() {
       try {
         const existingOps = readOutbox();
         const filteredOps = existingOps.filter((op) => op.animeId !== current.id);
-        localStorage.setItem("hikari_episode_outbox_v1", JSON.stringify(filteredOps));
+        writeOutbox(filteredOps);
         setOutboxOps(filteredOps);
       } catch (e) {
         console.warn("[admin] Erro ao limpar outbox do anime:", e);
@@ -566,14 +571,22 @@ function AdminEditor() {
     upsertAnime(next);
 
     let metadataSavedOnServer = false;
+    let allEpisodesSynced = true;
     let serverErrorStatus: number | null = null;
     let serverErrorMessage = "";
 
     // 2. Persistência no servidor (await com validação de status HTTP)
     try {
+      const token = getBearerToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
       const res = await fetch("/api/admin/catalog-anime", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           id: next.id,
@@ -716,8 +729,9 @@ function AdminEditor() {
         const confirmedCount = results.filter((r) => r.confirmed).length;
         const conflictCount = results.filter((r) => r.status === "conflict").length;
         const pendingCount = results.filter((r) => r.status === "pending").length;
+        allEpisodesSynced = confirmedCount === results.length;
 
-        if (metadataSavedOnServer && confirmedCount === results.length) {
+        if (metadataSavedOnServer && allEpisodesSynced) {
           const syncedAt = Date.now();
           const syncedAnime = { ...baseReconciled, syncedAt };
           upsertAnime(syncedAnime);
@@ -760,8 +774,10 @@ function AdminEditor() {
         }
       }
 
+      await flushAnimes();
       invalidateCatalogEpisodesCache(next.id);
     } catch (err) {
+      allEpisodesSynced = false;
       console.warn("[admin] Erro ao sincronizar episódios:", err);
       toast.info("Salvo localmente: alterações preservadas neste dispositivo.");
     } finally {
@@ -772,7 +788,7 @@ function AdminEditor() {
       }
       if (id === "new") {
         void navigate({ to: "/admin/$id", params: { id: next.id } });
-      } else {
+      } else if (metadataSavedOnServer && allEpisodesSynced) {
         void router.invalidate();
       }
     }
@@ -825,10 +841,12 @@ function AdminEditor() {
 
     if (isServerBacked) {
       try {
+        const token = getBearerToken();
         const res = await fetch(
           `/api/admin/catalog-season?animeId=${encodeURIComponent(current.id)}&seasonNumber=${encodeURIComponent(targetSeason.number)}`,
           {
             method: "DELETE",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
             credentials: "include",
           },
         );
@@ -863,7 +881,7 @@ function AdminEditor() {
           (op) => !(op.animeId === current.id && op.seasonNumber === targetSeason.number),
         );
         if (filteredOps.length !== existingOps.length) {
-          localStorage.setItem("hikari_episode_outbox_v1", JSON.stringify(filteredOps));
+          writeOutbox(filteredOps);
           setOutboxOps(filteredOps);
         }
       } catch (e) {
