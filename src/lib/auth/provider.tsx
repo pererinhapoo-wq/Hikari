@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
+import "sonner/dist/styles.css";
 import { type AppUser, InitialSessionUserContext } from "./use-current-user";
 
 function makeQueryClient() {

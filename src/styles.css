@@ -713,3 +713,16 @@ textarea:focus {
   .sr-type { grid-column: 2; grid-row: 2; justify-self: start; align-self: start; margin-top: 0; }
 }
 
+@keyframes heroCrossfadeOut {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.03); }
+}
+@keyframes heroCrossfadeIn {
+  0% { opacity: 0; transform: scale(0.97); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes heroDarkenFade {
+  0% { opacity: 0.35; }
+  100% { opacity: 0.75; }
+}
+

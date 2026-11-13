@@ -836,7 +836,6 @@ export function SearchModal({
           <SearchCategorySelector
             category={category}
             onChange={handleCategoryChange}
-            size="sm"
           />
 
           {/* Chip ESC */}

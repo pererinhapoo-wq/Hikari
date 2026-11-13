@@ -403,8 +403,8 @@ export const addProfileFavorite = createServerFn({
         Boolean(personSnapshot?.biography?.toLowerCase().includes("dublador")) ||
         Boolean(personSnapshot?.biography?.toLowerCase().includes("voice actor")) ||
         Boolean(personSnapshot?.biography?.toLowerCase().includes("seiyuu")) ||
-        Boolean(personSnapshot?.primaryOccupation?.toLowerCase().includes("dublador")) ||
-        Boolean(personSnapshot?.primaryOccupation?.toLowerCase().includes("seiyuu"));
+        Boolean(String(personSnapshot?.primaryOccupation ?? "").toLowerCase().includes("dublador")) ||
+        Boolean(String(personSnapshot?.primaryOccupation ?? "").toLowerCase().includes("seiyuu"));
 
       const dbPersonCheck = await sql<{ is_va: boolean }>`
         SELECT (

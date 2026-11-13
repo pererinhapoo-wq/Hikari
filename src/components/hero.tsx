@@ -667,7 +667,7 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
           <div className="flex items-center justify-center pt-0.5">
             <span
               className="
-                hero-glass-capsule
+                hero-glass-capsule--status
                 inline-flex
                 items-center
                 gap-1.5
@@ -839,7 +839,7 @@ const HeroSlideStyles = memo(function HeroSlideStyles() {
           opacity: 0.85;
         }
       }
-      .hero-glass-capsule {
+      .hero-glass-capsule--status {
         background-color: rgba(255, 255, 255, 0.42);
         backdrop-filter: blur(6px);
         -webkit-backdrop-filter: blur(6px);
@@ -855,10 +855,10 @@ const HeroSlideStyles = memo(function HeroSlideStyles() {
       }
       .hero-btn-action {
         transition: transform 140ms cubic-bezier(0.2, 0.8, 0.4, 1), box-shadow 140ms ease, background-color 140ms ease, opacity 140ms ease;
-        will-change: transform;
       }
       .hero-btn-action:active {
         transform: scale(0.95);
+        will-change: transform;
       }
       @media (prefers-reduced-motion: reduce) {
         .hero-btn-action:active {

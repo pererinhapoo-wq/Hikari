@@ -55,6 +55,8 @@ export type SlimAnime = {
     airingAt: number;
   }[];
   source: "anilist" | "jikan" | "kitsu" | "local" | "cache";
+  characters?: AnimeCharacter[];
+  staff?: AnimeStaff[];
 };
 
 export type AnimeVoiceActor = {

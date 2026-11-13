@@ -325,10 +325,6 @@ export const Route = createFileRoute("/anime/$id")({
           rel: "preconnect",
           href: "https://media.kitsu.app",
         },
-        {
-          rel: "dns-prefetch",
-          href: "https://media.kitsu.app",
-        },
       );
     }
 
@@ -4228,7 +4224,7 @@ const DubladoresSection = memo(function DubladoresSection({
         if (!vaName) continue;
 
         const rawLang = va.language?.trim() || "Japanese";
-        const key = `${va.id || vaName.toLowerCase()}-${rawLang.toLowerCase()}`;
+        const key = va.id ? String(va.id) : vaName.trim().toLowerCase();
         if (!map.has(key)) {
           map.set(key, {
             vaId: va.id,
@@ -4258,6 +4254,7 @@ const DubladoresSection = memo(function DubladoresSection({
         language: item.language,
         langCategory: item.langCategory,
         characterName: Array.from(item.characters).join(" · "),
+        characterId: 0,
         isMain: item.isMain,
       }))
       .sort((a, b) => {

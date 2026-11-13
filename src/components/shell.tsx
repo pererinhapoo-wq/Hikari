@@ -239,7 +239,7 @@ function ShellHeaderWrapper({
   return (
     <header
       className={cn(
-        "sticky top-0 z-40 transition-transform duration-300 ease-out",
+        "sticky top-0 z-40 transition-transform duration-300 ease-out will-change-auto",
         showHeader
           ? "translate-y-0 pointer-events-auto"
           : "-translate-y-full pointer-events-none",

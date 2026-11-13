@@ -6,6 +6,7 @@ import {
   readTombstones,
   readTombstoneRecords,
   isEpisodeTombstoned,
+  type TombstoneRecord,
 } from "@/lib/catalog-storage";
 import { readOutbox, type OutboxOperation } from "@/lib/episode-writer";
 
@@ -576,7 +577,7 @@ export function buildResolvedSeasons(
               o.episodeId === lep.id ||
               (o.seasonNumber === sNum && o.episodeNumber === epNum),
           );
-          if (!op || op.status === "synced") {
+          if (!op) {
             continue;
           }
         }
