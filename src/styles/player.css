@@ -19,12 +19,13 @@
   background:#000;
   border:none;
   outline:none;
-  /* trava o vídeo no caminho nativo de renderização */
+  /* trava o vídeo no caminho nativo de renderização sem alteração de cor */
   filter:none;
   transition:none;
   transform:translateZ(0);
   backface-visibility:hidden;
 }
+/* nenhum escurecimento global: o scrim fica em opacity 0 para garantir que a imagem seja idêntica em ambos os estados */
 .hikari-video-player__scrim{
   position:absolute;
   inset:0;
@@ -32,15 +33,6 @@
   pointer-events:none;
   background:#000;
   opacity:0;
-  transition:opacity .22s cubic-bezier(.16,1,.3,1);
-  will-change:opacity;
-}
-/* estado idle = scrim ligado */
-.hikari-video-player[data-controls="hidden"] .hikari-video-player__scrim{opacity:.42}
-/* enquanto pausado, não escurecer tanto */
-.hikari-video-player[data-paused="true"] .hikari-video-player__scrim{opacity:.28}
-@media (prefers-reduced-motion:reduce){
-  .hikari-video-player__scrim{transition:none}
 }
 
 /* Transições suaves */

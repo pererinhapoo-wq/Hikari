@@ -694,7 +694,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
       {/* Custom Controls Overlay (z-30, above scrim z-1) */}
       <div
-        className={`absolute inset-0 flex flex-col justify-end p-4 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 z-30 pointer-events-none ${
+        className={`absolute inset-0 flex flex-col justify-end p-4 pt-6 bg-gradient-to-t from-black/85 via-black/45 to-transparent transition-opacity duration-300 z-30 pointer-events-none ${
           showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
         }`}
       >
