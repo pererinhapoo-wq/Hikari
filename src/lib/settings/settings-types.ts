@@ -27,6 +27,11 @@ export interface HikariAdminSettings {
   module_ai_enabled: boolean;
   module_adult_enabled: boolean;
   module_calendar_enabled: boolean;
+
+  // E. Central de Manutenção
+  maintenance_mode: boolean;
+  maintenance_message: string;
+  maintenance_allow_admin_bypass: boolean;
 }
 
 export interface HikariPublicSettings {
@@ -49,6 +54,11 @@ export interface HikariPublicSettings {
     ai: boolean;
     adult: boolean;
     calendar: boolean;
+  };
+  maintenance: {
+    active: boolean;
+    message: string;
+    allow_admin_bypass: boolean;
   };
 }
 
@@ -77,6 +87,11 @@ export const DEFAULT_ADMIN_SETTINGS: HikariAdminSettings = {
   module_ai_enabled: true,
   module_adult_enabled: true,
   module_calendar_enabled: true,
+
+  maintenance_mode: false,
+  maintenance_message:
+    "O Hikari está passando por manutenções preventivas no momento. Retornaremos em breve!",
+  maintenance_allow_admin_bypass: true,
 };
 
 export const DEFAULT_PUBLIC_SETTINGS: HikariPublicSettings = {
@@ -99,6 +114,11 @@ export const DEFAULT_PUBLIC_SETTINGS: HikariPublicSettings = {
     ai: DEFAULT_ADMIN_SETTINGS.module_ai_enabled,
     adult: DEFAULT_ADMIN_SETTINGS.module_adult_enabled,
     calendar: DEFAULT_ADMIN_SETTINGS.module_calendar_enabled,
+  },
+  maintenance: {
+    active: DEFAULT_ADMIN_SETTINGS.maintenance_mode,
+    message: DEFAULT_ADMIN_SETTINGS.maintenance_message,
+    allow_admin_bypass: DEFAULT_ADMIN_SETTINGS.maintenance_allow_admin_bypass,
   },
 };
 
@@ -151,6 +171,13 @@ export const adminSettingsSchema = z.object({
   module_ai_enabled: z.boolean(),
   module_adult_enabled: z.boolean(),
   module_calendar_enabled: z.boolean(),
+
+  maintenance_mode: z.boolean(),
+  maintenance_message: z
+    .string()
+    .trim()
+    .max(1000, "Mensagem de manutenção muito longa (máx. 1000 caracteres)"),
+  maintenance_allow_admin_bypass: z.boolean(),
 });
 
 export const updateAdminSettingsSchema = adminSettingsSchema.partial();

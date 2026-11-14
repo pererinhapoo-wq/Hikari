@@ -181,11 +181,23 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
             badge: "Players",
             badgeVariant: "purple",
           },
+          {
+            id: "images",
+            label: "Central de Imagens",
+            icon: ImageIcon,
+            to: "/admin/images",
+          },
         ],
       },
       {
         title: "Comunidade & IA",
         items: [
+          {
+            id: "users",
+            label: "Usuários",
+            icon: Users,
+            to: "/admin/users",
+          },
           {
             id: "moderation",
             label: "Moderação",
@@ -205,6 +217,24 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
       {
         title: "Infraestrutura",
         items: [
+          {
+            id: "health",
+            label: "Saúde do Sistema",
+            icon: Activity,
+            to: "/admin/health",
+          },
+          {
+            id: "maintenance",
+            label: "Central de Manutenção",
+            icon: Wrench,
+            to: "/admin/maintenance",
+          },
+          {
+            id: "backup",
+            label: "Backup e Dados",
+            icon: HardDriveDownload,
+            to: "/admin/backup",
+          },
           {
             id: "database-sync",
             label: "Banco & Outbox",
@@ -243,43 +273,7 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
   );
 
   const plannedItems: NavItem[] = useMemo(
-    () => [
-      {
-        id: "users",
-        label: "Usuários",
-        icon: Users,
-        comingSoon: true,
-        disabled: true,
-      },
-      {
-        id: "maintenance",
-        label: "Central de Manutenção",
-        icon: Wrench,
-        comingSoon: true,
-        disabled: true,
-      },
-      {
-        id: "images",
-        label: "Central de Imagens",
-        icon: ImageIcon,
-        comingSoon: true,
-        disabled: true,
-      },
-      {
-        id: "health",
-        label: "Saúde do Sistema",
-        icon: Activity,
-        comingSoon: true,
-        disabled: true,
-      },
-      {
-        id: "backup",
-        label: "Backup e Dados",
-        icon: HardDriveDownload,
-        comingSoon: true,
-        disabled: true,
-      },
-    ],
+    () => [],
     [],
   );
 
@@ -295,7 +289,12 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
         pathname !== "/admin/moderation" &&
         pathname !== "/admin/hikari-ai" &&
         pathname !== "/admin/quick-update" &&
-        pathname !== "/admin/settings"
+        pathname !== "/admin/settings" &&
+        !pathname.startsWith("/admin/users") &&
+        !pathname.startsWith("/admin/maintenance") &&
+        !pathname.startsWith("/admin/images") &&
+        !pathname.startsWith("/admin/health") &&
+        !pathname.startsWith("/admin/backup")
       );
     }
     if (item.id === "new-anime") {
@@ -304,11 +303,26 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     if (item.id === "quick-update") {
       return pathname.startsWith("/admin/quick-update");
     }
+    if (item.id === "images") {
+      return pathname.startsWith("/admin/images");
+    }
+    if (item.id === "users") {
+      return pathname.startsWith("/admin/users");
+    }
     if (item.id === "moderation") {
       return pathname.startsWith("/admin/moderation");
     }
     if (item.id === "hikari-ai") {
       return pathname.startsWith("/admin/hikari-ai");
+    }
+    if (item.id === "health") {
+      return pathname.startsWith("/admin/health");
+    }
+    if (item.id === "maintenance") {
+      return pathname.startsWith("/admin/maintenance");
+    }
+    if (item.id === "backup") {
+      return pathname.startsWith("/admin/backup");
     }
     if (item.id === "settings") {
       return pathname.startsWith("/admin/settings");
@@ -323,11 +337,26 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     if (pathname.startsWith("/admin/quick-update")) {
       return { section: "Operação", current: "Atualização Rápida de Players" };
     }
+    if (pathname.startsWith("/admin/images")) {
+      return { section: "Operação", current: "Central de Imagens" };
+    }
+    if (pathname.startsWith("/admin/users")) {
+      return { section: "Comunidade", current: "Usuários" };
+    }
     if (pathname.startsWith("/admin/moderation")) {
       return { section: "Comunidade", current: "Moderação de Denúncias" };
     }
     if (pathname.startsWith("/admin/hikari-ai")) {
       return { section: "Inteligência Artificial", current: "Hikari AI" };
+    }
+    if (pathname.startsWith("/admin/health")) {
+      return { section: "Infraestrutura", current: "Saúde do Sistema" };
+    }
+    if (pathname.startsWith("/admin/maintenance")) {
+      return { section: "Infraestrutura", current: "Central de Manutenção" };
+    }
+    if (pathname.startsWith("/admin/backup")) {
+      return { section: "Infraestrutura", current: "Backup e Dados" };
     }
     if (pathname.startsWith("/admin/settings")) {
       return { section: "Sistema", current: "Configurações Gerais" };
@@ -511,46 +540,48 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
             </div>
           ))}
 
-          {/* Módulos Planejados (colapsável para manter foco nas ferramentas ativas) */}
-          <div className="pt-1 border-t border-white/[0.06]">
-            <button
-              type="button"
-              onClick={() => setRoadmapOpen((prev) => !prev)}
-              aria-expanded={roadmapOpen}
-              className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-[10px] font-bold tracking-[0.2em] text-[var(--color-subtle)] uppercase transition-colors hover:text-[var(--color-muted)]"
-            >
-              <span>Expansão ({plannedItems.length})</span>
-              <ChevronDown
-                className={cn(
-                  "size-3.5 transition-transform duration-150",
-                  roadmapOpen && "rotate-180",
-                )}
-              />
-            </button>
+          {/* Módulos Planejados (exibido apenas se houver itens futuros) */}
+          {plannedItems.length > 0 && (
+            <div className="pt-1 border-t border-white/[0.06]">
+              <button
+                type="button"
+                onClick={() => setRoadmapOpen((prev) => !prev)}
+                aria-expanded={roadmapOpen}
+                className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-[10px] font-bold tracking-[0.2em] text-[var(--color-subtle)] uppercase transition-colors hover:text-[var(--color-muted)]"
+              >
+                <span>Expansão ({plannedItems.length})</span>
+                <ChevronDown
+                  className={cn(
+                    "size-3.5 transition-transform duration-150",
+                    roadmapOpen && "rotate-180",
+                  )}
+                />
+              </button>
 
-            {roadmapOpen && (
-              <div className="mt-1 space-y-0.5">
-                {plannedItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={item.id}
-                      className="flex cursor-not-allowed items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-[var(--color-subtle)]/70"
-                      title="Funcionalidade planejada para etapas futuras"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Icon className="size-3.5 shrink-0 opacity-50" />
-                        <span className="truncate">{item.label}</span>
+              {roadmapOpen && (
+                <div className="mt-1 space-y-0.5">
+                  {plannedItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex cursor-not-allowed items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-[var(--color-subtle)]/70"
+                        title="Funcionalidade planejada para etapas futuras"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Icon className="size-3.5 shrink-0 opacity-50" />
+                          <span className="truncate">{item.label}</span>
+                        </div>
+                        <span className="studio-mono text-[9px] uppercase tracking-wider opacity-70">
+                          Em breve
+                        </span>
                       </div>
-                      <span className="studio-mono text-[9px] uppercase tracking-wider opacity-70">
-                        Em breve
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
       </div>
 

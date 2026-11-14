@@ -116,6 +116,13 @@ export async function loadPublicSettingsFromDb(): Promise<HikariPublicSettings> 
         adult: all.module_adult_enabled !== false,
         calendar: all.module_calendar_enabled !== false,
       },
+      maintenance: {
+        active: Boolean(all.maintenance_mode),
+        message:
+          all.maintenance_message ||
+          DEFAULT_PUBLIC_SETTINGS.maintenance.message,
+        allow_admin_bypass: all.maintenance_allow_admin_bypass !== false,
+      },
     };
 
     cachedPublicSettings = publicSettings;

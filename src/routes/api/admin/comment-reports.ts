@@ -10,7 +10,7 @@ import {
   AdminAuthError,
 } from "@/lib/auth/admin.server";
 
-type ReportAction =
+type _ReportAction =
   | "resolve"
   | "delete";
 
