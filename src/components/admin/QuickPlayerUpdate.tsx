@@ -4,15 +4,16 @@ import {
   Search,
   ClipboardPaste,
   CheckCircle2,
-  AlertCircle,
   Film,
   RotateCcw,
+  Link2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHikariStore } from "@/lib/store";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { isHikariAdmin } from "@/lib/auth/admin";
-import type { LocalAnime, Episode } from "@/lib/types";
+import type { LocalAnime } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -87,7 +88,6 @@ export function QuickPlayerUpdate() {
   );
   const [urlInput, setUrlInput] = useState("");
 
-  // Filtro de animes pelo termo de busca
   const matchingAnimes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return animes;
@@ -97,35 +97,29 @@ export function QuickPlayerUpdate() {
     });
   }, [animes, searchQuery]);
 
-  // Anime atualmente selecionado
   const currentAnime = useMemo(() => {
     if (!selectedAnimeId) return null;
     return animes.find((a) => a.id === selectedAnimeId) ?? null;
   }, [animes, selectedAnimeId]);
 
-  // Temporadas do anime selecionado
   const seasons = useMemo(() => {
     return currentAnime?.seasons ?? [];
   }, [currentAnime]);
 
-  // Temporada atualmente selecionada
   const currentSeason = useMemo(() => {
     if (!selectedSeasonId) return null;
     return seasons.find((s) => s.id === selectedSeasonId) ?? null;
   }, [seasons, selectedSeasonId]);
 
-  // Episódios da temporada selecionada
   const episodes = useMemo(() => {
     return currentSeason?.episodes ?? [];
   }, [currentSeason]);
 
-  // Episódio atualmente selecionado
   const currentEpisode = useMemo(() => {
     if (!selectedEpisodeId) return null;
     return episodes.find((e) => e.id === selectedEpisodeId) ?? null;
   }, [episodes, selectedEpisodeId]);
 
-  // Configuração do player selecionado
   const activePlayerConfig = useMemo(() => {
     if (selectedPlayerNumber === null) return null;
     return (
@@ -133,19 +127,16 @@ export function QuickPlayerUpdate() {
     );
   }, [selectedPlayerNumber]);
 
-  // URL atual registrada para o player selecionado
   const currentRegisteredUrl = useMemo(() => {
     if (!currentEpisode || !activePlayerConfig) return "";
     return currentEpisode[activePlayerConfig.key] ?? "";
   }, [currentEpisode, activePlayerConfig]);
 
-  // Verificação estrita de autorização de administrador
   if (isPending) return null;
   if (!user || !isHikariAdmin(user.primaryEmail)) {
     return null;
   }
 
-  // Manipuladores de seleção que preservam a integridade e limpam estados dependentes
   const handleSelectAnime = (id: string) => {
     setSelectedAnimeId(id);
     const targetAnime = animes.find((a) => a.id === id);
@@ -185,7 +176,6 @@ export function QuickPlayerUpdate() {
     }
   };
 
-  // Leitura assistida da área de transferência com fallback seguro
   const handlePasteClipboard = async () => {
     if (
       typeof navigator === "undefined" ||
@@ -219,7 +209,6 @@ export function QuickPlayerUpdate() {
     }
   };
 
-  // Salvamento pontual e seguro
   const handleSave = () => {
     if (!currentAnime) {
       toast.error("Selecione um anime.");
@@ -249,7 +238,6 @@ export function QuickPlayerUpdate() {
 
     const playerKey = activePlayerConfig.key;
 
-    // Mutação imutável que preserva todos os outros players, episódios, temporadas e animes
     const updatedAnime: LocalAnime = {
       ...currentAnime,
       seasons: currentAnime.seasons.map((s) => {
@@ -275,250 +263,322 @@ export function QuickPlayerUpdate() {
     );
   };
 
+  const urlValidationPreview = urlInput.trim()
+    ? validateHttpVideoUrl(urlInput)
+    : null;
+
   return (
-    <section className="rounded-xl bg-surface p-4 sm:p-5 shadow-[var(--shadow-border)] border border-primary/20">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="grid size-9 sm:size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary border border-primary/25">
+    <section
+      id="quick-update"
+      className="studio-panel rounded-2xl p-4 sm:p-6 space-y-6"
+    >
+      {/* Barra de Resumo do Tool */}
+      <div className="flex flex-col gap-3 border-b border-white/[0.07] pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-purple-500/30 bg-purple-500/12 text-purple-300">
             <Zap className="size-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-display text-lg sm:text-xl font-bold tracking-tight text-fg">
-                Atualização Rápida de Players
-              </h2>
-              <span className="rounded bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary uppercase tracking-wider">
-                Rápido
-              </span>
-            </div>
-            <p className="text-xs text-muted">
-              Atualize instantaneamente links capturados pelo sniffer sem rolar o
-              formulário completo.
+            <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--color-fg)]">
+              Atualização Rápida de Players
+            </h2>
+            <p className="text-xs text-[var(--color-muted)]">
+              Atualize links capturados sem abrir o editor completo do anime.
             </p>
           </div>
         </div>
+
+        <span className="studio-mono text-[11px] text-[var(--color-subtle)]">
+          <span className="studio-tabular font-semibold text-[var(--color-fg)]">
+            {matchingAnimes.length}
+          </span>{" "}
+          título(s) disponíveis
+        </span>
       </div>
 
-      <div className="mt-5 space-y-4">
-        {/* ETAPA 1: Localizar Anime */}
-        <div>
-          <label className="block text-xs font-medium text-muted uppercase tracking-wider mb-1.5">
-            1. Localizar Anime ({matchingAnimes.length} disponíveis)
+      {/* ETAPA 1: Localizar Anime */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+            1. Localizar Anime
           </label>
-          <div className="space-y-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted pointer-events-none" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filtrar por nome do anime..."
-                className="pl-9 h-10 text-sm"
-              />
-            </div>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="text-xs text-purple-400 hover:text-purple-300"
+            >
+              Limpar filtro
+            </button>
+          )}
+        </div>
 
+        <div className="grid gap-3 md:grid-cols-12">
+          <div className="relative md:col-span-5">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--color-subtle)]" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Filtrar por nome do anime..."
+              className="h-11 border-white/10 bg-[var(--studio-panel-alt)] pl-9 pr-8 text-sm"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Limpar busca"
+                className="absolute top-1/2 right-2.5 -translate-y-1/2 p-1 text-[var(--color-subtle)] hover:text-[var(--color-fg)]"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="md:col-span-7">
             <select
               value={selectedAnimeId}
               onChange={(e) => handleSelectAnime(e.target.value)}
-              className="w-full h-11 rounded-md bg-elevated px-3 text-sm text-fg border border-white/10 shadow-[var(--shadow-border)] focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+              aria-label="Selecionar anime"
+              className="h-11 w-full cursor-pointer rounded-md border border-white/10 bg-[var(--studio-panel-alt)] px-3 text-sm text-[var(--color-fg)] focus:border-purple-500/50 focus:outline-none"
             >
               <option value="">-- Escolha um anime no catálogo --</option>
               {matchingAnimes.map((a) => (
                 <option key={a.id} value={a.id}>
                   {resolveAnimeDisplayTitle(a)} (
-                  {a.seasons.reduce((acc, s) => acc + s.episodes.length, 0)}{" "}
-                  eps)
+                  {a.seasons.reduce((acc, s) => acc + s.episodes.length, 0)} eps)
                 </option>
               ))}
             </select>
           </div>
         </div>
 
-        {/* ETAPA 2: Seleção de Temporada e Episódio */}
+        {/* Cartão de Contexto do Anime Selecionado */}
         {currentAnime && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-white/5">
-            <div>
-              <label className="block text-xs font-medium text-muted uppercase tracking-wider mb-1.5">
-                2. Temporada
-              </label>
-              <select
-                value={selectedSeasonId}
-                onChange={(e) => handleSelectSeason(e.target.value)}
-                className="w-full h-11 rounded-md bg-elevated px-3 text-sm text-fg border border-white/10 shadow-[var(--shadow-border)] focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-              >
-                {seasons.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title || `Temporada ${s.number}`} ({s.episodes.length} eps)
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-muted uppercase tracking-wider mb-1.5">
-                3. Episódio
-              </label>
-              <select
-                value={selectedEpisodeId}
-                onChange={(e) => handleSelectEpisode(e.target.value)}
-                disabled={episodes.length === 0}
-                className="w-full h-11 rounded-md bg-elevated px-3 text-sm text-fg border border-white/10 shadow-[var(--shadow-border)] focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer disabled:opacity-50"
-              >
-                {episodes.length === 0 ? (
-                  <option value="">Nenhum episódio nesta temporada</option>
-                ) : (
-                  episodes.map((ep) => {
-                    const activeP = [
-                      ep.videoUrl ? "P1" : null,
-                      ep.videoUrl2 ? "P2" : null,
-                      ep.videoUrl3 ? "P3" : null,
-                      ep.videoUrl4 ? "P4" : null,
-                      ep.videoUrl5 ? "P5" : null,
-                    ]
-                      .filter(Boolean)
-                      .join(", ");
-
-                    return (
-                      <option key={ep.id} value={ep.id}>
-                        #{ep.number} — {ep.title || `Episódio ${ep.number}`}
-                        {activeP ? ` [${activeP}]` : " [Sem vídeo]"}
-                      </option>
-                    );
-                  })
-                )}
-              </select>
-            </div>
-          </div>
-        )}
-
-        {/* ETAPA 3: Seleção Explícita de Player */}
-        {currentEpisode && (
-          <div className="pt-2 border-t border-white/5">
-            <label className="block text-xs font-medium text-muted uppercase tracking-wider mb-2">
-              4. Selecione o Player para Atualizar (Seleção Explícita Obrigatória)
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {PLAYER_CONFIGS.map((cfg) => {
-                const isSelected = selectedPlayerNumber === cfg.id;
-                const hasExistingLink = Boolean(currentEpisode[cfg.key]?.trim());
-
-                return (
-                  <button
-                    key={cfg.id}
-                    type="button"
-                    onClick={() => handleSelectPlayer(cfg.id)}
-                    className={cn(
-                      "flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-medium transition-all cursor-pointer text-center",
-                      isSelected
-                        ? "border-primary bg-primary/15 text-white ring-1 ring-primary shadow-sm"
-                        : "border-white/10 bg-elevated text-fg hover:border-white/20 hover:bg-elevated/80",
-                    )}
-                  >
-                    <span className="font-semibold text-sm">{cfg.label}</span>
-                    <span
-                      className={cn(
-                        "mt-1 text-[10px] px-1.5 py-0.5 rounded-full font-normal",
-                        hasExistingLink
-                          ? "bg-emerald-500/15 text-emerald-400"
-                          : "bg-white/5 text-muted",
-                      )}
-                    >
-                      {hasExistingLink ? "Configurado" : "Vazio"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ETAPA 4: Entrada do Endereço de Vídeo e Ações */}
-        {currentEpisode && activePlayerConfig && (
-          <div className="pt-3 border-t border-white/5 space-y-3">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-medium text-muted uppercase tracking-wider">
-                  5. Nova URL para {activePlayerConfig.label} (Episódio{" "}
-                  {currentEpisode.number})
-                </label>
-                {currentRegisteredUrl && (
-                  <span className="text-[11px] text-muted truncate max-w-[200px] sm:max-w-[320px]">
-                    Atual:{" "}
-                    <span className="text-white/70 font-mono">
-                      {currentRegisteredUrl.slice(0, 36)}...
-                    </span>
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
-                  <Input
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder="Cole a URL do vídeo (https://.../video.mp4 ou .m3u8)"
-                    className="font-mono text-xs sm:text-sm h-11"
-                  />
-                  {urlInput && (
-                    <button
-                      type="button"
-                      onClick={() => setUrlInput("")}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg text-xs"
-                      title="Limpar campo"
-                    >
-                      ✕
-                    </button>
-                  )}
+          <div className="studio-panel-alt flex items-center gap-3.5 rounded-xl p-3">
+            <div className="h-14 w-10 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/40">
+              {currentAnime.cover ? (
+                <img
+                  src={currentAnime.cover}
+                  alt={resolveAnimeDisplayTitle(currentAnime)}
+                  className="size-full object-cover"
+                />
+              ) : (
+                <div className="grid size-full place-items-center text-[var(--color-subtle)]">
+                  <Film className="size-4" />
                 </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handlePasteClipboard}
-                  className="shrink-0 h-11 flex items-center justify-center gap-1.5 cursor-pointer"
-                  title="Colar da área de transferência"
-                >
-                  <ClipboardPaste className="size-4 text-primary" />
-                  <span>Colar</span>
-                </Button>
-              </div>
+              )}
             </div>
-
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
-              <p className="text-[11px] text-subtle leading-relaxed">
-                Apenas o <strong className="text-fg">{activePlayerConfig.label}</strong> do{" "}
-                <strong className="text-fg">
-                  Episódio {currentEpisode.number}
-                </strong>{" "}
-                será alterado. Todos os outros dados serão preservados.
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-[var(--color-fg)]">
+                {resolveAnimeDisplayTitle(currentAnime)}
               </p>
-
-              <div className="flex gap-2 w-full sm:w-auto">
-                {currentRegisteredUrl && urlInput !== currentRegisteredUrl && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setUrlInput(currentRegisteredUrl)}
-                    className="flex items-center gap-1 text-xs"
-                  >
-                    <RotateCcw className="size-3.5" />
-                    Restaurar original
-                  </Button>
-                )}
-
-                <Button
-                  type="button"
-                  onClick={handleSave}
-                  className="w-full sm:w-auto h-11 px-6 font-semibold"
-                >
-                  <CheckCircle2 className="size-4" />
-                  Salvar Alteração
-                </Button>
-              </div>
+              <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                {currentAnime.format || "TV"} · {currentAnime.year || "—"} ·{" "}
+                <span className="studio-tabular">
+                  {currentAnime.seasons.length} temporada(s)
+                </span>
+              </p>
             </div>
           </div>
         )}
       </div>
+
+      {/* ETAPA 2: Temporada e Episódio */}
+      {currentAnime && (
+        <div className="grid grid-cols-1 gap-4 border-t border-white/[0.07] pt-5 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+              2. Temporada
+            </label>
+            <select
+              value={selectedSeasonId}
+              onChange={(e) => handleSelectSeason(e.target.value)}
+              aria-label="Selecionar temporada"
+              className="h-11 w-full cursor-pointer rounded-md border border-white/10 bg-[var(--studio-panel-alt)] px-3 text-sm text-[var(--color-fg)] focus:border-purple-500/50 focus:outline-none"
+            >
+              {seasons.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.title || `Temporada ${s.number}`} ({s.episodes.length} eps)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+              3. Episódio
+            </label>
+            <select
+              value={selectedEpisodeId}
+              onChange={(e) => handleSelectEpisode(e.target.value)}
+              disabled={episodes.length === 0}
+              aria-label="Selecionar episódio"
+              className="h-11 w-full cursor-pointer rounded-md border border-white/10 bg-[var(--studio-panel-alt)] px-3 text-sm text-[var(--color-fg)] focus:border-purple-500/50 focus:outline-none disabled:opacity-50"
+            >
+              {episodes.length === 0 ? (
+                <option value="">Nenhum episódio nesta temporada</option>
+              ) : (
+                episodes.map((ep) => {
+                  const activeP = [
+                    ep.videoUrl ? "P1" : null,
+                    ep.videoUrl2 ? "P2" : null,
+                    ep.videoUrl3 ? "P3" : null,
+                    ep.videoUrl4 ? "P4" : null,
+                    ep.videoUrl5 ? "P5" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(", ");
+
+                  return (
+                    <option key={ep.id} value={ep.id}>
+                      #{ep.number} — {ep.title || `Episódio ${ep.number}`}
+                      {activeP ? ` [${activeP}]` : " [Sem vídeo]"}
+                    </option>
+                  );
+                })
+              )}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* ETAPA 3: Seleção Explícita de Player */}
+      {currentEpisode && (
+        <div className="space-y-3 border-t border-white/[0.07] pt-5">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+            4. Selecione o Player para Atualizar (Seleção Explícita Obrigatória)
+          </label>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+            {PLAYER_CONFIGS.map((cfg) => {
+              const isSelected = selectedPlayerNumber === cfg.id;
+              const hasExistingLink = Boolean(currentEpisode[cfg.key]?.trim());
+
+              return (
+                <button
+                  key={cfg.id}
+                  type="button"
+                  onClick={() => handleSelectPlayer(cfg.id)}
+                  className={cn(
+                    "flex min-h-[72px] cursor-pointer flex-col items-center justify-center rounded-xl border p-3 text-center transition-colors",
+                    isSelected
+                      ? "border-purple-500 bg-purple-500/15 text-white shadow-[0_0_0_1px_rgba(168,85,247,0.4)]"
+                      : "border-white/10 bg-[var(--studio-panel-alt)] text-[var(--color-fg)] hover:border-white/20 hover:bg-white/[0.04]",
+                  )}
+                >
+                  <span className="text-sm font-semibold">{cfg.label}</span>
+                  <span
+                    className={cn(
+                      "studio-mono mt-1 text-[10px] font-medium",
+                      hasExistingLink ? "text-emerald-400" : "text-[var(--color-subtle)]",
+                    )}
+                  >
+                    {hasExistingLink ? "Configurado" : "Vazio"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ETAPA 4: Endereço do Vídeo */}
+      {currentEpisode && activePlayerConfig && (
+        <div className="space-y-4 border-t border-white/[0.07] pt-5">
+          <div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                <Link2 className="size-3.5 text-purple-400" />
+                <span>
+                  5. Nova URL para {activePlayerConfig.label} (Episódio{" "}
+                  {currentEpisode.number})
+                </span>
+              </label>
+              {currentRegisteredUrl && (
+                <span className="studio-mono max-w-full truncate text-[11px] text-[var(--color-subtle)]">
+                  Atual: {currentRegisteredUrl.slice(0, 48)}
+                  {currentRegisteredUrl.length > 48 ? "…" : ""}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="relative flex-1">
+                <Input
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  placeholder="Cole a URL do vídeo (https://.../video.mp4 ou .m3u8)"
+                  className="studio-mono h-11 border-white/10 bg-[var(--studio-panel-alt)] pr-9 text-xs sm:text-sm"
+                />
+                {urlInput && (
+                  <button
+                    type="button"
+                    onClick={() => setUrlInput("")}
+                    aria-label="Limpar campo"
+                    className="absolute top-1/2 right-2.5 -translate-y-1/2 p-1 text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handlePasteClipboard}
+                className="h-11 shrink-0 border-white/10 bg-[var(--studio-panel-alt)] text-xs hover:bg-white/[0.06]"
+                title="Colar da área de transferência"
+              >
+                <ClipboardPaste className="size-4 text-purple-400" />
+                <span>Colar</span>
+              </Button>
+            </div>
+
+            {urlValidationPreview && !urlValidationPreview.valid && (
+              <p className="mt-1.5 text-xs text-rose-400">
+                {urlValidationPreview.error}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col items-start justify-between gap-3 border-t border-white/[0.06] pt-4 sm:flex-row sm:items-center">
+            <p className="text-xs leading-relaxed text-[var(--color-muted)]">
+              Apenas o{" "}
+              <strong className="text-[var(--color-fg)]">
+                {activePlayerConfig.label}
+              </strong>{" "}
+              do{" "}
+              <strong className="text-[var(--color-fg)]">
+                Episódio {currentEpisode.number}
+              </strong>{" "}
+              será alterado. Todos os outros dados serão preservados.
+            </p>
+
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+              {currentRegisteredUrl && urlInput !== currentRegisteredUrl && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setUrlInput(currentRegisteredUrl)}
+                  className="h-11 text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+                >
+                  <RotateCcw className="size-3.5" />
+                  Restaurar original
+                </Button>
+              )}
+
+              <Button
+                type="button"
+                onClick={handleSave}
+                className="h-11 flex-1 bg-purple-600 px-6 text-xs font-semibold text-white hover:bg-purple-500 sm:flex-initial"
+              >
+                <CheckCircle2 className="size-4" />
+                Salvar Alteração
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

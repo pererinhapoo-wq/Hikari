@@ -38,6 +38,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminIdRouteImport } from './routes/admin.$id'
 import { Route as AdminHikariAiRouteImport } from './routes/admin.hikari-ai'
 import { Route as AdminModerationRouteImport } from './routes/admin.moderation'
+import { Route as AdminQuickUpdateRouteImport } from './routes/admin.quick-update'
 import { Route as AdultIndexRouteImport } from './routes/adult.index'
 import { Route as AdultHentaiRouteImport } from './routes/adult.hentai'
 import { Route as AdultRecentRouteImport } from './routes/adult.recent'
@@ -211,6 +212,11 @@ const AdminModerationRoute = AdminModerationRouteImport.update({
   path: '/moderation',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminQuickUpdateRoute = AdminQuickUpdateRouteImport.update({
+  id: '/quick-update',
+  path: '/quick-update',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdultIndexRoute = AdultIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -376,6 +382,7 @@ export interface FileRoutesByFullPath {
   '/admin/$id': typeof AdminIdRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
+  '/admin/quick-update': typeof AdminQuickUpdateRoute
   '/adult/hentai': typeof AdultHentaiRoute
   '/adult/recent': typeof AdultRecentRoute
   '/adult/tags': typeof AdultTagsRoute
@@ -432,6 +439,7 @@ export interface FileRoutesByTo {
   '/admin/$id': typeof AdminIdRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
+  '/admin/quick-update': typeof AdminQuickUpdateRoute
   '/adult/hentai': typeof AdultHentaiRoute
   '/adult/recent': typeof AdultRecentRoute
   '/adult/tags': typeof AdultTagsRoute
@@ -491,6 +499,7 @@ export interface FileRoutesById {
   '/admin/$id': typeof AdminIdRoute
   '/admin/hikari-ai': typeof AdminHikariAiRoute
   '/admin/moderation': typeof AdminModerationRoute
+  '/admin/quick-update': typeof AdminQuickUpdateRoute
   '/adult/hentai': typeof AdultHentaiRoute
   '/adult/recent': typeof AdultRecentRoute
   '/adult/tags': typeof AdultTagsRoute
@@ -551,6 +560,7 @@ export interface FileRouteTypes {
     | '/admin/$id'
     | '/admin/hikari-ai'
     | '/admin/moderation'
+    | '/admin/quick-update'
     | '/adult/hentai'
     | '/adult/recent'
     | '/adult/tags'
@@ -607,6 +617,7 @@ export interface FileRouteTypes {
     | '/admin/$id'
     | '/admin/hikari-ai'
     | '/admin/moderation'
+    | '/admin/quick-update'
     | '/adult/hentai'
     | '/adult/recent'
     | '/adult/tags'
@@ -665,6 +676,7 @@ export interface FileRouteTypes {
     | '/admin/$id'
     | '/admin/hikari-ai'
     | '/admin/moderation'
+    | '/admin/quick-update'
     | '/adult/hentai'
     | '/adult/recent'
     | '/adult/tags'
@@ -948,6 +960,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminModerationRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/quick-update': {
+      id: '/admin/quick-update'
+      path: '/quick-update'
+      fullPath: '/admin/quick-update'
+      preLoaderRoute: typeof AdminQuickUpdateRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/adult/': {
       id: '/adult/'
       path: '/'
@@ -1144,6 +1163,7 @@ interface AdminRouteChildren {
   AdminIdRoute: typeof AdminIdRoute
   AdminHikariAiRoute: typeof AdminHikariAiRoute
   AdminModerationRoute: typeof AdminModerationRoute
+  AdminQuickUpdateRoute: typeof AdminQuickUpdateRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -1151,6 +1171,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminIdRoute: AdminIdRoute,
   AdminHikariAiRoute: AdminHikariAiRoute,
   AdminModerationRoute: AdminModerationRoute,
+  AdminQuickUpdateRoute: AdminQuickUpdateRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

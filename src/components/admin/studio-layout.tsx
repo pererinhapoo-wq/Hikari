@@ -5,8 +5,11 @@ import {
 } from "@tanstack/react-router";
 import {
   Activity,
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
+  Clock,
   Database,
   ExternalLink,
   Film,
@@ -15,6 +18,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Plus,
   RefreshCw,
   ShieldAlert,
   SlidersHorizontal,
@@ -42,6 +46,7 @@ import {
 } from "@/lib/episode-writer";
 import { useScrollLock } from "@/lib/scroll-lock";
 import { cn } from "@/lib/utils";
+import "@/styles/admin-studio.css";
 
 interface StudioLayoutProps {
   children: ReactNode;
@@ -52,8 +57,9 @@ interface NavItem {
   label: string;
   icon: typeof LayoutDashboard;
   to?: string;
+  params?: Record<string, string>;
   badge?: string;
-  badgeVariant?: "default" | "amber" | "emerald" | "purple";
+  badgeVariant?: "default" | "amber" | "emerald" | "purple" | "red";
   disabled?: boolean;
   comingSoon?: boolean;
 }
@@ -70,13 +76,12 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
   const { user } = useCurrentUserState();
 
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [roadmapOpen, setRoadmapOpen] = useState(false);
   const [outboxOps, setOutboxOps] = useState<OutboxOperation[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Trava a rolagem da página quando o drawer mobile está aberto
   useScrollLock(mobileDrawerOpen);
 
-  // Monitora o estado da Outbox
   const refreshOutbox = useCallback(() => {
     if (typeof window !== "undefined") {
       setOutboxOps(readOutbox());
@@ -98,7 +103,6 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     };
   }, [refreshOutbox]);
 
-  // Fecha o drawer em mudanças de rota ou tecla Escape
   useEffect(() => {
     setMobileDrawerOpen(false);
   }, [pathname]);
@@ -112,7 +116,6 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mobileDrawerOpen]);
 
-  // Sincronização manual do Outbox
   const handleManualSync = async () => {
     if (isSyncing) return;
     if (!hasPendingWrites()) {
@@ -143,14 +146,14 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     }
   };
 
-  const pendingCount = outboxOps.length;
+  const pendingCount = outboxOps.filter((o) => o.status !== "conflict").length;
   const conflictCount = outboxOps.filter((o) => o.status === "conflict").length;
+  const totalOutboxCount = outboxOps.length;
 
-  // Definição da estrutura de navegação planejada para o Hikari Studio
   const navCategories: NavCategory[] = useMemo(
     () => [
       {
-        title: "Gerenciamento",
+        title: "Operação",
         items: [
           {
             id: "overview",
@@ -165,13 +168,24 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
             to: "/admin",
           },
           {
+            id: "new-anime",
+            label: "Novo Cadastro",
+            icon: Plus,
+            to: "/admin/new",
+          },
+          {
             id: "quick-update",
             label: "Atualização Rápida",
             icon: Zap,
-            to: "/admin",
+            to: "/admin/quick-update",
             badge: "Players",
             badgeVariant: "purple",
           },
+        ],
+      },
+      {
+        title: "Comunidade & IA",
+        items: [
           {
             id: "moderation",
             label: "Moderação",
@@ -186,68 +200,83 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
             badge: "IA",
             badgeVariant: "purple",
           },
-          {
-            id: "users",
-            label: "Usuários",
-            icon: Users,
-            comingSoon: true,
-            disabled: true,
-          },
         ],
       },
       {
-        title: "Sistema",
+        title: "Infraestrutura",
         items: [
           {
             id: "database-sync",
             label: "Banco & Outbox",
             icon: Database,
             to: "/admin",
-            badge: pendingCount > 0 ? `${pendingCount} pendente(s)` : "Ativo",
-            badgeVariant: pendingCount > 0 ? "amber" : "emerald",
-          },
-          {
-            id: "maintenance",
-            label: "Central de Manutenção",
-            icon: Wrench,
-            comingSoon: true,
-            disabled: true,
-          },
-          {
-            id: "images",
-            label: "Central de Imagens",
-            icon: ImageIcon,
-            comingSoon: true,
-            disabled: true,
-          },
-          {
-            id: "health",
-            label: "Saúde do Sistema",
-            icon: Activity,
-            comingSoon: true,
-            disabled: true,
-          },
-          {
-            id: "backup",
-            label: "Backup e Dados",
-            icon: HardDriveDownload,
-            comingSoon: true,
-            disabled: true,
-          },
-          {
-            id: "settings",
-            label: "Configurações",
-            icon: SlidersHorizontal,
-            comingSoon: true,
-            disabled: true,
+            badge:
+              conflictCount > 0
+                ? `${conflictCount} conflito`
+                : pendingCount > 0
+                  ? `${pendingCount} fila`
+                  : "Ativo",
+            badgeVariant:
+              conflictCount > 0
+                ? "red"
+                : pendingCount > 0
+                  ? "amber"
+                  : "emerald",
           },
         ],
       },
     ],
-    [pendingCount],
+    [conflictCount, pendingCount],
   );
 
-  // Determina se um item da navegação está ativo com base na rota atual
+  const plannedItems: NavItem[] = useMemo(
+    () => [
+      {
+        id: "users",
+        label: "Usuários",
+        icon: Users,
+        comingSoon: true,
+        disabled: true,
+      },
+      {
+        id: "maintenance",
+        label: "Central de Manutenção",
+        icon: Wrench,
+        comingSoon: true,
+        disabled: true,
+      },
+      {
+        id: "images",
+        label: "Central de Imagens",
+        icon: ImageIcon,
+        comingSoon: true,
+        disabled: true,
+      },
+      {
+        id: "health",
+        label: "Saúde do Sistema",
+        icon: Activity,
+        comingSoon: true,
+        disabled: true,
+      },
+      {
+        id: "backup",
+        label: "Backup e Dados",
+        icon: HardDriveDownload,
+        comingSoon: true,
+        disabled: true,
+      },
+      {
+        id: "settings",
+        label: "Configurações",
+        icon: SlidersHorizontal,
+        comingSoon: true,
+        disabled: true,
+      },
+    ],
+    [],
+  );
+
   const isItemActive = (item: NavItem) => {
     if (!item.to) return false;
     if (item.id === "overview") {
@@ -255,11 +284,18 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     }
     if (item.id === "catalog") {
       return (
-        pathname === "/admin" ||
-        (pathname.startsWith("/admin/") &&
-          pathname !== "/admin/moderation" &&
-          pathname !== "/admin/hikari-ai")
+        pathname.startsWith("/admin/") &&
+        pathname !== "/admin/new" &&
+        pathname !== "/admin/moderation" &&
+        pathname !== "/admin/hikari-ai" &&
+        pathname !== "/admin/quick-update"
       );
+    }
+    if (item.id === "new-anime") {
+      return pathname === "/admin/new";
+    }
+    if (item.id === "quick-update") {
+      return pathname.startsWith("/admin/quick-update");
     }
     if (item.id === "moderation") {
       return pathname.startsWith("/admin/moderation");
@@ -270,16 +306,18 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     return false;
   };
 
-  // Determina o breadcrumb textual atual
   const breadcrumb = useMemo(() => {
     if (pathname === "/admin" || pathname === "/admin/") {
-      return { section: "Gerenciamento", current: "Visão Geral & Catálogo" };
+      return { section: "Operação", current: "Visão Geral & Catálogo" };
+    }
+    if (pathname.startsWith("/admin/quick-update")) {
+      return { section: "Operação", current: "Atualização Rápida de Players" };
     }
     if (pathname.startsWith("/admin/moderation")) {
       return { section: "Comunidade", current: "Moderação de Denúncias" };
     }
     if (pathname.startsWith("/admin/hikari-ai")) {
-      return { section: "Inteligência Artificial", current: "Hikari AI Central" };
+      return { section: "Inteligência Artificial", current: "Hikari AI" };
     }
     if (pathname.startsWith("/admin/")) {
       const parts = pathname.split("/");
@@ -287,46 +325,44 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
       if (idPart === "new") {
         return { section: "Catálogo", current: "Novo Anime" };
       }
-      return { section: "Catálogo", current: "Editar Anime" };
+      return { section: "Catálogo", current: "Editor de Anime" };
     }
-    return { section: "Painel", current: "Studio" };
+    return { section: "Console", current: "Studio" };
   }, [pathname]);
 
-  // Conteúdo da barra de navegação compartilhada (desktop sidebar + mobile drawer)
   const renderNavContent = (isDrawer = false) => (
-    <div className="flex h-full flex-col justify-between">
-      <div className="space-y-6">
-        {/* Topo da Sidebar: Identidade HIKARI STUDIO */}
-        <div className="flex items-center justify-between px-2 pt-1 pb-2">
+    <div className="flex h-full flex-col justify-between gap-6">
+      <div className="space-y-5">
+        {/* Identidade HIKARI STUDIO */}
+        <div className="flex items-center justify-between px-1.5 pt-1">
           <Link
             to="/admin"
             className="group flex items-center gap-3 transition-opacity hover:opacity-90"
             onClick={() => setMobileDrawerOpen(false)}
           >
-            <div className="grid size-9 shrink-0 place-items-center rounded-lg border border-purple-500/30 bg-gradient-to-br from-purple-600/30 to-purple-950/60 font-bold text-sm text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+            <div className="grid size-9 shrink-0 place-items-center rounded-lg border border-purple-500/35 bg-purple-600/15 font-display text-base font-bold text-purple-200">
               光
             </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <span className="font-display text-base font-semibold tracking-wider text-fg">
+            <div className="flex flex-col leading-none">
+              <div className="flex items-center gap-2">
+                <span className="font-display text-base font-semibold tracking-wider text-[var(--color-fg)]">
                   HIKARI
                 </span>
-                <span className="rounded border border-purple-500/35 bg-purple-500/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-purple-300">
+                <span className="studio-mono rounded border border-purple-500/35 bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-purple-300">
                   STUDIO
                 </span>
               </div>
-              <span className="text-[10px] tracking-widest text-muted uppercase">
-                Console de Controle
+              <span className="mt-1 text-[10px] tracking-[0.18em] text-[var(--color-subtle)] uppercase">
+                Controle Editorial
               </span>
             </div>
           </Link>
 
-          {/* Botão de fechar (somente no mobile drawer) */}
           {isDrawer && (
             <button
               type="button"
               onClick={() => setMobileDrawerOpen(false)}
-              className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-white/5 hover:text-fg lg:hidden"
+              className="flex size-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-[var(--color-muted)] hover:bg-white/10 hover:text-[var(--color-fg)] lg:hidden"
               aria-label="Fechar navegação"
             >
               <X className="size-4" />
@@ -334,52 +370,63 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
           )}
         </div>
 
-        {/* Indicador de Status do Banco / Conexão */}
-        <div className="rounded-lg border border-white/[0.06] bg-elevated/60 p-2.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-[11px] font-medium text-muted">
-              Conexão com PostgreSQL
+        {/* Estado de Persistência & Outbox na Rail */}
+        <div className="rounded-xl border border-white/[0.07] bg-[var(--studio-panel)] p-3">
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="text-[11px] font-medium text-[var(--color-muted)]">
+              PostgreSQL
             </span>
-            <div className="flex items-center gap-1.5">
-              <span
-                className={cn(
-                  "size-2 rounded-full",
-                  pendingCount > 0
-                    ? "animate-pulse bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]"
-                    : "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]",
-                )}
-              />
-              <span
-                className={cn(
-                  "font-mono text-[10px]",
-                  pendingCount > 0 ? "text-amber-300" : "text-emerald-400",
-                )}
-              >
-                {pendingCount > 0 ? `${pendingCount} fila` : "Sincronizado"}
-              </span>
-            </div>
+            <span
+              className={cn(
+                "studio-mono inline-flex items-center gap-1.5 text-[11px] font-medium",
+                conflictCount > 0
+                  ? "text-rose-400"
+                  : pendingCount > 0
+                    ? "text-amber-300"
+                    : "text-emerald-400",
+              )}
+            >
+              {conflictCount > 0 ? (
+                <>
+                  <AlertTriangle className="size-3" />
+                  <span>{conflictCount} conflito(s)</span>
+                </>
+              ) : pendingCount > 0 ? (
+                <>
+                  <Clock className="size-3" />
+                  <span>{pendingCount} na fila</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="size-3" />
+                  <span>Sincronizado</span>
+                </>
+              )}
+            </span>
           </div>
 
-          {pendingCount > 0 && (
+          {totalOutboxCount > 0 && (
             <button
               type="button"
               disabled={isSyncing}
               onClick={handleManualSync}
-              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 py-1 text-[11px] font-medium text-amber-200 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+              className="mt-2.5 flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-amber-200 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
             >
               <RefreshCw
-                className={cn("size-3", isSyncing && "animate-spin")}
+                className={cn("size-3.5", isSyncing && "animate-spin")}
               />
-              <span>{isSyncing ? "Sincronizando..." : "Sincronizar agora"}</span>
+              <span>
+                {isSyncing ? "Sincronizando..." : "Sincronizar Outbox"}
+              </span>
             </button>
           )}
         </div>
 
-        {/* Categorias e Itens de Navegação */}
+        {/* Navegação Principal */}
         <nav className="space-y-5" aria-label="Navegação Administrativa">
           {navCategories.map((category) => (
-            <div key={category.title} className="space-y-1">
-              <p className="px-2.5 text-[10px] font-bold tracking-[0.2em] text-muted/70 uppercase">
+            <div key={category.title} className="space-y-1.5">
+              <p className="px-2.5 text-[10px] font-bold tracking-[0.22em] text-[var(--color-subtle)] uppercase">
                 {category.title}
               </p>
               <div className="space-y-0.5">
@@ -387,51 +434,31 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
                   const active = isItemActive(item);
                   const Icon = item.icon;
 
-                  if (item.disabled || !item.to) {
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex cursor-not-allowed items-center justify-between rounded-lg px-2.5 py-2 text-xs text-muted/40"
-                        title="Funcionalidade planejada para etapas futuras"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Icon className="size-4 shrink-0 opacity-40" />
-                          <span>{item.label}</span>
-                        </div>
-                        {item.comingSoon && (
-                          <span className="rounded bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px] text-muted/60">
-                            Em breve
-                          </span>
-                        )}
-                      </div>
-                    );
-                  }
-
                   return (
                     <Link
                       key={item.id}
-                      to={item.to}
+                      to={item.to!}
                       onClick={() => {
                         setMobileDrawerOpen(false);
-                        if (item.id === "quick-update") {
-                          setTimeout(() => {
-                            document
-                              .getElementById("quick-update")
-                              ?.scrollIntoView({ behavior: "smooth" });
-                          }, 60);
-                        } else if (item.id === "catalog") {
+                        if (item.id === "catalog") {
                           setTimeout(() => {
                             document
                               .getElementById("catalog")
                               ?.scrollIntoView({ behavior: "smooth" });
-                          }, 60);
+                          }, 80);
+                        } else if (item.id === "database-sync") {
+                          setTimeout(() => {
+                            document
+                              .getElementById("system-status")
+                              ?.scrollIntoView({ behavior: "smooth" });
+                          }, 80);
                         }
                       }}
                       className={cn(
-                        "group flex items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium transition-[background-color,color,box-shadow]",
+                        "group relative flex min-h-10 items-center justify-between rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors",
                         active
-                          ? "border border-purple-500/30 bg-purple-500/15 text-white shadow-[0_0_12px_rgba(168,85,247,0.15)]"
-                          : "text-muted hover:bg-white/[0.05] hover:text-fg",
+                          ? "bg-purple-500/14 text-white border border-purple-500/30"
+                          : "border border-transparent text-[var(--color-muted)] hover:bg-white/[0.045] hover:text-[var(--color-fg)]",
                       )}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -440,7 +467,7 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
                             "size-4 shrink-0 transition-colors",
                             active
                               ? "text-purple-400"
-                              : "text-muted group-hover:text-fg",
+                              : "text-[var(--color-subtle)] group-hover:text-[var(--color-fg)]",
                           )}
                         />
                         <span className="truncate">{item.label}</span>
@@ -449,16 +476,16 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
                       {item.badge && (
                         <span
                           className={cn(
-                            "shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider",
+                            "studio-mono shrink-0 text-[10px] font-medium",
                             item.badgeVariant === "emerald" &&
-                              "border border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
-                            item.badgeVariant === "amber" &&
-                              "border border-amber-500/30 bg-amber-500/10 text-amber-300",
+                              "text-emerald-400",
+                            item.badgeVariant === "amber" && "text-amber-300",
+                            item.badgeVariant === "red" && "text-rose-400",
                             item.badgeVariant === "purple" &&
-                              "border border-purple-500/30 bg-purple-500/15 text-purple-300",
+                              "text-purple-300",
                             (!item.badgeVariant ||
                               item.badgeVariant === "default") &&
-                              "bg-white/5 text-muted",
+                              "text-[var(--color-subtle)]",
                           )}
                         >
                           {item.badge}
@@ -470,40 +497,77 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
               </div>
             </div>
           ))}
+
+          {/* Módulos Planejados (colapsável para manter foco nas ferramentas ativas) */}
+          <div className="pt-1 border-t border-white/[0.06]">
+            <button
+              type="button"
+              onClick={() => setRoadmapOpen((prev) => !prev)}
+              aria-expanded={roadmapOpen}
+              className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-[10px] font-bold tracking-[0.2em] text-[var(--color-subtle)] uppercase transition-colors hover:text-[var(--color-muted)]"
+            >
+              <span>Expansão ({plannedItems.length})</span>
+              <ChevronDown
+                className={cn(
+                  "size-3.5 transition-transform duration-150",
+                  roadmapOpen && "rotate-180",
+                )}
+              />
+            </button>
+
+            {roadmapOpen && (
+              <div className="mt-1 space-y-0.5">
+                {plannedItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex cursor-not-allowed items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-[var(--color-subtle)]/70"
+                      title="Funcionalidade planejada para etapas futuras"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Icon className="size-3.5 shrink-0 opacity-50" />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+                      <span className="studio-mono text-[9px] uppercase tracking-wider opacity-70">
+                        Em breve
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </nav>
       </div>
 
-      {/* Rodapé da Sidebar: Perfil + Retorno ao Site Público */}
-      <div className="space-y-3 pt-4 border-t border-white/[0.08]">
-        {/* Opção para voltar ao site público (Requisito obrigatório) */}
+      {/* Rodapé da Sidebar */}
+      <div className="space-y-2.5 pt-4 border-t border-white/[0.07]">
         <Link
           to="/"
-          className="group flex w-full items-center justify-between rounded-lg border border-white/[0.08] bg-elevated/40 px-3 py-2 text-xs text-muted transition-colors hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-white"
+          className="group flex min-h-10 w-full items-center justify-between rounded-lg border border-white/[0.08] bg-[var(--studio-panel)] px-3 py-2 text-xs text-[var(--color-muted)] transition-colors hover:border-purple-500/35 hover:bg-purple-500/10 hover:text-white"
         >
           <div className="flex items-center gap-2">
             <ArrowLeft className="size-3.5 text-purple-400 transition-transform group-hover:-translate-x-0.5" />
             <span className="font-medium">Voltar ao site público</span>
           </div>
-          <ExternalLink className="size-3 text-muted/60 group-hover:text-purple-300" />
+          <ExternalLink className="size-3 opacity-60 group-hover:text-purple-300 group-hover:opacity-100" />
         </Link>
 
-        {/* Card do Administrador Atual */}
-        <div className="flex items-center justify-between gap-2 rounded-lg bg-surface/80 p-2 border border-white/[0.05]">
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-[var(--studio-panel)] p-2.5">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="grid size-8 shrink-0 place-items-center rounded-full bg-purple-600/20 border border-purple-500/30 text-xs font-bold text-purple-300">
-              {user?.displayName ? (
-                user.displayName.charAt(0).toUpperCase()
-              ) : user?.primaryEmail ? (
-                user.primaryEmail.charAt(0).toUpperCase()
-              ) : (
-                "A"
-              )}
+            <div className="grid size-8 shrink-0 place-items-center rounded-md border border-purple-500/30 bg-purple-600/20 text-xs font-bold text-purple-200">
+              {user?.displayName
+                ? user.displayName.charAt(0).toUpperCase()
+                : user?.primaryEmail
+                  ? user.primaryEmail.charAt(0).toUpperCase()
+                  : "A"}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold text-fg">
+              <p className="truncate text-xs font-semibold text-[var(--color-fg)]">
                 {user?.displayName || "Administrador"}
               </p>
-              <p className="truncate font-mono text-[10px] text-muted">
+              <p className="studio-mono truncate text-[10px] text-[var(--color-subtle)]">
                 {user?.primaryEmail || "admin@hikari.online"}
               </p>
             </div>
@@ -520,7 +584,7 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
                 toast.error("Erro ao encerrar sessão.");
               }
             }}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-white/10 hover:text-danger transition-colors"
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-[var(--color-muted)] transition-colors hover:bg-rose-500/15 hover:text-rose-300"
             title="Encerrar sessão administrativa"
             aria-label="Sair da conta"
           >
@@ -532,96 +596,96 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
   );
 
   return (
-    <div className="min-h-screen bg-[#08070d] text-[#f4f4f1] antialiased selection:bg-purple-600/30 selection:text-white">
-      {/* =========================================================
-          1. SIDEBAR FIXA DESKTOP (Aparece a partir de lg: 1024px)
-      ========================================================== */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:w-72 flex-col border-r border-white/[0.08] bg-[#0c0a14] p-4 lg:flex shadow-xl overflow-y-auto">
+    <div className="hikari-studio-root antialiased selection:bg-purple-600/30 selection:text-white">
+      {/* Sidebar Desktop Fixa */}
+      <aside className="studio-scroll fixed inset-y-0 left-0 z-30 hidden w-[272px] flex-col overflow-y-auto border-r border-white/[0.075] bg-[var(--studio-rail)] p-4 lg:flex">
         {renderNavContent(false)}
       </aside>
 
-      {/* =========================================================
-          2. DRAWER MOBILE ACESSÍVEL (Para telas menores que lg)
-      ========================================================== */}
+      {/* Drawer Mobile Acessível */}
       {mobileDrawerOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
-          {/* Backdrop escuro com blur */}
+        <div
+          className="fixed inset-0 z-50 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navegação do Hikari Studio"
+        >
           <div
             className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
             onClick={() => setMobileDrawerOpen(false)}
             aria-hidden="true"
           />
 
-          {/* Painel lateral deslizante */}
-          <div className="fixed inset-y-0 left-0 w-72 max-w-[85vw] border-r border-white/10 bg-[#0c0a14] p-4 shadow-2xl overflow-y-auto">
+          <div className="studio-scroll fixed inset-y-0 left-0 w-72 max-w-[86vw] overflow-y-auto border-r border-white/10 bg-[var(--studio-rail)] p-4 shadow-2xl">
             {renderNavContent(true)}
           </div>
         </div>
       )}
 
-      {/* =========================================================
-          3. ÁREA DE CONTEÚDO PRINCIPAL (COM MARGEM DA SIDEBAR)
-      ========================================================== */}
-      <div className="flex flex-1 flex-col lg:pl-72 w-full overflow-x-hidden min-h-screen">
-        {/* Barra Superior / Header do Studio */}
-        <header className="sticky top-0 z-20 flex h-14 sm:h-16 items-center justify-between border-b border-white/[0.08] bg-[#08070d]/90 px-4 sm:px-6 backdrop-blur-md">
-          {/* Lado Esquerdo: Botão Mobile + Breadcrumbs */}
-          <div className="flex items-center gap-3">
+      {/* Área Principal */}
+      <div className="flex min-h-dvh w-full flex-1 flex-col overflow-x-hidden lg:pl-[272px]">
+        {/* Topbar Sticky */}
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-white/[0.075] bg-[var(--studio-canvas)]/90 px-4 backdrop-blur-md sm:h-16 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileDrawerOpen(true)}
-              className="flex size-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-fg hover:bg-white/[0.08] lg:hidden"
+              className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-[var(--color-fg)] hover:bg-white/[0.08] lg:hidden"
               aria-label="Abrir menu lateral"
             >
               <Menu className="size-4" />
             </button>
 
-            {/* Breadcrumb visual hierárquico */}
-            <div className="flex items-center gap-1.5 text-xs">
+            <div className="flex min-w-0 items-center gap-1.5 text-xs">
               <Link
                 to="/admin"
-                className="font-medium text-muted hover:text-fg transition-colors"
+                className="shrink-0 font-semibold text-[var(--color-muted)] transition-colors hover:text-[var(--color-fg)]"
               >
                 Hikari Studio
               </Link>
-              <span className="text-muted/40">/</span>
-              <span className="text-muted/80">{breadcrumb.section}</span>
-              <span className="text-muted/40">/</span>
-              <span className="font-semibold text-purple-300">
+              <span className="text-white/25">/</span>
+              <span className="hidden truncate text-[var(--color-subtle)] sm:inline">
+                {breadcrumb.section}
+              </span>
+              <span className="hidden text-white/25 sm:inline">/</span>
+              <span className="truncate font-semibold text-purple-300">
                 {breadcrumb.current}
               </span>
             </div>
           </div>
 
-          {/* Lado Direito: Status e Ações Rápidas */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Chip de Status do Outbox no Topbar */}
+          <div className="flex shrink-0 items-center gap-2">
             {conflictCount > 0 ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] font-medium text-red-300">
-                <span className="size-1.5 rounded-full bg-red-400 animate-ping" />
-                {conflictCount} conflito(s)
-              </span>
+              <Link
+                to="/admin"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-500/35 bg-rose-500/12 px-2.5 text-[11px] font-semibold text-rose-300 transition-colors hover:bg-rose-500/20"
+              >
+                <AlertTriangle className="size-3.5 text-rose-400" />
+                <span className="studio-tabular">{conflictCount} conflito(s)</span>
+              </Link>
             ) : pendingCount > 0 ? (
               <button
                 type="button"
                 onClick={handleManualSync}
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200 transition-colors hover:bg-amber-500/20"
+                disabled={isSyncing}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/12 px-2.5 text-[11px] font-semibold text-amber-200 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
                 title="Clique para sincronizar com o PostgreSQL"
               >
-                <span className="size-1.5 rounded-full bg-amber-400" />
-                <span>{pendingCount} pendente(s)</span>
+                <RefreshCw
+                  className={cn("size-3.5 text-amber-300", isSyncing && "animate-spin")}
+                />
+                <span className="studio-tabular">{pendingCount} pendente(s)</span>
               </button>
             ) : (
-              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
-                <CheckCircle2 className="size-3 text-emerald-400" />
-                PostgreSQL Ativo
+              <span className="hidden items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-400 sm:inline-flex">
+                <CheckCircle2 className="size-3.5" />
+                <span>PostgreSQL Ativo</span>
               </span>
             )}
 
-            {/* Botão de Atalho para o Site Público no Topbar */}
             <Link
               to="/"
-              className="inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-xs font-medium text-muted hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-white transition-colors"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-[var(--color-muted)] transition-colors hover:border-purple-500/35 hover:bg-purple-500/10 hover:text-white"
               title="Abrir o site público do Hikari"
             >
               <ExternalLink className="size-3.5" />
@@ -630,8 +694,8 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
           </div>
         </header>
 
-        {/* Contêiner de Conteúdo das Páginas Administrativas */}
-        <main className="flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-12">
+        {/* Conteúdo das Rotas Administrativas */}
+        <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 py-6 pb-16 sm:px-6 lg:px-8">
           {children}
         </main>
       </div>

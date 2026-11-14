@@ -1,5 +1,13 @@
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
-import { Loader2, CheckCircle2, Film, AlertCircle, RefreshCw } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  Film,
+  AlertCircle,
+  RefreshCw,
+  Info,
+  Layers,
+} from "lucide-react";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { fetchAnimeDetail } from "@/lib/api";
@@ -440,9 +448,21 @@ function AdminEditor() {
 
   if (!form) {
     return (
-      <div className="space-y-6 pt-6 pb-12">
-        <div className="h-28 animate-pulse rounded-2xl bg-surface/60 border border-white/5" />
-        <div className="h-96 animate-pulse rounded-2xl bg-surface/60 border border-white/5" />
+      <div className="space-y-6 pb-12 pt-2">
+        <div className="studio-panel rounded-2xl p-6">
+          <div className="h-4 w-32 animate-pulse rounded bg-white/[0.06]" />
+          <div className="mt-4 flex items-center gap-4">
+            <div className="h-16 w-12 animate-pulse rounded-lg bg-white/[0.06]" />
+            <div className="space-y-2.5 flex-1">
+              <div className="h-6 w-64 max-w-full animate-pulse rounded bg-white/[0.08]" />
+              <div className="h-3.5 w-44 animate-pulse rounded bg-white/[0.05]" />
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-6 xl:grid-cols-12">
+          <div className="studio-panel h-80 animate-pulse rounded-2xl xl:col-span-7" />
+          <div className="studio-panel h-80 animate-pulse rounded-2xl xl:col-span-5" />
+        </div>
       </div>
     );
   }
@@ -1059,9 +1079,14 @@ function AdminEditor() {
   const animeTitle =
     current.titleRomaji || current.titleEnglish || current.titleNative || "Anime";
 
+  const totalEpisodesInEditor = current.seasons.reduce(
+    (acc, s) => acc + s.episodes.length,
+    0,
+  );
+
   return (
-    <div className="space-y-8 pt-4 pb-20 sm:pb-12">
-      {/* Cabeçalho do Editor Modernizado */}
+    <div className="studio-enter space-y-6 pb-24 pt-2 sm:pb-12">
+      {/* Cabeçalho do Editor */}
       <EditorHeader
         anime={current}
         isNew={id === "new" && !importId}
@@ -1077,6 +1102,30 @@ function AdminEditor() {
         syncState={animeSyncState}
       />
 
+      {/* Navegação rápida entre seções do editor */}
+      <nav
+        aria-label="Seções do editor"
+        className="flex flex-wrap items-center gap-2"
+      >
+        <a
+          href="#metadata"
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[var(--studio-panel)] px-3.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:border-purple-500/35 hover:text-[var(--color-fg)]"
+        >
+          <Info className="size-3.5 text-purple-400" />
+          <span>Metadados &amp; Mídia</span>
+        </a>
+        <a
+          href="#seasons"
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[var(--studio-panel)] px-3.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:border-purple-500/35 hover:text-[var(--color-fg)]"
+        >
+          <Layers className="size-3.5 text-purple-400" />
+          <span>Temporadas &amp; Episódios</span>
+          <span className="studio-mono rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-[var(--color-fg)]">
+            {current.seasons.length}T · {totalEpisodesInEditor}E
+          </span>
+        </a>
+      </nav>
+
       {/* Banner de Sincronização do Outbox */}
       {(() => {
         const animeOutboxOps = outboxOps.filter((o) => o.animeId === form.id);
@@ -1086,16 +1135,19 @@ function AdminEditor() {
         if (animeOutboxOps.length === 0) return null;
 
         return (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs sm:text-sm text-amber-200 backdrop-blur-md">
-            <div className="space-y-0.5">
-              <p className="font-semibold text-amber-300">
-                Fila de Envio (Outbox): {animeOutboxOps.length} operação(ões) pendente(s)
-              </p>
-              <p className="text-xs text-amber-200/80">
-                {conflictCount > 0
-                  ? `${conflictCount} em conflito (aguardando correção) e ${pendingCount} pendente(s) de envio ao PostgreSQL.`
-                  : `${pendingCount} operação(ões) aguardando sincronização com o banco.`}
-              </p>
+          <div className="studio-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 sm:text-sm">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+              <div className="space-y-0.5">
+                <p className="font-semibold text-amber-200">
+                  Fila de Envio (Outbox): {animeOutboxOps.length} operação(ões) pendente(s)
+                </p>
+                <p className="text-xs text-amber-200/80">
+                  {conflictCount > 0
+                    ? `${conflictCount} em conflito (aguardando correção) e ${pendingCount} pendente(s) de envio ao PostgreSQL.`
+                    : `${pendingCount} operação(ões) aguardando sincronização com o banco.`}
+                </p>
+              </div>
             </div>
             <Button
               type="button"
@@ -1114,7 +1166,7 @@ function AdminEditor() {
                   toast.error(res.error);
                 }
               }}
-              className="border-amber-500/40 text-amber-200 hover:bg-amber-500/20"
+              className="h-9 border-amber-500/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
             >
               Sincronizar agora
             </Button>
@@ -1125,28 +1177,28 @@ function AdminEditor() {
       {/* Banner de Feedback da Recuperação de Episódios do Servidor PostgreSQL */}
       {id !== "new" && recoveryState.status !== "idle" && (
         <div
-          className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4 text-xs sm:text-sm border transition-colors backdrop-blur-md ${
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 text-xs transition-colors sm:text-sm ${
             recoveryState.status === "loading"
-              ? "border-sky-500/30 bg-sky-500/10 text-sky-200"
+              ? "border-sky-500/30 bg-sky-500/10 text-sky-100"
               : recoveryState.status === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
               : recoveryState.status === "empty"
-              ? "border-white/10 bg-surface/60 text-muted"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+              ? "border-white/10 bg-[var(--studio-panel)] text-[var(--color-muted)]"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-100"
           }`}
         >
           <div className="flex items-center gap-2.5">
             {recoveryState.status === "loading" && (
-              <Loader2 className="size-4 animate-spin text-sky-400 shrink-0" />
+              <Loader2 className="size-4 shrink-0 animate-spin text-sky-400" />
             )}
             {recoveryState.status === "success" && (
-              <CheckCircle2 className="size-4 text-emerald-400 shrink-0" />
+              <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
             )}
             {recoveryState.status === "empty" && (
-              <Film className="size-4 text-muted shrink-0" />
+              <Film className="size-4 shrink-0 text-[var(--color-muted)]" />
             )}
             {recoveryState.status === "error" && (
-              <AlertCircle className="size-4 text-amber-400 shrink-0" />
+              <AlertCircle className="size-4 shrink-0 text-amber-400" />
             )}
             <span>{recoveryState.message}</span>
           </div>
@@ -1157,9 +1209,11 @@ function AdminEditor() {
             variant="ghost"
             disabled={recoveryState.status === "loading"}
             onClick={() => void recoverEpisodesFromServer(id)}
-            className="h-8 text-xs gap-1.5 hover:bg-white/10"
+            className="h-9 gap-1.5 text-xs hover:bg-white/[0.08]"
           >
-            <RefreshCw className={`size-3.5 ${recoveryState.status === "loading" ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`size-3.5 ${recoveryState.status === "loading" ? "animate-spin" : ""}`}
+            />
             Recarregar do servidor
           </Button>
         </div>

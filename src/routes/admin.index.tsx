@@ -50,6 +50,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  dismissOutboxOperation,
   flushOutbox,
   hasPendingWrites,
   readOutbox,
@@ -92,7 +93,6 @@ function AdminIndex() {
   const toggleHidden = useHikariStore((s) => s.toggleHidden);
   const importAll = useHikariStore((s) => s.importAll);
 
-  // Estados de Busca e Filtros
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [formatFilter, setFormatFilter] = useState<string>("all");
@@ -102,29 +102,23 @@ function AdminIndex() {
   const [sortBy, setSortBy] = useState<SortOption>("updated-desc");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 
-  // Paginação
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(24);
 
-  // Diálogo de Exclusão
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
-  // Painel de Ferramentas (Importar AniList / JSON)
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolsTab, setToolsTab] = useState<"anilist" | "json">("anilist");
 
-  // Busca no AniList
   const [importQ, setImportQ] = useState("");
   const [hits, setHits] = useState<SlimAnime[]>([]);
   const [searchingAniList, setSearchingAniList] = useState(false);
 
-  // Importação e Progresso em Lotes
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] =
     useState<BatchImportProgress | null>(null);
   const [failedBatches, setFailedBatches] = useState<FailedBatchItem[]>([]);
 
-  // Outbox e Estado do Sistema
   const [outboxOps, setOutboxOps] = useState<OutboxOperation[]>([]);
   const [isSyncingOutbox, setIsSyncingOutbox] = useState(false);
   const [systemStatus, setSystemStatus] = useState<AdminSystemStatus | null>(
@@ -132,14 +126,12 @@ function AdminIndex() {
   );
   const [isCheckingSystem, setIsCheckingSystem] = useState(false);
 
-  // Sincroniza dados do Outbox local
   const refreshOutbox = useCallback(() => {
     if (typeof window !== "undefined") {
       setOutboxOps(readOutbox());
     }
   }, []);
 
-  // Consulta status real do servidor (PostgreSQL)
   const checkSystem = useCallback(async () => {
     setIsCheckingSystem(true);
     try {
@@ -173,7 +165,6 @@ function AdminIndex() {
     };
   }, [refreshOutbox, checkSystem]);
 
-  // Sincronização manual do Outbox
   const handleManualSync = async () => {
     if (isSyncingOutbox) return;
     if (!hasPendingWrites()) {
@@ -205,10 +196,6 @@ function AdminIndex() {
     }
   };
 
-  // =========================================================
-  // 1. CÁLCULO DOS INDICADORES REAIS (RESUMO DO CATÁLOGO)
-  // Todos os dados derivam estritamente do catálogo real carregado
-  // =========================================================
   const catalogStats = useMemo(() => {
     const totalAnimes = animes.length;
     let totalSeasons = 0;
@@ -265,13 +252,13 @@ function AdminIndex() {
     };
   }, [animes]);
 
+  const conflictOps = useMemo(
+    () => outboxOps.filter((o) => o.status === "conflict"),
+    [outboxOps],
+  );
   const pendingCount = outboxOps.filter((o) => o.status !== "conflict").length;
-  const conflictCount = outboxOps.filter((o) => o.status === "conflict").length;
+  const conflictCount = conflictOps.length;
 
-  // =========================================================
-  // 2. ATIVIDADES RECENTES (DERIVADAS DE DADOS REAIS)
-  // Sem registros fictícios ou históricos simulados
-  // =========================================================
   const recentActivities = useMemo(() => {
     const list: Array<{
       id: string;
@@ -282,7 +269,6 @@ function AdminIndex() {
       details?: string;
     }> = [];
 
-    // Inclui operações recentes do Outbox que aguardam resolução
     for (const op of outboxOps.slice(0, 3)) {
       const targetAnime = animes.find((a) => a.id === op.animeId);
       const animeName = targetAnime ? displayTitle(targetAnime) : op.animeId;
@@ -299,7 +285,6 @@ function AdminIndex() {
       });
     }
 
-    // Inclui animes com carimbo de alteração real no banco/local
     const animesWithTimestamps = animes
       .filter((a) => (a.updatedAt && a.updatedAt > 0) || (a.createdAt && a.createdAt > 0))
       .sort((a, b) => {
@@ -324,11 +309,9 @@ function AdminIndex() {
       });
     }
 
-    // Ordena temporalmente as atividades reais combinadas
     return list.sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
   }, [animes, outboxOps]);
 
-  // Lista dinâmica de formatos e status presentes nos animes
   const availableFormats = useMemo(() => {
     const set = new Set<string>();
     for (const a of animes) {
@@ -345,35 +328,27 @@ function AdminIndex() {
     return Array.from(set).sort();
   }, [animes]);
 
-  // =========================================================
-  // 3. FILTRAGEM E ORDENAÇÃO DO CATÁLOGO
-  // =========================================================
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
 
     return animes
       .filter((a) => {
-        // Busca textual
         if (query) {
           const fullText = `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative} ${a.id}`.toLowerCase();
           if (!fullText.includes(query)) return false;
         }
 
-        // Filtro de visibilidade
         if (visibilityFilter === "visible" && a.hidden) return false;
         if (visibilityFilter === "hidden" && !a.hidden) return false;
 
-        // Filtro de formato
         if (formatFilter !== "all" && a.format?.toLowerCase() !== formatFilter.toLowerCase()) {
           return false;
         }
 
-        // Filtro de status
         if (statusFilter !== "all" && a.status?.toLowerCase() !== statusFilter.toLowerCase()) {
           return false;
         }
 
-        // Filtro de versão / origem
         if (versionFilter === "dubbed") {
           const isDub = /\b(dub|dublado|dublada)\b/i.test(
             `${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`,
@@ -433,21 +408,16 @@ function AdminIndex() {
     sortBy,
   ]);
 
-  // Paginação dos resultados filtrados
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
   const paginatedAnimes = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filtered.slice(startIndex, startIndex + itemsPerPage);
   }, [filtered, currentPage, itemsPerPage]);
 
-  // Reinicia página para 1 em alterações de filtro
   useEffect(() => {
     setCurrentPage(1);
   }, [q, visibilityFilter, formatFilter, statusFilter, versionFilter, sortBy, itemsPerPage]);
 
-  // =========================================================
-  // 4. IMPORTAÇÃO E EXPORTAÇÃO PRESERVADAS
-  // =========================================================
   async function runImportSearch(e: FormEvent) {
     e.preventDefault();
     if (!importQ.trim()) return;
@@ -531,10 +501,6 @@ function AdminIndex() {
     toast.success("Versão dublada criada como cadastro independente!");
   }
 
-  /**
-   * Exporta o catálogo JSON aguardando expressamente a hidratação
-   * para prevenir geração de backups acidentalmente vazios.
-   */
   async function exportJson() {
     if (!hydrated) {
       toast.info("Aguardando hidratação completa do catálogo antes da exportação...");
@@ -574,11 +540,9 @@ function AdminIndex() {
           throw new Error("Formato inválido: o arquivo deve conter a propriedade 'animes'.");
         }
 
-        // 1. Restauração local prioritária (preserva IndexedDB)
         importAll(parsed.animes);
         toast.success(`Catálogo local restaurado com ${parsed.animes.length} animes.`);
 
-        // 2. Inicia sincronização no servidor por lotes de 100
         setIsImporting(true);
         setFailedBatches([]);
         toast.info(
@@ -654,21 +618,19 @@ function AdminIndex() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* =========================================================
-          BANNER DE PROGRESSO / REENVIO DE LOTES DE IMPORTAÇÃO
-      ========================================================== */}
+    <div className="studio-enter space-y-8">
+      {/* Banners de Progresso e Reenvio em Lotes */}
       {isImporting && importProgress && (
-        <div className="rounded-xl border border-purple-500/30 bg-purple-950/40 p-4 text-sm text-fg shadow-lg">
-          <div className="flex items-center justify-between">
+        <div className="studio-panel rounded-2xl border-purple-500/35 p-4 text-sm">
+          <div className="flex items-center justify-between gap-2">
             <span className="font-semibold text-purple-300">
-              Sincronizando catálogo no PostgreSQL...
+              Sincronizando catálogo no PostgreSQL…
             </span>
-            <span className="font-mono text-xs text-muted">
+            <span className="studio-mono text-xs text-[var(--color-muted)]">
               Lote {importProgress.currentBatchIndex} de {importProgress.totalBatches}
             </span>
           </div>
-          <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-surface">
+          <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
             <div
               className="h-full bg-purple-500 transition-all duration-300"
               style={{
@@ -680,17 +642,19 @@ function AdminIndex() {
               }}
             />
           </div>
-          <div className="mt-2 flex flex-wrap justify-between text-xs text-muted">
-            <span>
+          <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-[var(--color-muted)]">
+            <span className="studio-tabular">
               {importProgress.processedAnimes} de {importProgress.totalAnimes} animes processados
             </span>
-            <span>{importProgress.importedEpisodes} episódios importados</span>
+            <span className="studio-tabular">
+              {importProgress.importedEpisodes} episódios importados
+            </span>
           </div>
         </div>
       )}
 
       {failedBatches.length > 0 && !isImporting && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-200">
           <div className="space-y-0.5">
             <p className="font-semibold text-amber-300">
               Importação parcialmente concluída
@@ -727,40 +691,35 @@ function AdminIndex() {
                 setIsImporting(false);
               }
             }}
-            className="border-amber-500/40 text-amber-200 hover:bg-amber-500/20"
+            className="h-9 border-amber-500/40 text-amber-200 hover:bg-amber-500/20"
           >
             Reenviar lotes pendentes ({failedBatches.length})
           </Button>
         </div>
       )}
 
-      {/* =========================================================
-          CABEÇALHO DA VISÃO GERAL & AÇÕES RÁPIDAS
-      ========================================================== */}
-      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between border-b border-white/[0.08] pb-6">
+      {/* Cabeçalho da Visão Geral & Ações */}
+      <header className="flex flex-col gap-5 border-b border-white/[0.075] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-purple-400">
-              Console Administrativo
-            </span>
-            <span className="rounded bg-purple-500/20 border border-purple-500/30 px-2 py-0.5 font-mono text-[10px] text-purple-300">
-              Etapa B
-            </span>
-          </div>
+          <p className="studio-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-purple-400">
+            Console Administrativo
+          </p>
 
-          <h1 className="mt-1 font-display text-2xl sm:text-3xl font-bold tracking-tight text-fg">
-            Visão Geral & Catálogo
+          <h1 className="mt-1.5 font-display text-2xl font-bold tracking-tight text-[var(--color-fg)] sm:text-3xl">
+            Visão Geral &amp; Catálogo
           </h1>
 
-          <p className="mt-1 text-xs sm:text-sm text-muted max-w-2xl">
-            Acompanhe o estado do catálogo, conectividade do PostgreSQL, fila de
-            sincronização do Outbox e administre seus animes com rapidez.
+          <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-[var(--color-muted)] sm:text-sm">
+            Monitore a integridade do acervo, a conectividade com o PostgreSQL e a fila do Outbox
+            com controle completo sobre cada título.
           </p>
         </div>
 
-        {/* Barra de Ações Rápidas */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button asChild className="bg-purple-600 hover:bg-purple-500 text-white shadow-md">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button
+            asChild
+            className="h-10 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-500"
+          >
             <Link to="/admin/$id" params={{ id: "new" }}>
               <Plus className="size-4" />
               <span>Novo Anime</span>
@@ -771,14 +730,14 @@ function AdminIndex() {
             type="button"
             variant="outline"
             onClick={exportJson}
-            className="border-white/10 bg-elevated/40 hover:bg-elevated hover:text-fg text-muted"
+            className="h-10 border-white/10 bg-[var(--studio-panel)] px-3 text-xs text-[var(--color-muted)] hover:bg-white/[0.05] hover:text-[var(--color-fg)]"
             title="Exportar backup completo em arquivo JSON"
           >
             <Download className="size-4 text-purple-400" />
             <span className="hidden sm:inline">Exportar</span>
           </Button>
 
-          <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-elevated/40 px-3 text-xs font-medium text-muted transition-colors hover:bg-elevated hover:text-fg">
+          <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-[var(--studio-panel)] px-3 text-xs font-medium text-[var(--color-muted)] transition-colors hover:bg-white/[0.05] hover:text-[var(--color-fg)]">
             <Upload className="size-4 text-purple-400" />
             <span className="hidden sm:inline">Importar JSON</span>
             <input
@@ -798,8 +757,8 @@ function AdminIndex() {
             variant="outline"
             onClick={() => setToolsOpen(!toolsOpen)}
             className={cn(
-              "border-white/10 bg-elevated/40 text-muted hover:bg-elevated hover:text-fg",
-              toolsOpen && "border-purple-500/40 bg-purple-500/10 text-purple-300",
+              "h-10 border-white/10 bg-[var(--studio-panel)] px-3.5 text-xs text-[var(--color-muted)] hover:bg-white/[0.05] hover:text-[var(--color-fg)]",
+              toolsOpen && "border-purple-500/45 bg-purple-500/12 text-purple-200",
             )}
             title="Abrir ferramentas de importação e sincronização"
           >
@@ -809,22 +768,20 @@ function AdminIndex() {
         </div>
       </header>
 
-      {/* =========================================================
-          PAINEL DE FERRAMENTAS DO CATÁLOGO (EXPANSÍVEL)
-      ========================================================== */}
+      {/* Painel Expansível: Ferramentas do Catálogo */}
       {toolsOpen && (
-        <section className="rounded-2xl border border-purple-500/25 bg-[#0f0d18] p-5 shadow-xl transition-all">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-3">
-            <div className="flex items-center gap-2">
-              <span className="grid size-7 place-items-center rounded-md bg-purple-600/20 text-purple-300">
+        <section className="studio-panel rounded-2xl border-purple-500/30 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.075] pb-4">
+            <div className="flex items-center gap-3">
+              <div className="grid size-9 place-items-center rounded-lg border border-purple-500/30 bg-purple-500/12 text-purple-300">
                 <Sparkles className="size-4" />
-              </span>
+              </div>
               <div>
-                <h3 className="font-display text-sm font-semibold text-fg">
+                <h3 className="font-display text-base font-semibold text-[var(--color-fg)]">
                   Ferramentas do Catálogo
                 </h3>
-                <p className="text-[11px] text-muted">
-                  Importe títulos oficiais do AniList ou gerencie backups locais e remotos.
+                <p className="text-xs text-[var(--color-muted)]">
+                  Importe metadados oficiais do AniList ou gerencie backups em JSON.
                 </p>
               </div>
             </div>
@@ -834,10 +791,10 @@ function AdminIndex() {
                 type="button"
                 onClick={() => setToolsTab("anilist")}
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  "h-9 rounded-lg px-3 text-xs font-medium transition-colors",
                   toolsTab === "anilist"
-                    ? "bg-purple-600/30 text-purple-200 border border-purple-500/30"
-                    : "text-muted hover:bg-white/[0.04] hover:text-fg",
+                    ? "border border-purple-500/35 bg-purple-500/18 text-purple-200"
+                    : "text-[var(--color-muted)] hover:bg-white/[0.04] hover:text-[var(--color-fg)]",
                 )}
               >
                 AniList
@@ -846,18 +803,18 @@ function AdminIndex() {
                 type="button"
                 onClick={() => setToolsTab("json")}
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  "h-9 rounded-lg px-3 text-xs font-medium transition-colors",
                   toolsTab === "json"
-                    ? "bg-purple-600/30 text-purple-200 border border-purple-500/30"
-                    : "text-muted hover:bg-white/[0.04] hover:text-fg",
+                    ? "border border-purple-500/35 bg-purple-500/18 text-purple-200"
+                    : "text-[var(--color-muted)] hover:bg-white/[0.04] hover:text-[var(--color-fg)]",
                 )}
               >
-                Backup & JSON
+                Backup &amp; JSON
               </button>
               <button
                 type="button"
                 onClick={() => setToolsOpen(false)}
-                className="ml-2 flex size-6 items-center justify-center rounded text-muted hover:bg-white/10 hover:text-fg"
+                className="ml-1 flex size-9 items-center justify-center rounded-lg text-[var(--color-muted)] hover:bg-white/10 hover:text-[var(--color-fg)]"
                 aria-label="Fechar ferramentas"
               >
                 <X className="size-4" />
@@ -866,30 +823,30 @@ function AdminIndex() {
           </div>
 
           {toolsTab === "anilist" ? (
-            <div className="pt-4 space-y-4">
-              <p className="text-xs text-muted">
-                Busque um anime pelo nome oficial na base do AniList para importar capas em alta
-                definição, sinopse, gêneros e metadados oficiais.
+            <div className="space-y-4 pt-4">
+              <p className="text-xs leading-relaxed text-[var(--color-muted)]">
+                Pesquise na base pública do AniList para importar capa, banner, sinopse, gêneros e
+                identificadores externos.
               </p>
 
-              <form onSubmit={runImportSearch} className="flex gap-2">
+              <form onSubmit={runImportSearch} className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
+                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--color-subtle)]" />
                   <Input
                     value={importQ}
                     onChange={(e) => setImportQ(e.target.value)}
                     placeholder="Ex.: Frieren, Jujutsu Kaisen, Solo Leveling, One Piece..."
-                    className="pl-9 bg-elevated/60 border-white/10 focus:border-purple-500/50"
+                    className="h-10 border-white/10 bg-[var(--studio-panel-alt)] pl-9 text-sm"
                   />
                 </div>
                 <Button
                   type="submit"
                   disabled={searchingAniList || !importQ.trim()}
-                  className="bg-purple-600 hover:bg-purple-500 text-white shrink-0"
+                  className="h-10 shrink-0 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-500"
                 >
                   {searchingAniList ? (
                     <>
-                      <RefreshCw className="size-3.5 animate-spin mr-1.5" />
+                      <RefreshCw className="mr-1.5 size-3.5 animate-spin" />
                       Buscando…
                     </>
                   ) : (
@@ -899,7 +856,7 @@ function AdminIndex() {
               </form>
 
               {hits.length > 0 && (
-                <div className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-white/[0.06] bg-elevated/40 p-2 divide-y divide-white/[0.05]">
+                <div className="studio-scroll max-h-80 divide-y divide-white/[0.06] overflow-y-auto rounded-xl border border-white/[0.07] bg-[var(--studio-panel-alt)]">
                   {hits.slice(0, 10).map((hit) => {
                     const alreadyInCatalog = animes.some(
                       (a) => a.id === hit.id || a.anilistId === hit.anilistId,
@@ -907,44 +864,46 @@ function AdminIndex() {
                     return (
                       <div
                         key={hit.id}
-                        className="flex items-center gap-3 p-2.5 hover:bg-white/[0.03] rounded-lg transition-colors"
+                        className="flex flex-wrap items-center justify-between gap-3 p-3 transition-colors hover:bg-white/[0.025]"
                       >
-                        <div className="h-14 w-10 shrink-0 overflow-hidden rounded bg-surface border border-white/10">
-                          {hit.cover ? (
-                            <img
-                              src={hit.cover}
-                              alt=""
-                              className="size-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="grid size-full place-items-center text-[10px] text-muted">
-                              —
-                            </div>
-                          )}
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="h-14 w-10 shrink-0 overflow-hidden rounded border border-white/10 bg-black/40">
+                            {hit.cover ? (
+                              <img
+                                src={hit.cover}
+                                alt=""
+                                className="size-full object-cover"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="grid size-full place-items-center text-[10px] text-[var(--color-subtle)]">
+                                —
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-[var(--color-fg)]">
+                              {displayTitle(hit)}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs text-[var(--color-muted)]">
+                              {hit.year || "—"} · {hit.format || "TV"} ·{" "}
+                              {(hit.genres || []).slice(0, 3).join(", ") || "Sem gênero"}
+                            </p>
+                          </div>
                         </div>
 
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs sm:text-sm font-semibold text-fg">
-                            {displayTitle(hit)}
-                          </p>
-                          <p className="truncate text-[11px] text-muted">
-                            {hit.year || "—"} · {hit.format || "TV"} ·{" "}
-                            {(hit.genres || []).slice(0, 3).join(", ") || "Sem gênero"}
-                          </p>
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-1.5">
+                        <div className="flex shrink-0 items-center gap-2">
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
                             onClick={() => importHit(hit)}
                             className={cn(
-                              "text-xs h-8",
+                              "h-9 text-xs",
                               alreadyInCatalog
-                                ? "border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
-                                : "border-purple-500/30 text-purple-300 hover:bg-purple-500/10",
+                                ? "border-amber-500/35 text-amber-300 hover:bg-amber-500/12"
+                                : "border-purple-500/35 text-purple-200 hover:bg-purple-500/12",
                             )}
                           >
                             {alreadyInCatalog ? "Atualizar" : "Importar"}
@@ -957,7 +916,7 @@ function AdminIndex() {
                               variant="outline"
                               onClick={() => importHit(hit, true)}
                               title="Importar como novo cadastro independente (ex: versão dublada)"
-                              className="text-xs h-8 border-white/10 text-muted hover:text-fg"
+                              className="h-9 border-white/10 text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
                             >
                               Novo cadastro
                             </Button>
@@ -970,24 +929,23 @@ function AdminIndex() {
               )}
             </div>
           ) : (
-            <div className="pt-4 space-y-3">
-              <p className="text-xs text-muted">
-                Gerencie o arquivo completo de animes em JSON. A exportação gera um backup íntegro com
-                todas as temporadas, episódios e metadados. A importação atualiza o IndexedDB e
-                sincroniza em lotes de 100 com o PostgreSQL.
+            <div className="space-y-4 pt-4">
+              <p className="text-xs leading-relaxed text-[var(--color-muted)]">
+                Gere um arquivo JSON completo com todas as temporadas, episódios e metadados ou
+                restaure um backup sincronizando em lotes de 100 com o PostgreSQL.
               </p>
-              <div className="flex flex-wrap gap-2.5 pt-1">
+              <div className="flex flex-wrap gap-3">
                 <Button
                   type="button"
                   onClick={exportJson}
-                  className="bg-purple-600 hover:bg-purple-500 text-white text-xs h-9"
+                  className="h-10 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-500"
                 >
-                  <Download className="size-3.5 mr-1.5" />
+                  <Download className="mr-1.5 size-4" />
                   Baixar hikari-catalogo.json ({animes.length} animes)
                 </Button>
 
-                <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-elevated px-3 text-xs font-medium text-fg hover:bg-white/[0.08]">
-                  <Upload className="size-3.5 text-purple-400" />
+                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-[var(--studio-panel-alt)] px-4 text-xs font-medium text-[var(--color-fg)] transition-colors hover:bg-white/[0.06]">
+                  <Upload className="size-4 text-purple-400" />
                   <span>Selecionar arquivo JSON para restaurar</span>
                   <input
                     type="file"
@@ -1006,104 +964,105 @@ function AdminIndex() {
         </section>
       )}
 
-      {/* =========================================================
-          NOVA VISÃO GERAL: DASHBOARD COM DADOS REAIS
-          1. Resumo do Catálogo
-          2. Estado do Sistema & Conexão
-          3. Atividades Recentes
-      ========================================================== */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {/* CARD 1: RESUMO DO CATÁLOGO */}
-        <section className="rounded-2xl border border-white/[0.08] bg-[#0c0a14] p-5 shadow-lg flex flex-col justify-between">
+      {/* Grade Executiva do Painel (3 Painéis de Dados Reais) */}
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {/* 1. RESUMO DO CATÁLOGO */}
+        <section className="studio-panel flex flex-col justify-between rounded-2xl p-5">
           <div>
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+            <div className="flex items-center justify-between border-b border-white/[0.07] pb-3.5">
               <div className="flex items-center gap-2.5">
-                <div className="grid size-8 place-items-center rounded-lg bg-purple-600/20 text-purple-300 border border-purple-500/25">
+                <div className="grid size-8 place-items-center rounded-lg border border-purple-500/30 bg-purple-500/12 text-purple-300">
                   <Film className="size-4" />
                 </div>
                 <div>
-                  <h2 className="font-display text-sm font-semibold text-fg">
+                  <h2 className="font-display text-base font-semibold text-[var(--color-fg)]">
                     Resumo do Catálogo
                   </h2>
-                  <p className="text-[10px] text-muted">Métricas canônicas</p>
+                  <p className="text-[11px] text-[var(--color-subtle)]">
+                    Inventário local e publicado
+                  </p>
                 </div>
               </div>
-              <span className="rounded-full bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 font-mono text-[10px] text-purple-300">
+              <span className="studio-mono text-xs font-semibold text-purple-300">
                 {catalogStats.totalAnimes} títulos
               </span>
             </div>
 
-            {/* Grid de Métricas Numéricas Reais */}
-            <div className="grid grid-cols-2 gap-3 pt-4">
-              <div className="rounded-xl border border-white/[0.04] bg-surface/60 p-3">
-                <span className="text-[10px] font-medium text-muted uppercase tracking-wider block">
-                  Animes Cadastrados
+            <div className="grid grid-cols-2 divide-x divide-y divide-white/[0.06] border-b border-white/[0.06]">
+              <div className="py-4 pr-3">
+                <span className="block text-[11px] font-medium uppercase tracking-wider text-[var(--color-subtle)]">
+                  Animes
                 </span>
-                <span className="font-display text-2xl font-bold text-fg block mt-0.5">
+                <span className="studio-tabular mt-1 block font-display text-2xl font-bold text-[var(--color-fg)]">
                   {catalogStats.totalAnimes}
                 </span>
-                <span className="text-[10px] text-muted mt-1 block">
+                <span className="studio-tabular mt-1 block text-[11px] text-[var(--color-muted)]">
                   {catalogStats.visibleAnimes} visíveis · {catalogStats.hiddenAnimes} ocultos
                 </span>
               </div>
 
-              <div className="rounded-xl border border-white/[0.04] bg-surface/60 p-3">
-                <span className="text-[10px] font-medium text-muted uppercase tracking-wider block">
+              <div className="py-4 pl-4">
+                <span className="block text-[11px] font-medium uppercase tracking-wider text-[var(--color-subtle)]">
                   Temporadas
                 </span>
-                <span className="font-display text-2xl font-bold text-fg block mt-0.5">
+                <span className="studio-tabular mt-1 block font-display text-2xl font-bold text-[var(--color-fg)]">
                   {catalogStats.totalSeasons}
                 </span>
-                <span className="text-[10px] text-muted mt-1 block">
-                  Organizadas por anime
+                <span className="mt-1 block text-[11px] text-[var(--color-muted)]">
+                  Estruturadas no acervo
                 </span>
               </div>
 
-              <div className="rounded-xl border border-white/[0.04] bg-surface/60 p-3">
-                <span className="text-[10px] font-medium text-muted uppercase tracking-wider block">
-                  Total de Episódios
+              <div className="py-4 pr-3">
+                <span className="block text-[11px] font-medium uppercase tracking-wider text-[var(--color-subtle)]">
+                  Episódios
                 </span>
-                <span className="font-display text-2xl font-bold text-fg block mt-0.5">
+                <span className="studio-tabular mt-1 block font-display text-2xl font-bold text-[var(--color-fg)]">
                   {catalogStats.totalEpisodes}
                 </span>
-                <span className="text-[10px] text-muted mt-1 block">
-                  Em todas as temporadas
+                <span className="mt-1 block text-[11px] text-[var(--color-muted)]">
+                  Cadastrados no total
                 </span>
               </div>
 
-              <div className="rounded-xl border border-white/[0.04] bg-surface/60 p-3">
-                <span className="text-[10px] font-medium text-purple-300 uppercase tracking-wider block">
-                  Episódios Publicados
+              <div className="py-4 pl-4">
+                <span className="block text-[11px] font-medium uppercase tracking-wider text-purple-300">
+                  Publicados
                 </span>
-                <span className="font-display text-2xl font-bold text-purple-400 block mt-0.5">
+                <span className="studio-tabular mt-1 block font-display text-2xl font-bold text-purple-300">
                   {catalogStats.totalPublishedEpisodes}
                 </span>
-                <span className="text-[10px] text-muted mt-1 block">
-                  Com links de reprodução
+                <span className="mt-1 block text-[11px] text-[var(--color-muted)]">
+                  Com player válido ativo
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-muted">
-            <span>Vinculados ao AniList: {catalogStats.anilistLinkedAnimes}</span>
-            <span>Versões Dubladas: {catalogStats.dubbedAnimes}</span>
+          <div className="studio-tabular flex flex-wrap items-center justify-between gap-2 pt-3.5 text-xs text-[var(--color-muted)]">
+            <span>AniList: {catalogStats.anilistLinkedAnimes}</span>
+            <span>Dublados: {catalogStats.dubbedAnimes}</span>
           </div>
         </section>
 
-        {/* CARD 2: ESTADO DO SISTEMA & OUTBOX */}
-        <section className="rounded-2xl border border-white/[0.08] bg-[#0c0a14] p-5 shadow-lg flex flex-col justify-between">
+        {/* 2. ESTADO DO SISTEMA & OUTBOX */}
+        <section
+          id="system-status"
+          className="studio-panel flex flex-col justify-between rounded-2xl p-5 scroll-mt-20"
+        >
           <div>
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+            <div className="flex items-center justify-between border-b border-white/[0.07] pb-3.5">
               <div className="flex items-center gap-2.5">
-                <div className="grid size-8 place-items-center rounded-lg bg-emerald-600/20 text-emerald-300 border border-emerald-500/25">
+                <div className="grid size-8 place-items-center rounded-lg border border-emerald-500/30 bg-emerald-500/12 text-emerald-300">
                   <Database className="size-4" />
                 </div>
                 <div>
-                  <h2 className="font-display text-sm font-semibold text-fg">
+                  <h2 className="font-display text-base font-semibold text-[var(--color-fg)]">
                     Estado do Sistema
                   </h2>
-                  <p className="text-[10px] text-muted">Conectividade & Fila</p>
+                  <p className="text-[11px] text-[var(--color-subtle)]">
+                    PostgreSQL &amp; Fila Outbox
+                  </p>
                 </div>
               </div>
 
@@ -1111,8 +1070,9 @@ function AdminIndex() {
                 type="button"
                 onClick={checkSystem}
                 disabled={isCheckingSystem}
-                className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-white/10 hover:text-fg transition-colors"
-                title="Checar conexão agora"
+                className="flex size-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-[var(--color-muted)] transition-colors hover:bg-white/[0.08] hover:text-[var(--color-fg)]"
+                title="Verificar conectividade agora"
+                aria-label="Atualizar estado do sistema"
               >
                 <RefreshCw
                   className={cn("size-3.5", isCheckingSystem && "animate-spin")}
@@ -1120,154 +1080,197 @@ function AdminIndex() {
               </button>
             </div>
 
-            {/* Linhas de Diagnóstico em Tempo Real */}
-            <div className="space-y-2.5 pt-4">
-              {/* Conexão PostgreSQL */}
-              <div className="flex items-center justify-between rounded-xl border border-white/[0.04] bg-surface/60 p-3">
-                <div className="space-y-0.5">
-                  <span className="text-xs font-semibold text-fg block">
+            <div className="divide-y divide-white/[0.06] pt-1">
+              {/* PostgreSQL */}
+              <div className="flex items-center justify-between gap-3 py-3.5">
+                <div className="min-w-0">
+                  <span className="block text-xs font-semibold text-[var(--color-fg)]">
                     Conexão PostgreSQL
                   </span>
-                  <span className="font-mono text-[10px] text-muted block">
+                  <span className="studio-mono mt-0.5 block truncate text-[11px] text-[var(--color-subtle)]">
                     {systemStatus?.dbSource === "neon"
                       ? "Neon Cloud Database (Pooled)"
                       : "PGLite Embedded (WASM)"}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      "size-2 rounded-full",
-                      systemStatus?.connected
-                        ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"
-                        : "bg-red-400 shadow-[0_0_8px_rgba(239,68,68,0.5)]",
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "text-xs font-medium",
-                      systemStatus?.connected ? "text-emerald-400" : "text-red-400",
-                    )}
-                  >
-                    {systemStatus?.connected ? "Conectado" : "Offline"}
-                  </span>
-                </div>
+                <span
+                  className={cn(
+                    "studio-mono inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold",
+                    systemStatus?.connected ? "text-emerald-400" : "text-rose-400",
+                  )}
+                >
+                  {systemStatus?.connected ? (
+                    <CheckCircle2 className="size-3.5" />
+                  ) : (
+                    <AlertTriangle className="size-3.5" />
+                  )}
+                  <span>{systemStatus?.connected ? "Conectado" : "Offline"}</span>
+                </span>
               </div>
 
+              {/* Contagens Reais no Servidor */}
+              {systemStatus?.connected &&
+                typeof systemStatus.serverAnimesCount === "number" && (
+                  <div className="flex items-center justify-between gap-3 py-3 text-xs">
+                    <span className="text-[var(--color-muted)]">
+                      Registros no Servidor
+                    </span>
+                    <span className="studio-mono text-[11px] text-[var(--color-fg)]">
+                      {systemStatus.serverAnimesCount} animes ·{" "}
+                      {systemStatus.serverPublishedEpisodesCount ?? 0}/
+                      {systemStatus.serverEpisodesCount ?? 0} eps pub.
+                    </span>
+                  </div>
+                )}
+
               {/* Fila do Outbox */}
-              <div className="flex items-center justify-between rounded-xl border border-white/[0.04] bg-surface/60 p-3">
-                <div className="space-y-0.5">
-                  <span className="text-xs font-semibold text-fg block">
+              <div className="flex items-center justify-between gap-3 py-3.5">
+                <div>
+                  <span className="block text-xs font-semibold text-[var(--color-fg)]">
                     Fila do Outbox
                   </span>
-                  <span className="text-[10px] text-muted block">
+                  <span className="mt-0.5 block text-[11px] text-[var(--color-subtle)]">
                     Alterações locais pendentes
                   </span>
                 </div>
                 <span
                   className={cn(
-                    "font-mono text-xs font-semibold px-2 py-0.5 rounded",
-                    pendingCount > 0
-                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                      : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+                    "studio-mono text-xs font-semibold",
+                    pendingCount > 0 ? "text-amber-300" : "text-emerald-400",
                   )}
                 >
                   {pendingCount} pendência(s)
                 </span>
               </div>
 
-              {/* Conflitos de Sincronização */}
-              <div className="flex items-center justify-between rounded-xl border border-white/[0.04] bg-surface/60 p-3">
-                <div className="space-y-0.5">
-                  <span className="text-xs font-semibold text-fg block">
+              {/* Conflitos */}
+              <div className="flex items-center justify-between gap-3 py-3.5">
+                <div>
+                  <span className="block text-xs font-semibold text-[var(--color-fg)]">
                     Conflitos de Sincronização
                   </span>
-                  <span className="text-[10px] text-muted block">
-                    Rejeições do servidor
+                  <span className="mt-0.5 block text-[11px] text-[var(--color-subtle)]">
+                    Rejeições de validação do servidor
                   </span>
                 </div>
                 <span
                   className={cn(
-                    "font-mono text-xs font-semibold px-2 py-0.5 rounded",
-                    conflictCount > 0
-                      ? "bg-red-500/20 text-red-300 border border-red-500/30"
-                      : "bg-white/5 text-muted",
+                    "studio-mono text-xs font-semibold",
+                    conflictCount > 0 ? "text-rose-400" : "text-[var(--color-muted)]",
                   )}
                 >
                   {conflictCount} conflito(s)
                 </span>
               </div>
             </div>
+
+            {conflictOps.length > 0 && (
+              <div className="mt-2 rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-xs">
+                <p className="font-semibold text-rose-300">
+                  Operações em conflito
+                </p>
+                <ul className="mt-1.5 space-y-1.5">
+                  {conflictOps.slice(0, 2).map((op) => (
+                    <li
+                      key={op.id}
+                      className="flex items-center justify-between gap-2 text-[11px] text-rose-200/90"
+                    >
+                      <span className="truncate">
+                        {op.animeId} · T{op.seasonNumber} E{op.episodeNumber ?? "?"}:{" "}
+                        {op.lastError || "Erro de validação"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          dismissOutboxOperation(op.id);
+                          refreshOutbox();
+                          toast.info("Conflito descartado da fila local.");
+                        }}
+                        className="shrink-0 text-[11px] font-semibold text-rose-300 underline hover:text-white"
+                      >
+                        Descartar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
-          {/* Ação ou Status do Outbox */}
-          <div className="mt-4 pt-3 border-t border-white/[0.06]">
+          <div className="border-t border-white/[0.06] pt-3.5">
             {pendingCount > 0 ? (
               <Button
                 type="button"
                 size="sm"
                 disabled={isSyncingOutbox}
                 onClick={handleManualSync}
-                className="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30 text-xs h-8"
+                className="h-9 w-full border border-amber-500/35 bg-amber-500/15 text-xs font-semibold text-amber-200 hover:bg-amber-500/25"
               >
                 <RefreshCw
-                  className={cn("size-3 mr-1.5", isSyncingOutbox && "animate-spin")}
+                  className={cn("mr-1.5 size-3.5", isSyncingOutbox && "animate-spin")}
                 />
                 <span>
-                  {isSyncingOutbox ? "Sincronizando..." : `Sincronizar ${pendingCount} operação(ões)`}
+                  {isSyncingOutbox
+                    ? "Sincronizando..."
+                    : `Sincronizar ${pendingCount} operação(ões)`}
                 </span>
               </Button>
             ) : (
-              <div className="flex items-center justify-between text-[11px] text-muted">
-                <span className="flex items-center gap-1 text-emerald-400">
-                  <CheckCircle2 className="size-3" />
-                  Catálogo 100% sincronizado
+              <div className="flex items-center justify-between text-xs text-[var(--color-muted)]">
+                <span className="flex items-center gap-1.5 text-emerald-400">
+                  <CheckCircle2 className="size-3.5" />
+                  <span>Catálogo 100% sincronizado</span>
                 </span>
-                <span>Armazenamento: IndexedDB</span>
+                <span className="studio-mono text-[11px] text-[var(--color-subtle)]">
+                  IndexedDB
+                </span>
               </div>
             )}
           </div>
         </section>
 
-        {/* CARD 3: ATIVIDADES RECENTES */}
-        <section className="rounded-2xl border border-white/[0.08] bg-[#0c0a14] p-5 shadow-lg flex flex-col justify-between md:col-span-2 lg:col-span-1">
+        {/* 3. ATIVIDADES RECENTES */}
+        <section className="studio-panel flex flex-col justify-between rounded-2xl p-5 md:col-span-2 xl:col-span-1">
           <div>
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+            <div className="flex items-center justify-between border-b border-white/[0.07] pb-3.5">
               <div className="flex items-center gap-2.5">
-                <div className="grid size-8 place-items-center rounded-lg bg-purple-600/20 text-purple-300 border border-purple-500/25">
+                <div className="grid size-8 place-items-center rounded-lg border border-purple-500/30 bg-purple-500/12 text-purple-300">
                   <Clock className="size-4" />
                 </div>
                 <div>
-                  <h2 className="font-display text-sm font-semibold text-fg">
+                  <h2 className="font-display text-base font-semibold text-[var(--color-fg)]">
                     Atividades Recentes
                   </h2>
-                  <p className="text-[10px] text-muted">Histórico real de edições</p>
+                  <p className="text-[11px] text-[var(--color-subtle)]">
+                    Histórico real de edições
+                  </p>
                 </div>
               </div>
-              <span className="text-[10px] font-mono text-muted">
-                {recentActivities.length > 0 ? `${recentActivities.length} registros` : "Vazio"}
+              <span className="studio-mono text-xs text-[var(--color-muted)]">
+                {recentActivities.length > 0
+                  ? `${recentActivities.length} registros`
+                  : "Vazio"}
               </span>
             </div>
 
-            {/* Lista de Atividades ou Estado Vazio Elegante */}
             {recentActivities.length === 0 ? (
-              <div className="py-8 text-center space-y-2">
-                <div className="mx-auto grid size-10 place-items-center rounded-full bg-white/[0.03] text-muted">
-                  <Activity className="size-5 opacity-60" />
+              <div className="space-y-2.5 py-10 text-center">
+                <div className="mx-auto grid size-10 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-[var(--color-subtle)]">
+                  <Activity className="size-5" />
                 </div>
-                <p className="text-xs font-medium text-fg">
+                <p className="text-xs font-semibold text-[var(--color-fg)]">
                   Nenhuma atividade recente registrada
                 </p>
-                <p className="text-[11px] text-muted max-w-xs mx-auto leading-relaxed">
-                  As atualizações de animes, episódios e operações de sincronização aparecerão
-                  aqui conforme forem realizadas.
+                <p className="mx-auto max-w-xs text-xs leading-relaxed text-[var(--color-muted)]">
+                  As atualizações de animes, episódios e operações de sincronização aparecerão aqui
+                  conforme forem realizadas.
                 </p>
               </div>
             ) : (
-              <ul className="divide-y divide-white/[0.05] pt-2">
+              <ul className="divide-y divide-white/[0.06] pt-1">
                 {recentActivities.map((act) => (
-                  <li key={act.id} className="py-2.5 flex items-center gap-3">
-                    <div className="h-10 w-8 shrink-0 overflow-hidden rounded bg-surface border border-white/10">
+                  <li key={act.id} className="flex items-center gap-3 py-3">
+                    <div className="h-11 w-8 shrink-0 overflow-hidden rounded border border-white/10 bg-black/40">
                       {act.cover ? (
                         <img
                           src={act.cover}
@@ -1276,35 +1279,35 @@ function AdminIndex() {
                           loading="lazy"
                         />
                       ) : (
-                        <div className="grid size-full place-items-center text-[9px] text-muted">
+                        <div className="grid size-full place-items-center text-[10px] text-[var(--color-subtle)]">
                           光
                         </div>
                       )}
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium text-fg leading-snug">
+                      <p className="truncate text-xs font-semibold leading-snug text-[var(--color-fg)]">
                         {act.title}
                       </p>
-                      <p className="truncate text-[10px] text-muted">
+                      <p className="mt-0.5 truncate text-[11px] text-[var(--color-muted)]">
                         {act.details}
                       </p>
                     </div>
 
                     <div className="shrink-0 text-right">
-                      <span className="font-mono text-[9px] text-muted block">
+                      <span className="studio-mono block text-[10px] text-[var(--color-subtle)]">
                         {formatTime(act.timestamp)}
                       </span>
                       {act.type === "outbox-conflict" ? (
-                        <span className="inline-block font-mono text-[9px] text-red-400">
+                        <span className="studio-mono inline-block text-[10px] font-semibold text-rose-400">
                           Conflito
                         </span>
                       ) : act.type === "outbox-pending" ? (
-                        <span className="inline-block font-mono text-[9px] text-amber-300">
+                        <span className="studio-mono inline-block text-[10px] font-semibold text-amber-300">
                           Na fila
                         </span>
                       ) : (
-                        <span className="inline-block font-mono text-[9px] text-purple-400">
+                        <span className="studio-mono inline-block text-[10px] font-semibold text-purple-300">
                           Salvo
                         </span>
                       )}
@@ -1315,37 +1318,38 @@ function AdminIndex() {
             )}
           </div>
 
-          <div className="pt-3 border-t border-white/[0.06] text-right">
-            <span className="text-[10px] text-muted">
-              Fonte: IndexedDB & Outbox local
-            </span>
+          <div className="flex items-center justify-between border-t border-white/[0.06] pt-3.5 text-[11px] text-[var(--color-subtle)]">
+            <span>Fonte: IndexedDB &amp; Outbox</span>
+            <Link
+              to="/admin/quick-update"
+              className="font-medium text-purple-300 hover:text-purple-200"
+            >
+              Atualização Rápida →
+            </Link>
           </div>
         </section>
       </div>
 
-      {/* =========================================================
-          CATÁLOGO DE ANIMES (REDESIGN COMPLETO DA APRESENTAÇÃO)
-      ========================================================== */}
-      <section id="catalog" className="space-y-4 scroll-mt-20 pt-2">
-        {/* Barra Superior do Catálogo: Título e Controles Rápidos */}
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="font-display text-xl font-bold tracking-tight text-fg">
+      {/* Catálogo de Títulos */}
+      <section id="catalog" className="scroll-mt-20 space-y-4 pt-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-baseline gap-3">
+            <h2 className="font-display text-xl font-bold tracking-tight text-[var(--color-fg)] sm:text-2xl">
               Catálogo de Títulos
             </h2>
-            <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2.5 py-0.5 font-mono text-xs font-semibold text-purple-300">
+            <span className="studio-mono text-xs font-medium text-[var(--color-muted)]">
               {filtered.length} de {animes.length}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Seletor de Itens por Página */}
-            <div className="flex items-center gap-1.5 text-xs text-muted">
+            <div className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
               <span className="hidden sm:inline">Exibir:</span>
               <select
                 value={itemsPerPage}
                 onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                className="h-8 rounded-md border border-white/10 bg-elevated/60 px-2 text-xs text-fg focus:border-purple-500/50"
+                aria-label="Itens por página"
+                className="h-9 rounded-lg border border-white/10 bg-[var(--studio-panel)] px-2.5 text-xs text-[var(--color-fg)] focus:border-purple-500/50 focus:outline-none"
               >
                 <option value={12}>12 por pág.</option>
                 <option value={24}>24 por pág.</option>
@@ -1353,57 +1357,55 @@ function AdminIndex() {
               </select>
             </div>
 
-            {/* Alternância Grid / Tabela */}
-            <div className="flex items-center rounded-lg border border-white/10 bg-elevated/40 p-0.5">
+            <div className="flex items-center rounded-lg border border-white/10 bg-[var(--studio-panel)] p-0.5">
               <button
                 type="button"
                 onClick={() => setViewMode("grid")}
                 className={cn(
-                  "flex size-7 items-center justify-center rounded text-muted transition-colors",
+                  "flex size-8 items-center justify-center rounded-md transition-colors",
                   viewMode === "grid"
-                    ? "bg-purple-600/30 text-purple-200 shadow-sm"
-                    : "hover:text-fg",
+                    ? "bg-purple-600/30 text-purple-200"
+                    : "text-[var(--color-muted)] hover:text-[var(--color-fg)]",
                 )}
                 title="Visualização em grade de cards"
                 aria-label="Ver em grade"
               >
-                <Grid className="size-3.5" />
+                <Grid className="size-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode("table")}
                 className={cn(
-                  "flex size-7 items-center justify-center rounded text-muted transition-colors",
+                  "flex size-8 items-center justify-center rounded-md transition-colors",
                   viewMode === "table"
-                    ? "bg-purple-600/30 text-purple-200 shadow-sm"
-                    : "hover:text-fg",
+                    ? "bg-purple-600/30 text-purple-200"
+                    : "text-[var(--color-muted)] hover:text-[var(--color-fg)]",
                 )}
                 title="Visualização em tabela detalhada"
                 aria-label="Ver em tabela"
               >
-                <List className="size-3.5" />
+                <List className="size-4" />
               </button>
             </div>
           </div>
         </div>
 
-        {/* Barra de Filtros e Busca Responsiva */}
-        <div className="rounded-2xl border border-white/[0.08] bg-[#0c0a14] p-4 shadow-md space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2.5">
-            {/* Campo de Busca por Título */}
+        {/* Barra Unificada de Busca e Filtros */}
+        <div className="studio-panel space-y-3 rounded-2xl p-4">
+          <div className="flex flex-col gap-2.5 sm:flex-row">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--color-subtle)]" />
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Pesquisar por título em inglês, romaji ou nativo..."
-                className="pl-9 pr-8 bg-elevated/40 border-white/10 text-sm h-10 focus:border-purple-500/50"
+                className="h-10 border-white/10 bg-[var(--studio-panel-alt)] pl-9 pr-9 text-sm"
               />
               {q && (
                 <button
                   type="button"
                   onClick={() => setQ("")}
-                  className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted hover:text-fg p-0.5"
+                  className="absolute top-1/2 right-2.5 -translate-y-1/2 p-1 text-[var(--color-muted)] hover:text-[var(--color-fg)]"
                   aria-label="Limpar pesquisa"
                 >
                   <X className="size-3.5" />
@@ -1411,14 +1413,13 @@ function AdminIndex() {
               )}
             </div>
 
-            {/* Ordenação */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <ArrowUpDown className="size-4 text-purple-400 hidden sm:block shrink-0" />
+            <div className="flex shrink-0 items-center gap-2">
+              <ArrowUpDown className="hidden size-4 shrink-0 text-purple-400 sm:block" />
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
                 aria-label="Ordenar catálogo"
-                className="h-10 w-full sm:w-auto rounded-md border border-white/10 bg-elevated/40 px-3 text-xs text-fg focus:border-purple-500/50"
+                className="h-10 w-full rounded-md border border-white/10 bg-[var(--studio-panel-alt)] px-3 text-xs text-[var(--color-fg)] focus:border-purple-500/50 focus:outline-none sm:w-auto"
               >
                 <option value="updated-desc">Mais recentes primeiro</option>
                 <option value="updated-asc">Mais antigos primeiro</option>
@@ -1432,31 +1433,28 @@ function AdminIndex() {
             </div>
           </div>
 
-          {/* Filtros em Linha / Chips */}
-          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/[0.05]">
-            <span className="text-[11px] font-medium text-muted flex items-center gap-1 mr-1">
+          <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-3">
+            <span className="mr-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-subtle)]">
               <Filter className="size-3" />
               Filtros:
             </span>
 
-            {/* Filtro de Visibilidade */}
             <select
               value={visibilityFilter}
               onChange={(e) => setVisibilityFilter(e.target.value as VisibilityFilter)}
               aria-label="Filtrar por visibilidade"
-              className="h-8 rounded-md border border-white/10 bg-elevated/60 px-2.5 text-xs text-fg focus:border-purple-500/50"
+              className="h-9 rounded-md border border-white/10 bg-[var(--studio-panel-alt)] px-2.5 text-xs text-[var(--color-fg)] focus:border-purple-500/50 focus:outline-none"
             >
               <option value="all">Visibilidade: Todas</option>
               <option value="visible">Apenas Visíveis</option>
               <option value="hidden">Apenas Ocultos</option>
             </select>
 
-            {/* Filtro de Versão / Origem */}
             <select
               value={versionFilter}
               onChange={(e) => setVersionFilter(e.target.value as VersionFilter)}
               aria-label="Filtrar por versão"
-              className="h-8 rounded-md border border-white/10 bg-elevated/60 px-2.5 text-xs text-fg focus:border-purple-500/50"
+              className="h-9 rounded-md border border-white/10 bg-[var(--studio-panel-alt)] px-2.5 text-xs text-[var(--color-fg)] focus:border-purple-500/50 focus:outline-none"
             >
               <option value="all">Versões: Todas</option>
               <option value="dubbed">Apenas Dublados</option>
@@ -1464,13 +1462,12 @@ function AdminIndex() {
               <option value="anilist">Com vínculo AniList</option>
             </select>
 
-            {/* Filtro de Formato (se houver formatos cadastrados) */}
             {availableFormats.length > 0 && (
               <select
                 value={formatFilter}
                 onChange={(e) => setFormatFilter(e.target.value)}
                 aria-label="Filtrar por formato"
-                className="h-8 rounded-md border border-white/10 bg-elevated/60 px-2.5 text-xs text-fg focus:border-purple-500/50"
+                className="h-9 rounded-md border border-white/10 bg-[var(--studio-panel-alt)] px-2.5 text-xs text-[var(--color-fg)] focus:border-purple-500/50 focus:outline-none"
               >
                 <option value="all">Formato: Todos</option>
                 {availableFormats.map((f) => (
@@ -1481,13 +1478,12 @@ function AdminIndex() {
               </select>
             )}
 
-            {/* Filtro de Status de Lançamento */}
             {availableStatuses.length > 0 && (
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 aria-label="Filtrar por status"
-                className="h-8 rounded-md border border-white/10 bg-elevated/60 px-2.5 text-xs text-fg focus:border-purple-500/50"
+                className="h-9 rounded-md border border-white/10 bg-[var(--studio-panel-alt)] px-2.5 text-xs text-[var(--color-fg)] focus:border-purple-500/50 focus:outline-none"
               >
                 <option value="all">Status: Todos</option>
                 {availableStatuses.map((s) => (
@@ -1498,61 +1494,59 @@ function AdminIndex() {
               </select>
             )}
 
-            {/* Botão de Limpar Filtros */}
             {hasActiveFilters && (
               <button
                 type="button"
                 onClick={clearFilters}
-                className="text-xs text-purple-400 hover:text-purple-300 font-medium ml-auto flex items-center gap-1"
+                className="ml-auto flex h-9 items-center gap-1 rounded-md px-2.5 text-xs font-medium text-purple-300 hover:bg-purple-500/10 hover:text-purple-200"
               >
-                <X className="size-3" />
+                <X className="size-3.5" />
                 Limpar filtros
               </button>
             )}
           </div>
         </div>
 
-        {/* =========================================================
-            LISTAGEM: CARDS OU TABELA
-        ========================================================== */}
+        {/* Listagem */}
         {!hydrated ? (
-          /* Estado de Carregamento / Hidratação */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pt-2">
+          <div className="grid grid-cols-1 gap-4 pt-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
               <div
                 key={i}
-                className="h-44 rounded-xl border border-white/[0.06] bg-[#0c0a14] p-3 animate-pulse"
+                className="studio-panel h-44 animate-pulse rounded-xl p-3.5"
               >
                 <div className="flex gap-3">
-                  <div className="h-28 w-20 rounded-lg bg-white/5" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 w-3/4 rounded bg-white/5" />
-                    <div className="h-3 w-1/2 rounded bg-white/5" />
-                    <div className="h-3 w-1/3 rounded bg-white/5" />
+                  <div className="h-28 w-20 rounded-lg bg-white/[0.05]" />
+                  <div className="flex-1 space-y-2.5 py-1">
+                    <div className="h-4 w-3/4 rounded bg-white/[0.06]" />
+                    <div className="h-3 w-1/2 rounded bg-white/[0.04]" />
+                    <div className="h-3 w-1/3 rounded bg-white/[0.04]" />
                   </div>
                 </div>
               </div>
             ))}
           </div>
         ) : animes.length === 0 ? (
-          /* Catálogo Vazio */
-          <div className="rounded-2xl border border-white/[0.08] bg-[#0c0a14] p-10 text-center shadow-lg space-y-4">
-            <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-purple-600/10 text-purple-400 border border-purple-500/20">
+          <div className="studio-panel space-y-4 rounded-2xl p-10 text-center">
+            <div className="mx-auto grid size-14 place-items-center rounded-2xl border border-purple-500/25 bg-purple-500/10 text-purple-300">
               <Film className="size-7" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-display text-lg font-semibold text-fg">
+              <h3 className="font-display text-lg font-semibold text-[var(--color-fg)]">
                 Nenhum título no catálogo local
               </h3>
-              <p className="text-xs text-muted max-w-md mx-auto">
+              <p className="mx-auto max-w-md text-xs leading-relaxed text-[var(--color-muted)]">
                 Seu catálogo ainda está vazio neste navegador. Você pode cadastrar um título novo,
                 importar do AniList ou restaurar um backup JSON.
               </p>
             </div>
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-              <Button asChild className="bg-purple-600 hover:bg-purple-500 text-white text-xs">
+            <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
+              <Button
+                asChild
+                className="h-10 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-500"
+              >
                 <Link to="/admin/$id" params={{ id: "new" }}>
-                  <Plus className="size-3.5 mr-1" />
+                  <Plus className="mr-1.5 size-3.5" />
                   Criar primeiro anime
                 </Link>
               </Button>
@@ -1563,23 +1557,22 @@ function AdminIndex() {
                   setToolsOpen(true);
                   setToolsTab("anilist");
                 }}
-                className="border-white/10 text-xs"
+                className="h-10 border-white/10 text-xs"
               >
-                <Sparkles className="size-3.5 mr-1 text-purple-400" />
+                <Sparkles className="mr-1.5 size-3.5 text-purple-400" />
                 Importar do AniList
               </Button>
             </div>
           </div>
         ) : filtered.length === 0 ? (
-          /* Busca Sem Resultados */
-          <div className="rounded-2xl border border-white/[0.08] bg-[#0c0a14] p-8 text-center shadow-lg space-y-3">
-            <div className="mx-auto grid size-12 place-items-center rounded-xl bg-white/[0.03] text-muted">
-              <Search className="size-6 opacity-60" />
+          <div className="studio-panel space-y-3 rounded-2xl p-10 text-center">
+            <div className="mx-auto grid size-12 place-items-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-[var(--color-subtle)]">
+              <Search className="size-5" />
             </div>
-            <p className="text-sm font-semibold text-fg">
+            <p className="text-sm font-semibold text-[var(--color-fg)]">
               Nenhum anime encontrado com os filtros aplicados
             </p>
-            <p className="text-xs text-muted max-w-sm mx-auto">
+            <p className="mx-auto max-w-sm text-xs text-[var(--color-muted)]">
               Tente pesquisar com outro termo ou limpe os filtros ativos para ver todos os títulos.
             </p>
             <Button
@@ -1587,16 +1580,13 @@ function AdminIndex() {
               variant="outline"
               size="sm"
               onClick={clearFilters}
-              className="border-purple-500/30 text-purple-300 text-xs"
+              className="h-9 border-purple-500/35 text-xs text-purple-300"
             >
               Limpar busca e filtros
             </Button>
           </div>
         ) : viewMode === "grid" ? (
-          /* =========================================================
-             MODO GRADE DE CARDS (RESPONSIVO: 1, 2, 3 OU 4 COLUNAS)
-          ========================================================== */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {paginatedAnimes.map((a) => {
               const episodesCount = a.seasons.reduce(
                 (n, s) => n + s.episodes.length,
@@ -1607,13 +1597,12 @@ function AdminIndex() {
               );
 
               return (
-                <div
+                <article
                   key={a.id}
-                  className="group relative flex flex-col justify-between rounded-xl border border-white/[0.08] bg-[#0c0a14] p-3.5 shadow-md transition-all hover:border-purple-500/30 hover:shadow-[0_4px_20px_rgba(168,85,247,0.1)]"
+                  className="studio-panel group flex flex-col justify-between rounded-xl p-3.5 transition-colors hover:border-purple-500/40"
                 >
-                  <div className="flex gap-3">
-                    {/* Capa com Thumbnail 3:4 e Fallback Elegante */}
-                    <div className="relative h-28 w-20 shrink-0 overflow-hidden rounded-lg bg-surface border border-white/10">
+                  <div className="flex gap-3.5">
+                    <div className="relative h-28 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/40">
                       {a.cover ? (
                         <img
                           src={a.cover}
@@ -1622,91 +1611,74 @@ function AdminIndex() {
                           loading="lazy"
                         />
                       ) : (
-                        <div className="grid size-full place-items-center bg-gradient-to-br from-purple-950/40 to-surface font-bold text-sm text-purple-400">
+                        <div className="grid size-full place-items-center bg-purple-950/30 font-display text-sm font-bold text-purple-300">
                           {displayTitle(a).slice(0, 2).toUpperCase()}
                         </div>
                       )}
 
-                      {/* Tag de Episódios sobre a capa */}
-                      <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 py-0.5 font-mono text-[9px] font-semibold text-white backdrop-blur-xs">
+                      <span className="studio-mono absolute right-1 bottom-1 rounded bg-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                         {episodesCount} ep
                       </span>
                     </div>
 
-                    {/* Metadados e Títulos */}
-                    <div className="min-w-0 flex-1 flex flex-col justify-between">
+                    <div className="flex min-w-0 flex-1 flex-col justify-between">
                       <div>
-                        {/* Badges de Versão e Visibilidade */}
-                        <div className="flex flex-wrap items-center gap-1 mb-1">
+                        <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-semibold uppercase tracking-wider">
                           {a.hidden && (
-                            <span className="rounded bg-red-500/15 border border-red-500/25 px-1.5 py-0.2 font-mono text-[9px] font-semibold text-red-300">
-                              Oculto
-                            </span>
+                            <span className="text-rose-400">Oculto</span>
                           )}
                           {isDub && (
-                            <span className="rounded bg-purple-500/15 border border-purple-500/25 px-1.5 py-0.2 font-mono text-[9px] font-semibold text-purple-300">
-                              Dublado
-                            </span>
+                            <span className="text-purple-300">Dublado</span>
                           )}
-                          {a.format && (
-                            <span className="rounded bg-white/5 border border-white/10 px-1.5 py-0.2 font-mono text-[9px] text-muted">
-                              {a.format}
-                            </span>
-                          )}
+                          <span className="studio-mono text-[var(--color-subtle)]">
+                            {a.format || "TV"}
+                          </span>
                         </div>
 
-                        {/* Título Principal */}
                         <h3
-                          className="line-clamp-2 text-xs sm:text-sm font-semibold text-fg leading-snug group-hover:text-purple-300 transition-colors"
+                          className="line-clamp-2 text-sm font-semibold leading-snug text-[var(--color-fg)] transition-colors group-hover:text-purple-300"
                           title={displayTitle(a)}
                         >
                           {displayTitle(a)}
                         </h3>
 
-                        {/* Título Alternativo */}
                         {a.titleRomaji && a.titleEnglish && (
-                          <p className="truncate text-[10px] text-muted mt-0.5">
+                          <p className="mt-0.5 truncate text-[11px] text-[var(--color-muted)]">
                             {a.titleRomaji}
                           </p>
                         )}
                       </div>
 
-                      <div className="pt-2 text-[10px] text-muted space-y-0.5">
-                        <p>
-                          {a.year || "—"} · {a.seasons.length} temp.
-                          {a.anilistId ? ` · ID ${a.anilistId}` : " · Original"}
-                        </p>
-                      </div>
+                      <p className="studio-tabular pt-2 text-[11px] text-[var(--color-subtle)]">
+                        {a.year || "—"} · {a.seasons.length} temp.
+                        {a.anilistId ? ` · #${a.anilistId}` : " · Original"}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Barra de Ações do Card */}
-                  <div className="mt-3.5 pt-2.5 border-t border-white/[0.06] flex items-center gap-1.5">
-                    {/* Botão de Edição Principal */}
+                  <div className="mt-3.5 flex items-center gap-1.5 border-t border-white/[0.06] pt-2.5">
                     <Button
                       asChild
                       size="sm"
-                      className="flex-1 bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/30 text-purple-200 text-xs h-8"
+                      className="h-9 flex-1 border border-purple-500/35 bg-purple-600/20 text-xs font-medium text-purple-200 hover:bg-purple-600/35 hover:text-white"
                     >
                       <Link to="/admin/$id" params={{ id: a.id }}>
                         Editar
                       </Link>
                     </Button>
 
-                    {/* Botão Versão Dublada (preservado) */}
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       onClick={() => duplicateAsDubbed(a)}
                       title="Criar cadastro independente para a versão dublada deste anime"
-                      className="border-white/10 text-muted hover:text-fg hover:bg-white/5 h-8 px-2"
+                      className="size-9 border-white/10 p-0 text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-[var(--color-fg)]"
                     >
                       <Copy className="size-3.5" />
                       <span className="sr-only">Versão Dublada</span>
                     </Button>
 
-                    {/* Botão Ocultar / Exibir */}
                     <Button
                       type="button"
                       size="sm"
@@ -1720,7 +1692,7 @@ function AdminIndex() {
                         );
                       }}
                       title={a.hidden ? "Tornar anime visível" : "Ocultar do site público"}
-                      className="border-white/10 text-muted hover:text-fg hover:bg-white/5 h-8 px-2"
+                      className="size-9 border-white/10 p-0 text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-[var(--color-fg)]"
                     >
                       {a.hidden ? (
                         <EyeOff className="size-3.5 text-amber-400" />
@@ -1730,41 +1702,37 @@ function AdminIndex() {
                       <span className="sr-only">Alternar visibilidade</span>
                     </Button>
 
-                    {/* Botão Excluir */}
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
                       onClick={() => setPendingDelete(a.id)}
                       title="Excluir anime"
-                      className="h-8 px-2 text-muted hover:text-red-400 hover:bg-red-500/10"
+                      className="size-9 p-0 text-[var(--color-muted)] hover:bg-rose-500/12 hover:text-rose-400"
                     >
                       <Trash2 className="size-3.5" />
                       <span className="sr-only">Excluir</span>
                     </Button>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
         ) : (
-          /* =========================================================
-             MODO TABELA DETALHADA (COMPACTO E PROLONGADO)
-          ========================================================== */
-          <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#0c0a14] shadow-lg">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="studio-panel overflow-x-auto rounded-2xl">
+            <table className="w-full border-collapse text-left text-xs">
               <thead>
-                <tr className="border-b border-white/[0.08] bg-surface/50 text-[11px] font-semibold text-muted">
-                  <th className="py-3 px-4 w-14">Capa</th>
-                  <th className="py-3 px-4">Título</th>
-                  <th className="py-3 px-4 hidden sm:table-cell">Ano / Formato</th>
-                  <th className="py-3 px-4 hidden md:table-cell">Temporadas / Episódios</th>
-                  <th className="py-3 px-4 hidden lg:table-cell">Origem</th>
-                  <th className="py-3 px-4 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Ações</th>
+                <tr className="border-b border-white/[0.08] bg-white/[0.02] text-[11px] font-semibold uppercase tracking-wider text-[var(--color-subtle)]">
+                  <th className="w-14 px-4 py-3">Capa</th>
+                  <th className="px-4 py-3">Título</th>
+                  <th className="hidden px-4 py-3 sm:table-cell">Ano / Formato</th>
+                  <th className="hidden px-4 py-3 md:table-cell">Temporadas / Episódios</th>
+                  <th className="hidden px-4 py-3 lg:table-cell">Origem</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.05]">
+              <tbody className="divide-y divide-white/[0.06]">
                 {paginatedAnimes.map((a) => {
                   const episodesCount = a.seasons.reduce(
                     (n, s) => n + s.episodes.length,
@@ -1777,11 +1745,10 @@ function AdminIndex() {
                   return (
                     <tr
                       key={a.id}
-                      className="hover:bg-white/[0.02] transition-colors"
+                      className="transition-colors hover:bg-white/[0.025]"
                     >
-                      {/* Capa */}
-                      <td className="py-2.5 px-4">
-                        <div className="h-12 w-9 rounded overflow-hidden bg-surface border border-white/10 shrink-0">
+                      <td className="px-4 py-2.5">
+                        <div className="h-12 w-9 shrink-0 overflow-hidden rounded border border-white/10 bg-black/40">
                           {a.cover ? (
                             <img
                               src={a.cover}
@@ -1790,80 +1757,64 @@ function AdminIndex() {
                               loading="lazy"
                             />
                           ) : (
-                            <div className="grid size-full place-items-center text-[10px] text-muted">
+                            <div className="grid size-full place-items-center text-[10px] text-[var(--color-subtle)]">
                               —
                             </div>
                           )}
                         </div>
                       </td>
 
-                      {/* Título */}
-                      <td className="py-2.5 px-4 min-w-44">
-                        <div className="space-y-0.5">
-                          <p className="font-semibold text-fg line-clamp-1">
-                            {displayTitle(a)}
-                          </p>
-                          <div className="flex items-center gap-1.5">
-                            {isDub && (
-                              <span className="font-mono text-[9px] text-purple-300">
-                                [Dublado]
-                              </span>
-                            )}
-                            {a.titleRomaji && (
-                              <span className="text-[10px] text-muted truncate max-w-xs">
-                                {a.titleRomaji}
-                              </span>
-                            )}
-                          </div>
+                      <td className="min-w-44 px-4 py-2.5">
+                        <p className="line-clamp-1 font-semibold text-[var(--color-fg)]">
+                          {displayTitle(a)}
+                        </p>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          {isDub && (
+                            <span className="studio-mono text-[10px] font-medium text-purple-300">
+                              [Dublado]
+                            </span>
+                          )}
+                          {a.titleRomaji && (
+                            <span className="max-w-xs truncate text-[11px] text-[var(--color-muted)]">
+                              {a.titleRomaji}
+                            </span>
+                          )}
                         </div>
                       </td>
 
-                      {/* Ano / Formato */}
-                      <td className="py-2.5 px-4 text-muted hidden sm:table-cell">
+                      <td className="studio-tabular hidden px-4 py-2.5 text-[var(--color-muted)] sm:table-cell">
                         {a.year || "—"} · {a.format || "TV"}
                       </td>
 
-                      {/* Temporadas / Episódios */}
-                      <td className="py-2.5 px-4 text-muted hidden md:table-cell">
+                      <td className="studio-tabular hidden px-4 py-2.5 text-[var(--color-muted)] md:table-cell">
                         {a.seasons.length} temp. ·{" "}
-                        <span className="font-mono font-semibold text-fg">
+                        <span className="font-semibold text-[var(--color-fg)]">
                           {episodesCount} eps
                         </span>
                       </td>
 
-                      {/* Origem */}
-                      <td className="py-2.5 px-4 text-muted hidden lg:table-cell">
-                        {a.anilistId ? (
-                          <span className="font-mono text-[10px] text-muted">
-                            AniList #{a.anilistId}
-                          </span>
-                        ) : (
-                          <span className="font-mono text-[10px] text-muted">
-                            Original local
-                          </span>
-                        )}
+                      <td className="studio-mono hidden px-4 py-2.5 text-[11px] text-[var(--color-muted)] lg:table-cell">
+                        {a.anilistId ? `AniList #${a.anilistId}` : "Original local"}
                       </td>
 
-                      {/* Status */}
-                      <td className="py-2.5 px-4 text-center">
+                      <td className="px-4 py-2.5 text-center">
                         {a.hidden ? (
-                          <span className="inline-block rounded bg-red-500/15 border border-red-500/25 px-2 py-0.5 font-mono text-[10px] text-red-300">
+                          <span className="studio-mono text-[11px] font-semibold text-rose-400">
                             Oculto
                           </span>
                         ) : (
-                          <span className="inline-block rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 font-mono text-[10px] text-emerald-400">
+                          <span className="studio-mono text-[11px] font-semibold text-emerald-400">
                             Ativo
                           </span>
                         )}
                       </td>
 
-                      {/* Ações */}
-                      <td className="py-2.5 px-4 text-right">
+                      <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <Button
                             asChild
                             size="sm"
-                            className="bg-purple-600/20 hover:bg-purple-600/35 border border-purple-500/30 text-purple-200 text-xs h-7 px-2.5"
+                            className="h-8 border border-purple-500/30 bg-purple-600/20 px-3 text-xs text-purple-200 hover:bg-purple-600/35"
                           >
                             <Link to="/admin/$id" params={{ id: a.id }}>
                               Editar
@@ -1876,7 +1827,7 @@ function AdminIndex() {
                             variant="ghost"
                             onClick={() => duplicateAsDubbed(a)}
                             title="Versão Dublada"
-                            className="size-7 text-muted hover:text-fg"
+                            className="size-8 text-[var(--color-muted)] hover:text-[var(--color-fg)]"
                           >
                             <Copy className="size-3.5" />
                           </Button>
@@ -1887,7 +1838,7 @@ function AdminIndex() {
                             variant="ghost"
                             onClick={() => toggleHidden(a.id)}
                             title={a.hidden ? "Exibir" : "Ocultar"}
-                            className="size-7 text-muted hover:text-fg"
+                            className="size-8 text-[var(--color-muted)] hover:text-[var(--color-fg)]"
                           >
                             {a.hidden ? (
                               <EyeOff className="size-3.5 text-amber-400" />
@@ -1901,8 +1852,8 @@ function AdminIndex() {
                             size="icon"
                             variant="ghost"
                             onClick={() => setPendingDelete(a.id)}
-                            title="Excluir"
-                            className="size-7 text-muted hover:text-red-400"
+                            title="Excluir anime"
+                            className="size-8 text-[var(--color-muted)] hover:text-rose-400"
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
@@ -1916,15 +1867,13 @@ function AdminIndex() {
           </div>
         )}
 
-        {/* =========================================================
-            PAGINAÇÃO COMPACTA
-        ========================================================== */}
+        {/* Paginação */}
         {totalPages > 1 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-white/[0.06] text-xs text-muted">
-            <span>
-              Exibindo página{" "}
-              <strong className="text-fg">{currentPage}</strong> de{" "}
-              <strong className="text-fg">{totalPages}</strong> ({filtered.length} animes filtrados)
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-white/[0.07] pt-4 text-xs text-[var(--color-muted)] sm:flex-row">
+            <span className="studio-tabular">
+              Página <strong className="text-[var(--color-fg)]">{currentPage}</strong> de{" "}
+              <strong className="text-[var(--color-fg)]">{totalPages}</strong> ({filtered.length}{" "}
+              animes filtrados)
             </span>
 
             <div className="flex items-center gap-1.5">
@@ -1934,9 +1883,9 @@ function AdminIndex() {
                 variant="outline"
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="h-8 border-white/10 text-xs"
+                className="h-9 border-white/10 text-xs"
               >
-                <ChevronLeft className="size-3.5 mr-1" />
+                <ChevronLeft className="mr-1 size-3.5" />
                 Anterior
               </Button>
 
@@ -1952,10 +1901,10 @@ function AdminIndex() {
                       type="button"
                       onClick={() => setCurrentPage(pageNum)}
                       className={cn(
-                        "size-8 rounded-md font-mono text-xs font-medium transition-colors",
+                        "studio-mono size-9 rounded-md text-xs font-medium transition-colors",
                         currentPage === pageNum
-                          ? "bg-purple-600 text-white shadow-sm"
-                          : "border border-white/10 bg-elevated/40 text-muted hover:bg-elevated hover:text-fg",
+                          ? "bg-purple-600 text-white"
+                          : "border border-white/10 bg-[var(--studio-panel)] text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-[var(--color-fg)]",
                       )}
                     >
                       {pageNum}
@@ -1970,45 +1919,43 @@ function AdminIndex() {
                 variant="outline"
                 disabled={currentPage >= totalPages}
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="h-8 border-white/10 text-xs"
+                className="h-9 border-white/10 text-xs"
               >
                 Próxima
-                <ChevronRight className="size-3.5 ml-1" />
+                <ChevronRight className="ml-1 size-3.5" />
               </Button>
             </div>
           </div>
         )}
       </section>
 
-      {/* =========================================================
-          MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (PRESERVADO)
-      ========================================================== */}
+      {/* Modal de Confirmação de Exclusão */}
       <Dialog
         open={Boolean(pendingDelete)}
         onOpenChange={() => setPendingDelete(null)}
       >
-        <DialogContent className="border border-white/10 bg-[#0f0d18] text-fg sm:max-w-md">
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-white/10 bg-[#0e0c17] text-[var(--color-fg)] sm:max-w-md">
           <div className="flex items-start gap-3.5">
-            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-red-500/10 text-red-400 border border-red-500/20">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-rose-500/25 bg-rose-500/12 text-rose-400">
               <AlertTriangle className="size-5" />
             </div>
             <div>
-              <DialogTitle className="font-display text-lg font-semibold text-fg">
+              <DialogTitle className="font-display text-lg font-semibold text-[var(--color-fg)]">
                 Excluir título do catálogo?
               </DialogTitle>
-              <DialogDescription className="text-xs text-muted mt-1 leading-relaxed">
-                Todas as temporadas e episódios associados a este anime serão removidos do
-                catálogo deste dispositivo. A base pública do AniList continuará inalterada.
+              <DialogDescription className="mt-1.5 text-xs leading-relaxed text-[var(--color-muted)]">
+                Todas as temporadas e episódios associados a este anime serão removidos do catálogo
+                deste dispositivo. A base pública do AniList continuará inalterada.
               </DialogDescription>
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end gap-2 pt-2 border-t border-white/[0.06]">
+          <div className="mt-6 flex justify-end gap-2 border-t border-white/[0.07] pt-3">
             <Button
               type="button"
               variant="ghost"
               onClick={() => setPendingDelete(null)}
-              className="text-xs h-9 text-muted hover:text-fg"
+              className="h-9 text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
             >
               Cancelar
             </Button>
@@ -2023,7 +1970,7 @@ function AdminIndex() {
                 }
                 setPendingDelete(null);
               }}
-              className="text-xs h-9 bg-red-600 hover:bg-red-500 text-white"
+              className="h-9 bg-rose-600 text-xs font-semibold text-white hover:bg-rose-500"
             >
               Confirmar Exclusão
             </Button>

@@ -11,12 +11,10 @@ import {
   HardDrive,
   CopyCheck,
   Film,
-  Sparkles,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +24,7 @@ import {
 import { FORMAT_PT, STATUS_PT } from "@/lib/labels";
 import type { LocalAnime } from "@/lib/types";
 import type { OutboxOperation } from "@/lib/episode-writer";
+import { cn } from "@/lib/utils";
 
 export type AnimeSyncState = "synced" | "local" | "pending" | "conflict" | "error";
 
@@ -47,7 +46,6 @@ interface EditorHeaderProps {
 export function EditorHeader({
   anime,
   isNew,
-  importId,
   isSaving,
   onSave,
   onDuplicateAsDubbed,
@@ -72,8 +70,8 @@ export function EditorHeader({
     anime.titleEnglish && anime.titleEnglish !== anime.titleRomaji
       ? anime.titleEnglish
       : anime.titleNative && anime.titleNative !== anime.titleRomaji
-      ? anime.titleNative
-      : null;
+        ? anime.titleNative
+        : null;
 
   const animeOutboxOps = outboxOps.filter((o) => o.animeId === anime.id);
   const conflictCount = animeOutboxOps.filter((o) => o.status === "conflict").length;
@@ -96,86 +94,84 @@ export function EditorHeader({
       await onDelete();
       setDeleteDialogOpen(false);
     } catch {
-      // Falha tratada na ação onDelete; mantém o anime intacto
+      // Falha tratada em onDelete
     } finally {
       setIsDeleting(false);
     }
   };
 
-  // Determina o estado canônico de persistência sem heurística de prefixo
   const effectiveSyncState: AnimeSyncState =
     conflictCount > 0
       ? "conflict"
       : pendingCount > 0
-      ? "pending"
-      : syncState ??
-        (anime.syncedAt && anime.syncedAt >= (anime.updatedAt ?? 0)
-          ? "synced"
-          : "local");
+        ? "pending"
+        : syncState ??
+          (anime.syncedAt && anime.syncedAt >= (anime.updatedAt ?? 0)
+            ? "synced"
+            : "local");
+
+  const totalEpisodes = anime.seasons.reduce((acc, s) => acc + s.episodes.length, 0);
 
   return (
-    <div className="relative rounded-2xl border border-white/5 bg-surface/80 p-5 shadow-2xl backdrop-blur-xl sm:p-6">
-      {/* Barra de Navegação Superior */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-4">
+    <header className="studio-panel rounded-2xl p-4 sm:p-6">
+      {/* Barra Superior: Retorno e Persistência */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] pb-4">
         <Link
           to="/admin"
-          className="group inline-flex items-center gap-2 text-xs font-medium text-muted transition-colors hover:text-white"
+          className="group inline-flex items-center gap-2 text-xs font-medium text-[var(--color-muted)] transition-colors hover:text-[var(--color-fg)]"
         >
-          <ArrowLeft className="size-3.5 transition-transform group-hover:-translate-x-1" />
+          <ArrowLeft className="size-3.5 transition-transform group-hover:-translate-x-0.5" />
           <span>Voltar ao Catálogo</span>
         </Link>
 
-        {/* Indicador Preciso de Persistência */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           {effectiveSyncState === "conflict" ? (
-            <Badge className="h-6 border border-rose-500/30 bg-rose-500/10 text-[11px] font-medium text-rose-300">
-              <AlertTriangle className="mr-1.5 size-3 text-rose-400" />
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/35 bg-rose-500/12 px-2.5 py-1 text-[11px] font-semibold text-rose-300">
+              <AlertTriangle className="size-3.5 text-rose-400" />
               {conflictCount > 0 ? `${conflictCount} conflito(s) no Outbox` : "Conflito / Validação"}
-            </Badge>
+            </span>
           ) : effectiveSyncState === "pending" ? (
-            <Badge className="h-6 border border-amber-500/30 bg-amber-500/10 text-[11px] font-medium text-amber-300">
-              <Clock className="mr-1.5 size-3 text-amber-400" />
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/12 px-2.5 py-1 text-[11px] font-semibold text-amber-200">
+              <Clock className="size-3.5 text-amber-300" />
               {pendingCount > 0 ? `${pendingCount} pendência(s) de envio` : "Sincronização Pendente"}
-            </Badge>
+            </span>
           ) : effectiveSyncState === "error" ? (
-            <Badge className="h-6 border border-orange-500/30 bg-orange-500/10 text-[11px] font-medium text-orange-300">
-              <AlertTriangle className="mr-1.5 size-3 text-orange-400" />
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-orange-500/35 bg-orange-500/12 px-2.5 py-1 text-[11px] font-semibold text-orange-300">
+              <AlertTriangle className="size-3.5 text-orange-400" />
               Erro de comunicação
-            </Badge>
+            </span>
           ) : effectiveSyncState === "synced" ? (
-            <Badge className="h-6 border border-emerald-500/30 bg-emerald-500/10 text-[11px] font-medium text-emerald-300">
-              <CheckCircle2 className="mr-1.5 size-3 text-emerald-400" />
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+              <CheckCircle2 className="size-3.5 text-emerald-400" />
               Sincronizado no Servidor
-            </Badge>
+            </span>
           ) : (
-            <Badge className="h-6 border border-purple-500/30 bg-purple-500/10 text-[11px] font-medium text-purple-300">
-              <HardDrive className="mr-1.5 size-3 text-purple-400" />
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-[11px] font-semibold text-purple-300">
+              <HardDrive className="size-3.5 text-purple-400" />
               Salvo Localmente (Dispositivo)
-            </Badge>
+            </span>
           )}
 
-          {/* Badge de ID com Cópia Rápida */}
           <button
             type="button"
             onClick={handleCopyId}
             title="Clique para copiar o ID"
-            className="group inline-flex h-6 items-center gap-1.5 rounded-full border border-white/10 bg-elevated/60 px-2.5 text-[11px] font-mono text-zinc-400 transition-colors hover:border-purple-500/40 hover:bg-elevated hover:text-white"
+            className="studio-mono group inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/10 bg-[var(--studio-panel-alt)] px-2.5 text-[11px] text-[var(--color-muted)] transition-colors hover:border-purple-500/40 hover:text-[var(--color-fg)]"
           >
             <span>#{anime.id.length > 20 ? `${anime.id.slice(0, 8)}…` : anime.id}</span>
             {copiedId ? (
               <CopyCheck className="size-3 text-emerald-400" />
             ) : (
-              <Copy className="size-3 text-zinc-500 group-hover:text-zinc-300" />
+              <Copy className="size-3 text-[var(--color-subtle)] group-hover:text-[var(--color-fg)]" />
             )}
           </button>
         </div>
       </div>
 
-      {/* Conteúdo Principal do Cabeçalho */}
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-        {/* Identificação com Capa Miniatura e Títulos */}
-        <div className="flex items-center gap-4">
-          <div className="relative size-16 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-md sm:size-20">
+      {/* Identidade e Ações Principais */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <div className="relative h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/40 sm:h-24 sm:w-16">
             {anime.cover ? (
               <img
                 src={anime.cover}
@@ -186,67 +182,71 @@ export function EditorHeader({
                 }}
               />
             ) : (
-              <div className="flex size-full items-center justify-center text-zinc-600">
-                <Film className="size-6 text-zinc-600" />
+              <div className="flex size-full items-center justify-center text-[var(--color-subtle)]">
+                <Film className="size-6" />
               </div>
             )}
           </div>
 
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate font-display text-xl font-bold tracking-tight text-white sm:text-2xl md:text-3xl">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+              <h1 className="line-clamp-2 break-words font-display text-xl font-bold tracking-tight text-[var(--color-fg)] sm:text-2xl lg:text-[26px]">
                 {displayTitle}
               </h1>
-
               {anime.hidden && (
-                <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                <span className="studio-mono text-[11px] font-semibold uppercase tracking-wider text-rose-400">
                   Oculto
-                </span>
-              )}
-
-              {anime.format && (
-                <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium text-zinc-300">
-                  {FORMAT_PT[anime.format] || anime.format}
-                </span>
-              )}
-
-              {anime.status && (
-                <span className="rounded-md border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium text-purple-300">
-                  {STATUS_PT[anime.status] || anime.status}
-                </span>
-              )}
-
-              {anime.year && (
-                <span className="text-xs text-muted">
-                  ({anime.year})
                 </span>
               )}
             </div>
 
             {secondaryTitle && (
-              <p className="truncate text-xs text-muted sm:text-sm">
+              <p className="truncate text-xs text-[var(--color-muted)] sm:text-sm">
                 {secondaryTitle}
               </p>
             )}
 
-            <div className="flex flex-wrap items-center gap-3 pt-0.5 text-xs text-zinc-400">
-              <span>{anime.seasons.length} {anime.seasons.length === 1 ? "temporada" : "temporadas"}</span>
-              <span>•</span>
+            <div className="studio-tabular flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[var(--color-muted)]">
+              {anime.format && (
+                <span className="font-medium text-[var(--color-fg)]">
+                  {FORMAT_PT[anime.format] || anime.format}
+                </span>
+              )}
+              {anime.status && (
+                <>
+                  <span className="text-white/20">·</span>
+                  <span className="text-purple-300">
+                    {STATUS_PT[anime.status] || anime.status}
+                  </span>
+                </>
+              )}
+              {anime.year && (
+                <>
+                  <span className="text-white/20">·</span>
+                  <span>{anime.year}</span>
+                </>
+              )}
+              <span className="text-white/20">·</span>
               <span>
-                {anime.seasons.reduce((acc, s) => acc + s.episodes.length, 0)} episódios
+                {anime.seasons.length}{" "}
+                {anime.seasons.length === 1 ? "temporada" : "temporadas"}
               </span>
+              <span className="text-white/20">·</span>
+              <span>{totalEpisodes} episódios</span>
               {anime.score && (
                 <>
-                  <span>•</span>
-                  <span className="font-medium text-amber-400">★ {anime.score}/100</span>
+                  <span className="text-white/20">·</span>
+                  <span className="font-semibold text-amber-300">
+                    ★ {anime.score}/100
+                  </span>
                 </>
               )}
             </div>
           </div>
         </div>
 
-        {/* Grupo de Ações do Cabeçalho */}
-        <div className="flex flex-wrap items-center gap-2.5 sm:self-auto">
+        {/* Barra de Ações */}
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
           {!isNew && (
             <Button
               type="button"
@@ -254,7 +254,7 @@ export function EditorHeader({
               size="sm"
               onClick={onDuplicateAsDubbed}
               title="Cria um cadastro independente clonando metadados e episódios para versão dublada"
-              className="h-9 border-white/10 bg-elevated/40 text-xs text-zinc-300 hover:border-purple-500/40 hover:bg-elevated hover:text-white"
+              className="h-10 border-white/10 bg-[var(--studio-panel-alt)] px-3 text-xs text-[var(--color-fg)] hover:border-purple-500/40"
             >
               <Copy className="mr-1.5 size-3.5 text-purple-400" />
               <span>Duplicar como Dublado</span>
@@ -269,9 +269,14 @@ export function EditorHeader({
               disabled={isReloading}
               onClick={onReloadFromServer}
               title="Recarrega dados e episódios persistidos no PostgreSQL"
-              className="h-9 text-xs text-zinc-400 hover:bg-white/5 hover:text-white"
+              className="h-10 px-3 text-xs text-[var(--color-muted)] hover:bg-white/[0.06] hover:text-[var(--color-fg)]"
             >
-              <RefreshCw className={`mr-1.5 size-3.5 ${isReloading ? "animate-spin text-purple-400" : ""}`} />
+              <RefreshCw
+                className={cn(
+                  "mr-1.5 size-3.5",
+                  isReloading && "animate-spin text-purple-400",
+                )}
+              />
               <span className="hidden sm:inline">Recarregar do Servidor</span>
               <span className="sm:hidden">Recarregar</span>
             </Button>
@@ -283,19 +288,18 @@ export function EditorHeader({
               variant="ghost"
               size="sm"
               onClick={() => setDeleteDialogOpen(true)}
-              className="h-9 text-xs text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
+              className="h-10 px-3 text-xs text-rose-400 hover:bg-rose-500/12 hover:text-rose-300"
             >
               <Trash2 className="mr-1.5 size-3.5" />
               <span>Excluir</span>
             </Button>
           )}
 
-          {/* Botão de Salvar Destacado e Acessível */}
           <Button
             type="button"
             disabled={isSaving}
             onClick={onSave}
-            className="h-9 bg-purple-600 px-4 text-xs font-semibold text-white shadow-lg shadow-purple-600/20 hover:bg-purple-500 focus:ring-2 focus:ring-purple-500/50"
+            className="h-10 bg-purple-600 px-4 text-xs font-semibold text-white hover:bg-purple-500"
           >
             {isSaving ? (
               <>
@@ -314,23 +318,25 @@ export function EditorHeader({
 
       {/* Modal de Confirmação de Exclusão */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="border-rose-500/20 bg-zinc-950 sm:max-w-md">
-          <DialogTitle className="flex items-center gap-2 text-rose-400 font-display text-lg">
+        <DialogContent className="hikari-studio-dialog max-h-[88dvh] overflow-y-auto border border-rose-500/25 bg-[#0e0c17] text-[var(--color-fg)] sm:max-w-md">
+          <DialogTitle className="flex items-center gap-2 font-display text-lg font-semibold text-rose-400">
             <AlertTriangle className="size-5 shrink-0" />
             <span>Excluir anime do catálogo?</span>
           </DialogTitle>
-          <DialogDescription className="mt-2 text-xs leading-relaxed text-zinc-400">
-            Esta ação removerá <strong className="text-zinc-200">{displayTitle}</strong> e todas as suas temporadas e episódios deste dispositivo e disparará a exclusão correspondente no banco PostgreSQL.
+          <DialogDescription className="mt-2 text-xs leading-relaxed text-[var(--color-muted)]">
+            Esta ação removerá <strong className="text-[var(--color-fg)]">{displayTitle}</strong>{" "}
+            e todas as suas temporadas e episódios deste dispositivo e disparará a exclusão
+            correspondente no banco PostgreSQL.
           </DialogDescription>
 
-          <div className="mt-6 flex justify-end gap-2.5">
+          <div className="mt-6 flex justify-end gap-2.5 border-t border-white/[0.07] pt-3">
             <Button
               type="button"
               variant="outline"
               size="sm"
               disabled={isDeleting}
               onClick={() => setDeleteDialogOpen(false)}
-              className="border-white/10 text-xs text-zinc-300 hover:bg-white/5"
+              className="h-9 border-white/10 text-xs text-[var(--color-muted)] hover:bg-white/[0.06]"
             >
               Cancelar
             </Button>
@@ -340,13 +346,13 @@ export function EditorHeader({
               size="sm"
               disabled={isDeleting}
               onClick={handleConfirmDelete}
-              className="bg-rose-600 text-xs font-medium text-white hover:bg-rose-700"
+              className="h-9 bg-rose-600 text-xs font-semibold text-white hover:bg-rose-500"
             >
               {isDeleting ? "Excluindo…" : "Sim, Excluir Anime"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </header>
   );
 }
