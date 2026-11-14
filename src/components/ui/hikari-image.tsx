@@ -59,8 +59,15 @@ export const HikariImage = React.memo(function HikariImage({
   onError,
   ...rest
 }: HikariImageProps) {
+  const [prevSrc, setPrevSrc] = useState(src);
   const [usingFallback, setUsingFallback] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setUsingFallback(false);
+    setLoaded(false);
+  }
 
   const activeSrc = usingFallback ? fallbackSrc : src;
   const activeSrcSet = usingFallback ? undefined : srcSet;
@@ -72,6 +79,7 @@ export const HikariImage = React.memo(function HikariImage({
     }
     return (
       <div
+        key="hikari-img-placeholder"
         aria-hidden="true"
         className={cn("size-full bg-[#0d0c16]", fallbackClassName, className)}
         {...rest}
@@ -86,6 +94,7 @@ export const HikariImage = React.memo(function HikariImage({
 
   return (
     <img
+      key={activeSrc}
       src={activeSrc}
       srcSet={activeSrcSet}
       sizes={activeSizes}

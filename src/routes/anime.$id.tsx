@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Film,
   Heart,
   Loader2,
   LogIn,
@@ -80,8 +81,7 @@ const DeferredAnimeComments = lazy(
 );
 import { SectionReveal } from "@/components/section-reveal";
 import { useScrollLock } from "@/lib/scroll-lock";
-import { warmBannerImage } from "@/lib/anime-banner-warmup";
-import { anilistImage, getResponsiveCoverAttrs } from "@/lib/image-utils";
+import { anilistImage } from "@/lib/image-utils";
 import {
   buildCleanCanonical,
   buildTVSeriesJsonLd,
@@ -563,45 +563,18 @@ const TrailerFacade = memo(function TrailerFacade({
   videoId: string;
   title: string;
 }) {
-  const [playing, setPlaying] = useState(false);
-
-  useEffect(() => {
-    setPlaying(false);
-  }, [videoId]);
-
   return (
     <div className="mt-4 aspect-video w-full overflow-hidden rounded-2xl border border-purple-500/20 bg-[#0d0b18] shadow-[0_8px_30px_rgba(0,0,0,0.6)] [contain:layout_paint]">
-      {playing ? (
-        <iframe
-          title={`Trailer de ${title}`}
-          src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`}
-          referrerPolicy="strict-origin-when-cross-origin"
-          className="size-full border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => setPlaying(true)}
-          aria-label={`Reproduzir trailer de ${title}`}
-          style={{
-            backgroundImage: `url("https://i.ytimg.com/vi/${videoId}/hqdefault.jpg")`,
-          }}
-          className="group relative flex size-full items-center justify-center bg-cover bg-center bg-no-repeat cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
-        >
-          <span
-            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/35 transition-opacity duration-150 group-hover:opacity-80"
-            aria-hidden="true"
-          />
-          <span
-            className="relative z-10 flex size-16 sm:size-20 items-center justify-center rounded-full border border-white/25 bg-purple-600/90 text-white shadow-[0_8px_30px_rgba(0,0,0,0.7)] transition-transform duration-150 group-hover:scale-110 group-hover:bg-purple-500"
-            aria-hidden="true"
-          >
-            <Play className="ml-1 size-7 sm:size-8 fill-current" />
-          </span>
-        </button>
-      )}
+      <iframe
+        key={videoId}
+        title={`Trailer de ${title}`}
+        src={`https://www.youtube-nocookie.com/embed/${videoId}?rel=0`}
+        loading="lazy"
+        referrerPolicy="strict-origin-when-cross-origin"
+        className="size-full border-0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+      />
     </div>
   );
 });
@@ -698,9 +671,20 @@ function AnimePage() {
     [remote, id, locals],
   );
 
+  const [activeAnimeId, setActiveAnimeId] = useState(id);
   const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
     return getCachedResolvedSeasons(baseAnime?.id || id, baseAnime?.seasons);
   });
+
+  if (id !== activeAnimeId) {
+    setActiveAnimeId(id);
+    setResolvedSeasons(getCachedResolvedSeasons(baseAnime?.id || id, baseAnime?.seasons));
+    setExtraCredits(id && clientCreditsCache.has(id) ? { forId: id, ...clientCreditsCache.get(id)! } : null);
+    setExtraEpisodes(null);
+    setExtraSeasonNavigation(null);
+    setFailedBannerUrls({});
+    setSynopsisExpanded(false);
+  }
 
   useEffect(() => {
     const targetId = baseAnime?.id || id;
@@ -1451,12 +1435,7 @@ function AnimePage() {
 
   const [isHydratedClient, setIsHydratedClient] = useState(true);
 
-  const [isMobileViewport, setIsMobileViewport] = useState(() => {
-    if (clientHydrationState.hydrated && typeof window !== "undefined") {
-      return window.matchMedia(MOBILE_BANNER_MEDIA_QUERY).matches;
-    }
-    return false;
-  });
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   useIsomorphicLayoutEffect(() => {
     clientHydrationState.hydrated = true;
@@ -2025,7 +2004,7 @@ function AnimePage() {
       : "Assistir";
 
   return (
-    <article className="pb-12">
+    <article key={anime.id} className="pb-12">
       {/* HERO */}
       <section className="relative z-20 -mx-4 sm:-mx-6">
         <div
@@ -2056,6 +2035,7 @@ function AnimePage() {
                   />
                 ) : null}
                 <img
+                  key={`banner-img-${anime.id}-${currentBannerSrc}`}
                   src={
                     currentBannerSrc
                       ? anilistImage(
@@ -2096,6 +2076,7 @@ function AnimePage() {
             <>
               {anime.cover ? (
                 <img
+                  key={`banner-blur-${anime.id}-${anime.cover}`}
                   src={anilistImage(anime.cover, 480)}
                   alt=""
                   width={460}
@@ -2134,6 +2115,7 @@ function AnimePage() {
                   const srcSet = posterUrl ? `${anilist320} 320w, ${anilist460} 460w, ${anilist640} 640w` : undefined;
                   return (
                     <HikariImage
+                      key={`poster-${anime.id}-${posterUrl}`}
                       src={anilist640}
                       srcSet={srcSet}
                       sizes="(min-width: 640px) 176px, 112px"
@@ -2558,7 +2540,6 @@ function AnimePage() {
             <EpisodeGrid
               episodes={effectiveEpisodes ?? currentSeason.episodes}
               animeId={anime.id}
-              cover={anime.cover}
               watchedEpisodes={watchedEpisodes}
             />
           </div>
@@ -3439,7 +3420,6 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
   ep,
   index,
   animeId,
-  cover,
   watched,
   isSelecting,
   loadImage,
@@ -3448,19 +3428,12 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
   ep: EpisodeItemData;
   index: number;
   animeId: string;
-  cover: string;
   watched: boolean;
   isSelecting: boolean;
   loadImage: boolean;
   onSelect: (epId: string) => void;
 }) {
-  const isFallback = !ep.thumbnail && Boolean(cover);
-  const fallbackCoverAttrs = isFallback
-    ? getResponsiveCoverAttrs(cover, "card-sm")
-    : null;
-  const imgSrc = ep.thumbnail
-    ? anilistImage(ep.thumbnail, 320)
-    : fallbackCoverAttrs?.src || anilistImage(cover, 320);
+  const imgSrc = ep.thumbnail ? anilistImage(ep.thumbnail, 320) : null;
   const isFirstSix = index < 6;
 
   return (
@@ -3498,13 +3471,8 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
         {/* THUMBNAIL */}
         <div className="relative h-[5rem] w-32 shrink-0 overflow-hidden rounded-lg bg-elevated sm:h-[5.5rem] sm:w-36">
           <HikariImage
+            key={imgSrc ?? `ep-thumb-${animeId}-${ep.id}`}
             src={imgSrc}
-            srcSet={fallbackCoverAttrs?.srcSet}
-            sizes={
-              fallbackCoverAttrs
-                ? "(min-width: 640px) 144px, 128px"
-                : undefined
-            }
             loading={isFirstSix ? "eager" : "lazy"}
             decoding="async"
             fetchPriority={isFirstSix ? "auto" : "low"}
@@ -3512,28 +3480,20 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
             alt={ep.title ? `Episódio ${ep.number}: ${ep.title}` : `Episódio ${ep.number}`}
             width={320}
             height={180}
+            fallback={
+              <div className="size-full flex flex-col items-center justify-center bg-gradient-to-br from-[#1b152d] to-[#0f0d19] text-purple-400/35 select-none">
+                <Film className="size-6 stroke-[1.5]" />
+                <span className="text-[10px] font-medium tracking-wide mt-1 text-zinc-500">
+                  Episódio {ep.number}
+                </span>
+              </div>
+            }
             fallbackClassName="bg-elevated"
             loadedOpacityClass={watched ? "opacity-75" : "opacity-100"}
             className="size-full object-cover [@media(hover:hover)]:motion-safe:group-hover:scale-105"
           />
 
           <div className="absolute inset-0 bg-black/20 transition-colors motion-reduce:transition-none [@media(hover:hover)]:group-hover:bg-black/5" />
-
-          <div
-            className={cn(
-              "absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 motion-reduce:transition-none [@media(hover:hover)]:group-hover:opacity-100 group-active:opacity-100",
-              isSelecting && "opacity-100",
-            )}
-          >
-            <div
-              className={cn(
-                "flex size-9 items-center justify-center rounded-full bg-purple-600 text-white shadow-lg shadow-purple-950/60 ring-2 ring-white/20 motion-safe:transition-transform motion-safe:duration-200 motion-reduce:transition-none group-active:bg-purple-500 group-active:ring-purple-300/60",
-                isSelecting && "bg-purple-500 ring-purple-300/60 motion-safe:scale-105",
-              )}
-            >
-              <Play className="ml-0.5 size-4 fill-current" />
-            </div>
-          </div>
 
           {watched && (
             <div className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-full border border-purple-500/40 bg-purple-950/90 text-purple-200 shadow-md">
@@ -3584,12 +3544,10 @@ const EpisodeGridItem = memo(function EpisodeGridItem({
 const EpisodeGrid = memo(function EpisodeGrid({
   episodes,
   animeId,
-  cover,
   watchedEpisodes,
 }: {
   episodes: EpisodeItemData[];
   animeId: string;
-  cover: string;
   watchedEpisodes: string[];
 }) {
   const [selectingId, setSelectingId] = useState<string | null>(null);
@@ -3640,7 +3598,7 @@ const EpisodeGrid = memo(function EpisodeGrid({
   const remainingCount = Math.max(0, episodes.length - displayedEpisodes.length);
 
   return (
-    <div className="space-y-3">
+    <div key={`episode-grid-${animeId}`} className="space-y-3">
       <div
         ref={scrollBoxRef}
         className="max-h-[28rem] overflow-y-auto overscroll-contain rounded-xl pr-1 touch-pan-y sm:max-h-[34rem]"
@@ -3648,11 +3606,10 @@ const EpisodeGrid = memo(function EpisodeGrid({
         <ol className="grid gap-3 p-0.5 sm:grid-cols-2">
           {displayedEpisodes.map((ep, index) => (
             <EpisodeGridItem
-              key={ep.id}
+              key={`${animeId}-${ep.id}-${ep.number}`}
               ep={ep}
               index={index}
               animeId={animeId}
-              cover={cover}
               watched={watchedSet.has(ep.id)}
               isSelecting={selectingId === ep.id}
               loadImage={index < visibleImgLimit}

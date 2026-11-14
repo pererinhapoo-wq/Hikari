@@ -15,64 +15,7 @@ Current configuration:
  ╭────────── [Build Info] ─────────────╮
  │                                     │
  │  - Build Directory: .vercel/output  │
- │  - Date: 11/13/2026, 4:40:23 AM     │
- │  - Nitro Version: 3.0.260610-beta   │
- │  - Nitro Preset: vercel             │
- │                                     │
- ╰─────────────────────────────────────╯
-
-  ➜  Local:   http://127.0.0.1:8081/
-[Hikari] Falha segura ao consultar episódios públicos do PostgreSQL: Error: ENOENT: no such file or directory, open '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-    at async open (node:internal/fs/promises:639:25)
-    at async Module.readFile (node:internal/fs/promises:1252:14)
-    at async Object.w$4 (file:///app/applet/.vercel/output/functions/__server.func/_libs/electric-sql__pglite.mjs:118:16) {
-  errno: -2,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-}
-[db] PGLite bootstrap failed: Error: ENOENT: no such file or directory, open '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-    at async open (node:internal/fs/promises:639:25)
-    at async Module.readFile (node:internal/fs/promises:1252:14)
-    at async Object.w$4 (file:///app/applet/.vercel/output/functions/__server.func/_libs/electric-sql__pglite.mjs:118:16) {
-  errno: -2,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-}
-node:internal/process/promises:394
-    triggerUncaughtException(err, true /* fromPromise */);
-    ^
-
-Error: ENOENT: no such file or directory, open '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-    at async open (node:internal/fs/promises:639:25)
-    at async Module.readFile (node:internal/fs/promises:1252:14)
-    at async Object.w$4 (file:///app/applet/.vercel/output/functions/__server.func/_libs/electric-sql__pglite.mjs:118:16) {
-  errno: -2,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: '/app/applet/.vercel/output/functions/__server.func/_libs/pglite.data'
-}
-
-Node.js v22.23.2
-
-> preview
-> node scripts/with-app-env.mjs vite preview
-
-Warning: Route file "/app/applet/src/routes/api-hikari-ai-review.ts" does not export a Route. This file will not be included in the route tree.
-
-If this file is not intended to be a route, you can exclude it using one of these options:
-  1. Rename the file to "/app/applet/src/routes/-api-hikari-ai-review.ts" (prefix with "-")
-  2. Use 'routeFileIgnorePattern' in your config to match this file
-
-Current configuration:
-  routeFileIgnorePrefix: "-"
-  routeFileIgnorePattern: undefined
-
- ╭────────── [Build Info] ─────────────╮
- │                                     │
- │  - Build Directory: .vercel/output  │
- │  - Date: 11/13/2026, 3:31:49 PM     │
+ │  - Date: 11/14/2026, 12:41:56 AM    │
  │  - Nitro Version: 3.0.260610-beta   │
  │  - Nitro Preset: vercel             │
  │                                     │

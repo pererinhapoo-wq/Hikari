@@ -4186,13 +4186,16 @@ function mapKitsuSlim(item: KitsuAnimeItem): SlimAnime {
   const rating = attr.averageRating
     ? Math.round(Number(attr.averageRating))
     : null;
-  const year = attr.startDate
-    ? new Date(attr.startDate).getFullYear()
+  const parsedStartDate = attr.startDate ? new Date(attr.startDate) : null;
+  const hasValidStartDate =
+    parsedStartDate !== null && !Number.isNaN(parsedStartDate.getTime());
+  const year = hasValidStartDate
+    ? parsedStartDate.getUTCFullYear()
     : null;
 
   let season: string | null = null;
-  if (attr.startDate) {
-    const month = new Date(attr.startDate).getMonth();
+  if (hasValidStartDate) {
+    const month = parsedStartDate.getUTCMonth();
     if (month >= 0 && month <= 2) season = "WINTER";
     else if (month >= 3 && month <= 5) season = "SPRING";
     else if (month >= 6 && month <= 8) season = "SUMMER";
@@ -4395,17 +4398,44 @@ async function fetchBrowseFromKitsu(
       data?: KitsuAnimeItem[];
     }>(path);
 
-    const items = (json.data ?? []).map(mapKitsuSlim);
+    const rawItems = (json.data ?? []).map(mapKitsuSlim);
+    const expectedSeason = targetSeason.toUpperCase();
+    const items =
+      section === "season"
+        ? rawItems.filter(
+            (item) =>
+              (!item.season || item.season.toUpperCase() === expectedSeason) &&
+              (!item.year || item.year === targetYear),
+          )
+        : rawItems;
 
     return {
       items,
       page,
-      hasNext: items.length >= limit,
+      hasNext: rawItems.length >= limit,
       source: "kitsu",
     };
   } catch {
+    const expectedSeason = targetSeason.toUpperCase();
+    let fallbackItems = FALLBACK_ANIMES;
+
+    if (section === "season") {
+      fallbackItems = fallbackItems.filter(
+        (item) =>
+          item.season?.toUpperCase() === expectedSeason &&
+          item.year === targetYear,
+      );
+    }
+
+    if (genre) {
+      const normalizedGenre = genre.trim().toLowerCase();
+      fallbackItems = fallbackItems.filter((item) =>
+        item.genres.some((g) => g.toLowerCase() === normalizedGenre),
+      );
+    }
+
     return {
-      items: FALLBACK_ANIMES,
+      items: fallbackItems,
       page,
       hasNext: false,
       source: "kitsu",
@@ -6994,7 +7024,9 @@ export const fetchBrowse =
                     : data.section ===
                         "popular"
                       ? `/top/anime?filter=bypopularity&page=${page}&limit=24`
-                      : `/seasons/now?page=${page}&limit=24`;
+                      : data.section === "season"
+                        ? `/seasons/${year}/${season.toLowerCase()}?page=${page}&limit=24`
+                        : `/seasons/now?page=${page}&limit=24`;
 
                 const json =
                   await jikanFetch<{
@@ -7005,13 +7037,19 @@ export const fetchBrowse =
                     data?: JikanAnime[];
                   }>(path);
 
+                const mappedJikan = (json.data ?? []).map(mapJikanSlim);
+                const items =
+                  data.section === "season"
+                    ? mappedJikan.filter(
+                        (item) =>
+                          (!item.season ||
+                            item.season.toUpperCase() === season) &&
+                          (!item.year || item.year === year),
+                      )
+                    : mappedJikan;
+
                 return {
-                  items: (
-                    json.data ??
-                    []
-                  ).map(
-                    mapJikanSlim,
-                  ),
+                  items,
 
                   page,
 

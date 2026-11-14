@@ -882,6 +882,11 @@ if (typeof window !== "undefined") {
   });
 }
 
+export type OverlaySlimOptions<T> = {
+  includeExtras?: boolean | ((local: LocalAnime) => boolean);
+  mapMatched?: (mappedItem: T, remoteItem: T, local: LocalAnime) => T;
+};
+
 export function overlaySlim<
   T extends {
     id: string;
@@ -891,6 +896,7 @@ export function overlaySlim<
   remote: T[],
   locals: LocalAnime[],
   toLocalItem: (l: LocalAnime) => T,
+  options?: OverlaySlimOptions<T>,
 ): T[] {
   const hiddenAnilist = new Set(
     locals
@@ -905,6 +911,7 @@ export function overlaySlim<
     /\b(dub|dublado|dublada)\b/i.test(`${a.titleRomaji} ${a.titleEnglish} ${a.titleNative}`);
 
   const usedLocalIds = new Set<string>();
+  const mapMatched = options?.mapMatched;
 
   const mapped = remote
     .filter(
@@ -917,7 +924,8 @@ export function overlaySlim<
       const direct = locals.find((a) => !a.hidden && a.id === r.id);
       if (direct) {
         usedLocalIds.add(direct.id);
-        return toLocalItem(direct);
+        const item = toLocalItem(direct);
+        return mapMatched ? mapMatched(item, r, direct) : item;
       }
 
       // 2. AniList ID match: prefer original/non-dubbed local anime to replace the canonical remote entry
@@ -939,7 +947,8 @@ export function overlaySlim<
 
         if (aniLocal) {
           usedLocalIds.add(aniLocal.id);
-          return toLocalItem(aniLocal);
+          const item = toLocalItem(aniLocal);
+          return mapMatched ? mapMatched(item, r, aniLocal) : item;
         }
       }
 
@@ -947,15 +956,20 @@ export function overlaySlim<
     });
 
   const remoteIds = new Set(mapped.map((m) => m.id));
+  const includeExtras = options?.includeExtras ?? true;
 
-  const extras = locals
-    .filter(
-      (a) =>
-        !a.hidden &&
-        !usedLocalIds.has(a.id) &&
-        !remoteIds.has(a.id),
-    )
-    .map(toLocalItem);
+  const extras =
+    includeExtras === false
+      ? []
+      : locals
+          .filter(
+            (a) =>
+              !a.hidden &&
+              !usedLocalIds.has(a.id) &&
+              !remoteIds.has(a.id) &&
+              (includeExtras === true || includeExtras(a)),
+          )
+          .map(toLocalItem);
 
   return [...extras, ...mapped];
 }

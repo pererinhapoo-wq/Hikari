@@ -6,21 +6,17 @@ import {
 
 import {
   Bell,
-  Bookmark,
   Calendar,
   CalendarDays,
   CheckCheck,
   CircleUserRound,
-  Compass,
   House,
   Loader2,
   LogIn,
-  LogOut,
   Menu,
   Search,
   Settings2,
   Tags,
-  UserCircle,
   UserPlus,
   X,
 } from "lucide-react";
@@ -31,7 +27,10 @@ import type { NotificationItem } from "@/components/notifications/notification-i
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useHikariStore } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import {
+  cn,
+  currentAnimeSeason,
+} from "@/lib/utils";
 import { useScrollLock } from "@/lib/scroll-lock";
 import {
   setShellUiReady,
@@ -531,6 +530,9 @@ export function Shell() {
       select: (s) =>
         s.location.pathname,
     });
+
+  const currentSeasonInfo = currentAnimeSeason();
+  const isOnSeasonRoute = pathname.startsWith("/browse/season");
 
   const { user, isPending: authPending } =
     useCurrentUserState();
@@ -1364,20 +1366,7 @@ export function Shell() {
                 <span>Calendário</span>
               </Link>
 
-              {/* Explorar */}
-              <Link
-                to="/browse/$section"
-                params={{ section: "popular" }}
-                className={cn(
-                  "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-                  pathname.startsWith("/browse")
-                    ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                    : "text-muted hover:bg-elevated/70 hover:text-fg",
-                )}
-              >
-                <Compass className="size-4" />
-                <span>Explorar</span>
-              </Link>
+
             </nav>
           </div>
 
@@ -1664,55 +1653,7 @@ export function Shell() {
                     <span>Calendário</span>
                   </Link>
 
-                  {/* Explorar */}
-                  <Link
-                    to="/browse/$section"
-                    params={{ section: "popular" }}
-                    onClick={() => setMenuOpen(false)}
-                    className={cn(
-                      "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
-                      pathname.startsWith("/browse")
-                        ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                        : "text-muted hover:bg-elevated hover:text-fg",
-                    )}
-                  >
-                    <Compass className="size-5" />
-                    <span>Explorar</span>
-                  </Link>
-
-                  {user && (
-                    <Link
-                      to="/my-list"
-                      onClick={() => setMenuOpen(false)}
-                      className={cn(
-                        "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
-                        pathname.startsWith("/my-list")
-                          ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                          : "text-muted hover:bg-elevated hover:text-fg",
-                      )}
-                    >
-                      <Bookmark className="size-5" />
-                      <span>Minha Lista</span>
-                    </Link>
-                  )}
-
-                  {user ? (
-                    <>
-                      <Link
-                        to="/account"
-                        onClick={() => setMenuOpen(false)}
-                        className={cn(
-                          "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
-                          pathname.startsWith("/account")
-                            ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                            : "text-muted hover:bg-elevated hover:text-fg",
-                        )}
-                      >
-                        <UserCircle className="size-5" />
-                        <span>Meu Perfil</span>
-                      </Link>
-                    </>
-                  ) : authPending ? null : (
+                  {!user && !authPending && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1744,26 +1685,6 @@ export function Shell() {
                     </Link>
                   )}
 
-                  {user && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setMenuOpen(false);
-                        try {
-                          const { signOut } = await import("@/lib/auth/client");
-                          await signOut();
-                          window.location.reload();
-                        } catch {
-                          window.location.reload();
-                        }
-                      }}
-                      className="flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium text-rose-400 hover:bg-rose-500/10 transition-colors text-left cursor-pointer"
-                    >
-                      <LogOut className="size-5" />
-                      <span>Sair</span>
-                    </button>
-                  )}
-
                 </div>
               </div>
 
@@ -1780,14 +1701,17 @@ export function Shell() {
                   <Link
                     to="/browse/$section"
                     params={{ section: "season" }}
+                    search={{
+                      season: currentSeasonInfo.season,
+                      year: currentSeasonInfo.year,
+                      page: 1,
+                    }}
                     onClick={() =>
                       setMenuOpen(false)
                     }
                     className={cn(
                       "flex items-center gap-4 rounded-lg px-4 py-4 text-base font-medium transition-colors",
-                      pathname.startsWith(
-                        "/browse/season",
-                      )
+                      isOnSeasonRoute
                         ? "bg-elevated text-fg"
                         : "text-muted hover:bg-elevated hover:text-fg",
                     )}

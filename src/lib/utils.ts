@@ -49,8 +49,26 @@ export function isDirectVideo(url: string): boolean {
   return /\.(mp4|webm|ogg|mov|m3u8)(\?|$)/i.test(url) || url.includes(".m3u8");
 }
 
+export type OfficialAnimeSeason = "WINTER" | "SPRING" | "SUMMER" | "FALL";
+
+export function normalizeAnimeSeason(
+  value: unknown,
+): OfficialAnimeSeason | null {
+  if (typeof value !== "string") return null;
+  const upper = value.trim().toUpperCase();
+  if (
+    upper === "WINTER" ||
+    upper === "SPRING" ||
+    upper === "SUMMER" ||
+    upper === "FALL"
+  ) {
+    return upper;
+  }
+  return null;
+}
+
 export function currentAnimeSeason(now = new Date()): {
-  season: "WINTER" | "SPRING" | "SUMMER" | "FALL";
+  season: OfficialAnimeSeason;
   year: number;
 } {
   const month = now.getMonth();
@@ -59,4 +77,55 @@ export function currentAnimeSeason(now = new Date()): {
   if (month <= 5) return { season: "SPRING", year };
   if (month <= 8) return { season: "SUMMER", year };
   return { season: "FALL", year };
+}
+
+const SEASON_ORDER: readonly OfficialAnimeSeason[] = [
+  "WINTER",
+  "SPRING",
+  "SUMMER",
+  "FALL",
+];
+
+export function stepAnimeSeason(
+  season: OfficialAnimeSeason,
+  year: number,
+  delta: number,
+): {
+  season: OfficialAnimeSeason;
+  year: number;
+} {
+  const index = SEASON_ORDER.indexOf(season);
+  const safeIndex = index >= 0 ? index : 0;
+  const total = year * 4 + safeIndex + delta;
+  const nextYear = Math.floor(total / 4);
+  const nextIndex = ((total % 4) + 4) % 4;
+  return {
+    season: SEASON_ORDER[nextIndex],
+    year: nextYear,
+  };
+}
+
+export function compareAnimeSeasons(
+  a: { season: OfficialAnimeSeason; year: number },
+  b: { season: OfficialAnimeSeason; year: number },
+): number {
+  const idxA = SEASON_ORDER.indexOf(a.season);
+  const idxB = SEASON_ORDER.indexOf(b.season);
+  return a.year * 4 + idxA - (b.year * 4 + idxB);
+}
+
+export function prevAnimeSeason(now = new Date()): {
+  season: OfficialAnimeSeason;
+  year: number;
+} {
+  const current = currentAnimeSeason(now);
+  return stepAnimeSeason(current.season, current.year, -1);
+}
+
+export function nextAnimeSeason(now = new Date()): {
+  season: OfficialAnimeSeason;
+  year: number;
+} {
+  const current = currentAnimeSeason(now);
+  return stepAnimeSeason(current.season, current.year, 1);
 }

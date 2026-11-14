@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LogOut, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { isHikariAdmin } from "@/lib/auth/admin";
-import { signOut } from "@/lib/auth/client";
 import type { AppUser } from "@/lib/auth/use-current-user";
 import { getProfile } from "@/lib/profile.functions";
 import { cn } from "@/lib/utils";
@@ -141,17 +140,6 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
     };
   }, [open]);
 
-  const handleLogout = useCallback(async () => {
-    setOpen(false);
-    try {
-      await signOut();
-      window.location.reload();
-    } catch (err) {
-      console.warn("Erro ao encerrar sessão:", err);
-      window.location.reload();
-    }
-  }, []);
-
   const avatarSrc = !imgError ? customAvatar || user.profileImageUrl || null : null;
   const displayName = user.displayName || customNick || "Membro";
   const initial = (user.displayName || customNick || user.primaryEmail || "U")
@@ -273,19 +261,6 @@ export function ProfileDropdownMenu({ user }: ProfileDropdownMenuProps) {
               </Link>
             )}
           </div>
-
-          <div className="my-1 border-t border-white/[0.07]" />
-
-          {/* 3. Sair */}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => void handleLogout()}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs sm:text-[13px] font-medium text-rose-300/90 hover:bg-rose-500/12 hover:text-rose-200 cursor-pointer text-left motion-safe:transition-[background-color,color,transform] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-[0.97] motion-reduce:transition-none motion-reduce:transform-none"
-          >
-            <LogOut className="size-3.5 shrink-0 opacity-90" />
-            <span>Sair</span>
-          </button>
         </div>
       )}
     </div>

@@ -1,8 +1,59 @@
 import { localToAnime, type Anime, type LocalAnime, type SlimAnime, type Season } from "@/lib/types";
-import { overlaySlim } from "@/lib/store";
+import { overlaySlim, type OverlaySlimOptions } from "@/lib/store";
+import { normalizeAnimeSeason, type OfficialAnimeSeason } from "@/lib/utils";
 
-export function overlayList(remote: SlimAnime[], locals: LocalAnime[]): SlimAnime[] {
-  return overlaySlim(remote, locals, (l) => localToAnime(l));
+export function overlayList(
+  remote: SlimAnime[],
+  locals: LocalAnime[],
+  options?: OverlaySlimOptions<SlimAnime>,
+): SlimAnime[] {
+  return overlaySlim(remote, locals, (l) => localToAnime(l), options);
+}
+
+export function doesLocalAnimeMatchSeason(
+  local: LocalAnime,
+  targetSeason: OfficialAnimeSeason,
+  targetYear: number,
+  options?: { allowRemoteLinked?: boolean },
+): boolean {
+  const isRemoteLinked = Boolean(local.anilistId || local.malId || local.kitsuId);
+  if (isRemoteLinked && !options?.allowRemoteLinked) {
+    return false;
+  }
+
+  const normalizedSeason = normalizeAnimeSeason(local.season);
+  if (!normalizedSeason || normalizedSeason !== targetSeason) {
+    return false;
+  }
+
+  if (
+    typeof local.year !== "number" ||
+    !Number.isInteger(local.year) ||
+    local.year !== targetYear
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export function overlaySeasonList(
+  remote: SlimAnime[],
+  locals: LocalAnime[],
+  targetSeason: OfficialAnimeSeason,
+  targetYear: number,
+): SlimAnime[] {
+  return overlaySlim(remote, locals, (l) => localToAnime(l), {
+    includeExtras: (local) =>
+      doesLocalAnimeMatchSeason(local, targetSeason, targetYear, {
+        allowRemoteLinked: remote.length === 0,
+      }),
+    mapMatched: (mappedItem, remoteItem) => ({
+      ...mappedItem,
+      season: mappedItem.season || remoteItem.season,
+      year: mappedItem.year ?? remoteItem.year,
+    }),
+  });
 }
 
 import { isEpisodePublished } from "@/lib/published-episodes";
