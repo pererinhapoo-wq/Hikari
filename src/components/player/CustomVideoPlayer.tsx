@@ -485,8 +485,10 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [togglePlay, toggleFullscreen, toggleMute, skipTime]);
 
-  // Click/tap handler on video container (toggle controls visibility cleanly without touchstart conflicts)
-  const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  // Unified PointerUp handler on container (handles touch taps and mouse clicks reliably on mobile and desktop)
+  const handleContainerPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+
     const now = Date.now();
     const timeDiff = now - lastTapTimeRef.current;
     lastTapTimeRef.current = now;
@@ -509,7 +511,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         toggleFullscreen();
       }
     } else {
-      // Single tap / click on video area: toggle controls visibility
+      // Single tap / click on video area: toggle controls visibility cleanly
       setShowControls((current) => !current);
       if (showSettingsMenu) {
         setShowSettingsMenu(false);
@@ -628,7 +630,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     <div
       ref={containerRef}
       onMouseMove={handleUserActivity}
-      onClick={handleContainerClick}
+      onPointerUp={handleContainerPointerUp}
       data-controls={showControls ? "visible" : "hidden"}
       data-paused={!isPlaying ? "true" : "false"}
       className={`hikari-video-player w-full aspect-video min-h-[240px] md:min-h-[520px] flex items-center justify-center select-none ${className || ''}`}
@@ -678,10 +680,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       {onClose && (
         <button
           type="button"
-          onClick={(e) => {
+          onPointerUp={(e) => {
             e.stopPropagation();
             onClose();
           }}
+          onClick={(e) => e.stopPropagation()}
           aria-label="Voltar"
           className="absolute top-4 left-4 z-30 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 active:scale-95 text-slate-200 hover:text-white flex items-center justify-center transition-all border border-white/10 backdrop-blur-md cursor-pointer shadow-lg"
         >
@@ -700,10 +703,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
           {!isPlaying && !videoError && (
             <button
               type="button"
-              onClick={(e) => {
+              onPointerUp={(e) => {
                 e.stopPropagation();
                 togglePlay();
               }}
+              onClick={(e) => e.stopPropagation()}
               className="w-16 h-16 rounded-full bg-purple-600/90 hover:bg-purple-600 text-white flex items-center justify-center shadow-2xl backdrop-blur-sm pointer-events-auto cursor-pointer transition-transform hover:scale-105 active:scale-95"
               aria-label="Reproduzir"
             >
@@ -714,6 +718,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
         {/* Bottom Control Bar */}
         <div
+          onPointerUp={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
           className="flex flex-col gap-2 w-full pointer-events-auto bg-black/40 backdrop-blur-md p-3 rounded-xl border border-white/10 relative"
@@ -736,7 +741,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={togglePlay}
+                onPointerUp={(e) => {
+                  e.stopPropagation();
+                  togglePlay();
+                }}
+                onClick={(e) => e.stopPropagation()}
                 aria-label={isPlaying ? 'Pausar' : 'Reproduzir'}
                 className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-white transition-colors cursor-pointer"
               >
@@ -746,7 +755,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               <div className="flex items-center gap-2 group/vol relative">
                 <button
                   type="button"
-                  onClick={toggleMute}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    toggleMute();
+                  }}
+                  onClick={(e) => e.stopPropagation()}
                   aria-label={isMuted ? 'Ativar som' : 'Silenciar'}
                   className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-white transition-colors cursor-pointer"
                 >
@@ -774,7 +787,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setShowSettingsMenu((prev) => !prev)}
+                  onPointerUp={(e) => {
+                    e.stopPropagation();
+                    setShowSettingsMenu((prev) => !prev);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
                   aria-label="Configurações e velocidade"
                   className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-slate-200 hover:text-white transition-colors cursor-pointer"
                 >
@@ -789,7 +806,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                         <button
                           key={spd}
                           type="button"
-                          onClick={() => changeSpeed(spd)}
+                          onPointerUp={(e) => {
+                            e.stopPropagation();
+                            changeSpeed(spd);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
                           className={`w-full px-2.5 py-1.5 text-left text-xs rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
                             playbackSpeed === spd
                               ? 'bg-purple-600/30 text-purple-200 font-semibold'
@@ -808,7 +829,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               {/* Fullscreen Toggle */}
               <button
                 type="button"
-                onClick={toggleFullscreen}
+                onPointerUp={(e) => {
+                  e.stopPropagation();
+                  toggleFullscreen();
+                }}
+                onClick={(e) => e.stopPropagation()}
                 aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
                 className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-white transition-colors cursor-pointer"
               >
