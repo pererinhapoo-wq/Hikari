@@ -1431,7 +1431,7 @@ export const fetchAnimeEpisodes = createServerFn({
     try {
       const seasons = await jikanEpisodes(malId);
       if (animeId && seasons.length > 0 && seasons[0]?.episodes?.length) {
-        const detailKey = `detail:v5:${animeId}`;
+        const detailKey = `detail:v6:${animeId}`;
         const cached = fromCache<Anime>(detailKey);
         if (cached && (!cached.streamingEpisodes || cached.streamingEpisodes.length === 0)) {
           const titleMap = new Map<number, { title: string; aired?: string }>();
@@ -2085,6 +2085,177 @@ async function fetchKitsuIdByTitle(
   }
 }
 
+async function fetchKitsuEpisodesByKitsuId(
+  kitsuId: number,
+  expectedCount?: number | null,
+): Promise<Episode[]> {
+  if (!Number.isFinite(kitsuId) || kitsuId <= 0) {
+    return [];
+  }
+
+  const cacheKey = `kitsu-episodes:v1:${kitsuId}:${expectedCount ?? 0}`;
+
+  return withCache<Episode[]>(
+    cacheKey,
+    async () => {
+      type KitsuEpisodePage = {
+        meta?: { count?: number };
+        data?: {
+          id: string;
+          attributes?: {
+            number?: number;
+            canonicalTitle?: string;
+            titles?: { en_jp?: string; en_us?: string; ja_jp?: string };
+            synopsis?: string;
+            thumbnail?: { original?: string };
+            airdate?: string;
+            length?: number;
+          };
+        }[];
+      };
+
+      const pageLimit = 20;
+      const firstPage = await kitsuFetch<KitsuEpisodePage>(
+        `/anime/${kitsuId}/episodes?page[limit]=${pageLimit}&page[offset]=0&sort=number`,
+      );
+
+      const firstItems = firstPage.data ?? [];
+      if (firstItems.length === 0) {
+        return [];
+      }
+
+      const totalCount =
+        typeof firstPage.meta?.count === "number" && firstPage.meta.count > 0
+          ? firstPage.meta.count
+          : (expectedCount ?? firstItems.length);
+      const maxPages = Math.min(5, Math.ceil(totalCount / pageLimit));
+
+      let allItems = [...firstItems];
+      if (maxPages > 1) {
+        const extraOffsets = Array.from(
+          { length: maxPages - 1 },
+          (_, i) => (i + 1) * pageLimit,
+        );
+        const extraResults = await Promise.allSettled(
+          extraOffsets.map((offset) =>
+            kitsuFetch<KitsuEpisodePage>(
+              `/anime/${kitsuId}/episodes?page[limit]=${pageLimit}&page[offset]=${offset}&sort=number`,
+            ),
+          ),
+        );
+        for (const res of extraResults) {
+          if (res.status === "fulfilled" && Array.isArray(res.value.data)) {
+            allItems = allItems.concat(res.value.data);
+          }
+        }
+      }
+
+      const byNumber = new Map<number, Episode>();
+      allItems.forEach((ep, idx) => {
+        const epNum = ep.attributes?.number ?? idx + 1;
+        if (!Number.isFinite(epNum) || epNum <= 0 || byNumber.has(epNum)) {
+          return;
+        }
+        const rawTitle =
+          ep.attributes?.canonicalTitle?.trim() ||
+          ep.attributes?.titles?.en_us?.trim() ||
+          ep.attributes?.titles?.en_jp?.trim();
+        byNumber.set(epNum, {
+          id: `kitsu-ep-${kitsuId}-${epNum}`,
+          number: epNum,
+          title: rawTitle || `Episódio ${epNum}`,
+          thumbnail: ep.attributes?.thumbnail?.original?.trim() || undefined,
+          duration: ep.attributes?.length ? `${ep.attributes.length} min` : undefined,
+          synopsis: ep.attributes?.synopsis?.trim() || undefined,
+          aired: ep.attributes?.airdate || undefined,
+        });
+      });
+
+      return Array.from(byNumber.values()).sort((a, b) => a.number - b.number);
+    },
+    {
+      shouldCache: (eps) => eps.length > 0,
+      fallback: () => [],
+    },
+  );
+}
+
+function extractStreamEpisodeNumber(title?: string | null): number | null {
+  if (!title) return null;
+  const match =
+    title.match(/(?:Episode|Episódio|Ep\.?)\s*(\d+)\b/i) ??
+    title.match(/^(\d+)\s*[-–—:.]/);
+  if (!match) return null;
+  const num = Number(match[1]);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function hasValidSeasonStreamingEpisodes(media: AniMedia): boolean {
+  const streams = media.streamingEpisodes ?? [];
+  if (streams.length === 0) {
+    return false;
+  }
+
+  const hasSeriesPrequel = (media.relations?.edges ?? []).some(
+    (edge) =>
+      edge?.relationType === "PREQUEL" &&
+      edge?.node?.type === "ANIME" &&
+      edge?.node?.format !== "MUSIC" &&
+      edge?.node?.format !== "SPECIAL" &&
+      edge?.node?.format !== "CM" &&
+      edge?.node?.format !== "PV",
+  );
+  if (hasSeriesPrequel) {
+    return false;
+  }
+
+  if (
+    typeof media.episodes === "number" &&
+    media.episodes > 0 &&
+    streams.length > media.episodes
+  ) {
+    return false;
+  }
+
+  const parsedNums = streams
+    .map((ep) => extractStreamEpisodeNumber(ep.title))
+    .filter((n): n is number => n !== null);
+
+  if (parsedNums.length >= 2) {
+    const first = parsedNums[0];
+    const last = parsedNums[parsedNums.length - 1];
+    if (first > 1 || last < first) {
+      return false;
+    }
+  } else if (parsedNums.length === 1 && parsedNums[0] > 1) {
+    return false;
+  }
+
+  return true;
+}
+
+async function fetchKitsuEpisodesForAniMedia(
+  media: AniMedia,
+): Promise<Episode[]> {
+  try {
+    let kitsuId = media.idMal
+      ? await fetchKitsuIdByExternal("myanimelist/anime", media.idMal)
+      : undefined;
+
+    if (!kitsuId) {
+      kitsuId = await fetchKitsuIdByExternal("anilist/anime", media.id);
+    }
+
+    if (!kitsuId) {
+      return [];
+    }
+
+    return await fetchKitsuEpisodesByKitsuId(kitsuId, media.episodes);
+  } catch {
+    return [];
+  }
+}
+
 async function fetchKitsuCreditsDirect(
   kitsuId: number,
 ): Promise<AnimeCreditsResult | null> {
@@ -2603,7 +2774,7 @@ export const fetchAnimeCredits = createServerFn({
   .handler(async ({ data }) => {
     const credits = await resolveAnimeCredits(data);
     if (data.animeId && credits) {
-      const detailKey = `detail:v5:${data.animeId}`;
+      const detailKey = `detail:v6:${data.animeId}`;
       const cached = fromCache<Anime>(detailKey);
       if (cached) {
         const hasChar = (cached.characters?.length ?? 0) > 0;
@@ -3370,6 +3541,7 @@ function mapAniFull(
   seasons: Season[],
   seasonNavigation?: SeasonNavigation,
   extraImages?: string[],
+  allowStreamingEpisodes = true,
 ): Anime & {
   seasonNavigation: SeasonNavigation;
 } {
@@ -3470,10 +3642,9 @@ function mapAniFull(
       media.nextAiringEpisode ??
       undefined,
 
-    streamingEpisodes:
-      streamingFromAni(
-        media,
-      ),
+    streamingEpisodes: allowStreamingEpisodes
+      ? streamingFromAni(media)
+      : [],
 
     seasons,
 
@@ -5933,41 +6104,10 @@ async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
   }
   const slim = mapKitsuSlim(item);
 
-  const episodesTask = (async (): Promise<Episode[]> => {
-    try {
-      const epJson = await kitsuFetch<{
-        data?: {
-          id: string;
-          attributes?: {
-            number?: number;
-            canonicalTitle?: string;
-            titles?: { en_jp?: string; en_us?: string; ja_jp?: string };
-            synopsis?: string;
-            thumbnail?: { original?: string };
-            airdate?: string;
-            length?: number;
-          };
-        }[];
-      }>(`/anime/${kitsuId}/episodes?page[limit]=20`);
-
-      return (epJson.data ?? []).map((ep, idx) => {
-        const epNum = ep.attributes?.number ?? idx + 1;
-        return {
-          id: `kitsu-ep-${kitsuId}-${epNum}`,
-          number: epNum,
-          title:
-            ep.attributes?.canonicalTitle ||
-            ep.attributes?.titles?.en_us ||
-            `Episódio ${epNum}`,
-          thumbnail: ep.attributes?.thumbnail?.original,
-          synopsis: ep.attributes?.synopsis,
-          aired: ep.attributes?.airdate,
-        };
-      });
-    } catch {
-      return [];
-    }
-  })();
+  const episodesTask = fetchKitsuEpisodesByKitsuId(
+    kitsuId,
+    slim.episodesCount,
+  );
 
   // Verifica se créditos já estão em cache em memória (0ms), sem bloquear o retorno inicial
   const cleanTitles = [slim.titles.romaji, slim.titles.english, slim.titles.native]
@@ -6054,7 +6194,7 @@ export const fetchAnimeDetail =
         }
 
         const key =
-          `detail:v5:${id}`;
+          `detail:v6:${id}`;
 
         return withCache<Anime | null>(
           key,
@@ -6370,11 +6510,9 @@ export const fetchAnimeDetail =
 
           let seasons: Season[] = [];
           let jikanPictures: string[] = [];
+          const useAniStreaming = hasValidSeasonStreamingEpisodes(media);
 
-          if (
-            media.streamingEpisodes &&
-            media.streamingEpisodes.length > 0
-          ) {
+          if (useAniStreaming && media.streamingEpisodes) {
             const fromStream: Episode[] =
               media.streamingEpisodes.map(
                 (episode, index) => ({
@@ -6419,7 +6557,8 @@ export const fetchAnimeDetail =
               },
             ];
           } else {
-            // Quando a AniList não possui streamingEpisodes, verifica se o cache em memória já possui episódios enriquecidos do Jikan (0ms)
+            // Quando a AniList não possui streamingEpisodes ou retorna episódios de outra temporada,
+            // busca episódios e miniaturas específicos desta temporada no Kitsu e aproveita cache do Jikan (0ms)
             let cachedTitleMap: Map<number, { title: string; aired?: string }> | null = null;
             if (media.idMal) {
               const cachedEpisodes = fromCache<Season[]>(`jikan-episodes:v2:${media.idMal}`);
@@ -6451,25 +6590,39 @@ export const fetchAnimeDetail =
               }
             }
 
-            // Entrega imediatamente a estrutura canônica numerada sem esperar pelo Jikan (0ms de espera)
+            const kitsuSeasonEpisodes = await fetchKitsuEpisodesForAniMedia(media);
+            const kitsuByNum = new Map<number, Episode>();
+            for (const kep of kitsuSeasonEpisodes) {
+              kitsuByNum.set(kep.number, kep);
+            }
+
             const count =
               media.episodes ??
               (media.nextAiringEpisode?.episode
                 ? Math.max(0, media.nextAiringEpisode.episode - 1)
                 : media.format === "MOVIE"
                   ? 1
-                  : 0);
+                  : kitsuSeasonEpisodes.length);
 
             const episodes = Array.from(
               { length: count },
               (_, index) => {
                 const epNum = index + 1;
+                const kitsuEp = kitsuByNum.get(epNum);
                 const enriched = cachedTitleMap?.get(epNum);
+                const kitsuHasTitle =
+                  kitsuEp?.title && kitsuEp.title !== `Episódio ${epNum}`;
                 return {
-                  id: `ep-${media.id}-${epNum}`,
+                  id: kitsuEp?.id ?? `ep-${media.id}-${epNum}`,
                   number: epNum,
-                  title: enriched?.title ?? `Episódio ${epNum}`,
-                  aired: enriched?.aired,
+                  title:
+                    (kitsuHasTitle ? kitsuEp.title : undefined) ??
+                    enriched?.title ??
+                    `Episódio ${epNum}`,
+                  thumbnail: kitsuEp?.thumbnail,
+                  duration: kitsuEp?.duration,
+                  synopsis: kitsuEp?.synopsis,
+                  aired: kitsuEp?.aired ?? enriched?.aired,
                 };
               },
             );
@@ -6496,6 +6649,7 @@ export const fetchAnimeDetail =
             seasons,
             seasonNavigation,
             jikanPictures,
+            useAniStreaming,
           );
 
           // Se faltarem créditos, verifica se já estão no cache em memória (0ms de espera).

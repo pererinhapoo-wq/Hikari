@@ -582,6 +582,26 @@ const TrailerFacade = memo(function TrailerFacade({
 function AnimePage() {
   const { id } = Route.useParams();
   const { remote } = Route.useLoaderData();
+  return <AnimePageContent key={id} id={id} remote={remote} />;
+}
+
+function AnimePageContent({
+  id,
+  remote: rawRemote,
+}: {
+  id: string;
+  remote: Anime | null;
+}) {
+  const remote = useMemo(() => {
+    if (!rawRemote) return null;
+    if (
+      rawRemote.id === id ||
+      (rawRemote.anilistId != null && String(rawRemote.anilistId) === id)
+    ) {
+      return rawRemote;
+    }
+    return null;
+  }, [rawRemote, id]);
   const search = Route.useSearch();
   const targetCommentId = search?.comment;
   const rawStudioParam =
@@ -671,20 +691,9 @@ function AnimePage() {
     [remote, id, locals],
   );
 
-  const [activeAnimeId, setActiveAnimeId] = useState(id);
   const [resolvedSeasons, setResolvedSeasons] = useState<Season[] | null>(() => {
     return getCachedResolvedSeasons(baseAnime?.id || id, baseAnime?.seasons);
   });
-
-  if (id !== activeAnimeId) {
-    setActiveAnimeId(id);
-    setResolvedSeasons(getCachedResolvedSeasons(baseAnime?.id || id, baseAnime?.seasons));
-    setExtraCredits(id && clientCreditsCache.has(id) ? { forId: id, ...clientCreditsCache.get(id)! } : null);
-    setExtraEpisodes(null);
-    setExtraSeasonNavigation(null);
-    setFailedBannerUrls({});
-    setSynopsisExpanded(false);
-  }
 
   useEffect(() => {
     const targetId = baseAnime?.id || id;
@@ -1585,7 +1594,9 @@ function AnimePage() {
     ).then((resolved) => {
       if (controller.signal.aborted) return;
       if (resolved.isAlternative && resolved.url) {
-        warmBannerImage(resolved.url);
+        void import("@/lib/anime-banner-warmup").then((m) =>
+          m.warmBannerImage(resolved.url),
+        );
       }
       setMobileBannerState({
         forId: animeId,
@@ -2015,6 +2026,7 @@ function AnimePage() {
             <>
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
               <picture
+                key={`picture-${anime.id}-${currentBannerSrc ?? "none"}`}
                 className={cn(
                   "relative block size-full",
                   !isHydratedClient && !validDesktopBannerUrl && "sm:hidden",
@@ -2602,7 +2614,7 @@ function AnimePage() {
         lazy={false}
         className="[content-visibility:auto] [contain-intrinsic-size:auto_220px]"
       >
-        <InformacoesAdicionaisSection anime={anime} />
+        <InformacoesAdicionaisSection key={`info-${anime.id}`} anime={anime} />
       </SectionReveal>
 
       {/* 4. IMAGENS (GALERIA) */}
@@ -2644,6 +2656,7 @@ function AnimePage() {
       >
         <Suspense fallback={<CommentsLoadingFallback />}>
           <DeferredAnimeComments
+            key={`comments-${anime.id}`}
             animeId={anime.id}
             animeTitle={title}
             targetCommentId={targetCommentId}
