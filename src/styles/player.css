@@ -11,6 +11,19 @@
   background:#000;
   isolation:isolate;
 }
+/* nenhum elemento do player altera cor, brilho, opacidade ou blend do vídeo */
+.hikari-video-player video,
+.hikari-video-player video *,
+.hikari-video-player div:has(video),
+.hikari-video-player div:has(> video),
+.hikari-video-player [data-video-shell],
+.hikari-video-player [data-video-shell] *{
+  filter:none !important;
+  -webkit-filter:none !important;
+  transition:none !important;
+  opacity:1 !important;
+  mix-blend-mode:normal !important;
+}
 .hikari-video-player video{
   display:block;
   width:100%;
@@ -19,21 +32,9 @@
   background:#000;
   border:none;
   outline:none;
-  /* trava o vídeo no caminho nativo de renderização sem alteração de cor */
-  filter:none;
-  transition:none;
   transform:translateZ(0);
-  backface-visibility:hidden;
 }
-/* nenhum escurecimento global: o scrim fica em opacity 0 para garantir que a imagem seja idêntica em ambos os estados */
-.hikari-video-player__scrim{
-  position:absolute;
-  inset:0;
-  z-index:1;
-  pointer-events:none;
-  background:#000;
-  opacity:0;
-}
+.hikari-video-player__scrim{display:none}
 
 /* Transições suaves */
 .hikari-player-close-btn {

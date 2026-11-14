@@ -653,8 +653,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         className="video-body-click w-full h-full object-contain bg-black cursor-pointer"
       />
 
-      {/* Scrim overlay for dimming idle state without touching video filter */}
-      <div className="hikari-video-player__scrim" aria-hidden="true" />
 
       {/* Buffering spinner overlay */}
       {isBuffering && !videoError && (
