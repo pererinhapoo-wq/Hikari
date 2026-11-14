@@ -148,6 +148,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   // Auto-hide controls handler during playback
   useEffect(() => {
     if (!isPlaying) {
+      // When paused, keep controls visible by default
       setShowControls(true);
       if (hideControlsTimeoutRef.current) {
         window.clearTimeout(hideControlsTimeoutRef.current);
@@ -155,6 +156,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       return;
     }
 
+    // When playing, start auto-hide timer after 3s of inactivity
     if (hideControlsTimeoutRef.current) {
       window.clearTimeout(hideControlsTimeoutRef.current);
     }
@@ -351,8 +353,12 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     if (!el) return;
     if (el.paused) {
       el.play().catch(() => {});
+      // When pressing Play, ensure controls start visible and auto-hide after few seconds
+      setShowControls(true);
     } else {
       el.pause();
+      // When pausing, keep controls visible
+      setShowControls(true);
     }
   }, []);
 
@@ -502,6 +508,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         toggleFullscreen();
       }
     } else {
+      // Single tap on video area: toggle controls visibility (does NOT trigger play/pause)
       setShowControls((prev) => !prev);
       if (showSettingsMenu) {
         setShowSettingsMenu(false);
@@ -572,6 +579,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   const handlePauseState = useCallback(() => {
     setIsPlaying(false);
+    setShowControls(true); // Ensure controls remain visible when paused
     const el = videoRef.current;
     if (!el) return;
     const time = el.currentTime;
@@ -594,6 +602,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
   const handleEndedState = useCallback(() => {
     setIsPlaying(false);
+    setShowControls(true);
     onEndedRef.current?.();
   }, []);
 
@@ -775,23 +784,23 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
                   <Settings className="w-4 h-4" />
                 </button>
 
-                {/* Settings Popup Menu */}
+                {/* Settings Popup Menu (Compact mobile-friendly speed menu) */}
                 {showSettingsMenu && (
-                  <div className="absolute bottom-full right-0 mb-3 w-48 bg-[#161424]/95 border border-purple-500/30 rounded-2xl shadow-2xl p-2 z-45 backdrop-blur-xl text-slate-200 max-h-48 overflow-y-auto">
+                  <div className="absolute bottom-full right-0 mb-2 w-32 bg-[#161424]/95 border border-purple-500/30 rounded-xl shadow-2xl p-1.5 z-45 backdrop-blur-xl text-slate-200 max-h-36 overflow-y-auto pr-1">
                     <div className="flex flex-col gap-0.5">
                       {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((spd) => (
                         <button
                           key={spd}
                           type="button"
                           onClick={() => changeSpeed(spd)}
-                          className={`w-full px-3 py-2 text-left text-xs rounded-xl transition-colors flex items-center justify-between cursor-pointer ${
+                          className={`w-full px-2.5 py-1.5 text-left text-xs rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
                             playbackSpeed === spd
                               ? 'bg-purple-600/30 text-purple-200 font-semibold'
                               : 'text-slate-300 hover:bg-white/10 hover:text-white'
                           }`}
                         >
                           <span>{spd}x</span>
-                          {playbackSpeed === spd && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                          {playbackSpeed === spd && <Check className="w-3 h-3 text-purple-400" />}
                         </button>
                       ))}
                     </div>
