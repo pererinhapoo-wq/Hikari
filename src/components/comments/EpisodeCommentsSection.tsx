@@ -94,8 +94,9 @@ export interface EpisodeCommentsSectionProps {
   animeId: string;
   episodeId: string;
   animeTitle: string;
-  episodeNumber: number;
+  episodeNumber?: number;
   targetCommentId?: string;
+  hideCommunityAndSettings?: boolean;
 }
 
 /* ========================================================= */
@@ -391,47 +392,15 @@ export function ElizabethCommentsLoading() {
     <div
       role="status"
       aria-live="polite"
-      className="elizabeth-loading-container relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#a855f7]/25 bg-gradient-to-b from-[#130f24]/90 via-[#0c0a15]/95 to-[#08070d] p-8 sm:p-14 text-center shadow-[0_8px_32px_rgba(0,0,0,0.65),0_0_35px_rgba(168,85,247,0.12)] backdrop-blur-md"
+      className="py-8 px-4 flex items-center justify-center gap-3 text-center"
     >
-      {/* Brilho violeta radial sutil no fundo */}
       <div
-        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-44 bg-[#a855f7]/15 rounded-full blur-3xl"
+        className="size-5 rounded-full border-2 border-[#a855f7]/25 border-t-[#c084fc] animate-spin shadow-[0_0_12px_rgba(168,85,247,0.45)] shrink-0"
         aria-hidden="true"
       />
-
-      <div className="relative z-10 flex flex-col items-center justify-center">
-        {/* Elizabeth segurando a placa com balanço suave e inclinação sutil */}
-        <div className="elizabeth-sway-anim inline-flex items-center justify-center select-none drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)]">
-          <picture className="contents">
-            <source
-              type="image/webp"
-              srcSet="/assets/hikari-elizabeth-character-sm.webp 186w, /assets/hikari-elizabeth-character.webp 290w"
-              sizes="(min-width: 768px) 224px, (min-width: 640px) 208px, 176px"
-            />
-            <img
-              src="/assets/hikari-elizabeth-character.webp"
-              alt="Elizabeth"
-              width={290}
-              height={140}
-              className="w-44 sm:w-52 md:w-56 h-auto object-contain pointer-events-none"
-              loading="eager"
-              decoding="async"
-              draggable={false}
-            />
-          </picture>
-        </div>
-
-        {/* Indicador circular roxo com animação suave e texto fixo */}
-        <div className="mt-5 flex items-center justify-center gap-2.5">
-          <div
-            className="elizabeth-spinner size-5 rounded-full border-2 border-[#a855f7]/25 border-t-[#c084fc] animate-spin shadow-[0_0_12px_rgba(168,85,247,0.45)] shrink-0"
-            aria-hidden="true"
-          />
-          <p className="text-sm font-medium tracking-wide text-white/85 select-none">
-            Carregando os comentários...
-          </p>
-        </div>
-      </div>
+      <p className="text-sm font-medium tracking-wide text-white/85 select-none">
+        Carregando os comentários...
+      </p>
     </div>
   );
 }
@@ -445,6 +414,7 @@ export function EpisodeCommentsSection({
   animeTitle,
   episodeNumber,
   targetCommentId,
+  hideCommunityAndSettings = false,
 }: EpisodeCommentsSectionProps) {
   const [text, setText] =
     useState("");
@@ -2786,14 +2756,16 @@ export function EpisodeCommentsSection({
                         </Link>
 
                         {/* 2. Comunidade */}
-                        <Link
-                          to="/news"
-                          onClick={() => setUserMenuOpen(false)}
-                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
-                        >
-                          <Users className="size-4 text-[#c084fc] shrink-0" />
-                          <span>Comunidade</span>
-                        </Link>
+                        {!hideCommunityAndSettings && (
+                          <Link
+                            to="/news"
+                            onClick={() => setUserMenuOpen(false)}
+                            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
+                          >
+                            <Users className="size-4 text-[#c084fc] shrink-0" />
+                            <span>Comunidade</span>
+                          </Link>
+                        )}
 
                         {/* 3. Exibir mídia */}
                         <button
@@ -2820,14 +2792,16 @@ export function EpisodeCommentsSection({
                         </button>
 
                         {/* 4. Editar configurações */}
-                        <Link
-                          to="/settings-profile"
-                          onClick={() => setUserMenuOpen(false)}
-                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
-                        >
-                          <Settings2 className="size-4 text-[#c084fc] shrink-0" />
-                          <span>Editar configurações</span>
-                        </Link>
+                        {!hideCommunityAndSettings && (
+                          <Link
+                            to="/settings-profile"
+                            onClick={() => setUserMenuOpen(false)}
+                            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/80 hover:bg-[#a855f7]/15 hover:text-white transition-colors"
+                          >
+                            <Settings2 className="size-4 text-[#c084fc] shrink-0" />
+                            <span>Editar configurações</span>
+                          </Link>
+                        )}
 
                         {/* Divisor */}
                         <div className="h-px bg-white/[0.08] my-1" />
@@ -3242,44 +3216,7 @@ export function EpisodeCommentsSection({
             </div>
 
           </div>
-        ) : (
-          <div className="mt-4 rounded-2xl border border-purple-500/20 bg-gradient-to-b from-[#141026]/80 via-[#0f0d1b] to-[#0a0814] p-4 sm:p-5 shadow-lg shadow-purple-950/20">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-purple-950/60 border border-purple-500/30 text-[#c084fc] shadow-[0_0_15px_rgba(168,85,247,0.2)]">
-                  <MessageCircle className="size-5" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-display text-sm sm:text-base font-bold text-white tracking-tight">
-                    Quer participar da conversa?
-                  </h3>
-                  <p className="mt-0.5 text-xs text-white/60 leading-relaxed max-w-lg">
-                    Crie uma conta gratuita ou entre para compartilhar seus pensamentos sobre o episódio e interagir com a comunidade do Hikari.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-                <Link
-                  to="/login"
-                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-500 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-[0_0_15px_rgba(168,85,247,0.3)] active:scale-95 transition-all cursor-pointer"
-                >
-                  <UserPlus className="size-4" />
-                  <span>Criar conta</span>
-                </Link>
-
-                <button
-                  type="button"
-                  onClick={() => setLoginOpen(true)}
-                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:text-white px-3.5 py-2 text-xs sm:text-sm font-medium text-white/70 active:scale-95 transition-all cursor-pointer"
-                >
-                  <LogIn className="size-3.5" />
-                  <span>Entrar</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        ) : null}
 
           {/* =============================================== */}
           {/* SUCESSO DE DENÚNCIA / MODERAÇÃO                   */}
