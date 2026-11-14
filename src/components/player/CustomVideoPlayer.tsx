@@ -7,11 +7,14 @@ import {
   VolumeX,
   Maximize,
   Minimize,
-  Gauge,
+  Settings,
   Info,
   X,
   RotateCcw,
   RotateCw,
+  Check,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
 import {
   VideoItem,
@@ -103,7 +106,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
-  const [showSpeedMenu, setShowSpeedMenu] = useState<boolean>(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState<boolean>(false);
+  const [settingsSubmenu, setSettingsSubmenu] = useState<'main' | 'speed'>('main');
   const [isBuffering, setIsBuffering] = useState<boolean>(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState<boolean>(true);
@@ -144,18 +148,43 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const isHls = useMemo(() => isHlsUrl(effectiveVideoUrl), [effectiveVideoUrl, isHlsUrl]);
   const hasMseSupport = useMemo(() => isMediaSourceSupported(), []);
 
-  // Auto-hide controls handler
-  const handleMouseMove = useCallback(() => {
+  // Auto-hide controls handler based on playback state and user activity
+  const handleUserActivity = useCallback(() => {
     setShowControls(true);
+    if (!isPlaying) return;
     if (hideControlsTimeoutRef.current) {
       window.clearTimeout(hideControlsTimeoutRef.current);
     }
-    if (isPlaying) {
-      hideControlsTimeoutRef.current = window.setTimeout(() => {
-        setShowControls(false);
-        setShowSpeedMenu(false);
-      }, 3000);
+    hideControlsTimeoutRef.current = window.setTimeout(() => {
+      setShowControls(false);
+      setShowSettingsMenu(false);
+      setSettingsSubmenu('main');
+    }, 3000);
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      setShowControls(true);
+      if (hideControlsTimeoutRef.current) {
+        window.clearTimeout(hideControlsTimeoutRef.current);
+      }
+      return;
     }
+
+    if (hideControlsTimeoutRef.current) {
+      window.clearTimeout(hideControlsTimeoutRef.current);
+    }
+    hideControlsTimeoutRef.current = window.setTimeout(() => {
+      setShowControls(false);
+      setShowSettingsMenu(false);
+      setSettingsSubmenu('main');
+    }, 3000);
+
+    return () => {
+      if (hideControlsTimeoutRef.current) {
+        window.clearTimeout(hideControlsTimeoutRef.current);
+      }
+    };
   }, [isPlaying]);
 
   const applyInitialTime = useCallback(() => {
@@ -381,7 +410,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     if (!el) return;
     el.playbackRate = speed;
     setPlaybackSpeed(speed);
-    setShowSpeedMenu(false);
+    setShowSettingsMenu(false);
+    setSettingsSubmenu('main');
   }, []);
 
   // Skip time (-10s / +10s)
@@ -394,7 +424,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only trigger if focus is not in an input/textarea
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
         return;
       }
@@ -462,28 +491,23 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     lastTapTimeRef.current = now;
 
     if (timeDiff < 350) {
-      // Double tap detected!
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const x = e.clientX - rect.left;
       const width = rect.width;
 
       if (x < width * 0.35) {
-        // Left side double tap -> rewind 10s
         skipTime(-10);
         setDoubleTapFeedback('left');
         setTimeout(() => setDoubleTapFeedback(null), 600);
       } else if (x > width * 0.65) {
-        // Right side double tap -> forward 10s
         skipTime(10);
         setDoubleTapFeedback('right');
         setTimeout(() => setDoubleTapFeedback(null), 600);
       } else {
-        // Center double tap -> toggle fullscreen
         toggleFullscreen();
       }
     } else {
-      // Single click -> toggle play/pause (if clicking video body, not controls)
       if ((e.target as HTMLElement).tagName === 'VIDEO' || (e.target as HTMLElement).classList.contains('video-body-click')) {
         togglePlay();
       }
@@ -598,7 +622,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      onMouseMove={handleMouseMove}
+      onMouseMove={handleUserActivity}
+      onTouchStart={handleUserActivity}
       onClick={handleContainerClick}
       className={`relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group ${className || ''}`}
     >
@@ -660,28 +685,21 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
       {/* Custom Controls Overlay */}
       <div
-        className={`absolute inset-0 flex flex-col justify-between p-4 bg-gradient-to-t from-black/80 via-transparent to-black/40 transition-opacity duration-300 z-30 pointer-events-none ${
+        className={`absolute inset-0 flex flex-col justify-end p-4 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 z-30 pointer-events-none ${
           showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        {/* Top bar info (optional) */}
-        <div className="flex items-center justify-between w-full pointer-events-auto">
-          <div className="text-sm font-medium text-white/90 drop-shadow">
-            {video?.title || video?.episodeTitle || ''}
-          </div>
-        </div>
-
-        {/* Center Big Play/Pause icon feedback when clicking video */}
+        {/* Center Big Play/Pause icon feedback when paused (stable, no blinking) */}
         <div className="flex-1 flex items-center justify-center pointer-events-none">
           {!isPlaying && !videoError && (
-            <div className="w-16 h-16 rounded-full bg-purple-600/90 text-white flex items-center justify-center shadow-2xl backdrop-blur-sm animate-pulse">
+            <div className="w-16 h-16 rounded-full bg-purple-600/90 text-white flex items-center justify-center shadow-2xl backdrop-blur-sm">
               <Play className="w-8 h-8 fill-current translate-x-0.5" />
             </div>
           )}
         </div>
 
         {/* Bottom Control Bar */}
-        <div className="flex flex-col gap-2 w-full pointer-events-auto bg-black/40 backdrop-blur-md p-3 rounded-xl border border-white/10">
+        <div className="flex flex-col gap-2 w-full pointer-events-auto bg-black/40 backdrop-blur-md p-3 rounded-xl border border-white/10 relative">
           {/* Timeline progress bar */}
           <div className="flex items-center gap-3">
             <input
@@ -732,37 +750,74 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               </div>
             </div>
 
-            {/* Right controls: Speed, Fullscreen (NO quality, NO CC) */}
+            {/* Right controls: Settings Menu, Fullscreen (NO quality, NO CC, NO speed in main bar) */}
             <div className="flex items-center gap-2 relative">
-              {/* Speed Menu Toggle */}
+              {/* Settings Menu Toggle */}
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setShowSpeedMenu((prev) => !prev)}
-                  aria-label="Velocidade de reprodução"
-                  className="px-2 py-1 rounded-lg hover:bg-white/10 flex items-center gap-1 text-xs text-slate-200 hover:text-white transition-colors cursor-pointer"
+                  onClick={() => {
+                    setShowSettingsMenu((prev) => !prev);
+                    setSettingsSubmenu('main');
+                  }}
+                  aria-label="Configurações do player"
+                  className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-slate-200 hover:text-white transition-colors cursor-pointer"
                 >
-                  <Gauge className="w-3.5 h-3.5 text-purple-400" />
-                  <span>{playbackSpeed}x</span>
+                  <Settings className="w-4 h-4" />
                 </button>
 
-                {showSpeedMenu && (
-                  <div className="absolute bottom-full right-0 mb-2 w-28 bg-[#161424] border border-purple-500/30 rounded-xl shadow-2xl py-1.5 z-40 backdrop-blur-xl">
-                    {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((spd) => (
-                      <button
-                        key={spd}
-                        type="button"
-                        onClick={() => changeSpeed(spd)}
-                        className={`w-full px-3 py-1.5 text-left text-xs transition-colors flex items-center justify-between ${
-                          playbackSpeed === spd
-                            ? 'bg-purple-600/20 text-purple-300 font-semibold'
-                            : 'text-slate-300 hover:bg-white/5 hover:text-white'
-                        }`}
-                      >
-                        <span>{spd}x</span>
-                        {playbackSpeed === spd && <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
-                      </button>
-                    ))}
+                {/* Settings Popup Menu */}
+                {showSettingsMenu && (
+                  <div className="absolute bottom-full right-0 mb-3 w-56 bg-[#161424]/95 border border-purple-500/30 rounded-2xl shadow-2xl p-2 z-45 backdrop-blur-xl text-slate-200">
+                    {settingsSubmenu === 'main' ? (
+                      <div className="flex flex-col gap-1">
+                        <div className="px-3 py-2 text-xs font-semibold text-purple-300 border-b border-white/10 mb-1">
+                          Configurações
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSettingsSubmenu('speed')}
+                          className="w-full px-3 py-2 text-left text-xs rounded-xl hover:bg-white/10 transition-colors flex items-center justify-between group cursor-pointer"
+                        >
+                          <span className="text-slate-300 group-hover:text-white">Velocidade de Reprodução</span>
+                          <div className="flex items-center gap-1 text-purple-400">
+                            <span className="font-semibold">{playbackSpeed}x</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </div>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setSettingsSubmenu('main')}
+                          className="px-2 py-1.5 text-xs text-purple-300 hover:bg-white/10 rounded-lg transition-colors flex items-center gap-1 mb-1 cursor-pointer"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          <span>Voltar</span>
+                        </button>
+                        <div className="px-3 py-1.5 text-xs font-semibold text-purple-300 border-b border-white/10 mb-1">
+                          Velocidade
+                        </div>
+                        <div className="max-h-48 overflow-y-auto pr-1 space-y-0.5">
+                          {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((spd) => (
+                            <button
+                              key={spd}
+                              type="button"
+                              onClick={() => changeSpeed(spd)}
+                              className={`w-full px-3 py-2 text-left text-xs rounded-xl transition-colors flex items-center justify-between cursor-pointer ${
+                                playbackSpeed === spd
+                                  ? 'bg-purple-600/30 text-purple-200 font-semibold'
+                                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                              }`}
+                            >
+                              <span>{spd}x</span>
+                              {playbackSpeed === spd && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
