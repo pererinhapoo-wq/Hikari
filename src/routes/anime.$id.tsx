@@ -2684,7 +2684,6 @@ function AnimePageContent({
         minHeight="300px"
         rootMargin="100px 0px"
         lazy={!shouldForceCommentsLoad && !shouldLoadCredits}
-        className="[content-visibility:auto] [contain-intrinsic-size:auto_320px]"
       >
         <Suspense fallback={<CommentsLoadingFallback />}>
           <DeferredAnimeComments

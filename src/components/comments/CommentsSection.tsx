@@ -35,6 +35,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   Suspense,
   lazy,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -482,6 +483,22 @@ export function CommentsSection({
   const [selectedGifUrl, setSelectedGifUrl] = useState<string | null>(null);
   const gifSearchInputRef = useRef<HTMLInputElement | null>(null);
   const gifGalleryInputRef = useRef<HTMLInputElement | null>(null);
+  const gifCacheRef = useRef<
+    Map<
+      string,
+      Array<{
+        id: string;
+        url: string;
+        preview: string;
+        title: string;
+      }>
+    >
+  >(new Map());
+  const gifAbortRef = useRef<AbortController | null>(null);
+  const gifRequestIdRef = useRef(0);
+  const lastGifQueryRef = useRef<string | null>(null);
+  const gifInFlightQueryRef = useRef<string | null>(null);
+  const gifDebounceRef = useRef<number | null>(null);
 
   /* ====================================================== */
   /* USUÁRIO ATUAL & SESSÃO                                  */
@@ -816,7 +833,7 @@ export function CommentsSection({
   /* GIF                                                     */
   /* ====================================================== */
 
-  const searchGifs = async (query = gifSearch) => {
+  const searchGifs = useCallback(async (query: string, force = false) => {
     const apiKey = import.meta.env.VITE_GIPHY_API_KEY;
 
     if (!apiKey) {
@@ -827,11 +844,32 @@ export function CommentsSection({
       return;
     }
 
+    const trimmed = query.trim();
+    const cacheKey = trimmed.toLowerCase();
+
+    if (!force) {
+      const cached = gifCacheRef.current.get(cacheKey);
+      if (cached) {
+        gifAbortRef.current?.abort();
+        gifAbortRef.current = null;
+        lastGifQueryRef.current = cacheKey;
+        setGifError("");
+        setGifLoading(false);
+        setGifResults(cached);
+        return;
+      }
+    }
+
+    gifAbortRef.current?.abort();
+    const controller = new AbortController();
+    gifAbortRef.current = controller;
+    gifInFlightQueryRef.current = cacheKey;
+    const requestId = ++gifRequestIdRef.current;
+
     try {
       setGifLoading(true);
       setGifError("");
 
-      const trimmed = query.trim();
       const endpoint = trimmed
         ? "https://api.giphy.com/v1/gifs/search"
         : "https://api.giphy.com/v1/gifs/trending";
@@ -847,8 +885,17 @@ export function CommentsSection({
         params.set("q", trimmed);
       }
 
-      const response = await fetch(`${endpoint}?${params.toString()}`);
+      const response = await fetch(`${endpoint}?${params.toString()}`, {
+        signal: controller.signal,
+      });
       const data = await response.json();
+
+      if (
+        controller.signal.aborted ||
+        gifRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(data?.message || "Não foi possível buscar GIFs.");
@@ -858,8 +905,17 @@ export function CommentsSection({
         ? data.data
             .map((gif: any) => {
               const images = gif?.images;
-              const url = images?.original?.url || images?.fixed_width?.url;
-              const preview = images?.fixed_width?.url || images?.original?.url;
+              const url =
+                images?.downsized?.url ||
+                images?.downsized_medium?.url ||
+                images?.fixed_width?.url ||
+                images?.original?.url;
+              const preview =
+                images?.fixed_width?.url ||
+                images?.fixed_height?.url ||
+                images?.fixed_width_small?.url ||
+                images?.downsized?.url ||
+                images?.original?.url;
 
               if (
                 typeof gif?.id !== "string" ||
@@ -888,43 +944,122 @@ export function CommentsSection({
             )
         : [];
 
+      if (gifCacheRef.current.size >= 30) {
+        const oldestKey = gifCacheRef.current.keys().next().value;
+        if (typeof oldestKey === "string") {
+          gifCacheRef.current.delete(oldestKey);
+        }
+      }
+      gifCacheRef.current.set(cacheKey, results);
+      lastGifQueryRef.current = cacheKey;
       setGifResults(results);
     } catch (err) {
+      if (
+        controller.signal.aborted ||
+        (err instanceof DOMException && err.name === "AbortError")
+      ) {
+        return;
+      }
       console.error("ERRO AO BUSCAR GIFS:", err);
-      setGifResults([]);
-      setGifError(
-        err instanceof Error ? err.message : "Não foi possível buscar GIFs.",
-      );
+      if (gifRequestIdRef.current === requestId) {
+        setGifResults([]);
+        setGifError(
+          err instanceof Error ? err.message : "Não foi possível buscar GIFs.",
+        );
+      }
     } finally {
-      setGifLoading(false);
+      if (gifRequestIdRef.current === requestId) {
+        gifInFlightQueryRef.current = null;
+        setGifLoading(false);
+      }
     }
-  };
+  }, []);
 
-  const openGifPicker = () => {
+  useEffect(() => {
+    if (!gifOpen) {
+      if (gifDebounceRef.current !== null) {
+        window.clearTimeout(gifDebounceRef.current);
+        gifDebounceRef.current = null;
+      }
+      gifAbortRef.current?.abort();
+      gifAbortRef.current = null;
+      gifInFlightQueryRef.current = null;
+      return;
+    }
+
+    const normalized = gifSearch.trim().toLowerCase();
+    if (
+      lastGifQueryRef.current === normalized ||
+      gifInFlightQueryRef.current === normalized
+    ) {
+      return;
+    }
+
+    if (gifDebounceRef.current !== null) {
+      window.clearTimeout(gifDebounceRef.current);
+    }
+
+    gifDebounceRef.current = window.setTimeout(() => {
+      gifDebounceRef.current = null;
+      void searchGifs(gifSearch);
+    }, 350);
+
+    return () => {
+      if (gifDebounceRef.current !== null) {
+        window.clearTimeout(gifDebounceRef.current);
+        gifDebounceRef.current = null;
+      }
+    };
+  }, [gifOpen, gifSearch, searchGifs]);
+
+  useEffect(() => {
+    return () => {
+      if (gifDebounceRef.current !== null) {
+        window.clearTimeout(gifDebounceRef.current);
+      }
+      gifAbortRef.current?.abort();
+    };
+  }, []);
+
+  const openGifPicker = useCallback(() => {
     setGifOpen(true);
     setGifError("");
-    if (gifResults.length === 0) {
-      void searchGifs("");
+    const normalized = gifSearch.trim().toLowerCase();
+    if (
+      (gifResults.length === 0 || lastGifQueryRef.current !== normalized) &&
+      gifInFlightQueryRef.current !== normalized
+    ) {
+      void searchGifs(gifSearch);
     }
     window.setTimeout(() => {
       gifSearchInputRef.current?.focus();
     }, 0);
-  };
+  }, [gifResults.length, gifSearch, searchGifs]);
 
-  const closeGifPicker = () => {
+  const closeGifPicker = useCallback(() => {
+    if (gifDebounceRef.current !== null) {
+      window.clearTimeout(gifDebounceRef.current);
+      gifDebounceRef.current = null;
+    }
+    gifAbortRef.current?.abort();
+    gifAbortRef.current = null;
+    gifInFlightQueryRef.current = null;
     setGifOpen(false);
     setGifError("");
-  };
+  }, []);
 
-  const handleSelectGif = (url: string) => {
-    setSelectedGifUrl(url);
-    setCommentImage(null);
-    setCommentImagePreview(null);
-    if (imageInputRef.current) {
-      imageInputRef.current.value = "";
-    }
-    closeGifPicker();
-  };
+  const handleSelectGif = useCallback(
+    (url: string) => {
+      setSelectedGifUrl(url);
+      setCommentImage(null);
+      setCommentImagePreview(null);
+      if (imageInputRef.current) {
+        imageInputRef.current.value = "";
+      }
+      closeGifPicker();
+    },
+    [closeGifPicker],
+  );
 
   const handleSelectGifFromGallery = (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -2706,9 +2841,10 @@ export function CommentsSection({
                 {/* Previews de imagem/GIF anexados */}
                 {(commentImagePreview || selectedGifUrl) && (
                   <div className="mt-2 relative inline-block rounded-xl overflow-hidden border border-purple-500/30 bg-black/40">
-                    <img
+                    <MemoizedCommentMediaImg
                       src={commentImagePreview || selectedGifUrl || ""}
                       alt="Anexo"
+                      loading="eager"
                       className="max-h-40 rounded-xl object-contain"
                     />
                     <button
@@ -3093,15 +3229,17 @@ export function CommentsSection({
                 Todos os comentários foram carregados.
               </p>
             )}
+            </>
           )}
         </div>
       </div>
+      )}
 
       {/* Modal de GIF */}
       {gifModal.mounted && (
         <div
           className={cn(
-            "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+            "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
             gifModal.visible ? "opacity-100" : "opacity-0",
             gifModal.closing && "pointer-events-none",
           )}
@@ -3142,7 +3280,6 @@ export function CommentsSection({
                   value={gifSearch}
                   onChange={(e) => {
                     setGifSearch(e.target.value);
-                    void searchGifs(e.target.value);
                   }}
                   placeholder="Buscar no GIPHY..."
                   className="w-full rounded-xl border border-white/10 bg-[#0c0a18] pl-9 pr-3 py-2 text-xs text-white outline-none focus:border-purple-500 transition-colors motion-reduce:transition-none"
@@ -3182,21 +3319,10 @@ export function CommentsSection({
                   Nenhum GIF encontrado.
                 </div>
               ) : (
-                gifResults.map((gif) => (
-                  <button
-                    key={gif.id}
-                    type="button"
-                    onClick={() => handleSelectGif(gif.url)}
-                    className="relative aspect-video rounded-lg overflow-hidden border border-white/10 hover:border-purple-500 active:[transform:scale(0.98)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 transition-[border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
-                  >
-                    <img
-                      src={gif.preview}
-                      alt={gif.title}
-                      className="size-full object-cover"
-                      loading="lazy"
-                    />
-                  </button>
-                ))
+                <CommentsGifPickerGrid
+                  results={gifResults}
+                  onSelect={handleSelectGif}
+                />
               )}
             </div>
           </div>
@@ -4110,17 +4236,23 @@ export function CommentCard({
                         : "border-white/10 bg-black/40",
                     )}
                   >
-                    <img
+                    <MemoizedCommentMediaImg
                       src={comment.imageUrl}
                       alt={isMediaSpoilerHidden ? "" : "Imagem anexada"}
-                      aria-hidden={isMediaSpoilerHidden ? true : undefined}
+                      ariaHidden={isMediaSpoilerHidden ? true : undefined}
                       className={cn(
-                        "block max-h-64 w-auto rounded-xl object-contain transition-[filter,transform] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none",
-                        isMediaSpoilerHidden
-                          ? "blur-2xl [transform:scale(1.08)] brightness-50 saturate-75 select-none pointer-events-none"
-                          : "blur-0 [transform:scale(1)] brightness-100 saturate-100",
+                        "block max-h-64 w-auto rounded-xl object-contain",
+                        comment.isSpoiler &&
+                          "transition-[filter,transform] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none",
+                        isMediaSpoilerHidden &&
+                          "blur-2xl [transform:scale(1.08)] brightness-50 saturate-75 select-none pointer-events-none",
                       )}
-                      loading="lazy"
+                      loading={
+                        comment.imageUrl.toLowerCase().includes(".gif") ||
+                        comment.imageUrl.toLowerCase().includes("giphy.com")
+                          ? "eager"
+                          : "lazy"
+                      }
                     />
                     {comment.isSpoiler && (
                       <button
@@ -4295,7 +4427,65 @@ export function CommentCard({
           )}
         </div>
       </div>
-      )}
-    </section>
+    </article>
   );
 }
+
+const MemoizedCommentMediaImg = memo(function MemoizedCommentMediaImg({
+  src,
+  alt,
+  className,
+  loading = "lazy",
+  ariaHidden,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  loading?: "eager" | "lazy";
+  ariaHidden?: boolean;
+}) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      aria-hidden={ariaHidden}
+      loading={loading}
+      decoding="async"
+      className={className}
+    />
+  );
+});
+
+const CommentsGifPickerGrid = memo(function CommentsGifPickerGrid({
+  results,
+  onSelect,
+}: {
+  results: Array<{
+    id: string;
+    url: string;
+    preview: string;
+    title: string;
+  }>;
+  onSelect: (url: string) => void;
+}) {
+  return (
+    <>
+      {results.map((gif) => (
+        <button
+          key={gif.id}
+          type="button"
+          onClick={() => onSelect(gif.url)}
+          className="relative aspect-video rounded-lg overflow-hidden border border-white/10 hover:border-purple-500 active:[transform:scale(0.98)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 transition-[border-color,transform] duration-150 motion-reduce:transition-none motion-reduce:transform-none cursor-pointer"
+        >
+          <img
+            src={gif.preview}
+            alt={gif.title}
+            className="size-full object-cover"
+            loading="eager"
+            decoding="async"
+          />
+        </button>
+      ))}
+    </>
+  );
+});

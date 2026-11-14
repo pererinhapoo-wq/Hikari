@@ -1,6 +1,7 @@
 import React, {
   Suspense,
   lazy,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -546,6 +547,24 @@ export function EpisodeCommentsSection({
   const gifGalleryInputRef =
     useRef<HTMLInputElement | null>(null);
 
+  const gifCacheRef = useRef<
+    Map<
+      string,
+      Array<{
+        id: string;
+        url: string;
+        preview: string;
+        title: string;
+      }>
+    >
+  >(new Map());
+
+  const gifAbortRef = useRef<AbortController | null>(null);
+  const gifRequestIdRef = useRef(0);
+  const lastGifQueryRef = useRef<string | null>(null);
+  const gifInFlightQueryRef = useRef<string | null>(null);
+  const gifDebounceRef = useRef<number | null>(null);
+
   /* ====================================================== */
   /* USUÁRIO ATUAL & SESSÃO                                  */
   /* ====================================================== */
@@ -1021,10 +1040,9 @@ export function EpisodeCommentsSection({
   /* GIF                                                      */
   /* ====================================================== */
 
-  const searchGifs =
-    async (query = gifSearch) => {
-      const apiKey =
-        import.meta.env.VITE_GIPHY_API_KEY;
+  const searchGifs = useCallback(
+    async (query: string, force = false) => {
+      const apiKey = import.meta.env.VITE_GIPHY_API_KEY;
 
       if (!apiKey) {
         setGifError(
@@ -1034,144 +1052,235 @@ export function EpisodeCommentsSection({
         return;
       }
 
+      const trimmed = query.trim();
+      const cacheKey = trimmed.toLowerCase();
+
+      if (!force) {
+        const cached = gifCacheRef.current.get(cacheKey);
+        if (cached) {
+          gifAbortRef.current?.abort();
+          gifAbortRef.current = null;
+          lastGifQueryRef.current = cacheKey;
+          setGifError("");
+          setGifLoading(false);
+          setGifResults(cached);
+          return;
+        }
+      }
+
+      gifAbortRef.current?.abort();
+      const controller = new AbortController();
+      gifAbortRef.current = controller;
+      gifInFlightQueryRef.current = cacheKey;
+      const requestId = ++gifRequestIdRef.current;
+
       try {
         setGifLoading(true);
         setGifError("");
 
-        const trimmed =
-          query.trim();
+        const endpoint = trimmed
+          ? "https://api.giphy.com/v1/gifs/search"
+          : "https://api.giphy.com/v1/gifs/trending";
 
-        const endpoint =
-          trimmed
-            ? "https://api.giphy.com/v1/gifs/search"
-            : "https://api.giphy.com/v1/gifs/trending";
-
-        const params =
-          new URLSearchParams({
-            api_key: apiKey,
-            limit: "24",
-            rating: "pg-13",
-            lang: "pt",
-          });
+        const params = new URLSearchParams({
+          api_key: apiKey,
+          limit: "24",
+          rating: "pg-13",
+          lang: "pt",
+        });
 
         if (trimmed) {
           params.set("q", trimmed);
         }
 
-        const response =
-          await fetch(
-            `${endpoint}?${params.toString()}`,
-          );
+        const response = await fetch(`${endpoint}?${params.toString()}`, {
+          signal: controller.signal,
+        });
 
-        const data =
-          await response.json();
+        const data = await response.json();
 
-        if (!response.ok) {
-          throw new Error(
-            data?.message ||
-              "Não foi possível buscar GIFs.",
-          );
+        if (
+          controller.signal.aborted ||
+          gifRequestIdRef.current !== requestId
+        ) {
+          return;
         }
 
-        const results =
-          Array.isArray(data?.data)
-            ? data.data
-                .map((gif: any) => {
-                  const images =
-                    gif?.images;
+        if (!response.ok) {
+          throw new Error(data?.message || "Não foi possível buscar GIFs.");
+        }
 
-                  const url =
-                    images?.original?.url ||
-                    images?.fixed_width?.url;
+        const results = Array.isArray(data?.data)
+          ? data.data
+              .map((gif: any) => {
+                const images = gif?.images;
 
-                  const preview =
-                    images?.fixed_width?.url ||
-                    images?.original?.url;
+                const url =
+                  images?.downsized?.url ||
+                  images?.downsized_medium?.url ||
+                  images?.fixed_width?.url ||
+                  images?.original?.url;
 
-                  if (
-                    typeof gif?.id !==
-                      "string" ||
-                    typeof url !==
-                      "string" ||
-                    typeof preview !==
-                      "string"
-                  ) {
-                    return null;
-                  }
+                const preview =
+                  images?.fixed_width?.url ||
+                  images?.fixed_height?.url ||
+                  images?.fixed_width_small?.url ||
+                  images?.downsized?.url ||
+                  images?.original?.url;
 
-                  return {
-                    id: gif.id,
-                    url,
-                    preview,
-                    title:
-                      typeof gif?.title ===
-                      "string"
-                        ? gif.title
-                        : "GIF",
-                  };
-                })
-                .filter(
-                  (gif: any): gif is {
-                    id: string;
-                    url: string;
-                    preview: string;
-                    title: string;
-                  } => Boolean(gif),
-                )
-            : [];
+                if (
+                  typeof gif?.id !== "string" ||
+                  typeof url !== "string" ||
+                  typeof preview !== "string"
+                ) {
+                  return null;
+                }
 
+                return {
+                  id: gif.id,
+                  url,
+                  preview,
+                  title: typeof gif?.title === "string" ? gif.title : "GIF",
+                };
+              })
+              .filter(
+                (
+                  gif: any,
+                ): gif is {
+                  id: string;
+                  url: string;
+                  preview: string;
+                  title: string;
+                } => Boolean(gif),
+              )
+          : [];
+
+        if (gifCacheRef.current.size >= 30) {
+          const oldestKey = gifCacheRef.current.keys().next().value;
+          if (typeof oldestKey === "string") {
+            gifCacheRef.current.delete(oldestKey);
+          }
+        }
+        gifCacheRef.current.set(cacheKey, results);
+        lastGifQueryRef.current = cacheKey;
         setGifResults(results);
       } catch (err) {
-        console.error(
-          "ERRO AO BUSCAR GIFS:",
-          err,
-        );
+        if (
+          controller.signal.aborted ||
+          (err instanceof DOMException && err.name === "AbortError")
+        ) {
+          return;
+        }
+        console.error("ERRO AO BUSCAR GIFS:", err);
 
-        setGifResults([]);
-        setGifError(
-          err instanceof Error
-            ? err.message
-            : "Não foi possível buscar GIFs.",
-        );
+        if (gifRequestIdRef.current === requestId) {
+          setGifResults([]);
+          setGifError(
+            err instanceof Error ? err.message : "Não foi possível buscar GIFs.",
+          );
+        }
       } finally {
-        setGifLoading(false);
+        if (gifRequestIdRef.current === requestId) {
+          gifInFlightQueryRef.current = null;
+          setGifLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!gifOpen) {
+      if (gifDebounceRef.current !== null) {
+        window.clearTimeout(gifDebounceRef.current);
+        gifDebounceRef.current = null;
+      }
+      gifAbortRef.current?.abort();
+      gifAbortRef.current = null;
+      gifInFlightQueryRef.current = null;
+      return;
+    }
+
+    const normalized = gifSearch.trim().toLowerCase();
+    if (
+      lastGifQueryRef.current === normalized ||
+      gifInFlightQueryRef.current === normalized
+    ) {
+      return;
+    }
+
+    if (gifDebounceRef.current !== null) {
+      window.clearTimeout(gifDebounceRef.current);
+    }
+
+    gifDebounceRef.current = window.setTimeout(() => {
+      gifDebounceRef.current = null;
+      void searchGifs(gifSearch);
+    }, 350);
+
+    return () => {
+      if (gifDebounceRef.current !== null) {
+        window.clearTimeout(gifDebounceRef.current);
+        gifDebounceRef.current = null;
       }
     };
+  }, [gifOpen, gifSearch, searchGifs]);
 
-  const openGifPicker = () => {
+  useEffect(() => {
+    return () => {
+      if (gifDebounceRef.current !== null) {
+        window.clearTimeout(gifDebounceRef.current);
+      }
+      gifAbortRef.current?.abort();
+    };
+  }, []);
+
+  const openGifPicker = useCallback(() => {
     setGifOpen(true);
     setGifError("");
 
-    if (gifResults.length === 0) {
-      void searchGifs("");
+    const normalized = gifSearch.trim().toLowerCase();
+    if (
+      (gifResults.length === 0 || lastGifQueryRef.current !== normalized) &&
+      gifInFlightQueryRef.current !== normalized
+    ) {
+      void searchGifs(gifSearch);
     }
 
     window.setTimeout(() => {
       gifSearchInputRef.current?.focus();
     }, 0);
-  };
+  }, [gifResults.length, gifSearch, searchGifs]);
 
-  const closeGifPicker = () => {
+  const closeGifPicker = useCallback(() => {
+    if (gifDebounceRef.current !== null) {
+      window.clearTimeout(gifDebounceRef.current);
+      gifDebounceRef.current = null;
+    }
+    gifAbortRef.current?.abort();
+    gifAbortRef.current = null;
+    gifInFlightQueryRef.current = null;
     setGifOpen(false);
     setGifError("");
     setMenuOpenId(null);
     setUserMenuOpen(false);
     setSortDropdownOpen(false);
-  };
+  }, []);
 
-  const handleSelectGif = (
-    url: string,
-  ) => {
-    setSelectedGifUrl(url);
-    setCommentImage(null);
-    setCommentImagePreview(null);
+  const handleSelectGif = useCallback(
+    (url: string) => {
+      setSelectedGifUrl(url);
+      setCommentImage(null);
+      setCommentImagePreview(null);
 
-    if (imageInputRef.current) {
-      imageInputRef.current.value = "";
-    }
+      if (imageInputRef.current) {
+        imageInputRef.current.value = "";
+      }
 
-    closeGifPicker();
-  };
+      closeGifPicker();
+    },
+    [closeGifPicker],
+  );
 
   const handleSelectGifFromGallery = (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -2951,7 +3060,7 @@ export function EpisodeCommentsSection({
             {gifModal.mounted && (
               <div
                 className={cn(
-                  "fixed inset-0 z-[110] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-5 backdrop-blur-sm transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
+                  "fixed inset-0 z-[110] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-5 transition-opacity duration-150 ease-out motion-reduce:transition-none overscroll-contain",
                   gifModal.visible ? "opacity-100" : "opacity-0",
                   gifModal.closing && "pointer-events-none",
                 )}
@@ -3022,7 +3131,11 @@ export function EpisodeCommentsSection({
                    <form
                       onSubmit={(event) => {
                         event.preventDefault();
-                        void searchGifs();
+                        if (gifDebounceRef.current !== null) {
+                          window.clearTimeout(gifDebounceRef.current);
+                          gifDebounceRef.current = null;
+                        }
+                        void searchGifs(gifSearch);
                       }}
                       className="flex gap-2"
                     >
@@ -3070,26 +3183,10 @@ export function EpisodeCommentsSection({
                     )}
 
                     {gifResults.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                        {gifResults.map((gif) => (
-                          <button
-                            key={gif.id}
-                            type="button"
-                            onClick={() =>
-                              handleSelectGif(gif.url)
-                            }
-                            className="group aspect-square overflow-hidden rounded-lg border border-white/5 bg-bg transition-colors hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/20"
-                            title={gif.title || "GIF"}
-                          >
-                            <img
-                              src={gif.preview}
-                              alt={gif.title || "GIF"}
-                              loading="lazy"
-                              className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
-                            />
-                          </button>
-                        ))}
-                      </div>
+                      <EpisodeGifPickerGrid
+                        results={gifResults}
+                        onSelect={handleSelectGif}
+                      />
                     )}
 
                     <p className="mt-3 text-center text-[10px] text-subtle">
@@ -3107,11 +3204,10 @@ export function EpisodeCommentsSection({
             {commentImagePreview && (
               <div className="relative mt-3 w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-bg">
 
-                <img
-                  src={
-                    commentImagePreview
-                  }
+                <MemoizedCommentMediaImg
+                  src={commentImagePreview}
                   alt="Prévia da imagem do comentário"
+                  loading="eager"
                   className="max-h-64 max-w-full object-contain"
                 />
 
@@ -3136,9 +3232,10 @@ export function EpisodeCommentsSection({
 
             {selectedGifUrl && (
               <div className="relative mt-3 w-fit max-w-full overflow-hidden rounded-xl border border-white/10 bg-bg">
-                <img
+                <MemoizedCommentMediaImg
                   src={selectedGifUrl}
                   alt="GIF selecionado"
+                  loading="eager"
                   className="max-h-64 max-w-full object-contain"
                 />
 
@@ -3599,6 +3696,7 @@ export function EpisodeCommentsSection({
         </div>
 
       </div>
+        )
       )}
 
       {/* ================================================== */}
@@ -4692,15 +4790,21 @@ function CommentCard({
                       )}
                       aria-label="Abrir imagem em tamanho maior"
                     >
-                      <img
+                      <MemoizedCommentMediaImg
                         src={comment.imageUrl}
                         alt={isMediaSpoilerHidden ? "" : "Imagem anexada"}
-                        loading="lazy"
+                        loading={
+                          comment.imageUrl.toLowerCase().includes(".gif") ||
+                          comment.imageUrl.toLowerCase().includes("giphy.com")
+                            ? "eager"
+                            : "lazy"
+                        }
                         className={cn(
-                          "block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg transition-[filter,transform] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none",
-                          isMediaSpoilerHidden
-                            ? "blur-2xl [transform:scale(1.08)] brightness-50 saturate-75 select-none pointer-events-none"
-                            : "blur-0 [transform:scale(1)] brightness-100 saturate-100",
+                          "block max-h-72 sm:max-h-80 w-auto max-w-full object-contain rounded-lg",
+                          comment.isSpoiler &&
+                            "transition-[filter,transform] duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none",
+                          isMediaSpoilerHidden &&
+                            "blur-2xl [transform:scale(1.08)] brightness-50 saturate-75 select-none pointer-events-none",
                         )}
                       />
                     </a>
@@ -4891,11 +4995,65 @@ function CommentCard({
           )}
         </div>
       </div>
-      )}
-    </section>
+    </article>
   );
 }
 
+const MemoizedCommentMediaImg = memo(function MemoizedCommentMediaImg({
+  src,
+  alt,
+  className,
+  loading = "lazy",
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  loading?: "eager" | "lazy";
+}) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading={loading}
+      decoding="async"
+      className={className}
+    />
+  );
+});
 
+const EpisodeGifPickerGrid = memo(function EpisodeGifPickerGrid({
+  results,
+  onSelect,
+}: {
+  results: Array<{
+    id: string;
+    url: string;
+    preview: string;
+    title: string;
+  }>;
+  onSelect: (url: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+      {results.map((gif) => (
+        <button
+          key={gif.id}
+          type="button"
+          onClick={() => onSelect(gif.url)}
+          className="aspect-square overflow-hidden rounded-lg border border-white/5 bg-bg transition-colors hover:border-white/25 focus:outline-none focus:ring-2 focus:ring-white/20 cursor-pointer"
+          title={gif.title || "GIF"}
+        >
+          <img
+            src={gif.preview}
+            alt={gif.title || "GIF"}
+            loading="eager"
+            decoding="async"
+            className="size-full object-cover"
+          />
+        </button>
+      ))}
+    </div>
+  );
+});
 
 export default EpisodeCommentsSection;
