@@ -148,29 +148,32 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   // Auto-hide controls handler during playback
   useEffect(() => {
     if (!isPlaying) {
-      // When paused, keep controls visible by default
+      // When paused, keep controls visible by default, clear any hide timeout
       setShowControls(true);
       if (hideControlsTimeoutRef.current) {
         window.clearTimeout(hideControlsTimeoutRef.current);
+        hideControlsTimeoutRef.current = null;
       }
       return;
     }
 
-    // When playing, start auto-hide timer after 3s of inactivity
-    if (hideControlsTimeoutRef.current) {
-      window.clearTimeout(hideControlsTimeoutRef.current);
+    // When playing and controls are visible, start auto-hide timer after 3s of inactivity
+    if (showControls) {
+      if (hideControlsTimeoutRef.current) {
+        window.clearTimeout(hideControlsTimeoutRef.current);
+      }
+      hideControlsTimeoutRef.current = window.setTimeout(() => {
+        setShowControls(false);
+        setShowSettingsMenu(false);
+      }, 3000);
     }
-    hideControlsTimeoutRef.current = window.setTimeout(() => {
-      setShowControls(false);
-      setShowSettingsMenu(false);
-    }, 3000);
 
     return () => {
       if (hideControlsTimeoutRef.current) {
         window.clearTimeout(hideControlsTimeoutRef.current);
       }
     };
-  }, [isPlaying]);
+  }, [isPlaying, showControls]);
 
   const handleUserActivity = useCallback(() => {
     if (!isPlaying) return;
@@ -353,11 +356,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     if (!el) return;
     if (el.paused) {
       el.play().catch(() => {});
-      // When pressing Play, ensure controls start visible and auto-hide after few seconds
       setShowControls(true);
     } else {
       el.pause();
-      // When pausing, keep controls visible
       setShowControls(true);
     }
   }, []);
@@ -484,7 +485,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [togglePlay, toggleFullscreen, toggleMute, skipTime]);
 
-  // Mobile double-tap & single-tap (toggle controls visibility) handler
+  // Click/tap handler on video container (toggle controls visibility cleanly without touchstart conflicts)
   const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const now = Date.now();
     const timeDiff = now - lastTapTimeRef.current;
@@ -508,8 +509,8 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         toggleFullscreen();
       }
     } else {
-      // Single tap on video area: toggle controls visibility (does NOT trigger play/pause)
-      setShowControls((prev) => !prev);
+      // Single tap / click on video area: toggle controls visibility
+      setShowControls((current) => !current);
       if (showSettingsMenu) {
         setShowSettingsMenu(false);
       }
@@ -627,7 +628,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     <div
       ref={containerRef}
       onMouseMove={handleUserActivity}
-      onTouchStart={handleUserActivity}
       onClick={handleContainerClick}
       data-controls={showControls ? "visible" : "hidden"}
       data-paused={!isPlaying ? "true" : "false"}
@@ -652,7 +652,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         onError={handleMediaError}
         className="video-body-click w-full h-full object-contain bg-black cursor-pointer"
       />
-
 
       {/* Buffering spinner overlay */}
       {isBuffering && !videoError && (
@@ -690,7 +689,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         </button>
       )}
 
-      {/* Custom Controls Overlay (z-30, above scrim z-1) */}
+      {/* Custom Controls Overlay (z-30) */}
       <div
         className={`absolute inset-0 flex flex-col justify-end p-4 pt-6 bg-gradient-to-t from-black/85 via-black/45 to-transparent transition-opacity duration-300 z-30 pointer-events-none ${
           showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
