@@ -22,6 +22,7 @@ import {
   SearchCategorySelector,
   type SearchCategory,
 } from "@/components/search/SearchCategorySelector";
+import { useScrollLock } from "@/lib/scroll-lock";
 import { cn } from "@/lib/utils";
 
 interface SearchModalProps {
@@ -162,14 +163,13 @@ export function SearchModal({
 
   const localAnimes = useHikariStore((s) => s.animes);
 
-  /* =========================================================
-     GERENCIAMENTO DE MONTAGEM, ANIMAÇÃO E SCROLL LOCK
-  ========================================================== */
+  // Gerenciamento centralizado de scroll lock com o hook robusto do Hikari
+  useScrollLock(isOpen);
+
   useEffect(() => {
     if (isOpen) {
       setIsRendered(true);
       setAnimationState("open");
-      document.body.style.overflow = "hidden";
       
       const initialHeight = window.visualViewport?.height ?? window.innerHeight;
       setLockedHeight(initialHeight);
@@ -182,7 +182,6 @@ export function SearchModal({
       setAnimationState("closed");
       const timer = window.setTimeout(() => {
         setIsRendered(false);
-        document.body.style.overflow = "";
         setLockedHeight(null);
       }, 160);
       return () => window.clearTimeout(timer);
@@ -192,9 +191,7 @@ export function SearchModal({
   const handleClose = useCallback(() => {
     inputRef.current?.blur();
     setAnimationState("closed");
-    setTimeout(() => {
-      onClose();
-    }, 160);
+    onClose();
   }, [onClose]);
 
   // Tecla Escape para fechar a busca

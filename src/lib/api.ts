@@ -4565,6 +4565,18 @@ function searchDistance(
   return previous[b.length];
 }
 
+const CURATED_ALIASES: Record<string, string[]> = {
+  "bnha": ["boku no hero academia", "my hero academia"],
+  "op": ["one piece"],
+  "onepiece": ["one piece"],
+  "onepice": ["one piece"],
+  "snk": ["shingeki no kyojin", "attack on titan"],
+  "aot": ["shingeki no kyojin", "attack on titan"],
+  "jjk": ["jujutsu kaisen"],
+  "kimetsu": ["kimetsu no yaiba", "demon slayer"],
+  "narto": ["naruto"],
+};
+
 function searchScore(
   anime: SlimAnime,
   query: string,
@@ -4585,81 +4597,64 @@ function searchScore(
 
   const compactQuery = q.replace(/\s/g, "");
   const queryWords = q.split(" ").filter(Boolean);
+  const aliasTargets = CURATED_ALIASES[compactQuery] || [];
   let score = 0;
 
   for (const title of titles) {
     const compactTitle = title.replace(/\s/g, "");
     const titleWords = title.split(" ").filter(Boolean);
 
+    const isAliasMatch = aliasTargets.some(target => title.includes(target) || target.includes(title));
+    if (isAliasMatch) {
+      score = Math.max(score, 1800);
+    }
+
     if (title === q) {
-      score = Math.max(score, 1200);
+      score = Math.max(score, 2000);
       continue;
     }
 
     if (title.startsWith(q)) {
-      score = Math.max(score, 1100);
+      score = Math.max(score, 1600 - Math.min(title.length, 100));
     }
 
     if (compactTitle.startsWith(compactQuery)) {
-      score = Math.max(score, 1050);
+      score = Math.max(score, 1500 - Math.min(compactTitle.length, 100));
     }
 
-    if (title.includes(q)) {
-      score = Math.max(score, 950);
-    }
-
-    if (compactTitle.includes(compactQuery)) {
-      score = Math.max(score, 900);
+    const wordStartRegex = new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+    if (wordStartRegex.test(title)) {
+      score = Math.max(score, 1300);
     }
 
     const allWordsMatch = queryWords.every((queryWord) =>
-      titleWords.some((titleWord) => titleWord.startsWith(queryWord)),
+      titleWords.some((titleWord) => titleWord.startsWith(queryWord) || titleWord.includes(queryWord)),
     );
 
     if (allWordsMatch) {
-      score = Math.max(score, 1000);
+      score = Math.max(score, 1200);
     }
 
-    /*
-     * Tolerância pequena para erros de digitação.
-     * Só entra quando a palavra pesquisada é razoavelmente grande,
-     * evitando resultados aleatórios para buscas muito curtas.
-     */
-    if (compactQuery.length >= 4) {
+    if (title.includes(q)) {
+      const idx = title.indexOf(q);
+      score = Math.max(score, 800 - Math.min(idx * 2, 200));
+    }
+
+    if (compactTitle.includes(compactQuery)) {
+      score = Math.max(score, 700);
+    }
+
+    if (compactQuery.length >= 3) {
       const closeWord = titleWords.some((titleWord) => {
-        if (titleWord.length < compactQuery.length - 1) {
+        if (Math.abs(titleWord.length - compactQuery.length) > 3) {
           return false;
         }
-
         const sample = titleWord.slice(0, compactQuery.length);
         const distance = searchDistance(compactQuery, sample);
-
-        return distance <= (compactQuery.length >= 7 ? 2 : 1);
+        return distance <= (compactQuery.length >= 6 ? 2 : 1);
       });
 
       if (closeWord) {
-        score = Math.max(score, 820);
-      }
-    }
-
-    /*
-     * Também aceita uma sequência de caracteres que aparece na ordem
-     * correta dentro do título, mesmo com caracteres intermediários.
-     */
-    if (compactQuery.length >= 4) {
-      let queryIndex = 0;
-
-      for (const character of compactTitle) {
-        if (character === compactQuery[queryIndex]) {
-          queryIndex += 1;
-
-          if (queryIndex === compactQuery.length) {
-            break;
-          }
-        }
-      }
-
-      if (queryIndex === compactQuery.length) {
         score = Math.max(score, 650);
       }
     }
