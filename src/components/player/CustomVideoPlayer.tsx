@@ -440,6 +440,14 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   const [showSettingsMenu, setShowSettingsMenu] = useState<boolean>(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [doubleTapFeedback, setDoubleTapFeedback] = useState<'left' | 'right' | null>(null);
+  const [hasPlaybackStarted, setHasPlaybackStarted] = useState<boolean>(() => Boolean(autoPlay));
+  const [posterFailed, setPosterFailed] = useState<boolean>(false);
+
+  const showInitialCover = !hasPlaybackStarted && !videoError;
+
+  useEffect(() => {
+    setPosterFailed(false);
+  }, [effectivePosterUrl]);
 
   // Video.js Player Store State
   const playback = useHikariPlayer(selectPlayback);
@@ -781,11 +789,43 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     };
   }, [effectiveVideoUrl, isHls, hasMseSupport, media]);
 
+  const handleStartFromCover = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      setHasPlaybackStarted(true);
+      const el = videoRef.current || (media as HTMLMediaElement | null);
+      if (!el) return;
+
+      const playPromise = playback?.play ? playback.play() : el.play();
+      if (playPromise !== undefined) {
+        Promise.resolve(playPromise).catch((err: unknown) => {
+          const errorName = (err as { name?: string })?.name;
+          if (errorName === 'NotAllowedError' || errorName === 'AbortError') {
+            if (volumeState?.setMuted) {
+              volumeState.setMuted(true);
+            } else {
+              el.muted = true;
+            }
+            const retryPromise = playback?.play ? playback.play() : el.play();
+            Promise.resolve(retryPromise).catch((mutedErr) => {
+              console.warn('Playback restricted:', mutedErr);
+            });
+          } else {
+            console.warn('Playback restricted:', err);
+          }
+        });
+      }
+      controlsState?.toggleControls(true);
+    },
+    [media, playback, volumeState, controlsState],
+  );
+
   // Video.js Store Actions
   const togglePlay = useCallback(() => {
     const el = videoRef.current;
     if (!el) return;
     if (el.paused || el.ended) {
+      setHasPlaybackStarted(true);
       if (playback?.play) {
         void Promise.resolve(playback.play()).catch(() => {});
       } else {
@@ -923,22 +963,26 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
           toggleFullscreen();
           break;
         case 'KeyM':
+          if (showInitialCover) return;
           e.preventDefault();
           toggleMute();
           break;
         case 'ArrowLeft':
         case 'KeyJ':
+          if (showInitialCover) return;
           e.preventDefault();
           skipTime(-10);
           controlsState?.toggleControls(true);
           break;
         case 'ArrowRight':
         case 'KeyL':
+          if (showInitialCover) return;
           e.preventDefault();
           skipTime(10);
           controlsState?.toggleControls(true);
           break;
         case 'ArrowUp':
+          if (showInitialCover) return;
           e.preventDefault();
           {
             const newVol = Math.min(1, Number((volume + 0.1).toFixed(2)));
@@ -952,6 +996,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
           }
           break;
         case 'ArrowDown':
+          if (showInitialCover) return;
           e.preventDefault();
           {
             const newVol = Math.max(0, Number((volume - 0.1).toFixed(2)));
@@ -977,6 +1022,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    showInitialCover,
     togglePlay,
     toggleFullscreen,
     toggleMute,
@@ -989,6 +1035,10 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
 
   // Unified pointer tap/double-tap handler on Container (no duplicate click/touch handlers)
   const handleContainerPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (showInitialCover) {
+      activePointerRef.current = null;
+      return;
+    }
     if (!e.isPrimary) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
 
@@ -1004,10 +1054,14 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
       startY: e.clientY,
       startTime: Date.now(),
     };
-  }, []);
+  }, [showInitialCover]);
 
   const handleContainerPointerUp = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (showInitialCover) {
+        activePointerRef.current = null;
+        return;
+      }
       if (!e.isPrimary) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
 
@@ -1074,7 +1128,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
       // Single tap toggles controls cleanly in both playing & paused states (never auto-plays)
       controlsState?.toggleControls();
     },
-    [showSettingsMenu, controlsState, skipTime, toggleFullscreen],
+    [showInitialCover, showSettingsMenu, controlsState, skipTime, toggleFullscreen],
   );
 
   const handleContainerPointerCancel = useCallback(() => {
@@ -1124,10 +1178,12 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
   }, [applySavedPlaybackRate, applyInitialTime, video?.id]);
 
   const handlePlayEvent = useCallback(() => {
+    setHasPlaybackStarted(true);
     onPlayRef.current?.();
   }, []);
 
   const handlePlayingEvent = useCallback(() => {
+    setHasPlaybackStarted(true);
     onPlayingRef.current?.();
   }, []);
 
@@ -1187,7 +1243,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
       data-controls={controlsVisible ? 'visible' : 'hidden'}
       data-paused={isPaused ? 'true' : 'false'}
       data-playing={isPlaying ? 'true' : 'false'}
-      className={`hikari-video-player relative w-full aspect-video min-h-[240px] md:min-h-[520px] flex items-center justify-center select-none border border-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 ${className || ''}`}
+      className={`hikari-video-player relative w-full aspect-video min-h-[240px] md:min-h-[520px] flex items-center justify-center select-none border border-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.45)] outline-none focus-visible:outline-none ${className || ''}`}
     >
       {/* Sole <video> element owned by Video.js <Video> */}
       <div data-video-shell className="absolute inset-0 w-full h-full">
@@ -1212,21 +1268,66 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
         />
       </div>
 
+      {/* Initial Episode Cover Screen (stays paused until user clicks Play) */}
+      {showInitialCover && (
+        <div
+          data-episode-cover="true"
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute inset-0 z-30 overflow-hidden bg-black flex items-center justify-center"
+        >
+          {effectivePosterUrl && !posterFailed ? (
+            <img
+              src={effectivePosterUrl}
+              alt={video?.title || 'Capa do episódio'}
+              onError={() => setPosterFailed(true)}
+              loading="eager"
+              decoding="async"
+              draggable={false}
+              className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none"
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 bg-gradient-to-br from-[#141024] via-[#0a0812] to-black pointer-events-none"
+            />
+          )}
+
+          {/* Subtle gradient vignette for Play button contrast */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/35 pointer-events-none"
+          />
+
+          <button
+            type="button"
+            data-controls-interactive="true"
+            data-cover-play="true"
+            onClick={handleStartFromCover}
+            aria-label="Reproduzir episódio"
+            className="relative z-10 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-purple-600/90 hover:bg-purple-500 text-white border border-white/20 backdrop-blur-md flex items-center justify-center shadow-[0_12px_36px_rgba(168,85,247,0.45)] transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer outline-none focus-visible:outline-none"
+          >
+            <Play className="w-7 h-7 sm:w-9 sm:h-9 fill-current translate-x-0.5" />
+          </button>
+        </div>
+      )}
+
       {/* Buffering spinner overlay */}
-      {isBuffering && !videoError && (
+      {isBuffering && !videoError && !showInitialCover && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
           <div className="w-12 h-12 rounded-full border-2 border-purple-500 border-t-transparent animate-spin" />
         </div>
       )}
 
       {/* Double tap feedback indicators */}
-      {doubleTapFeedback === 'left' && (
+      {doubleTapFeedback === 'left' && !showInitialCover && (
         <div className="absolute left-6 sm:left-10 top-1/2 -translate-y-1/2 z-30 bg-black/75 backdrop-blur-md px-3.5 py-2.5 rounded-2xl border border-white/10 flex items-center gap-2 text-white pointer-events-none shadow-xl">
           <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6 text-purple-400" />
           <span className="text-xs sm:text-sm font-bold">-10s</span>
         </div>
       )}
-      {doubleTapFeedback === 'right' && (
+      {doubleTapFeedback === 'right' && !showInitialCover && (
         <div className="absolute right-6 sm:right-10 top-1/2 -translate-y-1/2 z-30 bg-black/75 backdrop-blur-md px-3.5 py-2.5 rounded-2xl border border-white/10 flex items-center gap-2 text-white pointer-events-none shadow-xl">
           <span className="text-xs sm:text-sm font-bold">+10s</span>
           <RotateCw className="w-5 h-5 sm:w-6 sm:h-6 text-purple-400" />
@@ -1234,7 +1335,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
       )}
 
       {/* Top Close Button (optional) */}
-      {onClose && (
+      {onClose && !showInitialCover && (
         <button
           type="button"
           data-controls-interactive="true"
@@ -1252,6 +1353,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
       )}
 
       {/* Nova Stream Controls Overlay (zero dark scrim over video frame so image brightness stays identical) */}
+      {!showInitialCover && (
       <div
         data-controls-overlay={controlsVisible ? 'visible' : 'hidden'}
         className={`absolute inset-0 flex flex-col justify-end p-2.5 sm:p-4 pt-6 transition-opacity duration-200 z-30 pointer-events-none ${
@@ -1431,6 +1533,7 @@ const HikariPlayerSurface: React.FC<HikariPlayerSurfaceProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* Error fallback screen */}
       {videoError && (

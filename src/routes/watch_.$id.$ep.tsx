@@ -51,7 +51,6 @@ import {
 import {
   startEpisodeSession,
   heartbeatEpisodeProgress,
-  getEpisodeProgress,
 } from "@/lib/profile-playback.functions";
 import {
   displayTitle,
@@ -343,10 +342,13 @@ function WatchPage() {
   const targetEpNum = parseEpisodeNumber(ep);
 
   const [playerMounted, setPlayerMounted] = useState(false);
-  const [userTriggeredPlay, setUserTriggeredPlay] = useState(false);
+  const [triggeredPlayEpisodeId, setTriggeredPlayEpisodeId] = useState<string | null>(null);
+  const currentEpisodeIdRef = useRef<string | undefined>(undefined);
 
   const handleActivatePlayer = useCallback(() => {
-    setUserTriggeredPlay(true);
+    if (currentEpisodeIdRef.current) {
+      setTriggeredPlayEpisodeId(currentEpisodeIdRef.current);
+    }
     setPlayerMounted(true);
   }, []);
 
@@ -465,6 +467,9 @@ function WatchPage() {
     return episodes[0];
   }, [episodes, ep, targetEpNum]);
 
+  currentEpisodeIdRef.current = current?.id;
+  const userTriggeredPlay = Boolean(current?.id && triggeredPlayEpisodeId === current.id);
+
   const idx = current
     ? episodes.findIndex(
         (e) => e.id === current.id,
@@ -567,50 +572,19 @@ function WatchPage() {
   const lastHeartbeatTimestampRef = useRef<number>(0);
   const isCompletedRef = useRef<boolean>(false);
 
-  // Chave de armazenamento para salvar progresso e retomar a reprodução
+  // Chave de armazenamento para salvar progresso sem retomar posição anterior ao abrir/recarregar
   const progressStorageKey =
     anime && current
       ? `hikari_progress_${anime.id}_${current.id}`
       : null;
 
-  const savedInitialTime = useMemo(() => {
-    if (typeof window === "undefined" || !progressStorageKey) return 0;
-    try {
-      const raw = localStorage.getItem(progressStorageKey);
-      const parsed = raw ? Number.parseFloat(raw) : 0;
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-    } catch {
-      return 0;
-    }
-  }, [progressStorageKey]);
-
   const effectiveInitialTime =
     sessionTime && sessionTime.episodeId === current?.id && sessionTime.time > 0
       ? sessionTime.time
-      : savedInitialTime;
+      : 0;
 
-  const hasRestoredRef = useRef<boolean>(savedInitialTime <= 0);
-  const lastSavedTimeRef = useRef<number>(savedInitialTime);
-
-  // Consulta progresso remoto do usuário autenticado no servidor
-  useEffect(() => {
-    let isMounted = true;
-    if (user && anime?.id && current?.id) {
-      getEpisodeProgress({ data: { animeId: anime.id, episodeId: current.id } })
-        .then((progress) => {
-          if (!isMounted || !progress || progress.currentTime <= 0) return;
-          if (!hasRestoredRef.current && progress.currentTime > 0) {
-            setSessionTime({ episodeId: current.id, time: progress.currentTime });
-          }
-        })
-        .catch(() => {
-          // Fallback transparente
-        });
-    }
-    return () => {
-      isMounted = false;
-    };
-  }, [user, anime?.id, current?.id]);
+  const hasRestoredRef = useRef<boolean>(true);
+  const lastSavedTimeRef = useRef<number>(0);
 
   useEffect(() => {
     playbackSessionIdRef.current = null;
@@ -645,10 +619,10 @@ function WatchPage() {
       setSelectedPlayerId(defaultId);
       livePlaybackRef.current = { episodeId: current?.id ?? "", time: 0 };
       setSessionTime(null);
-      hasRestoredRef.current = savedInitialTime <= 0;
-      lastSavedTimeRef.current = savedInitialTime;
+      hasRestoredRef.current = true;
+      lastSavedTimeRef.current = 0;
     }
-  }, [current?.id, anime, savedInitialTime, playerSources]);
+  }, [current?.id, anime, playerSources]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -674,15 +648,7 @@ function WatchPage() {
     };
   }, [current?.id, progressStorageKey]);
 
-  const userAutoplay = useMemo(() => {
-    if (typeof window === "undefined") return true;
-    try {
-      const saved = localStorage.getItem("hikari-player-autoplay");
-      return saved === null ? true : saved !== "false";
-    } catch {
-      return true;
-    }
-  }, []);
+  const userAutoplay = false;
 
   const handleRestored = useCallback(
     (time: number) => {
@@ -776,9 +742,12 @@ function WatchPage() {
   const handlePlay = useCallback(() => {
     isPlayingRef.current = true;
     isBufferingRef.current = false;
+    if (current?.id) {
+      setTriggeredPlayEpisodeId((prevId) => (prevId === current.id ? prevId : current.id));
+    }
     const curTime = livePlaybackRef.current.time;
     void ensureSessionAndSendHeartbeat(curTime, 0);
-  }, [ensureSessionAndSendHeartbeat]);
+  }, [current?.id, ensureSessionAndSendHeartbeat]);
 
   const handlePlaying = useCallback(() => {
     isPlayingRef.current = true;
@@ -896,9 +865,10 @@ function WatchPage() {
 
       const currentTimeToCarry = hasValidLiveTime
         ? livePlaybackRef.current.time
-        : savedInitialTime;
+        : 0;
 
       if (currentTimeToCarry > 0 && current?.id) {
+        hasRestoredRef.current = false;
         setSessionTime({ episodeId: current.id, time: currentTimeToCarry });
         if (progressStorageKey) {
           try {
@@ -915,7 +885,7 @@ function WatchPage() {
 
       setSelectedPlayerId(targetId);
     },
-    [selectedPlayerId, savedInitialTime, progressStorageKey, current?.id],
+    [selectedPlayerId, progressStorageKey, current?.id],
   );
 
   const handleNextEpisode = useCallback(() => {
@@ -1093,7 +1063,7 @@ function WatchPage() {
               <CustomVideoPlayer
                 key={`${anime.id}-${current.id}-${selectedPlayer.id}-${file}`}
                 video={_currentVideoItem}
-                autoPlay={userTriggeredPlay || userAutoplay}
+                autoPlay={userTriggeredPlay}
                 initialTime={effectiveInitialTime}
                 onPlay={handlePlay}
                 onPlaying={handlePlaying}
@@ -1116,7 +1086,7 @@ function WatchPage() {
                   ? `Reproduzir ${title} — Episódio ${current.number}`
                   : `Reproduzir ${title}`
               }
-              className="relative block aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)] cursor-pointer group select-none text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+              className="relative block aspect-video min-h-[240px] md:min-h-[520px] w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_70px_rgba(0,0,0,0.45)] cursor-pointer group select-none text-left outline-none focus-visible:outline-none"
             >
               {playerPoster ? (
                 <img
@@ -1127,13 +1097,18 @@ function WatchPage() {
                   loading="eager"
                   fetchPriority="high"
                   decoding="sync"
-                  className="absolute inset-0 size-full object-cover filter brightness-[0.85] transition-transform duration-300 group-hover:scale-105"
+                  className="absolute inset-0 size-full object-cover select-none"
                 />
-              ) : null}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40" />
+              ) : (
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-0 bg-gradient-to-br from-[#141024] via-[#0a0812] to-black"
+                />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/35" />
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="flex size-16 sm:size-20 items-center justify-center rounded-full bg-purple-600/90 text-white shadow-[0_0_30px_rgba(168,85,247,0.6)] transition-transform duration-200 group-hover:scale-110">
-                  <Play className="size-8 sm:size-10 fill-white ml-1" />
+                <div className="flex size-16 sm:size-20 items-center justify-center rounded-full bg-purple-600/90 group-hover:bg-purple-500 text-white border border-white/20 backdrop-blur-md shadow-[0_12px_36px_rgba(168,85,247,0.45)] transition-all duration-200 group-hover:scale-105 group-active:scale-95">
+                  <Play className="size-7 sm:size-9 fill-current translate-x-0.5" />
                 </div>
               </div>
             </button>
@@ -1433,7 +1408,7 @@ function YouTubeTrailer({
           type="button"
           onClick={onActivate}
           aria-label={`Reproduzir trailer de ${title}`}
-          className="relative block size-full cursor-pointer group select-none text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+          className="relative block size-full cursor-pointer group select-none text-left outline-none focus-visible:outline-none"
         >
           <img
             src={posterUrl}
