@@ -13,8 +13,6 @@ import {
   RotateCcw,
   RotateCw,
   Check,
-  ChevronRight,
-  ChevronLeft,
 } from 'lucide-react';
 import {
   VideoItem,
@@ -107,7 +105,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
   const [showSettingsMenu, setShowSettingsMenu] = useState<boolean>(false);
-  const [settingsSubmenu, setSettingsSubmenu] = useState<'main' | 'speed'>('main');
   const [isBuffering, setIsBuffering] = useState<boolean>(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState<boolean>(true);
@@ -148,20 +145,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
   const isHls = useMemo(() => isHlsUrl(effectiveVideoUrl), [effectiveVideoUrl, isHlsUrl]);
   const hasMseSupport = useMemo(() => isMediaSourceSupported(), []);
 
-  // Auto-hide controls handler based on playback state and user activity
-  const handleUserActivity = useCallback(() => {
-    setShowControls(true);
-    if (!isPlaying) return;
-    if (hideControlsTimeoutRef.current) {
-      window.clearTimeout(hideControlsTimeoutRef.current);
-    }
-    hideControlsTimeoutRef.current = window.setTimeout(() => {
-      setShowControls(false);
-      setShowSettingsMenu(false);
-      setSettingsSubmenu('main');
-    }, 3000);
-  }, [isPlaying]);
-
+  // Auto-hide controls handler during playback
   useEffect(() => {
     if (!isPlaying) {
       setShowControls(true);
@@ -177,7 +161,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     hideControlsTimeoutRef.current = window.setTimeout(() => {
       setShowControls(false);
       setShowSettingsMenu(false);
-      setSettingsSubmenu('main');
     }, 3000);
 
     return () => {
@@ -185,6 +168,18 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         window.clearTimeout(hideControlsTimeoutRef.current);
       }
     };
+  }, [isPlaying]);
+
+  const handleUserActivity = useCallback(() => {
+    if (!isPlaying) return;
+    setShowControls(true);
+    if (hideControlsTimeoutRef.current) {
+      window.clearTimeout(hideControlsTimeoutRef.current);
+    }
+    hideControlsTimeoutRef.current = window.setTimeout(() => {
+      setShowControls(false);
+      setShowSettingsMenu(false);
+    }, 3000);
   }, [isPlaying]);
 
   const applyInitialTime = useCallback(() => {
@@ -411,7 +406,6 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     el.playbackRate = speed;
     setPlaybackSpeed(speed);
     setShowSettingsMenu(false);
-    setSettingsSubmenu('main');
   }, []);
 
   // Skip time (-10s / +10s)
@@ -484,7 +478,7 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [togglePlay, toggleFullscreen, toggleMute, skipTime]);
 
-  // Mobile double-tap gesture handler
+  // Mobile double-tap & single-tap (toggle controls visibility) handler
   const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const now = Date.now();
     const timeDiff = now - lastTapTimeRef.current;
@@ -508,11 +502,12 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         toggleFullscreen();
       }
     } else {
-      if ((e.target as HTMLElement).tagName === 'VIDEO' || (e.target as HTMLElement).classList.contains('video-body-click')) {
-        togglePlay();
+      setShowControls((prev) => !prev);
+      if (showSettingsMenu) {
+        setShowSettingsMenu(false);
       }
     }
-  }, [skipTime, toggleFullscreen, togglePlay]);
+  }, [skipTime, toggleFullscreen, showSettingsMenu]);
 
   // Video event handlers
   const handleTimeUpdate = useCallback(() => {
@@ -625,9 +620,11 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
       onMouseMove={handleUserActivity}
       onTouchStart={handleUserActivity}
       onClick={handleContainerClick}
-      className={`relative isolate w-full aspect-video min-h-[240px] md:min-h-[520px] bg-black flex items-center justify-center select-none overflow-hidden rounded-2xl group ${className || ''}`}
+      data-controls={showControls ? "visible" : "hidden"}
+      data-paused={!isPlaying ? "true" : "false"}
+      className={`hikari-video-player w-full aspect-video min-h-[240px] md:min-h-[520px] flex items-center justify-center select-none ${className || ''}`}
     >
-      {/* Video element */}
+      {/* Video element with filter:none and transition:none */}
       <video
         ref={videoRef}
         src={isHls && hasMseSupport ? undefined : effectiveVideoUrl}
@@ -646,6 +643,9 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         onError={handleMediaError}
         className="video-body-click w-full h-full object-contain bg-black cursor-pointer"
       />
+
+      {/* Scrim overlay for dimming idle state without touching video filter */}
+      <div className="hikari-video-player__scrim" aria-hidden="true" />
 
       {/* Buffering spinner overlay */}
       {isBuffering && !videoError && (
@@ -683,23 +683,35 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
         </button>
       )}
 
-      {/* Custom Controls Overlay */}
+      {/* Custom Controls Overlay (z-30, above scrim z-1) */}
       <div
         className={`absolute inset-0 flex flex-col justify-end p-4 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 z-30 pointer-events-none ${
           showControls || !isPlaying ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        {/* Center Big Play/Pause icon feedback when paused (stable, no blinking) */}
+        {/* Center Big Play/Pause icon feedback when paused */}
         <div className="flex-1 flex items-center justify-center pointer-events-none">
           {!isPlaying && !videoError && (
-            <div className="w-16 h-16 rounded-full bg-purple-600/90 text-white flex items-center justify-center shadow-2xl backdrop-blur-sm">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePlay();
+              }}
+              className="w-16 h-16 rounded-full bg-purple-600/90 hover:bg-purple-600 text-white flex items-center justify-center shadow-2xl backdrop-blur-sm pointer-events-auto cursor-pointer transition-transform hover:scale-105 active:scale-95"
+              aria-label="Reproduzir"
+            >
               <Play className="w-8 h-8 fill-current translate-x-0.5" />
-            </div>
+            </button>
           )}
         </div>
 
         {/* Bottom Control Bar */}
-        <div className="flex flex-col gap-2 w-full pointer-events-auto bg-black/40 backdrop-blur-md p-3 rounded-xl border border-white/10 relative">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          className="flex flex-col gap-2 w-full pointer-events-auto bg-black/40 backdrop-blur-md p-3 rounded-xl border border-white/10 relative"
+        >
           {/* Timeline progress bar */}
           <div className="flex items-center gap-3">
             <input
@@ -750,17 +762,14 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
               </div>
             </div>
 
-            {/* Right controls: Settings Menu, Fullscreen (NO quality, NO CC, NO speed in main bar) */}
+            {/* Right controls: Settings Menu, Fullscreen */}
             <div className="flex items-center gap-2 relative">
               {/* Settings Menu Toggle */}
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowSettingsMenu((prev) => !prev);
-                    setSettingsSubmenu('main');
-                  }}
-                  aria-label="Configurações do player"
+                  onClick={() => setShowSettingsMenu((prev) => !prev)}
+                  aria-label="Configurações e velocidade"
                   className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-slate-200 hover:text-white transition-colors cursor-pointer"
                 >
                   <Settings className="w-4 h-4" />
@@ -768,56 +777,24 @@ export const CustomVideoPlayer: React.FC<CustomVideoPlayerProps> = ({
 
                 {/* Settings Popup Menu */}
                 {showSettingsMenu && (
-                  <div className="absolute bottom-full right-0 mb-3 w-56 bg-[#161424]/95 border border-purple-500/30 rounded-2xl shadow-2xl p-2 z-45 backdrop-blur-xl text-slate-200">
-                    {settingsSubmenu === 'main' ? (
-                      <div className="flex flex-col gap-1">
-                        <div className="px-3 py-2 text-xs font-semibold text-purple-300 border-b border-white/10 mb-1">
-                          Configurações
-                        </div>
+                  <div className="absolute bottom-full right-0 mb-3 w-48 bg-[#161424]/95 border border-purple-500/30 rounded-2xl shadow-2xl p-2 z-45 backdrop-blur-xl text-slate-200 max-h-48 overflow-y-auto">
+                    <div className="flex flex-col gap-0.5">
+                      {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((spd) => (
                         <button
+                          key={spd}
                           type="button"
-                          onClick={() => setSettingsSubmenu('speed')}
-                          className="w-full px-3 py-2 text-left text-xs rounded-xl hover:bg-white/10 transition-colors flex items-center justify-between group cursor-pointer"
+                          onClick={() => changeSpeed(spd)}
+                          className={`w-full px-3 py-2 text-left text-xs rounded-xl transition-colors flex items-center justify-between cursor-pointer ${
+                            playbackSpeed === spd
+                              ? 'bg-purple-600/30 text-purple-200 font-semibold'
+                              : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                          }`}
                         >
-                          <span className="text-slate-300 group-hover:text-white">Velocidade de Reprodução</span>
-                          <div className="flex items-center gap-1 text-purple-400">
-                            <span className="font-semibold">{playbackSpeed}x</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </div>
+                          <span>{spd}x</span>
+                          {playbackSpeed === spd && <Check className="w-3.5 h-3.5 text-purple-400" />}
                         </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setSettingsSubmenu('main')}
-                          className="px-2 py-1.5 text-xs text-purple-300 hover:bg-white/10 rounded-lg transition-colors flex items-center gap-1 mb-1 cursor-pointer"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                          <span>Voltar</span>
-                        </button>
-                        <div className="px-3 py-1.5 text-xs font-semibold text-purple-300 border-b border-white/10 mb-1">
-                          Velocidade
-                        </div>
-                        <div className="max-h-48 overflow-y-auto pr-1 space-y-0.5">
-                          {([0.5, 0.75, 1, 1.25, 1.5, 2] as PlaybackSpeed[]).map((spd) => (
-                            <button
-                              key={spd}
-                              type="button"
-                              onClick={() => changeSpeed(spd)}
-                              className={`w-full px-3 py-2 text-left text-xs rounded-xl transition-colors flex items-center justify-between cursor-pointer ${
-                                playbackSpeed === spd
-                                  ? 'bg-purple-600/30 text-purple-200 font-semibold'
-                                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                              }`}
-                            >
-                              <span>{spd}x</span>
-                              {playbackSpeed === spd && <Check className="w-3.5 h-3.5 text-purple-400" />}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
