@@ -93,7 +93,6 @@ import {
   fetchAnimeEpisodes,
   fetchAnimePictures,
   fetchAnimeSeasonNavigation,
-  fetchJikanPictures,
 } from "@/lib/api";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -168,10 +167,12 @@ function notifyToast(
 const EMPTY_WATCHED_EPISODES: string[] = [];
 const MOBILE_BANNER_MEDIA_QUERY = "(max-width: 639.98px)";
 const DESKTOP_BANNER_MEDIA_QUERY = "(min-width: 640px)";
+const TRANSPARENT_BANNER_PIXEL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-const clientHydrationState = { hydrated: true };
+const clientHydrationState = { hydrated: false };
 const clientCreditsCache = new Map<
   string,
   {
@@ -304,12 +305,17 @@ export const Route = createFileRoute("/anime/$id")({
 
     const animeId = remote.id || params.id;
     const desktopBanner = remote.banner?.trim() || null;
-    const syncMobile = animeId
-      ? resolveSeasonMobileBannerSync(
-          buildSeasonBannerInputFromAnime(animeId, remote, false),
-          { skipClientCache: !clientHydrationState.hydrated },
-        )
-      : null;
+    const syncMobile =
+      remote.resolvedMobileBanner ??
+      (animeId
+        ? resolveSeasonMobileBannerSync(
+            buildSeasonBannerInputFromAnime(animeId, remote, false),
+            {
+              skipClientCache:
+                typeof window === "undefined" || !clientHydrationState.hydrated,
+            },
+          )
+        : null);
 
     const usesKitsuMedia =
       Boolean(syncMobile?.url && syncMobile.url.includes("media.kitsu.app")) ||
@@ -369,10 +375,11 @@ export const Route = createFileRoute("/anime/$id")({
         rel: "preload",
         as: "image",
         href: anilistImage(desktopBanner, 1600),
+        ...(syncMobile ? {} : { media: DESKTOP_BANNER_MEDIA_QUERY }),
         imageSizes: "100vw",
         fetchPriority: "high",
       });
-    } else if (remote.cover) {
+    } else if (remote.cover && syncMobile) {
       links.push({
         rel: "preload",
         as: "image",
@@ -1442,9 +1449,15 @@ function AnimePageContent({
     [localRecord, remote],
   );
 
-  const [isHydratedClient, setIsHydratedClient] = useState(true);
+  const [isHydratedClient, setIsHydratedClient] = useState(
+    () => clientHydrationState.hydrated,
+  );
 
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    clientHydrationState.hydrated && typeof window !== "undefined"
+      ? window.matchMedia(MOBILE_BANNER_MEDIA_QUERY).matches
+      : false,
+  );
 
   useIsomorphicLayoutEffect(() => {
     clientHydrationState.hydrated = true;
@@ -1506,7 +1519,10 @@ function AnimePageContent({
         currentCover: animeCover,
         isAdminCustomBanner: isAdminBanner,
       },
-      { skipClientCache: !isHydratedClient },
+      {
+        skipClientCache:
+          typeof window === "undefined" || !isHydratedClient,
+      },
     );
 
     if (syncResolved) {
@@ -1517,6 +1533,17 @@ function AnimePageContent({
         initialObjectPosition: syncResolved.initialObjectPosition,
       };
     }
+
+    if (remote?.resolvedMobileBanner) {
+      return {
+        forId: animeId,
+        url: remote.resolvedMobileBanner.url,
+        isAlternative: remote.resolvedMobileBanner.isAlternative,
+        initialObjectPosition:
+          remote.resolvedMobileBanner.initialObjectPosition,
+      };
+    }
+
     return null;
   }, [
     animeId,
@@ -1531,6 +1558,7 @@ function AnimePageContent({
     animeStatus,
     animeBanner,
     animeCover,
+    remote?.resolvedMobileBanner,
   ]);
 
   const [mobileBannerState, setMobileBannerState] = useState<{
@@ -1588,7 +1616,6 @@ function AnimePageContent({
         currentCover: animeCover,
         isAdminCustomBanner: isAdminBanner,
         preloadedMalPictures: anime?.images,
-        fetchJikanPictures,
       },
       controller.signal,
     ).then((resolved) => {
@@ -1626,7 +1653,7 @@ function AnimePageContent({
     anime?.images,
   ]);
 
-  const { effectiveBannerUrl, defaultObjectPosition } = selectViewportBanner({
+  const { effectiveBannerUrl } = selectViewportBanner({
     animeId,
     isMobileViewport,
     isAdminBanner,
@@ -1648,26 +1675,23 @@ function AnimePageContent({
       ? activeMobileBannerState.url
       : null;
 
-  const pendingMobileFallbackUrl =
-    isMobileViewport && !isAdminBanner && !activeMobileBannerState
-      ? validDesktopBannerUrl
-      : null;
+  const isMobileConfirmedDefault = Boolean(
+    isAdminBanner ||
+      (activeMobileBannerState && !activeMobileBannerState.isAlternative),
+  );
 
-  const resolvedClientBannerUrl =
-    effectiveBannerUrl ?? pendingMobileFallbackUrl;
+  const effectiveMobileSourceUrl =
+    validMobileSourceUrl ??
+    (isMobileConfirmedDefault ? validDesktopBannerUrl : null);
 
-  const ssrFallbackBannerUrl =
-    validDesktopBannerUrl || validMobileSourceUrl || null;
+  const currentBannerSrc = effectiveBannerUrl ?? undefined;
 
-  const currentBannerSrc = isHydratedClient
-    ? (resolvedClientBannerUrl ?? undefined)
-    : (ssrFallbackBannerUrl ?? undefined);
+  const shouldRenderPicture = Boolean(
+    validDesktopBannerUrl || effectiveMobileSourceUrl,
+  );
 
-  const shouldRenderPicture = isHydratedClient
-    ? Boolean(resolvedClientBannerUrl)
-    : Boolean(validMobileSourceUrl || validDesktopBannerUrl);
-
-  const bannerObjectPosition = defaultObjectPosition;
+  const shouldRenderDesktopCoverBlur =
+    !validDesktopBannerUrl && Boolean(anime?.cover);
 
   /*
    * COR DA ABA DO NAVEGADOR
@@ -2022,87 +2046,95 @@ function AnimePageContent({
           key={`banner-${anime.id}`}
           className="relative max-sm:h-[22rem] max-sm:min-[380px]:h-[24rem] sm:h-[22rem] md:h-[26rem] lg:h-[28rem] w-full bg-elevated overflow-hidden"
         >
-          {shouldRenderPicture ? (
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
+          {shouldRenderDesktopCoverBlur ? (
             <>
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#151126] via-[#0d0b18] to-bg" />
-              <picture
-                key={`picture-${anime.id}-${currentBannerSrc ?? "none"}`}
+              <img
+                key={`banner-blur-${anime.id}-${anime.cover}`}
+                src={anilistImage(anime.cover, 480)}
+                alt=""
+                width={460}
+                height={690}
+                sizes="100vw"
+                loading="eager"
+                fetchPriority="low"
+                decoding="async"
                 className={cn(
-                  "relative block size-full",
-                  !isHydratedClient && !validDesktopBannerUrl && "sm:hidden",
+                  "size-full object-cover object-center blur-sm scale-110",
+                  !effectiveMobileSourceUrl &&
+                    !isAdminBanner &&
+                    !activeMobileBannerState &&
+                    "max-sm:hidden",
+                  effectiveMobileSourceUrl && "max-sm:hidden",
                 )}
-              >
-                {validMobileSourceUrl ? (
-                  <source
-                    media={MOBILE_BANNER_MEDIA_QUERY}
-                    srcSet={anilistImage(validMobileSourceUrl, 640)}
-                    sizes="100vw"
-                  />
-                ) : null}
-                {validDesktopBannerUrl ? (
-                  <source
-                    media={DESKTOP_BANNER_MEDIA_QUERY}
-                    srcSet={anilistImage(validDesktopBannerUrl, 1600)}
-                    sizes="100vw"
-                  />
-                ) : null}
-                <img
-                  key={`banner-img-${anime.id}-${currentBannerSrc}`}
-                  src={
-                    currentBannerSrc
-                      ? anilistImage(
-                          currentBannerSrc,
-                          validMobileSourceUrl &&
-                            currentBannerSrc === validMobileSourceUrl
-                            ? 640
-                            : 1600,
-                        )
-                      : undefined
-                  }
-                  alt=""
-                  sizes="100vw"
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  onError={(e) => {
-                    const failedUrl =
-                      e.currentTarget.currentSrc ||
-                      effectiveBannerUrl ||
-                      currentBannerSrc;
-                    if (!failedUrl) return;
-                    setFailedBannerUrls((prev) =>
-                      prev[failedUrl] ? prev : { ...prev, [failedUrl]: true },
-                    );
-                  }}
-                  style={{
-                    objectPosition: isHydratedClient
-                      ? bannerObjectPosition
-                      : (activeMobileBannerState?.initialObjectPosition ??
-                        "50% 24%"),
-                  }}
-                  className="size-full object-cover object-center sm:!object-center transition-opacity duration-500 motion-safe:animate-[bannerSettle_400ms_ease-out]"
-                />
-              </picture>
-            </>
-          ) : (
-            <>
-              {anime.cover ? (
-                <img
-                  key={`banner-blur-${anime.id}-${anime.cover}`}
-                  src={anilistImage(anime.cover, 480)}
-                  alt=""
-                  width={460}
-                  height={690}
-                  sizes="100vw"
-                  loading="eager"
-                  fetchPriority="low"
-                  decoding="async"
-                  className="size-full object-cover object-center blur-sm scale-110"
-                />
-              ) : null}
+              />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#151126]/75 via-[#0d0b18]/65 to-bg" />
             </>
-          )}
+          ) : null}
+          {shouldRenderPicture ? (
+            <picture
+              key={`picture-${anime.id}-${validDesktopBannerUrl ?? "none"}-${effectiveMobileSourceUrl ?? "none"}`}
+              className={cn(
+                "relative block size-full",
+                !validDesktopBannerUrl && "sm:hidden",
+                !effectiveMobileSourceUrl && "max-sm:hidden",
+              )}
+            >
+              <source
+                media={MOBILE_BANNER_MEDIA_QUERY}
+                srcSet={
+                  effectiveMobileSourceUrl
+                    ? anilistImage(
+                        effectiveMobileSourceUrl,
+                        validMobileSourceUrl ? 640 : 1600,
+                      )
+                    : TRANSPARENT_BANNER_PIXEL
+                }
+                sizes={effectiveMobileSourceUrl ? "100vw" : undefined}
+              />
+              <source
+                media={DESKTOP_BANNER_MEDIA_QUERY}
+                srcSet={
+                  validDesktopBannerUrl
+                    ? anilistImage(validDesktopBannerUrl, 1600)
+                    : TRANSPARENT_BANNER_PIXEL
+                }
+                sizes={validDesktopBannerUrl ? "100vw" : undefined}
+              />
+              <img
+                key={`banner-img-${anime.id}-${validDesktopBannerUrl ?? "none"}-${effectiveMobileSourceUrl ?? "none"}`}
+                src={anilistImage(
+                  validDesktopBannerUrl ?? effectiveMobileSourceUrl,
+                  validDesktopBannerUrl ? 1600 : 640,
+                )}
+                alt=""
+                sizes="100vw"
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
+                onError={(e) => {
+                  const failedUrl =
+                    e.currentTarget.currentSrc ||
+                    effectiveBannerUrl ||
+                    validDesktopBannerUrl ||
+                    effectiveMobileSourceUrl;
+                  if (!failedUrl || failedUrl.startsWith("data:")) return;
+                  setFailedBannerUrls((prev) =>
+                    prev[failedUrl] ? prev : { ...prev, [failedUrl]: true },
+                  );
+                }}
+                style={{
+                  objectPosition:
+                    activeMobileBannerState?.initialObjectPosition ?? "50% 24%",
+                }}
+                className={cn(
+                  "size-full object-cover object-center sm:!object-center",
+                  !effectiveMobileSourceUrl && "max-sm:hidden",
+                  !validDesktopBannerUrl && "sm:hidden",
+                )}
+              />
+            </picture>
+          ) : null}
 
           {/* Sombra superior suave para contraste */}
           <div className="pointer-events-none absolute inset-x-0 top-0 max-sm:h-20 sm:h-28 bg-gradient-to-b from-black/60 via-black/20 to-transparent sm:from-black/50 sm:via-black/15" />

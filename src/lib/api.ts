@@ -16,12 +16,19 @@ import {
   type AnimeStaff,
   type Episode,
   type HomeCatalog,
+  type ResolvedMobileBannerInfo,
   type SearchParams,
   type SearchResult,
   type Season,
   type SlimAnime,
   type StreamingLink,
 } from "@/lib/types";
+
+import {
+  resolveSeasonMobileBanner,
+  resolveSeasonMobileBannerSync,
+  type SeasonBannerInput,
+} from "@/lib/season-banner";
 
 import {
   getEmergencyFallbackCatalog,
@@ -1431,7 +1438,7 @@ export const fetchAnimeEpisodes = createServerFn({
     try {
       const seasons = await jikanEpisodes(malId);
       if (animeId && seasons.length > 0 && seasons[0]?.episodes?.length) {
-        const detailKey = `detail:v6:${animeId}`;
+        const detailKey = `detail:v7:${animeId}`;
         const cached = fromCache<Anime>(detailKey);
         if (cached && (!cached.streamingEpisodes || cached.streamingEpisodes.length === 0)) {
           const titleMap = new Map<number, { title: string; aired?: string }>();
@@ -2774,7 +2781,7 @@ export const fetchAnimeCredits = createServerFn({
   .handler(async ({ data }) => {
     const credits = await resolveAnimeCredits(data);
     if (data.animeId && credits) {
-      const detailKey = `detail:v6:${data.animeId}`;
+      const detailKey = `detail:v7:${data.animeId}`;
       const cached = fromCache<Anime>(detailKey);
       if (cached) {
         const hasChar = (cached.characters?.length ?? 0) > 0;
@@ -6096,6 +6103,38 @@ const idSchema =
     id: z.string(),
   });
 
+async function resolveServerMobileBanner(
+  input: SeasonBannerInput,
+  timeoutMs = 5500,
+): Promise<ResolvedMobileBannerInfo | undefined> {
+  const sync = resolveSeasonMobileBannerSync(input, { skipClientCache: true });
+  if (sync) {
+    return sync;
+  }
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    const resolved = await resolveSeasonMobileBanner(
+      input,
+      controller.signal,
+    );
+    if (timedOut || controller.signal.aborted) {
+      return undefined;
+    }
+    return resolved;
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
   const animeJson = await kitsuFetch<{ data: KitsuAnimeItem }>(`/anime/${kitsuId}`);
   const item = animeJson.data;
@@ -6108,6 +6147,19 @@ async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
     kitsuId,
     slim.episodesCount,
   );
+  const mobileBannerTask = resolveServerMobileBanner({
+    animeId: slim.id,
+    anilistId: slim.anilistId,
+    malId: slim.malId,
+    kitsuId,
+    year: slim.year ?? null,
+    startYear: slim.year ?? null,
+    format: slim.format ?? null,
+    status: slim.status ?? null,
+    currentBanner: slim.banner ?? null,
+    currentCover: slim.cover ?? null,
+    isAdminCustomBanner: false,
+  });
 
   // Verifica se créditos já estão em cache em memória (0ms), sem bloquear o retorno inicial
   const cleanTitles = [slim.titles.romaji, slim.titles.english, slim.titles.native]
@@ -6116,7 +6168,10 @@ async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
   const creditsCacheKey = `credits:v1:0:0:${kitsuId}:0:${normalizeSearchText(cleanTitles[0] ?? "")}:${slim.year ?? 0}`;
   const cachedCredits = fromCache<AnimeCreditsResult>(creditsCacheKey);
 
-  const fetchedEpisodes = await episodesTask;
+  const [fetchedEpisodes, resolvedMobileBanner] = await Promise.all([
+    episodesTask,
+    mobileBannerTask,
+  ]);
   let episodes = fetchedEpisodes;
 
   if (episodes.length === 0 && slim.episodesCount) {
@@ -6157,6 +6212,7 @@ async function fetchKitsuDetail(kitsuId: number): Promise<Anime> {
         },
       ],
     },
+    ...(resolvedMobileBanner ? { resolvedMobileBanner } : {}),
   };
 }
 
@@ -6194,7 +6250,7 @@ export const fetchAnimeDetail =
         }
 
         const key =
-          `detail:v6:${id}`;
+          `detail:v7:${id}`;
 
         return withCache<Anime | null>(
           key,
@@ -6348,6 +6404,22 @@ export const fetchAnimeDetail =
             }
           }
 
+          const resolvedMobileBanner = await resolveServerMobileBanner({
+            animeId: `mal-${malId}`,
+            anilistId: aniMedia?.id ?? slim.anilistId,
+            malId,
+            kitsuId: slim.kitsuId,
+            year: slim.year ?? null,
+            startYear: mappedAni?.startDate?.year ?? slim.year ?? null,
+            format: slim.format ?? null,
+            status: slim.status ?? null,
+            currentBanner: slim.banner ?? null,
+            currentCover: slim.cover ?? null,
+            isAdminCustomBanner: false,
+            preloadedMalPictures:
+              jikanPictures.length > 0 ? jikanPictures : (mappedAni?.images ?? []),
+          });
+
           const anime: Anime & {
             seasonNavigation?: SeasonNavigation;
           } = {
@@ -6367,6 +6439,7 @@ export const fetchAnimeDetail =
             endDate: mappedAni?.endDate ?? null,
             rating: ((json?.data as Record<string, unknown> | undefined)?.rating as string) ?? null,
             seasonNavigation,
+            ...(resolvedMobileBanner ? { resolvedMobileBanner } : {}),
           };
 
           return anime;
@@ -6510,6 +6583,28 @@ export const fetchAnimeDetail =
 
           let seasons: Season[] = [];
           let jikanPictures: string[] = [];
+          if (media.idMal) {
+            const cachedPics = fromCache<string[]>(`jikan-pictures:v1:${media.idMal}`);
+            if (cachedPics && cachedPics.length > 0) {
+              jikanPictures = cachedPics;
+            }
+          }
+
+          const mobileBannerTask = resolveServerMobileBanner({
+            animeId: String(media.id),
+            anilistId: media.id,
+            malId: media.idMal ?? undefined,
+            year: media.seasonYear ?? media.startDate?.year ?? null,
+            startYear: media.startDate?.year ?? media.seasonYear ?? null,
+            format: media.format ?? null,
+            status: media.status ?? null,
+            currentBanner: media.bannerImage ?? null,
+            currentCover:
+              media.coverImage?.extraLarge ?? media.coverImage?.large ?? null,
+            isAdminCustomBanner: false,
+            preloadedMalPictures: jikanPictures,
+          });
+
           const useAniStreaming = hasValidSeasonStreamingEpisodes(media);
 
           if (useAniStreaming && media.streamingEpisodes) {
@@ -6569,10 +6664,6 @@ export const fetchAnimeDetail =
                     cachedTitleMap.set(ep.number, { title: ep.title, aired: ep.aired });
                   }
                 }
-              }
-              const cachedPics = fromCache<string[]>(`jikan-pictures:v1:${media.idMal}`);
-              if (cachedPics && cachedPics.length > 0) {
-                jikanPictures = cachedPics;
               }
             }
 
@@ -6682,6 +6773,11 @@ export const fetchAnimeDetail =
             }
           }
 
+          const resolvedMobileBanner = await mobileBannerTask;
+          if (resolvedMobileBanner) {
+            mapped.resolvedMobileBanner = resolvedMobileBanner;
+          }
+
           // Preserva créditos e dados já salvos no cache anterior se a nova consulta estiver incompleta
           const existingDetail = fromCache<Anime>(key);
           if (existingDetail) {
@@ -6696,6 +6792,9 @@ export const fetchAnimeDetail =
             }
             if ((mapped.images?.length ?? 0) === 0 && (existingDetail.images?.length ?? 0) > 0) {
               mapped.images = existingDetail.images;
+            }
+            if (!mapped.resolvedMobileBanner && existingDetail.resolvedMobileBanner) {
+              mapped.resolvedMobileBanner = existingDetail.resolvedMobileBanner;
             }
           }
 

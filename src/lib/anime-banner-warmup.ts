@@ -110,6 +110,11 @@ export function warmAnimeBannerOnClient(
     return;
   }
 
+  if (merged.resolvedMobileBanner) {
+    warmBannerImage(merged.resolvedMobileBanner.url ?? baseBanner);
+    return;
+  }
+
   const seasonInput = buildWarmupSeasonBannerInput(merged.id, merged, false);
   const sync = resolveSeasonMobileBannerSync(seasonInput);
   if (sync) {
@@ -117,9 +122,8 @@ export function warmAnimeBannerOnClient(
     return;
   }
 
-  warmBannerImage(baseBanner);
   void resolveSeasonMobileBanner(seasonInput).then((resolved) => {
-    if (resolved.isAlternative && resolved.url) {
+    if (resolved.url) {
       warmBannerImage(resolved.url);
     }
   });

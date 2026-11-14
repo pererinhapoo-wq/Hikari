@@ -81,6 +81,20 @@ export type AnimeStaff = {
   image?: string;
 };
 
+export type ResolvedMobileBannerInfo = {
+  url: string | null;
+  isAlternative: boolean;
+  source:
+    | "admin"
+    | "kitsu-season"
+    | "jikan-season"
+    | "livechart-season"
+    | "season-default"
+    | "none";
+  initialObjectPosition: string;
+  aspect?: number;
+};
+
 export type Anime = SlimAnime & {
   studios: string[];
   duration?: number | null;
@@ -102,6 +116,7 @@ export type Anime = SlimAnime & {
   licensors?: string[];
   broadcast?: string | null;
   seasonNavigation?: SeasonNavigation;
+  resolvedMobileBanner?: ResolvedMobileBannerInfo;
 };
 
 export type SeasonNavigationItem = {
