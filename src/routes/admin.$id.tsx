@@ -6,6 +6,7 @@ import { fetchAnimeDetail } from "@/lib/api";
 import { animeToLocal, type Episode, type LocalAnime, type Season } from "@/lib/types";
 import { useHikariStore } from "@/lib/store";
 import { youtubeIdFrom } from "@/lib/utils";
+import { stripCatalogImageVersion } from "@/lib/image-utils";
 import { uploadVideoToB2 } from "@/lib/b2";
 import { getBearerToken } from "@/lib/auth/client";
 import { flushAnimes } from "@/lib/catalog-storage";
@@ -48,7 +49,7 @@ export const Route = createFileRoute("/admin/$id")({
     let remote = null;
     let serverEpisodes: CatalogEpisodesResult | null = null;
 
-    if (fetchId && !fetchId.startsWith("local-")) {
+    if (fetchId) {
       try {
         remote = await fetchAnimeDetail({ data: { id: fetchId } });
       } catch {
@@ -343,22 +344,54 @@ function AdminEditor() {
 
     initializedRouteKeyRef.current = routeKey;
 
-    const existing =
+    const storedMatch =
       id === "new"
-        ? undefined
+        ? remote?.serverCatalogId
+          ? stored.find((a) => a.id === remote.serverCatalogId)
+          : undefined
         : stored.find((a) => a.id === id) ||
+          (remote?.serverCatalogId
+            ? stored.find((a) => a.id === remote.serverCatalogId)
+            : undefined) ||
           (remote?.anilistId
             ? stored.find((a) => a.anilistId === remote.anilistId)
             : undefined);
 
+    const existing =
+      storedMatch &&
+      remote?.catalogUpdatedAt &&
+      remote.catalogUpdatedAt > (storedMatch.updatedAt ?? 0)
+        ? {
+            ...storedMatch,
+            titleRomaji: remote.titles.romaji || storedMatch.titleRomaji,
+            titleEnglish: remote.titles.english || storedMatch.titleEnglish,
+            titleNative: remote.titles.native || storedMatch.titleNative,
+            cover: remote.cover || storedMatch.cover,
+            banner: remote.banner || storedMatch.banner,
+            synopsis: remote.synopsis || storedMatch.synopsis,
+            genres: remote.genres?.length ? remote.genres : storedMatch.genres,
+            format: remote.format || storedMatch.format,
+            status: remote.status || storedMatch.status,
+            episodesCount: remote.episodesCount ?? storedMatch.episodesCount,
+            season: remote.season ?? storedMatch.season,
+            year: remote.year ?? storedMatch.year,
+            trailerId: remote.trailerId ?? storedMatch.trailerId,
+            updatedAt: remote.catalogUpdatedAt,
+            syncedAt: remote.catalogUpdatedAt,
+          }
+        : storedMatch;
+
+    const baseFromRemote = remote ? animeToLocal(remote) : null;
+    if (baseFromRemote && !existing && remote?.serverCatalogId) {
+      baseFromRemote.id = remote.serverCatalogId;
+    }
+
     const base =
       existing ??
-      (remote
-        ? animeToLocal(remote)
-        : {
-            ...emptyLocal(),
-            id: id !== "new" ? id : `local-${crypto.randomUUID()}`,
-          });
+      baseFromRemote ?? {
+        ...emptyLocal(),
+        id: id !== "new" ? id : `local-${crypto.randomUUID()}`,
+      };
 
     if (id !== "new" && serverEpisodes && serverEpisodes.episodes.length > 0) {
       const currentOps = typeof window !== "undefined" ? readOutbox() : [];
@@ -567,8 +600,14 @@ function AdminEditor() {
     setIsSaving(true);
     setAnimeSyncState("pending");
 
+    let effectiveAnime: LocalAnime = {
+      ...next,
+      cover: stripCatalogImageVersion(next.cover),
+      banner: stripCatalogImageVersion(next.banner),
+    };
+
     // 1. Persistência local imediata (IndexedDB via Zustand)
-    upsertAnime(next);
+    upsertAnime(effectiveAnime);
 
     let metadataSavedOnServer = false;
     let allEpisodesSynced = true;
@@ -589,26 +628,26 @@ function AdminEditor() {
         headers,
         credentials: "include",
         body: JSON.stringify({
-          id: next.id,
-          titleRomaji: next.titleRomaji,
-          titleEnglish: next.titleEnglish,
-          titleNative: next.titleNative,
-          cover: next.cover,
-          banner: next.banner,
-          synopsis: next.synopsis,
-          score: next.score,
-          genres: next.genres,
-          format: next.format,
-          status: next.status,
-          episodesCount: next.episodesCount,
-          season: next.season,
-          year: next.year,
-          trailerId: next.trailerId,
-          hidden: next.hidden,
-          anilistId: next.anilistId,
-          malId: next.malId,
-          kitsuId: next.kitsuId,
-          seasons: next.seasons.map((s) => ({
+          id: effectiveAnime.id,
+          titleRomaji: effectiveAnime.titleRomaji,
+          titleEnglish: effectiveAnime.titleEnglish,
+          titleNative: effectiveAnime.titleNative,
+          cover: effectiveAnime.cover,
+          banner: effectiveAnime.banner,
+          synopsis: effectiveAnime.synopsis,
+          score: effectiveAnime.score,
+          genres: effectiveAnime.genres,
+          format: effectiveAnime.format,
+          status: effectiveAnime.status,
+          episodesCount: effectiveAnime.episodesCount,
+          season: effectiveAnime.season,
+          year: effectiveAnime.year,
+          trailerId: effectiveAnime.trailerId,
+          hidden: effectiveAnime.hidden,
+          anilistId: effectiveAnime.anilistId,
+          malId: effectiveAnime.malId,
+          kitsuId: effectiveAnime.kitsuId,
+          seasons: effectiveAnime.seasons.map((s) => ({
             id: s.id,
             number: s.number,
             title: s.title,
@@ -618,6 +657,35 @@ function AdminEditor() {
 
       if (res.ok) {
         metadataSavedOnServer = true;
+        try {
+          const json = (await res.json()) as {
+            animeId?: string;
+            updatedAt?: number;
+          };
+          const canonicalId =
+            typeof json.animeId === "string" && json.animeId.trim()
+              ? json.animeId.trim()
+              : effectiveAnime.id;
+          const serverUpdatedAt =
+            typeof json.updatedAt === "number" && Number.isFinite(json.updatedAt) && json.updatedAt > 0
+              ? json.updatedAt
+              : effectiveAnime.updatedAt;
+
+          if (canonicalId !== effectiveAnime.id) {
+            removeAnime(effectiveAnime.id);
+          }
+
+          effectiveAnime = {
+            ...effectiveAnime,
+            id: canonicalId,
+            updatedAt: serverUpdatedAt,
+            syncedAt: Date.now(),
+          };
+          upsertAnime(effectiveAnime);
+          setForm(effectiveAnime);
+        } catch {
+          // resposta sem JSON detalhado
+        }
       } else {
         serverErrorStatus = res.status;
         try {
@@ -658,18 +726,22 @@ function AdminEditor() {
 
     // 3. Persistência 1-para-1 de episódios
     try {
-      const animeTitle = next.titleRomaji || next.titleEnglish || next.titleNative || "Anime";
+      const animeTitle =
+        effectiveAnime.titleRomaji ||
+        effectiveAnime.titleEnglish ||
+        effectiveAnime.titleNative ||
+        "Anime";
       const episodeTasks: Array<{
         seasonId: string;
         episodeId: string;
         promise: ReturnType<typeof persistEpisode>;
       }> = [];
-      for (const season of next.seasons) {
+      for (const season of effectiveAnime.seasons) {
         for (const ep of season.episodes) {
           episodeTasks.push({
             seasonId: season.id,
             episodeId: ep.id,
-            promise: persistEpisode(next.id, season.number, ep, animeTitle),
+            promise: persistEpisode(effectiveAnime.id, season.number, ep, animeTitle),
           });
         }
       }
@@ -685,7 +757,7 @@ function AdminEditor() {
         });
 
         let anyEpisodeChanged = false;
-        const reconciledSeasons = next.seasons.map((season) => ({
+        const reconciledSeasons = effectiveAnime.seasons.map((season) => ({
           ...season,
           episodes: season.episodes.map((ep) => {
             const match = resultByPair.get(`${season.id}:${ep.id}`);
@@ -723,8 +795,8 @@ function AdminEditor() {
         }));
 
         const baseReconciled: LocalAnime = anyEpisodeChanged
-          ? { ...next, seasons: reconciledSeasons }
-          : next;
+          ? { ...effectiveAnime, seasons: reconciledSeasons }
+          : effectiveAnime;
 
         const confirmedCount = results.filter((r) => r.confirmed).length;
         const conflictCount = results.filter((r) => r.status === "conflict").length;
@@ -766,7 +838,7 @@ function AdminEditor() {
       } else {
         if (metadataSavedOnServer) {
           const syncedAt = Date.now();
-          const syncedAnime = { ...next, syncedAt };
+          const syncedAnime = { ...effectiveAnime, syncedAt };
           upsertAnime(syncedAnime);
           setForm((f) => (f ? { ...f, syncedAt } : f));
           setAnimeSyncState("synced");
@@ -775,7 +847,7 @@ function AdminEditor() {
       }
 
       await flushAnimes();
-      invalidateCatalogEpisodesCache(next.id);
+      invalidateCatalogEpisodesCache(effectiveAnime.id);
     } catch (err) {
       allEpisodesSynced = false;
       console.warn("[admin] Erro ao sincronizar episódios:", err);
@@ -786,10 +858,11 @@ function AdminEditor() {
       if (typeof window !== "undefined") {
         setOutboxOps(readOutbox());
       }
-      if (id === "new") {
-        void navigate({ to: "/admin/$id", params: { id: next.id } });
-      } else if (metadataSavedOnServer && allEpisodesSynced) {
+      if (metadataSavedOnServer) {
         void router.invalidate();
+      }
+      if (id === "new" || (metadataSavedOnServer && effectiveAnime.id !== id)) {
+        void navigate({ to: "/admin/$id", params: { id: effectiveAnime.id } });
       }
     }
   }

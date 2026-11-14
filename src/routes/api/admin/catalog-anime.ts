@@ -4,6 +4,8 @@ import { assertSameSiteRequest, CrossSiteRequestError } from "@/lib/auth/isolati
 import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateServerCatalogCaches } from "@/lib/api";
+import { stripCatalogImageVersion } from "@/lib/image-utils";
 
 const seasonItemSchema = z.object({
   number: z.number().int().min(1, "number da temporada deve ser >= 1"),
@@ -45,7 +47,7 @@ function sanitizeImageUrl(url?: string | null): string | null {
   if (lower.startsWith("data:") && trimmed.length > 2048) {
     throw new Error("Data URLs em Base64 excedem o limite de 2048 caracteres.");
   }
-  return trimmed;
+  return stripCatalogImageVersion(trimmed);
 }
 
 export const Route = createFileRoute("/api/admin/catalog-anime")({
@@ -101,8 +103,75 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
             ? data.genres.map((g) => g.trim()).filter(Boolean)
             : null;
 
-          // 4. Execução em transação para garantir consistência entre anime e temporadas
-          const result = await sql.query<{ id: string }>(
+          const existingRows = await sql.query<{
+            id: string;
+            title: string;
+            titleRomaji: string | null;
+            titleEnglish: string | null;
+            titleNative: string | null;
+            anilistId: number | null;
+            malId: number | null;
+            kitsuId: number | null;
+          }>(
+            `SELECT "id", "title", "titleRomaji", "titleEnglish", "titleNative", "anilistId", "malId", "kitsuId"
+             FROM "catalog_anime"
+             WHERE "id" = $1
+                OR ($2::int IS NOT NULL AND "anilistId" = $2)
+                OR ($3::int IS NOT NULL AND "malId" = $3)
+                OR ($4::int IS NOT NULL AND "kitsuId" = $4);`,
+            [data.id, data.anilistId ?? null, data.malId ?? null, data.kitsuId ?? null],
+          );
+
+          const isDubbedText = (t: string) => /\b(dub|dublado|dublada)\b/i.test(t);
+          const incomingIsDubbed = isDubbedText(
+            `${canonicalTitle} ${data.titleRomaji ?? ""} ${data.titleEnglish ?? ""} ${data.titleNative ?? ""}`,
+          );
+
+          const exactMatch = existingRows.find((r) => r.id === data.id);
+          const externalMatch =
+            existingRows.find(
+              (r) =>
+                r.id !== data.id &&
+                !isDubbedText(
+                  `${r.title} ${r.titleRomaji ?? ""} ${r.titleEnglish ?? ""} ${r.titleNative ?? ""}`,
+                ),
+            ) ?? existingRows.find((r) => r.id !== data.id);
+
+          let targetId = data.id;
+          if (!exactMatch && externalMatch && !incomingIsDubbed) {
+            targetId = externalMatch.id;
+          }
+
+          let resolvedAnilistId = data.anilistId ?? null;
+          let resolvedMalId = data.malId ?? null;
+          let resolvedKitsuId = data.kitsuId ?? null;
+
+          for (const r of existingRows) {
+            if (r.id === targetId) continue;
+            if (resolvedAnilistId !== null && r.anilistId === resolvedAnilistId) {
+              resolvedAnilistId = null;
+            }
+            if (resolvedMalId !== null && r.malId === resolvedMalId) {
+              resolvedMalId = null;
+            }
+            if (resolvedKitsuId !== null && r.kitsuId === resolvedKitsuId) {
+              resolvedKitsuId = null;
+            }
+          }
+
+          const coverProvided = data.cover !== undefined;
+          const bannerProvided = data.banner !== undefined;
+
+          // 4. Execução para garantir consistência entre anime e temporadas
+          const result = await sql.query<{
+            id: string;
+            cover: string | null;
+            banner: string | null;
+            anilistId: number | null;
+            malId: number | null;
+            kitsuId: number | null;
+            updatedAt: string | Date;
+          }>(
             `INSERT INTO "catalog_anime" (
                "id", "title", "anilistId", "malId", "kitsuId",
                "titleRomaji", "titleEnglish", "titleNative",
@@ -128,8 +197,14 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                "titleRomaji" = COALESCE(EXCLUDED."titleRomaji", "catalog_anime"."titleRomaji"),
                "titleEnglish" = COALESCE(EXCLUDED."titleEnglish", "catalog_anime"."titleEnglish"),
                "titleNative" = COALESCE(EXCLUDED."titleNative", "catalog_anime"."titleNative"),
-               "cover" = COALESCE(NULLIF(EXCLUDED."cover", ''), "catalog_anime"."cover"),
-               "banner" = COALESCE(NULLIF(EXCLUDED."banner", ''), "catalog_anime"."banner"),
+               "cover" = CASE
+                 WHEN $19::boolean THEN EXCLUDED."cover"
+                 ELSE "catalog_anime"."cover"
+               END,
+               "banner" = CASE
+                 WHEN $20::boolean THEN EXCLUDED."banner"
+                 ELSE "catalog_anime"."banner"
+               END,
                "synopsis" = COALESCE(EXCLUDED."synopsis", "catalog_anime"."synopsis"),
                "format" = COALESCE(EXCLUDED."format", "catalog_anime"."format"),
                "status" = COALESCE(EXCLUDED."status", "catalog_anime"."status"),
@@ -145,13 +220,13 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                  ELSE "catalog_anime"."trailerId"
                END,
                "updatedAt" = CURRENT_TIMESTAMP
-             RETURNING "id";`,
+             RETURNING "id", "cover", "banner", "anilistId", "malId", "kitsuId", "updatedAt";`,
             [
-              data.id,
+              targetId,
               canonicalTitle,
-              data.anilistId ?? null,
-              data.malId ?? null,
-              data.kitsuId ?? null,
+              resolvedAnilistId,
+              resolvedMalId,
+              resolvedKitsuId,
               data.titleRomaji?.trim() ?? null,
               data.titleEnglish?.trim() ?? null,
               data.titleNative?.trim() ?? null,
@@ -165,8 +240,13 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
               data.season?.trim() ?? null,
               genresArray,
               data.trailerId?.trim() ?? null,
+              coverProvided,
+              bannerProvided,
             ],
           );
+
+          const savedRow = result[0];
+          const canonicalSavedId = savedRow?.id || targetId;
 
           // 5. Upsert das temporadas quando fornecidas no payload (sem apagar existentes)
           if (Array.isArray(data.seasons) && data.seasons.length > 0) {
@@ -183,16 +263,39 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                  SET
                    "title" = COALESCE(EXCLUDED."title", "catalog_season"."title"),
                    "position" = EXCLUDED."position";`,
-                [data.id, seasonNum, seasonTitle, seasonPos],
+                [canonicalSavedId, seasonNum, seasonTitle, seasonPos],
               );
             }
           }
 
-          invalidateCatalogEpisodesCache(data.id);
+          invalidateCatalogEpisodesCache(canonicalSavedId);
+          if (data.id !== canonicalSavedId) {
+            invalidateCatalogEpisodesCache(data.id);
+          }
+          invalidateServerCatalogCaches(canonicalSavedId, {
+            anilistId: savedRow?.anilistId ?? data.anilistId,
+            malId: savedRow?.malId ?? data.malId,
+            kitsuId: savedRow?.kitsuId ?? data.kitsuId,
+          });
+
+          const rawUpdatedAt = savedRow?.updatedAt;
+          const parsedUpdatedAt =
+            rawUpdatedAt instanceof Date
+              ? rawUpdatedAt.getTime()
+              : typeof rawUpdatedAt === "string"
+                ? Date.parse(rawUpdatedAt)
+                : Date.now();
+          const updatedAtMs =
+            Number.isFinite(parsedUpdatedAt) && parsedUpdatedAt > 0
+              ? parsedUpdatedAt
+              : Date.now();
 
           return Response.json({
             ok: true,
-            animeId: result[0]?.id || data.id,
+            animeId: canonicalSavedId,
+            cover: savedRow?.cover ?? cleanCover,
+            banner: savedRow?.banner ?? cleanBanner,
+            updatedAt: updatedAtMs,
             adminId,
           });
         } catch (err) {
@@ -279,14 +382,20 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
           }
 
           // Exclusão em cascata (catalog_season e catalog_episode possuem ON DELETE CASCADE)
-          const result = await sql.query<{ id: string }>(
+          const result = await sql.query<{
+            id: string;
+            anilistId: number | null;
+            malId: number | null;
+            kitsuId: number | null;
+          }>(
             `DELETE FROM "catalog_anime"
              WHERE "id" = $1
-             RETURNING "id";`,
+             RETURNING "id", "anilistId", "malId", "kitsuId";`,
             [animeId],
           );
 
           invalidateCatalogEpisodesCache(animeId);
+          invalidateServerCatalogCaches(animeId, result[0]);
 
           return Response.json({
             ok: true,

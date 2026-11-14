@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createFileRoute,
   type ErrorComponentProps,
@@ -8,10 +8,14 @@ import { fetchHomeCatalog, fetchSeasonSection } from "@/lib/api";
 import { useHikariStore } from "@/lib/store";
 import { overlayList, overlaySeasonList } from "@/lib/overlay";
 import { currentAnimeSeason, type OfficialAnimeSeason } from "@/lib/utils";
-import { localToAnime, type SlimAnime } from "@/lib/types";
+import { localToAnime, type LocalAnime, type SlimAnime } from "@/lib/types";
 
 import { getAnimeLogo } from "@/lib/anime-logos";
-import { anilistImage, getResponsiveCoverAttrs } from "@/lib/image-utils";
+import {
+  anilistImage,
+  getResponsiveCoverAttrs,
+  withCatalogImageVersion,
+} from "@/lib/image-utils";
 import { Hero } from "@/components/hero";
 import { AnimeRow } from "@/components/anime-row";
 import { TodayEpisodesSection } from "@/components/today-episodes-section";
@@ -76,10 +80,14 @@ export const Route = createFileRoute("/")({
       return {};
     }
 
-    const mobileBackdrop =
-      featured.cover?.trim() || featured.banner?.trim() || "";
-    const desktopBackdrop =
-      featured.banner?.trim() || featured.cover?.trim() || "";
+    const mobileBackdrop = withCatalogImageVersion(
+      featured.cover?.trim() || featured.banner?.trim() || "",
+      featured.catalogUpdatedAt,
+    );
+    const desktopBackdrop = withCatalogImageVersion(
+      featured.banner?.trim() || featured.cover?.trim() || "",
+      featured.catalogUpdatedAt,
+    );
 
     const mobileSrc480 = anilistImage(mobileBackdrop, 480);
     const mobileSrc768 = anilistImage(mobileBackdrop, 768);
@@ -322,9 +330,47 @@ function Home() {
       .map(localToAnime);
   }, [locals]);
 
+  const mergeHeroOverlay = useCallback(
+    (mappedItem: SlimAnime, remoteItem: SlimAnime, local: LocalAnime): SlimAnime => {
+      const serverUpdatedAt = remoteItem.catalogUpdatedAt ?? 0;
+      const localUpdatedAt = local.updatedAt ?? 0;
+      if (serverUpdatedAt > localUpdatedAt) {
+        return remoteItem;
+      }
+      return {
+        ...mappedItem,
+        id: remoteItem.id,
+        cover: mappedItem.cover?.trim() || remoteItem.cover,
+        banner: mappedItem.banner?.trim() || remoteItem.banner,
+        todayEpisode: remoteItem.todayEpisode,
+        todayUpcomingEpisodes: remoteItem.todayUpcomingEpisodes,
+        catalogUpdatedAt:
+          Math.max(serverUpdatedAt, localUpdatedAt) || undefined,
+      };
+    },
+    [],
+  );
+
+  const heroTrending = useMemo(
+    () =>
+      overlayList(data.trending, locals, {
+        includeExtras: false,
+        mapMatched: mergeHeroOverlay,
+      }),
+    [data.trending, locals, mergeHeroOverlay],
+  );
+  const heroPopular = useMemo(
+    () =>
+      overlayList(data.popular, locals, {
+        includeExtras: false,
+        mapMatched: mergeHeroOverlay,
+      }),
+    [data.popular, locals, mergeHeroOverlay],
+  );
+
   const featuredItems = useMemo(
-    () => pickHeroItems(data.trending, data.popular),
-    [data.trending, data.popular],
+    () => pickHeroItems(heroTrending, heroPopular),
+    [heroTrending, heroPopular],
   );
   const featured = featuredItems[0];
 

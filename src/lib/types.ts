@@ -59,6 +59,8 @@ export type SlimAnime = {
   source: "anilist" | "jikan" | "kitsu" | "local" | "cache";
   characters?: AnimeCharacter[];
   staff?: AnimeStaff[];
+  catalogUpdatedAt?: number;
+  serverCatalogId?: string;
 };
 
 export type AnimeVoiceActor = {
@@ -256,6 +258,7 @@ export function localToAnime(local: LocalAnime): Anime {
     recommendations: [],
     characters: local.characters ?? [],
     staff: local.staff ?? [],
+    catalogUpdatedAt: local.updatedAt || undefined,
   };
 }
 

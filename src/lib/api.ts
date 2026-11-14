@@ -461,6 +461,59 @@ export function getDomainCache(
   return domainMap;
 }
 
+export function invalidateServerCatalogCaches(
+  animeId?: string | null,
+  externalIds?: {
+    anilistId?: number | null;
+    malId?: number | null;
+    kitsuId?: number | null;
+  },
+): void {
+  domainCaches.get("home")?.clear();
+  domainCaches.get("browse")?.clear();
+  domainCaches.get("search")?.clear();
+
+  const candidateDetailKeys = new Set<string>();
+  const cleanId = animeId?.trim();
+  if (cleanId) {
+    candidateDetailKeys.add(`detail:v7:${cleanId}`);
+  }
+  if (typeof externalIds?.anilistId === "number" && externalIds.anilistId > 0) {
+    candidateDetailKeys.add(`detail:v7:${externalIds.anilistId}`);
+  }
+  if (typeof externalIds?.malId === "number" && externalIds.malId > 0) {
+    candidateDetailKeys.add(`detail:v7:mal-${externalIds.malId}`);
+  }
+  if (typeof externalIds?.kitsuId === "number" && externalIds.kitsuId > 0) {
+    candidateDetailKeys.add(`detail:v7:kitsu-${externalIds.kitsuId}`);
+  }
+
+  const detailCache = domainCaches.get("detail");
+  if (detailCache) {
+    if (candidateDetailKeys.size > 0) {
+      for (const k of candidateDetailKeys) {
+        detailCache.delete(k);
+      }
+    } else {
+      detailCache.clear();
+    }
+  }
+
+  for (const flightKey of Array.from(inFlight.keys())) {
+    if (
+      flightKey.startsWith("home:") ||
+      flightKey.startsWith("today-raw:") ||
+      flightKey.startsWith("browse:") ||
+      flightKey.startsWith("search:") ||
+      (candidateDetailKeys.size === 0
+        ? flightKey.startsWith("detail:")
+        : candidateDetailKeys.has(flightKey))
+    ) {
+      inFlight.delete(flightKey);
+    }
+  }
+}
+
 export function getDomainTtlConfig(
   domain: string,
   options?: { freshTtl?: number; swrWindow?: number },
@@ -4476,7 +4529,7 @@ export const fetchSeasonSection = createServerFn({
   const { season, year } = currentAnimeSeason();
   const cacheKey = `home:season:${year}:${season}`;
 
-  return withCache<SlimAnime[]>(
+  const items = await withCache<SlimAnime[]>(
     cacheKey,
     async () => {
       // 1. Tenta AniList
@@ -4545,6 +4598,15 @@ export const fetchSeasonSection = createServerFn({
       swrWindow: 60 * 60 * 1000,
     },
   );
+
+  try {
+    const { applyDbCatalogOverlayToSlimList } = await import(
+      "@/lib/catalog-server-overlay.server"
+    );
+    return await applyDbCatalogOverlayToSlimList(items);
+  } catch {
+    return items;
+  }
 });
 
 async function fetchBrowseFromKitsu(
@@ -4634,7 +4696,7 @@ export const fetchHomeCatalog =
       const { todayKey } = getTodayRangeRecife();
       const key = `home:${todayKey}`;
 
-      return withCache<HomeCatalog>(
+      const catalog = await withCache<HomeCatalog>(
         key,
         async () => {
           // 1. Tenta AniList (fonte primária do Hikari)
@@ -4686,6 +4748,16 @@ export const fetchHomeCatalog =
           cacheFallback: true,
         },
       );
+
+      try {
+        const { applyDbCatalogOverlayToHome } = await import(
+          "@/lib/catalog-server-overlay.server"
+        );
+        return await applyDbCatalogOverlayToHome(catalog);
+      } catch (err) {
+        console.warn("[Hikari] Falha ao mesclar catálogo do banco na Home:", err);
+        return catalog;
+      }
     },
   );
 
@@ -5417,7 +5489,7 @@ export const searchCatalog =
           q: normalizedData.q?.toLowerCase(),
         })}`;
 
-        return withCache<SearchResult>(
+        const result = await withCache<SearchResult>(
           key,
           async () => {
             const q =
@@ -5546,6 +5618,18 @@ export const searchCatalog =
             }),
           },
         );
+
+        try {
+          const { applyDbCatalogOverlayToSlimList } = await import(
+            "@/lib/catalog-server-overlay.server"
+          );
+          return {
+            ...result,
+            items: await applyDbCatalogOverlayToSlimList(result.items),
+          };
+        } catch {
+          return result;
+        }
       },
     );
 
@@ -6251,13 +6335,20 @@ export const fetchAnimeDetail =
             "local-",
           )
         ) {
-          return null;
+          try {
+            const { applyDbCatalogOverlayToDetail } = await import(
+              "@/lib/catalog-server-overlay.server"
+            );
+            return await applyDbCatalogOverlayToDetail(null, id);
+          } catch {
+            return null;
+          }
         }
 
         const key =
           `detail:v7:${id}`;
 
-        return withCache<Anime | null>(
+        const detail = await withCache<Anime | null>(
           key,
           async () => {
             if (id.startsWith("kitsu-")) {
@@ -6937,6 +7028,15 @@ export const fetchAnimeDetail =
           },
         },
       );
+
+      try {
+        const { applyDbCatalogOverlayToDetail } = await import(
+          "@/lib/catalog-server-overlay.server"
+        );
+        return await applyDbCatalogOverlayToDetail(detail, id);
+      } catch {
+        return detail;
+      }
       },
     );
 
@@ -7138,7 +7238,7 @@ export const fetchBrowse =
         const key =
           `browse:${data.section}:${season}:${year}:${genre ?? "all"}:${page}`;
 
-        return withCache<SearchResult>(
+        const result = await withCache<SearchResult>(
           key,
           async () => {
             const sortMap = {
@@ -7338,5 +7438,17 @@ export const fetchBrowse =
               stale.items.length === 0,
           },
         );
+
+        try {
+          const { applyDbCatalogOverlayToSlimList } = await import(
+            "@/lib/catalog-server-overlay.server"
+          );
+          return {
+            ...result,
+            items: await applyDbCatalogOverlayToSlimList(result.items),
+          };
+        } catch {
+          return result;
+        }
       },
     );

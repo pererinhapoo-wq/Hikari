@@ -5,7 +5,7 @@ import { Check, ChevronRight, Info, Play } from "lucide-react";
 import { displayTitle, type SlimAnime } from "@/lib/types";
 import { genreLabel, scoreLabel, seasonLabel, statusLabel } from "@/lib/labels";
 import { getAnimeLogo } from "@/lib/anime-logos";
-import { anilistImage } from "@/lib/image-utils";
+import { anilistImage, withCatalogImageVersion } from "@/lib/image-utils";
 import { useSynchronizedImageRef } from "@/lib/presentation-sync";
 
 /**
@@ -457,8 +457,14 @@ const HeroSlide = memo(function HeroSlide({ anime, priority = false }: HeroSlide
   );
   const logoFailed = failedLogoAnimeId === anime.id;
 
-  const rawMobileBackdrop = anime.cover?.trim() || anime.banner?.trim() || "";
-  const rawDesktopBackdrop = anime.banner?.trim() || anime.cover?.trim() || "";
+  const rawMobileBackdrop = withCatalogImageVersion(
+    anime.cover?.trim() || anime.banner?.trim() || "",
+    anime.catalogUpdatedAt,
+  );
+  const rawDesktopBackdrop = withCatalogImageVersion(
+    anime.banner?.trim() || anime.cover?.trim() || "",
+    anime.catalogUpdatedAt,
+  );
 
   const mobileSrc480 = anilistImage(rawMobileBackdrop, 480);
   const mobileSrc768 = anilistImage(rawMobileBackdrop, 768);
@@ -835,9 +841,12 @@ export function Hero({
     if (!targetItem || typeof window === "undefined") return;
 
     const isDesktop = window.matchMedia("(min-width: 768px)").matches;
-    const rawBackdropUrl = isDesktop
-      ? targetItem.banner || targetItem.cover
-      : targetItem.cover || targetItem.banner;
+    const rawBackdropUrl = withCatalogImageVersion(
+      isDesktop
+        ? targetItem.banner || targetItem.cover
+        : targetItem.cover || targetItem.banner,
+      targetItem.catalogUpdatedAt,
+    );
     const backdropUrl = anilistImage(rawBackdropUrl, isDesktop ? 1600 : 768);
 
     if (backdropUrl && !preloadedUrlsRef.current.has(backdropUrl)) {

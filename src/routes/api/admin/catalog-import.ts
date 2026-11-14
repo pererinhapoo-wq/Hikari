@@ -5,6 +5,7 @@ import { requireAdminUser, AdminGuardError } from "@/lib/auth/admin-guard";
 import { sanitizePlayableVideoUrl } from "@/lib/published-episodes";
 import { getSql } from "@/lib/db";
 import { invalidateCatalogEpisodesCache } from "@/lib/catalog-episodes";
+import { invalidateServerCatalogCaches } from "@/lib/api";
 
 function sanitizeVideoUrl(url?: string | null): string | null {
   return sanitizePlayableVideoUrl(url);
@@ -301,10 +302,11 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
             );
           }
 
-          // Invalida cache de episódios dos animes afetados
+          // Invalida cache de episódios e catálogo dos animes afetados
           for (const aId of affectedAnimeIds) {
             invalidateCatalogEpisodesCache(aId);
           }
+          invalidateServerCatalogCaches();
 
           return Response.json({
             ok: true,

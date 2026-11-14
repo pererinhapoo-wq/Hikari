@@ -17,6 +17,113 @@ function getCloudinaryCloud(): string {
   return fromMeta ? fromMeta.trim() : "";
 }
 
+const IMMUTABLE_CDN_HOSTS = [
+  "s4.anilist.co",
+  "media.kitsu.app",
+  "media.kitsu.io",
+  "cdn.myanimelist.net",
+  "public.blob.vercel-storage.com",
+];
+
+function isImmutableImageCdn(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  return IMMUTABLE_CDN_HOSTS.some(
+    (allowed) => host === allowed || host.endsWith(`.${allowed}`),
+  );
+}
+
+function hasSignedQueryParams(url: URL): boolean {
+  for (const key of url.searchParams.keys()) {
+    const lower = key.toLowerCase();
+    if (
+      lower.startsWith("x-amz-") ||
+      lower === "signature" ||
+      lower === "googleaccessid" ||
+      lower === "expires" ||
+      lower === "policy" ||
+      lower === "key-pair-id" ||
+      lower === "sig" ||
+      lower === "sv" ||
+      lower === "se" ||
+      lower === "sp" ||
+      lower === "token"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function stripCatalogImageVersion(
+  url: string | null | undefined,
+): string {
+  const cleanUrl = typeof url === "string" ? url.trim() : "";
+  if (!cleanUrl) return "";
+  const lower = cleanUrl.toLowerCase();
+  if (lower.startsWith("data:") || lower.startsWith("blob:")) {
+    return cleanUrl;
+  }
+
+  try {
+    const isRelative = cleanUrl.startsWith("/");
+    const parsed = isRelative
+      ? new URL(cleanUrl, "http://hikari.local")
+      : new URL(cleanUrl);
+    if (!parsed.searchParams.has("hv")) {
+      return cleanUrl;
+    }
+    parsed.searchParams.delete("hv");
+    if (isRelative) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    return parsed.toString();
+  } catch {
+    return cleanUrl;
+  }
+}
+
+export function withCatalogImageVersion(
+  url: string | null | undefined,
+  versionMs?: number | null,
+): string {
+  const cleanUrl = typeof url === "string" ? url.trim() : "";
+  if (!cleanUrl) return "";
+  if (
+    typeof versionMs !== "number" ||
+    !Number.isFinite(versionMs) ||
+    versionMs <= 0
+  ) {
+    return cleanUrl;
+  }
+
+  const lower = cleanUrl.toLowerCase();
+  if (lower.startsWith("data:") || lower.startsWith("blob:")) {
+    return cleanUrl;
+  }
+
+  try {
+    const isRelative = cleanUrl.startsWith("/");
+    const parsed = isRelative
+      ? new URL(cleanUrl, "http://hikari.local")
+      : new URL(cleanUrl);
+
+    if (!isRelative && isImmutableImageCdn(parsed)) {
+      return cleanUrl;
+    }
+    if (hasSignedQueryParams(parsed)) {
+      return cleanUrl;
+    }
+
+    parsed.searchParams.set("hv", String(Math.floor(versionMs)));
+    if (isRelative) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    return parsed.toString();
+  } catch {
+    return cleanUrl;
+  }
+}
+
 export function anilistImage(url: string | null | undefined, width: number): string {
   const cleanUrl = typeof url === "string" ? url.trim() : "";
   if (!cleanUrl) return "";
