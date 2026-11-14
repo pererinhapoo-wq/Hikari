@@ -33,7 +33,7 @@ import {
   type PersistEpisodeResult,
 } from "@/lib/episode-writer";
 import {
-  executeGetCatalogEpisodes,
+  executeGetAdminCatalogEpisodes,
   getAdminCatalogEpisodes,
   invalidateCatalogEpisodesCache,
   mergeAdminEpisodesWithServer,
@@ -70,9 +70,7 @@ export const Route = createFileRoute("/admin/$id")({
       try {
         serverEpisodes =
           typeof window === "undefined"
-            ? await executeGetCatalogEpisodes(params.id, {
-                includeUnpublished: true,
-              })
+            ? await executeGetAdminCatalogEpisodes(params.id)
             : await getAdminCatalogEpisodes({ data: { animeId: params.id } });
       } catch (err) {
         console.warn("[admin loader] Erro ao carregar episódios do servidor:", err);

@@ -79,3 +79,36 @@ export const optionalAuthMiddleware = createMiddleware({ type: "function" })
     return next({ context: { userId } });
   });
 
+/**
+ * Middleware administrativo para Server Functions do Hikari Studio.
+ * Encaminha o Bearer token do preview no cliente e valida no servidor:
+ * 1. Isolamento same-site (proteção contra requisições cross-site/sibling).
+ * 2. Sessão Better Auth válida (cookie ou Bearer).
+ * 3. Regra única administrativa (ADMIN_USER_IDS, HIKARI_ADMIN_EMAILS ou profile.role === 'admin').
+ */
+export const adminMiddleware = createMiddleware({ type: "function" })
+  .client(async ({ next }) => {
+    const { getBearerToken } = await import("./client");
+    return next({ sendContext: { bearerToken: getBearerToken() ?? undefined } });
+  })
+  .server(async ({ next, context }) => {
+    const { assertSameSiteRequest } = await import("./isolation.server");
+    const { verifyAdminServerCaller } = await import("./admin.server");
+    assertSameSiteRequest();
+    const adminSession = await verifyAdminServerCaller(context?.bearerToken);
+    return next({ context: { adminSession } });
+  });
+
+/**
+ * Middleware leve que apenas encaminha o Bearer token do preview para o servidor
+ * sem exigir autenticação prévia (usado em consultas condicionais ou checagem de acesso).
+ */
+export const bearerForwardMiddleware = createMiddleware({ type: "function" })
+  .client(async ({ next }) => {
+    const { getBearerToken } = await import("./client");
+    return next({ sendContext: { bearerToken: getBearerToken() ?? undefined } });
+  })
+  .server(async ({ next, context }) => {
+    return next({ context: { bearerToken: context?.bearerToken } });
+  });
+

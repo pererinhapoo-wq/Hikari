@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { adminMiddleware } from "@/lib/auth/middleware";
 
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
@@ -346,21 +347,9 @@ async function requestGroq(apiKey: string, prompt: string) {
 export const reviewHikariAINews = createServerFn({
   method: "POST",
 })
+  .middleware([adminMiddleware])
   .validator(reviewSchema)
   .handler(async ({ data }) => {
-    try {
-      const { verifyAdminServerCaller } = await import("@/lib/auth/admin.server");
-      await verifyAdminServerCaller();
-    } catch (authErr) {
-      return fallbackResult(
-        data.title,
-        data.description,
-        authErr instanceof Error
-          ? authErr.message
-          : "Acesso restrito a administradores autorizados do Hikari.",
-      );
-    }
-
     const prompt = buildReviewPrompt(data);
     const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
     const groqApiKey = process.env.GROQ_API_KEY?.trim();

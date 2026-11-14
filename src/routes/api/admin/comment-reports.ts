@@ -1,6 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import {
+  assertSameSiteRequest,
+  CrossSiteRequestError,
+} from "@/lib/auth/isolation.server";
+import {
   assertAdminResponse,
   verifyAdminRequest,
   AdminAuthError,
@@ -26,6 +30,7 @@ export const Route = createFileRoute(
     handlers: {
       GET: async ({ request }) => {
         try {
+          assertSameSiteRequest();
           const authError = await assertAdminResponse(request);
           if (authError) return authError;
 
@@ -149,6 +154,9 @@ export const Route = createFileRoute(
             reports,
           });
         } catch (error) {
+          if (error instanceof CrossSiteRequestError) {
+            return Response.json({ error: error.message }, { status: error.status });
+          }
           console.error(
             "ERRO REAL AO LISTAR DENÚNCIAS:",
             error,
@@ -166,6 +174,7 @@ export const Route = createFileRoute(
 
       POST: async ({ request }) => {
         try {
+          assertSameSiteRequest();
           let adminSession: { id: string; email: string };
           try {
             adminSession = await verifyAdminRequest(request);
@@ -318,6 +327,9 @@ export const Route = createFileRoute(
             { status: 400 },
           );
         } catch (error) {
+          if (error instanceof CrossSiteRequestError) {
+            return Response.json({ error: error.message }, { status: error.status });
+          }
           console.error(
             "ERRO REAL NA MODERAÇÃO ADMINISTRATIVA:",
             error,

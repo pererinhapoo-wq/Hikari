@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { adminMiddleware } from "@/lib/auth/middleware";
 import { getSql, dbSource } from "@/lib/db";
 
 export interface AdminSystemStatus {
@@ -93,6 +94,8 @@ export async function executeGetAdminSystemStatus(): Promise<AdminSystemStatus> 
  */
 export const getAdminSystemStatus = createServerFn({
   method: "GET",
-}).handler(async (): Promise<AdminSystemStatus> => {
-  return executeGetAdminSystemStatus();
-});
+})
+  .middleware([adminMiddleware])
+  .handler(async (): Promise<AdminSystemStatus> => {
+    return executeGetAdminSystemStatus();
+  });

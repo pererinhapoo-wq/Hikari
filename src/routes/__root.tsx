@@ -48,6 +48,8 @@ const fetchRootSessionUser = createServerFn({ method: "GET" }).handler(
 
       if (!resolvedUser) return null;
 
+      let resolvedProfileRole: string | null | undefined = undefined;
+
       try {
         const sql = await getSql();
         const [profileRows, userRows] = await Promise.all([
@@ -55,8 +57,9 @@ const fetchRootSessionUser = createServerFn({ method: "GET" }).handler(
             displayName: string | null;
             nick: string | null;
             avatarUrl: string | null;
+            role: string | null;
           }>`
-            select "displayName", "nick", "avatarUrl"
+            select "displayName", "nick", "avatarUrl", "role"
             from "profile"
             where "userId" = ${resolvedUser.id}
             limit 1
@@ -74,6 +77,7 @@ const fetchRootSessionUser = createServerFn({ method: "GET" }).handler(
 
         const prof = profileRows[0];
         const usr = userRows[0];
+        resolvedProfileRole = prof?.role ?? null;
 
         const resolvedName = prof?.displayName || usr?.name || null;
         const resolvedAvatar = prof?.avatarUrl || usr?.image || null;
@@ -89,6 +93,19 @@ const fetchRootSessionUser = createServerFn({ method: "GET" }).handler(
         }
       } catch {
         // Fallback para os metadados básicos da sessão caso o perfil ainda não exista
+      }
+
+      try {
+        const { isAuthorizedAdminAccount } = await import(
+          "@/lib/auth/admin-guard"
+        );
+        resolvedUser.isAdmin = await isAuthorizedAdminAccount({
+          userId: resolvedUser.id,
+          email: resolvedUser.primaryEmail,
+          profileRole: resolvedProfileRole,
+        });
+      } catch {
+        resolvedUser.isAdmin = false;
       }
 
       return resolvedUser;

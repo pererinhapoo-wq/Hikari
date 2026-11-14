@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { adminMiddleware, bearerForwardMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import type { Episode, Season } from "@/lib/types";
 import {
@@ -165,15 +166,44 @@ export async function executeGetCatalogEpisodes(
 }
 
 /**
+ * Consulta server-side administrativa de todos os episódios (inclusive rascunhos).
+ * Valida a autorização administrativa no servidor antes de retornar qualquer episódio não publicado.
+ */
+export async function executeGetAdminCatalogEpisodes(
+  animeId: string,
+  bearerToken?: string,
+): Promise<CatalogEpisodesResult> {
+  const { verifyAdminServerCaller } = await import("@/lib/auth/admin.server");
+  await verifyAdminServerCaller(bearerToken);
+  return executeGetCatalogEpisodes(animeId, {
+    includeUnpublished: true,
+  });
+}
+
+/**
  * Server Function GET para consultar episódios publicados de um anime no PostgreSQL (acesso público).
+ * Caso `includeUnpublished: true` seja solicitado, exige sessão administrativa autorizada no servidor.
  */
 export const getCatalogEpisodes = createServerFn({
   method: "GET",
 })
+  .middleware([bearerForwardMiddleware])
   .validator(getCatalogEpisodesSchema)
-  .handler(async ({ data }): Promise<CatalogEpisodesResult> => {
+  .handler(async ({ data, context }): Promise<CatalogEpisodesResult> => {
+    const wantUnpublished = Boolean(data.includeUnpublished);
+    if (wantUnpublished) {
+      const { assertSameSiteRequest } = await import(
+        "@/lib/auth/isolation.server"
+      );
+      const { verifyAdminServerCaller } = await import(
+        "@/lib/auth/admin.server"
+      );
+      assertSameSiteRequest();
+      await verifyAdminServerCaller(context?.bearerToken);
+    }
+
     return executeGetCatalogEpisodes(data.animeId, {
-      includeUnpublished: data.includeUnpublished,
+      includeUnpublished: wantUnpublished,
     });
   });
 
@@ -184,6 +214,7 @@ export const getCatalogEpisodes = createServerFn({
 export const getAdminCatalogEpisodes = createServerFn({
   method: "GET",
 })
+  .middleware([adminMiddleware])
   .validator(getCatalogEpisodesSchema)
   .handler(async ({ data }): Promise<CatalogEpisodesResult> => {
     return executeGetCatalogEpisodes(data.animeId, {

@@ -1,8 +1,7 @@
 import { Navigate, Outlet, createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { toast } from "sonner";
-import { isHikariAdmin } from "@/lib/auth/admin";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { useAdminAccess } from "@/lib/auth/use-admin-access";
 import { flushOutbox, hasPendingWrites } from "@/lib/episode-writer";
 
 import { HikariStudioLayout } from "@/components/admin/studio-layout";
@@ -10,15 +9,10 @@ import { HikariStudioLayout } from "@/components/admin/studio-layout";
 export const Route = createFileRoute("/admin")({ component: AdminGuard });
 
 function AdminGuard() {
-  const { user, isPending } = useCurrentUserState();
-  const [mounted, setMounted] = useState(false);
+  const { user, isAuthenticated, isAdmin, isPending } = useAdminAccess();
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!user || !isHikariAdmin(user.primaryEmail)) return;
+    if (!user || !isAuthenticated || !isAdmin) return;
 
     // Executa sincronização do Outbox ao entrar no ambiente administrativo
     const runSync = async () => {
@@ -49,11 +43,11 @@ function AdminGuard() {
     return () => {
       window.removeEventListener("online", handleOnline);
     };
-  }, [user]);
+  }, [user, isAuthenticated, isAdmin]);
 
-  if (!mounted || isPending) return null;
-  if (!user) return <Navigate to="/login" />;
-  if (!isHikariAdmin(user.primaryEmail)) return <Navigate to="/account" />;
+  if (isPending) return null;
+  if (!user || !isAuthenticated) return <Navigate to="/login" />;
+  if (!isAdmin) return <Navigate to="/account" />;
 
   return (
     <HikariStudioLayout>
@@ -61,4 +55,3 @@ function AdminGuard() {
     </HikariStudioLayout>
   );
 }
-

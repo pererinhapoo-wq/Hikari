@@ -8,6 +8,8 @@ export type AppUser = {
   primaryEmail: string | null;
   profileImageUrl: string | null;
   profileNick?: string | null;
+  /** Verificado no servidor (ADMIN_USER_IDS, HIKARI_ADMIN_EMAILS ou profile.role === 'admin'). */
+  isAdmin?: boolean;
   /** True when this is the sandbox/dev fallback (auth not configured). */
   isDevFallback: boolean;
 };
