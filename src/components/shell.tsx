@@ -471,28 +471,34 @@ function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
         onMouseEnter={() => void prefetchLoginMenu()}
         onFocus={() => void prefetchLoginMenu()}
         className={cn(
-          "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none text-muted hover:text-fg hover:bg-elevated transition-colors border-0 border-none outline-none focus:outline-none",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-          open && "text-fg bg-elevated shadow-[0_0_18px_rgba(168,85,247,0.3)] ring-2 ring-[#a855f7]/75"
+          "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full select-none cursor-pointer",
+          "motion-safe:transition-[transform,box-shadow,ring-color] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+          open
+            ? "ring-2 ring-[#c084fc] shadow-[0_0_20px_rgba(192,132,252,0.45)]"
+            : "ring-1 ring-purple-500/30 hover:ring-purple-400/60 hover:shadow-[0_0_16px_rgba(168,85,247,0.25)]",
         )}
         aria-label="Opções de conta"
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <CircleUserRound className="size-5 sm:size-5.5 text-[#c084fc] transition-transform group-hover:scale-105" />
+        <CircleUserRound className="size-5 sm:size-5.5 text-[#c084fc] transition-transform duration-300 group-hover:scale-105" />
       </button>
 
       {open && (
         <div
           role="menu"
           aria-label="Menu de visitante"
-          className="absolute right-0 top-full mt-2 w-48 sm:w-52 origin-top-right overflow-hidden rounded-xl border border-purple-500/20 bg-[#0c0a17]/98 p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.7)] backdrop-blur-2xl z-50 animate-in fade-in zoom-in-95 duration-150 font-sans"
+          className={cn(
+            "absolute right-0 top-full mt-2.5 w-56 origin-top-right overflow-hidden rounded-2xl border border-purple-500/25 bg-[#0b0914]/98 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-2xl z-50 font-sans",
+            "animate-in fade-in zoom-in-95 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          )}
         >
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/40 to-transparent"
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/60 to-transparent"
           />
-          <div className="space-y-0.5 pt-1">
+          <div className="space-y-1">
             <button
               type="button"
               role="menuitem"
@@ -500,10 +506,16 @@ function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
                 setOpen(false);
                 onOpenLogin();
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs sm:text-[13px] font-sans font-medium text-zinc-200 hover:bg-purple-500/15 hover:text-white transition-colors cursor-pointer"
+              className={cn(
+                "group flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-[13px] font-medium text-zinc-200",
+                "hover:bg-white/[0.08] hover:text-white cursor-pointer",
+                "motion-safe:transition-[background-color,color,transform] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-[0.98]",
+              )}
             >
-              <LogIn className="size-4 text-[#c084fc] shrink-0" />
-              <span>Entrar</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-purple-500/15 text-purple-300 group-hover:bg-purple-500/25 group-hover:text-purple-200 transition-colors">
+                <LogIn className="size-4" />
+              </div>
+              <span className="truncate">Entrar</span>
             </button>
             <button
               type="button"
@@ -512,10 +524,16 @@ function VisitorDropdownMenu({ onOpenLogin }: { onOpenLogin: () => void }) {
                 setOpen(false);
                 onOpenLogin();
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs sm:text-[13px] font-sans font-medium text-purple-200 hover:bg-purple-500/15 hover:text-white transition-colors cursor-pointer"
+              className={cn(
+                "group flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs sm:text-[13px] font-medium text-purple-200",
+                "hover:bg-purple-500/15 hover:text-white cursor-pointer",
+                "motion-safe:transition-[background-color,color,transform] motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-[0.98]",
+              )}
             >
-              <UserPlus className="size-4 text-[#c084fc] shrink-0" />
-              <span>Criar conta</span>
+              <div className="flex size-7 items-center justify-center rounded-lg bg-purple-500/20 text-purple-300 group-hover:bg-purple-500/30 group-hover:text-white transition-colors">
+                <UserPlus className="size-4" />
+              </div>
+              <span className="truncate">Criar conta</span>
             </button>
           </div>
         </div>
@@ -1381,13 +1399,19 @@ export function Shell() {
                 }}
                 onMouseEnter={() => void prefetchSearchModal()}
                 onFocus={() => void prefetchSearchModal()}
-                className="flex size-8 min-[380px]:size-10 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-elevated hover:text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7] active:scale-[0.97]"
-                style={{ transition: "transform 120ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+                className={cn(
+                  "group relative flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full text-zinc-300 hover:text-white transition-all cursor-pointer select-none",
+                  "motion-safe:transition-[transform,box-shadow,ring-color,background-color] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:active:scale-95 motion-reduce:transition-none motion-reduce:transform-none",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c084fc]",
+                  searchOpen
+                    ? "bg-purple-500/20 text-white ring-2 ring-[#c084fc] shadow-[0_0_20px_rgba(192,132,252,0.4)]"
+                    : "bg-white/[0.04] ring-1 ring-purple-500/30 hover:bg-white/[0.08] hover:ring-purple-400/60 hover:shadow-[0_0_16px_rgba(168,85,247,0.25)]",
+                )}
                 aria-label="Buscar"
                 title="Buscar (Ctrl+K)"
                 aria-expanded={searchOpen}
               >
-                <Search className="size-4 sm:size-5" />
+                <Search className="size-4 sm:size-4.5 text-purple-300 group-hover:text-white transition-colors" />
               </button>
             )}
 
