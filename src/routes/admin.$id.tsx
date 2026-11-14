@@ -33,7 +33,6 @@ import {
   type PersistEpisodeResult,
 } from "@/lib/episode-writer";
 import {
-  executeGetAdminCatalogEpisodes,
   getAdminCatalogEpisodes,
   invalidateCatalogEpisodesCache,
   mergeAdminEpisodesWithServer,
@@ -68,10 +67,7 @@ export const Route = createFileRoute("/admin/$id")({
     // Carrega episódios persistidos no PostgreSQL para o anime no painel administrativo
     if (params.id && params.id !== "new") {
       try {
-        serverEpisodes =
-          typeof window === "undefined"
-            ? await executeGetAdminCatalogEpisodes(params.id)
-            : await getAdminCatalogEpisodes({ data: { animeId: params.id } });
+        serverEpisodes = await getAdminCatalogEpisodes({ data: { animeId: params.id } });
       } catch (err) {
         console.warn("[admin loader] Erro ao carregar episódios do servidor:", err);
       }

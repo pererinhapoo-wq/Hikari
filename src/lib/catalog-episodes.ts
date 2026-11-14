@@ -165,20 +165,6 @@ export async function executeGetCatalogEpisodes(
   }
 }
 
-/**
- * Consulta server-side administrativa de todos os episódios (inclusive rascunhos).
- * Valida a autorização administrativa no servidor antes de retornar qualquer episódio não publicado.
- */
-export async function executeGetAdminCatalogEpisodes(
-  animeId: string,
-  bearerToken?: string,
-): Promise<CatalogEpisodesResult> {
-  const { verifyAdminServerCaller } = await import("@/lib/auth/admin.server");
-  await verifyAdminServerCaller(bearerToken);
-  return executeGetCatalogEpisodes(animeId, {
-    includeUnpublished: true,
-  });
-}
 
 /**
  * Server Function GET para consultar episódios publicados de um anime no PostgreSQL (acesso público).

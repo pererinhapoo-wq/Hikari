@@ -32,6 +32,8 @@ const animeAdminPostSchema = z.object({
   anilistId: z.number().int().optional().nullable(),
   malId: z.number().int().optional().nullable(),
   kitsuId: z.number().int().optional().nullable(),
+  hidden: z.boolean().default(false).optional(),
+  score: z.number().int().min(0).max(100).optional().nullable(),
   seasons: z.array(seasonItemSchema).optional().nullable(),
 });
 
@@ -177,6 +179,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                "titleRomaji", "titleEnglish", "titleNative",
                "cover", "banner", "synopsis", "format", "status",
                "episodesCount", "year", "season", "genres", "trailerId",
+               "hidden", "score",
                "createdAt", "updatedAt"
              )
              VALUES (
@@ -186,6 +189,7 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                $14, $15, $16,
                COALESCE($17::text[], '{}'::text[]),
                $18,
+               $21, $22,
                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
              )
              ON CONFLICT ("id") DO UPDATE
@@ -219,6 +223,8 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
                  WHEN $18::text IS NOT NULL THEN EXCLUDED."trailerId"
                  ELSE "catalog_anime"."trailerId"
                END,
+               "hidden" = EXCLUDED."hidden",
+               "score" = EXCLUDED."score",
                "updatedAt" = CURRENT_TIMESTAMP
              RETURNING "id", "cover", "banner", "anilistId", "malId", "kitsuId", "updatedAt";`,
             [
@@ -242,6 +248,8 @@ export const Route = createFileRoute("/api/admin/catalog-anime")({
               data.trailerId?.trim() ?? null,
               coverProvided,
               bannerProvided,
+              data.hidden ?? false,
+              data.score ?? null,
             ],
           );
 

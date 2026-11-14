@@ -45,6 +45,7 @@ const LazyLoginMenu = lazy(() =>
   })),
 );
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { usePublicSettings } from "@/lib/settings/use-public-settings";
 import { getProfile } from "@/lib/profile.functions";
 import { isHikariAdmin } from "@/lib/auth/admin";
 import { cn } from "@/lib/utils";
@@ -416,6 +417,8 @@ export function EpisodeCommentsSection({
   targetCommentId,
   hideCommunityAndSettings = false,
 }: EpisodeCommentsSectionProps) {
+  const { settings } = usePublicSettings();
+
   const [text, setText] =
     useState("");
 
@@ -2438,6 +2441,20 @@ export function EpisodeCommentsSection({
   /* ====================================================== */
   /* RENDER                                                   */
   /* ====================================================== */
+
+  if (!settings.modules.comments) {
+    return (
+      <section className="mt-10 border-t border-purple-500/20 pt-8 sm:pt-10">
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 text-center text-sm text-[var(--color-muted)]">
+          <MessageCircle className="mx-auto mb-2 size-6 text-purple-400 opacity-60" />
+          <p className="font-semibold text-fg">Comentários Temporariamente Desativados</p>
+          <p className="mt-1 text-xs text-muted max-w-md mx-auto">
+            A seção de comentários foi pausada pela administração para moderação ou manutenção da comunidade.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   if (!episodeId || !episodeId.trim()) {
     return (

@@ -21,6 +21,8 @@ export interface DbCatalogAnimeRow {
   season: string | null;
   genres: string[] | null;
   trailerId: string | null;
+  hidden: boolean;
+  score: number | null;
   updatedAt: string | Date | null;
 }
 
@@ -80,6 +82,8 @@ async function loadCatalogIndex(): Promise<CatalogIndex | null> {
          "season",
          "genres",
          "trailerId",
+         "hidden",
+         "score",
          "updatedAt"
        FROM "catalog_anime"
        ORDER BY "updatedAt" DESC;`,
@@ -95,6 +99,9 @@ async function loadCatalogIndex(): Promise<CatalogIndex | null> {
     const byKitsuId = new Map<number, DbCatalogAnimeRow>();
 
     for (const row of rows) {
+      if (row.hidden) {
+        continue;
+      }
       if (!byId.has(row.id)) {
         byId.set(row.id, row);
       }
@@ -211,6 +218,7 @@ function mergeRowIntoSlim(item: SlimAnime, row: DbCatalogAnimeRow): SlimAnime {
     season: row.season?.trim() || item.season,
     year: row.year ?? item.year,
     trailerId: row.trailerId?.trim() || item.trailerId,
+    score: row.score ?? item.score,
     catalogUpdatedAt: updatedAtMs || item.catalogUpdatedAt,
     serverCatalogId: row.id,
   };
@@ -272,6 +280,7 @@ async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | null> {
          "titleRomaji", "titleEnglish", "titleNative",
          "cover", "banner", "synopsis", "format", "status",
          "episodesCount", "year", "season", "genres", "trailerId",
+         "hidden", "score",
          "updatedAt"
        FROM "catalog_anime"
        WHERE "id" = $1
@@ -376,7 +385,7 @@ async function buildLocalAnimeFromDb(animeId: string): Promise<Anime | null> {
       cover: stripCatalogImageVersion(row.cover),
       banner: stripCatalogImageVersion(row.banner),
       synopsis: row.synopsis?.trim() || "",
-      score: null,
+      score: row.score ?? null,
       genres: Array.isArray(row.genres) ? row.genres : [],
       format: row.format?.trim() || "TV",
       status: row.status?.trim() || "FINISHED",

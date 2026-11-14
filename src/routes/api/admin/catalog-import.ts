@@ -123,6 +123,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    "cover", "banner", "synopsis",
                    "format", "status", "episodesCount", "season",
                    "year", "genres", "trailerId",
+                   "hidden", "score",
                    "createdAt", "updatedAt"
                  )
                  VALUES (
@@ -130,6 +131,7 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                    $5, $6, $7,
                    $8, $9, $10, $11,
                    $12, $13, $14,
+                   $15, $16,
                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                  )
                  ON CONFLICT ("id") DO UPDATE
@@ -150,6 +152,8 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                      ELSE "catalog_anime"."genres"
                    END,
                    "trailerId" = COALESCE(EXCLUDED."trailerId", "catalog_anime"."trailerId"),
+                   "hidden" = EXCLUDED."hidden",
+                   "score" = EXCLUDED."score",
                    "updatedAt" = CURRENT_TIMESTAMP;`,
                 [
                   anime.id,
@@ -166,6 +170,8 @@ export const Route = createFileRoute("/api/admin/catalog-import")({
                   anime.year ?? null,
                   anime.genres || [],
                   anime.trailerId?.trim() || null,
+                  anime.hidden ?? false,
+                  anime.score ?? null,
                 ],
               );
               animeProcessedCount++;

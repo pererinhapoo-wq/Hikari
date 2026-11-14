@@ -21,6 +21,8 @@ import {
   X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { GlobalNoticeBanner } from "@/components/GlobalNoticeBanner";
+import { usePublicSettings } from "@/lib/settings/use-public-settings";
 import { ProfileSaveNotification } from "@/components/profile/ProfileSaveNotification";
 import { ProfileDropdownMenu } from "@/components/profile/ProfileDropdownMenu";
 import type { NotificationItem } from "@/components/notifications/notification-item-card";
@@ -304,6 +306,7 @@ function ShellHeaderWrapper({
 }
 
 function HomeFooterLazy() {
+  const { settings } = usePublicSettings();
   return (
     <footer className="relative mt-12 w-full border-t border-purple-500/15 bg-gradient-to-b from-[#08070d] via-[#0d0b17] to-[#05040a] text-xs text-muted shadow-[0_-4px_24px_rgba(0,0,0,0.5)] [content-visibility:auto] [contain-intrinsic-size:auto_420px]">
       {/* Brilho decorativo sutil no topo do rodapé */}
@@ -320,10 +323,10 @@ function HomeFooterLazy() {
                   <Logo size="md" loading="lazy" fetchPriority="low" />
                 </div>
                 <p className="max-w-sm text-xs sm:text-sm leading-relaxed text-muted">
-                  Plataforma de catálogo, acompanhamento e transmissão de animes com interface veloz, moderna e comunidade ativa.
+                  {settings.site_description}
                 </p>
                 <p className="text-[11px] leading-relaxed text-subtle">
-                  Acompanhe os lançamentos semanais da temporada japonesa sincronizados com o horário de Brasília.
+                  {settings.site_slogan || "Acompanhe os lançamentos semanais da temporada japonesa sincronizados com o horário de Brasília."}
                 </p>
               </div>
 
@@ -695,6 +698,7 @@ export function Shell() {
   }, []);
 
   const localAnimes = useHikariStore((s) => s.animes);
+  const { settings } = usePublicSettings();
 
   const cinema = pathname.startsWith("/watch");
   const isAdmin = pathname.startsWith("/admin");
@@ -1318,6 +1322,7 @@ export function Shell() {
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
+      <GlobalNoticeBanner />
 
       {/* =========================================================
           HEADER
@@ -1371,18 +1376,20 @@ export function Shell() {
               </Link>
 
               {/* Calendário */}
-              <Link
-                to="/calendar"
-                className={cn(
-                  "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
-                  pathname.startsWith("/calendar")
-                    ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                    : "text-muted hover:bg-elevated/70 hover:text-fg",
-                )}
-              >
-                <Calendar className="size-4" />
-                <span>Calendário</span>
-              </Link>
+              {settings.modules.calendar && (
+                <Link
+                  to="/calendar"
+                  className={cn(
+                    "flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a855f7]",
+                    pathname.startsWith("/calendar")
+                      ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                      : "text-muted hover:bg-elevated/70 hover:text-fg",
+                  )}
+                >
+                  <Calendar className="size-4" />
+                  <span>Calendário</span>
+                </Link>
+              )}
 
 
             </nav>
@@ -1671,19 +1678,21 @@ export function Shell() {
                   </Link>
 
                   {/* Calendário */}
-                  <Link
-                    to="/calendar"
-                    onClick={() => setMenuOpen(false)}
-                    className={cn(
-                      "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
-                      pathname.startsWith("/calendar")
-                        ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
-                        : "text-muted hover:bg-elevated hover:text-fg",
-                    )}
-                  >
-                    <Calendar className="size-5" />
-                    <span>Calendário</span>
-                  </Link>
+                  {settings.modules.calendar && (
+                    <Link
+                      to="/calendar"
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(
+                        "flex items-center gap-4 rounded-xl px-4 py-3.5 text-base font-medium transition-colors",
+                        pathname.startsWith("/calendar")
+                          ? "bg-[#a855f7]/15 text-[#c084fc] font-semibold shadow-[inset_0_0_0_1px_rgba(168,85,247,0.3)]"
+                          : "text-muted hover:bg-elevated hover:text-fg",
+                      )}
+                    >
+                      <Calendar className="size-5" />
+                      <span>Calendário</span>
+                    </Link>
+                  )}
 
                   {!user && !authPending && (
                     <button
@@ -1701,7 +1710,7 @@ export function Shell() {
                     </button>
                   )}
 
-                  {user && isHikariAdmin(user.primaryEmail) && (
+                  {user && (user.isAdmin || isHikariAdmin(user.primaryEmail)) && (
                     <Link
                       to="/admin"
                       onClick={() => setMenuOpen(false)}

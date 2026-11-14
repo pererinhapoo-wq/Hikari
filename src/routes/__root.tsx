@@ -9,6 +9,8 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { AuthProvider } from "@/lib/auth/provider";
 import type { AppUser } from "@/lib/auth/use-current-user";
+import { getPublicSettings } from "@/lib/settings/settings.functions";
+import { PublicSettingsProvider } from "@/lib/settings/use-public-settings";
 
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 
@@ -140,15 +142,23 @@ function DeferredAnalytics() {
 export const Route = createRootRoute({
   staleTime: Infinity,
   shouldReload: false,
-  loader: async () => ({
-    sessionUser: await fetchRootSessionUser(),
-  }),
-  head: () => ({
+  loader: async () => {
+    const [sessionUser, publicSettings] = await Promise.all([
+      fetchRootSessionUser(),
+      getPublicSettings(),
+    ]);
+    return {
+      sessionUser,
+      publicSettings,
+    };
+  },
+  head: ({ loaderData }) => ({
     meta: [
-      { title: APP_NAME },
+      { title: loaderData?.publicSettings?.site_name || APP_NAME },
       {
         name: "description",
         content:
+          loaderData?.publicSettings?.site_description ||
           "Hikari 光 — catálogo e streaming de animes. Temporada, populares, trailers e Minha Lista.",
       },
       {
@@ -255,7 +265,9 @@ function RootDocument() {
         <PreviewHostBridge />
 
         <AuthProvider initialSessionUser={loaderData?.sessionUser ?? null}>
-          <Shell />
+          <PublicSettingsProvider initialSettings={loaderData?.publicSettings ?? null}>
+            <Shell />
+          </PublicSettingsProvider>
         </AuthProvider>
 
         <ScrollRestoration />

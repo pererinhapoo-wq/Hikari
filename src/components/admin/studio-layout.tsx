@@ -225,6 +225,19 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
           },
         ],
       },
+      {
+        title: "Sistema",
+        items: [
+          {
+            id: "settings",
+            label: "Configurações",
+            icon: SlidersHorizontal,
+            to: "/admin/settings",
+            badge: "Geral",
+            badgeVariant: "purple",
+          },
+        ],
+      },
     ],
     [conflictCount, pendingCount],
   );
@@ -266,13 +279,6 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
         comingSoon: true,
         disabled: true,
       },
-      {
-        id: "settings",
-        label: "Configurações",
-        icon: SlidersHorizontal,
-        comingSoon: true,
-        disabled: true,
-      },
     ],
     [],
   );
@@ -288,7 +294,8 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
         pathname !== "/admin/new" &&
         pathname !== "/admin/moderation" &&
         pathname !== "/admin/hikari-ai" &&
-        pathname !== "/admin/quick-update"
+        pathname !== "/admin/quick-update" &&
+        pathname !== "/admin/settings"
       );
     }
     if (item.id === "new-anime") {
@@ -302,6 +309,9 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     }
     if (item.id === "hikari-ai") {
       return pathname.startsWith("/admin/hikari-ai");
+    }
+    if (item.id === "settings") {
+      return pathname.startsWith("/admin/settings");
     }
     return false;
   };
@@ -318,6 +328,9 @@ export function HikariStudioLayout({ children }: StudioLayoutProps) {
     }
     if (pathname.startsWith("/admin/hikari-ai")) {
       return { section: "Inteligência Artificial", current: "Hikari AI" };
+    }
+    if (pathname.startsWith("/admin/settings")) {
+      return { section: "Sistema", current: "Configurações Gerais" };
     }
     if (pathname.startsWith("/admin/")) {
       const parts = pathname.split("/");
